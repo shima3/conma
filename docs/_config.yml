@@ -1,0 +1,4 @@
+theme: jekyll-theme-time-machine
+timezone: Asia/Tokyo
+title: ConMa
+description: ConMa is an intermediate language that provides higher-order functions and continuations for functional programming.
