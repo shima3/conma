@@ -87,7 +87,7 @@ Program@1:1
           Variable@2:3: __print__
         OList@2:13
           String@2:13: "Hello"
-        LCont@2:19
-          Null@2:19
+        LCont@2:20
+          Null@2:20
 ```
 

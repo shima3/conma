@@ -1,0 +1,6 @@
+(define __CChain_pop_LCont__ ,()
+  __CChain_pop_CFrame__ ,(cf)
+  __CChain_pop_CFrame__ ,(cf2)
+  __CFrame_get_Closure__ cf ,(lc)
+  __CFrame_get_Closure__ cf2 ,(lc2)
+  lc lc2)

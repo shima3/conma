@@ -18,8 +18,8 @@ For the EBNF notation used, see [EBNF.md].
 ## Lexical Definitions (Tokens)
 
 ```ebnf
-Token        = Significant | Whitespace | Comment ;
-Significant  = Symbol | String | "(" | ")" | "," ;
+Token        = Significant | Whitespace ;
+Significant  = Symbol | String | "(" | ")" | "," | LineCommentBegin | BlockCommentBegin | BlockCommentEnd | SExpCommentBegin ;
 
 Symbol      = SymbolChar, { SymbolChar } ;
 SymbolChar  = Letter | Digit | SpecialChar ;
@@ -35,14 +35,32 @@ EscapeSequence  = "\", ( '"' | "\" | "n" | "t" | "r" ) ;
 Whitespace  = " " | "\t" | Newline ;
 Newline     = "\n" | "\r\n" ;
 
-Comment     = LineComment | BlockComment ;
-LineComment = ";", { LineCommentCharacter }, Newline ;
+LineComment = LineCommentBegin, { LineCommentCharacter } ;
+LineCommentBegin = ";" ;
 LineCommentCharacter = ? any valid character except Newline ? ;
 
-BlockComment = "#|", { BlockCommentContent }, "|#" ;
-BlockCommentContent = BlockCommentText | BlockComment ;
+BlockComment = BlockCommentBegin, { BlockCommentContent }, BlockCommentEnd ;
+BlockCommentBegin = "#|" ;
+BlockCommentEnd = "|#" ;
+BlockCommentContent = BlockComment | BlockCommentText ;
 BlockCommentText    = ? character sequence not containing #| or |# ? ;
+
+SExpCommentBegin = "#;" ;
 ```
+
+## Comment Removing
+
+Comments are removed after lexical analysis and before syntactic analysis.
+
+### LineComment (token sequence):
+  LineCommentBegin { any token except NEWLINE }
+
+### BlockComment (token sequence):
+  BlockCommentBegin { BlockComment | any token except BlockCommentBegin or BlockCommentEnd } BlockCommentEnd
+
+### S-Expression Comment
+An S-expression comment begins with "#;" and discards the following S-expression.
+The removed S-expression may be an atom or a list.
 
 ## Syntactic Definitions (Grammar)
 

@@ -1,95 +1,243 @@
+"""
+lexer2.py -- ConMa lexical analyzer (comments preserved)
+
+Token kinds emitted:
+    SYMBOL                  SymbolChar+
+    STRING                  "..." (with escapes)
+    LPAREN                  (
+    RPAREN                  )
+    COMMA                   ,
+    NEWLINE                 \n or \r\n
+    LINE_COMMENT_BEGIN      ;
+    LINE_COMMENT_CONTENT    text after ; up to (not including) newline
+    BLOCK_COMMENT_BEGIN     #|
+    BLOCK_COMMENT_TEXT      text inside block comment (not #| or |#)
+    BLOCK_COMMENT_END       |#
+    SEXP_COMMENT_BEGIN      #;
+
+LINE_COMMENT_CONTENT is emitted only when the content is non-empty.
+BLOCK_COMMENT_TEXT   is emitted only when the content is non-empty.
+NEWLINE value is written as the escape sequence \n or \r\n.
+Whitespace (space, tab, isolated CR) is consumed silently.
+Unrecognized characters are reported to stderr and skipped.
+
+Usage:
+    python lexer2.py <source_file>
+
+Output format:
+    <line> TAB <col> TAB <kind> TAB <value>
+"""
+
 import sys
 
-def tokenize(source_code):
-    tokens = []
+SYMBOL_CHARS = frozenset(
+    'abcdefghijklmnopqrstuvwxyz'
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    '0123456789'
+    '_!?*+-/=<>$%&|.^'
+)
+
+
+def tokenize(source):
     i = 0
+    n = len(source)
     line_num = 1
     line_start = 0
 
-    while i < len(source_code):
-        c = source_code[i]
+    # block comment nesting depth
+    block_depth = 0
 
-        # ブロックコメント（ネスト対応）
-        if source_code[i:i+2] == '#|':
-            depth = 1
-            i += 2
-            while i < len(source_code) - 1 and depth > 0:
-                if source_code[i:i+2] == '#|':
-                    depth += 1
-                    i += 2
-                elif source_code[i:i+2] == '|#':
-                    depth -= 1
-                    i += 2
-                else:
-                    if source_code[i] == '\n':
-                        line_num += 1
-                        line_start = i + 1
-                    i += 1
-            if depth != 0:
-                print(f"Error: Unterminated block comment", file=sys.stderr)
-            continue
+    # buffer for BLOCK_COMMENT_TEXT accumulation
+    text_buf = []
+    text_buf_line = None
+    text_buf_col  = None
 
-        # 行コメント
-        if c == ';':
-            while i < len(source_code) and source_code[i] != '\n':
+    def col_at(pos):
+        return pos - line_start + 1
+
+    def emit(kind, value, tok_line=None, tok_col=None):
+        ln = tok_line if tok_line is not None else line_num
+        cn = tok_col  if tok_col  is not None else col_at(i)
+        print(f"{ln}\t{cn}\t{kind}\t{value}")
+
+    def flush_text_buf():
+        nonlocal text_buf, text_buf_line, text_buf_col
+        if text_buf:
+            emit('BLOCK_COMMENT_TEXT', ''.join(text_buf),
+                 tok_line=text_buf_line, tok_col=text_buf_col)
+        text_buf = []
+        text_buf_line = None
+        text_buf_col  = None
+
+    def accum_text(ch, ch_line, ch_col):
+        nonlocal text_buf_line, text_buf_col
+        if not text_buf:
+            text_buf_line = ch_line
+            text_buf_col  = ch_col
+        text_buf.append(ch)
+
+    while i < n:
+        two = source[i:i+2]
+
+        # ----------------------------------------------------------------
+        # Inside block comment
+        # ----------------------------------------------------------------
+        if block_depth > 0:
+
+            if two == '#|':
+                flush_text_buf()
+                emit('BLOCK_COMMENT_BEGIN', '#|')
+                block_depth += 1
+                i += 2
+                continue
+
+            if two == '|#':
+                flush_text_buf()
+                emit('BLOCK_COMMENT_END', '|#')
+                block_depth -= 1
+                i += 2
+                continue
+
+            if two == '\r\n':
+                accum_text('\r\n', line_num, col_at(i))
+                line_num += 1
+                line_start = i + 2
+                i += 2
+                continue
+
+            if source[i] == '\n':
+                accum_text('\n', line_num, col_at(i))
+                line_num += 1
+                line_start = i + 1
                 i += 1
-            continue
+                continue
 
-        # 空白
-        if c in ' \t\r':
+            accum_text(source[i], line_num, col_at(i))
             i += 1
             continue
 
-        # 改行
+        # ----------------------------------------------------------------
+        # Outside block comment
+        # ----------------------------------------------------------------
+
+        if two == '#|':
+            emit('BLOCK_COMMENT_BEGIN', '#|')
+            block_depth += 1
+            i += 2
+            continue
+
+        if two == '#;':
+            emit('SEXP_COMMENT_BEGIN', '#;')
+            i += 2
+            continue
+
+        if two == '|#':
+            emit('BLOCK_COMMENT_END', '|#')
+            i += 2
+            continue
+
+        if two == '\r\n':
+            emit('NEWLINE', r'\r\n')
+            line_num += 1
+            line_start = i + 2
+            i += 2
+            continue
+
+        c = source[i]
+
         if c == '\n':
+            emit('NEWLINE', r'\n')
             line_num += 1
             line_start = i + 1
             i += 1
             continue
 
-        col = i - line_start + 1
+        if c in ' \t\r':
+            i += 1
+            continue
 
-        # 文字列
-        if c == '"':
-            j = i + 1
-            while j < len(source_code):
-                if source_code[j] == '\\':
-                    j += 2
-                elif source_code[j] == '"':
-                    j += 1
-                    break
-                else:
-                    j += 1
-            print(f"{line_num}\t{col}\tSTRING\t{source_code[i:j]}")
+        if c == ';':
+            emit('LINE_COMMENT_BEGIN', ';')
+            i += 1
+            j = i
+            while j < n and source[j] != '\n' and source[j:j+2] != '\r\n':
+                j += 1
+            if j > i:
+                emit('LINE_COMMENT_CONTENT', source[i:j])
             i = j
             continue
 
         if c == '(':
-            print(f"{line_num}\t{col}\tLPAREN\t(")
-            i += 1; continue
-        if c == ')':
-            print(f"{line_num}\t{col}\tRPAREN\t)")
-            i += 1; continue
-        if c == ',':
-            print(f"{line_num}\t{col}\tCOMMA\t,")
-            i += 1; continue
+            emit('LPAREN', '(')
+            i += 1
+            continue
 
-        # Symbol
-        symbol_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!?*+-/=<>$%&|.^')
-        if c in symbol_chars:
-            j = i
-            while j < len(source_code) and source_code[j] in symbol_chars:
-                j += 1
-            print(f"{line_num}\t{col}\tSYMBOL\t{source_code[i:j]}")
+        if c == ')':
+            emit('RPAREN', ')')
+            i += 1
+            continue
+
+        if c == ',':
+            emit('COMMA', ',')
+            i += 1
+            continue
+
+        if c == '"':
+            start_col  = col_at(i)
+            start_line = line_num
+            j = i + 1
+            while j < n:
+                if source[j] == '\\':
+                    j += 2
+                elif source[j] == '"':
+                    j += 1
+                    break
+                elif source[j] == '\n':
+                    print(
+                        f"Error: Unterminated string at line {line_num},"
+                        f" column {start_col}",
+                        file=sys.stderr,
+                    )
+                    break
+                else:
+                    j += 1
+            emit('STRING', source[i:j], tok_line=start_line, tok_col=start_col)
             i = j
             continue
 
-        print(f"Error: Unexpected character '{c}' at line {line_num}, column {col}", file=sys.stderr)
+        if c in SYMBOL_CHARS:
+            start_col = col_at(i)
+            j = i
+            while j < n:
+                if source[j] == '|' and source[j:j+2] == '|#':
+                    break
+                if source[j] in SYMBOL_CHARS:
+                    j += 1
+                else:
+                    break
+            emit('SYMBOL', source[i:j], tok_col=start_col)
+            i = j
+            continue
+
+        print(
+            f"Error: Unexpected character {c!r}"
+            f" at line {line_num}, column {col_at(i)}",
+            file=sys.stderr,
+        )
         i += 1
 
-if __name__ == "__main__":
+    flush_text_buf()
+    if block_depth > 0:
+        print("Error: Unterminated block comment at end of file",
+              file=sys.stderr)
+
+
+if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python lexer.py <source_file>")
+        print('Usage: python lexer2.py <source_file>', file=sys.stderr)
         sys.exit(1)
+
     with open(sys.argv[1], 'r', encoding='utf-8') as f:
-        tokenize(f.read())
+        source = f.read()
+
+    tokenize(source)

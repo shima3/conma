@@ -1,0 +1,345 @@
+"""
+parser.py -- ConMa AST parser
+
+Reads lexer output (tab-separated: line TAB col TAB kind TAB value)
+from a file or stdin, and prints the AST to stdout per AST.md.
+
+Usage:
+    python parser.py [--file <source_filename>] [<lexer_output_file>]
+
+    --file <source_filename>
+        When specified, inserts SourceInfo nodes into every Body that
+        does not already contain an explicit (__SI__ ...) construct.
+        The inserted SourceInfo uses the Operator's location.
+
+    <lexer_output_file>
+        Lexer output to parse. Reads from stdin if omitted.
+"""
+
+import sys
+import argparse
+
+
+# ---------------------------------------------------------------------------
+# Token stream
+# ---------------------------------------------------------------------------
+
+def read_tokens(lines):
+    """Parse lexer output lines into a list of (line, col, kind, value)."""
+    tokens = []
+    for raw in lines:
+        raw = raw.rstrip('\n')
+        if not raw:
+            continue
+        parts = raw.split('\t', 3)
+        if len(parts) == 4:
+            lnum, col, kind, value = parts
+            tokens.append((int(lnum), int(col), kind, value))
+    return tokens
+
+
+# ---------------------------------------------------------------------------
+# Parser
+# ---------------------------------------------------------------------------
+
+class Parser:
+    def __init__(self, tokens, filename=None):
+        self.tokens = tokens
+        self.pos = 0
+        self.filename = filename   # for auto SourceInfo insertion
+
+    # --- token access -------------------------------------------------------
+
+    def peek(self, offset=0):
+        idx = self.pos + offset
+        return self.tokens[idx] if idx < len(self.tokens) else None
+
+    def consume(self):
+        tok = self.tokens[self.pos]
+        self.pos += 1
+        return tok
+
+    def expect(self, kind, value=None):
+        tok = self.peek()
+        if tok is None:
+            raise SyntaxError(f"Unexpected end of input; expected {kind!r}")
+        if tok[2] != kind:
+            raise SyntaxError(
+                f"{tok[0]}:{tok[1]}: expected {kind!r}, got {tok[2]!r} {tok[3]!r}")
+        if value is not None and tok[3] != value:
+            raise SyntaxError(
+                f"{tok[0]}:{tok[1]}: expected {value!r}, got {tok[3]!r}")
+        return self.consume()
+
+    # --- helpers ------------------------------------------------------------
+
+    def _end_col_of(self, tok):
+        """Return the column of the last character of tok (1-based)."""
+        return tok[1] + len(tok[3])
+
+    def _is_sourceinfo(self):
+        """True when the next two tokens are LPAREN and SYMBOL '__SI__'."""
+        t0 = self.peek(0)
+        t1 = self.peek(1)
+        return (t0 is not None and t0[2] == 'LPAREN' and
+                t1 is not None and t1[2] == 'SYMBOL' and t1[3] == '__SI__')
+
+    def _is_expression_start(self):
+        """True when the current token can start an Expression."""
+        tok = self.peek()
+        if tok is None:
+            return False
+        return tok[2] in ('SYMBOL', 'STRING', 'LPAREN')
+
+    # --- grammar rules ------------------------------------------------------
+
+    def parse_program(self):
+        first = self.peek()
+        line = first[0] if first else 1
+        col  = first[1] if first else 1
+        children = []
+        while self.peek() is not None:
+            children.append(self.parse_statement())
+        return ('Program', line, col, children)
+
+    def parse_statement(self):
+        # Statement = Includer | Definition
+        tok = self.peek()
+        if tok is None or tok[2] != 'LPAREN':
+            raise SyntaxError(
+                f"{tok[0]}:{tok[1]}: expected '(' to start a statement")
+        kw = self.peek(1)
+        if kw is None or kw[2] != 'SYMBOL':
+            raise SyntaxError(
+                f"{tok[0]}:{tok[1]}: expected 'include' or 'define' after '('")
+        if kw[3] == 'include':
+            return self.parse_includer()
+        if kw[3] == 'define':
+            return self.parse_definition()
+        raise SyntaxError(
+            f"{kw[0]}:{kw[1]}: expected 'include' or 'define', got {kw[3]!r}")
+
+    def parse_includer(self):
+        # Includer = "(", "include", String, ")"
+        lparen = self.expect('LPAREN')
+        self.expect('SYMBOL', 'include')
+        stok = self.expect('STRING')
+        self.expect('RPAREN')
+        return ('Includer', lparen[0], lparen[1],
+                [('String', stok[0], stok[1], stok[3])])
+
+    def parse_definition(self):
+        # Definition = "(", "define", Variable, Function, ")"
+        self.expect('LPAREN')
+        define_tok = self.expect('SYMBOL', 'define')
+        vtok = self.expect('SYMBOL')
+        var  = ('Variable', vtok[0], vtok[1], vtok[3])
+        func = self.parse_function()
+        self.expect('RPAREN')
+        return ('Definition', define_tok[0], define_tok[1], [var, func])
+
+    def parse_function(self):
+        # Function = Hat, Head, Body   (Hat = ",")
+        comma = self.expect('COMMA')
+        head  = self.parse_head()
+        body  = self.parse_body()
+        return ('Function', comma[0], comma[1], [head, body])
+
+    def parse_head(self):
+        # Head = "(", { Parameter }, ")"
+        lparen = self.expect('LPAREN')
+        params = []
+        while self.peek() is not None and self.peek()[2] != 'RPAREN':
+            vtok = self.expect('SYMBOL')
+            params.append(('Variable', vtok[0], vtok[1], vtok[3]))
+        self.expect('RPAREN')
+        return ('Head', lparen[0], lparen[1], params)
+
+    def parse_body(self):
+        # Body = [SourceInfo], Operator, OList, [LCont]
+        #
+        # Position of the Body node:
+        #   - If SourceInfo is present in source: position of its '('
+        #   - Otherwise: position of the Operator token
+
+        # --- SourceInfo (explicit) ------------------------------------------
+        explicit_si = None
+        if self._is_sourceinfo():
+            explicit_si = self.parse_sourceinfo()
+
+        # --- Operator -------------------------------------------------------
+        op_inner = self.parse_operator_inner()   # Variable or FuncExp node
+        op_line, op_col = op_inner[1], op_inner[2]
+        op_node = ('Operator', op_line, op_col, [op_inner])
+
+        # --- Body position --------------------------------------------------
+        if explicit_si is not None:
+            body_line, body_col = explicit_si[1], explicit_si[2]
+        else:
+            body_line, body_col = op_line, op_col
+
+        # --- Auto SourceInfo insertion -------------------------------------
+        if explicit_si is None and self.filename is not None:
+            si_value = f'"{self.filename}" "{op_line}" "{op_col}"'
+            auto_si = ('SourceInfo', op_line, op_col, si_value)
+        else:
+            auto_si = None
+
+        # --- OList ----------------------------------------------------------
+        # Consume Expressions until COMMA (LCont start), RPAREN, or EOF.
+        olist_items = []
+        last_tok = None  # last consumed token, for Null LCont position
+
+        first_expr_tok = self.peek()
+        while self._is_expression_start():
+            tok_before = self.peek()
+            expr = self.parse_expression()
+            last_tok = self.tokens[self.pos - 1]   # last token consumed
+            olist_items.append(expr)
+
+        # OList position: first element's position, or next token if empty.
+        if olist_items:
+            olist_line = olist_items[0][1]
+            olist_col  = olist_items[0][2]
+        elif self.peek() is not None:
+            olist_line = self.peek()[0]
+            olist_col  = self.peek()[1]
+        else:
+            olist_line, olist_col = op_line, op_col
+
+        olist_node = ('OList', olist_line, olist_col, olist_items)
+
+        # --- LCont ----------------------------------------------------------
+        if self.peek() is not None and self.peek()[2] == 'COMMA':
+            func = self.parse_function()
+            lcont_node = ('LCont', func[1], func[2], [func])
+        else:
+            # Null LCont: position = column after last OList token,
+            # or next token position if OList is empty.
+            if last_tok is not None:
+                null_line = last_tok[0]
+                null_col  = self._end_col_of(last_tok)
+            elif self.peek() is not None:
+                null_line = self.peek()[0]
+                null_col  = self.peek()[1]
+            else:
+                null_line, null_col = olist_line, olist_col
+            null_node  = ('Null',  null_line, null_col, None)
+            lcont_node = ('LCont', null_line, null_col, [null_node])
+
+        # --- assemble children ---------------------------------------------
+        children = []
+        if explicit_si is not None:
+            children.append(explicit_si)
+        elif auto_si is not None:
+            children.append(auto_si)
+        children.append(op_node)
+        children.append(olist_node)
+        children.append(lcont_node)
+
+        return ('Body', body_line, body_col, children)
+
+    def parse_sourceinfo(self):
+        # SourceInfo = "(", "__SI__", { String }, ")"
+        lparen = self.expect('LPAREN')
+        self.expect('SYMBOL', '__SI__')
+        strings = []
+        while self.peek() is not None and self.peek()[2] == 'STRING':
+            strings.append(self.consume()[3])
+        self.expect('RPAREN')
+        value = ' '.join(strings)
+        return ('SourceInfo', lparen[0], lparen[1], value)
+
+    def parse_operator_inner(self):
+        # Operator = Variable | FuncExp
+        tok = self.peek()
+        if tok is None:
+            raise SyntaxError("Unexpected end of input; expected Operator")
+        if tok[2] == 'SYMBOL':
+            t = self.consume()
+            return ('Variable', t[0], t[1], t[3])
+        if tok[2] == 'LPAREN':
+            return self.parse_funcexp()
+        raise SyntaxError(
+            f"{tok[0]}:{tok[1]}: expected Operator, got {tok[2]!r} {tok[3]!r}")
+
+    def parse_expression(self):
+        # Expression = Variable | String | FuncExp
+        tok = self.peek()
+        if tok is None:
+            raise SyntaxError("Unexpected end of input; expected Expression")
+        if tok[2] == 'SYMBOL':
+            t = self.consume()
+            return ('Variable', t[0], t[1], t[3])
+        if tok[2] == 'STRING':
+            t = self.consume()
+            return ('String', t[0], t[1], t[3])
+        if tok[2] == 'LPAREN':
+            return self.parse_funcexp()
+        raise SyntaxError(
+            f"{tok[0]}:{tok[1]}: expected Expression, got {tok[2]!r} {tok[3]!r}")
+
+    def parse_funcexp(self):
+        # FuncExp = "(", Function, ")"
+        lparen = self.expect('LPAREN')
+        func   = self.parse_function()
+        self.expect('RPAREN')
+        return ('FuncExp', lparen[0], lparen[1], [func])
+
+
+# ---------------------------------------------------------------------------
+# AST formatter
+# ---------------------------------------------------------------------------
+
+def format_ast(node, indent=0):
+    prefix = '  ' * indent
+    kind   = node[0]
+    line   = node[1]
+    col    = node[2]
+
+    if kind == 'Variable':
+        print(f"{prefix}Variable@{line}:{col}: {node[3]}")
+    elif kind == 'String':
+        print(f"{prefix}String@{line}:{col}: {node[3]}")
+    elif kind == 'SourceInfo':
+        print(f"{prefix}SourceInfo@{line}:{col}: {node[3]}")
+    elif kind == 'Null':
+        print(f"{prefix}Null@{line}:{col}")
+    else:
+        print(f"{prefix}{kind}@{line}:{col}")
+        for child in node[3]:
+            format_ast(child, indent + 1)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser(
+        description='Parse ConMa lexer output and print AST.')
+    ap.add_argument('input', nargs='?',
+                    help='Lexer output file (default: stdin)')
+    ap.add_argument('--file', metavar='FILENAME',
+                    help='Source filename for automatic SourceInfo insertion')
+    args = ap.parse_args()
+
+    if args.input:
+        with open(args.input, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+    else:
+        lines = sys.stdin.readlines()
+
+    tokens = read_tokens(lines)
+    parser = Parser(tokens, filename=args.file)
+
+    try:
+        ast = parser.parse_program()
+        format_ast(ast)
+    except SyntaxError as e:
+        print(f"SyntaxError: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -11,6 +11,31 @@ In contrast, the line and column values within a **`SourceInfo`** node value mus
 Consequently, the output format for a `SourceInfo` node is defined as:
 `SourceInfo@line:col: "<filename>" "<line>" "<col>"`
 
+## Lexer and Comment Remover
+
+### Why comments are preserved by the lexer
+
+The lexer (`lexer.py`) emits all tokens including comment-related tokens (`LINE_COMMENT_BEGIN`, `LINE_COMMENT_CONTENT`, `BLOCK_COMMENT_BEGIN`, `BLOCK_COMMENT_TEXT`, `BLOCK_COMMENT_END`, `SEXP_COMMENT_BEGIN`) and `NEWLINE`. Comments are not silently discarded during lexical analysis.
+
+This separation ensures that each component has a single, well-defined responsibility:
+
+- The lexer is responsible for segmenting the source text into tokens.
+- The comment remover is responsible for deciding which tokens the parser should see.
+
+It also allows the raw token stream (including comments) to be used independently — for example, by documentation generators or syntax highlighters — without modifying the lexer.
+
+### Why NEWLINE tokens are removed by the comment remover, not the lexer
+
+`NEWLINE` tokens serve a purpose within the raw token stream: they mark the boundary between a `LINE_COMMENT_CONTENT` token and the subsequent code, allowing the comment remover to correctly identify where a line comment ends. Once comment removal is complete, `NEWLINE` tokens carry no further meaning for the parser, since ConMa's grammar does not use newlines as statement terminators.
+
+Removing `NEWLINE` in the lexer would conflate two distinct decisions — "what is a token?" and "what does the parser need?" — into a single component. Removing them in the comment remover keeps each stage's scope narrow and explicit.
+
+### Pipeline
+
+```
+lexer.py  →  comment_remover.py  →  parser.py
+```
+
 ## Execution
 
 If the `__CChain_pop_CFrame__` primitive is invoked when the **Continuation Chain (CChain)** is empty, the following behavior is guaranteed:
