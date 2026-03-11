@@ -1,0 +1,22 @@
+(define __if_then_else__ ,(flag then else)
+  flag then else ,(clause)
+  clause)
+
+(define __if__ ,(flag then)
+  __if_then_else__ flag then __noop__)
+
+(define __unless__ ,(flag else)
+  __if_then_else__ flag __noop__ else)
+
+(define __fix__ ,(x)
+  x (,()
+      __fix__ x))
+
+(define __true__ ,(then else)
+  then)
+
+(define __false__ ,(then else)
+  else)
+
+(define __not__ ,(flag)
+  flag __false__ __true__)

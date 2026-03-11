@@ -703,7 +703,8 @@ Example:
 (define __unless__ ,(flag else)
   __if_then_else__ flag __noop__ else)
 
-(define __fix__ ,(x) x (__fix__ x))
+(define __fix__ ,(x)
+  x (,() __fix__ x))
 
 (define __true__ ,(then else)
   then)
