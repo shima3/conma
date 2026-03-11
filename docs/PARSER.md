@@ -1,13 +1,13 @@
-## Specification of `parser.py`
+## Specification of `parser`
 
 ### Overview
 
-`parser.py` reads the token stream produced by `comment_remover.py`, constructs an AST for one ConMa source file, and writes the AST to standard output per `AST.md`. Parse errors are written to standard error.
+`parser` reads the token stream produced by `comment_remover`, constructs an AST for one ConMa source file, and writes the AST to standard output per `AST.md`. Parse errors are written to standard error.
 
 This component is the third stage of the processing pipeline:
 
 ```
-lexer2.py  →  comment_remover.py  →  parser.py
+lexer2  →  comment_remover  →  parser
 ```
 
 ---
@@ -15,7 +15,7 @@ lexer2.py  →  comment_remover.py  →  parser.py
 ### Invocation
 
 ```
-parser.py [--file <filename>] [<token_file>]
+parser [--file <filename>] [<token_file>]
 ```
 
 - `--file <filename>`: when specified, `<filename>` is used for automatic `SourceInfo` insertion and is printed as a suffix on the `Program` node. If omitted, neither insertion nor suffix occurs.
@@ -27,7 +27,7 @@ The file is read in UTF-8 encoding.
 
 ### Input Format
 
-Each input line must be a tab-separated record of four fields, as produced by `comment_remover.py`:
+Each input line must be a tab-separated record of four fields, as produced by `comment_remover`:
 
 ```
 <line> TAB <col> TAB <kind> TAB <value>
