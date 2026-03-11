@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 parser.py -- ConMa AST parser
 

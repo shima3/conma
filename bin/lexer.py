@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 lexer2.py -- ConMa lexical analyzer (comments preserved)
 
