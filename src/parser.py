@@ -136,7 +136,7 @@ class Parser:
         var  = ('Variable', vtok[0], vtok[1], vtok[3])
         func = self.parse_function()
         self.expect('RPAREN')
-        return ('Definition', define_tok[0], define_tok[1], [var, func])
+        return ('Definition', define_tok[0], define_tok[1], [var, func], self.filename)
 
     def parse_function(self):
         # Function = Hat, Head, Body   (Hat = ",")
@@ -305,6 +305,12 @@ def format_ast(node, indent=0):
         print(f"{prefix}SourceInfo@{line}:{col}: {node[3]}")
     elif kind == 'Null':
         print(f"{prefix}Null@{line}:{col}")
+    elif kind == 'Definition':
+        filename = node[4] if len(node) > 4 else None
+        suffix = f' "{filename}"' if filename else ''
+        print(f"{prefix}Definition@{line}:{col}{suffix}")
+        for child in node[3]:
+            format_ast(child, indent + 1)
     else:
         print(f"{prefix}{kind}@{line}:{col}")
         for child in node[3]:

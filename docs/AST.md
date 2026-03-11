@@ -11,12 +11,14 @@
 
 ```
 NodeType@line:col [: value]
+NodeType@line:col ["filename"]
 ```
 
 - `NodeType`: one of the node kinds defined in Section 3.
 - `line`: 1-based line number of the first character of the corresponding token.
 - `col`: 1-based column number of the first character of the corresponding token.
 - `: value`: present only for terminal nodes (`Variable`, `String`, `SourceInfo`). For `SourceInfo`, the value is a space-separated sequence of string literals. For `Variable` and `String`, the value is the exact source text of the token.
+- `"filename"`: present only for `Definition` nodes when `--file <filename>` is specified. The filename is printed as a quoted string literal immediately after `@line:col`, separated by a space.
 
 Child nodes are indented by two spaces relative to their parent.
 
@@ -31,7 +33,7 @@ Child nodes are indented by two spaces relative to their parent.
 | NodeType | Corresponding grammar element | Terminal? |
 |---|---|---|
 | `Program` | Program | No |
-| `Definition` | Definition | No |
+| `Definition` | Definition | No (optional filename suffix when `--file` is given) |
 | `Includer` | Includer | No |
 | `Function` | Function | No |
 | `Head` | Head | No |
@@ -76,7 +78,7 @@ Child nodes are indented by two spaces relative to their parent.
 
 ```
 Program@1:1
-  Definition@1:2
+  Definition@1:2 "test.se"
     Variable@1:9: main
     Function@1:14
       Head@1:15
