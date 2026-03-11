@@ -65,11 +65,33 @@ Child nodes are indented by two spaces relative to their parent.
 
 ---
 
-### 5. Example
+### 5. Multi-File Output
+
+When multiple source files are processed (e.g., by a driver that resolves `Includer` nodes), each source file produces one `Program` node. The `Program` nodes are written to standard output in the order the source files were processed, with no separator or enclosing node between them.
+
+Each `Program` node is formatted at indentation level 0, exactly as it would be in single-file output. The output of one `Program` ends immediately before the first character of the next.
+
+#### Example: two files processed in order
+
+```
+Program@1:1
+  Definition@1:2 "a.se"
+    ...
+Program@1:1
+  Definition@1:2 "b.se"
+    ...
+```
+
+A consumer of this output must treat each top-level line that matches `Program@...` as the start of a new `Program` node.
+
+---
+
+### 6. Example
 
 #### Source (`test.se`)
 
 ```scheme
+(include "util.se")
 (define main ,(args)
   __print__ "Hello")
 ```
@@ -78,18 +100,20 @@ Child nodes are indented by two spaces relative to their parent.
 
 ```
 Program@1:1
-  Definition@1:2 "test.se"
-    Variable@1:9: main
-    Function@1:14
-      Head@1:15
-        Variable@1:16: args
-      Body@2:3
-        SourceInfo@2:3: "test.se" "2" "3"
-        Operator@2:3
-          Variable@2:3: __print__
-        OList@2:13
-          String@2:13: "Hello"
-        LCont@2:20
-          Null@2:20
+  Includer@1:1
+    String@1:10: "util.se"
+  Definition@2:2 "test.se"
+    Variable@2:9: main
+    Function@2:14
+      Head@2:15
+        Variable@2:16: args
+      Body@3:3
+        SourceInfo@3:3: "test.se" "3" "3"
+        Operator@3:3
+          Variable@3:3: __print__
+        OList@3:13
+          String@3:13: "Hello"
+        LCont@3:20
+          Null@3:20
 ```
 
