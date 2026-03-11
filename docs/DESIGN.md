@@ -4,7 +4,7 @@
 
 ### Why comments are preserved by the lexer
 
-The lexer (`lexer2.py`) emits all tokens including comment-related tokens (`LINE_COMMENT_BEGIN`, `LINE_COMMENT_CONTENT`, `BLOCK_COMMENT_BEGIN`, `BLOCK_COMMENT_TEXT`, `BLOCK_COMMENT_END`, `SEXP_COMMENT_BEGIN`) and `NEWLINE`. Comments are not silently discarded during lexical analysis.
+The `lexer` emits all tokens including comment-related tokens (`LINE_COMMENT_BEGIN`, `LINE_COMMENT_CONTENT`, `BLOCK_COMMENT_BEGIN`, `BLOCK_COMMENT_TEXT`, `BLOCK_COMMENT_END`, `SEXP_COMMENT_BEGIN`) and `NEWLINE`. Comments are not silently discarded during lexical analysis.
 
 This separation ensures that each component has a single, well-defined responsibility:
 

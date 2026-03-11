@@ -18,7 +18,7 @@ NodeType@line:col ["filename"]
 - `line`: 1-based line number of the first character of the corresponding token.
 - `col`: 1-based column number of the first character of the corresponding token.
 - `: value`: present only for terminal nodes (`Variable`, `String`, `SourceInfo`). For `SourceInfo`, the value is a space-separated sequence of string literals. For `Variable` and `String`, the value is the exact source text of the token.
-- `"filename"`: present only for `Definition` nodes when `--file <filename>` is specified. The filename is printed as a quoted string literal immediately after `@line:col`, separated by a space.
+- `"filename"`: present only for `Program` nodes when `--file <filename>` is specified. The filename is printed as a quoted string literal immediately after `@line:col`, separated by a space.
 
 Child nodes are indented by two spaces relative to their parent.
 
@@ -32,8 +32,8 @@ Child nodes are indented by two spaces relative to their parent.
 
 | NodeType | Corresponding grammar element | Terminal? |
 |---|---|---|
-| `Program` | Program | No |
-| `Definition` | Definition | No (optional filename suffix when `--file` is given) |
+| `Program` | Program | No (optional filename suffix when `--file` is given) |
+| `Definition` | Definition | No |
 | `Includer` | Includer | No |
 | `Function` | Function | No |
 | `Head` | Head | No |
@@ -74,11 +74,11 @@ Each `Program` node is formatted at indentation level 0, exactly as it would be 
 #### Example: two files processed in order
 
 ```
-Program@1:1
-  Definition@1:2 "a.se"
+Program@1:1 "a.se"
+  Definition@1:2
     ...
-Program@1:1
-  Definition@1:2 "b.se"
+Program@1:1 "b.se"
+  Definition@1:2
     ...
 ```
 
@@ -99,10 +99,10 @@ A consumer of this output must treat each top-level line that matches `Program@.
 #### Output: `parser --file test.se`
 
 ```
-Program@1:1
+Program@1:1 "test.se"
   Includer@1:1
     String@1:10: "util.se"
-  Definition@2:2 "test.se"
+  Definition@2:2
     Variable@2:9: main
     Function@2:14
       Head@2:15
