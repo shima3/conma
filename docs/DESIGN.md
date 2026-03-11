@@ -1,21 +1,10 @@
 # Design of interpreter the ConMa programming language
 
-## AST
-
-*Distinction between Meta-Location and SourceInfo Data*
-
-The line and column numbers within the **`@line:col`** suffix are always represented as raw numeric values, as they function as structural metadata for debugging.
-
-In contrast, the line and column values within a **`SourceInfo`** node value must be represented as **String literals** (enclosed in double quotes), in accordance with the grammar: `SourceInfo = "(", "__SI__", { String }, ")"`.
-
-Consequently, the output format for a `SourceInfo` node is defined as:
-`SourceInfo@line:col: "<filename>" "<line>" "<col>"`
-
 ## Lexer and Comment Remover
 
 ### Why comments are preserved by the lexer
 
-The lexer (`lexer.py`) emits all tokens including comment-related tokens (`LINE_COMMENT_BEGIN`, `LINE_COMMENT_CONTENT`, `BLOCK_COMMENT_BEGIN`, `BLOCK_COMMENT_TEXT`, `BLOCK_COMMENT_END`, `SEXP_COMMENT_BEGIN`) and `NEWLINE`. Comments are not silently discarded during lexical analysis.
+The lexer (`lexer2.py`) emits all tokens including comment-related tokens (`LINE_COMMENT_BEGIN`, `LINE_COMMENT_CONTENT`, `BLOCK_COMMENT_BEGIN`, `BLOCK_COMMENT_TEXT`, `BLOCK_COMMENT_END`, `SEXP_COMMENT_BEGIN`) and `NEWLINE`. Comments are not silently discarded during lexical analysis.
 
 This separation ensures that each component has a single, well-defined responsibility:
 
@@ -33,8 +22,23 @@ Removing `NEWLINE` in the lexer would conflate two distinct decisions — "what 
 ### Pipeline
 
 ```
-lexer.py  →  comment_remover.py  →  parser.py
+lexer  →  comment_remover  →  parser
 ```
+
+## Execution Pipeline
+
+The ConMa frontend consists of a driver script, `includer`, which manages the overall transformation from multiple source files to a single AST stream.
+
+1. **`includer`**: Manages the file list using a Breadth-First Search (BFS) strategy. It resolves `Includer` nodes and avoids infinite loops by normalizing paths with `realpath`.
+2. **`lexer`**: Tokenizes raw text, preserving comments and newlines.
+3. **`comment_remover`**: Filters out comments and newlines to produce a clean token stream.
+4. **`parser`**: Generates the AST. When invoked by `includer`, it uses the `--file` flag to attach the filename to the `Program` node and perform automatic `SourceInfo` insertion.
+
+## AST Metadata
+
+As specified in `AST.md`, location information (`@line:col`) is attached to every node. For multi-file support, the `Program` node is uniquely appended with the quoted filename to serve as a delimiter in the unified output stream.
+
+*Distinction between Meta-Location and SourceInfo Data*: the coordinates in the `@line:col` suffix are numeric, whereas the line and column values embedded inside a `SourceInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SourceInfo = "(", "__SI__", { String }, ")"`.
 
 ## Execution
 

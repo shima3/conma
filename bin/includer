@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+includer -- ConMa multi-file AST driver for including
+
+Usage:
+    includer [--bin <dir>] [--include <dir>] ... <source_file>
+
+Options:
+    --bin <dir>        Directory to search for lexer, comment_remover, parser.
+                       Defaults to the current directory.
+    --include <dir>    Additional directory to search for included files.
+                       May be specified multiple times; searched in order.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+def parse_args():
+    ap = argparse.ArgumentParser(
+        description='ConMa multi-file AST driver')
+    ap.add_argument('source', help='Source file (.se)')
+    ap.add_argument('--bin', metavar='DIR', default=None,
+                    help='Directory containing lexer, comment_remover, parser')
+    ap.add_argument('--include', metavar='DIR', action='append', default=[],
+                    help='Include search directory (may be repeated)')
+    return ap.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Tool resolution
+# ---------------------------------------------------------------------------
+
+def resolve_tool(name, bin_dir):
+    """
+    Return the absolute path of `name` inside `bin_dir`.
+    Exits with error if not found.
+    """
+    path = os.path.join(bin_dir, name)
+    if not os.path.isfile(path):
+        print(f"Error: {name!r} not found in {bin_dir!r}", file=sys.stderr)
+        sys.exit(1)
+    return path
+
+
+# ---------------------------------------------------------------------------
+# File resolution
+# ---------------------------------------------------------------------------
+
+def resolve_file(name, base_dir, include_dirs):
+    """
+    Resolve `name` to an absolute path.
+
+    Search order:
+      1. base_dir (directory of the file that contains the Includer)
+      2. each directory in include_dirs, in order
+
+    Returns the realpath of the first match, or None if not found.
+    """
+    for directory in [base_dir] + include_dirs:
+        candidate = os.path.join(directory, name)
+        if os.path.isfile(candidate):
+            return os.path.realpath(candidate)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Pipeline execution
+# ---------------------------------------------------------------------------
+
+def run_pipeline(file_abs, lexer, comment_remover, parser):
+    """
+    Run:  lexer FILE | comment_remover | parser --file FILE
+    Returns the captured stdout as a string.
+    Exits with error if any process fails.
+    """
+    p1 = subprocess.Popen(
+        [lexer, file_abs],
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+    )
+    p2 = subprocess.Popen(
+        [comment_remover],
+        stdin=p1.stdout,
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+    )
+    p1.stdout.close()  # allow p1 to receive SIGPIPE if p2 exits
+    p3 = subprocess.Popen(
+        [parser, '--file', file_abs],
+        stdin=p2.stdout,
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+    )
+    p2.stdout.close()
+
+    ast_bytes, _ = p3.communicate()
+
+    # Wait for upstream processes and check return codes.
+    p1.wait()
+    p2.wait()
+
+    for proc, name in [(p1, 'lexer'), (p2, 'comment_remover'), (p3, 'parser')]:
+        if proc.returncode != 0:
+            print(f"Error: {name} exited with code {proc.returncode}",
+                  file=sys.stderr)
+            sys.exit(1)
+
+    return ast_bytes.decode('utf-8')
+
+
+# ---------------------------------------------------------------------------
+# Includer extraction
+# ---------------------------------------------------------------------------
+
+def extract_includer_names(ast_text):
+    """
+    Parse the AST text and return a list of filename strings referenced by
+    Includer nodes.
+
+    An Includer node in the AST looks like:
+        Includer@line:col
+          String@line:col: "filename"
+
+    We detect the pattern: a line containing 'Includer@' followed immediately
+    by an indented line containing 'String@' with a quoted value.
+    """
+    names = []
+    lines = ast_text.splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith('Includer@'):
+            # Look at the next line for the String child.
+            if idx + 1 < len(lines):
+                next_stripped = lines[idx + 1].lstrip()
+                if next_stripped.startswith('String@'):
+                    # Extract the value after ': '
+                    colon_pos = next_stripped.find(': ')
+                    if colon_pos != -1:
+                        raw = next_stripped[colon_pos + 2:]
+                        # raw is a quoted string literal like "util.se"
+                        if raw.startswith('"') and raw.endswith('"'):
+                            names.append(raw[1:-1])
+    return names
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    args = parse_args()
+
+    # --- Resolve bin directory --------------------------------------------
+    bin_dir = os.path.realpath(args.bin) if args.bin else os.getcwd()
+    if not os.path.isdir(bin_dir):
+        print(f"Error: --bin directory not found: {bin_dir!r}", file=sys.stderr)
+        sys.exit(1)
+
+    lexer          = resolve_tool('lexer',          bin_dir)
+    comment_remover = resolve_tool('comment_remover', bin_dir)
+    parser         = resolve_tool('parser',          bin_dir)
+
+    # --- Resolve include directories --------------------------------------
+    include_dirs = []
+    for d in args.include:
+        real = os.path.realpath(d)
+        if not os.path.isdir(real):
+            print(f"Error: --include directory not found: {d!r}", file=sys.stderr)
+            sys.exit(1)
+        include_dirs.append(real)
+
+    # --- Resolve initial source file -------------------------------------
+    source_name = args.source
+    if os.path.isabs(source_name):
+        source_abs = os.path.realpath(source_name)
+    else:
+        source_abs = os.path.realpath(os.path.join(os.getcwd(), source_name))
+
+    if not os.path.isfile(source_abs):
+        print(f"Error: source file not found: {source_name!r}", file=sys.stderr)
+        sys.exit(1)
+
+    # --- File list -------------------------------------------------------
+    file_list = [source_abs]   # list of realpath-normalised absolute paths
+    file_index = 0
+
+    # --- Process files ---------------------------------------------------
+    while file_index < len(file_list):
+        file_abs = file_list[file_index]
+
+        # Run pipeline and capture AST.
+        ast_text = run_pipeline(file_abs, lexer, comment_remover, parser)
+
+        # Resolve Includer references and extend file_list.
+        base_dir = os.path.dirname(file_abs)
+        for inc_name in extract_includer_names(ast_text):
+            if os.path.isabs(inc_name):
+                inc_abs = os.path.realpath(inc_name)
+            else:
+                inc_abs = resolve_file(inc_name, base_dir, include_dirs)
+                if inc_abs is None:
+                    print(f"Error: included file not found: {inc_name!r}"
+                          f" (from {file_abs!r})", file=sys.stderr)
+                    sys.exit(1)
+
+            # Check for duplicate (circular include).
+            if inc_abs in file_list:
+                print(f"Warning: circular include ignored: {inc_abs!r}"
+                      f" (from {file_abs!r})", file=sys.stderr)
+            else:
+                file_list.append(inc_abs)
+
+        # Output this file's AST.
+        sys.stdout.write(ast_text)
+
+        file_index += 1
+
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
