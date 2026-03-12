@@ -1,15 +1,15 @@
-## Specification of `lexer.py`
+## Specification of `lexer`
 
 ### Overview
 
-`lexer.py` is a single-pass lexical analyzer for ConMa source files. It reads a source file, segments it into tokens, and writes each token to standard output in tab-separated format. All tokens — including comment-related tokens and newlines — are preserved in the output. Comment removal and newline removal are performed by a downstream `comment_remover.py`. Lexical errors are written to standard error.
+`lexer` is a single-pass lexical analyzer for ConMa source files. It reads a source file, segments it into tokens, and writes each token to standard output in tab-separated format. All tokens — including comment-related tokens and newlines — are preserved in the output. Comment removal and newline removal are performed by a downstream `comment_remover`. Lexical errors are written to standard error.
 
 ---
 
 ### Invocation
 
 ```
-python lexer.py <source_file>
+lexer <source_file>
 ```
 
 The program accepts exactly one command-line argument: the path to the source file. The file is read in UTF-8 encoding. If no argument is provided, a usage message is printed and the program exits.
@@ -33,6 +33,7 @@ Each recognized token is printed to standard output as a single line of four tab
 
 | Kind                  | Value                                              |
 |-----------------------|----------------------------------------------------|
+| `FILE`                | The source file path as given on the command line  |
 | `SYMBOL`              | Maximal sequence of SymbolChars                    |
 | `STRING`              | `"..."` including delimiters and escape sequences  |
 | `LPAREN`              | `(`                                                |
@@ -46,6 +47,7 @@ Each recognized token is printed to standard output as a single line of four tab
 | `BLOCK_COMMENT_END`   | `\|#`                                              |
 | `SEXP_COMMENT_BEGIN`  | `#;`                                               |
 
+A `FILE` token is emitted once as the very first token, before any source text is scanned. Its `line` and `col` fields are both `0`, which distinguishes it from all source-derived tokens (which are 1-based). Its `value` is the filename string exactly as supplied on the command line.
 `LINE_COMMENT_CONTENT` is emitted only when the content is non-empty.
 `BLOCK_COMMENT_TEXT` is emitted only when the content is non-empty.
 `NEWLINE` value is written as the two-character escape sequence `\n` or `\r\n` so that the output remains valid line-oriented TSV.
@@ -66,7 +68,7 @@ Emits `SEXP_COMMENT_BEGIN`. Advances 2.
 
 **3. `|#` — Block Comment End (unmatched)**
 Emits `BLOCK_COMMENT_END`. Advances 2.
-Note: a `|#` appearing outside a block comment is anomalous; `comment_remover.py` reports it as an error.
+Note: a `|#` appearing outside a block comment is anomalous; `comment_remover` reports it as an error.
 
 **4. `\r\n` — Windows Newline**
 Emits `NEWLINE` with value `\r\n`. Increments the line number and updates the line-start position. Advances 2.

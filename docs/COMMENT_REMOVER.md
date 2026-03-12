@@ -1,13 +1,13 @@
-## Specification of `comment_remover.py`
+## Specification of `comment_remover`
 
 ### Overview
 
-`comment_remover.py` is a single-pass filter that reads the token stream produced by `lexer2.py`, removes all comment-related tokens and `NEWLINE` tokens, and writes the remaining tokens to standard output in the same tab-separated format. Errors are written to standard error.
+`comment_remover` is a single-pass filter that reads the token stream produced by `lexer`, removes all comment-related tokens and `NEWLINE` tokens, and writes the remaining tokens to standard output in the same tab-separated format. Errors are written to standard error.
 
 This component sits between the lexer and the parser in the processing pipeline:
 
 ```
-lexer2.py  →  comment_remover.py  →  parser.py
+lexer  →  comment_remover  →  parser
 ```
 
 ---
@@ -15,7 +15,7 @@ lexer2.py  →  comment_remover.py  →  parser.py
 ### Invocation
 
 ```
-python comment_remover.py [<lexer_output_file>]
+comment_remover [<lexer_output_file>]
 ```
 
 If `<lexer_output_file>` is provided, the program reads from that file. If omitted, the program reads from standard input. The file is read in UTF-8 encoding. The output is written to standard output.
@@ -24,7 +24,7 @@ If `<lexer_output_file>` is provided, the program reads from that file. If omitt
 
 ### Input Format
 
-Each input line must be a tab-separated record of four fields, as produced by `lexer2.py`:
+Each input line must be a tab-separated record of four fields, as produced by `lexer`:
 
 ```
 <line> TAB <col> TAB <kind> TAB <value>
@@ -102,7 +102,9 @@ If `SEXP_COMMENT_BEGIN` is not immediately followed by a token whose kind is `SY
 
 After removal, the only token kinds that may appear in the output are:
 
-`SYMBOL`, `STRING`, `LPAREN`, `RPAREN`, `COMMA`
+`FILE`, `SYMBOL`, `STRING`, `LPAREN`, `RPAREN`, `COMMA`
+
+The `FILE` token, if present, is always the first token in the stream and is passed through unchanged.
 
 ---
 

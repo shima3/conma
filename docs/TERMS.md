@@ -1,6 +1,6 @@
 # Terms
 
-Variable Environment:
+Variable Environment (VEnv):
 An environment is a finite mapping from variable identifiers to values (or closures), used to interpret expressions in a functional programming language.
 It captures the lexical (static) bindings of variables at the time of expression evaluation.
 It permits bindings to refer to themselves or to each other recursively during evaluation.
@@ -9,7 +9,7 @@ Closure:
 A closure is a function together with its referencing environment, i.e., the variables that were in scope at the time the function was defined.
 It allows the function to access those variables even when it is invoked outside of their original scope.
 
-Process Dictionary (PD):
+Process Dictionary (PDict):
 A process dictionary is a key-value storage that is local to a specific process and accessible only within that process’s context.
 
 Virtual Process (VP):
@@ -21,9 +21,9 @@ Each virtual process has its own memory and maintains the following components:
   * Operator
   * OList
   * LCont
-  * Variable Environment
+  * VEnv
   * CChain
-  * Process Dictionary
+  * PDict
 
 Bound Variable (BV):
 A Bound Variable is a Variable in the Head of a Function and the same Variable in the Body is BVs within the Function.

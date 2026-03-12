@@ -11,14 +11,12 @@
 
 ```
 NodeType@line:col [: value]
-NodeType@line:col ["filename"]
 ```
 
 - `NodeType`: one of the node kinds defined in Section 3.
 - `line`: 1-based line number of the first character of the corresponding token.
 - `col`: 1-based column number of the first character of the corresponding token.
-- `: value`: present only for terminal nodes (`Variable`, `String`, `SourceInfo`). For `SourceInfo`, the value is a space-separated sequence of string literals. For `Variable` and `String`, the value is the exact source text of the token.
-- `"filename"`: present only for `Program` nodes when `--file <filename>` is specified. The filename is printed as a quoted string literal immediately after `@line:col`, separated by a space.
+- `: value`: present only for terminal nodes (`Variable`, `String`, `SourceInfo`, `FileName`). For `SourceInfo`, the value is a space-separated sequence of string literals. For `Variable`, `String`, and `FileName`, the value is the exact text enclosed in double quotes.
 
 Child nodes are indented by two spaces relative to their parent.
 
@@ -32,7 +30,8 @@ Child nodes are indented by two spaces relative to their parent.
 
 | NodeType | Corresponding grammar element | Terminal? |
 |---|---|---|
-| `Program` | Program | No (optional filename suffix when `--file` is given) |
+| `Program` | Program | No |
+| `FileName` | — (meta node) | Yes (value = quoted source filename) |
 | `Definition` | Definition | No |
 | `Includer` | Includer | No |
 | `Function` | Function | No |
@@ -74,15 +73,17 @@ Each `Program` node is formatted at indentation level 0, exactly as it would be 
 #### Example: two files processed in order
 
 ```
-Program@1:1 "a.se"
+Program@1:1
+  FileName@0:0: "a.se"
   Definition@1:2
     ...
-Program@1:1 "b.se"
+Program@1:1
+  FileName@0:0: "b.se"
   Definition@1:2
     ...
 ```
 
-A consumer of this output must treat each top-level line that matches `Program@...` as the start of a new `Program` node.
+A consumer of this output must treat each top-level line that matches `Program@...` as the start of a new `Program` node. The `FileName` node, when present, is always the first child of `Program`.
 
 ---
 
@@ -99,7 +100,8 @@ A consumer of this output must treat each top-level line that matches `Program@.
 #### Output: `parser --file test.se`
 
 ```
-Program@1:1 "test.se"
+Program@1:1
+  FileName@0:0: "test.se"
   Includer@1:1
     String@1:10: "util.se"
   Definition@2:2

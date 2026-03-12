@@ -2,12 +2,13 @@
 
 ### Overview
 
-`parser` reads the token stream produced by `comment_remover`, constructs an AST for one ConMa source file, and writes the AST to standard output per `AST.md`. Parse errors are written to standard error.
+`parser` reads the token stream produced by `comment_remover`, constructs an AST for one ConMa source file, and writes the AST to standard output. Parse errors are written to standard error.
 
 This component is the third stage of the processing pipeline:
 
 ```
-lexer2  →  comment_remover  →  parser
+lexer  →  comment_remover  →  parser
+
 ```
 
 ---
@@ -16,172 +17,90 @@ lexer2  →  comment_remover  →  parser
 
 ```
 parser [--file <filename>] [<token_file>]
+
 ```
 
-- `--file <filename>`: when specified, `<filename>` is used for automatic `SourceInfo` insertion and is printed as a suffix on the `Program` node. If omitted, neither insertion nor suffix occurs.
-- `<token_file>`: token stream to parse. If omitted, the program reads from standard input.
+* **FileName Node Generation & Priority**:
+1. If `--file <filename>` is specified: A `FileName` node is created using `<filename>`. Any `FILE` token in the input stream is ignored. Automatic `SourceInfo` insertion is enabled.
+2. If `--file` is NOT specified but a `FILE` token exists: A `FileName` node is created using the value of the `FILE` token. Automatic `SourceInfo` insertion is NOT performed.
+3. If neither is present: No `FileName` node is generated.
 
-The file is read in UTF-8 encoding.
+
+* `<token_file>`: token stream to parse. If omitted, the program reads from standard input.
 
 ---
 
 ### Input Format
 
-Each input line must be a tab-separated record of four fields, as produced by `comment_remover`:
+Each input line must be a tab-separated record of four fields:
 
 ```
 <line> TAB <col> TAB <kind> TAB <value>
+
 ```
 
-Empty lines are ignored. Lines with fewer than four fields are ignored.
-
-The only token kinds expected in the input are: `SYMBOL`, `STRING`, `LPAREN`, `RPAREN`, `COMMA`. Any other kind causes a parse error at the point it is encountered.
+The expected token kinds are: `FILE`, `SYMBOL`, `STRING`, `LPAREN`, `RPAREN`, `COMMA`.
 
 ---
 
 ### Output Format
 
-The AST is written to standard output per `AST.md`. On a parse error, the error message is written to standard error and the program exits with code 1.
+The AST is written to standard output. Each node follows the format `NodeType@line:col`.
+
+* **Terminal Nodes**: `Variable`, `String`, `SourceInfo`, `FileName`, and `Null` are printed on a single line (with values where applicable). `FileName` nodes generated via `--file` use `@0:0` as their location. `FileName` nodes generated from a `FILE` token use the line and column of that token.
+* **Non-terminal Nodes**: These consist of a start line, indented children (2 spaces), and a matching **End tag**:
+```
+NodeType@line:col
+  [Child Nodes...]
+End@line:col: NodeType
+
+```
+
+
 
 ---
 
-### Grammar
+### Example
 
-The parser implements the following grammar (from `SPEC.md`):
+#### Source (`sample.se`)
 
-```ebnf
-Program    = { Statement } ;
-Statement  = Includer | Definition ;
-Includer   = "(", "include", String, ")" ;
-Definition = "(", "define", Variable, Function, ")" ;
-Variable   = Symbol - Hat ;
-Function   = Hat, Head, Body ;
-Hat        = "," ;
-Head       = "(", { Parameter }, ")" ;
-Parameter  = Variable ;
-Body       = [ SourceInfo ], Operator, OList, [ LCont ] ;
-Operator   = Variable | FuncExp ;
-OList      = { Operand } ;
-LCont      = Function ;
-Operand    = Expression ;
-Expression = Variable | String | FuncExp ;
-FuncExp    = "(", Function, ")" ;
-SourceInfo = "(", "__SI__", { String }, ")" ;
-```
-
----
-
-### Parsing Rules
-
-#### Program
-
-`Program` consumes `Statement`s until the token stream is exhausted. The location of the `Program` node is that of the first token; if the stream is empty, line 1, column 1 is used.
-
-#### Statement
-
-A `Statement` begins with `LPAREN`. The token immediately following determines the kind:
-
-- `SYMBOL` `include` → `Includer`
-- `SYMBOL` `define` → `Definition`
-- Any other value → parse error
-
-#### Includer
+```scheme
+(define main ,(args)
+  __print__ "Hello")
 
 ```
-LPAREN  SYMBOL("include")  STRING  RPAREN
-```
 
-The `Includer` node's location is that of the `LPAREN`. Its sole child is a `String` node carrying the exact source text of the `STRING` token including its quotes.
+#### Output: `parser --file sample.se`
 
-#### Definition
-
-```
-LPAREN  SYMBOL("define")  SYMBOL  Function  RPAREN
-```
-
-The `Definition` node's location is that of the `SYMBOL("define")` token (not the `LPAREN`). Its children are `[Variable, Function]`.
-
-#### Function
-
-```
-COMMA  Head  Body
-```
-
-The `Function` node's location is that of the `COMMA` token.
-
-#### Head
-
-```
-LPAREN  { SYMBOL }  RPAREN
-```
-
-The `Head` node's location is that of the `LPAREN`. Each `SYMBOL` inside becomes a `Variable` child. If no parameters are present, `Head` has no children and its location is still that of the `LPAREN`.
-
-#### Body
+```text
+Program@1:1
+  FileName@0:0: "sample.se"
+  Definition@1:2
+    Variable@1:9: main
+    Function@1:14
+      Head@1:15
+        Variable@1:16: args
+      End@1:15: Head
+      Body@2:3
+        SourceInfo@2:3: "sample.se" "2" "3"
+        Operator@2:3
+          Variable@2:3: __print__
+        End@2:3: Operator
+        OList@2:13
+          String@2:13: "Hello"
+        End@2:13: OList
+        LCont@2:20
+          Null@2:20
+        End@2:20: LCont
+      End@2:3: Body
+    End@1:14: Function
+  End@1:2: Definition
+End@1:1: Program
 
 ```
-[ SourceInfo ]  Operator  OList  [ LCont ]
-```
-
-**Location**: if an explicit `SourceInfo` is present, the `Body` node's location is that of the `SourceInfo`'s `LPAREN`. Otherwise, the location is that of the `Operator`.
-
-**SourceInfo detection**: the parser looks ahead two tokens. If the next token is `LPAREN` and the token after that is `SYMBOL("__SI__")`, the following construct is parsed as `SourceInfo`. Otherwise no `SourceInfo` is present in the source.
-
-**Automatic SourceInfo insertion**: if no explicit `SourceInfo` is present in the source and `--file <filename>` was specified, the parser inserts an automatic `SourceInfo` node as the first child of `Body`. Its location and the embedded line and column values are those of the `Operator`. Its value is:
-
-```
-"<filename>" "<op_line>" "<op_col>"
-```
-
-where `op_line` and `op_col` are the numeric location of the `Operator`, written as quoted string literals.
-
-If an explicit `SourceInfo` is present, the `--file` option does not override it.
-
-**OList**: the parser consumes `Expression`s as long as the next token can start an `Expression` (`SYMBOL`, `STRING`, or `LPAREN`). It stops on `COMMA` (start of `LCont`), `RPAREN`, or end of stream.
-
-**OList location**: the location of the first `Expression` in `OList`. If `OList` is empty, the location is that of the next token in the stream.
-
-**LCont**: if the next token after `OList` is `COMMA`, a `Function` is parsed and wrapped in an `LCont` node. The `LCont` node's location is that of the `Function`.
-
-**Absent LCont**: if no `COMMA` follows `OList`, a `Null` node is emitted inside `LCont`. The `Null` node's location is the column immediately after the last token of `OList` (i.e., `last_token.col + len(last_token.value)`), on the same line as that token. If `OList` is empty, the `Null` node's location is that of the next token in the stream.
-
-**Body children** (in order):
-1. `SourceInfo` (explicit or auto-inserted; omitted if neither)
-2. `Operator`
-3. `OList`
-4. `LCont`
-
-#### SourceInfo
-
-```
-LPAREN  SYMBOL("__SI__")  { STRING }  RPAREN
-```
-
-The `SourceInfo` node's location is that of the `LPAREN`. Its value is the space-joined sequence of the exact source text of all `STRING` tokens inside.
-
-#### Operator
-
-`Operator` wraps a single `Variable` (parsed from `SYMBOL`) or `FuncExp` node. Its location is that of its child.
-
-#### Expression
-
-`Expression` produces one of:
-- `Variable`: from a `SYMBOL` token.
-- `String`: from a `STRING` token. The value is the exact source text including quotes.
-- `FuncExp`: from `LPAREN Function RPAREN`.
-
-#### FuncExp
-
-```
-LPAREN  Function  RPAREN
-```
-
-The `FuncExp` node's location is that of the `LPAREN`.
 
 ---
 
 ### Error Handling
 
-On any parse error, the message `SyntaxError: <description>` is written to standard error and the program exits with code 1. No partial AST is written.
-
-Error messages include the location `line:col` of the offending token where available.
+On a parse error, the error message is written to standard error and the program exits with code 1.

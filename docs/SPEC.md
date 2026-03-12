@@ -97,7 +97,7 @@ ConMa source files are expected to have the `.se` extension.
     The interpreter recursively scans and loads the specified file.
     If "filename" is provided without an extension, the interpreter searches for "filename.se".
 
-The Definition (define Variable Function) binds the identifier Variable to the closure of Function, thereby defining a new named function in the Environment.
+The Definition (define Variable Function) binds the identifier Variable to the closure of Function, thereby defining a new named function in the `VEnv`.
 
 ---
 
@@ -125,11 +125,11 @@ The ConMa interpreter employs a strict **Call-by-Value** strategy for `Variable`
 Before a function application occurs, each `Operand` in the `OList` is processed into a **Value** based on its syntactic category:
 A Value can be a String, Closure, Ref, CFrame, CChain, VirtualProcess, Sequence, Sink, null, etc.
 
-* **Variable**: Evaluated immediately. The identifier is replaced by the value currently bound to it in the `Variable Environment`.
+* **Variable**: Evaluated immediately. The identifier is replaced by the value currently bound to it in the `VEnv`.
 * *Note on `Ref`:* If a variable is bound to a `Ref` (reference cell), the `Ref` itself is passed as the value. The content inside the `Ref` is **not** dereferenced during this stage.
 
 * **String**: Treated as a literal value and passed as-is.
-* **FuncExp**: Not executed. It is captured along with the current `Variable Environment` to create a **Closure** (Thunk). This closure is passed as the value, and its internal `Body` is only evaluated if/when explicitly invoked by the callee.
+* **FuncExp**: Not executed. It is captured along with the current `VEnv` to create a **Closure** (Thunk). This closure is passed as the value, and its internal `Body` is only evaluated if/when explicitly invoked by the callee.
 
 ### 2. Evaluation Order and Side Effects
 
@@ -287,7 +287,7 @@ Initiates the creation and execution of a new Virtual Process (VP) through the f
 
 1. **Process Initialization**: A new, isolated Virtual Process is allocated with its own independent memory, CChain, and Process Dictionary.
 2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `SourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
-3. **Environment Binding**: All identifiers identified during the scan are registered in the new VP’s **Variable Environment**. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
+3. **Environment Binding**: All identifiers identified during the scan are registered in the new VP’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
 4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__MAIN__` wrapper.
 5. **Context Injection**: The `__MAIN__` function is applied to the following arguments:
 * **ErrorSink**: For handling standard error output.
@@ -373,27 +373,27 @@ If the CChain is empty, passes null to the LCont instead.
 
 ---
 
-### `__PD_put__ Key Value`
+### `__PDict_put__ Key Value`
 Behavior:
 Associates the `Value` with the `Key` in the Process Dictionary.
 Invokes the current LCont with no argument
 
 ---
 
-### `__PD_lookup_or__ Key OnMissing`
+### `__PDict_lookup_or__ Key OnMissing`
 Behavior:
 Retrieves the value associated with `Key` in the Process Dictionary.
 
 * If the key exists, the associated value is passed to the current **LCont**.
 * If the key does not exist, `OnMissing` is invoked with `Key` as its argument.
 
-`OnMissing` is invoked with the **same continuation** that `__PD_lookup_or__` would have used for the successful case.
+`OnMissing` is invoked with the **same continuation** that `__PDict_lookup_or__` would have used for the successful case.
 Therefore, if `OnMissing` eventually calls that continuation, its return value becomes the result of the lookup.
 However, if `OnMissing` is itself a continuation (or otherwise does not invoke that continuation), control does not return to the call site.
 
 Example:
 ```
-__PD_lookup_or__ key (,(key) __CChain_pop_LCont__ __NULL__) ,(value) ...
+__PDict_lookup_or__ key (,(key) __CChain_pop_LCont__ __NULL__) ,(value) ...
 ```
 If no value is associated with `key`, the `OnMissing` function invokes the same continuation with `__NULL__`, so `value` receives `__NULL__`.
 
@@ -407,7 +407,7 @@ __CChain_pop_LCont__ __NULL__
 Here `__CChain_pop_LCont__` takes no parameters, so `__NULL__` is a surplus argument. Per the excess-argument rule, the runtime pushes a local continuation `(,(Sink) Sink __NULL__)` onto the CChain before entering the body of `__CChain_pop_LCont__`. At this point the CChain contains, from top to bottom:
 
 1. the CFrame for `(,(Sink) Sink __NULL__)` — pushed due to the surplus argument
-2. the CFrame for `,(value) ...` — the LCont of the `__PD_lookup_or__` call site
+2. the CFrame for `,(value) ...` — the LCont of the `__PDict_lookup_or__` call site
 
 `__CChain_pop_LCont__` then executes:
 
@@ -641,10 +641,10 @@ Example:
 ```
 (define __MAIN__ ,(err args in out)
   __Cont_get__ ,(exit)
-  __PD_put__ "__EXIT__" exit ,()
-  __PD_put__ "__STD_IN__" in ,()
-  __PD_put__ "__STD_OUT__" out ,()
-  __PD_put__ "__STD_ERR__" err ,()
+  __PDict_put__ "__EXIT__" exit ,()
+  __PDict_put__ "__STD_IN__" in ,()
+  __PDict_put__ "__STD_OUT__" out ,()
+  __PDict_put__ "__STD_ERR__" err ,()
   main args ,()
   exit "")
 ```
@@ -657,28 +657,28 @@ Example:
 
 ### `exit`
 ```
-(define __PD_lookup_or_error__ ,(key)
-  __PD_lookup_or__ key (,(key)
+(define __PDict_lookup_or_error__ ,(key)
+  __PDict_lookup_or__ key (,(key)
     __OS_print_error__ "not found key: " ,()
     __OS_print_error__ key ,()
     __OS_print_error__ "\n" ,()
     __OS_exit_error__))
 
 (define __exit__ ,(String)
-  __PD_lookup_or_error__ "__EXIT__" ,(exit)
+  __PDict_lookup_or_error__ "__EXIT__" ,(exit)
   exit String)
 ```
 
 ### `Standard input, output, error`
 ```
 (define stdin ,()
-  __PD_lookup_or_error__ "__STD_IN__")
+  __PDict_lookup_or_error__ "__STD_IN__")
 
 (define stdout ,()
-  __PD_lookup_or_error__ "__STD_OUT__")
+  __PDict_lookup_or_error__ "__STD_OUT__")
 
 (define stderr ,()
-  __PD_lookup_or_error__ "__STD_ERR__")
+  __PDict_lookup_or_error__ "__STD_ERR__")
 ```
 ---
 
@@ -726,7 +726,7 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 (,(f) f a2) is the local continuation.
 
 * If the Operator is null, it pops a CFrame from the CChain, sets the Closure of the CFrame to the Operator.
-* If the Operator is a Variable, it replaces with the Value assigned it in Variable Environment.
+* If the Operator is a Variable, it replaces with the Value assigned it in `VEnv`.
 * If the Operator is a FuncExp, it replaces with the closure of the FuncExp.
 * If the Operator is a closure, it applies the closure to the OList.
 * If the Operator is not a Variable, a FuncExp, or a closure, an error is displayed and execution terminates.
@@ -739,7 +739,7 @@ A ConMa program must define a `main` function.
 The interpreter starts execution by spawning a virtual process that applies `__MAIN__` to the following arguments: an ErrorStream, an ArgumentSeq, an InputStream, and an OutputStream.
 
 `__MAIN__` calls the user-defined `main` function with the ArgumentSeq.
-the InputStream, the OutputStream, and the ErrorStream are passed via PD.
+the InputStream, the OutputStream, and the ErrorStream are passed via `PDict`.
 
 Example:
 
