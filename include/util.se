@@ -6,3 +6,7 @@
   __CFrame_get_Closure__ cf ,(lc)
   __CFrame_get_Closure__ cf2 ,(lc2)
   lc lc2)
+
+(define __noop__ ,()
+  __CChain_pop_LCont__ ,(lc)
+  lc)

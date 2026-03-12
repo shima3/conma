@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+import sys
+import re
+
+class ASTNode:
+    def __init__(self, node_type, line, col, value=None):
+        self.type = node_type
+        self.line = line
+        self.col = col
+        self.value = value
+        self.children = []
+        self.is_local = False
+        self.index = None # Local: True de Bruijn Index, Global: Sequence No
+
+def parse_ast_stream(lines):
+    """
+    Endタグのみを信頼して木構造を復元する。
+    インデント幅に依存せず、ネストされた構造を正確に構築する。
+    """
+    stack = []
+    roots = []
+    # NodeTypeにアンダースコアを許可し、値のキャプチャを正確に行う
+    node_re = re.compile(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)@(\d+):(\d+)(?::\s*(.*))?')
+
+    for line_str in lines:
+        line_str = line_str.rstrip()
+        if not line_str: continue
+        
+        match = node_re.match(line_str)
+        if not match: continue
+        
+        ntype, lnum, col, val = match.groups()
+        
+        if ntype == "End":
+            if stack:
+                stack.pop()
+            continue
+
+        node = ASTNode(ntype, lnum, col, val)
+        
+        if not stack:
+            roots.append(node)
+        else:
+            stack[-1].children.append(node)
+        
+        # Terminal Node 以外はスタックに積んで End を待つ
+        # Variable, String, Null, SourceInfo, FileName は子を持たない
+        if ntype not in ["Variable", "String", "Null", "SourceInfo", "FileName"]:
+            stack.append(node)
+            
+    return roots
+
+class Resolver:
+    def __init__(self):
+        self.global_registry = {} # name -> {id, value_node}
+        self.global_order = []    # name のリスト
+        self.global_count = 0     # 0始まり
+
+    def collect_definitions(self, node):
+        """第1パス: Global Definition の収集"""
+        if node.type == "Definition":
+            var_node = next((c for c in node.children if c.type == "Variable"), None)
+            if var_node:
+                name = var_node.value.strip('"')
+                val_node = node.children[1] if len(node.children) > 1 else None
+                if name not in self.global_registry:
+                    self.global_registry[name] = {"id": None, "value": val_node}
+        
+        for child in node.children:
+            self.collect_definitions(child)
+
+    def resolve(self, node, scope_stack):
+        """第2パス: スコープ解決と de Bruijn Index 計算"""
+        
+        new_scope = None
+        # Function または Lambda に対応
+        if node.type in ["Function", "Lambda"]:
+            head_node = next((c for c in node.children if c.type == "Head"), None)
+            if head_node:
+                # 右側の引数ほどスタックの上（Index 0に近い）に来るように管理
+                new_scope = [v.value.strip('"') for v in head_node.children if v.type == "Variable"]
+                scope_stack.append(new_scope)
+
+        if node.type == "Variable":
+            name = node.value.strip('"')
+            found_local = False
+            
+            # --- True de Bruijn Index 計算 ---
+            # scope_stack = [ [x, y], [z] ]  (左が古いスコープ)
+            # z=0, y=1, x=2 となるように計算
+            accumulated_binders = 0
+            for scope in reversed(scope_stack):
+                if name in scope:
+                    # 同一スコープ内での位置（右側が0）
+                    # [x, y] において yが見つかれば index=0, xなら index=1
+                    local_idx = list(reversed(scope)).index(name)
+                    node.is_local = True
+                    node.index = accumulated_binders + local_idx
+                    found_local = True
+                    break
+                accumulated_binders += len(scope)
+            
+            # --- Global 解決 ---
+            if not found_local:
+                if name not in self.global_registry:
+                    self.global_registry[name] = {"id": None, "value": None}
+                
+                if self.global_registry[name]["id"] is None:
+                    self.global_registry[name]["id"] = self.global_count
+                    self.global_order.append(name)
+                    self.global_count += 1
+                
+                node.is_local = False
+                node.index = self.global_registry[name]["id"]
+
+        for child in node.children:
+            self.resolve(child, scope_stack)
+
+        if new_scope is not None:
+            scope_stack.pop()
+
+    def print_transformed_ast(self, node, indent=0):
+        prefix = "  " * indent
+        val_str = ""
+        if node.type == "Variable":
+            tag = "L" if node.is_local else "G"
+            val_str = f': {node.value} ({tag}{node.index})'
+        elif node.value:
+            val_str = f': {node.value}'
+
+        print(f"{prefix}{node.type}@{node.line}:{node.col}{val_str}")
+        for child in node.children:
+            self.print_transformed_ast(child, indent + 1)
+        
+        if node.type not in ["Variable", "String", "SourceInfo", "FileName", "Null"]:
+            print(f"{prefix}End@{node.line}:{node.col}: {node.type}")
+
+    def print_global_table(self):
+        print("Global Table")
+        # 3列形式（TAB区切り）で出力
+        # 1列目: ID (出現順)
+        # 2列目: 名前
+        # 3列目: 型（定義済みならNodeType、未定義なら Undefined）
+        for name in self.global_order:
+            info = self.global_registry[name]
+            val_node = info["value"]
+            
+            # 3列目の値を決定
+            val_col = val_node.type if val_node else "Undefined"
+            
+            # TAB区切りで出力
+            print(f"{info['id']}\t{name}\t{val_col}")
+
+def main():
+    input_lines = sys.stdin.readlines()
+    roots = parse_ast_stream(input_lines)
+    
+    resolver = Resolver()
+    for root in roots:
+        resolver.collect_definitions(root)
+    
+    for root in roots:
+        resolver.resolve(root, [])
+        resolver.print_transformed_ast(root)
+    
+    resolver.print_global_table()
+
+if __name__ == "__main__":
+    main()
