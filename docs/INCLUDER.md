@@ -26,7 +26,7 @@ includer [--bin <dir>] [--include <dir>] ... <source_file>
 
 #### Options
 
-- `--bin <dir>`: directory in which to search for `lexer`, `comment_remover`, and `parser`. If omitted, the current working directory is used. Specified as a single directory; may not be repeated.
+- `--bin <dir>`: directory in which to search for `lexer`, `comment_remover`, and `parser`. If omitted, the directory containing `includer` itself is used. Specified as a single directory; may not be repeated.
 - `--include <dir>`: additional directory to search when resolving relative paths in `Includer` nodes. May be specified multiple times. Directories are searched in the order they appear on the command line.
 
 ---
@@ -35,7 +35,7 @@ includer [--bin <dir>] [--include <dir>] ... <source_file>
 
 #### Tool resolution
 
-At startup, the program locates `lexer`, `comment_remover`, and `parser` as files inside the `--bin` directory (or the current working directory if `--bin` is not given). If any of the three tools is not found, the program writes an error to standard error and exits with code 1.
+At startup, the program locates `lexer`, `comment_remover`, and `parser` as files inside the `--bin` directory (or the directory containing `includer` itself if `--bin` is not given). If any of the three tools is not found, the program writes an error to standard error and exits with code 1.
 
 The `--bin` path itself is normalised with `os.path.realpath` before use. If the resulting path is not an existing directory, the program writes an error to standard error and exits with code 1.
 

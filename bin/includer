@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-includer -- ConMa multi-file AST driver for including
+includer -- ConMa multi-file AST driver
 
 Usage:
     includer [--bin <dir>] [--include <dir>] ... <source_file>
 
 Options:
     --bin <dir>        Directory to search for lexer, comment_remover, parser.
-                       Defaults to the current directory.
+                       Defaults to the directory containing this script.
     --include <dir>    Additional directory to search for included files.
                        May be specified multiple times; searched in order.
 """
@@ -158,7 +158,7 @@ def main():
     args = parse_args()
 
     # --- Resolve bin directory --------------------------------------------
-    bin_dir = os.path.realpath(args.bin) if args.bin else os.getcwd()
+    bin_dir = os.path.realpath(args.bin) if args.bin else os.path.dirname(os.path.realpath(__file__))
     if not os.path.isdir(bin_dir):
         print(f"Error: --bin directory not found: {bin_dir!r}", file=sys.stderr)
         sys.exit(1)
