@@ -1,62 +1,27 @@
-## Specification of `includer`
+# Specification of `includer`
 
-### Overview
+## Overview
 
-`includer` is a multi-file AST driver for ConMa source files. It resolves `Includer` nodes recursively, runs the processing pipeline on each source file in order, and writes the resulting `Program` nodes to standard output as a continuous stream per `AST.md` Section 5.
+`includer` is a multi-file AST driver for ConMa source files.
 
-The pipeline run for each file is:
+For each source file, it runs the pipeline:
 
 ```
-lexer <file>  |  comment_remover  |  parser --file <file>
+lexer <file> | comment_remover | parser --file <file>
 ```
 
-Errors from any stage are written to standard error. On error, the program exits with a non-zero exit code.
+The parser outputs an **S-expression AST** as defined in `AST.md`.
+
+`includer` scans this AST to locate `Includer` nodes, resolves the referenced files, and processes them recursively.
+
+The AST of each processed file is written to **standard output exactly as produced by the pipeline**, in the order the files are processed.
+
+Errors from any stage are written to **standard error**.
+On error the program exits with a non-zero status.
 
 ---
 
-### Invocation
-
-```
-includer [--bin <dir>] [--include <dir>] ... <source_file>
-```
-
-#### Positional argument
-
-- `<source_file>`: path to the top-level ConMa source file. May be absolute or relative. If relative, it is resolved against the current working directory.
-
-#### Options
-
-- `--bin <dir>`: directory in which to search for `lexer`, `comment_remover`, and `parser`. If omitted, the directory containing `includer` itself is used. Specified as a single directory; may not be repeated.
-- `--include <dir>`: additional directory to search when resolving relative paths in `Includer` nodes. May be specified multiple times. Directories are searched in the order they appear on the command line.
-
----
-
-### Startup
-
-#### Tool resolution
-
-At startup, the program locates `lexer`, `comment_remover`, and `parser` as files inside the `--bin` directory (or the directory containing `includer` itself if `--bin` is not given). If any of the three tools is not found, the program writes an error to standard error and exits with code 1.
-
-The `--bin` path itself is normalised with `os.path.realpath` before use. If the resulting path is not an existing directory, the program writes an error to standard error and exits with code 1.
-
-#### Include directory resolution
-
-Each `--include` directory is normalised with `os.path.realpath`. If the resulting path is not an existing directory, the program writes an error to standard error and exits with code 1. The normalised paths are stored in an ordered list (the **include directory list**) in the order they were specified.
-
-#### Initial source file resolution
-
-The `<source_file>` argument is resolved to an absolute path as follows:
-
-- If it is already absolute, it is normalised with `os.path.realpath`.
-- If it is relative, it is joined to the current working directory and then normalised with `os.path.realpath`.
-
-If the resulting path does not refer to an existing file, the program writes an error to standard error and exits with code 1.
-
-The resolved absolute path is added as the sole initial entry of the **file list**.
-
----
-
-### Processing Loop
+# Processing Loop
 
 The program maintains a **file list** of absolute, `realpath`-normalised paths and a **file index** initialised to 0. The loop runs as follows:
 
@@ -74,7 +39,7 @@ The program maintains a **file list** of absolute, `realpath`-normalised paths a
 
 ---
 
-### Includer File Resolution
+# Includer File Resolution
 
 Given a filename string `name` extracted from an `Includer` node and the directory `base_dir` of the file currently being processed:
 
@@ -89,31 +54,72 @@ Given a filename string `name` extracted from an `Includer` node and the directo
 
 ---
 
-### Includer Extraction
+# Includer Extraction
 
-The AST text is scanned line by line to find `Includer` nodes. The extraction rule is:
+The AST produced by `parser` is an **S-expression**.
 
-1. A line whose content, after stripping leading whitespace, begins with `Includer@` is an `Includer` line.
-2. The line immediately following an `Includer` line is examined. If its content, after stripping leading whitespace, begins with `String@` and contains the substring `": "`, the text after `": "` is taken as the filename value.
-3. If that text is enclosed in double quotes (`"..."`) the quotes are stripped to obtain the filename string.
-4. Filenames are collected in the order the `Includer` lines appear in the AST text.
+An `Includer` node has the form:
+
+```
+(Includer (line col)
+  (String (line col) "filename"))
+```
+
+The filename is the string value of the `String` node that is a child of `Includer`.
+
+### Extraction rule
+
+1. Parse the AST text as a sequence of **S-expression tokens**:
+
+   * `"string"`
+   * `(`
+   * `)`
+   * atom
+
+2. When the pattern
+
+```
+( Includer ...
+```
+
+is encountered, scan the subtree corresponding to that S-expression.
+
+3. Within that subtree, locate the first `String` node:
+
+```
+(String (line col) "filename")
+```
+
+4. Extract the string literal `"filename"` and remove the quotes.
+
+5. The resulting string is treated as the **included filename**.
+
+6. Filenames are collected in the order the `Includer` nodes appear in the AST.
 
 ---
 
-### Output
+# Output
 
-The `Program` nodes are written to standard output in the order the corresponding files appear in the file list (i.e., the initial source file first, followed by directly and transitively included files in the order they were first encountered). The AST text for each file is written exactly as produced by the pipeline, with no separator between consecutive `Program` nodes.
+For each processed file, the AST text produced by the pipeline is written to standard output **without modification**.
+
+The outputs appear in the order of the **file list**:
+
+1. the initial source file
+2. directly included files
+3. transitively included files
+
+Files are output in the order they are **first discovered**.
+
+No separator is inserted between consecutive AST outputs.
 
 ---
 
-### Error Messages
+# Circular Include Handling
 
-| Condition | Message written to stderr | Exit code |
-|---|---|---|
-| `--bin` directory not found | `Error: --bin directory not found: '<dir>'` | 1 |
-| Tool not found in `--bin` | `Error: '<tool>' not found in '<dir>'` | 1 |
-| `--include` directory not found | `Error: --include directory not found: '<dir>'` | 1 |
-| Initial source file not found | `Error: source file not found: '<name>'` | 1 |
-| Included file not found | `Error: included file not found: '<name>' (from '<file>')` | 1 |
-| Pipeline tool exits non-zero | `Error: <tool> exited with code <n>` | 1 |
-| Circular include detected | `Warning: circular include ignored: '<file>' (from '<file>')` | 0 (continues) |
+If an included file resolves to a path that already exists in the file list (after `realpath` normalisation), the include is ignored and the program writes a warning to standard error:
+
+```
+Warning: circular include ignored: '<path>' (from '<file>')
+```
+
+The file is not added again to the file list.

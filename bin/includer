@@ -121,32 +121,49 @@ def run_pipeline(file_abs, lexer, comment_remover, parser):
 
 def extract_includer_names(ast_text):
     """
-    Parse the AST text and return a list of filename strings referenced by
-    Includer nodes.
+    Parse the S-expression AST text and return a list of filename strings
+    referenced by Includer nodes.
 
-    An Includer node in the AST looks like:
-        Includer@line:col
-          String@line:col: "filename"
+    An Includer node in S-expression format looks like:
+        (Includer (line col)
+          (String (line col) "filename"))
 
-    We detect the pattern: a line containing 'Includer@' followed immediately
-    by an indented line containing 'String@' with a quoted value.
+    We scan for the pattern: atom "Includer" immediately after "(", followed
+    eventually by a String child whose value is a quoted filename.
     """
+    import re
     names = []
-    lines = ast_text.splitlines()
-    for idx, line in enumerate(lines):
-        stripped = line.lstrip()
-        if stripped.startswith('Includer@'):
-            # Look at the next line for the String child.
-            if idx + 1 < len(lines):
-                next_stripped = lines[idx + 1].lstrip()
-                if next_stripped.startswith('String@'):
-                    # Extract the value after ': '
-                    colon_pos = next_stripped.find(': ')
-                    if colon_pos != -1:
-                        raw = next_stripped[colon_pos + 2:]
-                        # raw is a quoted string literal like "util.se"
-                        if raw.startswith('"') and raw.endswith('"'):
-                            names.append(raw[1:-1])
+    # Match (Includer ... (String ... "filename") ...)
+    # Strategy: find all (Includer ...) spans and extract the first String value.
+    # Tokenize into atoms/strings/parens to walk the structure simply.
+    tokens = re.findall(r'"(?:[^"\\]|\\.)*"|\(|\)|[^\s()]+', ast_text)
+    i = 0
+    n = len(tokens)
+    while i < n:
+        if tokens[i] == '(' and i + 1 < n and tokens[i + 1] == 'Includer':
+            # Scan this Includer S-expression for the first String child value
+            depth = 1
+            j = i + 2
+            while j < n and depth > 0:
+                if tokens[j] == '(':
+                    depth += 1
+                    # Check if this is a String node
+                    if depth == 2 and j + 1 < n and tokens[j + 1] == 'String':
+                        # Find the value: skip '(' 'String' '(' line col ')'
+                        k = j + 2  # skip '('
+                        if k < n and tokens[k] == '(':
+                            k += 1  # skip '('
+                            while k < n and tokens[k] != ')':
+                                k += 1  # skip line, col, optional filename
+                            k += 1  # skip ')'
+                        # k now points to the value token
+                        if k < n and tokens[k].startswith('"'):
+                            names.append(tokens[k][1:-1])  # strip quotes
+                        break
+                elif tokens[j] == ')':
+                    depth -= 1
+                j += 1
+        i += 1
     return names
 
 
