@@ -1,6 +1,6 @@
 # Design of interpreter the ConMa programming language
 
-## Lexer and Comment Remover
+## Frontend
 
 ### Why comments are preserved by the lexer
 
@@ -25,8 +25,6 @@ Removing `NEWLINE` in the lexer would conflate two distinct decisions — "what 
 lexer  →  comment_remover  →  parser
 ```
 
-## Execution Pipeline
-
 The ConMa frontend consists of a driver script, `includer`, which manages the overall transformation from multiple source files to a single AST stream.
 
 1. **`includer`**: Manages the file list using a Breadth-First Search (BFS) strategy. It resolves `Includer` nodes and avoids infinite loops by normalizing paths with `realpath`.
@@ -39,6 +37,30 @@ The ConMa frontend consists of a driver script, `includer`, which manages the ov
 As specified in `AST.md`, location information (`@line:col`) is attached to every node. For multi-file support, the `Program` node is uniquely appended with the quoted filename to serve as a delimiter in the unified output stream.
 
 *Distinction between Meta-Location and SInfo Data*: the coordinates in the `@line:col` suffix are numeric, whereas the line and column values embedded inside a `SInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SInfo = "(", "__SInfo__", { String }, ")"`.
+
+## Module Loading and GVEnv Representation
+
+The interpreter initiates execution by passing a specified source filename to the includer. The includer reads the corresponding source files (including transitively included files) and outputs their ASTs.
+
+The interpreter then processes these ASTs and converts them into internal module data structures suitable for execution.
+
+A VProc maintains these module structures as its Global Variable Environment (GVEnv).
+
+For debugging purposes, when a VProc is represented as an S-expression, the GVEnv is denoted by the filenames stored in the modules' F nodes, rather than by the internal module structures themselves.
+
+## VProc Environment S-expression Format
+
+The following definitions describe the S-expression format used to display the environment of a VProc (Virtual Process) for debugging purposes.
+This format represents the runtime state in a readable form and does not specify the internal data structures used by the implementation.
+
+A VEnv (Variable Environment) consists of two components:
+a Local Variable Environment (LVEnv) and a Global Variable Environment (GVEnv).
+
+LVEnv:
+A list of bindings. Each binding consists of a variable name and its associated value. The bindings are ordered by their de Bruijn indices: the first element corresponds to index 0 (the innermost lexical binding), the second to index 1, and so forth.
+
+GVEnv:
+A list of module filenames that collectively define the global environment accessible to the process.
 
 ## Execution
 

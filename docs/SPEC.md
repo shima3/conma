@@ -320,7 +320,7 @@ Moves the `VProc` from the blocked queue to the ready queue.
 ### `__CFrame_new__ FuncExp SInfo`
 Behavior:
 Creates a CFrame and passes it to the LCont.
-The CFrame consists of the SInfo, a Closure of `FuncExp`, and a null as the next CFrame.
+The CFrame consists of a Closure of `FuncExp`, the SInfo, and a null as the next CFrame.
 
 ---
 

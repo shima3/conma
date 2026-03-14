@@ -58,7 +58,7 @@ In a pure CPS (Continuation Passing Style) system, there is no "return" in the t
 
 Continuation Frame (CFrame):
 A CFrame is a data structure that represents the state of a single function call on the CChain.
-It contains SInfo, Closure, and the next CFrame.
+It contains Closure, SInfo, and the next CFrame.
 Each time a function is called, a new CFrame is pushed onto the CChain; when the function returns, its frame is popped from the CChain.
 
 null:
