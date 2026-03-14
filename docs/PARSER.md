@@ -45,16 +45,46 @@ The expected token kinds are: `FILE`, `SYMBOL`, `STRING`, `LPAREN`, `RPAREN`, `C
 
 ### Output Format
 
-The AST is written to standard output. Each node follows the format `NodeType@line:col`.
-
-* **Terminal Nodes**: `Variable`, `String`, `SourceInfo`, `FileName`, and `Null` are printed on a single line (with values where applicable). `FileName` nodes generated via `--file` use `@0:0` as their location. `FileName` nodes generated from a `FILE` token use the line and column of that token.
-* **Non-terminal Nodes**: These consist of a start line, indented children (2 spaces), and a matching **End tag**:
-```
-NodeType@line:col
-  [Child Nodes...]
-End@line:col: NodeType
+The AST is written to standard output as S-expressions. Each node is written as:
 
 ```
+(NodeType (line col) children...)
+```
+
+where `line` and `col` are 1-based integers. Children are indented by 2 spaces. Consecutive closing parentheses on separate lines are merged onto the preceding line.
+
+#### Terminal nodes
+
+| Node | Format |
+|---|---|
+| `Variable` | `(Variable (line col) "name")` |
+| `String` | `(String (line col) "value")` |
+| `SourceInfo` | `(SourceInfo (line col) "file" "line" "col")` |
+| `Null` | `(Null (line col))` |
+
+The variable name in a `Variable` node is enclosed in double quotes.
+
+#### Program node
+
+The filename, when present, is embedded in the coordinate tuple as a third element:
+
+```
+(Program (line col "filename")
+  children...)
+```
+
+If no filename is available, the coordinate tuple contains only two elements: `(line col)`.
+
+`FileName` is not emitted as a separate node; it is folded into the `Program` coordinate tuple.
+
+#### Non-terminal nodes
+
+```
+(NodeType (line col)
+  children...)
+```
+
+Non-terminal nodes always emit a closing `)`, even when they have no children.
 
 
 
@@ -72,31 +102,21 @@ End@line:col: NodeType
 
 #### Output: `parser --file sample.se`
 
-```text
-Program@1:1
-  FileName@0:0: "sample.se"
-  Definition@1:2
-    Variable@1:9: main
-    Function@1:14
-      Head@1:15
-        Variable@1:16: args
-      End@1:15: Head
-      Body@2:3
-        SourceInfo@2:3: "sample.se" "2" "3"
-        Operator@2:3
-          Variable@2:3: __print__
-        End@2:3: Operator
-        OList@2:13
-          String@2:13: "Hello"
-        End@2:13: OList
-        LCont@2:20
-          Null@2:20
-        End@2:20: LCont
-      End@2:3: Body
-    End@1:14: Function
-  End@1:2: Definition
-End@1:1: Program
-
+```scheme
+(Program (1 1 "sample.se")
+  (Definition (1 2)
+    (Variable (1 9) "main")
+    (Function (1 14)
+      (Head (1 15)
+        (Variable (1 16) "args"))
+      (Body (2 3)
+        (SourceInfo (2 3) "sample.se" "2" "3")
+        (Operator (2 3)
+          (Variable (2 3) "__print__"))
+        (OList (2 13)
+          (String (2 13) "Hello"))
+        (LCont (2 20)
+          (Null (2 20)))))))
 ```
 
 ---

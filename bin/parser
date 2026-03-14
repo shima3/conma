@@ -18,6 +18,7 @@ Usage:
 """
 
 import sys
+import re
 import argparse
 
 
@@ -302,7 +303,7 @@ class Parser:
 
 
 # ---------------------------------------------------------------------------
-# AST formatter
+# AST formatter (S-expression output)
 # ---------------------------------------------------------------------------
 
 def format_ast(node, indent=0):
@@ -311,21 +312,77 @@ def format_ast(node, indent=0):
     line   = node[1]
     col    = node[2]
 
-    if kind == 'FileName':
-        print(f"{prefix}FileName@{line}:{col}: \"{node[3]}\"")
+    if kind == 'Program':
+        # (Program (line col) children...)  — filename folded into coord tuple
+        # FileName child node is consumed here and not recursed into
+        filename = None
+        real_children = []
+        for child in node[3]:
+            if child[0] == 'FileName':
+                filename = child[3]
+            else:
+                real_children.append(child)
+        if filename:
+            print(f"{prefix}(Program ({line} {col} \"{filename}\")")
+        else:
+            print(f"{prefix}(Program ({line} {col})")
+        for child in real_children:
+            format_ast(child, indent + 1)
+        print(f"{prefix})")
+
+    elif kind == 'FileName':
+        # Standalone FileName (should not normally appear outside Program)
+        print(f"{prefix}(FileName ({line} {col}) \"{node[3]}\")")
+
     elif kind == 'Variable':
-        print(f"{prefix}Variable@{line}:{col}: {node[3]}")
+        print(f"{prefix}(Variable ({line} {col}) \"{node[3]}\")")
+
     elif kind == 'String':
-        print(f"{prefix}String@{line}:{col}: {node[3]}")
+        print(f"{prefix}(String ({line} {col}) {node[3]})")
+
     elif kind == 'SourceInfo':
-        print(f"{prefix}SourceInfo@{line}:{col}: {node[3]}")
+        print(f"{prefix}(SourceInfo ({line} {col}) {node[3]})")
+
     elif kind == 'Null':
-        print(f"{prefix}Null@{line}:{col}")
+        print(f"{prefix}(Null ({line} {col}))")
+
     else:
-        print(f"{prefix}{kind}@{line}:{col}")
+        # Non-terminal: (Kind (line col) children...)
+        print(f"{prefix}({kind} ({line} {col})")
         for child in node[3]:
             format_ast(child, indent + 1)
-        print(f"{prefix}End@{line}:{col}: {kind}")
+        print(f"{prefix})")
+
+
+# ---------------------------------------------------------------------------
+# S-expression post-processor: merge consecutive closing parentheses
+# ---------------------------------------------------------------------------
+
+def merge_close_parens(text):
+    """
+    Merge runs of lines that consist solely of whitespace and ')' onto the
+    preceding non-empty, non-close-only line.
+
+    Example:
+        (Null (3 20))
+        )
+        )
+      →
+        (Null (3 20)))
+    """
+    lines = text.splitlines()
+    close_re = re.compile(r'^\s*\)+\s*$')
+    result = []
+    for line in lines:
+        if close_re.match(line):
+            parens = line.strip()
+            if result:
+                result[-1] = result[-1] + parens
+            else:
+                result.append(parens)
+        else:
+            result.append(line)
+    return '\n'.join(result) + '\n'
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +409,14 @@ def main():
 
     try:
         ast = parser.parse_program()
+        import io
+        buf = io.StringIO()
+        _real_stdout = sys.stdout
+        sys.stdout = buf
         format_ast(ast)
+        sys.stdout = _real_stdout
+        output = buf.getvalue()
+        print(merge_close_parens(output), end='')
     except SyntaxError as e:
         print(f"SyntaxError: {e}", file=sys.stderr)
         sys.exit(1)
