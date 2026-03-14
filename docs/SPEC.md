@@ -74,21 +74,21 @@ Function   = Hat, Head, Body ;
 Hat        = "," ;
 Head       = "(", { Parameter }, ")" ;
 Parameter  = Variable ;
-Body       = [ SourceInfo ], Operator, OList, [ LCont ] ;
+Body       = [ SInfo ], Operator, OList, [ LCont ] ;
 Operator   = Variable | FuncExp ;
 OList      = { Operand } ;
 LCont      = Function ;
 Operand    = Expression ;
 Expression = Variable | String | FuncExp ;
 FuncExp    = "(", Function, ")" ;
-SourceInfo = "(", "__SI__", { String }, ")" ;
+SInfo      = "(", "__SInfo__", { String }, ")" ;
 ```
 
 ---
 
 # Operational Semantics
 
-SourceInfo (SI) is information for debugging purposes and does not affect basic operation. It is used to indicate the location in the source code when an error occurs or some debuggers are running the program.
+SInfo (Source Info) is information for debugging purposes and does not affect basic operation. It is used to indicate the location in the source code when an error occurs or some debuggers are running the program.
 
 The Includer (include FileName) includes the Program from the file named FileName at loading time.
 ConMa source files are expected to have the `.se` extension.
@@ -141,7 +141,7 @@ Once the `Operator` and processed `OList` are ready:
 
 1. **Operator Resolution**: The `Operator` is resolved to a function or closure.
 2. **Binding**: The processed values from `OList` are bound to the `Parameter` identifiers in the function's `Head`.
-3. **LCont Handling**: If a `LCont` (Local Continuation) is present, a `CFrame` containing the `LCont`'s closure, current `SourceInfo`, and next `CFrame` is pushed onto the `CChain`.
+3. **LCont Handling**: If a `LCont` (Local Continuation) is present, a `CFrame` containing the `LCont`'s closure, current `SInfo`, and next `CFrame` is pushed onto the `CChain`.
 4. **Body Execution**: The `Body` of the function is evaluated within the new environment.
 
 Example:
@@ -182,23 +182,23 @@ is semantically equivalent to:
 # Execution Model and CPS Semantics
 
 A process managed by the operating system is called an **OS Process**.
-A process managed by the interpreter is called a **Virtual Process (VP)**.
+A process managed by the interpreter is called a **Virtual Process (VProc)**.
 
 In the first version:
-A **Virtual Process (VP)** is scheduled using round-robin scheduling.
+A **Virtual Process (VProc)** is scheduled using round-robin scheduling.
 The scheduling granularity is **one Operator application**.
 
 A single scheduling step is defined as follows.
 
-1. The scheduler selects the next runnable VP from the ready queue.
-2. The selected VP executes exactly **one Operator application**.
+1. The scheduler selects the next runnable VProc from the ready queue.
+2. The selected VProc executes exactly **one Operator application**.
 3. After the Operator application completes, control returns to the scheduler.
-4. If the VP is still runnable, it is placed at the end of the ready queue.
-5. The scheduler then selects the next VP in the queue.
+4. If the VProc is still runnable, it is placed at the end of the ready queue.
+5. The scheduler then selects the next VProc in the queue.
 
 An **Operator application** is defined as the evaluation of one `Body`:
 ```
-[ SourceInfo ], Operator, OList, [ LCont ]
+[ SInfo ], Operator, OList, [ LCont ]
 ```
 
 The execution of an Operator application consists of:
@@ -212,20 +212,20 @@ An Operator application is considered complete immediately before the next Opera
 Invoking LCont is considered part of the following Operator application.
 Internal primitives are executed as one Operator application.
 
-At that point, the scheduler may switch execution to another VP.
-If the executing VP becomes blocked (for example, __VP_suspend__), it is removed from the ready queue until it becomes runnable again.
+At that point, the scheduler may switch execution to another VProc.
+If the executing VProc becomes blocked (for example, __VProc_suspend__), it is removed from the ready queue until it becomes runnable again.
 
 The function designated as the `Operator` in `Body` is applied to `OList`.
-A CFrame consisting of `SourceInfo` and the closure of `LCont` is pushed onto the CChain.
+A CFrame consisting of `SInfo` and the closure of `LCont` is pushed onto the CChain.
 
 In normal mode:
 * If there is no LCont, no CFrame is pushed.
 * Therefore, tail recursion does not consume CChain space.
 
 In debug mode:
-* Even if there is no LCont, a CFrame consisting of `SourceInfo` and a closure of __noop__ is pushed.
+* Even if there is no LCont, a CFrame consisting of `SInfo` and a closure of __noop__ is pushed.
 * __noop__ performs no operation.
-* This CFrame exists solely to preserve `SourceInfo` for stack trace generation.
+* This CFrame exists solely to preserve `SInfo` for stack trace generation.
 
 ---
 
@@ -281,13 +281,13 @@ Prints a `String` to standard error.
 
 ---
 
-### `__VP_spawn__ ErrorSink SourceFileName ArgumentSequence InputSequence OutputSink`
+### `__VProc_spawn__ ErrorSink SourceFileName ArgumentSequence InputSequence OutputSink`
 Behavior:
-Initiates the creation and execution of a new Virtual Process (VP) through the following sequential phases:
+Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
 1. **Process Initialization**: A new, isolated Virtual Process is allocated with its own independent memory, CChain, and Process Dictionary.
 2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `SourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
-3. **Environment Binding**: All identifiers identified during the scan are registered in the new VP’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
+3. **Environment Binding**: All identifiers identified during the scan are registered in the new VProc’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
 4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__MAIN__` wrapper.
 5. **Context Injection**: The `__MAIN__` function is applied to the following arguments:
 * **ErrorSink**: For handling standard error output.
@@ -297,30 +297,30 @@ Initiates the creation and execution of a new Virtual Process (VP) through the f
 
 ---
 
-### `__VP_current__`
+### `__VProc_current__`
 Behavior:
-Passes the current VP to the LCont.
+Passes the current VProc to the LCont.
 
 ---
 
-### `__VP_suspend__ VP`
+### `__VProc_suspend__ VProc`
 Behavior:
-Suspends the `VP`.
-Moves the `VP` from the ready queue to the blocked queue.
+Suspends the `VProc`.
+Moves the `VProc` from the ready queue to the blocked queue.
 
 ---
 
-### `__VP_resume__ VP`
+### `__VProc_resume__ VProc`
 Behavior:
-Resumes the `VP`.
-Moves the `VP` from the blocked queue to the ready queue.
+Resumes the `VProc`.
+Moves the `VProc` from the blocked queue to the ready queue.
 
 ---
 
-### `__CFrame_new__ FuncExp SourceInfo`
+### `__CFrame_new__ FuncExp SInfo`
 Behavior:
 Creates a CFrame and passes it to the LCont.
-The CFrame consists of the SourceInfo, a Closure of `FuncExp`, and a null as the next CFrame.
+The CFrame consists of the SInfo, a Closure of `FuncExp`, and a null as the next CFrame.
 
 ---
 
@@ -347,11 +347,11 @@ The provided `LCont` is executed as the immediate successor to the primitive cal
 
 **Virtual Process State and `__CChain_set__` Behavior**
 
-A **Virtual Process (VP)** independently maintains two primary control-flow structures: a **Continuation Chain (CChain)**, which represents the persistent sequence of pending computation frames, and a **Local Continuation (LCont)**, which represents the immediate next operation to be executed within the current context.
+A **Virtual Process (VProc)** independently maintains two primary control-flow structures: a **Continuation Chain (CChain)**, which represents the persistent sequence of pending computation frames, and a **Local Continuation (LCont)**, which represents the immediate next operation to be executed within the current context.
 
 When the primitive `__CChain_set__ cc ,() ...` is executed, the interpreter performs the following atomic operations:
 
-1. **CChain Replacement**: The current `CChain` of the VP is entirely replaced by the provided `cc`.
+1. **CChain Replacement**: The current `CChain` of the VProc is entirely replaced by the provided `cc`.
 2. **LCont Invocation**: The interpreter then immediately invokes the `LCont` defined at the call site (the closure `,() ...`).
 
 **Operational Distinction:**
@@ -452,7 +452,7 @@ When the expression
 ```
 __CChain_pop_LCont__ ,(lc) ...
 ```
-is executed, the VP's state is:
+is executed, the VProc's state is:
 
 - **Operator**: the closure of the function defined as `__CChain_pop_LCont__`
 - **OList**: empty
@@ -572,11 +572,11 @@ Example:
 
 ### `Virtual Process`
 ```
-(define __VP_wait_until__ ,(cond)
-  __VP_current__ ,(proc)
+(define __VProc_wait_until__ ,(cond)
+  __VProc_current__ ,(proc)
   __fix__ (,(loop)
     cond ,()
-    __VP_suspend__ proc ,()
+    __VProc_suspend__ proc ,()
     loop))
 ```
 ---
@@ -584,7 +584,7 @@ Example:
 ### `Ref`
 ```
 (define __Ref_wait_until__ ,(ref cond)
-  __VP_wait_until__ (,()
+  __VProc_wait_until__ (,()
     __Ref_get__ ref ,(value)
     cond value))
 
@@ -608,23 +608,23 @@ Example:
   (,(sink) sink inProcRef outProcRef valueRef))
 
 (define __Pipe_in__ ,(Pipe Sink)
-  __VP_current__ ,(inProc)
+  __VProc_current__ ,(inProc)
   __Seq_get_all__ Pipe ,(inProcRef outProcRef valueRef)
   __Ref_set__ inProcRef inProc ,()
   __Ref_wait_for_non_null__ outProcRef ,(outProc)
   __Ref_get__ valueRef ,(value)
   __Ref_set__ inProcRef __NULL__ ,()
-  __VP_resume__ outProc ,()
+  __VProc_resume__ outProc ,()
   __Ref_wait_for_null__ outProcRef ,()
   Sink value)
 
 (define __Pipe_out__ ,(Pipe Value)
-  __VP_current__ ,(outProc)
+  __VProc_current__ ,(outProc)
   __Seq_get_all__ Pipe ,(inProcRef outProcRef valueRef)
   __Ref_set__ valueRef Value ,()
   __Ref_set__ outProcRef outProc ,()
   __Ref_wait_for_non_null__ inProcRef ,(inProc)
-  __VP_resume__ inProc ,()
+  __VProc_resume__ inProc ,()
   __Ref_wait_for_null__ inProcRef ,()
   __Ref_set__ outProcRef __NULL__)
 

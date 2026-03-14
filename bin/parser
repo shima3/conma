@@ -9,9 +9,9 @@ Usage:
     parser [--file <source_filename>] [<lexer_output_file>]
 
     --file <source_filename>
-        When specified, inserts SourceInfo nodes into every Body that
-        does not already contain an explicit (__SI__ ...) construct.
-        The inserted SourceInfo uses the Operator's location.
+        When specified, inserts SInfo nodes into every Body that
+        does not already contain an explicit (__SInfo__ ...) construct.
+        The inserted SInfo uses the Operator's location.
 
     <lexer_output_file>
         Lexer output to parse. Reads from stdin if omitted.
@@ -48,7 +48,7 @@ class Parser:
     def __init__(self, tokens, filename=None):
         self.tokens = tokens
         self.pos = 0
-        self.filename = filename   # for auto SourceInfo insertion
+        self.filename = filename   # for auto SInfo insertion
 
     # --- token access -------------------------------------------------------
 
@@ -80,11 +80,11 @@ class Parser:
         return tok[1] + len(tok[3])
 
     def _is_sourceinfo(self):
-        """True when the next two tokens are LPAREN and SYMBOL '__SI__'."""
+        """True when the next two tokens are LPAREN and SYMBOL '__SInfo__'."""
         t0 = self.peek(0)
         t1 = self.peek(1)
         return (t0 is not None and t0[2] == 'LPAREN' and
-                t1 is not None and t1[2] == 'SYMBOL' and t1[3] == '__SI__')
+                t1 is not None and t1[2] == 'SYMBOL' and t1[3] == '__SInfo__')
 
     def _is_expression_start(self):
         """True when the current token can start an Expression."""
@@ -171,13 +171,13 @@ class Parser:
         return ('Head', lparen[0], lparen[1], params)
 
     def parse_body(self):
-        # Body = [SourceInfo], Operator, OList, [LCont]
+        # Body = [SInfo], Operator, OList, [LCont]
         #
         # Position of the Body node:
-        #   - If SourceInfo is present in source: position of its '('
+        #   - If SInfo is present in source: position of its '('
         #   - Otherwise: position of the Operator token
 
-        # --- SourceInfo (explicit) ------------------------------------------
+        # --- SInfo (explicit) ------------------------------------------
         explicit_si = None
         if self._is_sourceinfo():
             explicit_si = self.parse_sourceinfo()
@@ -193,10 +193,10 @@ class Parser:
         else:
             body_line, body_col = op_line, op_col
 
-        # --- Auto SourceInfo insertion -------------------------------------
+        # --- Auto SInfo insertion -------------------------------------
         if explicit_si is None and self.filename is not None:
             si_value = f'"{self.filename}" "{op_line}" "{op_col}"'
-            auto_si = ('SourceInfo', op_line, op_col, si_value)
+            auto_si = ('SInfo', op_line, op_col, si_value)
         else:
             auto_si = None
 
@@ -255,15 +255,15 @@ class Parser:
         return ('Body', body_line, body_col, children)
 
     def parse_sourceinfo(self):
-        # SourceInfo = "(", "__SI__", { String }, ")"
+        # SInfo = "(", "__SInfo__", { String }, ")"
         lparen = self.expect('LPAREN')
-        self.expect('SYMBOL', '__SI__')
+        self.expect('SYMBOL', '__SInfo__')
         strings = []
         while self.peek() is not None and self.peek()[2] == 'STRING':
             strings.append(self.consume()[3])
         self.expect('RPAREN')
         value = ' '.join(strings)
-        return ('SourceInfo', lparen[0], lparen[1], value)
+        return ('SInfo', lparen[0], lparen[1], value)
 
     def parse_operator_inner(self):
         # Operator = Variable | FuncExp
@@ -340,8 +340,8 @@ def format_ast(node, indent=0):
     elif kind == 'String':
         print(f"{prefix}(String ({line} {col}) {node[3]})")
 
-    elif kind == 'SourceInfo':
-        print(f"{prefix}(SourceInfo ({line} {col}) {node[3]})")
+    elif kind == 'SInfo':
+        print(f"{prefix}(SInfo ({line} {col}) {node[3]})")
 
     elif kind == 'Null':
         print(f"{prefix}(Null ({line} {col}))")
@@ -395,7 +395,7 @@ def main():
     ap.add_argument('input', nargs='?',
                     help='Lexer output file (default: stdin)')
     ap.add_argument('--file', metavar='FILENAME',
-                    help='Source filename for automatic SourceInfo insertion')
+                    help='Source filename for automatic SInfo insertion')
     args = ap.parse_args()
 
     if args.input:

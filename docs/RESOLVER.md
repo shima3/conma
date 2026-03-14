@@ -92,7 +92,7 @@ Before the two passes, the input stream is parsed into a forest of `ASTNode` tre
 
 The terminal node types — those that are never pushed onto the stack and therefore never have children — are:
 
-`Variable`, `String`, `Null`, `SourceInfo`, `FileName`
+`Variable`, `String`, `Null`, `SInfo`, `FileName`
 
 #### Pass 1: Definition Collection
 
@@ -167,7 +167,7 @@ Program@1:1
         Variable@1:16: args
       End@1:15: Head
       Body@2:3
-        SourceInfo@2:3: "sample.se" "2" "3"
+        SInfo@2:3: "sample.se" "2" "3"
         Operator@2:3
           Variable@2:3: __print__
         End@2:3: Operator
@@ -195,7 +195,7 @@ Program@1:1
         Variable@1:16: args (L0)
       End@1:15: Head
       Body@2:3
-        SourceInfo@2:3: "sample.se" "2" "3"
+        SInfo@2:3: "sample.se" "2" "3"
         Operator@2:3
           Variable@2:3: __print__ (G1)
         End@2:3: Operator

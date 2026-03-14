@@ -12,12 +12,12 @@ It allows the function to access those variables even when it is invoked outside
 Process Dictionary (PDict):
 A process dictionary is a key-value storage that is local to a specific process and accessible only within that process’s context.
 
-Virtual Process (VP):
+Virtual Process (VProc):
 A virtual process is a lightweight, isolated, concurrent unit of execution that runs independently and communicates with other processes via pipes.
 Virtual Processes do not share memory with each other.
 Each virtual process has its own memory and maintains the following components:
 
-  * SourceInfo
+  * SInfo
   * Operator
   * OList
   * LCont
@@ -58,7 +58,7 @@ In a pure CPS (Continuation Passing Style) system, there is no "return" in the t
 
 Continuation Frame (CFrame):
 A CFrame is a data structure that represents the state of a single function call on the CChain.
-It contains SourceInfo, Closure, and the next CFrame.
+It contains SInfo, Closure, and the next CFrame.
 Each time a function is called, a new CFrame is pushed onto the CChain; when the function returns, its frame is popped from the CChain.
 
 null:

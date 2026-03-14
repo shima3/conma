@@ -3,7 +3,7 @@
 ### 1. General Principles
 
 * **Location information is always attached**: every node name is followed by `@line:col`, where `line` and `col` are the 1-based line and column numbers of the first character of the token that introduced the node.
-* **Automatic SourceInfo insertion**: when the `--file <filename>` option is given, the parser inserts a `SourceInfo` node into every `Body` that does not already contain an explicit `(__SI__ ...)` construct.
+* **Automatic SInfo insertion**: when the `--file <filename>` option is given, the parser inserts a `SInfo` node into every `Body` that does not already contain an explicit `(__SInfo__ ...)` construct.
 * **Node Boundaries**: Non-terminal nodes are explicitly closed with a matching `End` tag to clearly define the tree structure.
 
 ---
@@ -17,8 +17,8 @@ NodeType@line:col [: value]
 
 ```
 
-* Present for: `Variable`, `String`, `SourceInfo`, `FileName`, and `Null`.
-* `: value`: For `SourceInfo`, the value is a space-separated sequence of string literals. For `Variable`, `String`, and `FileName`, the value is the exact text enclosed in double quotes.
+* Present for: `Variable`, `String`, `SInfo`, `FileName`, and `Null`.
+* `: value`: For `SInfo`, the value is a space-separated sequence of string literals. For `Variable`, `String`, and `FileName`, the value is the exact text enclosed in double quotes.
 
 #### Non-terminal Nodes
 
@@ -45,7 +45,7 @@ End@line:col: NodeType
 | `Function` | Function | No |
 | `Head` | Head | No |
 | `Body` | Body | No |
-| `SourceInfo` | SourceInfo | Yes (value = string literals) |
+| `SInfo` | SInfo | Yes (value = string literals) |
 | `Operator` | Operator | No |
 | `OList` | OList | No |
 | `LCont` | LCont | No |
@@ -63,7 +63,7 @@ End@line:col: NodeType
 
 
 2. **LCont**: `Body` always contains an `LCont` node as its last child. If `LCont` is absent in the source, a `Null` node is emitted inside `LCont`.
-3. **SourceInfo Priority**: When `--file` is specified, `SourceInfo` is auto-inserted into `Body` unless an explicit `(__SI__ ...)` exists. Auto-inserted `SourceInfo` uses the location of the `Operator`.
+3. **SInfo Priority**: When `--file` is specified, `SInfo` is auto-inserted into `Body` unless an explicit `(__SInfo__ ...)` exists. Auto-inserted `SInfo` uses the location of the `Operator`.
 
 ---
 
@@ -99,7 +99,7 @@ Program@1:1
         Variable@2:16: args
       End@2:15: Head
       Body@3:3
-        SourceInfo@3:3: "test.se" "3" "3"
+        SInfo@3:3: "test.se" "3" "3"
         Operator@3:3
           Variable@3:3: __print__
         End@3:3: Operator

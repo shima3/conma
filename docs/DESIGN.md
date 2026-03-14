@@ -32,13 +32,13 @@ The ConMa frontend consists of a driver script, `includer`, which manages the ov
 1. **`includer`**: Manages the file list using a Breadth-First Search (BFS) strategy. It resolves `Includer` nodes and avoids infinite loops by normalizing paths with `realpath`.
 2. **`lexer`**: Tokenizes raw text, preserving comments and newlines.
 3. **`comment_remover`**: Filters out comments and newlines to produce a clean token stream.
-4. **`parser`**: Generates the AST. When invoked by `includer`, it uses the `--file` flag to attach the filename to the `Program` node and perform automatic `SourceInfo` insertion.
+4. **`parser`**: Generates the AST. When invoked by `includer`, it uses the `--file` flag to attach the filename to the `Program` node and perform automatic `SInfo` insertion.
 
 ## AST Metadata
 
 As specified in `AST.md`, location information (`@line:col`) is attached to every node. For multi-file support, the `Program` node is uniquely appended with the quoted filename to serve as a delimiter in the unified output stream.
 
-*Distinction between Meta-Location and SourceInfo Data*: the coordinates in the `@line:col` suffix are numeric, whereas the line and column values embedded inside a `SourceInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SourceInfo = "(", "__SI__", { String }, ")"`.
+*Distinction between Meta-Location and SInfo Data*: the coordinates in the `@line:col` suffix are numeric, whereas the line and column values embedded inside a `SInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SInfo = "(", "__SInfo__", { String }, ")"`.
 
 ## Execution
 

@@ -124,4 +124,4 @@ If the source is exhausted before depth reaches 0, any remaining buffer content 
 ### Limitations
 
 - Strings that span multiple lines are not supported: a `\n` inside a string is consumed as a literal character without updating the line number, resulting in incorrect line and column numbers for all subsequent tokens.
-- The `SourceInfo` construct (`__SI__`) is not treated specially; it is recognized as an ordinary `SYMBOL`.
+- The `SInfo` construct (`__SInfo__`) is not treated specially; it is recognized as an ordinary `SYMBOL`.

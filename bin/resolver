@@ -12,43 +12,121 @@ class ASTNode:
         self.is_local = False
         self.index = None # Local: True de Bruijn Index, Global: Sequence No
 
+def tokenize_sexp(text):
+    """Tokenize S-expression text into a flat list of tokens.
+    Tokens are: '(', ')', or an atom string.
+    Strings enclosed in double quotes are kept intact including the quotes.
+    """
+    tokens = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in ' \t\n\r':
+            i += 1
+        elif c == '(':
+            tokens.append('(')
+            i += 1
+        elif c == ')':
+            tokens.append(')')
+            i += 1
+        elif c == '"':
+            # Quoted string: collect until closing "
+            j = i + 1
+            while j < n:
+                if text[j] == '\\':
+                    j += 2
+                elif text[j] == '"':
+                    j += 1
+                    break
+                else:
+                    j += 1
+            tokens.append(text[i:j])
+            i = j
+        else:
+            # Atom: collect until whitespace or paren
+            j = i
+            while j < n and text[j] not in ' \t\n\r()':
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+    return tokens
+
+
+def parse_sexp_tokens(tokens, pos):
+    """Parse one S-expression from tokens starting at pos.
+    Returns (ASTNode, next_pos).
+    Expects tokens[pos] == '('.
+    """
+    assert tokens[pos] == '('
+    pos += 1  # consume '('
+
+    # First atom: NodeType
+    ntype = tokens[pos]
+    pos += 1
+
+    # Second element: coordinate tuple (line col ["filename"])
+    assert tokens[pos] == '('
+    pos += 1  # consume '('
+    lnum = tokens[pos]; pos += 1
+    col  = tokens[pos]; pos += 1
+
+    # Optional filename (quoted string) for Program node
+    filename = None
+    if tokens[pos] != ')':
+        filename = tokens[pos]; pos += 1
+    assert tokens[pos] == ')'; pos += 1  # consume ')'
+
+    # Build node; value will be set for terminal nodes below
+    node = ASTNode(ntype, lnum, col)
+
+    # Parse children / value depending on node type
+    if ntype == 'Variable':
+        # (Variable (l c) name)
+        node.value = tokens[pos]; pos += 1
+    elif ntype == 'String':
+        # (String (l c) "value")
+        node.value = tokens[pos]; pos += 1
+    elif ntype == 'SInfo':
+        # (SInfo (l c) "f" "l" "c" ...)
+        parts = []
+        while tokens[pos] != ')':
+            parts.append(tokens[pos]); pos += 1
+        node.value = ' '.join(parts)
+    elif ntype == 'Null':
+        pass  # no value, no children
+    elif ntype == 'Program':
+        # filename was captured from coord tuple above
+        if filename:
+            node.value = filename.strip('"')
+        # children
+        while tokens[pos] != ')':
+            child, pos = parse_sexp_tokens(tokens, pos)
+            node.children.append(child)
+    else:
+        # Non-terminal: parse children until ')'
+        while tokens[pos] != ')':
+            child, pos = parse_sexp_tokens(tokens, pos)
+            node.children.append(child)
+
+    assert tokens[pos] == ')'; pos += 1  # consume closing ')'
+    return node, pos
+
+
 def parse_ast_stream(lines):
-    """
-    Endタグのみを信頼して木構造を復元する。
-    インデント幅に依存せず、ネストされた構造を正確に構築する。
-    """
-    stack = []
+    """Parse S-expression AST stream from parser output."""
+    text = ''.join(lines)
+    tokens = tokenize_sexp(text)
     roots = []
-    # NodeTypeにアンダースコアを許可し、値のキャプチャを正確に行う
-    node_re = re.compile(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)@(\d+):(\d+)(?::\s*(.*))?')
-
-    for line_str in lines:
-        line_str = line_str.rstrip()
-        if not line_str: continue
-        
-        match = node_re.match(line_str)
-        if not match: continue
-        
-        ntype, lnum, col, val = match.groups()
-        
-        if ntype == "End":
-            if stack:
-                stack.pop()
-            continue
-
-        node = ASTNode(ntype, lnum, col, val)
-        
-        if not stack:
+    pos = 0
+    while pos < len(tokens):
+        if tokens[pos] == '(':
+            node, pos = parse_sexp_tokens(tokens, pos)
             roots.append(node)
         else:
-            stack[-1].children.append(node)
-        
-        # Terminal Node 以外はスタックに積んで End を待つ
-        # Variable, String, Null, SourceInfo, FileName は子を持たない
-        if ntype not in ["Variable", "String", "Null", "SourceInfo", "FileName"]:
-            stack.append(node)
-            
+            pos += 1
     return roots
+
 
 class Resolver:
     def __init__(self):
@@ -119,37 +197,71 @@ class Resolver:
         if new_scope is not None:
             scope_stack.pop()
 
-    def print_transformed_ast(self, node, indent=0):
+    def format_sexp(self, node, indent=0):
+        """Return S-expression lines for a non-Program node as a list of strings."""
         prefix = "  " * indent
-        val_str = ""
-        if node.type == "Variable":
+        ntype = node.type
+        l, c = node.line, node.col
+
+        if ntype == "Variable":
             tag = "L" if node.is_local else "G"
-            val_str = f': {node.value} ({tag}{node.index})'
-        elif node.value:
-            val_str = f': {node.value}'
+            return [f"{prefix}(Variable ({l} {c}) {node.value} ({tag} {node.index}))"]
 
-        print(f"{prefix}{node.type}@{node.line}:{node.col}{val_str}")
+        if ntype == "String":
+            return [f"{prefix}(String ({l} {c}) {node.value})"]
+
+        if ntype == "SInfo":
+            return [f"{prefix}(SInfo ({l} {c}) {node.value})"]
+
+        if ntype == "Null":
+            return [f"{prefix}(Null ({l} {c}))"]
+
+        # Non-terminal
+        lines = [f"{prefix}({ntype} ({l} {c})"]
         for child in node.children:
-            self.print_transformed_ast(child, indent + 1)
-        
-        if node.type not in ["Variable", "String", "SourceInfo", "FileName", "Null"]:
-            print(f"{prefix}End@{node.line}:{node.col}: {node.type}")
+            lines.extend(self.format_sexp(child, indent + 1))
+        lines[-1] += ")"
+        return lines
 
-    def print_global_table(self):
-        print("Global Table")
-        # 3列形式（TAB区切り）で出力
-        # 1列目: ID (出現順)
-        # 2列目: 名前
-        # 3列目: 型（定義済みならNodeType、未定義なら Undefined）
+    def _merge_close_parens(self, text):
+        import re
+        close_re = re.compile(r'^\s*\)+\s*$')
+        result = []
+        for line in text.splitlines():
+            if close_re.match(line):
+                if result:
+                    result[-1] = result[-1] + line.strip()
+                else:
+                    result.append(line.strip())
+            else:
+                result.append(line)
+        return "\n".join(result)
+
+    def print_module(self, roots):
+        """Output a single Module S-expression for all Program roots."""
+        # Collect filenames from Program nodes in order
+        filenames = [root.value for root in roots if root.value]
+        f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
+
+        lines = [f"(Module {f_node}"]
+
         for name in self.global_order:
             info = self.global_registry[name]
+            gid = info["id"]
             val_node = info["value"]
-            
-            # 3列目の値を決定
-            val_col = val_node.type if val_node else "Undefined"
-            
-            # TAB区切りで出力
-            print(f"{info['id']}\t{name}\t{val_col}")
+            if val_node is not None:
+                # (G id "name"
+                #   <Function AST>)
+                val_lines = self.format_sexp(val_node, indent=2)
+                lines.append(f'  (G {gid} "{name}"')
+                lines.extend(val_lines)
+                lines[-1] += ")"
+            else:
+                lines.append(f'  (G {gid} "{name}" Undefined)')
+
+        lines[-1] += ")"
+        text = "\n".join(lines)
+        print(self._merge_close_parens(text))
 
 def main():
     input_lines = sys.stdin.readlines()
@@ -161,9 +273,8 @@ def main():
     
     for root in roots:
         resolver.resolve(root, [])
-        resolver.print_transformed_ast(root)
-    
-    resolver.print_global_table()
+
+    resolver.print_module(roots)
 
 if __name__ == "__main__":
     main()
