@@ -138,7 +138,7 @@ The following examples illustrate the state transitions of the VProc
 during one Operator Application.
 These examples are informative and do not introduce additional rules.
 
-##### Execution (Head is empty)
+**1. Execution (Head is empty)**
 
 This example shows the state transition of the VProc when a saturated Closure (whose Head is empty) is applied to additional operands.
 
@@ -164,7 +164,7 @@ After Application
          * LCont: (the LCont contained in the Body)
          * LVEnv: `Env_A` (the environment stored in the Closure)
 
-##### Partial Application (Head is not empty)
+**2. Partial Application (Head is not empty)**
 
 This example shows the creation of a derived Closure when the provided operands are insufficient to bind all parameters.
 
@@ -181,7 +181,7 @@ After Application
     2. OList: `()` (empty, because `a1` has been consumed by parameter binding).
     3. LCont: `(LCont_X)` (unchanged).
 
-##### Partial Application (OList is empty)
+**3. Partial Application (OList is empty)**
 
 This example shows how a partially applied Closure is passed to the current continuation when no operands are available.
 
