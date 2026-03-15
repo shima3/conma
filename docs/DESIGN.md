@@ -139,29 +139,30 @@ during one Operator Application.
 These examples are informative and do not introduce additional rules.
 
 1. Execution (Head is empty)
+
 This example shows the state transition of the VProc when a saturated Closure (whose Head is empty) is applied to additional operands.
 
 Before Application
 
-* Operator: `(Closure (Head: ∅) (Body: <Expr>) (LVEnv: Env_A))`
-* OList: `(a1 a2 a3)`
-* LCont: `(LCont_X)`
-* SInfo: `("1" "5")` (strings used as internal data)
-* LVEnv: Env_Current (the VProc's current local environment, used to form the Seq Closure)
+    * Operator: `(Closure (Head: ∅) (Body: <Expr>) (LVEnv: Env_A))`
+    * OList: `(a1 a2 a3)`
+    * LCont: `(LCont_X)`
+    * SInfo: `("1" "5")` (strings used as internal data)
+    * LVEnv: Env_Current (the VProc's current local environment, used to form the Seq Closure)
 
 After Application
 
-1. CChain Update: `LCont_X` is pushed onto the CChain, and a Seq Closure is then pushed directly on top of it.
+     1. CChain Update: `LCont_X` is pushed onto the CChain, and a Seq Closure is then pushed directly on top of it.
 
-* Seq Closure: A pair consisting of the following Seq S-expression and the VProc's current LVEnv.
-* Seq (S-expression): `(,(__Sink__) (__SInfo__ "1" "5") __Sink__ a1 a2 a3)`
+         * Seq Closure: A pair consisting of the following Seq S-expression and the VProc's current LVEnv.
+         * Seq (S-expression): `(,(__Sink__) (__SInfo__ "1" "5") __Sink__ a1 a2 a3)`
 
-2. VProc State: The contents of the Body of the Operator Closure are loaded into the VProc.
+     2. VProc State: The contents of the Body of the Operator Closure are loaded into the VProc.
 
-* Operator: `<Expr>` (the Operator contained in the Body)
-* OList: (the OList contained in the Body)
-* LCont: (the LCont contained in the Body)
-* LVEnv: `Env_A` (the environment stored in the Closure)
+         * Operator: `<Expr>` (the Operator contained in the Body)
+         * OList: (the OList contained in the Body)
+         * LCont: (the LCont contained in the Body)
+         * LVEnv: `Env_A` (the environment stored in the Closure)
 
 2. Partial Application (Head is not empty)
 
@@ -169,31 +170,32 @@ This example shows the creation of a derived Closure when the provided operands 
 
 Before Application
 
-* Operator: `(Closure (Head: (p1 p2)) (Body: <Expr>) (LVEnv: Env_A))`
-* OList: `(a1)`
-* LCont: `(LCont_X)`
+    * Operator: `(Closure (Head: (p1 p2)) (Body: <Expr>) (LVEnv: Env_A))`
+    * OList: `(a1)`
+    * LCont: `(LCont_X)`
 
 After Application
 
-1. Operator: A new derived Closure is created and set as the Operator.
-   * Closure: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_A + {p1: a1}))`
-2. OList: `()` (empty, because `a1` has been consumed by parameter binding).
-3. LCont: `(LCont_X)` (unchanged).
+    1. Operator: A new derived Closure is created and set as the Operator.
+         * Closure: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_A + {p1: a1}))`
+    2. OList: `()` (empty, because `a1` has been consumed by parameter binding).
+    3. LCont: `(LCont_X)` (unchanged).
+
 3. Partial Application (OList is empty)
 
 This example shows how a partially applied Closure is passed to the current continuation when no operands are available.
 
 Before Application
 
-* Operator: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_B))`
-* OList: `()`
-* LCont: `(LCont_Y)`
+    * Operator: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_B))`
+    * OList: `()`
+    * LCont: `(LCont_Y)`
 
 After Application
 
-1. Operator: `LCont_Y` (the current continuation becomes the next Operator).
-2. OList: `((Closure (Head: (p2)) ...))` (the original partially applied Closure becomes the single operand).
-3. LCont: `∅` (empty).
+    1. Operator: `LCont_Y` (the current continuation becomes the next Operator).
+    2. OList: `((Closure (Head: (p2)) ...))` (the original partially applied Closure becomes the single operand).
+    3. LCont: `∅` (empty).
 
 ### CChain Exhaustion and Null Passing
 
