@@ -62,6 +62,97 @@ A list of bindings. Each binding consists of a variable name and its associated 
 GVEnv:
 A list of module filenames that collectively define the global environment accessible to the process.
 
+## Debug S-expression Format
+
+The following S-expression formats are used for debugging purposes only. They represent runtime values in a readable form and do not specify internal data structures.
+
+Variable references in AST nodes use the resolver output format, where each `Variable` carries a binding annotation `(L index)` or `(G index)`.
+
+### Closure
+
+```scheme
+(__Closure__
+  (Head (line col)
+    ...)
+  (Body (line col)
+    ...)
+  (__LVEnv__ ...))
+```
+
+Head and Body are written in the same AST format as the resolver output. The LVEnv is embedded as the third element.
+
+### LVEnv
+
+```scheme
+(__LVEnv__
+  ("name_0" value_0)   ; de Bruijn Index 0 (innermost)
+  ("name_1" value_1)   ; de Bruijn Index 1
+  ...)
+```
+
+Variable names are enclosed in double quotes. Each value is written recursively using the appropriate debug S-expression format.
+
+### CFrame (standalone)
+
+```scheme
+(__CFrame__
+  (__Closure__ ...)
+  (__SInfo__ ...)
+  (__CFrame__ ...))    ; next CFrame, omitted at the end of the chain
+```
+
+The next CFrame element is omitted when the CFrame is the last in the chain.
+
+### CChain
+
+```scheme
+(__CChain__
+  ((__Closure__ ...) (__SInfo__ ...))
+  ((__Closure__ ...) (__SInfo__ ...))
+  ...)
+```
+
+CChain is written as a flat list of `(Closure SInfo)` tuples, one per CFrame, from top (innermost) to bottom (outermost). This format is used when displaying the CChain as part of a VProc. When a CFrame appears as a standalone value (e.g., as the result of `__CFrame_new__`), the `__CFrame__` format is used instead.
+
+### PDict
+
+```scheme
+(__PDict__
+  (key_sexp value_sexp)
+  ...)
+```
+
+Keys and values are written recursively using the appropriate debug S-expression format.
+
+### VProc
+
+```scheme
+(__VProc__
+  (__SInfo__ ...)
+  (__Operator__ Operator)
+  (__OList__
+    Operand
+    ...)
+  (__LCont__ Function)
+  (__LVEnv__ ...)
+  (__GVEnv__ "file1.se" "file2.se" ...)
+  (__CChain__
+    ((__Closure__ ...) (__SInfo__ ...))
+    ...)
+  (__PDict__
+    (key_sexp value_sexp)
+    ...))
+```
+
+- `__SInfo__`: the current source location of the VProc.
+- `__Operator__`: the current Operator (a Closure or primitive).
+- `__OList__`: the current operand list; each Operand is written in its debug S-expression format.
+- `__LCont__`: the current Local Continuation. When LCont is empty, written as `(__LCont__)`.
+- `__LVEnv__`: the current Local Variable Environment.
+- `__GVEnv__`: the Global Variable Environment, represented as the ordered list of source filenames of loaded modules.
+- `__CChain__`: the current Continuation Chain in flat list form.
+- `__PDict__`: the Process Dictionary.
+
 ## Runtime Semantics and Execution
 
 This section describes the dynamic behavior of the VProc during code evaluation, specifically focusing on how closures are applied and how the control flow is managed through the Continuation Chain (CChain).
