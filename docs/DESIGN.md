@@ -34,9 +34,9 @@ The ConMa frontend consists of a driver script, `includer`, which manages the ov
 
 ## AST Metadata
 
-As specified in `AST.md`, location information (`@line:col`) is attached to every node. For multi-file support, the `Program` node is uniquely appended with the quoted filename to serve as a delimiter in the unified output stream.
+As specified in `AST.md`, location information is attached to every node as a coordinate tuple `(line col)`. For multi-file support, the `Program` node embeds the quoted filename in its coordinate tuple as `(line col "filename")` to serve as a delimiter in the unified output stream.
 
-*Distinction between Meta-Location and SInfo Data*: the coordinates in the `@line:col` suffix are numeric, whereas the line and column values embedded inside a `SInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SInfo = "(", "__SInfo__", { String }, ")"`.
+*Distinction between Meta-Location and SInfo Data*: the coordinates in the `(line col)` tuple are numeric, whereas the line and column values embedded inside a `SInfo` node value are String literals enclosed in double quotes, in accordance with the grammar `SInfo = "(", "__SInfo__", { String }, ")"`.
 
 ## Module Loading and GVEnv Representation
 

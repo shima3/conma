@@ -24,53 +24,52 @@ The program reads from standard input. There are no command-line options. The ou
 
 ### Input Format
 
-The input must be the AST stream produced by `parser`, in the format defined by `AST.md` and `PARSER.md`. Each line is one of:
+The input must be the S-expression AST stream produced by `parser`, in the format defined by `PARSER.md`. The input is a sequence of S-expressions, each of the form:
 
-- A **node line**: `[whitespace] NodeType@line:col[: value]`
-- An **End tag line**: `[whitespace] End@line:col: NodeType`
-- An empty line (ignored)
+```
+(NodeType (line col [filename]) children...)
+```
 
-The node type name consists of ASCII letters, digits, and underscores, starting with a letter or underscore. The `line` and `col` fields are non-negative integers. The `value` field, if present, is the text after `": "` to the end of the line.
-
-The program may receive multiple `Program` nodes in sequence (multi-file output from `includer`).
+The input may contain multiple top-level `Program` S-expressions in sequence (multi-file output from `includer`).
 
 ---
 
 ### Output Format
 
-The output is the transformed AST stream followed by the global variable table, both written to standard output.
+The output is a single `Module` S-expression written to standard output.
 
-#### Transformed AST
+#### Variable Annotation
 
-The transformed AST has the same structure and format as the input, with one change: every `Variable` node's annotation is replaced with a binding annotation of the following form:
+Every `Variable` node is annotated with its binding kind and index:
 
-```
-Variable@line:col: <name> (<tag><index>)
-```
-
-- `<name>`: the variable name as it appears in the source, without enclosing quotes.
-- `<tag>`: `L` if the variable is locally bound, `G` if it is globally bound.
-- `<index>`: a non-negative integer. For local variables, this is the de Bruijn index (see **Local Variable Resolution**). For global variables, this is the global sequence number (see **Global Variable Resolution**).
-
-All other node types are written unchanged, including their End tags.
-
-#### Global Variable Table
-
-After all transformed AST output, the following header line is written:
-
-```
-Global Table
+```scheme
+(Variable (line col) "name" (tag index))
 ```
 
-Then, for each global variable in the order it was first assigned a sequence number, one tab-separated line is written:
+- `"name"`: the variable name enclosed in double quotes.
+- `tag`: `L` if the variable is locally bound, `G` if it is globally bound.
+- `index`: a non-negative integer separated from the tag by a space. For local variables, this is the de Bruijn index. For global variables, this is the global sequence number.
 
-```
-<id> TAB <name> TAB <value_type>
+#### Module Output
+
+The entire output is a single `Module` S-expression:
+
+```scheme
+(Module (F "file1.se" "file2.se" ...)
+  (G id "name"
+    (Function ...))
+  (G id "name" Undefined)
+  ...)
 ```
 
-- `<id>`: the global sequence number of the variable (0-based integer).
-- `<name>`: the variable name.
-- `<value_type>`: the node type of the value node of the `Definition` that defines this variable (e.g., `Function`). If the variable appears in the AST but is not defined by any `Definition` node, this field is `Undefined`.
+- `(F ...)`: lists the source filenames of all processed `Program` nodes in order.
+- Each `(G id "name" ...)` entry represents one global variable:
+  - `id`: the global sequence number (0-based integer).
+  - `"name"`: the variable name enclosed in double quotes.
+  - If the variable is defined by a `Definition`, the `Function` AST is inlined as the third element.
+  - If the variable is not defined by any `Definition`, the third element is `Undefined`.
+
+Entries appear in the order variables were first assigned a sequence number. `Program` nodes themselves are not written to the output.
 
 ---
 
@@ -80,19 +79,21 @@ Processing proceeds in two passes over all `Program` trees, followed by output.
 
 #### AST Reconstruction
 
-Before the two passes, the input stream is parsed into a forest of `ASTNode` trees. The reconstruction algorithm is as follows:
+Before the two passes, the input stream is parsed into a forest of `ASTNode` trees using a recursive S-expression parser.
 
-- A node stack is maintained, initially empty.
-- Each node line creates an `ASTNode` with the given type, line, col, and value.
-  - If the stack is empty, the new node is added to the root list.
-  - Otherwise, the new node is appended to the children of the node at the top of the stack.
-  - If the node type is not a terminal type, the new node is pushed onto the stack.
-- Each End tag line pops one node from the stack (if the stack is non-empty). The End tag's type and coordinates are not validated against the popped node.
-- Empty lines and lines that do not match the node pattern are ignored.
+The tokenizer splits the input text into four token kinds: `(`, `)`, quoted strings (`"..."`), and atoms (any other non-whitespace sequence). For each top-level `(` in the token stream, one S-expression is parsed recursively:
 
-The terminal node types — those that are never pushed onto the stack and therefore never have children — are:
+1. The first atom after `(` is the node type.
+2. The next `(...)` group is the coordinate tuple, containing `line`, `col`, and optionally a quoted filename (for `Program` nodes).
+3. The remaining elements before the matching `)` are either child S-expressions or atom/string values, depending on the node type.
 
-`Variable`, `String`, `Null`, `SInfo`, `FileName`
+Node-type-specific parsing rules:
+- `Variable`: one quoted atom follows the coordinates (the variable name in double quotes).
+- `String`: one quoted string follows the coordinates.
+- `SInfo`: one or more quoted strings follow the coordinates; they are joined with spaces as the node value.
+- `Null`: no further elements.
+- `Program`: an optional quoted filename in the coordinate tuple; remaining elements are child S-expressions.
+- All other node types: remaining elements are child S-expressions.
 
 #### Pass 1: Definition Collection
 
@@ -157,61 +158,40 @@ When a `Head` contains multiple parameters (non-standard usage), parameters are 
 
 #### Input (from `parser --file sample.se`)
 
-```
-Program@1:1
-  FileName@0:0: "sample.se"
-  Definition@1:2
-    Variable@1:9: main
-    Function@1:14
-      Head@1:15
-        Variable@1:16: args
-      End@1:15: Head
-      Body@2:3
-        SInfo@2:3: "sample.se" "2" "3"
-        Operator@2:3
-          Variable@2:3: __print__
-        End@2:3: Operator
-        OList@2:13
-          String@2:13: "Hello"
-        End@2:13: OList
-        LCont@2:20
-          Null@2:20
-        End@2:20: LCont
-      End@2:3: Body
-    End@1:14: Function
-  End@1:2: Definition
-End@1:1: Program
+```scheme
+(Program (1 1 "sample.se")
+  (Definition (1 2)
+    (Variable (1 9) "main")
+    (Function (1 14)
+      (Head (1 15)
+        (Variable (1 16) "args"))
+      (Body (2 3)
+        (SInfo (2 3) "sample.se" "2" "3")
+        (Operator (2 3)
+          (Variable (2 3) "__print__"))
+        (OList (2 13)
+          (String (2 13) "Hello"))
+        (LCont (2 20)
+          (Null (2 20)))))))
 ```
 
 #### Output
 
-```
-Program@1:1
-  FileName@0:0: "sample.se"
-  Definition@1:2
-    Variable@1:9: main (G0)
-    Function@1:14
-      Head@1:15
-        Variable@1:16: args (L0)
-      End@1:15: Head
-      Body@2:3
-        SInfo@2:3: "sample.se" "2" "3"
-        Operator@2:3
-          Variable@2:3: __print__ (G1)
-        End@2:3: Operator
-        OList@2:13
-          String@2:13: "Hello"
-        End@2:13: OList
-        LCont@2:20
-          Null@2:20
-        End@2:20: LCont
-      End@2:3: Body
-    End@1:14: Function
-  End@1:2: Definition
-End@1:1: Program
-Global Table
-0	main	Function
-1	__print__	Undefined
+```scheme
+(Module (F "sample.se")
+  (G 0 "main"
+    (Function (1 14)
+      (Head (1 15)
+        (Variable (1 16) "args" (L 0)))
+      (Body (2 3)
+        (SInfo (2 3) "sample.se" "2" "3")
+        (Operator (2 3)
+          (Variable (2 3) "__print__" (G 1)))
+        (OList (2 13)
+          (String (2 13) "Hello"))
+        (LCont (2 20)
+          (Null (2 20))))))
+  (G 1 "__print__" Undefined))
 ```
 
 ---

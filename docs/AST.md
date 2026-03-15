@@ -2,7 +2,7 @@
 
 ### 1. General Principles
 
-* **Location information is always attached**: every node name is followed by `@line:col`, where `line` and `col` are the 1-based line and column numbers of the first character of the token that introduced the node.
+* **Location information is always attached**: every node carries a coordinate tuple `(line col)` as its first child element, where `line` and `col` are the 1-based line and column numbers of the first character of the token that introduced the node.
 * **Automatic SInfo insertion**: when the `--file <filename>` option is given, the parser inserts a `SInfo` node into every `Body` that does not already contain an explicit `(__SInfo__ ...)` construct.
 * **Node Boundaries**: Non-terminal nodes are explicitly closed with a matching `End` tag to clearly define the tree structure.
 
@@ -10,27 +10,36 @@
 
 ### 2. Node Format
 
+All nodes are written as S-expressions. Child nodes are indented by 2 spaces. Consecutive closing parentheses on separate lines are merged onto the preceding line.
+
 #### Terminal Nodes
 
-```
-NodeType@line:col [: value]
+| Node | Format |
+|---|---|
+| `Variable` | `(Variable (line col) "name")` |
+| `String` | `(String (line col) "value")` |
+| `SInfo` | `(SInfo (line col) "file" "line" "col")` |
+| `Null` | `(Null (line col))` |
 
+#### Program Node
+
+The filename, when present, is embedded as a third element in the coordinate tuple:
+
+```scheme
+(Program (line col "filename")
+  children...)
 ```
 
-* Present for: `Variable`, `String`, `SInfo`, `FileName`, and `Null`.
-* `: value`: For `SInfo`, the value is a space-separated sequence of string literals. For `Variable`, `String`, and `FileName`, the value is the exact text enclosed in double quotes.
+If no filename is available, the coordinate tuple contains only two elements: `(line col)`.
 
 #### Non-terminal Nodes
 
-```
-NodeType@line:col
-  [Child Nodes...]
-End@line:col: NodeType
-
+```scheme
+(NodeType (line col)
+  children...)
 ```
 
-* Child nodes are indented by two spaces relative to their parent.
-* The `End` tag repeats the line:col and NodeType of the starting node.
+Non-terminal nodes always emit a closing `)`, even when they have no children.
 
 ---
 
@@ -58,8 +67,8 @@ End@line:col: NodeType
 ### 4. Structural Rules
 
 1. **FileName Node**:
-* If `--file <filename>` is specified, a `FileName@0:0: "<filename>"` node is inserted as the first child of `Program`. Any `FILE` token in the input is ignored.
-* If `--file` is absent but a `FILE` token exists, a `FileName` node is created using that token's value and position (`@line:col` of the `FILE` token).
+* If `--file <filename>` is specified, the filename is embedded in the `Program` coordinate tuple as `(line col "filename")`. Any `FILE` token in the input is ignored.
+* If `--file` is absent but a `FILE` token exists, the filename from the `FILE` token is embedded in the `Program` coordinate tuple.
 
 
 2. **LCont**: `Body` always contains an `LCont` node as its last child. If `LCont` is absent in the source, a `Null` node is emitted inside `LCont`.
@@ -69,7 +78,7 @@ End@line:col: NodeType
 
 ### 5. Multi-File Output
 
-When multiple source files are processed, each produces one `Program` node. They are written to standard output sequentially. A consumer must treat each line matching `Program@...` as the start of a new AST tree.
+When multiple source files are processed, each produces one `Program` node. They are written to standard output sequentially. A consumer must treat each top-level `(Program ...` as the start of a new AST tree.
 
 ---
 
@@ -86,32 +95,21 @@ When multiple source files are processed, each produces one `Program` node. They
 
 #### Output: `parser --file test.se`
 
-```text
-Program@1:1
-  FileName@0:0: "test.se"
-  Includer@1:1
-    String@1:10: "util.se"
-  End@1:1: Includer
-  Definition@2:2
-    Variable@2:9: main
-    Function@2:14
-      Head@2:15
-        Variable@2:16: args
-      End@2:15: Head
-      Body@3:3
-        SInfo@3:3: "test.se" "3" "3"
-        Operator@3:3
-          Variable@3:3: __print__
-        End@3:3: Operator
-        OList@3:13
-          String@3:13: "Hello"
-        End@3:13: OList
-        LCont@3:20
-          Null@3:20
-        End@3:20: LCont
-      End@3:3: Body
-    End@2:14: Function
-  End@2:2: Definition
-End@1:1: Program
-
+```scheme
+(Program (1 1 "test.se")
+  (Includer (1 1)
+    (String (1 10) "util.se"))
+  (Definition (2 2)
+    (Variable (2 9) "main")
+    (Function (2 14)
+      (Head (2 15)
+        (Variable (2 16) "args"))
+      (Body (3 3)
+        (SInfo (3 3) "test.se" "3" "3")
+        (Operator (3 3)
+          (Variable (3 3) "__print__"))
+        (OList (3 13)
+          (String (3 13) "Hello"))
+        (LCont (3 20)
+          (Null (3 20)))))))
 ```
