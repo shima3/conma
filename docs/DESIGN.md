@@ -197,6 +197,8 @@ After Application
     2. OList: `((Closure (Head: (p2)) ...))` (the original partially applied Closure becomes the single operand).
     3. LCont: `∅` (empty).
 
+---
+
 ### CChain Exhaustion and Null Passing
 
 If the `__CChain_pop_CFrame__` primitive is invoked when the **Continuation Chain (CChain)** is empty, the following behavior is guaranteed:
