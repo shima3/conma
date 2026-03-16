@@ -4,7 +4,7 @@
 
 * **Location information is always attached**: every node carries a coordinate tuple `(line col)` as its first child element, where `line` and `col` are the 1-based line and column numbers of the first character of the token that introduced the node.
 * **Automatic SInfo insertion**: when the `--file <filename>` option is given, the parser inserts a `SInfo` node into every `Body` that does not already contain an explicit `(__SInfo__ ...)` construct.
-* **Node Boundaries**: Non-terminal nodes are explicitly closed with a matching `End` tag to clearly define the tree structure.
+* **Node Boundaries**: The tree structure is defined by nested S-expressions. Every opening parenthesis ( must have a corresponding closing parenthesis ) to clearly define the scope of each node.
 
 ---
 

@@ -8,14 +8,14 @@ A certain degree of readability is necessary for debugging, but syntactic sugar 
 This page describes a specification of the language.
 For the meaning of terms, see [TERMS.md].
 
-# EBNF Syntax Definition
+## EBNF Syntax Definition
 
 This document separates the **lexical definitions** (used for tokenization) and **syntactic definitions** (used for parsing).
 For the EBNF notation used, see [EBNF.md].
 
 ---
 
-## Lexical Definitions (Tokens)
+### Lexical Definitions (Tokens)
 
 ```ebnf
 Token        = Significant | Whitespace ;
@@ -48,21 +48,19 @@ BlockCommentText    = ? character sequence not containing #| or |# ? ;
 SExpCommentBegin = "#;" ;
 ```
 
-## Comment Removing
-
 Comments are removed after lexical analysis and before syntactic analysis.
 
-### LineComment (token sequence):
+* LineComment (token sequence):
   LineCommentBegin { any token except NEWLINE }
 
-### BlockComment (token sequence):
+* BlockComment (token sequence):
   BlockCommentBegin { BlockComment | any token except BlockCommentBegin or BlockCommentEnd } BlockCommentEnd
 
-### S-Expression Comment
+* S-Expression Comment
 An S-expression comment begins with "#;" and discards the following S-expression.
 The removed S-expression may be an atom or a list.
 
-## Syntactic Definitions (Grammar)
+### Syntactic Definitions (Grammar)
 
 ```ebnf
 Program    = { Statement } ;
@@ -84,25 +82,6 @@ FuncExp    = "(", Function, ")" ;
 SInfo      = "(", "__SInfo__", { String }, ")" ;
 ```
 
----
-
-# Operational Semantics
-
-SInfo (Source Info) is information for debugging purposes and does not affect basic operation. It is used to indicate the location in the source code when an error occurs or some debuggers are running the program.
-
-The Includer (include FileName) includes the Program from the file named FileName at loading time.
-ConMa source files are expected to have the `.se` extension.
-
-* `include "filename"`:
-    The interpreter recursively scans and loads the specified file.
-    If "filename" is provided without an extension, the interpreter searches for "filename.se".
-
-The Definition (define Variable Function) binds the identifier Variable to the closure of Function, thereby defining a new named function in the `VEnv`.
-
----
-
-# Syntax
-
 In `Body`, the first `Expression` is the **Operator**, and the second and subsequent `Expression`s form the **OList**.
 
 **LCont Rules:**
@@ -116,11 +95,42 @@ In the first version of the language:
 
 ---
 
-## Evaluation Strategy
+## Static Semantics
+
+SInfo (Source Info) is information for debugging purposes and does not affect basic operation. It is used to indicate the location in the source code when an error occurs or some debuggers are running the program.
+
+The Includer (include FileName) includes the Program from the file named FileName at loading time.
+ConMa source files are expected to have the `.se` extension.
+
+* `include "filename"`:
+    The interpreter recursively scans and loads the specified file.
+    If "filename" is provided without an extension, the interpreter searches for "filename.se".
+
+The Definition (define Variable Function) binds the identifier Variable to the closure of Function, thereby defining a new named function in the `VEnv`.
+
+Recursive definitions are permitted using `define`.
+Example:
+```
+(define f ,(x) x (f x))
+```
+
+Shadowing is permitted.
+Example:
+```
+,(x) (,(x) x)
+```
+is semantically equivalent to:
+```
+,(x) (,(x2) x2)
+```
+
+---
+
+## Evaluation Semantics
 
 The ConMa interpreter employs a strict **Call-by-Value** strategy for `Variable` and `String` types, and a **Call-by-Name (Thunk-based)** strategy for `FuncExp`.
 
-### 1. Argument Processing (Eager vs. Lazy)
+### Argument Processing (Eager vs. Lazy)
 
 Before a function application occurs, each `Operand` in the `OList` is processed into a **Value** based on its syntactic category:
 A Value can be a String, Closure, Ref, CFrame, CChain, VirtualProcess, Sequence, Sink, null, etc.
@@ -131,11 +141,11 @@ A Value can be a String, Closure, Ref, CFrame, CChain, VirtualProcess, Sequence,
 * **String**: Treated as a literal value and passed as-is.
 * **FuncExp**: Not executed. It is captured along with the current `VEnv` to create a **Closure** (Thunk). This closure is passed as the value, and its internal `Body` is only evaluated if/when explicitly invoked by the callee.
 
-### 2. Evaluation Order and Side Effects
+### Evaluation Order and Side Effects
 
 Because `Variable` and `FuncExp` are resolved into values (either raw data or closures) before the function body is entered, the execution of the function is **order-independent** regarding its arguments. No side effects occur during the argument resolution phase itself, as dereferencing or state mutation only happens via explicit internal primitives (e.g., `__Ref_get__`, `__Ref_set__`).
 
-### 3. Application Process
+### Application Process
 
 Once the `Operator` and processed `OList` are ready:
 
@@ -160,26 +170,7 @@ After these assignments, `B` is evaluated.
 
 ---
 
-# Scope
-
-Recursive definitions are permitted using `define`.
-Example:
-```
-(define f ,(x) x (f x))
-```
-
-Shadowing is permitted.
-Example:
-```
-,(x) (,(x) x)
-```
-is semantically equivalent to:
-```
-,(x) (,(x2) x2)
-```
----
-
-# Execution Model and CPS Semantics
+## Runtime Model
 
 A process managed by the operating system is called an **OS Process**.
 A process managed by the interpreter is called a **Virtual Process (VProc)**.
@@ -229,7 +220,7 @@ In debug mode:
 
 ---
 
-## Sinks and Sequences
+## Data Model
 
 An **output sink** and an **error sink** are of type `Sink`.
 A `Sink` is a function that accepts an argument and returns a `Sink`.
@@ -716,7 +707,7 @@ Example:
   flag __false__ __true__)
 ```
 
-# Error Handling
+# Execution Rules
 
 * If an unbound variable is encountered, an error is displayed and execution terminates.
 * If too few arguments are supplied, partial application occurs and this is not treated as an error.
@@ -725,7 +716,15 @@ Example:
 Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 (,(f) f a2) is the local continuation.
 
-* If the Operator is null, it pops a CFrame from the CChain, sets the Closure of the CFrame to the Operator.
+* If the Operator is null, the following procedure is performed.
+    1. If the LCont is absent:
+        * If the CChain is empty, the VProc terminates with an error.
+        * Otherwise:
+            1. Pop a CFrame from the CChain.
+            2. Set the Closure contained in the popped CFrame as the Operator of the VProc.
+    2. If the LCont is present:
+        1. Set the **LCont** as the **Operator** of the VProc.
+        2. Set the **LCont** of the VProc to **absent**.
 * If the Operator is a Variable, it replaces with the Value assigned it in `VEnv`.
 * If the Operator is a FuncExp, it replaces with the closure of the FuncExp.
 * If the Operator is a closure, it applies the closure to the OList.

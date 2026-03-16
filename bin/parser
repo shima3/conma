@@ -239,8 +239,8 @@ class Parser:
                 null_col  = self.peek()[1]
             else:
                 null_line, null_col = olist_line, olist_col
-            null_node  = ('Null',  null_line, null_col, None)
-            lcont_node = ('LCont', null_line, null_col, [null_node])
+            # Absent LCont: emit (LCont (line col)) with no Null child
+            lcont_node = ('LCont', null_line, null_col, [])
 
         # --- assemble children ---------------------------------------------
         children = []

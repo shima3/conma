@@ -147,7 +147,11 @@ Keys and values are written recursively using the appropriate debug S-expression
 - `__SInfo__`: the current source location of the VProc.
 - `__Operator__`: the current Operator (a Closure or primitive).
 - `__OList__`: the current operand list; each Operand is written in its debug S-expression format.
-- `__LCont__`: the current Local Continuation. When LCont is empty, written as `(__LCont__)`.
+- `__LCont__`: the current Local Continuation. When LCont is absent, written as `(__LCont__)`.
+    * **Parsing (input):**
+    `(__LCont__)` and `(__LCont__ (Null ...))` are both interpreted as LCont absent. The `(Null ...)` form is accepted for compatibility.
+    * **Serialization (output):**
+    When LCont is absent, it must be written as `(__LCont__)`. The `(__LCont__ (Null ...))` form must not be produced by any conforming implementation.
 - `__LVEnv__`: the current Local Variable Environment.
 - `__GVEnv__`: the Global Variable Environment, represented as the ordered list of source filenames of loaded modules.
 - `__CChain__`: the current Continuation Chain in flat list form.
@@ -167,15 +171,15 @@ When a **VProc** executes an **Operator Application** where the **Operator** is 
 
 #### **Execution When the Head Is Empty**
 
-If the **Head of the Operator Closure is empty**, the **VProc** updates its state as follows without performing any operand binding. Steps 1 and 2 must be completed before Step 3, because they depend on the VProc's current LVEnv, which is replaced in Step 3.
+If the Head of the Operator Closure is empty, the **VProc** updates its state as follows without performing any operand binding. Steps 1 and 2 must be completed before Step 3, because they depend on the VProc's current LVEnv, which is replaced in Step 3.
 
 **1. LCont Handling**
 
-If the **LCont** of the **VProc** is not empty, it is pushed onto the **CChain** as a new **CFrame**. If it is empty, no push occurs.
+If the LCont of the VProc is not absent, it is pushed onto the **CChain** as a new **CFrame**. If it is absent, no push occurs.
 
 **2. OList Handling**
 
-If the **OList** is not empty, the operands `a_1, a_2, ...` are **surplus operands** — they cannot be bound to any parameter because the Head is empty. To defer their application, a **Seq Closure** is constructed and pushed directly onto the **CChain**.
+If the OList is not empty, the operands `a_1, a_2, ...` are **surplus operands** — they cannot be bound to any parameter because the Head is empty. To defer their application, a **Seq Closure** is constructed and pushed directly onto the **CChain**.
 
 The Seq is represented by the following S-expression:
 ```
@@ -189,7 +193,7 @@ This S-expression itself does not contain an LVEnv and therefore is not a Closur
 - When **`__Sink__`** is later passed to this Closure, its **LVEnv** is restored into the VProc, ensuring that `a_1, a_2, ...` are evaluated in the same environment as when the Seq was created.
 - If the VProc has a non-empty **SInfo**, it is inserted into the `(__SInfo__ ...)` component; otherwise, this component is omitted.
 
-If the **OList** is empty, nothing is pushed.
+If the OList is empty, nothing is pushed.
 
 **3. State Update (Body and LVEnv)**
 
@@ -200,7 +204,7 @@ If the **OList** is empty, nothing is pushed.
 
 #### **Partial Application When the Head Is Not Empty**
 
-If the **Head of the Operator Closure is not empty**, two sub-cases apply depending on whether the **OList** is empty.
+If the Head of the Operator Closure is not empty, two sub-cases apply depending on whether the **OList** is empty.
 
 **When the OList is not empty**, the VProc creates a new Closure derived from the Operator Closure by binding operands from the OList to parameters in the Head of the Operator Closure in order until either the OList or the Head is exhausted. The Head of the new Closure consists of the parameters that have not yet been bound. Each operand is processed as follows:
 
@@ -216,8 +220,13 @@ If the OList contains no more operands than the Head has parameters, the VProc's
 **When the OList is empty**, the application cannot proceed yet; the result is a partial application. The VProc updates its state as follows:
 
 1. The current **Operator** (the not-yet-fully-applied Closure) is appended to the **OList** as an additional operand.
-2. The current **LCont** is set as the VProc's new **Operator**.
-3. The **LCont** is cleared (set to empty).
+2. The Operator of a VProc is determined as follows.
+    * If the LCont of the VProc is absent, the VProc:
+        1. pops a CFrame from the CChain, and
+        2. sets the Closure contained in the popped CFrame as the Operator.
+    * Otherwise, the VProc:
+        1. sets the LCont as the Operator, and
+        2. sets the LCont of the VProc to absent.
 
 This effectively passes the partially applied Closure to the LCont as its argument, allowing the LCont to provide the missing operand(s) when invoked.
 
@@ -235,7 +244,7 @@ This example shows the state transition of the VProc when a saturated Closure (w
 
 Before Application
 
-    * Operator: `(Closure (Head: ∅) (Body: <Expr>) (LVEnv: Env_A))`
+    * Operator: `(Closure (Head) (Body <Expr>) (LVEnv Env_A))`
     * OList: `(a1 a2 a3)`
     * LCont: `(LCont_X)`
     * SInfo: `("1" "5")` (strings used as internal data)
@@ -261,16 +270,18 @@ This example shows the creation of a derived Closure when the provided operands 
 
 Before Application
 
-    * Operator: `(Closure (Head: (p1 p2)) (Body: <Expr>) (LVEnv: Env_A))`
-    * OList: `(a1)`
-    * LCont: `(LCont_X)`
+    * Operator: `(__Operator__ (Closure (Head p1 p2) (Body <Expr>) (LVEnv Env_A...)))`
+    * OList: `(__OList__ a1)`
+    * LCont: `(__LCont__ LCont_X)`
 
 After Application
 
-    1. Operator: A new derived Closure is created and set as the Operator.
-         * Closure: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_A + {p1: a1}))`
-    2. OList: `()` (empty, because `a1` has been consumed by parameter binding).
-    3. LCont: `(LCont_X)` (unchanged).
+    * Operator: `(__Operator__ (Closure (Head p2) (Body <Expr>) (LVEnv ("p1" a1) Env_A...)))`
+        * A new derived Closure is created and set as the Operator.
+    * OList: `(__OList__)`
+        * empty, because `a1` has been consumed by parameter binding.
+    * LCont: `(__LCont__ LCont_X)`
+        * unchanged.
 
 **3. Partial Application (OList is empty)**
 
@@ -278,15 +289,18 @@ This example shows how a partially applied Closure is passed to the current cont
 
 Before Application
 
-    * Operator: `(Closure (Head: (p2)) (Body: <Expr>) (LVEnv: Env_B))`
-    * OList: `()`
-    * LCont: `(LCont_Y)`
+    * Operator: `(__Operator__ (Closure (Head p2) (Body <Expr>) (LVEnv Env_B...)))`
+    * OList: `(__OList__)`
+    * LCont: `(__LCont__ LCont_Y)`
 
 After Application
 
-    1. Operator: `LCont_Y` (the current continuation becomes the next Operator).
-    2. OList: `((Closure (Head: (p2)) ...))` (the original partially applied Closure becomes the single operand).
-    3. LCont: `∅` (empty).
+    * Operator: `(__Operator__ LCont_Y)`
+        * the current continuation becomes the next Operator.
+    * OList: `(__OList__ (Closure (Head p2) ...))`
+        * the original partially applied Closure becomes the single operand.
+    * LCont: `(__LCont__)`
+        * absent.
 
 ---
 
@@ -298,4 +312,4 @@ If the `__CChain_pop_CFrame__` primitive is invoked when the **Continuation Chai
 2. **Execution Resumption**: The `LCont` is then executed with this `null` value, allowing the program to handle the end of the chain or an empty state through standard null-check logic (e.g., using `__is_null__`).
 
 **Operational Note:**
-This design ensures that a VP (Virtual Process) does not abruptly terminate or enter an undefined state when the chain is exhausted. Instead, it provides a predictable signal (`null`) to the functional layer, maintaining the language's emphasis on explicit control flow.
+This design ensures that a VProc (Virtual Process) does not abruptly terminate or enter an undefined state when the chain is exhausted. Instead, it provides a predictable signal (`null`) to the functional layer, maintaining the language's emphasis on explicit control flow.
