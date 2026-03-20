@@ -13,8 +13,6 @@ For the meaning of terms, see [TERMS.md].
 This document separates the **lexical definitions** (used for tokenization) and **syntactic definitions** (used for parsing).
 For the EBNF notation used, see [EBNF.md].
 
----
-
 ### Lexical Definitions (Tokens)
 
 ```ebnf
@@ -72,7 +70,7 @@ Function   = Hat, Head, Body ;
 Hat        = "," ;
 Head       = "(", { Parameter }, ")" ;
 Parameter  = Variable ;
-Body       = [ SInfo ], Operator, OList, [ LCont ] ;
+Body       = [ SInfo ], [ Operator, OList ], [ LCont ] ;
 Operator   = Variable | FuncExp ;
 OList      = { Operand } ;
 LCont      = Function ;
@@ -93,7 +91,27 @@ In the first version of the language:
 * Top-level expression evaluation is not allowed. Only `Statement`s are permitted at the top level.
 * Numeric literals are not supported.
 
----
+**Omission Rules and Interpretation of `Body`**
+
+Within a `Body`, the `Operator` and `OList` components **may be omitted only together**.
+
+* **Semantics of Omission**:
+  If both `Operator` and `OList` are omitted, the interpreter **treats the `Operator` as `Null`** (i.e., no operation) and **the `OList` as an empty list**.
+
+* **Syntactic Constraint (Disambiguation)**:
+  It is **not permitted to omit the `Operator` while specifying the `OList` alone**.
+
+  *Reason*:
+  If this were allowed, the first element of the `OList` could not be unambiguously distinguished from the `Operator` during parsing.
+
+* **Valid Forms**:
+
+  1. `[ SInfo ] Operator OList LCont`
+     (fully specified form)
+
+  2. `[ SInfo ] LCont`
+     (`Operator` and `OList` are both omitted; `Operator` is interpreted as `Null` and `OList` as empty)
+
 
 ## Static Semantics
 
@@ -214,8 +232,8 @@ In normal mode:
 * Therefore, tail recursion does not consume CChain space.
 
 In debug mode:
-* Even if there is no LCont, a CFrame consisting of `SInfo` and a closure of __noop__ is pushed.
-* __noop__ performs no operation.
+* Even if there is no LCont, a CFrame consisting of `SInfo` and a closure of __nop__ is pushed.
+* __nop__ performs no operation.
 * This CFrame exists solely to preserve `SInfo` for stack trace generation.
 
 ---
@@ -468,18 +486,6 @@ In short, two pops are required because the call to `__CChain_pop_LCont__` itsel
 
 ---
 
-### `Noop`
-Behavior:
-Do nothing.
-Invokes the current LCont with no argument
-It is defined as follow:
-```
-(define __noop__ ,()
-  __CChain_pop_LCont__ ,(lc)
-  lc)
-```
----
-
 ### `__is_null__ Value`
 Behavior:
 Passes `(,(t f) t)` to the LCont if the `Value` is null, otherwise passes `(,(t f) f)`.
@@ -492,6 +498,16 @@ A variable defined as null.
 ---
 
 # Standard Definition
+
+### `No operation`
+Behavior:
+Do nothing.
+Invokes the current LCont with no argument
+It is defined as follow:
+```
+(define __nop__ ,())
+```
+---
 
 ### `Continuation`
 ```
@@ -689,10 +705,10 @@ Example:
   clause)
 
 (define __if__ ,(flag then)
-  __if_then_else__ flag then __noop__)
+  __if_then_else__ flag then __nop__)
 
 (define __unless__ ,(flag else)
-  __if_then_else__ flag __noop__ else)
+  __if_then_else__ flag __nop__ else)
 
 (define __fix__ ,(x)
   x (,() __fix__ x))

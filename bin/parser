@@ -171,21 +171,38 @@ class Parser:
         return ('Head', lparen[0], lparen[1], params)
 
     def parse_body(self):
-        # Body = [SInfo], Operator, OList, [LCont]
+        # Body = [SInfo], [Operator, OList], [LCont]
+        #
+        # Operator and OList may only be omitted together.
+        # When omitted, Operator is represented as (Operator pos (Null pos))
+        # and OList as (OList pos).
         #
         # Position of the Body node:
         #   - If SInfo is present in source: position of its '('
-        #   - Otherwise: position of the Operator token
+        #   - Otherwise: position of the next token (Operator or LCont or end)
 
         # --- SInfo (explicit) ------------------------------------------
         explicit_si = None
         if self._is_sourceinfo():
             explicit_si = self.parse_sourceinfo()
 
+        # --- Detect whether Operator+OList are present -----------------
+        # Operator+OList are absent when the next token is COMMA (LCont),
+        # RPAREN, or EOF.
+        has_operator = self._is_expression_start()
+
         # --- Operator -------------------------------------------------------
-        op_inner = self.parse_operator_inner()   # Variable or FuncExp node
-        op_line, op_col = op_inner[1], op_inner[2]
-        op_node = ('Operator', op_line, op_col, [op_inner])
+        if has_operator:
+            op_inner = self.parse_operator_inner()   # Variable or FuncExp node
+            op_line, op_col = op_inner[1], op_inner[2]
+            op_node = ('Operator', op_line, op_col, [op_inner])
+        else:
+            # Absent: use position of next token (or SInfo position)
+            tok = self.peek()
+            op_line = tok[0] if tok else 1
+            op_col  = tok[1] if tok else 1
+            null_inner = ('Null', op_line, op_col, None)
+            op_node = ('Operator', op_line, op_col, [null_inner])
 
         # --- Body position --------------------------------------------------
         if explicit_si is not None:
@@ -201,18 +218,17 @@ class Parser:
             auto_si = None
 
         # --- OList ----------------------------------------------------------
-        # Consume Expressions until COMMA (LCont start), RPAREN, or EOF.
         olist_items = []
-        last_tok = None  # last consumed token, for Null LCont position
+        last_tok = None
 
-        first_expr_tok = self.peek()
-        while self._is_expression_start():
-            tok_before = self.peek()
-            expr = self.parse_expression()
-            last_tok = self.tokens[self.pos - 1]   # last token consumed
-            olist_items.append(expr)
+        if has_operator:
+            # Consume Expressions until COMMA (LCont start), RPAREN, or EOF.
+            while self._is_expression_start():
+                expr = self.parse_expression()
+                last_tok = self.tokens[self.pos - 1]
+                olist_items.append(expr)
 
-        # OList position: first element's position, or next token if empty.
+        # OList position
         if olist_items:
             olist_line = olist_items[0][1]
             olist_col  = olist_items[0][2]
@@ -229,8 +245,6 @@ class Parser:
             func = self.parse_function()
             lcont_node = ('LCont', func[1], func[2], [func])
         else:
-            # Null LCont: position = column after last OList token,
-            # or next token position if OList is empty.
             if last_tok is not None:
                 null_line = last_tok[0]
                 null_col  = self._end_col_of(last_tok)
@@ -239,7 +253,6 @@ class Parser:
                 null_col  = self.peek()[1]
             else:
                 null_line, null_col = olist_line, olist_col
-            # Absent LCont: emit (LCont (line col)) with no Null child
             lcont_node = ('LCont', null_line, null_col, [])
 
         # --- assemble children ---------------------------------------------
