@@ -497,6 +497,39 @@ A variable defined as null.
 
 ---
 
+### **`__MSeq_is_empty__ onError mseq ,(Boolean)`**
+
+* **Description**: Takes an **mseq** and returns whether it is empty.
+* **Returns**: `__TRUE__` if the mseq is an empty MSeq; `__FALSE__` if the mseq is a MSeq and it contains one or more elements.
+* **On Error**: `onError` is called if the mseq is not a MSeq.
+
+### **`__MSeq_uncons__ onError mseq ,(head tail)`**
+
+* **Description**: Decomposes the **mseq** into its first element and the remaining sequence.
+* **Returns**: If the mseq is a MSeq and not empty, returns two values: the **head** element and the **tail** (the remaining MSeq).
+* **On Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+
+### **`__MSeq_set_head__ onError mseq value ,()`**
+
+* **Description**: Performs a conditional destructive update on the first position of the **mseq**. The head position is defined as index 0; if it does not exist, it is created.
+* **Behavior**: If the mseq is a MSeq and not empty, replaces the current **head** element with the provided `value` via an in-place update.
+* **On Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Returns**: Nothing (performs a side effect on the MSeq).
+
+### **`__MSeq_append__ onError mseq value ,()`**
+
+* **Description**: Appends a `value` to the end of the **mseq**, increasing the total element count.
+* **Behavior**: If the mseq is a MSeq, appends `value` to the end of `mseq`.
+* **On Error**: If the mseq is not a MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Returns**: Nothing (performs a side effect on the MSeq).
+
+### **`__MSeq_new__ ,(MSeq)`**
+
+* **Description**: Allocates and initializes a new, **empty MSeq** object.
+* **Returns**: The newly created MSeq instance.
+
+---
+
 # Standard Definition
 
 ### `No operation`
@@ -623,7 +656,8 @@ Example:
   __Ref_set__ inProcRef __NULL__ ,()
   __VProc_resume__ outProc ,()
   __Ref_wait_for_null__ outProcRef ,()
-  Sink value)
+  Sink value ^(sink)
+  __Pipe_in__ Pipe sink)
 
 (define __Pipe_out__ ,(Pipe Value)
   __VProc_current__ ,(outProc)

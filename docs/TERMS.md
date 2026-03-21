@@ -64,6 +64,29 @@ Each time a function is called, a new CFrame is pushed onto the CChain; when the
 null:
 A unique value representing the absence of a value.
 
+**Mutable Sequence (MSeq)**:
+A MSeq is a finite, ordered collection of zero or more elements that supports in-place modification and dynamic growth. It is defined by the following formal characteristics:
+
+1. **Finiteness and Emptiness Predicate**:
+The sequence contains a discrete, countable number of elements ($n \ge 0$). It must provide a predicate (e.g., `is_empty`) to determine if $n=0$. An MSeq with $n=0$ is an **empty sequence**.
+
+2. **Head Access**:
+The sequence provides an operation to retrieve the first element (the **head**). If the sequence is not empty, it returns the head element. Otherwise, the behavior is undefined or results in an error.
+
+3. **Tail Access**:
+The sequence provides an operation to retrieve all elements following the head as a new MSeq (the **tail**). If the sequence is not empty, it returns the tail. Otherwise, the behavior is undefined or results in an error.
+
+4. **Conditional Head Mutability (set-head)**:
+The sequence supports a "set-head" operation with the following semantics:
+* **Update**: If the sequence is not empty, the current head is replaced with a new value via a destructive update. Otherwise, the behavior is undefined or results in an error.
+
+5. **Growth (Appendability)**:
+The sequence supports the addition of new elements to its end (the **append** operation). This operation increases the total count of elements ($n$) in the MSeq.
+
+6. **Implementation Agnosticism**:
+This term defines a behavioral contract and functional interface. It does not mandate a specific memory layout and can be implemented using structures such as dynamic arrays, circular buffers, or linked lists.
+---
+
 # Appendix
 
 A partial continuation is a **runtime-captured, prompt-delimited, reusable slice** of the continuation chain, obtained by an explicit control operation.
