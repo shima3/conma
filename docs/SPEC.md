@@ -574,12 +574,12 @@ Example:
   Sink First ,(sink)
   Rest sink)
 
-(define __Seq_get__ ,(ifEmpty Seq)
+(define __Seq_get__ ,(onEmpty Seq)
   __Cont_get__ ,(return)
   Seq (,(first)
     __CChain_pop_LCont__ ,(rest)
     return first rest) ,(dummy)
-  ifEmpty)
+  onEmpty)
 
 (define __Seq_get_all__ ,(Seq)
   __CChain_pop_LCont__ ,(lc)
@@ -590,11 +590,11 @@ Example:
 
 ### `Stream`
 ```
-(define __Seq_stream__ ,(ifEmpty Seq)
+(define __Seq_stream__ ,(onEmpty Seq)
   __Ref_new__ Seq ,(ref)
   (,(sink)
     __Ref_get__ ref ,(seq)
-    __Seq_get__ ifEmpty seq ,(first rest)
+    __Seq_get__ onEmpty seq ,(first rest)
     __Ref_set__ ref rest ,()
     sink first ,(sink2)
     __Ref_get__ ref ,(rest2)
@@ -656,7 +656,7 @@ Example:
   __Ref_set__ inProcRef __NULL__ ,()
   __VProc_resume__ outProc ,()
   __Ref_wait_for_null__ outProcRef ,()
-  Sink value ^(sink)
+  Sink value ,(sink)
   __Pipe_in__ Pipe sink)
 
 (define __Pipe_out__ ,(Pipe Value)
@@ -667,7 +667,8 @@ Example:
   __Ref_wait_for_non_null__ inProcRef ,(inProc)
   __VProc_resume__ inProc ,()
   __Ref_wait_for_null__ inProcRef ,()
-  __Ref_set__ outProcRef __NULL__)
+  __Ref_set__ outProcRef __NULL__ ,()
+  __Pipe_out__ Pipe)
 
 (define __Pipe_new_in_out__ ,()
   __Cont_get__ ,(return)
