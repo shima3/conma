@@ -1,0 +1,19 @@
+(include "pure.se")
+
+(define case1 ,()
+  __TRUE__ ,(p)
+  __FALSE__ ,(q)
+  __and__ p q ,()
+  )
+
+(define case2 ,()
+  __nop__ ,()
+  __FALSE__ ,(p)
+  __if__ p "hoge1" ,()
+  __unless__ p "hoge2" ,()
+  )
+
+(define test ,()
+  case1 ,()
+  case2 ,()
+  )

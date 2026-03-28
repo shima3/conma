@@ -1,0 +1,18 @@
+(__VProc__
+  (__SInfo__ "pure.se" "0" "0")
+  (__Operator__
+    (__Closure__
+      (Head (14 10))
+      (Body (15 3)
+        (SInfo (15 3) "conma/test/module2/test.se" "15" "3")
+        (Operator (15 3)
+          (Variable (15 3) "case2" (G 4)))
+        (OList (15 9))
+        (LCont (15 9))
+      (__LVEnv__))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "conma/test/module2/test.se" "conma/include/pure.se")
+  (__CChain__)
+  (__PDict__))

@@ -1,5 +1,25 @@
 (include "pure.se")
 
+(define __PDict_lookup_or_error__ ,(key)
+  __PDict_lookup_or__ key (,(key)
+    __OS_print_error__ "not found key: " ,()
+    __OS_print_error__ key ,()
+    __OS_print_error__ "\n" ,()
+    __OS_exit_error__))
+
+(define __exit__ ,(String)
+  __PDict_lookup_or_error__ "__EXIT__" ,(exit)
+  exit String)
+
+(define stdin ,()
+  __PDict_lookup_or_error__ "__STD_IN__")
+
+(define stdout ,()
+  __PDict_lookup_or_error__ "__STD_OUT__")
+
+(define stderr ,()
+  __PDict_lookup_or_error__ "__STD_ERR__")
+
 (define __CChain_pop_LCont__ ,()
   __CChain_pop_CFrame__ ,(cf)
   __CChain_pop_CFrame__ ,(cf2)
@@ -9,4 +29,9 @@
 
 (define __noop__ ,()
   __CChain_pop_LCont__ ,(lc)
+  lc)
+
+(define __print__ ,(str)
+  __CChain_pop_LCont__ ,(lc)
+  stdout str "\n" ,(out)
   lc)

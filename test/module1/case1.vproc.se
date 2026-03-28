@@ -1,0 +1,23 @@
+(__VProc__
+  (__SInfo__ "test.se" "10" "5")
+  (__Operator__ 
+    (__Closure__
+      (Head (1 1))
+      (Body (1 5)
+        (SInfo (1 5) "test.se" "1" "5")
+        (Operator (1 5) (Variable (1 5) "__print__" (G 0)))
+        (OList (1 10) (String (1 10) "Done"))
+        (LCont (1 15) (Null (1 15))))
+      (__LVEnv__ ("x" (String (0 0) "100")))))
+  (__OList__ (String (0 0) "10") (String (0 0) "20"))
+  (__LCont__ 
+    (__Closure__ 
+      (Head (2 1) (Variable (2 1) "p")) 
+      (Body (2 5) 
+        (Operator (2 5) (Variable (2 5) "f" (G 1))) 
+        (LCont (2 10) (Null (2 10)))) 
+      (__LVEnv__)))
+  (__LVEnv__ ("outer" (String (0 0) "999")))
+  (__GVEnv__ "test.se")
+  (__CChain__)
+  (__PDict__))

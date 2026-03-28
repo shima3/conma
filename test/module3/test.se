@@ -1,0 +1,7 @@
+(define case1 ,()
+  __NULL__ "a" "b" ,(a b)
+  )
+
+(define test ,()
+  case1 ,()
+  )

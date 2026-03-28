@@ -1,0 +1,37 @@
+2026/3/28 Sat
+cd conma
+ln -s claude#/vproc_step8.py test/vproc_step.py
+
+cd conma/test/module3
+../resolver.sh test.se
+../vproc_step.sh case1.vproc.se
+
+2026/3/18 Wed
+bin/includer include/pure.se | bin/resolver > test/module2/test.module.se
+cd conma/test/module2
+../vproc_step.sh case2.vproc.se
+
+bin/includer --include include test/module2/test.se | sed -e 's/"\/Users\/.*\/conma/"conma/' > test/module2/test.ast.se
+bin/resolver < test/module2/test.ast.se
+
+cd conma/test/module2
+../resolver.sh test.se
+
+2026/3/17 Tue
+cd conma/test/case1
+../vproc_step.sh
+diff log.vproc.se /tmp/log.vproc.se
+
+case1
+Execution (Head が空で、余剰引数がある場合)
+
+case2
+Partial Application (Head があり、引数が足りる場合)
+
+case3
+Partial Application (OList が空で、継続に自分を渡す場合)
+
+case4
+Pure Functions
+cd conma
+bin/includer include/pure.se | bin/resolver > test/case4/pure.module.se

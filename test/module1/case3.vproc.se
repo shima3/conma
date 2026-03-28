@@ -1,0 +1,21 @@
+(__VProc__
+  (__SInfo__ "test.se" "8" "1")
+  (__Operator__ 
+    (__Closure__
+      (Head (8 10) (Variable (8 10) "p"))
+      (Body (8 15) 
+        (Operator (8 15) (Variable (8 15) "p" (L 0))) 
+        (LCont (8 20) (Null (8 20))))
+      (__LVEnv__ ("captured" (String (0 0) "value")))))
+  (__OList__)
+  (__LCont__ 
+    (__Closure__ 
+      (Head (9 1) (Variable (9 1) "x")) 
+      (Body (9 5) 
+        (Operator (9 5) (Variable (9 5) "__NULL__" (G 2))) 
+        (LCont (9 10) (Null (9 10)))) 
+      (__LVEnv__)))
+  (__LVEnv__)
+  (__GVEnv__ "test.se")
+  (__CChain__)
+  (__PDict__))
