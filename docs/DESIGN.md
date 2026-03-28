@@ -313,3 +313,63 @@ If the `__CChain_pop_CFrame__` primitive is invoked when the **Continuation Chai
 
 **Operational Note:**
 This design ensures that a VProc (Virtual Process) does not abruptly terminate or enter an undefined state when the chain is exhausted. Instead, it provides a predictable signal (`null`) to the functional layer, maintaining the language's emphasis on explicit control flow.
+
+---
+
+## **Primitives and State Transitions**
+
+### **1 Primitive Invocation**
+
+When a **primitive function** (e.g., `__NULL__`, `__CChain_get__`) is invoked, the interpreter **passes a reference to the entire VProc data structure** to the primitive.
+
+A primitive is **allowed to read and modify all fields of the VProc directly**, including but not limited to:
+
+```text
+Operator, OList, LCont, LVEnv, CChain, PDict
+```
+
+---
+
+### **2 Standard Return Protocol**
+
+When a primitive completes its execution and returns control, it **must update the VProc state according to the following protocol**:
+
+1. **Set the Operator**
+   The current **LCont** of the VProc is assigned to the **Operator**.
+
+2. **Store the Result**
+   The result(s) of the computation are stored in the **OList** of the VProc.
+
+   * The number of results may be:
+
+     * zero (empty list),
+     * one (the common case), or
+     * more than one, depending on the primitive.
+
+3. **Clear the LCont**
+   The **LCont** of the VProc is set to **absent**.
+
+---
+
+### **3 Handling of an Absent LCont**
+
+If the **LCont is absent**, one of the following rules must be chosen by the implementation.
+
+* **Simplicity Rule (recommended)**
+  The primitive **assigns the absent LCont to the Operator as-is**.
+
+  In this case, during the next **Operator Application**, the Operator is detected as absent, and the execution engine **automatically pops a Closure from the CChain and sets it as the Operator**.
+  This centralizes continuation handling in the common execution logic.
+
+* **Optimization Rule**
+  If the primitive detects that the **LCont is absent**, it **may immediately pop a Closure from the CChain and set it as the Operator**.
+
+---
+
+### **4 Exceptions**
+
+Certain primitives intended for **control flow manipulation** (e.g., `__CChain_pop_CFrame__`, exception handling primitives) **are not required to follow the standard return protocol**.
+
+Such primitives may perform **arbitrary updates to the VProc state**.
+
+---
