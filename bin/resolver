@@ -207,7 +207,7 @@ class Resolver:
             if node.value == "\"__NULL__\"":
                 return [f"{prefix}(Null ({l} {c}))"]
             tag = "L" if node.is_local else "G"
-            return [f"{prefix}(Variable2 ({l} {c}) {node.value} ({tag} {node.index}))"]
+            return [f"{prefix}(Variable ({l} {c}) {node.value} ({tag} {node.index}))"]
 
         if ntype == "String":
             return [f"{prefix}(String ({l} {c}) {node.value})"]
