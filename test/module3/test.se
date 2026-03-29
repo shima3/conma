@@ -1,7 +1,18 @@
 (define case1 ,()
   __NULL__ "a" "b" ,(a b)
+  __OS_print__ a ,()
+  __OS_print__ "\n" ,()
+  __OS_print__ b ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define case2 ,()
+  __NULL__ __NULL__ ,(a)
+  __is_null__ a ,(b)
+  __is_null__ b ,(c)
   )
 
 (define test ,()
   case1 ,()
+  case2 ,()
   )

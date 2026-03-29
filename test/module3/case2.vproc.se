@@ -1,12 +1,12 @@
 (__VProc__
-  (__SInfo__ "conma/test/module3/test.se" "6" "3")
+  (__SInfo__ "conma/test/module3/test.se" "13" "3")
   (__Operator__
     (__Closure__
-      (Head (5 15))
-      (Body (6 3)
-        (SInfo (6 3) "conma/test/module3/test.se" "6" "3")
-        (Operator (6 3)
-          (Variable (6 3) "case1" (G 0)))
+      (Head (12 10))
+      (Body (13 3)
+        (SInfo (13 3) "conma/test/module3/test.se" "13" "3")
+        (Operator (13 3)
+          (Variable (13 3) "case2" (G 2)))
         (OList (6 9))
         (LCont (6 9))
       (__LVEnv__))))

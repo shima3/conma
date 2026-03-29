@@ -1,1 +1,454 @@
-../claude#/vproc_step8.py
+#!/usr/bin/env python3
+"""vproc_step.py — Execute one Operator Application of a ConMa VProc."""
+
+import sys, re
+import types
+
+class VProcError(Exception): pass
+
+# ── S-expression ──────────────────────────────────────────────────────────────
+
+def tokenize(text):
+    return re.findall(r'"(?:[^"\\]|\\.)*"|\(|\)|[^\s()]+', text)
+
+def parse_tokens(tokens):
+    if not tokens: raise VProcError("EOF")
+    tok = tokens.pop(0)
+    if tok == '(':
+        lst = []
+        while tokens[0] != ')': lst.append(parse_tokens(tokens))
+        tokens.pop(0); return lst
+    if tok == ')': raise VProcError("unexpected )")
+    return tok
+
+def parse_sexp(text): return parse_tokens(tokenize(text))
+
+def sexp_to_str(x, indent=0):
+    if not isinstance(x, list): return str(x)
+    if not x: return "()"
+    inline = "(" + " ".join(sexp_to_str(i) for i in x) + ")"
+    if len(inline) <= 80: return inline
+    pad = "  " * (indent + 1)
+    inner = ("\n" + pad).join(sexp_to_str(i, indent + 1) for i in x)
+    return "(" + inner + ")"
+
+# ── Values ────────────────────────────────────────────────────────────────────
+
+class _Null:
+    def __repr__(self): return "null"
+NULL = _Null()
+
+def unquote(s):
+    if isinstance(s, str) and len(s) >= 2 and s[0] == s[-1] == '"': return s[1:-1]
+    return s
+
+def quoted(s):
+    if isinstance(s, str) and not (s.startswith('"') and s.endswith('"')): return f'"{s}"'
+    return s
+
+class Closure:
+    def __init__(self, params, body, lvenv):
+        self.params, self.body, self.lvenv = list(params), body, list(lvenv)
+    def __repr__(self): return f"Closure(params={self.params})"
+
+class SeqClosure:
+    def __init__(self, olist, sinfo, lvenv):
+        self.params, self.olist, self.sinfo, self.lvenv = ["__Sink__"], list(olist), sinfo, list(lvenv)
+    def __repr__(self): return f"SeqClosure({self.olist})"
+
+class CFrame:
+    def __init__(self, closure, sinfo): self.closure, self.sinfo = closure, sinfo
+
+def is_null_value(v):
+    return v is NULL or (isinstance(v, list) and v and v[0] == "Null")
+
+def is_prim_func(v):
+    return isinstance(v, list) and v[0] == "PrimFunc"
+
+# ── Module ────────────────────────────────────────────────────────────────────
+
+def closure_from_function(func_ast, lvenv):
+    head_node = body_node = None
+    for child in func_ast[2:]:
+        if isinstance(child, list):
+            if child[0] == "Head": head_node = child
+            elif child[0] == "Body": body_node = child
+    params = [unquote(c[2]) for c in (head_node[2:] if head_node else [])
+              if isinstance(c, list) and c[0] == "Variable"]
+    return Closure(params, body_node, lvenv)
+
+def load_module(module_sexp):
+    gvenv = {}
+    for item in module_sexp[2:]:
+        if not isinstance(item, list) or item[0] != "G": continue
+        gid = int(item[1])
+        if len(item) < 4 or item[3] == "Undefined":
+            # gvenv[gid] = None
+            gvenv[gid] = PRIMITIVES.get(unquote(item[2]))
+        else:
+            val = item[3]
+            if isinstance(val, list) and val[0] == "Function":
+                gvenv[gid] = closure_from_function(val, [])
+            elif isinstance(val, list) and val[0] == "Null":
+                gvenv[gid] = NULL
+            elif isinstance(val, list) and val[0] == "PrimFunc":
+                prim = globals().get(unquote(val[1]))
+                if prim is None:
+                    raise VProcError(f"Primitive not implemented: {val[1]}")
+                gvenv[gid] = prim
+            else:
+                gvenv[gid] = val
+    return gvenv
+
+# ── Conversion ────────────────────────────────────────────────────────────────
+
+def parse_lvenv_node(node, gvenv):
+    if not isinstance(node, list) or not node or node[0] != "__LVEnv__": return []
+    return [(unquote(item[0]), sexp_to_value(item[1], gvenv)) for item in node[1:]]
+
+def sexp_to_value(sexp, gvenv):
+    if sexp is None: return None
+    if isinstance(sexp, str):
+        return NULL if sexp in ("null", "__NULL__") else sexp
+    if not isinstance(sexp, list) or not sexp: return sexp
+    tag = sexp[0]
+    if tag == "__Closure__":
+        head_node  = sexp[1] if len(sexp) > 1 else ["Head",["0","0"]]
+        body_node  = sexp[2] if len(sexp) > 2 else None
+        lvenv_node = sexp[3] if len(sexp) > 3 else ["__LVEnv__"]
+        params = [unquote(c[2]) for c in (head_node[2:] if isinstance(head_node,list) else [])
+                  if isinstance(c,list) and c[0]=="Variable"]
+        inner_lvenv = parse_lvenv_node(lvenv_node, gvenv)
+        return Closure(params, body_node, inner_lvenv)
+    if tag == "Null": return NULL
+    return sexp  # raw AST
+
+def value_to_sexp(val):
+    if val is None: return ["Null",["0","0"]]
+    if isinstance(val, _Null): return ["Null",["0","0"]]
+    if isinstance(val, str): return val
+    if isinstance(val, Closure): return closure_to_sexp(val)
+    if isinstance(val, SeqClosure): return seqclosure_to_sexp(val)
+    if isinstance(val, CFrame): return ["__CFrame__", value_to_sexp(val.closure), ["__SInfo__"]+(val.sinfo or [])]
+    if isinstance(val, list): return val
+    if callable(val): return ["PrimFunc", quoted(val.__name__)]
+    return str(val)
+
+def closure_to_sexp(c):
+    head_children = [["Variable",["0","0"],quoted(p)] for p in c.params]
+    return ["__Closure__",
+            ["Head",["0","0"]] + head_children,
+            c.body if c.body is not None else ["Body",["0","0"]],
+            lvenv_to_sexp(c.lvenv)]
+
+def seqclosure_to_sexp(sc):
+    sinfo_part = [["__SInfo__"] + sc.sinfo] if sc.sinfo else []
+    body = (["Body",["0","0"]] + sinfo_part +
+            [["Operator",["0","0"],["Variable",["0","0"],'"__Sink__"',["L","0"]]],
+             ["OList",["0","0"]] + [value_to_sexp(v) for v in sc.olist],
+             ["LCont",["0","0"],["Null",["0","0"]]]])
+    return ["__Closure__",
+            ["Head",["0","0"],["Variable",["0","0"],'"__Sink__"']],
+            body,
+            lvenv_to_sexp(sc.lvenv)]
+
+def lvenv_to_sexp(lvenv):
+    return ["__LVEnv__"] + [[quoted(n), value_to_sexp(v)] for n,v in lvenv]
+
+# ── VProc ─────────────────────────────────────────────────────────────────────
+
+def vproc_from_sexp(sexp, gvenv):
+    if sexp[0] != "__VProc__": raise VProcError(f"Expected __VProc__")
+    raw = {item[0]: item[1:] for item in sexp[1:]}
+
+    vp = {}
+    vp["sinfo"] = list(raw["__SInfo__"]) if raw.get("__SInfo__") else None
+    op_items = raw.get("__Operator__", [])
+    vp["operator"] = sexp_to_value(op_items[0], gvenv) if op_items else None
+    vp["olist"] = [sexp_to_value(x, gvenv) for x in raw.get("__OList__", [])]
+
+    lc_items = raw.get("__LCont__", [])
+    if not lc_items:
+        vp["lcont"] = None
+    else:
+        lc = lc_items[0]
+        # (Null ...) as LCont means absent (no LCont)
+        if isinstance(lc, list) and lc and lc[0] == "Null":
+            vp["lcont"] = None
+        else:
+            vp["lcont"] = sexp_to_value(lc, gvenv)
+
+    vp["lvenv"] = parse_lvenv_node(["__LVEnv__"] + raw.get("__LVEnv__", []), gvenv)
+    vp["gvenv_files"] = [unquote(x) for x in raw.get("__GVEnv__", [])]
+
+    vp["cchain"] = []
+    for item in raw.get("__CChain__", []):
+        closure = sexp_to_value(item[0], gvenv)
+        sinfo   = item[1][1:] if len(item) > 1 and isinstance(item[1], list) else None
+        vp["cchain"].append(CFrame(closure, sinfo))
+
+    vp["pdict"] = [(sexp_to_value(p[0],gvenv), sexp_to_value(p[1],gvenv))
+                   for p in raw.get("__PDict__", [])]
+    return vp
+
+def vproc_to_sexp(vp):
+    lc = vp["lcont"]
+    lcont_part = ["__LCont__"] + ([] if lc is None else [value_to_sexp(lc)])
+
+    cchain_items = [[value_to_sexp(cf.closure), ["__SInfo__"]+(cf.sinfo or [])]
+                    for cf in vp["cchain"]]
+    return ["__VProc__",
+            ["__SInfo__"] + (vp["sinfo"] or []),
+            ["__Operator__", value_to_sexp(vp["operator"])],
+            ["__OList__"] + [value_to_sexp(v) for v in vp["olist"]],
+            lcont_part,
+            lvenv_to_sexp(vp["lvenv"]),
+            ["__GVEnv__"] + [quoted(f) for f in vp["gvenv_files"]],
+            ["__CChain__"] + cchain_items,
+            ["__PDict__"] + [[value_to_sexp(k),value_to_sexp(v)] for k,v in vp["pdict"]]]
+
+# ── Evaluator ─────────────────────────────────────────────────────────────────
+
+def eval_expr(expr, lvenv, gvenv):
+    if not isinstance(expr, list) or not expr: raise VProcError(f"Cannot eval: {expr!r}")
+    kind = expr[0]
+    if kind == "Variable":
+        b = expr[3] if len(expr) > 3 else None
+        if isinstance(b, list) and b[0] == "L":
+            idx = int(b[1])
+            if idx >= len(lvenv): raise VProcError(f"LVEnv[{idx}] out of range")
+            return lvenv[idx][1]
+        if isinstance(b, list) and b[0] == "G":
+            val = gvenv.get(int(b[1]))
+            if val is None: raise VProcError(f"G{b[1]} ({unquote(expr[2])!r}) Undefined")
+            return val
+        raise VProcError(f"Unknown binding: {b!r}")
+    if kind == "String": return expr          # preserve AST node
+    if kind == "Null":   return NULL          # omitted Operator → null value
+    if kind == "FuncExp": return closure_from_function(expr[2], lvenv)
+    raise VProcError(f"Unknown expr kind: {kind!r}")
+
+def extract_body(body_node, lvenv, gvenv):
+    sinfo = operator_val = lcont_val = None
+    olist_vals = []
+    for child in body_node[2:]:
+        if not isinstance(child, list): continue
+        k = child[0]
+        if k == "SInfo":   sinfo = child[2:]
+        elif k == "Operator" and len(child) > 2:
+            operator_val = eval_expr(child[2], lvenv, gvenv)
+        elif k == "OList":
+            olist_vals = [eval_expr(op, lvenv, gvenv) for op in child[2:]]
+        elif k == "LCont" and len(child) > 2:
+            lc = child[2]
+            if isinstance(lc, list) and lc[0] == "Null":
+                lcont_val = None    # absent
+            elif isinstance(lc, list) and lc[0] == "Function":
+                lcont_val = closure_from_function(lc, lvenv)
+            elif isinstance(lc, list) and lc[0] == "__Closure__":
+                lcont_val = sexp_to_value(lc, gvenv)
+    return sinfo, operator_val, olist_vals, lcont_val
+
+# ── Step ──────────────────────────────────────────────────────────────────────
+
+def step(vp, gvenv):
+    operator = vp["operator"]
+    olist    = vp["olist"]
+    lcont    = vp["lcont"]
+
+    # Null Operator
+    if is_null_value(operator):
+        if lcont is not None:
+            vp["operator"] = lcont
+            vp["lcont"]    = None
+        else:
+            if not vp["cchain"]: raise VProcError("Null Operator: CChain empty, no LCont")
+            cf = vp["cchain"].pop(0)
+            vp["operator"] = cf.closure
+            vp["sinfo"]    = cf.sinfo
+        return
+
+    # SeqClosure
+    if isinstance(operator, SeqClosure):
+        if olist:
+            vp["operator"] = olist[0]
+            vp["olist"]    = list(operator.olist)
+            vp["lvenv"]    = operator.lvenv
+        else:
+            if not vp["cchain"]: raise VProcError("SeqClosure: no OList and CChain empty")
+            cf = vp["cchain"].pop(0)
+            vp["olist"]    = list(operator.olist)
+            vp["operator"] = cf.closure
+            vp["sinfo"]    = cf.sinfo
+            vp["lvenv"]    = operator.lvenv
+        return
+
+    # ── Primitive dispatch ───────────────────────────────────────────────────
+    if callable(operator):
+        operator(vp, gvenv)
+        return
+
+    if is_prim_func(operator):
+        prim = globals().get(unquote(operator[1]))
+        if prim is None:
+            raise VProcError(f"Primitive not implemented: {operator!r}")
+        prim(vp, gvenv)
+        return
+
+    if not isinstance(operator, Closure):
+        print(f"operator: {operator}")
+        raise VProcError(f"Primitive not implemented: {operator!r}")
+
+    params = operator.params
+    body_node = operator.body
+    closure_lvenv = operator.lvenv
+
+    # Head empty
+    if not params:
+        cur_lvenv = vp["lvenv"]
+        cur_sinfo = vp["sinfo"]
+        # Step 1: push LCont if present
+        if lcont is not None:
+            vp["cchain"].insert(0, CFrame(lcont, cur_sinfo))
+        # Step 2: surplus OList → SeqClosure
+        if olist:
+            vp["cchain"].insert(0, CFrame(SeqClosure(list(olist), cur_sinfo, cur_lvenv), cur_sinfo))
+            vp["olist"] = []
+        # Step 3: load Body
+        if body_node is None: raise VProcError("Closure has no Body")
+        sinfo, op_val, olist_vals, lc_val = extract_body(body_node, closure_lvenv, gvenv)
+        vp["sinfo"]    = sinfo
+        vp["operator"] = op_val
+        vp["olist"]    = olist_vals
+        vp["lcont"]    = lc_val
+        vp["lvenv"]    = closure_lvenv
+        return
+
+    # Head not empty, OList not empty
+    if olist:
+        new_params = list(params)
+        new_lvenv  = list(closure_lvenv)
+        rem_olist  = list(olist)
+        while new_params and rem_olist:
+            new_lvenv = [(new_params.pop(0), rem_olist.pop(0))] + new_lvenv
+        vp["operator"] = Closure(new_params, body_node, new_lvenv)
+        vp["olist"]    = rem_olist
+        return
+
+    # Head not empty, OList empty
+    if lcont is not None:
+        vp["olist"]    = [operator]
+        vp["operator"] = lcont
+        vp["lcont"]    = None
+    else:
+        if not vp["cchain"]: raise VProcError("Partial apply: OList empty, no LCont, CChain empty")
+        cf = vp["cchain"].pop(0)
+        vp["olist"]    = [operator]
+        vp["operator"] = cf.closure
+        vp["sinfo"]    = cf.sinfo
+
+# ── Primitive Implementations ─────────────────────────────────────────────────
+
+def _prim_return(vp, results):
+    """Standard return protocol: LCont → Operator, results → OList, LCont → absent."""
+    lc = vp["lcont"]
+    vp["operator"] = lc if lc is not None else NULL  # may be None → handled as Null Operator next step
+    vp["olist"]    = list(results)
+    vp["lcont"]    = None
+
+
+def prim_is_null(vp, gvenv):
+    """__is_null__ Value — passes __TRUE__ or __FALSE__ to LCont."""
+    if not vp["olist"]:
+        raise VProcError("__is_null__: missing argument")
+    val = vp["olist"].pop(0)
+    # __TRUE__ = ,(t f) t,  __FALSE__ = ,(t f) f
+    # Represented as Closure objects with appropriate bodies.
+    result = TRUE_CLOSURE if is_null_value(val) else FALSE_CLOSURE
+    _prim_return(vp, [result])
+
+
+def prim_null(vp, gvenv):
+    """__NULL__ — passes null to LCont."""
+    _prim_return(vp, [NULL])
+
+
+# Boolean closures: ,(t f) t  and  ,(t f) f
+# Head: [t, f], Body returns t (or f)
+# Built as Closure objects with synthetic AST bodies.
+def _make_bool_closure(param_name):
+    """Return a Closure ,(t f) <param_name>."""
+    head_node = ["Head", ["0","0"],
+                 ["Variable", ["0","0"], '"t"'],
+                 ["Variable", ["0","0"], '"f"']]
+    body_node = ["Body", ["0","0"],
+                 ["Operator", ["0","0"],
+                  ["Variable", ["0","0"], f'"{param_name}"',
+                   ["L", "1" if param_name == "t" else "0"]]],
+                 ["OList", ["0","0"]],
+                 ["LCont", ["0","0"]]]
+    return Closure(["t", "f"], body_node, [])
+
+TRUE_CLOSURE  = _make_bool_closure("t")
+FALSE_CLOSURE = _make_bool_closure("f")
+
+_ESCAPE_MAP = {'"': '"', '\\': '\\', 'n': '\n', 't': '\t', 'r': '\r'}
+
+def unescape(s):
+    """Process escape sequences defined in SPEC.md: \" \\ \\n \\t \\r"""
+    out = []
+    it = iter(s)
+    for ch in it:
+        if ch == '\\':
+            nxt = next(it, None)
+            if nxt is None:
+                raise VProcError(f"unescape: trailing backslash in {s!r}")
+            replacement = _ESCAPE_MAP.get(nxt)
+            if replacement is None:
+                raise VProcError(f"unescape: unknown escape \\{nxt} in {s!r}")
+            out.append(replacement)
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+def _value_to_display(val):
+    """Convert a VProc value to a human-readable string for output."""
+    if isinstance(val, list) and val and val[0] == "String":
+        # String AST node: ["String", sinfo, '"text"']
+        return unescape(unquote(val[2])) if len(val) > 2 else ""
+    if isinstance(val, str):
+        return unescape(unquote(val))
+    # Closure, SeqClosure, NULL, raw list → render as S-expression
+    return sexp_to_str(value_to_sexp(val))
+
+
+def prim_OS_print(vp, gvenv):
+    """__OS_print__ Value — prints Value to stdout, resumes the LCont with an empty OList."""
+    if not vp["olist"]:
+        raise VProcError("__OS_print__: missing argument")
+    val = vp["olist"].pop(0)
+    print(_value_to_display(val), end='')
+    _prim_return(vp, [])
+
+
+PRIMITIVES = {
+    "__is_null__":  prim_is_null,
+    "__NULL__":     prim_null,
+    "__OS_print__": prim_OS_print,
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: vproc_step.py <module_file>", file=sys.stderr); sys.exit(1)
+    gvenv = load_module(parse_sexp(open(sys.argv[1]).read()))
+    vp    = vproc_from_sexp(parse_sexp(sys.stdin.read()), gvenv)
+    try:
+        step(vp, gvenv)
+    except VProcError as e:
+        print(f"Error: {e}", file=sys.stderr); sys.exit(1)
+    print(sexp_to_str(vproc_to_sexp(vp)))
+
+if __name__ == "__main__":
+    main()

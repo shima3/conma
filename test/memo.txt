@@ -1,3 +1,9 @@
+2026/3/29 Sun
+cd conma/test/module3
+../resolver.sh test.se
+python3 ../vproc_init.py test.module.se case1 | ../vproc_step.sh -
+python3 ../vproc_run.py --trace test.module.se case2
+
 2026/3/28 Sat
 cd conma
 ln -s claude#/vproc_step8.py test/vproc_step.py
