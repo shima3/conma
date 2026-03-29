@@ -282,11 +282,15 @@ Gets a `String` from standard input and passes it to the LCont.
 
 ### `__OS_print__ String`
 Behavior:
-Prints a `String` to standard output.
+Writes the `String` to standard output.
+No newline is appended.
+After execution, it resumes the **LCont** with an empty OList — no values are passed to the continuation.
 
 ### `__OS_print_error__ String`
 Behavior:
-Prints a `String` to standard error.
+Writes the `String` to standard error.
+No newline is appended.
+After execution, it resumes the **LCont** with an empty OList — no values are passed to the continuation.
 
 ---
 
