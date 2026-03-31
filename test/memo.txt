@@ -1,3 +1,13 @@
+2026/3/30 Mon
+$ diff ../claude#/vproc_step10.py vproc_step.py 
+430c430
+<     print(_value_to_display(val))
+---
+>     print(_value_to_display(val), end='')
+
+cd conma/test/module4
+$ ../resolver.sh test.se; python3 ../vproc_run.py test.module.se case1
+
 2026/3/29 Sun
 cd conma/test/module3
 ../resolver.sh test.se

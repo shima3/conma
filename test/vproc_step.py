@@ -58,6 +58,22 @@ class SeqClosure:
 
 class CFrame:
     def __init__(self, closure, sinfo): self.closure, self.sinfo = closure, sinfo
+class Stream:
+    """Wraps a raw OS file descriptor as a ConMa value."""
+    def __init__(self, fd, mode):
+        self.fd   = fd                  # raw file descriptor
+        self.mode = mode                # "r" or "w"
+        self._closed = False
+    def close(self):
+        if not self._closed:
+            import os
+            os.close(self.fd)
+            self._closed = True
+    def value_to_sexp(self):
+        return ["__OSStream__", f'"{self.mode}:{id(self)}"']
+    def __repr__(self):
+        return f"Stream({self.mode}, fd={self.fd})"
+
 
 def is_null_value(v):
     return v is NULL or (isinstance(v, list) and v and v[0] == "Null")
@@ -131,6 +147,7 @@ def value_to_sexp(val):
     if isinstance(val, SeqClosure): return seqclosure_to_sexp(val)
     if isinstance(val, CFrame): return ["__CFrame__", value_to_sexp(val.closure), ["__SInfo__"]+(val.sinfo or [])]
     if isinstance(val, list): return val
+    if isinstance(val, Stream): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -430,11 +447,118 @@ def prim_OS_print(vp, gvenv):
     print(_value_to_display(val), end='')
     _prim_return(vp, [])
 
+def prim_OS_print_error(vp, gvenv):
+    """__OS_print_error__ Value — prints Value to stderr, resumes the LCont with an empty OList."""
+    if not vp["olist"]:
+        raise VProcError("__OS_print_error__: missing argument")
+    val = vp["olist"].pop(0)
+    print(_value_to_display(val), end='', file=sys.stderr)
+    _prim_return(vp, [])
+
+# ── OS Stream Primitives ──────────────────────────────────────────────────────
+
+def _prim_error(vp, on_error, message):
+    """Invoke onError closure with an error message string."""
+    vp["operator"] = on_error
+    vp["olist"]    = [quoted(message)]
+    # do not clear lcont to continue after error handling
+    # vp["lcont"]    = None
+
+
+def prim_OS_pipe(vp, gvenv):
+    """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
+    import os
+    r_fd, w_fd = os.pipe()
+    _prim_return(vp, [Stream(r_fd, 'r'), Stream(w_fd, 'w')])
+
+
+def prim_OS_read(vp, gvenv):
+    """__OS_read__ onError inputStream ,(String)
+    Non-blocking read from inputStream (up to 4096 bytes).
+      "..."  — data read (may be a partial line; includes trailing newline if full line)
+      ""     — no data available yet (writer still open)
+      null   — EOF (writer closed)
+    On error, calls onError with an error message string.
+    """
+    import fcntl, os
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__OS_read__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not isinstance(stream, Stream) or stream.mode != 'r':
+        _prim_error(vp, on_error, f"__OS_read__: expected readable Stream, got {stream!r}")
+        return
+    try:
+        # set O_NONBLOCK on the raw fd
+        flags = fcntl.fcntl(stream.fd, fcntl.F_GETFL)
+        fcntl.fcntl(stream.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        data = os.read(stream.fd, 4096)
+        if data == b"":
+            _prim_return(vp, [NULL])                          # EOF
+        else:
+            _prim_return(vp, [quoted(data.decode('utf-8'))])  # data
+    except BlockingIOError:
+        _prim_return(vp, [quoted("")])                        # no data yet
+    except OSError as e:
+        _prim_error(vp, on_error, f"__OS_read__: {e}")
+
+
+def prim_OS_write(vp, gvenv):
+    """__OS_write__ onError outputStream String ,()
+    Write String to outputStream. No newline is appended.
+    On success, resumes LCont with an empty OList.
+    On error, calls onError with an error message string.
+    """
+    import os
+    olist = vp["olist"]
+    if len(olist) < 3:
+        raise VProcError("__OS_write__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    val      = olist.pop(0)
+    if not isinstance(stream, Stream) or stream.mode != 'w':
+        _prim_error(vp, on_error, f"__OS_write__: expected writable Stream, got {stream!r}")
+        return
+    data = _value_to_display(val).encode('utf-8')
+    try:
+        os.write(stream.fd, data)
+    except OSError as e:
+        _prim_error(vp, on_error, f"__OS_write__: {e}")
+        return
+    _prim_return(vp, [])
+
+
+def prim_OS_close(vp, gvenv):
+    """__OS_close__ onError Stream ,()
+    Close inputStream or outputStream.
+    On success, resumes LCont with an empty OList.
+    On error, calls onError with an error message string.
+    """
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__OS_close__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not isinstance(stream, Stream):
+        _prim_error(vp, on_error, f"__OS_close__: expected Stream, got {stream!r}")
+        return
+    try:
+        stream.close()
+    except OSError as e:
+        _prim_error(vp, on_error, f"__OS_close__: {e}")
+        return
+    _prim_return(vp, [])
 
 PRIMITIVES = {
     "__is_null__":  prim_is_null,
-    "__NULL__":     prim_null,
+    # "__NULL__":     prim_null,
     "__OS_print__": prim_OS_print,
+    "__OS_print_error__": prim_OS_print_error,
+    "__OS_pipe__":  prim_OS_pipe,
+    "__OS_read__":  prim_OS_read,
+    "__OS_write__": prim_OS_write,
+    "__OS_close__": prim_OS_close,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

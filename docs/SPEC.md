@@ -262,35 +262,63 @@ Example:
 
 ---
 
-# Internal Primitives
+## **OS-Related Data Types**
+* **Stream**: A handle for I/O operations (File, Pipe, or Standard I/O).
+* **OSProc**: A handle representing an external process, used for synchronization or signaling (e.g., waiting for termination).
 
-### `__OS_spawn__ ErrorSink CommandName ArgumentSequence InputSequence OutputSink`
-Behavior:
-Creates and executes a new OS Process.
+---
 
-### `__OS_exit_normal__`
+## Internal Primitives
+
+### `__OS_spawn__ CommandMSeq InputStream OutputStream ErrorStream ,(OSProc)`
+* **Description**: Launches an external process. The `CommandMSeq` is an MSeq where the first element is the executable path and subsequent elements are its command-line arguments. `InputStream`, `OutputStream`, and `ErrorStream` are connected to the process's standard I/O handles.
+* **Returns**: An `OSProc` object representing the spawned process.
+
+### `__OS_exit_normal__ ,()`
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 0.
 
-### `__OS_exit_error__`
+### `__OS_exit_error__ ,()`
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 1.
 
-### `__OS_get_String__`
+### `__OS_get_String__ ,(String)`
 Behavior:
 Gets a `String` from standard input and passes it to the LCont.
 
-### `__OS_print__ String`
+### `__OS_print__ String ,()`
 Behavior:
 Writes the `String` to standard output.
 No newline is appended.
 After execution, it resumes the **LCont** with an empty OList — no values are passed to the continuation.
 
-### `__OS_print_error__ String`
+### `__OS_print_error__ String ,()`
 Behavior:
 Writes the `String` to standard error.
 No newline is appended.
 After execution, it resumes the **LCont** with an empty OList — no values are passed to the continuation.
+
+### `__OS_pipe__ ,(inputStream outputStream)`
+* **Description**: Creates a new unidirectional pipe.
+* **Returns**: An OList containing two elements: the `inputStream` (read end) and the `outputStream` (write end).
+
+### `__OS_read__ onError inputStream ,(data)`
+* **Description**: Reads available data from the `inputStream`.
+* **Returns**: The `data` read, which can be one of the following:
+    * **`"..."` (Non-empty string)**: The actual data retrieved from the stream.
+    * **`""` (Empty string)**: No data is currently available, but the stream remains open (the writer has not closed the pipe).
+    * **`null`**: End of File (EOF). The stream has been closed by the writer.
+* **Error**: If a system-level read error occurs, it invokes the continuation specified by `onError` with an error message string.
+
+### `__OS_write__ onError outputStream data ,()`
+* **Description**: Writes `data` to the `outputStream`.
+* **Behavior**: Upon completion, resumes the continuation with an empty OList.
+* **Error**: If the write fails, invokes `onError` with an error message string.
+
+### **`__OS_close__ onError stream ,()`**
+* **Description**: Closes the specified `stream` (input or output).
+* **Behavior**: Upon completion, resumes the continuation with an empty OList.
+* **Error**: If the stream cannot be closed (e.g., already closed or invalid handle), invokes `onError` with an error message string.
 
 ---
 
