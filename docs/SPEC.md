@@ -709,9 +709,11 @@ Example:
   __Pipe_out__ pipe ,(out)
   return in out)
 ```
+
 ---
 
 ### `MAIN`
+
 ```
 (define __MAIN__ ,(err args in out)
   __Cont_get__ ,(exit)
@@ -722,6 +724,7 @@ Example:
   main args ,()
   exit "")
 ```
+
 * err: a Sink used to send values to the standard error stream.
 * args: a Sequence of strings provided to the program at startup.
 * in: a Sequence representing the standard input stream.
@@ -730,6 +733,7 @@ Example:
 ---
 
 ### `exit`
+
 ```
 (define __PDict_lookup_or_error__ ,(key)
   __PDict_lookup_or__ key (,(key)
@@ -744,6 +748,7 @@ Example:
 ```
 
 ### `Standard input, output, error`
+
 ```
 (define stdin ,()
   __PDict_lookup_or_error__ "__STD_IN__")
