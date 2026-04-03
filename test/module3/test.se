@@ -4,6 +4,17 @@
   __OS_print__ str ,()
   stdout)
 
+(define printBoolean ,(Boolean)
+  __if_then_else__ Boolean
+  (,() ; then
+    __OS_print__ "true" ,()
+    )
+  (,() ; else
+    __OS_print__ "false" ,()
+    )
+  __OS_print__ "\n" ,()
+  )
+
 (define case1 ,()
   __NULL__ "A" "B" ,(a b)
   stdout a "\n" b "\n" ,(out)
@@ -13,6 +24,8 @@
   __NULL__ __NULL__ ,(a)
   __is_null__ a ,(b)
   __is_null__ b ,(c)
+  printBoolean b ,()
+  printBoolean c ,()
   )
 
 (define case3 ,()
