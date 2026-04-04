@@ -11,7 +11,7 @@
     )
   (,() ; else
     __OS_print__ "false" ,()
-    )
+    ) ,()
   __OS_print__ "\n" ,()
   )
 
@@ -33,7 +33,7 @@
   __NULL__ "B" "C" ,()
   __NULL__ "A" ,()
   ,(a b c d)
-  stdout a b c d "\n",(out)
+  stdout a b c d "\n" ,(out)
   )
 
 (define test ,()
