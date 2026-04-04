@@ -87,6 +87,13 @@ The sequence supports the addition of new elements to its end (the **append** op
 This term defines a behavioral contract and functional interface. It does not mandate a specific memory layout and can be implemented using structures such as dynamic arrays, circular buffers, or linked lists.
 ---
 
+Linked List (LList):
+A recursively defined chain of nodes.
+Each node (or "cell") contains a value (the head) and a reference to the next node (the tail).
+The tail of the last node is null.
+
+---
+
 # Appendix
 
 A partial continuation is a **runtime-captured, prompt-delimited, reusable slice** of the continuation chain, obtained by an explicit control operation.

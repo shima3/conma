@@ -1,0 +1,19 @@
+(include "pure.se")
+
+(define __LList_is_empty__ ,(list)
+  __is_null__ list)
+
+(define __LList_print__ ,(list)
+  __unless__ (,() __LList_is_empty__ list)
+  (,()
+    __LList_uncons__ __OS_print_error__ list ,(first rest)
+    __OS_print__ first ,()
+    __OS_print__ "\n" ,()
+    __LList_print__ rest))
+
+(define case1 ,()
+  __LList_cons__ "A" __NULL__ ,(list)
+  __LList_cons__ "B" list ,(list)
+  __LList_cons__ "C" list ,(list)
+  __LList_print__ list ,()
+  )

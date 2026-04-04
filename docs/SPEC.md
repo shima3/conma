@@ -358,26 +358,30 @@ Moves the `VProc` from the blocked queue to the ready queue.
 
 ---
 
-### `__CFrame_new__ FuncExp SInfo`
+### `__CFrame_new__ FuncExp SInfo ,(CFrame)`
 Behavior:
 Creates a CFrame and passes it to the LCont.
 The CFrame consists of a Closure of `FuncExp`, the SInfo, and a null as the next CFrame.
 
 ---
 
-### `__CFrame_get_Closure__ CFrame`
+### `__CFrame_get_Closure__ CFrame ,(Closure)`
 Behavior:
 Passes the Closure stored in `CFrame` to the LCont.
 
+### `__CFrame_get_SInfo__ CFrame ,(String)`
+Behavior:
+Passes a string formed by concatenating the strings contained in the SInfo stored in `CFrame`, separated by colons to the LCont.
+
 ---
 
-### `__CChain_get__`
+### `__CChain_get__ ,(CChain)`
 Behavior:
 Passes the current CChain to the LCont.
 
 ---
 
-### `__CChain_set__ CChain`
+### `__CChain_set__ CChain ,()`
 Behavior:
 Sets the CChain as the current CChain.
 It replaces the Virtual Process's existing `CChain` with the `CChain` passed as an argument.
@@ -559,6 +563,17 @@ A variable defined as null.
 
 * **Description**: Allocates and initializes a new, **empty MSeq** object.
 * **Returns**: The newly created MSeq instance.
+
+---
+
+#### **`__LList_cons__ head tail ,(newList)`**
+* **Description**: Creates a new list node whose head is `head` and whose tail is `tail`, and returns it as `newList`.
+* **Note**: This is the fundamental `cons` operation for constructing a linked list.
+
+#### **`__LList_uncons__ onError list ,(head tail)`**
+* **Description**: Decomposes `list` into its head element and its tail (the remainder of the list).
+* **Returns**: If `list` is not null and is a LList, returns two values: the `head` element and the `tail` (the remaining LList).
+* **Error**: If `list` is null or not a `LList`, the interpreter sets the Operator to `onError` and the OList to a single error message string instead of performing the decomposition.
 
 ---
 

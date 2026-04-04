@@ -6,6 +6,23 @@ import types
 
 class VProcError(Exception): pass
 
+def sinfo_to_str(sinfo):
+    """Format SInfo as 'filename:line' for error messages."""
+    if not sinfo:
+        return None
+    parts = [unquote(s) for s in sinfo if isinstance(s, str)]
+    if len(parts) >= 2:
+        return f"{parts[0]}:{parts[1]}"
+    if len(parts) == 1:
+        return parts[0]
+    return None
+
+def format_error(msg, sinfo):
+    """Prefix msg with source location from sinfo if available."""
+    loc = sinfo_to_str(sinfo)
+    return f"{loc}: {msg}" if loc else msg
+
+
 # ── S-expression ──────────────────────────────────────────────────────────────
 
 def tokenize(text):
@@ -81,6 +98,16 @@ class Number:
         return ["__Number__", str(self.value)]
     def __repr__(self):
         return f"Number({self.value!r})"
+class LList:
+    """A cons cell representing a node in a linked list."""
+    def __init__(self, head, tail):
+        self.head = head  # any ConMa value
+        self.tail = tail  # LList or NULL
+    def value_to_sexp(self):
+        return ["__LList__", value_to_sexp(self.head), value_to_sexp(self.tail)]
+    def __repr__(self):
+        return f"LList({self.head!r}, {self.tail!r})"
+
 
 
 
@@ -158,6 +185,7 @@ def value_to_sexp(val):
     if isinstance(val, list): return val
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
+    if isinstance(val, LList): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -668,6 +696,45 @@ def prim_Number_floor(vp, gvenv):
     _check_number("__Number_floor__", val)
     _prim_return(vp, [Number(int(math.floor(val.value)))])
 
+
+# ── LList Primitives ──────────────────────────────────────────────────────────
+
+def prim_LList_cons(vp, gvenv):
+    """__LList_cons__ head tail ,(newList)"""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__LList_cons__: missing argument(s)")
+    head = olist.pop(0)
+    tail = olist.pop(0)
+    _prim_return(vp, [LList(head, tail)])
+
+
+def prim_LList_uncons(vp, gvenv):
+    """__LList_uncons__ onError list ,(head tail)"""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__LList_uncons__: missing argument(s)")
+    on_error = olist.pop(0)
+    lst      = olist.pop(0)
+    if not isinstance(lst, LList):
+        _prim_error(vp, on_error, f"__LList_uncons__: expected LList, got {lst!r}")
+        return
+    _prim_return(vp, [lst.head, lst.tail])
+
+
+# ── CFrame Primitives ─────────────────────────────────────────────────────────
+
+def prim_CFrame_get_SInfo(vp, gvenv):
+    """__CFrame_get_SInfo__ CFrame ,(String)"""
+    olist = vp["olist"]
+    if not olist:
+        raise VProcError("__CFrame_get_SInfo__: missing argument")
+    val = olist.pop(0)
+    if not isinstance(val, CFrame):
+        raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {val!r}")
+    s = sinfo_to_str(val.sinfo) or ""
+    _prim_return(vp, [quoted(s)])
+
 PRIMITIVES = {
     "__is_null__":             prim_is_null,
     # "__NULL__":              prim_null,
@@ -687,6 +754,9 @@ PRIMITIVES = {
     "__Number_multiply__":     prim_Number_multiply,
     "__Number_divide__":       prim_Number_divide,
     "__Number_floor__":        prim_Number_floor,
+    "__LList_cons__":          prim_LList_cons,
+    "__LList_uncons__":        prim_LList_uncons,
+    "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
