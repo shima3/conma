@@ -772,27 +772,27 @@ Example:
 
 ### `Control flow`
 ```
-(define __if_then_else__ ,(flag then else)
-  flag then else ,(clause)
+(define __if_then_else__ ,(Boolean then else)
+  Boolean then else ,(clause)
   clause)
 
-(define __if__ ,(flag then)
-  __if_then_else__ flag then __nop__)
+(define __if__ ,(Boolean then)
+  __if_then_else__ Boolean then __nop__)
 
-(define __unless__ ,(flag else)
-  __if_then_else__ flag __nop__ else)
+(define __unless__ ,(Boolean else)
+  __if_then_else__ Boolean __nop__ else)
 
 (define __fix__ ,(x)
   x (,() __fix__ x))
 
 (define __true__ ,(then else)
-  then)
+  __NULL__ then)
 
 (define __false__ ,(then else)
-  else)
+  __NULL__ else)
 
-(define __not__ ,(flag)
-  flag __false__ __true__)
+(define __not__ ,(Boolean)
+  Boolean __false__ __true__)
 ```
 
 # Execution Rules
