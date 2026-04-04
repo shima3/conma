@@ -1,3 +1,18 @@
+2026/4/3 Fri
+cd conma
+cp claude#/vproc_step11.py test/vproc_step.py
+cd test/module3
+
+../vproc_step.sh case1.vproc.se
+mv /tmp/case1.vproc.log .
+../vproc_step.sh case2.vproc.se
+mv /tmp/case2.vproc.log .
+
+../vproc_step.sh case1.vproc.se
+diff case1.vproc.log /tmp/case1.vproc.log
+../vproc_step.sh case2.vproc.se
+diff case2.vproc.log /tmp/case2.vproc.log
+
 2026/4/2 Thu
 cd conma/test/module1
 ../vproc_step.sh case1.vproc.se
@@ -6,6 +21,24 @@ diff case1.vproc.log /tmp/case1.vproc.log
 diff case2.vproc.log /tmp/case2.vproc.log
 ../vproc_step.sh case3.vproc.se
 diff case3.vproc.log /tmp/case3.vproc.log
+
+cd conma
+cp claude#/vproc_step8.py test/vproc_step.py
+
+cd conma/test/module2
+../vproc_step.sh case1.vproc.se
+mv /tmp/case1.vproc.log .
+../vproc_step.sh case2.vproc.se
+mv /tmp/case2.vproc.log .
+
+cd conma
+cp claude#/vproc_step13.py test/vproc_step.py
+
+cd conma/test/module2
+../vproc_step.sh case1.vproc.se
+diff case1.vproc.log /tmp/case1.vproc.log
+../vproc_step.sh case2.vproc.se
+diff case2.vproc.log /tmp/case2.vproc.log
 
 2026/3/30 Mon
 $ diff ../claude#/vproc_step10.py vproc_step.py 
