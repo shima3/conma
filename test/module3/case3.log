@@ -1,0 +1,2604 @@
+[initial] (__VProc__
+  (__SInfo__)
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (32 3)
+        (SInfo (32 3) "conma/test/module3/test.se" "32" "3")
+        (Operator (32 3) (Null (32 3)))
+        (OList (32 12) (String (32 12) "D"))
+        (LCont
+          (32 16)
+          (Function
+            (32 16)
+            (Head (32 17))
+            (Body
+              (33 3)
+              (SInfo (33 3) "conma/test/module3/test.se" "33" "3")
+              (Operator (33 3) (Null (33 3)))
+              (OList (33 12) (String (33 12) "B") (String (33 16) "C"))
+              (LCont
+                (33 20)
+                (Function
+                  (33 20)
+                  (Head (33 21))
+                  (Body
+                    (34 3)
+                    (SInfo (34 3) "conma/test/module3/test.se" "34" "3")
+                    (Operator (34 3) (Null (34 3)))
+                    (OList (34 12) (String (34 12) "A"))
+                    (LCont
+                      (34 16)
+                      (Function
+                        (34 16)
+                        (Head (34 17))
+                        (Body
+                          (35 3)
+                          (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+                          (Operator (35 3) (Null (35 3)))
+                          (OList (35 3))
+                          (LCont
+                            (35 3)
+                            (Function
+                              (35 3)
+                              (Head
+                                (35 4)
+                                (Variable (35 5) "a" (L 3))
+                                (Variable (35 7) "b" (L 2))
+                                (Variable (35 9) "c" (L 1))
+                                (Variable (35 11) "d" (L 0)))
+                              (Body
+                                (36 3)
+                                (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+                                (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+                                (OList
+                                  (36 10)
+                                  (Variable (36 10) "a" (L 3))
+                                  (Variable (36 12) "b" (L 2))
+                                  (Variable (36 14) "c" (L 1))
+                                  (Variable (36 16) "d" (L 0))
+                                  (String (36 18) "\n"))
+                                (LCont
+                                  (36 23)
+                                  (Function
+                                    (36 23)
+                                    (Head (36 24) (Variable (36 25) "out" (L 0)))
+                                    (Body
+                                      (37 3)
+                                      (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                                      (Operator (37 3) (Null (37 3)))
+                                      (OList (37 3))
+                                      (LCont (37 3))))))))))))))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 1] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "32" "3")
+  (__Operator__ (Null (0 0)))
+  (__OList__ (String (32 12) "D"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (33 3)
+        (SInfo (33 3) "conma/test/module3/test.se" "33" "3")
+        (Operator (33 3) (Null (33 3)))
+        (OList (33 12) (String (33 12) "B") (String (33 16) "C"))
+        (LCont
+          (33 20)
+          (Function
+            (33 20)
+            (Head (33 21))
+            (Body
+              (34 3)
+              (SInfo (34 3) "conma/test/module3/test.se" "34" "3")
+              (Operator (34 3) (Null (34 3)))
+              (OList (34 12) (String (34 12) "A"))
+              (LCont
+                (34 16)
+                (Function
+                  (34 16)
+                  (Head (34 17))
+                  (Body
+                    (35 3)
+                    (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+                    (Operator (35 3) (Null (35 3)))
+                    (OList (35 3))
+                    (LCont
+                      (35 3)
+                      (Function
+                        (35 3)
+                        (Head
+                          (35 4)
+                          (Variable (35 5) "a" (L 3))
+                          (Variable (35 7) "b" (L 2))
+                          (Variable (35 9) "c" (L 1))
+                          (Variable (35 11) "d" (L 0)))
+                        (Body
+                          (36 3)
+                          (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+                          (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+                          (OList
+                            (36 10)
+                            (Variable (36 10) "a" (L 3))
+                            (Variable (36 12) "b" (L 2))
+                            (Variable (36 14) "c" (L 1))
+                            (Variable (36 16) "d" (L 0))
+                            (String (36 18) "\n"))
+                          (LCont
+                            (36 23)
+                            (Function
+                              (36 23)
+                              (Head (36 24) (Variable (36 25) "out" (L 0)))
+                              (Body
+                                (37 3)
+                                (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                                (Operator (37 3) (Null (37 3)))
+                                (OList (37 3))
+                                (LCont (37 3)))))))))))))))
+      (__LVEnv__)))
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 2] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "32" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (33 3)
+        (SInfo (33 3) "conma/test/module3/test.se" "33" "3")
+        (Operator (33 3) (Null (33 3)))
+        (OList (33 12) (String (33 12) "B") (String (33 16) "C"))
+        (LCont
+          (33 20)
+          (Function
+            (33 20)
+            (Head (33 21))
+            (Body
+              (34 3)
+              (SInfo (34 3) "conma/test/module3/test.se" "34" "3")
+              (Operator (34 3) (Null (34 3)))
+              (OList (34 12) (String (34 12) "A"))
+              (LCont
+                (34 16)
+                (Function
+                  (34 16)
+                  (Head (34 17))
+                  (Body
+                    (35 3)
+                    (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+                    (Operator (35 3) (Null (35 3)))
+                    (OList (35 3))
+                    (LCont
+                      (35 3)
+                      (Function
+                        (35 3)
+                        (Head
+                          (35 4)
+                          (Variable (35 5) "a" (L 3))
+                          (Variable (35 7) "b" (L 2))
+                          (Variable (35 9) "c" (L 1))
+                          (Variable (35 11) "d" (L 0)))
+                        (Body
+                          (36 3)
+                          (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+                          (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+                          (OList
+                            (36 10)
+                            (Variable (36 10) "a" (L 3))
+                            (Variable (36 12) "b" (L 2))
+                            (Variable (36 14) "c" (L 1))
+                            (Variable (36 16) "d" (L 0))
+                            (String (36 18) "\n"))
+                          (LCont
+                            (36 23)
+                            (Function
+                              (36 23)
+                              (Head (36 24) (Variable (36 25) "out" (L 0)))
+                              (Body
+                                (37 3)
+                                (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                                (Operator (37 3) (Null (37 3)))
+                                (OList (37 3))
+                                (LCont (37 3)))))))))))))))
+      (__LVEnv__)))
+  (__OList__ (String (32 12) "D"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 3] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "33" "3")
+  (__Operator__ (Null (0 0)))
+  (__OList__ (String (33 12) "B") (String (33 16) "C"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (34 3)
+        (SInfo (34 3) "conma/test/module3/test.se" "34" "3")
+        (Operator (34 3) (Null (34 3)))
+        (OList (34 12) (String (34 12) "A"))
+        (LCont
+          (34 16)
+          (Function
+            (34 16)
+            (Head (34 17))
+            (Body
+              (35 3)
+              (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+              (Operator (35 3) (Null (35 3)))
+              (OList (35 3))
+              (LCont
+                (35 3)
+                (Function
+                  (35 3)
+                  (Head
+                    (35 4)
+                    (Variable (35 5) "a" (L 3))
+                    (Variable (35 7) "b" (L 2))
+                    (Variable (35 9) "c" (L 1))
+                    (Variable (35 11) "d" (L 0)))
+                  (Body
+                    (36 3)
+                    (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+                    (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+                    (OList
+                      (36 10)
+                      (Variable (36 10) "a" (L 3))
+                      (Variable (36 12) "b" (L 2))
+                      (Variable (36 14) "c" (L 1))
+                      (Variable (36 16) "d" (L 0))
+                      (String (36 18) "\n"))
+                    (LCont
+                      (36 23)
+                      (Function
+                        (36 23)
+                        (Head (36 24) (Variable (36 25) "out" (L 0)))
+                        (Body
+                          (37 3)
+                          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                          (Operator (37 3) (Null (37 3)))
+                          (OList (37 3))
+                          (LCont (37 3))))))))))))
+      (__LVEnv__)))
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 4] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "33" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (34 3)
+        (SInfo (34 3) "conma/test/module3/test.se" "34" "3")
+        (Operator (34 3) (Null (34 3)))
+        (OList (34 12) (String (34 12) "A"))
+        (LCont
+          (34 16)
+          (Function
+            (34 16)
+            (Head (34 17))
+            (Body
+              (35 3)
+              (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+              (Operator (35 3) (Null (35 3)))
+              (OList (35 3))
+              (LCont
+                (35 3)
+                (Function
+                  (35 3)
+                  (Head
+                    (35 4)
+                    (Variable (35 5) "a" (L 3))
+                    (Variable (35 7) "b" (L 2))
+                    (Variable (35 9) "c" (L 1))
+                    (Variable (35 11) "d" (L 0)))
+                  (Body
+                    (36 3)
+                    (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+                    (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+                    (OList
+                      (36 10)
+                      (Variable (36 10) "a" (L 3))
+                      (Variable (36 12) "b" (L 2))
+                      (Variable (36 14) "c" (L 1))
+                      (Variable (36 16) "d" (L 0))
+                      (String (36 18) "\n"))
+                    (LCont
+                      (36 23)
+                      (Function
+                        (36 23)
+                        (Head (36 24) (Variable (36 25) "out" (L 0)))
+                        (Body
+                          (37 3)
+                          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                          (Operator (37 3) (Null (37 3)))
+                          (OList (37 3))
+                          (LCont (37 3))))))))))))
+      (__LVEnv__)))
+  (__OList__ (String (33 12) "B") (String (33 16) "C"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 5] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "34" "3")
+  (__Operator__ (Null (0 0)))
+  (__OList__ (String (34 12) "A"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (35 3)
+        (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+        (Operator (35 3) (Null (35 3)))
+        (OList (35 3))
+        (LCont
+          (35 3)
+          (Function
+            (35 3)
+            (Head
+              (35 4)
+              (Variable (35 5) "a" (L 3))
+              (Variable (35 7) "b" (L 2))
+              (Variable (35 9) "c" (L 1))
+              (Variable (35 11) "d" (L 0)))
+            (Body
+              (36 3)
+              (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+              (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+              (OList
+                (36 10)
+                (Variable (36 10) "a" (L 3))
+                (Variable (36 12) "b" (L 2))
+                (Variable (36 14) "c" (L 1))
+                (Variable (36 16) "d" (L 0))
+                (String (36 18) "\n"))
+              (LCont
+                (36 23)
+                (Function
+                  (36 23)
+                  (Head (36 24) (Variable (36 25) "out" (L 0)))
+                  (Body
+                    (37 3)
+                    (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                    (Operator (37 3) (Null (37 3)))
+                    (OList (37 3))
+                    (LCont (37 3)))))))))
+      (__LVEnv__)))
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 6] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "34" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (35 3)
+        (SInfo (35 3) "conma/test/module3/test.se" "35" "3")
+        (Operator (35 3) (Null (35 3)))
+        (OList (35 3))
+        (LCont
+          (35 3)
+          (Function
+            (35 3)
+            (Head
+              (35 4)
+              (Variable (35 5) "a" (L 3))
+              (Variable (35 7) "b" (L 2))
+              (Variable (35 9) "c" (L 1))
+              (Variable (35 11) "d" (L 0)))
+            (Body
+              (36 3)
+              (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+              (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+              (OList
+                (36 10)
+                (Variable (36 10) "a" (L 3))
+                (Variable (36 12) "b" (L 2))
+                (Variable (36 14) "c" (L 1))
+                (Variable (36 16) "d" (L 0))
+                (String (36 18) "\n"))
+              (LCont
+                (36 23)
+                (Function
+                  (36 23)
+                  (Head (36 24) (Variable (36 25) "out" (L 0)))
+                  (Body
+                    (37 3)
+                    (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+                    (Operator (37 3) (Null (37 3)))
+                    (OList (37 3))
+                    (LCont (37 3)))))))))
+      (__LVEnv__)))
+  (__OList__ (String (34 12) "A"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 7] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "35" "3")
+  (__Operator__ (Null (0 0)))
+  (__OList__)
+  (__LCont__
+    (__Closure__
+      (Head
+        (0 0)
+        (Variable (0 0) "a")
+        (Variable (0 0) "b")
+        (Variable (0 0) "c")
+        (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__)))
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "34" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (34 12) "A"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "34" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 8] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "35" "3")
+  (__Operator__
+    (__Closure__
+      (Head
+        (0 0)
+        (Variable (0 0) "a")
+        (Variable (0 0) "b")
+        (Variable (0 0) "c")
+        (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "34" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (34 12) "A"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "34" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 9] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "34" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "34" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (34 12) "A"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__)))
+  (__OList__
+    (__Closure__
+      (Head
+        (0 0)
+        (Variable (0 0) "a")
+        (Variable (0 0) "b")
+        (Variable (0 0) "c")
+        (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 10] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "34" "3")
+  (__Operator__
+    (__Closure__
+      (Head
+        (0 0)
+        (Variable (0 0) "a")
+        (Variable (0 0) "b")
+        (Variable (0 0) "c")
+        (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__)))
+  (__OList__ (String (34 12) "A"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 11] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "34" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "b") (Variable (0 0) "c") (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__ ("a" (String (34 12) "A")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "33" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "33" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 12] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "33" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "33" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (33 12) "B") (String (33 16) "C"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__)))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "b") (Variable (0 0) "c") (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__ ("a" (String (34 12) "A")))))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 13] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "33" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "b") (Variable (0 0) "c") (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__ ("a" (String (34 12) "A")))))
+  (__OList__ (String (33 12) "B") (String (33 16) "C"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 14] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "33" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "32" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__))
+      (__SInfo__ "conma/test/module3/test.se" "32" "3")))
+  (__PDict__))
+[step 15] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "32" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "32" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (32 12) "D"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__)))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 16] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "32" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "d"))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__ (String (32 12) "D"))
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 17] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "32" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (36 3)
+        (SInfo (36 3) "conma/test/module3/test.se" "36" "3")
+        (Operator (36 3) (Variable (36 3) "stdout" (G 0)))
+        (OList
+          (36 10)
+          (Variable (36 10) "a" (L 3))
+          (Variable (36 12) "b" (L 2))
+          (Variable (36 14) "c" (L 1))
+          (Variable (36 16) "d" (L 0))
+          (String (36 18) "\n"))
+        (LCont
+          (36 23)
+          (Function
+            (36 23)
+            (Head (36 24) (Variable (36 25) "out" (L 0)))
+            (Body
+              (37 3)
+              (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+              (Operator (37 3) (Null (37 3)))
+              (OList (37 3))
+              (LCont (37 3))))))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__)
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 18] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__
+    (String (34 12) "A")
+    (String (33 12) "B")
+    (String (33 16) "C")
+    (String (32 12) "D")
+    (String (36 18) "\n"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "out"))
+      (Body
+        (37 3)
+        (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+        (Operator (37 3) (Null (37 3)))
+        (OList (37 3))
+        (LCont (37 3)))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 19] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__ ("str" (String (34 12) "A")))))
+  (__OList__
+    (String (33 12) "B")
+    (String (33 16) "C")
+    (String (32 12) "D")
+    (String (36 18) "\n"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "out"))
+      (Body
+        (37 3)
+        (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+        (Operator (37 3) (Null (37 3)))
+        (OList (37 3))
+        (LCont (37 3)))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 20] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__ (PrimFunc "prim_OS_print"))
+  (__OList__ (String (34 12) "A"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (34 12) "A")))))
+  (__LVEnv__ ("str" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList
+            (0 0)
+            (String (33 12) "B")
+            (String (33 16) "C")
+            (String (32 12) "D")
+            (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 21] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (34 12) "A")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList
+            (0 0)
+            (String (33 12) "B")
+            (String (33 16) "C")
+            (String (32 12) "D")
+            (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 22] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "5" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList
+            (0 0)
+            (String (33 12) "B")
+            (String (33 16) "C")
+            (String (32 12) "D")
+            (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 23] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "36" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList
+          (0 0)
+          (String (33 12) "B")
+          (String (33 16) "C")
+          (String (32 12) "D")
+          (String (36 18) "\n"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__ ("str" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 24] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__
+    (String (33 12) "B")
+    (String (33 16) "C")
+    (String (32 12) "D")
+    (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 25] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__ ("str" (String (33 12) "B")))))
+  (__OList__ (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 26] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__ (PrimFunc "prim_OS_print"))
+  (__OList__ (String (33 12) "B"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (33 12) "B")))))
+  (__LVEnv__ ("str" (String (33 12) "B")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 27] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (33 12) "B")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 12) "B")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 28] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "5" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 12) "B")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 29] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "36" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 12) "B")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 30] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__ (String (33 16) "C") (String (32 12) "D") (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 31] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__ ("str" (String (33 16) "C")))))
+  (__OList__ (String (32 12) "D") (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 32] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__ (PrimFunc "prim_OS_print"))
+  (__OList__ (String (33 16) "C"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (33 16) "C")))))
+  (__LVEnv__ ("str" (String (33 16) "C")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 33] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (33 16) "C")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 16) "C")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 34] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "5" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 16) "C")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (32 12) "D") (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 35] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "36" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (32 12) "D") (String (36 18) "\n"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__ ("str" (String (33 16) "C")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 36] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__ (String (32 12) "D") (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 37] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__ ("str" (String (32 12) "D")))))
+  (__OList__ (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 38] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__ (PrimFunc "prim_OS_print"))
+  (__OList__ (String (32 12) "D"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (32 12) "D")))))
+  (__LVEnv__ ("str" (String (32 12) "D")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 39] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (32 12) "D")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (32 12) "D")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 40] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "5" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (32 12) "D")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "__Sink__"))
+        (Body
+          (0 0)
+          (__SInfo__ "conma/test/module3/test.se" "36" "3")
+          (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+          (OList (0 0) (String (36 18) "\n"))
+          (LCont (0 0) (Null (0 0))))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3"))
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 41] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "__Sink__"))
+      (Body
+        (0 0)
+        (__SInfo__ "conma/test/module3/test.se" "36" "3")
+        (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+        (OList (0 0) (String (36 18) "\n"))
+        (LCont (0 0) (Null (0 0))))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__ ("str" (String (32 12) "D")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 42] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__ (String (36 18) "\n"))
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 43] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__ ("str" (String (36 18) "\n")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 44] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__ (PrimFunc "prim_OS_print"))
+  (__OList__ (String (36 18) "\n"))
+  (__LCont__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (36 18) "\n")))))
+  (__LVEnv__ ("str" (String (36 18) "\n")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+ABCD
+[step 45] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "4" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (5 3)
+        (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+        (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+        (OList (5 9))
+        (LCont (5 9)))
+      (__LVEnv__ ("str" (String (36 18) "\n")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (36 18) "\n")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 46] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "5" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (36 18) "\n")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__
+    ((__Closure__
+        (Head (0 0) (Variable (0 0) "out"))
+        (Body
+          (37 3)
+          (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+          (Operator (37 3) (Null (37 3)))
+          (OList (37 3))
+          (LCont (37 3)))
+        (__LVEnv__
+          ("d" (String (32 12) "D"))
+          ("c" (String (33 16) "C"))
+          ("b" (String (33 12) "B"))
+          ("a" (String (34 12) "A"))))
+      (__SInfo__ "conma/test/module3/test.se" "36" "3")))
+  (__PDict__))
+[step 47] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "out"))
+      (Body
+        (37 3)
+        (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+        (Operator (37 3) (Null (37 3)))
+        (OList (37 3))
+        (LCont (37 3)))
+      (__LVEnv__
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__
+    (__Closure__
+      (Head (0 0) (Variable (0 0) "str"))
+      (Body
+        (4 3)
+        (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+        (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+        (OList (4 16) (Variable (4 16) "str" (L 0)))
+        (LCont
+          (4 20)
+          (Function
+            (4 20)
+            (Head (4 21))
+            (Body
+              (5 3)
+              (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+              (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+              (OList (5 9))
+              (LCont (5 9))))))
+      (__LVEnv__)))
+  (__LCont__)
+  (__LVEnv__ ("str" (String (36 18) "\n")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 48] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "36" "3")
+  (__Operator__
+    (__Closure__
+      (Head (0 0))
+      (Body
+        (37 3)
+        (SInfo (37 3) "conma/test/module3/test.se" "37" "3")
+        (Operator (37 3) (Null (37 3)))
+        (OList (37 3))
+        (LCont (37 3)))
+      (__LVEnv__
+        ("out"
+          (__Closure__
+            (Head (0 0) (Variable (0 0) "str"))
+            (Body
+              (4 3)
+              (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+              (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+              (OList (4 16) (Variable (4 16) "str" (L 0)))
+              (LCont
+                (4 20)
+                (Function
+                  (4 20)
+                  (Head (4 21))
+                  (Body
+                    (5 3)
+                    (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+                    (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+                    (OList (5 9))
+                    (LCont (5 9))))))
+            (__LVEnv__)))
+        ("d" (String (32 12) "D"))
+        ("c" (String (33 16) "C"))
+        ("b" (String (33 12) "B"))
+        ("a" (String (34 12) "A")))))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__ ("str" (String (36 18) "\n")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[step 49] (__VProc__
+  (__SInfo__ "conma/test/module3/test.se" "37" "3")
+  (__Operator__ (Null (0 0)))
+  (__OList__)
+  (__LCont__)
+  (__LVEnv__
+    ("out"
+      (__Closure__
+        (Head (0 0) (Variable (0 0) "str"))
+        (Body
+          (4 3)
+          (SInfo (4 3) "conma/test/module3/test.se" "4" "3")
+          (Operator (4 3) (Variable (4 3) "__OS_print__" (G 1)))
+          (OList (4 16) (Variable (4 16) "str" (L 0)))
+          (LCont
+            (4 20)
+            (Function
+              (4 20)
+              (Head (4 21))
+              (Body
+                (5 3)
+                (SInfo (5 3) "conma/test/module3/test.se" "5" "3")
+                (Operator (5 3) (Variable (5 3) "stdout" (G 0)))
+                (OList (5 9))
+                (LCont (5 9))))))
+        (__LVEnv__)))
+    ("d" (String (32 12) "D"))
+    ("c" (String (33 16) "C"))
+    ("b" (String (33 12) "B"))
+    ("a" (String (34 12) "A")))
+  (__GVEnv__ "test.module.se")
+  (__CChain__)
+  (__PDict__))
+[done] normal termination after 49 step(s).
