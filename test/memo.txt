@@ -1,3 +1,11 @@
+2026/4/4 Sat
+cd conma/test/module4
+# バッファリングを無効にして実行する。
+$ ../resolver.sh test.se; script -q /dev/null python3 ../vproc_run.py test.module.se case1
+
+../resolv_run.sh case1 > /tmp/case1.log 2>&1
+diff case1.log /tmp/case1.log
+
 2026/4/3 Fri
 cd conma
 cp claude#/vproc_step11.py test/vproc_step.py
