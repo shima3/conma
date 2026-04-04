@@ -73,6 +73,15 @@ class Stream:
         return ["__OSStream__", f'"{self.mode}:{id(self)}"']
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
+class Number:
+    """An immutable numeric value (int or float) as a ConMa value."""
+    def __init__(self, value):
+        self.value = value   # Python int or float
+    def value_to_sexp(self):
+        return ["__Number__", str(self.value)]
+    def __repr__(self):
+        return f"Number({self.value!r})"
+
 
 
 def is_null_value(v):
@@ -148,6 +157,7 @@ def value_to_sexp(val):
     if isinstance(val, CFrame): return ["__CFrame__", value_to_sexp(val.closure), ["__SInfo__"]+(val.sinfo or [])]
     if isinstance(val, list): return val
     if isinstance(val, Stream): return val.value_to_sexp()
+    if isinstance(val, Number): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -400,9 +410,10 @@ def _make_bool_closure(param_name):
                  ["Variable", ["0","0"], '"f"']]
     body_node = ["Body", ["0","0"],
                  ["Operator", ["0","0"],
+                  ["Null", ["0", "0"]]],
+                 ["OList", ["0","0"],
                   ["Variable", ["0","0"], f'"{param_name}"',
                    ["L", "1" if param_name == "t" else "0"]]],
-                 ["OList", ["0","0"]],
                  ["LCont", ["0","0"]]]
     return Closure(["t", "f"], body_node, [])
 
@@ -550,15 +561,132 @@ def prim_OS_close(vp, gvenv):
         return
     _prim_return(vp, [])
 
+
+# ── Number Primitives ─────────────────────────────────────────────────────────
+
+def _check_number(name, val):
+    if not isinstance(val, Number):
+        raise VProcError(f"{name}: expected Number, got {val!r}")
+
+def prim_Number_fromString(vp, gvenv):
+    """__Number_fromString__ onError String ,(Number)"""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__Number_fromString__: missing argument(s)")
+    on_error = olist.pop(0)
+    val      = olist.pop(0)
+    s = unescape(unquote(val)) if isinstance(val, str) else _value_to_display(val)
+    try:
+        n = int(s)
+    except ValueError:
+        try:
+            n = float(s)
+        except ValueError:
+            _prim_error(vp, on_error, f"__Number_fromString__: invalid number: {s!r}")
+            return
+    _prim_return(vp, [Number(n)])
+
+def prim_Number_toString(vp, gvenv):
+    """__Number_toString__ Number ,(String)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_toString__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_toString__", val)
+    n = val.value
+    s = str(int(n)) if isinstance(n, float) and n == int(n) else str(n)
+    _prim_return(vp, [quoted(s)])
+
+def prim_Number_is_zero(vp, gvenv):
+    """__Number_is_zero__ Number ,(Boolean)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_is_zero__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_is_zero__", val)
+    _prim_return(vp, [TRUE_CLOSURE if val.value == 0 else FALSE_CLOSURE])
+
+def prim_Number_is_positive(vp, gvenv):
+    """__Number_is_positive__ Number ,(Boolean)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_is_positive__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_is_positive__", val)
+    _prim_return(vp, [TRUE_CLOSURE if val.value > 0 else FALSE_CLOSURE])
+
+def prim_Number_is_negative(vp, gvenv):
+    """__Number_is_negative__ Number ,(Boolean)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_is_negative__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_is_negative__", val)
+    _prim_return(vp, [TRUE_CLOSURE if val.value < 0 else FALSE_CLOSURE])
+
+def _prim_binop(vp, name, op):
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    a = olist.pop(0)
+    b = olist.pop(0)
+    _check_number(name, a)
+    _check_number(name, b)
+    _prim_return(vp, [Number(op(a.value, b.value))])
+
+def prim_Number_add(vp, gvenv):
+    """__Number_add__ Number Number ,(Number)"""
+    _prim_binop(vp, "__Number_add__", lambda a, b: a + b)
+
+def prim_Number_subtract(vp, gvenv):
+    """__Number_subtract__ Number Number ,(Number)"""
+    _prim_binop(vp, "__Number_subtract__", lambda a, b: a - b)
+
+def prim_Number_multiply(vp, gvenv):
+    """__Number_multiply__ Number Number ,(Number)"""
+    _prim_binop(vp, "__Number_multiply__", lambda a, b: a * b)
+
+def prim_Number_divide(vp, gvenv):
+    """__Number_divide__ onError Number Number ,(Number)"""
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError("__Number_divide__: missing argument(s)")
+    on_error = olist.pop(0)
+    a = olist.pop(0)
+    b = olist.pop(0)
+    _check_number("__Number_divide__", a)
+    _check_number("__Number_divide__", b)
+    if b.value == 0:
+        _prim_error(vp, on_error, "__Number_divide__: division by zero")
+        return
+    result = a.value / b.value
+    # preserve int when possible
+    if isinstance(a.value, int) and isinstance(b.value, int) and result == int(result):
+        result = int(result)
+    _prim_return(vp, [Number(result)])
+
+def prim_Number_floor(vp, gvenv):
+    """__Number_floor__ Number ,(Number)"""
+    import math
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_floor__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_floor__", val)
+    _prim_return(vp, [Number(int(math.floor(val.value)))])
+
 PRIMITIVES = {
-    "__is_null__":  prim_is_null,
-    # "__NULL__":     prim_null,
-    "__OS_print__": prim_OS_print,
-    "__OS_print_error__": prim_OS_print_error,
-    "__OS_pipe__":  prim_OS_pipe,
-    "__OS_read__":  prim_OS_read,
-    "__OS_write__": prim_OS_write,
-    "__OS_close__": prim_OS_close,
+    "__is_null__":             prim_is_null,
+    # "__NULL__":              prim_null,
+    "__OS_print__":            prim_OS_print,
+    "__OS_print_error__":      prim_OS_print_error,
+    "__OS_pipe__":             prim_OS_pipe,
+    "__OS_read__":             prim_OS_read,
+    "__OS_write__":            prim_OS_write,
+    "__OS_close__":            prim_OS_close,
+    "__Number_fromString__":   prim_Number_fromString,
+    "__Number_toString__":     prim_Number_toString,
+    "__Number_is_zero__":      prim_Number_is_zero,
+    "__Number_is_positive__":  prim_Number_is_positive,
+    "__Number_is_negative__":  prim_Number_is_negative,
+    "__Number_add__":          prim_Number_add,
+    "__Number_subtract__":     prim_Number_subtract,
+    "__Number_multiply__":     prim_Number_multiply,
+    "__Number_divide__":       prim_Number_divide,
+    "__Number_floor__":        prim_Number_floor,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

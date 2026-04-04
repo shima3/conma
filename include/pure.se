@@ -1,10 +1,10 @@
 (define __nop__ ,())
 
 (define __TRUE__ ,(then else)
-  then)
+  __NULL__ then)
 
 (define __FALSE__ ,(then else)
-  else)
+  __NULL__ else)
 
 (define __and__ ,(Boolean1 Boolean2)
   Boolean1 Boolean2 __FALSE__)
