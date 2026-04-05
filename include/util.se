@@ -35,3 +35,14 @@
   __CChain_pop_LCont__ ,(lc)
   stdout str "\n" ,(out)
   lc)
+
+(define __print_exit_error__ ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_exit_error__)
+
+(define __Cont_get__ ,()
+  __CChain_get__ ,(cc)
+  __LList_uncons__ __print_exit_error__ cc ,(first rest)
+  __NULL__ (,()
+             __CChain_set__ rest ,()
+             __NULL__))

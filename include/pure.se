@@ -27,3 +27,6 @@
 
 (define __fix__ ,(x)
   x (,() __fix__ x))
+
+(define __LList_is_empty__ ,(list)
+  __is_null__ list)
