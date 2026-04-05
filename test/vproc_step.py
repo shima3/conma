@@ -465,6 +465,18 @@ def prim_null(vp, gvenv):
     _prim_return(vp, [NULL])
 
 
+# ── OS Primitives ──────────────────────────────────────────────────────
+
+
+def prim_OS_exit_normal(vp, gvenv):
+    """__OS_exit_normal__ ,() — terminate interpreter with exit code 0."""
+    sys.exit(0)
+
+
+def prim_OS_exit_error(vp, gvenv):
+    """__OS_exit_error__ ,() — terminate interpreter with exit code 1."""
+    sys.exit(1)
+
 # Boolean closures: ,(t f) t  and  ,(t f) f
 # Head: [t, f], Body returns t (or f)
 # Built as Closure objects with synthetic AST bodies.
@@ -531,7 +543,6 @@ def prim_OS_print_error(vp, gvenv):
     print(_value_to_display(val), end='', file=sys.stderr)
     _prim_return(vp, [])
 
-# ── OS Stream Primitives ──────────────────────────────────────────────────────
 
 def _prim_error(vp, on_error, message):
     """Invoke onError closure with an error message string."""
@@ -804,6 +815,16 @@ def prim_LList_uncons(vp, gvenv):
 
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
+def prim_CFrame_get_Closure(vp, gvenv):
+    """__CFrame_get_Closure__ CFrame ,(Closure) — pass CFrame's closure to LCont."""
+    olist = vp["olist"]
+    if not olist:
+        raise VProcError("__CFrame_get_Closure__: missing argument")
+    val = olist.pop(0)
+    if not isinstance(val, CFrame):
+        raise VProcError(f"__CFrame_get_Closure__: expected CFrame, got {val!r}")
+    _prim_return(vp, [val.closure])
+
 def prim_CFrame_get_SInfo(vp, gvenv):
     """__CFrame_get_SInfo__ CFrame ,(String)"""
     olist = vp["olist"]
@@ -815,8 +836,11 @@ def prim_CFrame_get_SInfo(vp, gvenv):
     s = sinfo_to_str(val.sinfo) or ""
     _prim_return(vp, [quoted(s)])
 
+
 PRIMITIVES = {
     "__is_null__":             prim_is_null,
+    "__OS_exit_normal__":      prim_OS_exit_normal,
+    "__OS_exit_error__":       prim_OS_exit_error,
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
@@ -839,6 +863,7 @@ PRIMITIVES = {
     "__CChain_pop_CFrame__":   prim_CChain_pop_CFrame,
     "__LList_cons__":          prim_LList_cons,
     "__LList_uncons__":        prim_LList_uncons,
+    "__CFrame_get_Closure__":  prim_CFrame_get_Closure,
     "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,
 }
 
