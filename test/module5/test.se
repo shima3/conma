@@ -17,3 +17,28 @@
   __LList_cons__ "C" list ,(list)
   __LList_print__ list ,()
   )
+
+(define __Cont_get__ ,()
+  __OS_print__ "__Cont_get__ 1\n" ,()
+  __CChain_get__ ,(cc)
+  __OS_print__ "__Cont_get__ 2\n" ,()
+  __NULL__ (,()
+             __CChain_set__ cc ,()
+             __NULL__))
+
+(define __CChain_print__ ,(cc)
+  __unless__ (,() __LList_is_empty__ cc)
+  (,()
+    __LList_uncons__ __OS_print_error__ cc ,(first rest)
+    __CFrame_get_SInfo__ first ,(si)
+    __OS_print__ si ,()
+    __OS_print__ "\n" ,()
+    __CChain_print__ rest))
+
+(define case2 ,()
+  __CChain_get__ ,(cc)
+  __CChain_print__ cc)
+
+(define case3 ,()
+  case2 ,()
+  __OS_print__ "end\n")
