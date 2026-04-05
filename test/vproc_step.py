@@ -99,9 +99,9 @@ class Number:
     def __repr__(self):
         return f"Number({self.value!r})"
 class LList:
-    """A cons cell representing a node in a linked list."""
+    """A cons cell representing a node in a linked list (also used for CChain)."""
     def __init__(self, head, tail):
-        self.head = head  # any ConMa value
+        self.head = head  # any ConMa value (CFrame when used as CChain)
         self.tail = tail  # LList or NULL
     def value_to_sexp(self):
         return ["__LList__", value_to_sexp(self.head), value_to_sexp(self.tail)]
@@ -210,6 +210,42 @@ def seqclosure_to_sexp(sc):
 def lvenv_to_sexp(lvenv):
     return ["__LVEnv__"] + [[quoted(n), value_to_sexp(v)] for n,v in lvenv]
 
+
+# ── CChain helpers (LList-based) ──────────────────────────────────────────────
+
+def cchain_empty():
+    """Return an empty CChain (NULL)."""
+    return NULL
+
+def cchain_is_empty(cc):
+    return is_null_value(cc)
+
+def cchain_push(cc, cf):
+    """Prepend CFrame cf to CChain cc, returning the new CChain."""
+    return LList(cf, cc)
+
+def cchain_pop(cc):
+    """Pop the top CFrame from CChain cc.
+    Returns (CFrame, rest_CChain) or raises VProcError if empty."""
+    if is_null_value(cc):
+        return None, NULL
+    return cc.head, cc.tail
+
+def cchain_to_list(cc):
+    """Convert LList-based CChain to Python list of CFrames (for serialization)."""
+    result = []
+    while not is_null_value(cc):
+        result.append(cc.head)
+        cc = cc.tail
+    return result
+
+def list_to_cchain(frames):
+    """Convert Python list of CFrames to LList-based CChain."""
+    cc = NULL
+    for cf in reversed(frames):
+        cc = LList(cf, cc)
+    return cc
+
 # ── VProc ─────────────────────────────────────────────────────────────────────
 
 def vproc_from_sexp(sexp, gvenv):
@@ -236,11 +272,12 @@ def vproc_from_sexp(sexp, gvenv):
     vp["lvenv"] = parse_lvenv_node(["__LVEnv__"] + raw.get("__LVEnv__", []), gvenv)
     vp["gvenv_files"] = [unquote(x) for x in raw.get("__GVEnv__", [])]
 
-    vp["cchain"] = []
+    _frames = []
     for item in raw.get("__CChain__", []):
         closure = sexp_to_value(item[0], gvenv)
         sinfo   = item[1][1:] if len(item) > 1 and isinstance(item[1], list) else None
-        vp["cchain"].append(CFrame(closure, sinfo))
+        _frames.append(CFrame(closure, sinfo))
+    vp["cchain"] = list_to_cchain(_frames)
 
     vp["pdict"] = [(sexp_to_value(p[0],gvenv), sexp_to_value(p[1],gvenv))
                    for p in raw.get("__PDict__", [])]
@@ -251,7 +288,7 @@ def vproc_to_sexp(vp):
     lcont_part = ["__LCont__"] + ([] if lc is None else [value_to_sexp(lc)])
 
     cchain_items = [[value_to_sexp(cf.closure), ["__SInfo__"]+(cf.sinfo or [])]
-                    for cf in vp["cchain"]]
+                    for cf in cchain_to_list(vp["cchain"])]
     return ["__VProc__",
             ["__SInfo__"] + (vp["sinfo"] or []),
             ["__Operator__", value_to_sexp(vp["operator"])],
@@ -317,8 +354,8 @@ def step(vp, gvenv):
             vp["operator"] = lcont
             vp["lcont"]    = None
         else:
-            if not vp["cchain"]: raise VProcError("Null Operator: CChain empty, no LCont")
-            cf = vp["cchain"].pop(0)
+            if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("Null Operator: CChain empty, no LCont", vp.get("sinfo")))
+            cf, vp["cchain"] = cchain_pop(vp["cchain"])
             vp["operator"] = cf.closure
             vp["sinfo"]    = cf.sinfo
         return
@@ -330,8 +367,8 @@ def step(vp, gvenv):
             vp["olist"]    = list(operator.olist)
             vp["lvenv"]    = operator.lvenv
         else:
-            if not vp["cchain"]: raise VProcError("SeqClosure: no OList and CChain empty")
-            cf = vp["cchain"].pop(0)
+            if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("SeqClosure: no OList and CChain empty", vp.get("sinfo")))
+            cf, vp["cchain"] = cchain_pop(vp["cchain"])
             vp["olist"]    = list(operator.olist)
             vp["operator"] = cf.closure
             vp["sinfo"]    = cf.sinfo
@@ -364,10 +401,10 @@ def step(vp, gvenv):
         cur_sinfo = vp["sinfo"]
         # Step 1: push LCont if present
         if lcont is not None:
-            vp["cchain"].insert(0, CFrame(lcont, cur_sinfo))
+            vp["cchain"] = cchain_push(vp["cchain"], CFrame(lcont, cur_sinfo))
         # Step 2: surplus OList → SeqClosure
         if olist:
-            vp["cchain"].insert(0, CFrame(SeqClosure(list(olist), cur_sinfo, cur_lvenv), cur_sinfo))
+            vp["cchain"] = cchain_push(vp["cchain"], CFrame(SeqClosure(list(olist), cur_sinfo, cur_lvenv), cur_sinfo))
             vp["olist"] = []
         # Step 3: load Body
         if body_node is None: raise VProcError("Closure has no Body")
@@ -396,8 +433,8 @@ def step(vp, gvenv):
         vp["operator"] = lcont
         vp["lcont"]    = None
     else:
-        if not vp["cchain"]: raise VProcError("Partial apply: OList empty, no LCont, CChain empty")
-        cf = vp["cchain"].pop(0)
+        if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("Partial apply: OList empty, no LCont, CChain empty", vp.get("sinfo")))
+        cf, vp["cchain"] = cchain_pop(vp["cchain"])
         vp["olist"]    = [operator]
         vp["operator"] = cf.closure
         vp["sinfo"]    = cf.sinfo
@@ -697,6 +734,49 @@ def prim_Number_floor(vp, gvenv):
     _prim_return(vp, [Number(int(math.floor(val.value)))])
 
 
+# ── CChain / CFrame Primitives ────────────────────────────────────────────────
+
+def prim_CChain_get(vp, gvenv):
+    """__CChain_get__ ,(CChain) — pass current CChain (LList) to LCont."""
+    _prim_return(vp, [vp["cchain"]])
+
+
+def prim_CChain_set(vp, gvenv):
+    """__CChain_set__ CChain ,() — replace current CChain; invoke LCont directly."""
+    olist = vp["olist"]
+    if not olist:
+        raise VProcError("__CChain_set__: missing argument")
+    cc = olist.pop(0)
+    if not (is_null_value(cc) or isinstance(cc, LList)):
+        raise VProcError(f"__CChain_set__: expected CChain (LList or null), got {cc!r}")
+    vp["cchain"] = cc
+    lc = vp["lcont"]
+    vp["operator"] = lc if lc is not None else NULL
+    vp["olist"]    = []
+    vp["lcont"]    = None
+
+
+def prim_CChain_push_CFrame(vp, gvenv):
+    """__CChain_push_CFrame__ CFrame — push CFrame onto CChain; invoke LCont with no arg."""
+    olist = vp["olist"]
+    if not olist:
+        raise VProcError("__CChain_push_CFrame__: missing argument")
+    cf = olist.pop(0)
+    if not isinstance(cf, CFrame):
+        raise VProcError(f"__CChain_push_CFrame__: expected CFrame, got {cf!r}")
+    vp["cchain"] = cchain_push(vp["cchain"], cf)
+    _prim_return(vp, [])
+
+
+def prim_CChain_pop_CFrame(vp, gvenv):
+    """__CChain_pop_CFrame__ ,(CFrame|null) — pop top CFrame; pass null if empty."""
+    if cchain_is_empty(vp["cchain"]):
+        _prim_return(vp, [NULL])
+    else:
+        cf, vp["cchain"] = cchain_pop(vp["cchain"])
+        _prim_return(vp, [cf])
+
+
 # ── LList Primitives ──────────────────────────────────────────────────────────
 
 def prim_LList_cons(vp, gvenv):
@@ -737,7 +817,6 @@ def prim_CFrame_get_SInfo(vp, gvenv):
 
 PRIMITIVES = {
     "__is_null__":             prim_is_null,
-    # "__NULL__":              prim_null,
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
@@ -754,6 +833,10 @@ PRIMITIVES = {
     "__Number_multiply__":     prim_Number_multiply,
     "__Number_divide__":       prim_Number_divide,
     "__Number_floor__":        prim_Number_floor,
+    "__CChain_get__":          prim_CChain_get,
+    "__CChain_set__":          prim_CChain_set,
+    "__CChain_push_CFrame__":  prim_CChain_push_CFrame,
+    "__CChain_pop_CFrame__":   prim_CChain_pop_CFrame,
     "__LList_cons__":          prim_LList_cons,
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,

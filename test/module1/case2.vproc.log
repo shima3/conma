@@ -34,4 +34,4 @@ Step 1
   (__CChain__)
   (__PDict__))
 Step 2
-Error: Partial apply: OList empty, no LCont, CChain empty
+Error: test.se:5: Partial apply: OList empty, no LCont, CChain empty

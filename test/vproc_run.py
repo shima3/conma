@@ -21,6 +21,8 @@ def _load_vproc_step():
     for candidate in [
         pathlib.Path(__file__).parent / "vproc_step.py",
         pathlib.Path("vproc_step.py"),
+        pathlib.Path(__file__).parent / "vproc_step8.py",
+        pathlib.Path("vproc_step8.py"),
     ]:
         if candidate.exists():
             spec = importlib.util.spec_from_file_location("vproc_step", candidate)
@@ -69,7 +71,7 @@ def make_initial_vproc(closure, module_file, gvenv):
         "lcont":       None,
         "lvenv":       [],
         "gvenv_files": [module_file],
-        "cchain":      [],
+        "cchain":      vs.NULL,
         "pdict":       [],
     }
 
@@ -80,7 +82,7 @@ def is_terminal(vp):
     return (
         is_null_value(vp["operator"])
         and vp["lcont"] is None
-        and not vp["cchain"]
+        and vs.cchain_is_empty(vp["cchain"])
     )
 
 # ── Trace helper ──────────────────────────────────────────────────────────────

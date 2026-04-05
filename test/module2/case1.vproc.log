@@ -1019,4 +1019,4 @@ Step 15
   (__CChain__)
   (__PDict__))
 Step 16
-Error: Partial apply: OList empty, no LCont, CChain empty
+Error: conma/test/module2/test.se:6: Partial apply: OList empty, no LCont, CChain empty
