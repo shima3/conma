@@ -1,3 +1,10 @@
+2026/4/6 Mon
+テストの実行
+test/module?/test.sh
+
+module1, 2 は resolver.sh を使わず、module?/test.module.se をそのまま実行する。
+module3 以降は resolver.sh を使い、/tmp/test.module.se を作成して実行する。
+
 2026/4/4 Sat
 cd conma/test/module4
 # バッファリングを無効にして実行する。
