@@ -43,6 +43,4 @@
 (define __Cont_get__ ,()
   __CChain_get__ ,(cc)
   __LList_uncons__ __print_exit_error__ cc ,(first rest)
-  __NULL__ (,()
-             __CChain_set__ rest ,()
-             __NULL__))
+  __NULL__ (,() __CChain_set__ rest))
