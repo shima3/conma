@@ -329,8 +329,8 @@ Initiates the creation and execution of a new Virtual Process (VProc) through th
 1. **Process Initialization**: A new, isolated Virtual Process is allocated with its own independent memory, CChain, and Process Dictionary.
 2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `SourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
 3. **Environment Binding**: All identifiers identified during the scan are registered in the new VProc’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
-4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__MAIN__` wrapper.
-5. **Context Injection**: The `__MAIN__` function is applied to the following arguments:
+4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__main__` wrapper.
+5. **Context Injection**: The `__main__` function is applied to the following arguments:
 * **ErrorSink**: For handling standard error output.
 * **ArgumentSequence**: For program startup arguments.
 * **InputSequence**: Representing the standard input stream.
@@ -727,10 +727,10 @@ Example:
 
 ---
 
-### `MAIN`
+### `Main`
 
 ```
-(define __MAIN__ ,(err args in out)
+(define __main__ ,(err args in out)
   __Cont_get__ ,(exit)
   __PDict_put__ "__EXIT__" exit ,()
   __PDict_put__ "__STD_IN__" in ,()
@@ -747,7 +747,7 @@ Example:
 
 ---
 
-### `exit`
+### `Exit`
 
 ```
 (define __PDict_lookup_or_error__ ,(key)
@@ -838,9 +838,9 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 # Program Entry Point: `main`
 
 A ConMa program must define a `main` function.
-The interpreter starts execution by spawning a virtual process that applies `__MAIN__` to the following arguments: an ErrorStream, an ArgumentSeq, an InputStream, and an OutputStream.
+The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an ErrorStream, an ArgumentSeq, an InputStream, and an OutputStream.
 
-`__MAIN__` calls the user-defined `main` function with the ArgumentSeq.
+`__main__` calls the user-defined `main` function with the ArgumentSeq.
 the InputStream, the OutputStream, and the ErrorStream are passed via `PDict`.
 
 Example:
