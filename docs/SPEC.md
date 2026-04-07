@@ -270,8 +270,8 @@ Example:
 
 ## Internal Primitives
 
-### `__OS_spawn__ CommandMSeq InputStream OutputStream ErrorStream ,(OSProc)`
-* **Description**: Launches an external process. The `CommandMSeq` is an MSeq where the first element is the executable path and subsequent elements are its command-line arguments. `InputStream`, `OutputStream`, and `ErrorStream` are connected to the process's standard I/O handles.
+### `__OS_spawn__ commandMSeq inputStream outputStream errorStream ,(OSProc)`
+* **Description**: Launches an external process. The `commandMSeq` is an MSeq where the first element is the executable path and subsequent elements are its command-line arguments. `inputStream`, `outputStream`, and `errorStream` are connected to the process's standard I/O handles.
 * **Returns**: An `OSProc` object representing the spawned process.
 
 ### `__OS_exit_normal__ ,()`
@@ -322,19 +322,19 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 
 ---
 
-### `__VProc_spawn__ ErrorSink SourceFileName ArgumentSequence InputSequence OutputSink`
+### `__VProc_spawn__ errorSink sourceFileName argumentSequence inputSequence outputSink`
 Behavior:
 Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
 1. **Process Initialization**: A new, isolated Virtual Process is allocated with its own independent memory, CChain, and Process Dictionary.
-2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `SourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
+2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `sourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
 3. **Environment Binding**: All identifiers identified during the scan are registered in the new VProc’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
 4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__main__` wrapper.
 5. **Context Injection**: The `__main__` function is applied to the following arguments:
-* **ErrorSink**: For handling standard error output.
-* **ArgumentSequence**: For program startup arguments.
-* **InputSequence**: Representing the standard input stream.
-* **OutputSink**: For standard output.
+* `errorSink`: For handling standard error output.
+* `argumentSequence`: For program startup arguments.
+* `inputSequence`: Representing the standard input stream.
+* `outputSink`: For standard output.
 
 ---
 
@@ -418,32 +418,32 @@ If the CChain is empty, passes null to the LCont instead.
 
 ---
 
-### `__PDict_put__ Key Value`
+### `__PDict_put__ key value`
 Behavior:
-Associates the `Value` with the `Key` in the Process Dictionary.
+Associates the `value` with the `key` in the Process Dictionary.
 Invokes the current LCont with no argument
 
 ---
 
-### `__PDict_lookup_or__ Key OnMissing`
+### `__PDict_lookup_or__ key onMissing`
 Behavior:
-Retrieves the value associated with `Key` in the Process Dictionary.
+Retrieves the value associated with `key` in the Process Dictionary.
 
 * If the key exists, the associated value is passed to the current **LCont**.
-* If the key does not exist, `OnMissing` is invoked with `Key` as its argument.
+* If the key does not exist, `onMissing` is invoked with `key` as its argument.
 
-`OnMissing` is invoked with the **same continuation** that `__PDict_lookup_or__` would have used for the successful case.
-Therefore, if `OnMissing` eventually calls that continuation, its return value becomes the result of the lookup.
-However, if `OnMissing` is itself a continuation (or otherwise does not invoke that continuation), control does not return to the call site.
+`onMissing` is invoked with the **same continuation** that `__PDict_lookup_or__` would have used for the successful case.
+Therefore, if `onMissing` eventually calls that continuation, its return value becomes the result of the lookup.
+However, if `onMissing` is itself a continuation (or otherwise does not invoke that continuation), control does not return to the call site.
 
 Example:
 ```
 __PDict_lookup_or__ key (,(key) __CChain_pop_LCont__ __NULL__) ,(value) ...
 ```
-If no value is associated with `key`, the `OnMissing` function invokes the same continuation with `__NULL__`, so `value` receives `__NULL__`.
+If no value is associated with `key`, the `onMissing` function invokes the same continuation with `__NULL__`, so `value` receives `__NULL__`.
 
 Supplementary explanation:
-When `OnMissing` — the closure `(,(key) __CChain_pop_LCont__ __NULL__)` — is invoked, its body is:
+When `onMissing` — the closure `(,(key) __CChain_pop_LCont__ __NULL__)` — is invoked, its body is:
 
 ```
 __CChain_pop_LCont__ __NULL__
@@ -524,7 +524,7 @@ In short, two pops are required because the call to `__CChain_pop_LCont__` itsel
 
 ### `__is_null__ Value`
 Behavior:
-Passes `(,(t f) t)` to the LCont if the `Value` is null, otherwise passes `(,(t f) f)`.
+Passes `(,(t f) __NULL__ t)` to the LCont if the `Value` is null, otherwise passes `(,(t f) __NULL__ f)`.
 
 ---
 
@@ -838,7 +838,7 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 # Program Entry Point: `main`
 
 A ConMa program must define a `main` function.
-The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an ErrorStream, an ArgumentSeq, an InputStream, and an OutputStream.
+The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an commandMSeq, an InputStream, an OutputStream, and an errorStream.
 
 `__main__` calls the user-defined `main` function with the ArgumentSeq.
 the InputStream, the OutputStream, and the ErrorStream are passed via `PDict`.
