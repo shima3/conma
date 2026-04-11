@@ -6,8 +6,19 @@ This document defines the standard built-in primitives available in the ConMa en
 
 These primitives manage external processes and stream-based I/O.
 
-### `__OS_spawn__ commandMSeq inputStream outputStream errorStream ,(OSProc)`
-* **Description**: Launches an external process. The `commandMSeq` is an MSeq where the first element is the executable path and subsequent elements are its command-line arguments. `inputStream`, `outputStream`, and `errorStream` are connected to the process's standard I/O handles.
+### `__OS_get_envDict__ ,(envDict)`
+* **Description**: Retrieves the environment variables of the current interpreter process.
+* **Returns**: A Dict (String → String) representing the current environment variables.
+* **Usage**: Typically used to capture the parent environment before modifying it to pass into `__OS_spawn__`.
+
+### `__OS_spawn__ commandMSeq inputStream outputStream errorStream envDict ,(OSProc)`
+* **Description**: Launches an external operating system process with a specified environment.
+* **Arguments**:
+    * `commandMSeq`: An `MSeq` where the first element is the executable path and subsequent elements are arguments.
+    * `inputStream`: A stream handle for the process's standard input.
+    * `outputStream`: A stream handle for the process's standard output.
+    * `errorStream`: A stream handle for the process's standard error.
+    * `envDict`: A Dict defining environment variables for the spawned process. The environment of the new process is exactly envDict.
 * **Returns**: An `OSProc` object representing the spawned process.
 
 ### `__OS_exit_normal__ ,()`
@@ -70,7 +81,7 @@ Primitives for floating-point arithmetic and numeric utilities.
 ### **`__Number_toString__ Number ,(String)`**
 * **Description**: Converts a `Number` to its string representation.
 
-### **`__Number_is_zero__ Number ,(Bool)`** / **`__Number_is_positive__`** / **`__Number_is_negative__`**
+### **`__Number_is_zero__ Number ,(Boolean)`** / **`__Number_is_positive__`** / **`__Number_is_negative__`**
 * **Description**: Evaluates the sign property of the given `Number` and returns a boolean value.
 
 ### **`__Number_add__ aNumber bNumber ,(sumNumber)`** / **`__Number_subtract__ aNumber bNumber ,(differenceNumber)`** / **`__Number_multiply__ aNumber bNumber ,(productNumber)`**
@@ -97,7 +108,7 @@ Low-level operations for the fundamental linked list structure.
 ### **`__LList_uncons__ onError list ,(head tail)`**
 * **Description**: Decomposes `list` into its head element and its tail (the remainder of the list).
 * **Returns**: If `list` is not null and is a LList, returns two values: the `head` element and the `tail` (the remaining LList).
-* **Error**: If `list` is null or not a `LList`, the interpreter sets the Operator to `onError` and the OList to a single error message string instead of performing the decomposition.
+* **Error**: If `list` is null or not a `LList`, the interpreter sets the Operator to `onError` with an error message String.
 
 ---
 
@@ -201,7 +212,7 @@ Passes a string formed by concatenating the strings contained in the SInfo store
 
 ## 6. VProc Primitives
 
-### `__VProc_spawn__ errorSink sourceFileName argumentSeq inputSeq outputSink`
+### `__VProc_spawn__ errorSink sourceFileName argumentSeq inputSeq outputSink ,(VProc)`
 Behavior:
 Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
@@ -215,16 +226,16 @@ Initiates the creation and execution of a new Virtual Process (VProc) through th
 * `inputSeq`: Representing the standard input stream.
 * `outputSink`: For standard output.
 
-### `__VProc_current__`
+### `__VProc_current__ ,(VProc)`
 Behavior:
 Passes the current VProc to the LCont.
 
-### `__VProc_suspend__ VProc`
+### `__VProc_suspend__ VProc ,()`
 Behavior:
 Suspends the `VProc`.
 Moves the `VProc` from the ready queue to the blocked queue.
 
-### `__VProc_resume__ VProc`
+### `__VProc_resume__ VProc ,()`
 Behavior:
 Resumes the `VProc`.
 Moves the `VProc` from the blocked queue to the ready queue.
@@ -311,27 +322,27 @@ A variable defined as null.
 ### **`__MSeq_is_empty__ onError mseq ,(Boolean)`**
 
 * **Description**: Takes an **mseq** and returns whether it is empty.
-* **Returns**: `__TRUE__` if the mseq is an empty MSeq; `__FALSE__` if the mseq is a MSeq and it contains one or more elements.
-* **Error**: `onError` is called if the mseq is not a MSeq.
+* **Returns**: `__true__` if the mseq is an empty MSeq; `__false__` if the mseq is a MSeq and it contains one or more elements.
+* **Error**: `onError` is called with an error message String if the mseq is not a MSeq.
 
 ### **`__MSeq_uncons__ onError mseq ,(head tail)`**
 
 * **Description**: Decomposes the **mseq** into its first element and the remaining sequence.
 * **Returns**: If the mseq is a MSeq and not empty, returns two values: the **head** element and the **tail** (the remaining MSeq).
-* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with an error message String.
 
 ### **`__MSeq_set_head__ onError mseq value ,()`**
 
 * **Description**: Performs a conditional destructive update on the first position of the **mseq**. The head position is defined as index 0; if it does not exist, it is created.
 * **Behavior**: If the mseq is a MSeq and not empty, replaces the current **head** element with the provided `value` via an in-place update.
-* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with an error message String.
 * **Returns**: Nothing (performs a side effect on the MSeq).
 
 ### **`__MSeq_append__ onError mseq value ,()`**
 
 * **Description**: Appends a `value` to the end of the **mseq**, increasing the total element count.
 * **Behavior**: If the mseq is a MSeq, appends `value` to the end of `mseq`.
-* **Error**: If the mseq is not a MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq, the Closure `onError` is invoked as an Operator Application with an error message String.
 * **Returns**: Nothing (performs a side effect on the MSeq).
 
 ### **`__MSeq_new__ ,(MSeq)`**
