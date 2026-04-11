@@ -322,7 +322,7 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 
 ---
 
-### `__VProc_spawn__ errorSink sourceFileName argumentSequence inputSequence outputSink`
+### `__VProc_spawn__ errorSink sourceFileName argumentSeq inputSeq outputSink`
 Behavior:
 Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
@@ -332,8 +332,8 @@ Initiates the creation and execution of a new Virtual Process (VProc) through th
 4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__main__` wrapper.
 5. **Context Injection**: The `__main__` function is applied to the following arguments:
 * `errorSink`: For handling standard error output.
-* `argumentSequence`: For program startup arguments.
-* `inputSequence`: Representing the standard input stream.
+* `argumentSeq`: For program startup arguments.
+* `inputSeq`: Representing the standard input stream.
 * `outputSink`: For standard output.
 
 ---
@@ -363,8 +363,6 @@ Behavior:
 Creates a CFrame and passes it to the LCont.
 The CFrame consists of a Closure of `FuncExp`, the SInfo, and a null as the next CFrame.
 
----
-
 ### `__CFrame_get_Closure__ CFrame ,(Closure)`
 Behavior:
 Passes the Closure stored in `CFrame` to the LCont.
@@ -378,8 +376,6 @@ Passes a string formed by concatenating the strings contained in the SInfo store
 ### `__CChain_get__ ,(CChain)`
 Behavior:
 Passes the current CChain to the LCont.
-
----
 
 ### `__CChain_set__ CChain ,()`
 Behavior:
@@ -402,30 +398,28 @@ When the primitive `__CChain_set__ cc ,() ...` is executed, the interpreter perf
 **Operational Distinction:**
 Unlike standard function applications, `__CChain_set__` does **not** push the current `LCont` onto the newly set `CChain`. The `LCont` is executed as the direct successor to the primitive call, effectively resuming execution from the "front" of the new execution context defined by `cc`.
 
----
-
-### `__CChain_push_CFrame__ CFrame`
+### `__CChain_push_CFrame__ CFrame ,()`
 Behavior:
 Sets the `next CFrame` field of the given `CFrame` to the current top of the CChain, then sets the given `CFrame` as the new top of the CChain.
 Invokes the current LCont with no argument
 
 ---
 
-### `__CChain_pop_CFrame__`
+### `__CChain_pop_CFrame__ ,(CFrame)`
 Behavior:
 Pops a CFrame from the CChain and passes it to the LCont.
 If the CChain is empty, passes null to the LCont instead.
 
 ---
 
-### `__PDict_put__ key value`
+### `__PDict_put__ key value ,()`
 Behavior:
 Associates the `value` with the `key` in the Process Dictionary.
 Invokes the current LCont with no argument
 
 ---
 
-### `__PDict_lookup_or__ key onMissing`
+### `__PDict_lookup_or__ key onMissing ,(value)`
 Behavior:
 Retrieves the value associated with `key` in the Process Dictionary.
 
@@ -465,22 +459,22 @@ The net result is that `value` receives `__NULL__`, exactly as if the lookup had
 
 ---
 
-### `__Ref_new__ Value`
+### `__Ref_new__ value ,(Ref)`
 Behavior:
-Creates a Ref, sets the `Value`, and passes it to the LCont.
+Creates a Ref, sets the `value`, and passes it to the LCont.
 
-### `__Ref_get__ Ref`
+### `__Ref_get__ Ref ,(value)`
 Behavior:
-Gets the `Value` for the `Ref` and passes it to the LCont.
+Gets the `value` for the `Ref` and passes it to the LCont.
 
-### `__Ref_set__ Ref Value`
+### `__Ref_set__ Ref value ,()`
 Behavior:
-Sets the `Value` for the `Ref`.
+Sets the `value` for the `Ref`.
 Invokes the current LCont with no argument
 
 ---
 
-### `__CChain_pop_LCont__`
+### `__CChain_pop_LCont__ ,(LCont)`
 Behavior:
 pops a parent LCont and passes it to the current LCont.
 It is defined as follow:
@@ -522,7 +516,7 @@ In short, two pops are required because the call to `__CChain_pop_LCont__` itsel
 
 ---
 
-### `__is_null__ Value`
+### `__is_null__ Value ,(Boolean)`
 Behavior:
 Passes `(,(t f) __NULL__ t)` to the LCont if the `Value` is null, otherwise passes `(,(t f) __NULL__ f)`.
 
@@ -537,26 +531,26 @@ A variable defined as null.
 
 * **Description**: Takes an **mseq** and returns whether it is empty.
 * **Returns**: `__TRUE__` if the mseq is an empty MSeq; `__FALSE__` if the mseq is a MSeq and it contains one or more elements.
-* **On Error**: `onError` is called if the mseq is not a MSeq.
+* **Error**: `onError` is called if the mseq is not a MSeq.
 
 ### **`__MSeq_uncons__ onError mseq ,(head tail)`**
 
 * **Description**: Decomposes the **mseq** into its first element and the remaining sequence.
 * **Returns**: If the mseq is a MSeq and not empty, returns two values: the **head** element and the **tail** (the remaining MSeq).
-* **On Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
 
 ### **`__MSeq_set_head__ onError mseq value ,()`**
 
 * **Description**: Performs a conditional destructive update on the first position of the **mseq**. The head position is defined as index 0; if it does not exist, it is created.
 * **Behavior**: If the mseq is a MSeq and not empty, replaces the current **head** element with the provided `value` via an in-place update.
-* **On Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
 * **Returns**: Nothing (performs a side effect on the MSeq).
 
 ### **`__MSeq_append__ onError mseq value ,()`**
 
 * **Description**: Appends a `value` to the end of the **mseq**, increasing the total element count.
 * **Behavior**: If the mseq is a MSeq, appends `value` to the end of `mseq`.
-* **On Error**: If the mseq is not a MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
+* **Error**: If the mseq is not a MSeq, the Closure `onError` is invoked as an Operator Application with no operands.
 * **Returns**: Nothing (performs a side effect on the MSeq).
 
 ### **`__MSeq_new__ ,(MSeq)`**
@@ -566,14 +560,38 @@ A variable defined as null.
 
 ---
 
-#### **`__LList_cons__ head tail ,(newList)`**
+### **`__LList_cons__ head tail ,(newList)`**
 * **Description**: Creates a new list node whose head is `head` and whose tail is `tail`, and returns it as `newList`.
 * **Note**: This is the fundamental `cons` operation for constructing a linked list.
 
-#### **`__LList_uncons__ onError list ,(head tail)`**
+### **`__LList_uncons__ onError list ,(head tail)`**
 * **Description**: Decomposes `list` into its head element and its tail (the remainder of the list).
 * **Returns**: If `list` is not null and is a LList, returns two values: the `head` element and the `tail` (the remaining LList).
 * **Error**: If `list` is null or not a `LList`, the interpreter sets the Operator to `onError` and the OList to a single error message string instead of performing the decomposition.
+
+---
+
+### **`__Number_fromString__ onError String ,(Number)`**
+* **Description**: Converts a `String` to a `Number`.
+* **Returns**: The resulting `Number` object.
+* **Error**: If the `String` is not a valid numeric representation, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
+
+### **`__Number_toString__ Number ,(String)`**
+* **Description**: Converts a `Number` to its string representation.
+
+### **`__Number_is_zero__ Number ,(Bool)`** / **`__Number_is_positive__`** / **`__Number_is_negative__`**
+* **Description**: Evaluates the sign property of the given `Number` and returns a boolean value.
+
+### **`__Number_add__ aNumber bNumber ,(sumNumber)`** / **`__Number_subtract__ aNumber bNumber ,(differenceNumber)`** / **`__Number_multiply__ aNumber bNumber ,(productNumber)`**
+* **Description**: Performs the corresponding arithmetic operation on two `Number` values and returns the resulting `Number`.
+
+### **`__Number_divide__ onError aNumber bNumber ,(quotientNumber)`**
+* **Description**: Divides `aNumber` by `bNumber`.
+* **Returns**: The resulting `Number`.
+* **Error**: If `bNumber` is zero, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
+
+### **`__Number_floor__ Number ,(intNumber)`**
+* **Description**: Returns the greatest integer less than or equal to the given `Number` as an integer-valued `Number`.
 
 ---
 
@@ -838,10 +856,10 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 # Program Entry Point: `main`
 
 A ConMa program must define a `main` function.
-The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an commandMSeq, an InputStream, an OutputStream, and an errorStream.
+The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
 
-`__main__` calls the user-defined `main` function with the ArgumentSeq.
-the InputStream, the OutputStream, and the ErrorStream are passed via `PDict`.
+`__main__` calls the user-defined `main` function with the argumentSeq.
+The inputSeq, the outputSink, and the errorSink are passed via `PDict`.
 
 Example:
 
