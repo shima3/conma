@@ -244,12 +244,11 @@ In debug mode:
 An **output sink** and an **error sink** are of type `Sink`.
 A `Sink` is a function that accepts an argument and returns a `Sink`.
 
-An **argument sequence** and an **input sequence** are of type `Sequence`.
-A `Sequence (Seq)` is a function that accepts one Sink.
-It applies that Sink to zero or more elements and
-returns the final Sink produced by those applications.
+An **argument sequence** and an **input sequence** are of type `Seq`.
+A `Seq` is a function that accepts one `Sink`.
+It applies that `Sink` to zero or more elements and returns the final `Sink` produced by those applications.
 
-A Seq applies its elements to a Sink in order.
+A `Seq` applies its elements to a `Sink` in order.
 The grouping of arguments in each call is implementation-defined, provided that the observable result is equivalent to successive single-argument applications.
 
 Example:

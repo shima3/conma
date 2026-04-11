@@ -9,6 +9,15 @@ Closure:
 A closure is a function together with its referencing environment, i.e., the variables that were in scope at the time the function was defined.
 It allows the function to access those variables even when it is invoked outside of their original scope.
 
+Dictionary (Dict):
+A **Dict** is a mutable mapping from **keys** to **values**.
+* A Dict stores zero or more **entries**, each consisting of a **key** and an associated **value**.
+* Keys are compared using **identity equality** (i.e., two keys are equal if and only if they are the same Value).
+* Each key appears **at most once** in a Dict.
+* A Dict is **mutable**: its contents may be modified after creation.
+* A Dict is a **Value**.
+* The internal representation of Dict is **unspecified**.
+
 Process Dictionary (PDict):
 A process dictionary is a key-value storage that is local to a specific process and accessible only within that process’s context.
 

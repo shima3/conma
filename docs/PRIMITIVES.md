@@ -338,3 +338,50 @@ A variable defined as null.
 
 * **Description**: Allocates and initializes a new, **empty MSeq** object.
 * **Returns**: The newly created MSeq instance.
+
+---
+
+## 11. Dict Primitives
+
+### **`__Dict_new__ ,(Dict)`**
+* **Description**:
+  Creates a new, empty Dict.
+* **Returns**:
+  A Dict containing no entries.
+
+### **`__Dict_put__ Dict key value ,()`**
+* **Description**:
+  Associates `value` with `key` in the Dict.
+* **Behavior**:
+  * If `key` is not present, a new entry is created.
+  * If `key` is already present, its associated value is **replaced** with `value`.
+* **Returns**:
+  Nothing (invokes the current LCont with an empty OList).
+
+### **`__Dict_lookup_or__ Dict key onMissing ,(value)`**
+* **Description**:
+  Retrieves the value associated with `key`.
+* **Behavior**:
+  * If `key` exists, its associated value is passed to the current LCont.
+  * If `key` does not exist, `onMissing` is invoked with `key` as its argument.
+* **Continuation Rule**:
+  * `onMissing` is invoked with the **same continuation** that would have been used if the lookup had succeeded.
+  * If `onMissing` eventually invokes that continuation, its result becomes the result of the lookup.
+
+### **`__Dict_remove__ Dict key ,()`**
+* **Description**:
+  Removes the entry associated with `key`.
+* **Behavior**:
+  * If `key` exists, the corresponding entry is removed.
+  * If `key` does not exist, the operation has **no effect**.
+* **Returns**:
+  Nothing (invokes the current LCont with an empty OList).
+
+### **`__Dict_keys__ Dict ,(Seq)`**
+* **Description**:
+  Produces a Sequence containing all keys in the Dict.
+* **Behavior**:
+  * The resulting Seq enumerates each key exactly once.
+  * The order of keys is **implementation-defined**.
+* **Returns**:
+  A Seq of keys.
