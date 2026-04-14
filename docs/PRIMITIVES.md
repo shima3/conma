@@ -11,7 +11,7 @@ These primitives manage external processes and stream-based I/O.
 * **Returns**: A Dict (String → String) representing the current environment variables.
 * **Usage**: Typically used to capture the parent environment before modifying it to pass into `__OS_spawn__`.
 
-### `__OS_spawn__ commandMSeq inputStream outputStream errorStream envDict ,(OSProc)`
+### `__OS_spawn__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)`
 * **Description**: Launches an external operating system process with a specified environment.
 * **Arguments**:
     * `commandMSeq`: An `MSeq` where the first element is the executable path and subsequent elements are arguments.
@@ -20,6 +20,12 @@ These primitives manage external processes and stream-based I/O.
     * `errorStream`: A stream handle for the process's standard error.
     * `envDict`: A Dict defining environment variables for the spawned process. The environment of the new process is exactly envDict.
 * **Returns**: An `OSProc` object representing the spawned process.
+* **Error**: If an error occurs, it invokes the continuation specified by `onError` with an error message string.
+
+### **`__OS_poll__ onError OSProc ,(status)`**
+* **Description**: Checks whether the process has terminated (non-blocking).
+* **Returns**: If the process has terminated, returns its exit code Number; otherwise, returns `null`.
+* **Error**: If an error occurs, it invokes the continuation specified by `onError` with an error message string.
 
 ### `__OS_exit_normal__ ,()`
 Behavior:
