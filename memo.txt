@@ -1,3 +1,23 @@
+2026/4/15 Wed
+# 直前の git commit 実行を取り消す
+git reset --soft HEAD^
+
+# pushで現在のbranchのみpushする
+git config --global push.default simple
+
+# ブランチを作成する
+git branch claude
+
+# ブランチを切り替える
+git checkout claude
+
+# 現在のブランチをpush不可とする
+git branch --unset-upstream
+# 元々 claude には upstrem がない
+
+# upstream を指定してpushする
+git push --set-upstream origin claude
+
 2026/4/6 Mon
 テストの実行
 test/module?/test.sh
