@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1`, `step4` and `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1`, `step2`, `step4` and `step9`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
