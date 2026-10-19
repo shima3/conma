@@ -1,3 +1,4 @@
+;; Step1: VMの土台
 (include "pure.se")
 
 (define stdout ,(str)

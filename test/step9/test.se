@@ -1,3 +1,4 @@
+;; Step 9: OS I/Oストリーム
 (define stdout ,(str)
   __OS_print__ str ,()
   stdout)
