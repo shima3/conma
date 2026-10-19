@@ -117,6 +117,14 @@ def is_null_value(v):
 def is_prim_func(v):
     return isinstance(v, list) and v[0] == "PrimFunc"
 
+def value_type_name(v):
+    """Return the ConMa type name of a value, for error messages."""
+    if is_null_value(v): return "null"
+    if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v): return "Closure"
+    if isinstance(v, list) and v: return v[0]  # AST value node, e.g. "String"
+    if isinstance(v, str): return "String"
+    return type(v).__name__
+
 # ── Module ────────────────────────────────────────────────────────────────────
 
 def closure_from_function(func_ast, lvenv):
@@ -808,7 +816,7 @@ def prim_LList_uncons(vp, gvenv):
     on_error = olist.pop(0)
     lst      = olist.pop(0)
     if not isinstance(lst, LList):
-        _prim_error(vp, on_error, f"__LList_uncons__: expected LList, got {lst!r}")
+        _prim_error(vp, on_error, f"__LList_uncons__: expected LList, got {value_type_name(lst)}")
         return
     _prim_return(vp, [lst.head, lst.tail])
 
