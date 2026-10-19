@@ -1,3 +1,48 @@
+2026/10/19 Mon
+$ git status
+On branch claude
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   docs/VPROC_STEP.md
+	modified:   memo.txt
+	modified:   test/vproc_step.py
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	test/module6/
+no changes added to commit (use "git add" and/or "git commit -a")
+
+Dictの機能追加しかけ
+dictブランチに退避
+
+$ git branch dict
+$ git checkout dict
+$ git add docs/VPROC_STEP.md test/vproc_step.py test/module6
+
+
+2026/4/24 Fri
+bug: 保存した値を取得できない。
+__Dict_put__ dict "Key A" "Value A" ,()
+__Dict_lookup_or__ dict "Key A" onMissing ,(value)
+
+原因：eval_expr が String 値をAST ノード（["String", sinfo, '"text"']）として返すため、同じ文字列でもステップをまたぐと別 Python オブジェクトになります。_values_equal が isinstance(a, str) のチェックしか持っていなかったため、String AST ノードは a is b（恒等比較）で評価され、常に False になっていました。
+def _values_equal(a, b):
+---
+    if isinstance(a, str) and isinstance(b, str):
+        return a == b
+---
+コード中の文字列の場合、a, b には AST ノードが渡される。
+同じ文字列でも記載された位置が違うと異なるオブジェクトである。
+
+修正：String AST ノードをインデックス2の内容で比較するよう修正しました。
+---
+    if (isinstance(a, list) and a and a[0] == "String" and
+            isinstance(b, list) and b and b[0] == "String"):
+        return (len(a) > 2 and len(b) > 2 and a[2] == b[2])
+    if isinstance(a, str) and isinstance(b, str):
+        return a == b
+---
+
 2026/4/15 Wed
 # 直前の git commit 実行を取り消す
 git reset --soft HEAD^
@@ -17,6 +62,20 @@ git branch --unset-upstream
 
 # upstream を指定してpushする
 git push --set-upstream origin claude
+
+# テスト実行
+test/module1/test.sh
+test/module2/test.sh
+test/module3/test.sh
+test/module4/test.sh
+test/module5/test.sh
+
+# 履歴登録
+git commit
+
+# mainにマージ
+git checkout main
+git merge --squash claude
 
 2026/4/6 Mon
 テストの実行
