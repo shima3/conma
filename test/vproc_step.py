@@ -122,6 +122,38 @@ class Ref:
     def __repr__(self):
         return f"Ref({self.serial})"
 
+class MSeq:
+    """A mutable sequence of ConMa values."""
+    _count = 0
+    def __init__(self, items=()):
+        MSeq._count += 1
+        self.serial = MSeq._count   # identifies the MSeq in traces
+        self.items  = list(items)
+    def value_to_sexp(self):
+        # The content is not shown: an MSeq may contain itself.
+        return ["__MSeq__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"MSeq({self.serial})"
+
+class Dict:
+    """A mutable mapping from keys to ConMa values, in insertion order.
+    Keys are compared with values_equal."""
+    _count = 0
+    def __init__(self):
+        Dict._count += 1
+        self.serial  = Dict._count  # identifies the Dict in traces
+        self.entries = []           # list of (key, value)
+    def find(self, key):
+        """Return the index of key, or -1."""
+        for i, (k, _) in enumerate(self.entries):
+            if values_equal(k, key): return i
+        return -1
+    def value_to_sexp(self):
+        # The content is not shown: a Dict may contain itself.
+        return ["__Dict__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"Dict({self.serial})"
+
 class LList:
     """A cons cell representing a node in a linked list (also used for CChain)."""
     def __init__(self, head, tail):
@@ -227,7 +259,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, Ref): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -927,6 +959,113 @@ def prim_PDict_lookup_or(vp, gvenv):
     vp["olist"]    = [key]
 
 
+# ── MSeq Primitives ───────────────────────────────────────────────────────────
+
+def _mseq_args(vp, name, count):
+    """Pop onError, an MSeq and count-2 more arguments.
+    Returns (onError, mseq, rest), or None after invoking onError if the
+    second argument is not an MSeq."""
+    olist = vp["olist"]
+    if len(olist) < count: raise VProcError(f"{name}: missing argument(s)")
+    args = [olist.pop(0) for _ in range(count)]
+    on_error, mseq, rest = args[0], args[1], args[2:]
+    if not isinstance(mseq, MSeq):
+        _prim_error(vp, on_error, f"{name}: expected MSeq, got {value_type_name(mseq)}")
+        return None
+    return on_error, mseq, rest
+
+def prim_MSeq_new(vp, gvenv):
+    """__MSeq_new__ ,(MSeq)"""
+    _prim_return(vp, [MSeq()])
+
+def prim_MSeq_is_empty(vp, gvenv):
+    """__MSeq_is_empty__ onError mseq ,(Boolean)"""
+    args = _mseq_args(vp, "__MSeq_is_empty__", 2)
+    if args is None: return
+    _, mseq, _ = args
+    _prim_return(vp, [TRUE_CLOSURE if not mseq.items else FALSE_CLOSURE])
+
+def prim_MSeq_uncons(vp, gvenv):
+    """__MSeq_uncons__ onError mseq ,(head tail)
+
+    tail is a new MSeq holding the remaining elements; it does not share
+    storage with mseq."""
+    args = _mseq_args(vp, "__MSeq_uncons__", 2)
+    if args is None: return
+    on_error, mseq, _ = args
+    if not mseq.items:
+        _prim_error(vp, on_error, "__MSeq_uncons__: empty MSeq")
+        return
+    _prim_return(vp, [mseq.items[0], MSeq(mseq.items[1:])])
+
+def prim_MSeq_set_head(vp, gvenv):
+    """__MSeq_set_head__ onError mseq value ,()"""
+    args = _mseq_args(vp, "__MSeq_set_head__", 3)
+    if args is None: return
+    on_error, mseq, (value,) = args
+    if not mseq.items:
+        _prim_error(vp, on_error, "__MSeq_set_head__: empty MSeq")
+        return
+    mseq.items[0] = value
+    _prim_return(vp, [])
+
+def prim_MSeq_append(vp, gvenv):
+    """__MSeq_append__ onError mseq value ,()"""
+    args = _mseq_args(vp, "__MSeq_append__", 3)
+    if args is None: return
+    _, mseq, (value,) = args
+    mseq.items.append(value)
+    _prim_return(vp, [])
+
+
+# ── Dict Primitives ───────────────────────────────────────────────────────────
+
+def _dict_args(vp, name, count):
+    """Pop a Dict and count-1 more arguments; raise if the first is not a Dict."""
+    olist = vp["olist"]
+    if len(olist) < count: raise VProcError(f"{name}: missing argument(s)")
+    args = [olist.pop(0) for _ in range(count)]
+    if not isinstance(args[0], Dict):
+        raise VProcError(f"{name}: expected Dict, got {value_type_name(args[0])}")
+    return args
+
+def prim_Dict_new(vp, gvenv):
+    """__Dict_new__ ,(Dict)"""
+    _prim_return(vp, [Dict()])
+
+def prim_Dict_put(vp, gvenv):
+    """__Dict_put__ Dict key value ,()"""
+    d, key, value = _dict_args(vp, "__Dict_put__", 3)
+    i = d.find(key)
+    if i < 0: d.entries.append((key, value))
+    else:     d.entries[i] = (d.entries[i][0], value)
+    _prim_return(vp, [])
+
+def prim_Dict_lookup_or(vp, gvenv):
+    """__Dict_lookup_or__ Dict key onMissing ,(value)
+
+    If key is missing, onMissing is applied to key with the same LCont."""
+    d, key, on_missing = _dict_args(vp, "__Dict_lookup_or__", 3)
+    i = d.find(key)
+    if i >= 0:
+        _prim_return(vp, [d.entries[i][1]])
+        return
+    vp["operator"] = on_missing
+    vp["olist"]    = [key]
+
+def prim_Dict_remove(vp, gvenv):
+    """__Dict_remove__ Dict key ,()"""
+    d, key = _dict_args(vp, "__Dict_remove__", 2)
+    i = d.find(key)
+    if i >= 0: del d.entries[i]
+    _prim_return(vp, [])
+
+def prim_Dict_keys(vp, gvenv):
+    """__Dict_keys__ Dict ,(Seq) — the keys in insertion order."""
+    (d,) = _dict_args(vp, "__Dict_keys__", 1)
+    _prim_return(vp, [SeqClosure([k for k, _ in d.entries], None, [])])
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -1006,6 +1145,16 @@ PRIMITIVES = {
     "__Ref_set__":             prim_Ref_set,
     "__PDict_put__":           prim_PDict_put,
     "__PDict_lookup_or__":     prim_PDict_lookup_or,
+    "__MSeq_new__":            prim_MSeq_new,
+    "__MSeq_is_empty__":       prim_MSeq_is_empty,
+    "__MSeq_uncons__":         prim_MSeq_uncons,
+    "__MSeq_set_head__":       prim_MSeq_set_head,
+    "__MSeq_append__":         prim_MSeq_append,
+    "__Dict_new__":            prim_Dict_new,
+    "__Dict_put__":            prim_Dict_put,
+    "__Dict_lookup_or__":      prim_Dict_lookup_or,
+    "__Dict_remove__":         prim_Dict_remove,
+    "__Dict_keys__":           prim_Dict_keys,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
