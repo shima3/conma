@@ -883,6 +883,50 @@ def prim_Ref_set(vp, gvenv):
     _prim_return(vp, [])
 
 
+# ── PDict Primitives ──────────────────────────────────────────────────────────
+
+def values_equal(a, b):
+    """Key equality for PDict and Dict.
+    Strings compare by content, Numbers by value and null equals null;
+    any other value is equal only to itself."""
+    ta, tb = value_type_name(a), value_type_name(b)
+    if ta != tb: return False
+    if ta == "null": return True
+    if ta == "String": return _value_to_display(a) == _value_to_display(b)
+    if ta == "Number": return a.value == b.value
+    return a is b
+
+def prim_PDict_put(vp, gvenv):
+    """__PDict_put__ key value ,()"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__PDict_put__: missing argument(s)")
+    key   = olist.pop(0)
+    value = olist.pop(0)
+    pdict = vp["pdict"]
+    for i, (k, _) in enumerate(pdict):
+        if values_equal(k, key):
+            pdict[i] = (k, value)
+            break
+    else:
+        pdict.append((key, value))
+    _prim_return(vp, [])
+
+def prim_PDict_lookup_or(vp, gvenv):
+    """__PDict_lookup_or__ key onMissing ,(value)
+
+    If key is missing, onMissing is applied to key with the same LCont."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__PDict_lookup_or__: missing argument(s)")
+    key        = olist.pop(0)
+    on_missing = olist.pop(0)
+    for k, v in vp["pdict"]:
+        if values_equal(k, key):
+            _prim_return(vp, [v])
+            return
+    vp["operator"] = on_missing
+    vp["olist"]    = [key]
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -960,6 +1004,8 @@ PRIMITIVES = {
     "__Ref_new__":             prim_Ref_new,
     "__Ref_get__":             prim_Ref_get,
     "__Ref_set__":             prim_Ref_set,
+    "__PDict_put__":           prim_PDict_put,
+    "__PDict_lookup_or__":     prim_PDict_lookup_or,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

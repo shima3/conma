@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step6` and `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step7` and `step9`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -87,11 +87,11 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 
 | Primitive | Status |
 |---|---|
-| `__PDict_put__` | not implemented |
-| `__PDict_lookup_or__` | not implemented |
+| `__PDict_put__` | implemented |
+| `__PDict_lookup_or__` | implemented |
 
 * Depends on Step 4: the `onMissing` example uses `__CChain_pop_LCont__`.
-* Requires value equality for keys. Decide it before this step (see the 2026/4/24 entry in `memo.txt`: String literals from different source positions are different AST nodes and must be compared by content).
+* Key equality (`values_equal` in `test/vproc_step.py`, shared with Dict in Step 8): Strings compare by content (String literals at different source positions are different AST nodes; see the 2026/4/24 entry in `memo.txt`), Numbers by value, null equals null, and any other value (Ref, Closure, LList, ...) only to itself. A String and a Number are never equal.
 * `stdin`, `stdout`, `stderr` and `__exit__` in `include/util.se` look up the PDict.
 
 ## Step 8: MSeq & Dict
