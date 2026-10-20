@@ -51,7 +51,7 @@ For debugging purposes, when a VProc is represented as an S-expression, the GVEn
 ### One GVEnv per program
 
 Each program has its own GVEnv: the first program run by `test/vproc_run.py` (with or without `--main`), and each program loaded by `__VProc_spawn__`.
-`__VProc_spawn__` loads `sourceFileName` (relative to the current directory) by running `bin/includer --include include/` and `bin/resolver` as external commands; `bin/` and `include/` are found relative to `test/vproc_step.py`.
+`__VProc_spawn__` loads `sourceFileName` (relative to the current directory, which `__OS_chdir__` changes for every VProc) by running `bin/includer --include include/` and `bin/resolver` as external commands; `bin/` and `include/` are found relative to `test/vproc_step.py`.
 File names in the SInfo are made relative to the directory above the repository (for example `"conma/test/step10/child.se"`), as `test/resolver.sh` does, so that output does not depend on where the repository is.
 
 A closure keeps the GVEnv of the module in which it was created, and global variables in its body are looked up in that GVEnv, not in the GVEnv of the VProc that runs it.
@@ -175,7 +175,7 @@ Values that may contain themselves, or that stand for an OS resource or a proces
 | Ref | `(__Ref__ "N")` | creation order of Refs |
 | MSeq | `(__MSeq__ "N")` | creation order of MSeqs |
 | Dict | `(__Dict__ "N")` | creation order of Dicts |
-| Stream | `(__OSStream__ "r:N")` or `(__OSStream__ "w:N")` | creation order of Streams; `r` is an input Stream, `w` an output Stream |
+| Stream | `(__OSStream__ "r:N")` or `(__OSStream__ "w:N")` | creation order of Streams (pipes, files, and the standard Streams when first got); `r` is an input Stream, `w` an output Stream |
 | VProc | `(__VProcRef__ "N")` | creation order of VProcs; the first VProc is 1 |
 | OSProc | `(__OSProc__ "N")` | creation order of OSProcs (not the PID, which changes on every run) |
 

@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step13`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step14`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -11,11 +11,12 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
 * Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file).
+* Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
 * Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
 
 ## Step 1: VM foundation
@@ -264,3 +265,26 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case8 | `--main` with arguments: args, stdin lines through `stdin`, a message through `stderr`, `__print__` |
 | case9 | `--main` with no arguments and empty input |
 | case10 | `__exit__` leaves `main` early |
+
+## Step 14: Files and the current directory
+
+| Primitive | Status |
+|---|---|
+| `__OS_open__` | implemented |
+| `__OS_chdir__` | implemented |
+| `__OS_getcwd__` | implemented |
+
+* Goal: Make redirection (`<`, `>`, `>>`) and the `cd` and `pwd` built-ins of a shell possible. Both only extend the Streams of Step 9 and the processes of Step 11.
+* `__OS_open__ onError path mode ,(Stream)`: `"r"` gives an input Stream; `"w"` (create or empty) and `"a"` (create or append) give an output Stream. A file Stream works like a pipe end, so it can be the standard input or output of `__OS_spawn__`.
+* Every error of `__OS_open__` and `__OS_chdir__` goes to `onError`, also a non-String argument, as in the other OS primitives: a missing file or directory, a directory opened as a file, permission denied, an invalid mode. `__OS_getcwd__` takes no `onError`.
+* The current directory belongs to the interpreter, so `__OS_chdir__` changes it for every VProc. It is used for relative paths in `__OS_open__`, `__OS_chdir__` and `__VProc_spawn__`, and as the working directory of `__OS_spawn__`.
+* Tests (`test/step14`): `test.sh` gives every case a new empty `work/` directory to write in, and removes it at the end. The current directory is printed as `<dir>`, so that the logs do not depend on where the repository is.
+
+| Case | What it checks |
+|---|---|
+| case1 | `"r"` gives an input Stream that reads to EOF; a closed file Stream goes to `onError` |
+| case2 | `"w"` creates or empties, `"a"` appends, also to a new file; an output Stream cannot be read |
+| case3 | `onError` for a missing file, a missing directory, a directory (`"r"` and `"w"`), an invalid mode, and non-String arguments |
+| case4 | `__OS_getcwd__`; `__OS_chdir__` changes how relative paths are resolved; `onError` for a missing directory, a file and a non-String path |
+| case5 | redirection: files as the standard input and output of `/bin/cat` |
+| case6 | after `__OS_chdir__`, a child process (`/bin/sh -c pwd`) and `__VProc_spawn__` (`../child.se`) use the new directory |

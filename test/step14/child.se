@@ -1,0 +1,6 @@
+;; Step14: case6 で、作業ディレクトリからの相対パス（../child.se）で起動するプログラム
+(include "util.se")
+
+(define main ,(args)
+  __OS_print__ "child started\n" ,()
+  )

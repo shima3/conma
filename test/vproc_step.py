@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib, select
+import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno
 from collections import deque
 import types
 
@@ -902,6 +902,71 @@ def prim_OS_close(vp, gvenv):
     _prim_return(vp, [])
 
 
+# ── OS File and Directory Primitives ──────────────────────────────────────────
+
+# mode -> (os.open flags, Stream mode)
+_OPEN_MODES = {
+    "r": (os.O_RDONLY, "r"),
+    "w": (os.O_WRONLY | os.O_CREAT | os.O_TRUNC, "w"),
+    "a": (os.O_WRONLY | os.O_CREAT | os.O_APPEND, "w"),
+}
+
+def prim_OS_open(vp, gvenv):
+    """__OS_open__ onError path mode ,(Stream)
+    Open the file path (relative to the current directory). mode "r" gives
+    an input Stream; "w" (create or truncate) and "a" (create or append)
+    give an output Stream."""
+    name  = "__OS_open__"
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError(f"{name}: missing argument(s)")
+    on_error, path, mode = [olist.pop(0) for _ in range(3)]
+    for what, val in (("path", path), ("mode", mode)):
+        if value_type_name(val) != "String":
+            _prim_error(vp, on_error, f"{name}: expected String {what}, got {value_type_name(val)}")
+            return
+    path, mode = _value_to_display(path), _value_to_display(mode)
+    if mode not in _OPEN_MODES:
+        _prim_error(vp, on_error, f"{name}: invalid mode: \"{mode}\"")
+        return
+    flags, stream_mode = _OPEN_MODES[mode]
+    try:
+        fd = os.open(path, flags, 0o666)
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            os.close(fd)
+            raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR))
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
+        return
+    _prim_return(vp, [Stream(fd, stream_mode)])
+
+def prim_OS_chdir(vp, gvenv):
+    """__OS_chdir__ onError path ,()
+    Change the interpreter's current directory, which every VProc shares."""
+    name  = "__OS_chdir__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    path     = olist.pop(0)
+    if value_type_name(path) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String path, got {value_type_name(path)}")
+        return
+    path = _value_to_display(path)
+    try:
+        os.chdir(path)
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
+        return
+    _prim_return(vp, [])
+
+def prim_OS_getcwd(vp, gvenv):
+    """__OS_getcwd__ ,(String) — the absolute path of the current directory."""
+    try:
+        cwd = os.getcwd()
+    except OSError as e:
+        raise VProcError(f"__OS_getcwd__: {e.strerror}")
+    _prim_return(vp, [string_value(cwd)])
+
+
 # ── Number Primitives ─────────────────────────────────────────────────────────
 
 # Optional sign, digits with an optional fraction, optional exponent (ASCII only)
@@ -1546,6 +1611,9 @@ PRIMITIVES = {
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,
+    "__OS_open__":             prim_OS_open,
+    "__OS_chdir__":            prim_OS_chdir,
+    "__OS_getcwd__":           prim_OS_getcwd,
     "__Number_fromString__":   prim_Number_fromString,
     "__Number_toString__":     prim_Number_toString,
     "__Number_is_zero__":      prim_Number_is_zero,

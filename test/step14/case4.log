@@ -1,0 +1,9 @@
+<dir>
+<dir>/work
+<dir>
+in work
+__OS_chdir__: No such file or directory: none
+__OS_chdir__: Not a directory: input.txt
+__OS_chdir__: expected String path, got Number
+<dir>
+exit: 0

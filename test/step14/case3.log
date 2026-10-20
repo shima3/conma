@@ -1,0 +1,9 @@
+__OS_open__: No such file or directory: none.txt
+__OS_open__: No such file or directory: work/none/out.txt
+__OS_open__: Is a directory: work
+__OS_open__: Is a directory: work
+__OS_open__: invalid mode: "x"
+__OS_open__: expected String path, got Number
+__OS_open__: expected String mode, got Number
+done
+exit: 0
