@@ -431,15 +431,17 @@ Each VProc is in one of these states:
 | ready | in the ready queue, waiting for its next step |
 | running | running the current step |
 | blocked | suspended; not in the ready queue |
+| waiting | waiting for the OS (`__OS_wait__`, `__OS_wait_readable__`); not in the ready queue |
 | finished | finished normally or with an error |
 
 A scheduling step:
 
 1. Remove finished VProcs from the front of the ready queue. A VProc is finished when its Operator is null, its LCont is absent, and its CChain is empty.
-2. If the ready queue is empty: exit normally if no VProc is blocked; otherwise report a deadlock (`Deadlock: no VProc is ready; blocked VProc(s): 1, 2`) and exit with code 2.
-3. Take the first VProc, mark it running, and run one step.
-4. If the step raised an error, write `Error in VProc N at step S: message` to standard error and mark the VProc finished. `S` is the number of steps completed before the error, counted over all VProcs. Other VProcs are not affected.
-5. If the VProc is still running, mark it finished if it has finished, or put it at the end of the ready queue.
+2. If some VProcs are waiting, wake those whose process has exited or whose Stream is readable (or closed), and put them at the end of the ready queue. If the ready queue is empty, first sleep in `select` until one of them can wake. Then go back to step 1.
+3. If the ready queue is empty: exit normally if no VProc is blocked; otherwise report a deadlock (`Deadlock: no VProc is ready; blocked VProc(s): 1, 2`) and exit with code 2.
+4. Take the first VProc, mark it running, and run one step.
+5. If the step raised an error, write `Error in VProc N at step S: message` to standard error and mark the VProc finished. `S` is the number of steps completed before the error, counted over all VProcs. Other VProcs are not affected.
+6. If the VProc is still running, mark it finished if it has finished, or put it at the end of the ready queue.
 
 State changes made by primitives:
 
@@ -448,6 +450,9 @@ State changes made by primitives:
 | `__VProc_suspend__` | removed from the queue, blocked | blocked after this step; resumes with its LCont | no change | no change |
 | `__VProc_resume__` | no change | no change | ready, at the end of the queue | no change |
 | `__VProc_spawn__` | the new VProc is added at the end of the queue | | | |
+| `__OS_wait__`, `__OS_wait_readable__` | | waiting after this step, unless the OS event has already happened | | |
+
+`__VProc_suspend__` and `__VProc_resume__` do not change a waiting VProc. A waiting VProc is not counted as blocked, so VProcs that are blocked while another one waits are not a deadlock.
 
 The interpreter exits:
 
@@ -456,6 +461,6 @@ The interpreter exits:
 * with code 2 on deadlock.
 
 Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
-Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__Stream_lines__` reads again, so other VProcs keep running.
+Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__Stream_lines__` then waits with `__OS_wait_readable__`, so other VProcs keep running.
 OS processes started by `__OS_spawn__` that are still running when the interpreter exits are left running.
 

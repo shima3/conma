@@ -30,8 +30,18 @@ These primitives manage external processes and stream-based I/O.
 ### **`__OS_poll__ onError OSProc ,(status)`**
 * **Description**: Checks whether the process has terminated (non-blocking).
 * **Returns**: If the process has terminated, returns its exit code Number; otherwise, returns `null`. If a signal terminated the process, the exit code is the negative signal number (for example, `-9`). Once the process has terminated, every later call returns the same exit code.
-* **Usage**: To wait for a process, call `__OS_poll__` repeatedly until it returns a Number; other VProcs run between the calls.
+* **Usage**: To wait for a process without using the CPU, use `__OS_wait__`. Calling `__OS_poll__` repeatedly also works (other VProcs run between the calls), but it keeps the interpreter busy.
 * **Error**: If an error occurs, it invokes the continuation specified by `onError` with an error message string.
+
+### **`__OS_wait__ onError OSProc ,(status)`**
+* **Description**: Waits until the process has terminated and returns its exit code Number, in the same form as `__OS_poll__`.
+* **Behavior**: If the process has already terminated, it returns at once. Otherwise the current VProc waits, and other VProcs keep running. When no VProc is ready, the interpreter sleeps until a process exits, without using the CPU.
+* **Error**: If `OSProc` is not an OSProc, invokes `onError` with an error message string.
+
+### **`__OS_wait_readable__ onError inputStream ,()`**
+* **Description**: Waits until `inputStream` has data or is at EOF, so that the next `__OS_read__` does not return `""`.
+* **Behavior**: If the Stream is already readable, it returns at once. Otherwise the current VProc waits, as with `__OS_wait__`. It also wakes up if another VProc closes the Stream; the next `__OS_read__` then goes to `onError`.
+* **Error**: If `inputStream` is not an input Stream or is closed, invokes `onError` with an error message string.
 
 ### `__OS_exit_normal__ ,()`
 Behavior:

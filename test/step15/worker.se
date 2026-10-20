@@ -1,0 +1,50 @@
+;; Step15: case4, case6, case7 で子 VProc として起動するプログラム
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; n 回くり返してから終わる
+(define countDown ,(n)
+  __if_then_else__ (,() __Number_is_zero__ n)
+    (,() __NULL__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_subtract__ n one ,(n)
+      countDown n))
+
+;; case4: 親がプロセスを待っている間に動いて終わる
+(define worker ,(err args in out)
+  __Number_fromString__ __print_exit_error__ "100" ,(n)
+  countDown n ,()
+  println "worker finished" ,()
+  )
+
+;; args の要素を受け取る Sink は、最後に null を次の Sink として返す（使わない）
+
+;; case6: プロセスを待ってから、args の VProc を resume する
+(define waker ,(err args in out)
+  args (,(parent)
+    __MSeq_new__ ,(cmd)
+    __MSeq_append__ __print_exit_error__ cmd "/bin/sh" ,()
+    __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+    __MSeq_append__ __print_exit_error__ cmd "sleep 0.3" ,()
+    __Dict_new__ ,(env)
+    __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+    __OS_wait__ __print_exit_error__ proc ,(status)
+    println "child resumes parent" ,()
+    __VProc_resume__ parent ,()
+    __NULL__ __NULL__) ,(sink)
+  )
+
+;; case7: 少し動いてから、args の Stream を閉じる
+(define closer ,(err args in out)
+  args (,(stream)
+    __Number_fromString__ __print_exit_error__ "50" ,(n)
+    countDown n ,()
+    println "closer closes the Stream" ,()
+    __OS_close__ __print_exit_error__ stream ,()
+    __NULL__ __NULL__) ,(sink)
+  )

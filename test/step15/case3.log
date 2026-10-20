@@ -1,0 +1,10 @@
+delay: 0.2
+hello
+EOF
+exit: 0
+[done] normal termination after 63 step(s).
+delay: 1
+hello
+EOF
+exit: 0
+[done] normal termination after 63 step(s).
