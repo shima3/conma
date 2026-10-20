@@ -1,0 +1,3 @@
+parent: suspending
+Deadlock: no VProc is ready; blocked VProc(s): 1, 2
+exit: 2

@@ -225,6 +225,13 @@ Internal primitives are executed as one Operator application.
 At that point, the scheduler may switch execution to another VProc.
 If the executing VProc becomes blocked (for example, __VProc_suspend__), it is removed from the ready queue until it becomes runnable again.
 
+Termination:
+* A VProc finishes when its Operator is null, its LCont is absent, and its CChain is empty.
+* If an error occurs while a VProc runs (for example, an unbound variable or a primitive applied to a value of the wrong type), only that VProc finishes. An error message with the VProc's number is written to standard error, and the other VProcs keep running.
+* The interpreter exits when every VProc has finished. Its exit code is 0, whether or not some VProcs finished with an error.
+* `__OS_exit_normal__` and `__OS_exit_error__` exit the whole interpreter at once, with exit code 0 and 1 respectively, even if other VProcs are still running.
+* If no VProc is ready but some are blocked, the interpreter reports a deadlock and exits with exit code 2.
+
 The function designated as the `Operator` in `Body` is applied to `OList`.
 A CFrame consisting of `SInfo` and the closure of `LCont` is pushed onto the CChain.
 
@@ -544,7 +551,8 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 # Program Entry Point: `main`
 
 A ConMa program must define a `main` function.
-The interpreter starts execution by spawning a virtual process that applies `__main__` to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
+A program is started by spawning a virtual process (`__VProc_spawn__`) with the entry point `"__main__"`, which applies `__main__` (defined in `include/util.se`) to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
+How the interpreter builds these arguments for the first VProc from the OS standard streams is not defined yet; the test runner `test/vproc_run.py` starts the first VProc by applying a named function to no arguments.
 
 `__main__` calls the user-defined `main` function with the argumentSeq.
 The inputSeq, the outputSink, and the errorSink are passed via `PDict`.

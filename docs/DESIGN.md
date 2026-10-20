@@ -48,6 +48,15 @@ A VProc maintains these module structures as its Global Variable Environment (GV
 
 For debugging purposes, when a VProc is represented as an S-expression, the GVEnv is denoted by the filenames stored in the modules' F nodes, rather than by the internal module structures themselves.
 
+### One GVEnv per program
+
+Each program has its own GVEnv: the first program run by `test/vproc_run.py`, and each program loaded by `__VProc_spawn__`.
+`__VProc_spawn__` loads `sourceFileName` (relative to the current directory) by running `bin/includer --include include/` and `bin/resolver` as external commands; `bin/` and `include/` are found relative to `test/vproc_step.py`.
+File names in the SInfo are made relative to the directory above the repository (for example `"conma/test/step10/child.se"`), as `test/resolver.sh` does, so that output does not depend on where the repository is.
+
+A closure keeps the GVEnv of the module in which it was created, and global variables in its body are looked up in that GVEnv, not in the GVEnv of the VProc that runs it.
+VProcs may share values, so a closure created by one program can be run by a VProc of another program (for example, an output Sink passed to `__VProc_spawn__`); it still refers to the globals of its own program.
+
 ## VProc Environment S-expression Format
 
 The following definitions describe the S-expression format used to display the environment of a VProc (Virtual Process) for debugging purposes.
@@ -156,6 +165,26 @@ Keys and values are written recursively using the appropriate debug S-expression
 - `__GVEnv__`: the Global Variable Environment, represented as the ordered list of source filenames of loaded modules.
 - `__CChain__`: the current Continuation Chain in flat list form.
 - `__PDict__`: the Process Dictionary.
+
+### Other values
+
+Values that may contain themselves, or that stand for an OS resource or a process, are written with a number that identifies them, not with their content:
+
+| Value | Format | Number |
+|---|---|---|
+| Ref | `(__Ref__ "N")` | creation order of Refs |
+| MSeq | `(__MSeq__ "N")` | creation order of MSeqs |
+| Dict | `(__Dict__ "N")` | creation order of Dicts |
+| Stream | `(__OSStream__ "r:N")` or `(__OSStream__ "w:N")` | creation order of Streams; `r` is an input Stream, `w` an output Stream |
+| VProc | `(__VProcRef__ "N")` | creation order of VProcs; the first VProc is 1 |
+
+Other values are written by content:
+
+| Value | Format |
+|---|---|
+| Number | `(__Number__ text)`, where text is what `__Number_toString__` returns |
+| LList | `(__LList__ head tail)` |
+| String | the quoted, escaped text, as in a String literal |
 
 ## Runtime Semantics and Execution
 
@@ -366,10 +395,64 @@ If the **LCont is absent**, one of the following rules must be chosen by the imp
 
 ---
 
-### **4 Exceptions**
+### **4 Errors and `onError`**
+
+A primitive that takes `onError` reports an error by setting the Operator to `onError` and the OList to a single error message String.
+The LCont is left unchanged, so `onError` runs with the same continuation as a successful call would:
+
+* If `onError` returns values to its continuation, they become the result of the primitive at the call site (for example, a default value).
+* If `onError` does not return (for example, it calls `__OS_exit_error__` or an escape continuation from `__Cont_get__`), the call site is not resumed.
+
+`__PDict_lookup_or__` and `__Dict_lookup_or__` invoke `onMissing` with the key in the same way.
+
+A primitive without `onError` reports an error by raising an error in the interpreter, which finishes the VProc (see "Scheduling and Termination").
+
+---
+
+### **5 Exceptions**
 
 Certain primitives intended for **control flow manipulation** (e.g., `__CChain_pop_CFrame__`, exception handling primitives) **are not required to follow the standard return protocol**.
 
 Such primitives may perform **arbitrary updates to the VProc state**.
 
 ---
+
+---
+
+## Scheduling and Termination
+
+The scheduler (`Scheduler` in `test/vproc_step.py`) runs VProcs in round-robin order, one Operator application (one call of `step`) at a time.
+
+Each VProc is in one of these states:
+
+| State | Meaning |
+|---|---|
+| ready | in the ready queue, waiting for its next step |
+| running | running the current step |
+| blocked | suspended; not in the ready queue |
+| finished | finished normally or with an error |
+
+A scheduling step:
+
+1. Remove finished VProcs from the front of the ready queue. A VProc is finished when its Operator is null, its LCont is absent, and its CChain is empty.
+2. If the ready queue is empty: exit normally if no VProc is blocked; otherwise report a deadlock (`Deadlock: no VProc is ready; blocked VProc(s): 1, 2`) and exit with code 2.
+3. Take the first VProc, mark it running, and run one step.
+4. If the step raised an error, write `Error in VProc N at step S: message` to standard error and mark the VProc finished. `S` is the number of steps completed before the error, counted over all VProcs. Other VProcs are not affected.
+5. If the VProc is still running, mark it finished if it has finished, or put it at the end of the ready queue.
+
+State changes made by primitives:
+
+| Primitive | ready | running (itself) | blocked | finished |
+|---|---|---|---|---|
+| `__VProc_suspend__` | removed from the queue, blocked | blocked after this step; resumes with its LCont | no change | no change |
+| `__VProc_resume__` | no change | no change | ready, at the end of the queue | no change |
+| `__VProc_spawn__` | the new VProc is added at the end of the queue | | | |
+
+The interpreter exits:
+
+* with code 0 when every VProc has finished, whether or not some of them finished with an error;
+* with code 0 or 1 at once when any VProc runs `__OS_exit_normal__` or `__OS_exit_error__`;
+* with code 2 on deadlock.
+
+Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
+

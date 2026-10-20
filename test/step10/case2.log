@@ -1,0 +1,4 @@
+parent: spawned
+child: hello, world
+parent: child done
+exit: 0

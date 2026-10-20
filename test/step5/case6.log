@@ -1,2 +1,2 @@
-Error at step 1: __Number_add__: expected Number, got String
-exit: 1
+Error in VProc 1 at step 1: __Number_add__: expected Number, got String
+exit: 0

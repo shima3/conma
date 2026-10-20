@@ -1,0 +1,4 @@
+child 2: failing
+Error in VProc 2 at step 40: __Ref_get__: expected Ref, got String
+child 3: still running
+exit: 0

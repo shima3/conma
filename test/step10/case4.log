@@ -1,0 +1,5 @@
+parent: flag set while child is suspended
+child: saw the flag
+parent: child finished
+parent: end
+exit: 0

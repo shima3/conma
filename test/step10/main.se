@@ -1,0 +1,13 @@
+;; Step10: entryPoint "__main__" で起動するプログラム
+(include "util.se")
+
+(define main ,(args)
+  args (,(name)
+    __print__ "hello from main" ,()
+    stdout "args: " name "\n" ,(out)
+    __PDict_lookup_or__ "__STD_OUT__" (,(key) __CChain_pop_LCont__ "(missing)") ,(sink)
+    __is_null__ sink ,(missing)
+    __if_then_else__ missing
+      (,() __print__ "child PDict has no __STD_OUT__")
+      (,() __print__ "child PDict has __STD_OUT__") ,()
+    ))

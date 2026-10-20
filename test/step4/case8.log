@@ -1,2 +1,2 @@
-Error at step 1: __CFrame_get_SInfo__: expected CFrame, got String
-exit: 1
+Error in VProc 1 at step 1: __CFrame_get_SInfo__: expected CFrame, got String
+exit: 0

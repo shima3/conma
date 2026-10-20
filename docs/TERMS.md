@@ -22,9 +22,9 @@ Process Dictionary (PDict):
 A process dictionary is a key-value storage that is local to a specific process and accessible only within that process’s context.
 
 Virtual Process (VProc):
-A virtual process is a lightweight, isolated, concurrent unit of execution that runs independently and communicates with other processes via pipes.
-Virtual Processes do not share memory with each other.
-Each virtual process has its own memory and maintains the following components:
+A virtual process is a lightweight, concurrent unit of execution that runs independently and communicates with other processes via pipes.
+Virtual Processes may share memory: a value passed from one VProc to another, such as a closure or a Ref, refers to the same object in both.
+Each virtual process maintains the following components of its own:
 
   * SInfo
   * Operator

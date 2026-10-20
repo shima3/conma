@@ -9,8 +9,10 @@ Options:
     -h, --help      Show this message and exit.
 
 Exit codes:
-    0   Normal termination (Null operator with empty CChain and no LCont).
-    1   Runtime error (VProcError or I/O failure).
+    0   Every VProc has finished. A VProc that stopped with a runtime error
+        (VProcError) does not change the exit code.
+    1   __OS_exit_error__ was executed, or the module could not be loaded.
+    2   Deadlock: no VProc is ready but some are blocked.
 """
 
 import sys, pathlib, importlib.util, argparse
@@ -42,53 +44,19 @@ sexp_to_str   = vs.sexp_to_str
 load_module   = vs.load_module
 value_to_sexp = vs.value_to_sexp
 vproc_to_sexp = vs.vproc_to_sexp
-step          = vs.step
 unquote       = vs.unquote
 quoted        = vs.quoted
 is_null_value = vs.is_null_value
 VProcError    = vs.VProcError
 
-# ── Name index ────────────────────────────────────────────────────────────────
-
-def build_name_index(module_sexp):
-    index = {}
-    for item in module_sexp[2:]:
-        if not isinstance(item, list) or item[0] != "G":
-            continue
-        gid  = int(item[1])
-        name = unquote(item[2]) if len(item) > 2 else None
-        if name:
-            index[name] = gid
-    return index
-
-# ── Initial VProc ─────────────────────────────────────────────────────────────
-
-def make_initial_vproc(closure, module_file, gvenv):
-    return {
-        "sinfo":       None,
-        "operator":    closure,
-        "olist":       [],
-        "lcont":       None,
-        "lvenv":       [],
-        "gvenv_files": [module_file],
-        "cchain":      vs.NULL,
-        "pdict":       [],
-    }
-
-# ── Termination check ─────────────────────────────────────────────────────────
-
-def is_terminal(vp):
-    """True when the VProc has reached a normal halting state."""
-    return (
-        is_null_value(vp["operator"])
-        and vp["lcont"] is None
-        and vs.cchain_is_empty(vp["cchain"])
-    )
+build_name_index = vs.build_name_index
 
 # ── Trace helper ──────────────────────────────────────────────────────────────
 
 def print_trace(vp, step_n):
     label = f"[step {step_n}]" if step_n > 0 else "[initial]"
+    if vp.serial != 1:
+        label = label[:-1] + f" vproc {vp.serial}]"
     print(f"{label} {sexp_to_str(vproc_to_sexp(vp))}", file=sys.stderr)
 
 # ── Runner ────────────────────────────────────────────────────────────────────
@@ -120,24 +88,17 @@ def run(module_file, func_name, trace=False):
         print(f"Error: GID {gid} ({func_name!r}) is undefined.", file=sys.stderr)
         sys.exit(1)
 
-    vp     = make_initial_vproc(closure, module_file, gvenv)
-    step_n = 0
+    vp        = vs.make_vproc(closure, [], module_file, gvenv)
+    scheduler = vs.SCHEDULER
+    scheduler.add(vp)
 
     if trace:
-        print_trace(vp, step_n)
+        print_trace(vp, 0)
 
-    try:
-        while not is_terminal(vp):
-            step(vp, gvenv)
-            step_n += 1
-            if trace:
-                print_trace(vp, step_n)
-    except VProcError as e:
-        print(f"Error at step {step_n}: {e}", file=sys.stderr)
-        sys.exit(1)
+    scheduler.run(on_step=(lambda v: print_trace(v, scheduler.steps)) if trace else None)
 
     if trace:
-        print(f"[done] normal termination after {step_n} step(s).", file=sys.stderr)
+        print(f"[done] normal termination after {scheduler.steps} step(s).", file=sys.stderr)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 

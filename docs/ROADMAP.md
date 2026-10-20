@@ -2,9 +2,21 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step10`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
+
+## Tests
+
+Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py`, and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
+
+```
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10; do test/$t/test.sh; done
+```
+
+* Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
+* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`).
+* Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
 
 ## Step 1: VM foundation
 
@@ -138,13 +150,33 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 
 | Primitive | Status |
 |---|---|
-| `__VProc_current__` | not implemented |
-| `__VProc_suspend__` | not implemented |
-| `__VProc_resume__` | not implemented |
-| `__VProc_spawn__` | not implemented |
+| `__VProc_current__` | implemented |
+| `__VProc_suspend__` | implemented |
+| `__VProc_resume__` | implemented |
+| `__VProc_spawn__` | implemented |
 
-* Needs a scheduler with a ready queue and a blocked queue.
-* Implement `__VProc_spawn__` last: it needs the loader (includer and resolver), the `__main__` wrapper, Seq/Sink arguments and a fresh PDict (Step 7).
+* Round-robin scheduler (`Scheduler` in `test/vproc_step.py`); each scheduling step is one Operator application.
+* `__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)`: `onError` and `entryPoint` were added to the signature. It runs `bin/includer` and `bin/resolver` (found relative to `test/vproc_step.py`; `include/` is the include path) on `sourceFileName` (relative to the current directory).
+* Memory is shared between VProcs (TERMS.md was changed). Each closure keeps the GVEnv of the module it was defined in, so a closure passed from a parent still refers to the parent's globals when a child runs it.
+* Termination and exit codes are described under "Runtime Model" in SPEC.md: a runtime error finishes only that VProc; `__OS_exit_*__` exits the interpreter; a deadlock exits with code 2.
+* `__main__` was added to `include/util.se`. How the first VProc gets its err/args/in/out from the OS streams is still open; `test/vproc_run.py` runs a named function with no arguments as before.
+* Blocking I/O (`__OS_get_String__`) stops every VProc while it waits; this is accepted for now.
+* A runtime error now finishes only the VProc and leaves the exit code at 0, so the logs of the error cases of Steps 4, 5, 6 and 8 changed from `Error at step S: ... / exit: 1` to `Error in VProc 1 at step S: ... / exit: 0`.
+* Tests (`test/step10`): `test.se` starts child VProcs from `child.se` (one entry point per case), `main.se` (`"__main__"`) and `bad.se` (a syntax error).
+
+| Case | What it checks |
+|---|---|
+| case1 | `__VProc_current__` returns the same VProc each time |
+| case2 | a child runs another program, gets arguments through a Seq, and writes through a Sink defined by the parent (per-closure GVEnv); Refs are shared |
+| case3 | a VProc that suspends itself stops until another VProc resumes it, then continues with its LCont |
+| case4 | suspending another ready VProc stops it until it is resumed; the no-op cases of suspend and resume |
+| case5 | `onError` for a missing file, a syntax error, an undefined entry point and a non-String entry point |
+| case6 | a runtime error in one child finishes only that child; another child keeps running; exit code 0 |
+| case7 | `__OS_exit_error__` in a child exits the interpreter with code 1 while the parent is still running |
+| case8 | `__OS_exit_normal__` in a child exits the interpreter with code 0 |
+| case9 | deadlock: both VProcs blocked, exit code 2 |
+| case10 | `"__main__"` puts err/in/out into the child's PDict and calls `main`; the parent's PDict is not affected |
+| case11 | a non-VProc argument finishes the VProc with an error |
 
 ## Step 11: External processes
 

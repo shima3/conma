@@ -1,0 +1,7 @@
+__VProc_spawn__: file not found: missing.se
+__VProc_spawn__: includer failed: SyntaxError: Unexpected end of input; expected 'RPAREN'
+Error: parser exited with code 1
+__VProc_spawn__: entry point not defined: noSuchFunc
+__VProc_spawn__: expected String entryPoint, got null
+spawn passed null
+exit: 0

@@ -1,0 +1,2 @@
+;; Step10: 構文エラーを含むプログラム
+(define broken ,(x)
