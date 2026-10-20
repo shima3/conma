@@ -1,0 +1,4 @@
+parent suspends itself
+child resumes parent
+parent resumed
+exit: 0

@@ -1,0 +1,125 @@
+;; Step15: OS を待つ（ビジーウェイトをしない）
+;; case2 と case3 は test.sh が --trace で実行し、ステップ数を比べる。
+;; 待っている間にステップを使わないので、ステップ数は待つ時間によらない
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printNumber ,(Number)
+  __Number_toString__ Number ,(str)
+  println str)
+
+;; 読んだデータを出力する。null は EOF と出力する
+(define printData ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,() println "EOF")
+    (,() __OS_print__ data))
+
+;; エラーメッセージを標準出力に書き、null を LCont に返す
+(define recoverNull ,(msg)
+  println msg ,()
+  __NULL__ __NULL__)
+
+;; エラーメッセージを標準出力に書き、値を返さずに LCont に戻る
+(define recover ,(msg)
+  println msg ,()
+  )
+
+;; /bin/sh -c script を起動する。標準出力は out（null なら引き継ぐ）
+(define sh ,(script out)
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "/bin/sh" ,()
+  __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+  __MSeq_append__ __print_exit_error__ cmd script ,()
+  __OS_get_envDict__ ,(env)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ out __NULL__ env)
+
+;; case1: __OS_wait__ はプロセスの終了まで待ち、終了コードを返す。
+;; 終了済みのプロセスには同じ終了コードをすぐ返す。シグナルによる終了は負の数
+(define case1 ,()
+  sh "exit 3" __NULL__ ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  printNumber status ,()
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  printNumber status ,()
+  sh "kill -9 $$" __NULL__ ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  printNumber status ,()
+  sh "echo from child" __NULL__ ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  printNumber status ,()
+  )
+
+;; case2: sleep するプロセスを待つ（DELAY は test.sh が環境変数で渡す）
+(define case2 ,()
+  sh "sleep $DELAY; exit 7" __NULL__ ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  printNumber status ,()
+  )
+
+;; case3: パイプにデータが来るまで __OS_wait_readable__ で待ってから読む
+(define case3 ,()
+  __OS_pipe__ ,(in out)
+  sh "sleep $DELAY; echo hello" out ,(proc)
+  __OS_close__ __print_exit_error__ out ,()
+  __OS_wait_readable__ __print_exit_error__ in ,()
+  __OS_read__ __print_exit_error__ in ,(data)
+  __OS_print__ data ,()
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  __OS_wait_readable__ __print_exit_error__ in ,()
+  __OS_read__ __print_exit_error__ in ,(data)
+  printData data ,()
+  __OS_close__ __print_exit_error__ in ,()
+  )
+
+;; case4: 待っている VProc があっても、ほかの VProc は動き続ける
+(define case4 ,()
+  __VProc_current__ ,(self)
+  __VProc_spawn__ __print_exit_error__ "worker" "worker.se" __NULL__ __NULL__ __NULL__ __NULL__ ,(worker)
+  sh "sleep 0.5" __NULL__ ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  println "wait finished" ,()
+  )
+
+;; case5: すでに読めるとき（データがある、EOF）は待たずに戻る。
+;; 間違った引数は onError に渡される
+(define case5 ,()
+  __OS_pipe__ ,(in out)
+  __OS_write__ __print_exit_error__ out "data\n" ,()
+  __OS_wait_readable__ __print_exit_error__ in ,()
+  __OS_read__ __print_exit_error__ in ,(data)
+  __OS_print__ data ,()
+  __OS_close__ __print_exit_error__ out ,()
+  __OS_wait_readable__ __print_exit_error__ in ,()
+  __OS_read__ __print_exit_error__ in ,(data)
+  printData data ,()
+  __OS_close__ __print_exit_error__ in ,()
+  __OS_wait_readable__ recover in ,()
+  __OS_wait_readable__ recover out ,()
+  __OS_wait__ recoverNull in ,(status)
+  println "done" ,()
+  )
+
+;; case6: 待っている VProc は suspend/resume の対象外で、デッドロックとも見なされない。
+;; 自分を suspend した VProc を、プロセスを待ち終えた子 VProc が resume する
+(define case6 ,()
+  __VProc_current__ ,(self)
+  __VProc_spawn__ __print_exit_error__ "waker" "worker.se" __NULL__ (,(sink) sink self) __NULL__ __NULL__ ,(child)
+  println "parent suspends itself" ,()
+  __VProc_suspend__ self ,()
+  println "parent resumed" ,()
+  )
+
+;; case7: 別の VProc が待っている Stream を閉じると、待っていた VProc は起きて onError に渡される
+(define case7 ,()
+  __OS_pipe__ ,(in out)
+  __Ref_new__ in ,(ref)
+  __VProc_spawn__ __print_exit_error__ "closer" "worker.se" __NULL__ (,(sink) sink in) __NULL__ __NULL__ ,(child)
+  __OS_wait_readable__ __print_exit_error__ in ,()
+  __OS_read__ recoverNull in ,(data)
+  println "reader woke up" ,()
+  __OS_close__ __print_exit_error__ out ,()
+  )

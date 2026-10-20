@@ -1,0 +1,7 @@
+data
+EOF
+__OS_wait_readable__: closed input Stream
+__OS_wait_readable__: expected input Stream, got output Stream
+__OS_wait__: expected OSProc, got input Stream
+done
+exit: 0

@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step14`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step15`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -189,7 +189,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | `__OS_poll__` | implemented |
 
 * Depends on Dict (`envDict`) and MSeq (`commandMSeq`) from Step 8, and on streams from Step 9.
-* `__OS_poll__` is non-blocking, so waiting for a process to exit uses the scheduler from Step 10.
+* `__OS_poll__` is non-blocking, so waiting for a process to exit uses the scheduler from Step 10 (`__OS_wait__` in Step 15 waits without busy waiting).
 * Stream directions: `inputStream` is an input Stream (the read end, which the process reads), `outputStream` and `errorStream` are output Streams. null inherits the interpreter's own stream; the interpreter flushes its own output before starting the process.
 * `__OS_spawn__` closes nothing; the program closes the Streams it no longer needs.
 * The executable is looked up like `execvpe`, in the `PATH` of `envDict`; the environment is exactly `envDict`, and the working directory is the interpreter's.
@@ -247,7 +247,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 * `__OS_write__` to standard output or standard error flushes what `__OS_print__` and `__OS_print_error__` have buffered first, so the order is kept.
 * Library definitions in `include/util.se` (depend on Step 12):
   * `__Stream_sink__ stream`: a Sink that writes each value to an output Stream.
-  * `__Stream_lines__ stream`: a Seq that reads an input Stream to EOF and passes each line, including its newline; a last line without a newline is passed as it is. While no data is available it reads again, which yields to other VProcs (busy waiting until Step 15).
+  * `__Stream_lines__ stream`: a Seq that reads an input Stream to EOF and passes each line, including its newline; a last line without a newline is passed as it is. While no data is available it waits with `__OS_wait_readable__` (Step 15; before that, it read again in a loop).
   * `__start__ args`: builds err, in and out from the three Streams and calls `__main__`.
 * `test/vproc_run.py --main <module_file> [<arg> ...]` applies `__start__` to a Seq of the `arg` Strings. The Seq holds only the arguments, not the program name. Without `--main`, it runs a named function with no arguments as before.
 * `__OS_get_String__` reads through Python's own buffer, so a program should not mix it with the stdin Stream.
@@ -288,3 +288,28 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case4 | `__OS_getcwd__`; `__OS_chdir__` changes how relative paths are resolved; `onError` for a missing directory, a file and a non-String path |
 | case5 | redirection: files as the standard input and output of `/bin/cat` |
 | case6 | after `__OS_chdir__`, a child process (`/bin/sh -c pwd`) and `__VProc_spawn__` (`../child.se`) use the new directory |
+
+## Step 15: Waiting for the OS
+
+| Primitive | Status |
+|---|---|
+| `__OS_wait__` | implemented |
+| `__OS_wait_readable__` | implemented |
+
+* Goal: Stop busy waiting, so that a VProc can wait for a process or for input without using the CPU. Needed for background jobs (`&`, `wait`) in a shell.
+* `__OS_wait__ onError OSProc ,(status)` waits for a process to exit and returns the exit code as `__OS_poll__` does. `__OS_wait_readable__ onError inputStream ,()` waits until the next `__OS_read__` will not return `""`. Both return at once when the event has already happened. `__OS_poll__` is kept.
+* A waiting VProc is in the new state `waiting`. Other VProcs keep running. While a ready VProc exists, the scheduler checks the waiting ones before each step without blocking. Otherwise it sleeps in `select` until a Stream is readable or SIGCHLD arrives (through `signal.set_wakeup_fd`).
+* VProcs that wait are not a deadlock, even if all the others are blocked. `__VProc_suspend__` and `__VProc_resume__` do not change a waiting VProc.
+* A Stream closed by another VProc wakes the VProc waiting on it; the next `__OS_read__` goes to `onError`.
+* `__Stream_lines__` (Step 13) now waits with `__OS_wait_readable__` instead of reading again in a loop.
+* Tests (`test/step15`): case2 and case3 run with `--trace` for a delay of 0.2 and 1 second, and compare the number of steps (the `[done]` line). The numbers are the same because waiting uses no steps. With busy waiting they would grow with the delay. case4 depends on timing: the worker needs much less than 0.5 seconds.
+
+| Case | What it checks |
+|---|---|
+| case1 | `__OS_wait__` returns the exit code, the same code again for an exited process, `-9` for a signal; a child's output is inherited |
+| case2 | waiting for `sleep` uses the same number of steps for 0.2 and 1 second |
+| case3 | `__OS_wait_readable__` on a pipe waits for data, then for EOF; same number of steps for both delays |
+| case4 | another VProc keeps running while one waits |
+| case5 | returns at once when data or EOF is there; `onError` for a closed Stream, an output Stream and a non-OSProc |
+| case6 | a VProc that waits is not a deadlock while its parent is suspended; it resumes the parent afterwards |
+| case7 | closing a Stream in another VProc wakes the VProc waiting on it, and its read goes to `onError` |

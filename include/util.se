@@ -67,7 +67,7 @@
 
 ;; input Stream を EOF まで読み、1行ずつ（改行を含めて）sink に渡す Seq。
 ;; 最後の行に改行がなければ、改行なしで渡す。最後の Sink を返す。
-;; データがまだ来ていなければ、ほかの VProc に譲りながら読み直す
+;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
 (define __Stream_lines__ ,(stream sink)
   __Stream_lines_read__ stream "" sink)
 
@@ -83,7 +83,9 @@
     (,()
       __String_length__ data ,(dataLen)
       __if_then_else__ (,() __Number_is_zero__ dataLen)
-        (,() __Stream_lines_read__ stream buf sink)
+        (,()
+          __OS_wait_readable__ __print_exit_error__ stream ,()
+          __Stream_lines_read__ stream buf sink)
         (,()
           __String_length__ buf ,(start)
           __String_concat__ buf data ,(buf)

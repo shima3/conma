@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno
+import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal
 from collections import deque
 import types
 
@@ -361,7 +361,7 @@ class VProc(dict):
     __VProc_current__ and __VProc_spawn__ return.
     Besides the fields of the S-expression format it has
       serial  — number shown in traces and error messages
-      state   — "ready", "running", "blocked" or "finished"
+      state   — "ready", "running", "blocked", "waiting" or "finished"
       gvenv   — GVEnv of the program the VProc was started with"""
     _count = 0
     def __init__(self, *args, **kwargs):
@@ -778,6 +778,40 @@ def prim_OS_poll(vp, gvenv):
         _prim_error(vp, on_error, f"__OS_poll__: {e}")
         return
     _prim_return(vp, [NULL if code is None else Number(code)])
+
+
+def prim_OS_wait(vp, gvenv):
+    """__OS_wait__ onError OSProc ,(status)
+    Like __OS_poll__, but if the process is still running the VProc waits
+    (without using the CPU) until it exits, then gets the exit code."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__OS_wait__: missing argument(s)")
+    on_error = olist.pop(0)
+    proc     = olist.pop(0)
+    if not isinstance(proc, OSProc):
+        _prim_error(vp, on_error, f"__OS_wait__: expected OSProc, got {value_type_name(proc)}")
+        return
+    code = proc.popen.poll()
+    if code is not None:
+        _prim_return(vp, [Number(code)])
+        return
+    _prim_return(vp, [])                # the exit code is added when it wakes up
+    SCHEDULER.wait(vp, proc)
+
+def prim_OS_wait_readable(vp, gvenv):
+    """__OS_wait_readable__ onError inputStream ,()
+    The VProc waits until inputStream has data or is at EOF, so that the
+    next __OS_read__ does not return "". It also wakes up if another VProc
+    closes the Stream."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__OS_wait_readable__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not _check_stream(vp, on_error, "__OS_wait_readable__", stream, "r"): return
+    readable, _, _ = select.select([stream.fd], [], [], 0)
+    _prim_return(vp, [])
+    if not readable:
+        SCHEDULER.wait(vp, stream)
 
 
 def prim_OS_pipe(vp, gvenv):
@@ -1385,6 +1419,55 @@ class Scheduler:
         self.vprocs  = []        # every VProc, in creation order
         self.current = None      # the VProc running the current step
         self.steps   = 0         # number of steps run so far
+        self.waiting = []        # (VProc, OSProc or Stream) waiting for the OS
+        self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
+
+    def _install_sigchld(self):
+        """Make SIGCHLD write a byte to a pipe, so that select() wakes up
+        when a child process exits."""
+        if self.wakeup is not None: return
+        r, w = os.pipe()
+        os.set_blocking(r, False)
+        os.set_blocking(w, False)
+        signal.set_wakeup_fd(w)
+        signal.signal(signal.SIGCHLD, lambda signum, frame: None)
+        self.wakeup = r
+
+    def wait(self, vp, target):
+        """Make vp wait until the OSProc target exits or the input Stream
+        target is readable. vp has already returned to its LCont; for an
+        OSProc the exit code is given to it when it wakes up."""
+        if isinstance(target, OSProc): self._install_sigchld()
+        if vp.state == "ready": self.ready.remove(vp)
+        vp.state = "waiting"
+        self.waiting.append((vp, target))
+
+    def check_waiting(self, block):
+        """Wake the VProcs whose OSProc has exited or whose Stream is
+        readable. If block, sleep in select() until one of them can wake."""
+        fds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed]
+        if self.wakeup is not None: fds.append(self.wakeup)
+        timeout = None if block else 0
+        if any(isinstance(t, Stream) and t.closed for _, t in self.waiting):
+            timeout = 0                 # a closed Stream wakes its VProc at once
+        readable = set(select.select(fds, [], [], timeout)[0]) if fds or timeout == 0 else set()
+        if self.wakeup in readable:
+            try:
+                while os.read(self.wakeup, 4096): pass
+            except BlockingIOError:
+                pass
+        still = []
+        for vp, target in self.waiting:
+            if isinstance(target, OSProc):
+                code = target.popen.poll()
+                if code is None:
+                    still.append((vp, target)); continue
+                vp["olist"] = [Number(code)] + vp["olist"]
+            elif not (target.closed or target.fd in readable):
+                still.append((vp, target)); continue
+            vp.state = "ready"
+            self.ready.append(vp)
+        self.waiting = still
 
     def add(self, vp):
         vp.state = "ready"
@@ -1413,6 +1496,10 @@ class Scheduler:
         while True:
             while self.ready and is_terminal(self.ready[0]):
                 self.ready.popleft().state = "finished"
+            if self.waiting:
+                # Without a ready VProc, sleep in the OS instead of busy waiting.
+                self.check_waiting(block=not self.ready)
+                if not self.ready: continue
             if not self.ready:
                 blocked = [vp for vp in self.vprocs if vp.state == "blocked"]
                 if not blocked:
@@ -1608,6 +1695,8 @@ PRIMITIVES = {
     "__OS_get_envDict__":      prim_OS_get_envDict,
     "__OS_spawn__":            prim_OS_spawn,
     "__OS_poll__":             prim_OS_poll,
+    "__OS_wait__":             prim_OS_wait,
+    "__OS_wait_readable__":    prim_OS_wait_readable,
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,
