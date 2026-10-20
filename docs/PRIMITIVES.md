@@ -8,23 +8,29 @@ These primitives manage external processes and stream-based I/O.
 
 ### `__OS_get_envDict__ ,(envDict)`
 * **Description**: Retrieves the environment variables of the current interpreter process.
-* **Returns**: A Dict (String → String) representing the current environment variables.
+* **Returns**: A new Dict (String → String) copied from the current environment variables. Changing the Dict does not change the interpreter's environment.
 * **Usage**: Typically used to capture the parent environment before modifying it to pass into `__OS_spawn__`.
 
 ### `__OS_spawn__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)`
 * **Description**: Launches an external operating system process with a specified environment.
 * **Arguments**:
-    * `commandMSeq`: An `MSeq` where the first element is the executable path and subsequent elements are arguments.
-    * `inputStream`: A stream handle for the process's standard input.
-    * `outputStream`: A stream handle for the process's standard output.
-    * `errorStream`: A stream handle for the process's standard error.
-    * `envDict`: A Dict defining environment variables for the spawned process. The environment of the new process is exactly envDict.
+    * `commandMSeq`: An `MSeq` of Strings where the first element is the executable and subsequent elements are arguments. If the executable contains `/`, it is used as a path; otherwise it is searched for in the `PATH` of `envDict`, as `execvpe` does.
+    * `inputStream`: An input Stream (the read end of a pipe) for the process's standard input, or null to inherit the interpreter's standard input.
+    * `outputStream`: An output Stream (the write end of a pipe) for the process's standard output, or null to inherit the interpreter's standard output.
+    * `errorStream`: An output Stream for the process's standard error, or null to inherit the interpreter's standard error.
+    * `envDict`: A Dict (String → String) defining environment variables for the spawned process. The environment of the new process is exactly envDict.
+* **Behavior**:
+    * The process runs in the interpreter's current directory.
+    * Before the process starts, the interpreter writes out its own buffered standard output and standard error, so that they come before the process's output.
+    * The Streams are not closed. The program closes the Streams it no longer needs with `__OS_close__`; for example, a reader of the process's output sees EOF only after every copy of the write end, including the program's own, has been closed.
+    * When the interpreter exits, processes that are still running are left running; they are neither waited for nor killed.
 * **Returns**: An `OSProc` object representing the spawned process.
-* **Error**: If an error occurs, it invokes the continuation specified by `onError` with an error message string.
+* **Error**: It invokes the continuation specified by `onError` with an error message string if `commandMSeq` is not a non-empty MSeq of Strings, a Stream is of the wrong direction or closed, `envDict` is not a Dict of Strings, or the process cannot be started (for example, the executable is not found or not executable).
 
 ### **`__OS_poll__ onError OSProc ,(status)`**
 * **Description**: Checks whether the process has terminated (non-blocking).
-* **Returns**: If the process has terminated, returns its exit code Number; otherwise, returns `null`.
+* **Returns**: If the process has terminated, returns its exit code Number; otherwise, returns `null`. If a signal terminated the process, the exit code is the negative signal number (for example, `-9`). Once the process has terminated, every later call returns the same exit code.
+* **Usage**: To wait for a process, call `__OS_poll__` repeatedly until it returns a Number; other VProcs run between the calls.
 * **Error**: If an error occurs, it invokes the continuation specified by `onError` with an error message string.
 
 ### `__OS_exit_normal__ ,()`

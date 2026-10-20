@@ -1,0 +1,14 @@
+__OS_spawn__: No such file or directory: /nonexistent/command
+__OS_spawn__: No such file or directory: nosuchcommand
+__OS_spawn__: Permission denied: /etc/hosts
+__OS_spawn__: empty command
+__OS_spawn__: expected MSeq command, got String
+__OS_spawn__: expected String in command, got null
+__OS_spawn__: expected input Stream, got output Stream
+__OS_spawn__: expected output Stream, got input Stream
+__OS_spawn__: closed output Stream
+__OS_spawn__: expected Dict envDict, got String
+__OS_spawn__: envDict keys and values must be Strings
+__OS_poll__: expected OSProc, got MSeq
+end
+exit: 0
