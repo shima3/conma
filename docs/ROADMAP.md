@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step10`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step11`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py`, and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -145,6 +145,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 * `__OS_read__` decodes UTF-8 across reads, so a character split between reads is returned whole by the later read; invalid bytes become U+FFFD.
 * Strings produced at run time (read data, error messages, ...) are escaped as String literals are, so backslashes and quotes in the data are kept as they are.
 * `__OS_read__` is non-blocking and returns `""` when no data is available. A reader that waits for data needs to yield to other VProcs, which is done in Step 10.
+* `__OS_read__` checks for data with `select` instead of putting the pipe into non-blocking mode, because that mode would also apply to a child process that shares the pipe as its standard input (Step 11).
 
 ## Step 10: VProc
 
@@ -182,9 +183,26 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 
 | Primitive | Status |
 |---|---|
-| `__OS_get_envDict__` | not implemented |
-| `__OS_spawn__` | not implemented |
-| `__OS_poll__` | not implemented |
+| `__OS_get_envDict__` | implemented |
+| `__OS_spawn__` | implemented |
+| `__OS_poll__` | implemented |
 
 * Depends on Dict (`envDict`) and MSeq (`commandMSeq`) from Step 8, and on streams from Step 9.
 * `__OS_poll__` is non-blocking, so waiting for a process to exit uses the scheduler from Step 10.
+* Stream directions: `inputStream` is an input Stream (the read end, which the process reads), `outputStream` and `errorStream` are output Streams. null inherits the interpreter's own stream; the interpreter flushes its own output before starting the process.
+* `__OS_spawn__` closes nothing; the program closes the Streams it no longer needs.
+* The executable is looked up like `execvpe`, in the `PATH` of `envDict`; the environment is exactly `envDict`, and the working directory is the interpreter's.
+* An exit caused by a signal is reported as the negative signal number. Processes still running when the interpreter exits are left running (checked by hand; not covered by a test).
+* Tests (`test/step11`) use only `/bin/sh`, `/bin/echo`, `/bin/cat` and `/usr/bin/env`, and read output and exit codes only after `__OS_poll__` has seen the process exit. `test.sh` gives the interpreter an empty standard input, which case6 lets `cat` inherit.
+
+| Case | What it checks |
+|---|---|
+| case1 | the standard output of a process through a pipe; the program closes its write end to get EOF |
+| case2 | writing to a process's standard input through a pipe and reading its output |
+| case3 | exit codes: `exit 3`, the same code from a second poll, `-9` for `kill -9`; standard error through a pipe |
+| case4 | the environment is exactly `envDict`; a command name without `/` is found in its `PATH` |
+| case5 | `__OS_get_envDict__` returns a copy; changing it does not change the interpreter's environment |
+| case6 | null Streams inherit the interpreter's standard input and output, in order |
+| case7 | `onError` for missing or non-executable commands, a bad command MSeq, wrong or closed Streams, a bad `envDict`, and polling a non-OSProc |
+| case8 | other VProcs keep running while a VProc waits with `__OS_poll__` (`writer.se` feeds `cat`) |
+

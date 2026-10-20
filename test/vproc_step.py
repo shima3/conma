@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib
+import sys, re, math, os, codecs, subprocess, pathlib, select
 from collections import deque
 import types
 
@@ -173,6 +173,18 @@ class Dict:
     def __repr__(self):
         return f"Dict({self.serial})"
 
+class OSProc:
+    """An OS process started by __OS_spawn__."""
+    _count = 0
+    def __init__(self, popen):
+        OSProc._count += 1
+        self.serial = OSProc._count     # identifies the OSProc in traces (not the PID)
+        self.popen  = popen             # subprocess.Popen
+    def value_to_sexp(self):
+        return ["__OSProc__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"OSProc({self.serial})"
+
 class LList:
     """A cons cell representing a node in a linked list (also used for CChain)."""
     def __init__(self, head, tail):
@@ -279,7 +291,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, (Ref, MSeq, Dict, VProc)): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict, VProc, OSProc)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -688,6 +700,84 @@ def prim_OS_get_String(vp, gvenv):
     _prim_return(vp, [string_value(line) if line else NULL])
 
 
+# ── OS Process Primitives ─────────────────────────────────────────────────────
+
+def prim_OS_get_envDict(vp, gvenv):
+    """__OS_get_envDict__ ,(envDict) — a new Dict copied from the
+    interpreter's environment variables."""
+    d = Dict()
+    d.entries = [(string_value(k), string_value(v)) for k, v in os.environ.items()]
+    _prim_return(vp, [d])
+
+def prim_OS_spawn(vp, gvenv):
+    """__OS_spawn__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)
+
+    inputStream must be an input Stream (the child reads it) and
+    outputStream/errorStream output Streams; null means the child inherits
+    the interpreter's own stream. The executable is looked up like execvpe:
+    a name without "/" is searched in the PATH of envDict, which is exactly
+    the child's environment. The Streams are not closed."""
+    name  = "__OS_spawn__"
+    olist = vp["olist"]
+    if len(olist) < 6: raise VProcError(f"{name}: missing argument(s)")
+    on_error, command, stdin, stdout, stderr, env_dict = [olist.pop(0) for _ in range(6)]
+    if not isinstance(command, MSeq):
+        _prim_error(vp, on_error, f"{name}: expected MSeq command, got {value_type_name(command)}")
+        return
+    if not command.items:
+        _prim_error(vp, on_error, f"{name}: empty command")
+        return
+    for item in command.items:
+        if value_type_name(item) != "String":
+            _prim_error(vp, on_error, f"{name}: expected String in command, got {value_type_name(item)}")
+            return
+    args = [_value_to_display(item) for item in command.items]
+    fds = []
+    for stream, mode in ((stdin, "r"), (stdout, "w"), (stderr, "w")):
+        if is_null_value(stream):
+            fds.append(None)                    # inherit the interpreter's stream
+        elif _check_stream(vp, on_error, name, stream, mode):
+            fds.append(stream.fd)
+        else:
+            return
+    if not isinstance(env_dict, Dict):
+        _prim_error(vp, on_error, f"{name}: expected Dict envDict, got {value_type_name(env_dict)}")
+        return
+    env = {}
+    for k, v in env_dict.entries:
+        if value_type_name(k) != "String" or value_type_name(v) != "String":
+            _prim_error(vp, on_error, f"{name}: envDict keys and values must be Strings")
+            return
+        env[_value_to_display(k)] = _value_to_display(v)
+    # Write out our own buffered output first, so that it comes before the child's.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    try:
+        popen = subprocess.Popen(args, stdin=fds[0], stdout=fds[1], stderr=fds[2], env=env)
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {args[0]}")
+        return
+    _prim_return(vp, [OSProc(popen)])
+
+def prim_OS_poll(vp, gvenv):
+    """__OS_poll__ onError OSProc ,(status)
+    Passes the exit code as a Number if the process has exited (a negative
+    signal number if a signal killed it), or null if it is still running."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__OS_poll__: missing argument(s)")
+    on_error = olist.pop(0)
+    proc     = olist.pop(0)
+    if not isinstance(proc, OSProc):
+        _prim_error(vp, on_error, f"__OS_poll__: expected OSProc, got {value_type_name(proc)}")
+        return
+    try:
+        code = proc.popen.poll()
+    except OSError as e:
+        _prim_error(vp, on_error, f"__OS_poll__: {e}")
+        return
+    _prim_return(vp, [NULL if code is None else Number(code)])
+
+
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
     r_fd, w_fd = os.pipe()
@@ -715,7 +805,6 @@ def prim_OS_read(vp, gvenv):
       null   — EOF (writer closed)
     On error, calls onError with an error message string.
     """
-    import fcntl
     olist = vp["olist"]
     if len(olist) < 2:
         raise VProcError("__OS_read__: missing argument(s)")
@@ -723,13 +812,14 @@ def prim_OS_read(vp, gvenv):
     stream   = olist.pop(0)
     if not _check_stream(vp, on_error, "__OS_read__", stream, "r"): return
     try:
-        # set O_NONBLOCK on the raw fd
-        flags = fcntl.fcntl(stream.fd, fcntl.F_GETFL)
-        fcntl.fcntl(stream.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        # Check for data with select instead of setting O_NONBLOCK: the flag
+        # belongs to the open pipe, which a child process may share as its
+        # standard input.
+        readable, _, _ = select.select([stream.fd], [], [], 0)
+        if not readable:
+            _prim_return(vp, [string_value("")])                  # no data yet
+            return
         data = os.read(stream.fd, 4096)
-    except BlockingIOError:
-        _prim_return(vp, [string_value("")])                      # no data yet
-        return
     except OSError as e:
         _prim_error(vp, on_error, f"__OS_read__: {e}")
         return
@@ -1365,6 +1455,9 @@ PRIMITIVES = {
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
     "__OS_get_String__":       prim_OS_get_String,
+    "__OS_get_envDict__":      prim_OS_get_envDict,
+    "__OS_spawn__":            prim_OS_spawn,
+    "__OS_poll__":             prim_OS_poll,
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,

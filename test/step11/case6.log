@@ -1,0 +1,4 @@
+before
+from the child
+after, cat status: 0
+exit: 0

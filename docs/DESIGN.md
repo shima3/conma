@@ -177,6 +177,7 @@ Values that may contain themselves, or that stand for an OS resource or a proces
 | Dict | `(__Dict__ "N")` | creation order of Dicts |
 | Stream | `(__OSStream__ "r:N")` or `(__OSStream__ "w:N")` | creation order of Streams; `r` is an input Stream, `w` an output Stream |
 | VProc | `(__VProcRef__ "N")` | creation order of VProcs; the first VProc is 1 |
+| OSProc | `(__OSProc__ "N")` | creation order of OSProcs (not the PID, which changes on every run) |
 
 Other values are written by content:
 
@@ -455,4 +456,5 @@ The interpreter exits:
 * with code 2 on deadlock.
 
 Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
+OS processes started by `__OS_spawn__` that are still running when the interpreter exits are left running.
 

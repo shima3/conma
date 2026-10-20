@@ -1,0 +1,9 @@
+;; Step11: case8 で子 VProc として起動するプログラム
+(include "util.se")
+
+;; args で受け取った出力 Stream に書き込み、閉じる
+(define writer ,(err args in out)
+  args (,(stream)
+    __OS_write__ __print_exit_error__ stream "written by the child VProc\n" ,()
+    __OS_close__ __print_exit_error__ stream ,()
+    ))

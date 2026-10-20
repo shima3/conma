@@ -1,0 +1,203 @@
+;; Step11: 外部プロセス
+;; 移植性のため /bin/sh, /bin/echo, /bin/cat, /usr/bin/env だけを使う。
+;; 出力と終了コードは、__OS_poll__ でプロセスの終了を確かめてから読む。
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printNumber ,(Number)
+  __Number_toString__ Number ,(str)
+  println str)
+
+;; エラーメッセージを標準エラー出力に書き、null を LCont に返す
+(define recover ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ __NULL__)
+
+;; MSeq に x を追加し、続けて追加する Sink を返す
+(define appendSink ,(mseq x)
+  __MSeq_append__ __print_exit_error__ mseq x ,()
+  __NULL__ (,(y) appendSink mseq y))
+
+;; Seq の要素からコマンドの MSeq を作る
+(define makeCmd ,(seq)
+  __MSeq_new__ ,(mseq)
+  seq (,(x) appendSink mseq x) ,(last)
+  __NULL__ mseq)
+
+;; 空の Dict に PATH=/bin だけを登録する
+(define binPath ,()
+  __Dict_new__ ,(env)
+  __Dict_put__ env "PATH" "/bin" ,()
+  __NULL__ env)
+
+;; プロセスが終了するまで __OS_poll__ を繰り返し、終了コードを返す
+(define waitExit ,(proc)
+  __OS_poll__ __print_exit_error__ proc ,(status)
+  __if_then_else__ (,() __is_null__ status)
+    (,() waitExit proc)
+    (,() __NULL__ status))
+
+;; null (EOF) になるまで読み込み、そのまま出力する
+(define readAll ,(in)
+  __OS_read__ __print_exit_error__ in ,(data)
+  __unless__ (,() __is_null__ data)
+  (,()
+    __OS_print__ data ,()
+    readAll in))
+
+;; コマンドを実行し、標準出力をパイプで受け取って出力し、終了コードも出力する
+(define runAndShow ,(cmd env)
+  __OS_pipe__ ,(in out)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ out __NULL__ env ,(proc)
+  __OS_close__ __print_exit_error__ out ,()
+  waitExit proc ,(status)
+  readAll in ,()
+  __OS_close__ __print_exit_error__ in ,()
+  __OS_print__ "status: " ,()
+  printNumber status)
+
+;; case1: 子プロセスの標準出力をパイプで受け取る。
+;; 親は渡した書き込み側を自分で閉じる（閉じないと読み込みが EOF にならない）
+(define case1 ,()
+  makeCmd (,(sink) sink "/bin/echo" "hello" "world") ,(cmd)
+  binPath ,(env)
+  __OS_pipe__ ,(in out)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ out __NULL__ env ,(proc)
+  println proc ,()
+  __OS_close__ __print_exit_error__ out ,()
+  waitExit proc ,(status)
+  readAll in ,()
+  __OS_print__ "status: " ,()
+  printNumber status ,()
+  )
+
+;; case2: パイプで子プロセスの標準入力に書き込み、標準出力を受け取る
+(define case2 ,()
+  makeCmd (,(sink) sink "/bin/cat") ,(cmd)
+  binPath ,(env)
+  __OS_pipe__ ,(catIn toCat)
+  __OS_pipe__ ,(fromCat catOut)
+  __OS_write__ __print_exit_error__ toCat "line 1\n" ,()
+  __OS_write__ __print_exit_error__ toCat "line 2\n" ,()
+  __OS_close__ __print_exit_error__ toCat ,()
+  __OS_spawn__ __print_exit_error__ cmd catIn catOut __NULL__ env ,(proc)
+  __OS_close__ __print_exit_error__ catIn ,()
+  __OS_close__ __print_exit_error__ catOut ,()
+  waitExit proc ,(status)
+  readAll fromCat ,()
+  __OS_print__ "status: " ,()
+  printNumber status ,()
+  )
+
+;; case3: 終了コード。シグナルで終了したときは負のシグナル番号になる。
+;; 終了後に __OS_poll__ を繰り返しても同じ終了コードを返す。標準エラー出力もパイプで受け取れる
+(define case3 ,()
+  binPath ,(env)
+  makeCmd (,(sink) sink "/bin/sh" "-c" "exit 3") ,(cmd)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  waitExit proc ,(status) printNumber status ,()
+  __OS_poll__ __print_exit_error__ proc ,(again) printNumber again ,()
+  makeCmd (,(sink) sink "/bin/sh" "-c" "kill -9 $$") ,(cmd)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  waitExit proc ,(status) printNumber status ,()
+  makeCmd (,(sink) sink "/bin/sh" "-c" "echo to stderr >&2") ,(cmd)
+  __OS_pipe__ ,(in out)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ out env ,(proc)
+  __OS_close__ __print_exit_error__ out ,()
+  waitExit proc ,(status)
+  readAll in ,()
+  )
+
+;; case4: 子プロセスの環境変数は envDict そのもの。
+;; "/" を含まないコマンド名は envDict の PATH から探す
+(define case4 ,()
+  __Dict_new__ ,(env)
+  __Dict_put__ env "A" "1" ,()
+  __Dict_put__ env "B" "two words" ,()
+  makeCmd (,(sink) sink "/usr/bin/env") ,(cmd)
+  runAndShow cmd env ,()
+  binPath ,(env)
+  makeCmd (,(sink) sink "echo" "found in PATH") ,(cmd)
+  runAndShow cmd env ,()
+  )
+
+;; case5: __OS_get_envDict__ はインタプリタの環境変数をコピーした新しい Dict を返す。
+;; 返された Dict を変更しても、インタプリタの環境変数は変わらない
+(define case5 ,()
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "PATH" (,(key) __CChain_pop_LCont__ __NULL__) ,(path)
+  __if_then_else__ (,() __is_null__ path)
+    (,() println "PATH: missing")
+    (,() println "PATH: present") ,()
+  __Dict_put__ env "CONMA_TEST" "set in the copy" ,()
+  makeCmd (,(sink) sink "/bin/sh" "-c" "echo $CONMA_TEST") ,(cmd)
+  runAndShow cmd env ,()
+  __OS_get_envDict__ ,(env2)
+  __Dict_lookup_or__ env2 "CONMA_TEST" (,(key) __CChain_pop_LCont__ "(missing)") ,(value)
+  println value ,()
+  )
+
+;; case6: Stream に null を渡すと、子プロセスはインタプリタの標準入出力を引き継ぐ。
+;; 起動前にインタプリタの出力を書き出すので、出力の順序は保たれる
+(define case6 ,()
+  binPath ,(env)
+  __OS_print__ "before\n" ,()
+  makeCmd (,(sink) sink "/bin/echo" "from the child") ,(cmd)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  waitExit proc ,(status)
+  makeCmd (,(sink) sink "/bin/cat") ,(cmd)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  waitExit proc ,(status)
+  __OS_print__ "after, cat status: " ,()
+  printNumber status ,()
+  )
+
+;; case7: 起動の失敗や不正な引数は onError に渡される
+(define case7 ,()
+  binPath ,(env)
+  __OS_pipe__ ,(in out)
+  makeCmd (,(sink) sink "/nonexistent/command") ,(cmd)
+  __OS_spawn__ recover cmd __NULL__ __NULL__ __NULL__ env ,(p)
+  makeCmd (,(sink) sink "nosuchcommand") ,(cmd)
+  __OS_spawn__ recover cmd __NULL__ __NULL__ __NULL__ env ,(p)
+  makeCmd (,(sink) sink "/etc/hosts") ,(cmd)
+  __OS_spawn__ recover cmd __NULL__ __NULL__ __NULL__ env ,(p)
+  __MSeq_new__ ,(empty)
+  __OS_spawn__ recover empty __NULL__ __NULL__ __NULL__ env ,(p)
+  __OS_spawn__ recover "/bin/echo" __NULL__ __NULL__ __NULL__ env ,(p)
+  makeCmd (,(sink) sink "/bin/echo" __NULL__) ,(badCmd)
+  __OS_spawn__ recover badCmd __NULL__ __NULL__ __NULL__ env ,(p)
+  makeCmd (,(sink) sink "/bin/echo" "x") ,(cmd)
+  __OS_spawn__ recover cmd out __NULL__ __NULL__ env ,(p)
+  __OS_spawn__ recover cmd __NULL__ in __NULL__ env ,(p)
+  __OS_close__ __print_exit_error__ out ,()
+  __OS_spawn__ recover cmd __NULL__ out __NULL__ env ,(p)
+  __OS_spawn__ recover cmd __NULL__ __NULL__ __NULL__ "PATH=/bin" ,(p)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Dict_put__ env "N" one ,()
+  __OS_spawn__ recover cmd __NULL__ __NULL__ __NULL__ env ,(p)
+  __OS_poll__ recover cmd ,(status)
+  println "end" ,()
+  )
+
+;; case8: __OS_poll__ で終了を待つ間も他の VProc は実行される。
+;; cat は、子 VProc がパイプに書き込んで閉じるまで終了しない
+(define case8 ,()
+  binPath ,(env)
+  makeCmd (,(sink) sink "/bin/cat") ,(cmd)
+  __OS_pipe__ ,(catIn toCat)
+  __OS_pipe__ ,(fromCat catOut)
+  __OS_spawn__ __print_exit_error__ cmd catIn catOut __NULL__ env ,(proc)
+  __OS_close__ __print_exit_error__ catIn ,()
+  __OS_close__ __print_exit_error__ catOut ,()
+  __VProc_spawn__ __print_exit_error__ "writer" "writer.se" __NULL__ (,(sink) sink toCat) __NULL__ __NULL__ ,(child)
+  waitExit proc ,(status)
+  readAll fromCat ,()
+  __OS_print__ "status: " ,()
+  printNumber status ,()
+  )
