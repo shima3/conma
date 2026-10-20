@@ -40,11 +40,22 @@ def parse_tokens(tokens):
 
 def parse_sexp(text): return parse_tokens(tokenize(text))
 
+def _inline_len(x, limit):
+    # Length of x printed on one line, stopping early once it exceeds limit
+    # (so checking whether a deep tree fits costs O(limit), not O(tree size)).
+    if not isinstance(x, list): return len(str(x))
+    if not x: return 2
+    n = 1
+    for i in x:
+        n += _inline_len(i, limit - n) + 1
+        if n > limit: return n
+    return n
+
 def sexp_to_str(x, indent=0):
     if not isinstance(x, list): return str(x)
     if not x: return "()"
-    inline = "(" + " ".join(sexp_to_str(i) for i in x) + ")"
-    if len(inline) <= 80: return inline
+    if _inline_len(x, 80) <= 80:
+        return "(" + " ".join(sexp_to_str(i) for i in x) + ")"
     pad = "  " * (indent + 1)
     inner = ("\n" + pad).join(sexp_to_str(i, indent + 1) for i in x)
     return "(" + inner + ")"
