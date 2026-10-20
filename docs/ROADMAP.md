@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step4` and `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step5` and `step9`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -68,6 +68,8 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 
 * Independent of Steps 3 and 4, but placing it after Step 4 lets tests recover from errors with `__Cont_get__` instead of exiting.
 * `__Number_toString__` comes first so that results can be printed.
+* Every Number is a float. `__Number_fromString__` accepts only ASCII decimal notation (optional sign, fraction and exponent); anything else, a non-String argument, or a value that overflows goes to `onError`.
+* `__Number_toString__` prints integer values below 1e21 without a decimal point, other finite values in shortest form, and `inf`, `-inf`, `nan` for non-finite results of arithmetic.
 
 ## Step 6: Ref
 

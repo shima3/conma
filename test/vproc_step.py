@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re
+import sys, re, math
 import types
 
 class VProcError(Exception): pass
@@ -91,11 +91,11 @@ class Stream:
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
 class Number:
-    """An immutable numeric value (int or float) as a ConMa value."""
+    """An immutable floating-point number as a ConMa value."""
     def __init__(self, value):
-        self.value = value   # Python int or float
+        self.value = float(value)
     def value_to_sexp(self):
-        return ["__Number__", str(self.value)]
+        return ["__Number__", number_to_str(self.value)]
     def __repr__(self):
         return f"Number({self.value!r})"
 class LList:
@@ -116,6 +116,14 @@ def is_null_value(v):
 
 def is_prim_func(v):
     return isinstance(v, list) and v[0] == "PrimFunc"
+
+def number_to_str(x):
+    """Format a float: integer values without a decimal point (below 1e21),
+    other finite values by shortest repr, and inf, -inf, nan as such."""
+    if math.isnan(x): return "nan"
+    if math.isinf(x): return "inf" if x > 0 else "-inf"
+    if x == int(x) and abs(x) < 1e21: return str(int(x))
+    return repr(x)
 
 def value_type_name(v):
     """Return the ConMa type name of a value, for error messages."""
@@ -649,9 +657,12 @@ def prim_OS_close(vp, gvenv):
 
 # ── Number Primitives ─────────────────────────────────────────────────────────
 
+# Optional sign, digits with an optional fraction, optional exponent (ASCII only)
+_NUMBER_RE = re.compile(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?')
+
 def _check_number(name, val):
     if not isinstance(val, Number):
-        raise VProcError(f"{name}: expected Number, got {val!r}")
+        raise VProcError(f"{name}: expected Number, got {value_type_name(val)}")
 
 def prim_Number_fromString(vp, gvenv):
     """__Number_fromString__ onError String ,(Number)"""
@@ -660,15 +671,17 @@ def prim_Number_fromString(vp, gvenv):
         raise VProcError("__Number_fromString__: missing argument(s)")
     on_error = olist.pop(0)
     val      = olist.pop(0)
-    s = unescape(unquote(val)) if isinstance(val, str) else _value_to_display(val)
-    try:
-        n = int(s)
-    except ValueError:
-        try:
-            n = float(s)
-        except ValueError:
-            _prim_error(vp, on_error, f"__Number_fromString__: invalid number: {s!r}")
-            return
+    if value_type_name(val) != "String":
+        _prim_error(vp, on_error, f"__Number_fromString__: expected String, got {value_type_name(val)}")
+        return
+    s = _value_to_display(val)
+    if not _NUMBER_RE.fullmatch(s):
+        _prim_error(vp, on_error, f"__Number_fromString__: invalid number: \"{s}\"")
+        return
+    n = float(s)
+    if math.isinf(n):
+        _prim_error(vp, on_error, f"__Number_fromString__: out of range: \"{s}\"")
+        return
     _prim_return(vp, [Number(n)])
 
 def prim_Number_toString(vp, gvenv):
@@ -677,9 +690,7 @@ def prim_Number_toString(vp, gvenv):
     if not olist: raise VProcError("__Number_toString__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_toString__", val)
-    n = val.value
-    s = str(int(n)) if isinstance(n, float) and n == int(n) else str(n)
-    _prim_return(vp, [quoted(s)])
+    _prim_return(vp, [quoted(number_to_str(val.value))])
 
 def prim_Number_is_zero(vp, gvenv):
     """__Number_is_zero__ Number ,(Boolean)"""
@@ -738,20 +749,16 @@ def prim_Number_divide(vp, gvenv):
     if b.value == 0:
         _prim_error(vp, on_error, "__Number_divide__: division by zero")
         return
-    result = a.value / b.value
-    # preserve int when possible
-    if isinstance(a.value, int) and isinstance(b.value, int) and result == int(result):
-        result = int(result)
-    _prim_return(vp, [Number(result)])
+    _prim_return(vp, [Number(a.value / b.value)])
 
 def prim_Number_floor(vp, gvenv):
     """__Number_floor__ Number ,(Number)"""
-    import math
     olist = vp["olist"]
     if not olist: raise VProcError("__Number_floor__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_floor__", val)
-    _prim_return(vp, [Number(int(math.floor(val.value)))])
+    x = val.value
+    _prim_return(vp, [Number(math.floor(x) if math.isfinite(x) else x)])
 
 
 # ── CChain / CFrame Primitives ────────────────────────────────────────────────
