@@ -1,0 +1,7 @@
+[foobar]
+[]
+[say "\n"]
+3
+a
+b
+exit: 0

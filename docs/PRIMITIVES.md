@@ -415,3 +415,24 @@ A variable defined as null.
   * The order of keys is **implementation-defined**.
 * **Returns**:
   A Seq of keys.
+
+---
+
+## 12. String Primitives
+
+Positions and lengths count Unicode code points. An escape sequence such as `\n` is one character. Positions start at 0.
+A non-String argument (or, for `__String_substring__`, a non-Number position) stops the VProc with an error.
+
+### **`__String_length__ String ,(Number)`**
+* **Description**: Returns the number of characters in the `String`.
+
+### **`__String_substring__ onError String start end ,(String)`**
+* **Description**: Returns the characters of the `String` from position `start` up to, but not including, position `end`.
+* **Returns**: A new `String`. If `start` equals `end`, the empty String.
+* **Error**: If `start` or `end` is not an integer, or `0 <= start <= end <= length` does not hold, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
+
+### **`__String_concat__ aString bString ,(String)`**
+* **Description**: Returns a new `String` made of `aString` followed by `bString`.
+
+### **`__String_equal__ aString bString ,(Boolean)`**
+* **Description**: Returns `__TRUE__` if the two Strings have the same content, `__FALSE__` otherwise. A String made at run time equals a String literal with the same content.

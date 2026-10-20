@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step11`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step12`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py`, and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -206,3 +206,28 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case7 | `onError` for missing or non-executable commands, a bad command MSeq, wrong or closed Streams, a bad `envDict`, and polling a non-OSProc |
 | case8 | other VProcs keep running while a VProc waits with `__OS_poll__` (`writer.se` feeds `cat`) |
 
+## Step 12: String
+
+| Primitive | Status |
+|---|---|
+| `__String_length__` | implemented |
+| `__String_substring__` | implemented |
+| `__String_concat__` | implemented |
+| `__String_equal__` | implemented |
+
+* Goal: Make it possible to take a command line apart in ConMa itself, as the first step toward a shell.
+* Positions and lengths count code points (the same unit `__OS_read__` decodes to), and positions start at 0. Escape sequences count as one character.
+* `__String_substring__` takes `onError` because reading past the end is a normal condition while scanning a String. A position that is not an integer, or `0 <= start <= end <= length` that does not hold, goes to `onError`.
+* The other primitives take no `onError`. A non-String argument (or a non-Number position) stops the VProc with an error, as in the Number primitives.
+* `__String_equal__` compares by content, like `values_equal`, so a String made at run time equals a literal with the same content. Before this step a String could only be compared through a Dict lookup.
+* One character is taken with `__String_substring__ onError s i (i+1)`; no separate primitive is needed.
+
+| Case | What it checks |
+|---|---|
+| case1 | `__String_length__`: empty String, escape sequences, Japanese text, a String made by `__Number_toString__` |
+| case2 | `__String_substring__`: `end` is excluded, empty results, the whole String, Japanese text, escape sequences |
+| case3 | `onError` for positions out of range, a negative position, `start > end` and a non-integer position |
+| case4 | `__String_concat__`: empty Strings, quotes and backslashes are kept, the result can be concatenated again |
+| case5 | `__String_equal__`: by content, with Strings made at run time |
+| case6 | splitting a command line into words with these primitives only (spaces only, no quoting) |
+| case7 | a non-String argument finishes the VProc with an error |

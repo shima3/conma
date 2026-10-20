@@ -1,0 +1,159 @@
+;; Step12: String の操作
+;; 位置と長さはコードポイント単位で数える
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printNumber ,(Number)
+  __Number_toString__ Number ,(str)
+  println str)
+
+(define printBoolean ,(Boolean)
+  __if_then_else__ Boolean
+    (,() println "true")
+    (,() println "false"))
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; 文字列を [ と ] で囲んで出力する（空文字列や空白が見えるように）
+(define printQuoted ,(str)
+  __OS_print__ "[" ,()
+  __OS_print__ str ,()
+  println "]")
+
+;; エラーメッセージを標準エラー出力に書き、"-" を LCont に返す
+(define recover ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ "-")
+
+(define printLength ,(str)
+  __String_length__ str ,(n)
+  printNumber n)
+
+;; s の start 文字目から end 文字目の手前までを出力する
+(define printSub ,(s start end)
+  num start ,(i)
+  num end ,(j)
+  __String_substring__ recover s i j ,(sub)
+  printQuoted sub)
+
+;; case1: __String_length__。エスケープシーケンスは1文字、日本語も1文字と数える
+(define case1 ,()
+  printLength "" ,()
+  printLength "abc" ,()
+  printLength "日本語" ,()
+  printLength "a\nb" ,()
+  printLength "\"\\" ,()
+  num "-12.5" ,(n)
+  __Number_toString__ n ,(str)
+  printLength str ,()
+  )
+
+;; case2: __String_substring__。end の位置の文字は含まない
+(define case2 ,()
+  printSub "hello world" "0" "5" ,()
+  printSub "hello world" "6" "11" ,()
+  printSub "hello" "2" "2" ,()
+  printSub "hello" "0" "5" ,()
+  printSub "" "0" "0" ,()
+  printSub "日本語" "1" "2" ,()
+  printSub "a\tb" "1" "2" ,()
+  printSub "say \"hi\"" "4" "8" ,()
+  )
+
+;; case3: 範囲外や整数でない位置は onError に渡される
+(define case3 ,()
+  printSub "hello" "0" "6" ,()
+  printSub "hello" "-1" "2" ,()
+  printSub "hello" "3" "2" ,()
+  printSub "hello" "1.5" "2" ,()
+  printSub "hello" "1" "4" ,()
+  )
+
+;; case4: __String_concat__。エスケープが必要な文字もそのまま連結される
+(define case4 ,()
+  __String_concat__ "foo" "bar" ,(s) printQuoted s ,()
+  __String_concat__ "" "" ,(s) printQuoted s ,()
+  __String_concat__ "say \"" "\\n\"" ,(s) printQuoted s ,()
+  __String_concat__ "日本" "語" ,(s) printLength s ,()
+  __String_concat__ "a" "\n" ,(s)
+  __String_concat__ s "b" ,(s) println s ,()
+  )
+
+;; case5: __String_equal__ は内容で比較する。
+;; 実行時に作られた String とリテラルも内容が同じなら等しい
+(define case5 ,()
+  __String_equal__ "abc" "abc" ,(r) printBoolean r ,()
+  __String_equal__ "abc" "abd" ,(r) printBoolean r ,()
+  __String_equal__ "" "" ,(r) printBoolean r ,()
+  __String_equal__ "ab" "abc" ,(r) printBoolean r ,()
+  __String_concat__ "ab" "c" ,(s)
+  __String_equal__ s "abc" ,(r) printBoolean r ,()
+  __String_concat__ "a" "\n" ,(s)
+  __String_equal__ s "a\n" ,(r) printBoolean r ,()
+  num "1" ,(one)
+  __Number_toString__ one ,(s)
+  __String_equal__ s "1" ,(r) printBoolean r ,()
+  )
+
+;; ── case6: 空白で単語に分ける（シェルの字句解析の準備） ──
+
+(define isSpace ,(ch)
+  __String_equal__ ch " ")
+
+;; word が空でなければ sink に渡す
+(define emitWord ,(word sink)
+  __String_length__ word ,(n)
+  __if_then_else__ (,() __Number_is_zero__ n)
+    (,() __NULL__ sink)
+    (,() sink word))
+
+;; s の i 文字目から読み進め、空白で区切った単語を順に sink に渡す。
+;; word はこれまでに読んだ単語の途中
+(define splitFrom ,(s len i word sink)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() emitWord word sink)
+    (,()
+      num "1" ,(one)
+      __Number_add__ i one ,(j)
+      __String_substring__ __print_exit_error__ s i j ,(ch)
+      __if_then_else__ (,() isSpace ch)
+        (,()
+          emitWord word sink ,(sink)
+          splitFrom s len j "" sink)
+        (,()
+          __String_concat__ word ch ,(word)
+          splitFrom s len j word sink)))
+
+(define splitWords ,(s sink)
+  __String_length__ s ,(len)
+  num "0" ,(zero)
+  splitFrom s len zero "" sink)
+
+;; 受け取った単語を1行ずつ出力する Sink
+(define printSink ,(word)
+  printQuoted word ,()
+  printSink)
+
+;; case6: 文字列の操作だけで、コマンド行を単語に分けられる
+(define case6 ,()
+  splitWords "ls -l /tmp" printSink ,(sink)
+  println "--" ,()
+  splitWords "  echo   日本語  x " printSink ,(sink)
+  println "--" ,()
+  splitWords "   " printSink ,(sink)
+  println "--" ,()
+  )
+
+;; case7: String でない値を渡すとエラー終了する
+(define case7 ,()
+  num "1" ,(one)
+  __String_length__ one ,(n)
+  println "not reached" ,()
+  )

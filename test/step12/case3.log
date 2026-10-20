@@ -1,0 +1,10 @@
+__String_substring__: index out of range: 0 6 (length 5)
+[-]
+__String_substring__: index out of range: -1 2 (length 5)
+[-]
+__String_substring__: index out of range: 3 2 (length 5)
+[-]
+__String_substring__: not an integer index: 1.5
+[-]
+[ell]
+exit: 0
