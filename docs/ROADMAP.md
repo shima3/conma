@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step7` and `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step9`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -98,18 +98,23 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 
 | Primitive | Status |
 |---|---|
-| `__MSeq_new__` | not implemented |
-| `__MSeq_is_empty__` | not implemented |
-| `__MSeq_append__` | not implemented |
-| `__MSeq_uncons__` | not implemented |
-| `__MSeq_set_head__` | not implemented |
-| `__Dict_new__` | not implemented |
-| `__Dict_put__` | not implemented |
-| `__Dict_lookup_or__` | not implemented |
-| `__Dict_remove__` | not implemented |
-| `__Dict_keys__` | not implemented |
+| `__MSeq_new__` | implemented |
+| `__MSeq_is_empty__` | implemented |
+| `__MSeq_append__` | implemented |
+| `__MSeq_uncons__` | implemented |
+| `__MSeq_set_head__` | implemented |
+| `__Dict_new__` | implemented |
+| `__Dict_put__` | implemented |
+| `__Dict_lookup_or__` | implemented |
+| `__Dict_remove__` | implemented |
+| `__Dict_keys__` | implemented |
 
 * Dict uses the same key equality as the PDict (Step 7).
+* `__MSeq_uncons__` returns the tail as a new MSeq that does not share storage with the original.
+* `__MSeq_set_head__` on an empty MSeq goes to `onError`, following its Behavior and Error entries (its Description says the head is created instead).
+* Dict primitives take no `onError`, so a non-Dict argument stops the VProc with an error.
+* `__Dict_keys__` returns the keys in insertion order. Replacing a value keeps the key's position; removing and re-adding a key moves it to the end.
+* In traces an MSeq or Dict is shown as `(__MSeq__ "N")` or `(__Dict__ "N")`, like a Ref.
 * `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](SPEC.html)).
 * Both are needed by Step 11 (`commandMSeq`, `envDict`).
 
@@ -121,8 +126,12 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 | `__OS_write__` | implemented |
 | `__OS_read__` | implemented |
 | `__OS_close__` | implemented |
-| `__OS_get_String__` | not implemented |
+| `__OS_get_String__` | implemented |
 
+* `__OS_get_String__` reads one line from standard input, including its newline, and passes null at EOF.
+* Using a closed Stream goes to `onError` (`closed input Stream` / `closed output Stream`); the closed fd is never touched, because its number may already belong to a newer pipe.
+* `__OS_read__` decodes UTF-8 across reads, so a character split between reads is returned whole by the later read; invalid bytes become U+FFFD.
+* Strings produced at run time (read data, error messages, ...) are escaped as String literals are, so backslashes and quotes in the data are kept as they are.
 * `__OS_read__` is non-blocking and returns `""` when no data is available. A reader that waits for data needs to yield to other VProcs, which is done in Step 10.
 
 ## Step 10: VProc

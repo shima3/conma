@@ -3,5 +3,11 @@ cd ${0%/*}
 if ! ../resolver.sh test.se
 then exit 1
 fi
-PYTHONUNBUFFERED=1 python3 ../vproc_run.py /tmp/test.module.se case1 > /tmp/case1.log 2>&1
-diff case1.log /tmp/case1.log
+for c in case1 case2 case3 case4 case5
+do
+  # case5 reads standard input; the other cases get an empty one
+  if [ $c = case5 ]; then input=input.txt; else input=/dev/null; fi
+  PYTHONUNBUFFERED=1 python3 ../vproc_run.py /tmp/test.module.se $c < $input > /tmp/$c.log 2>&1
+  echo "exit: $?" >> /tmp/$c.log
+  diff $c.log /tmp/$c.log
+done

@@ -1,0 +1,10 @@
+__MSeq_is_empty__: expected MSeq, got String
+false
+__MSeq_uncons__: empty MSeq
+-
+__MSeq_uncons__: expected MSeq, got null
+-
+__MSeq_set_head__: empty MSeq
+__MSeq_append__: expected MSeq, got Dict
+true
+exit: 0

@@ -1,0 +1,166 @@
+;; Step8: MSeq & Dict
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printBoolean ,(Boolean)
+  __if_then_else__ Boolean
+    (,() println "true")
+    (,() println "false"))
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; MSeq の要素を先頭から順に1行ずつ出力する。MSeq 自体は変更しない
+(define MSeq_print ,(mseq)
+  __MSeq_is_empty__ __print_exit_error__ mseq ,(empty)
+  __unless__ empty
+  (,()
+    __MSeq_uncons__ __print_exit_error__ mseq ,(head tail)
+    println head ,()
+    MSeq_print tail))
+
+;; エラーメッセージを標準エラー出力に書き、value を LCont に返す
+(define recoverWith ,(value msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ value)
+
+;; エラーメッセージを標準エラー出力に書き、値を返さずに LCont に戻る
+(define recover ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  )
+
+;; エラーメッセージを標準エラー出力に書き、head と tail として "-" を2つ返す
+(define recoverUncons ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ "-" "-")
+
+;; 受け取った値を1行ずつ出力する Sink
+(define printSink ,(value)
+  println value ,()
+  printSink)
+
+;; key を検索し、値を出力する。見つからなければ "(missing)" を出力する
+(define printLookup ,(dict key)
+  __Dict_lookup_or__ dict key (,(key) __CChain_pop_LCont__ "(missing)") ,(value)
+  println value)
+
+;; Dict のキーを Seq として取り出し、順に出力する
+(define printKeys ,(dict)
+  __Dict_keys__ dict ,(keys)
+  println "keys:" ,()
+  keys printSink ,(sink)
+  )
+
+;; case1: MSeq の作成、追加、空判定、先頭からの分解
+(define case1 ,()
+  __MSeq_new__ ,(mseq)
+  __MSeq_is_empty__ __print_exit_error__ mseq ,(empty) printBoolean empty ,()
+  __MSeq_append__ __print_exit_error__ mseq "A" ,()
+  __MSeq_append__ __print_exit_error__ mseq "B" ,()
+  __MSeq_append__ __print_exit_error__ mseq "C" ,()
+  __MSeq_is_empty__ __print_exit_error__ mseq ,(empty) printBoolean empty ,()
+  MSeq_print mseq ,()
+  println "again:" ,()
+  MSeq_print mseq ,()
+  )
+
+;; case2: __MSeq_set_head__ は先頭を書き換える。
+;; uncons で得た tail は新しい MSeq で、元の MSeq とは独立している
+(define case2 ,()
+  __MSeq_new__ ,(mseq)
+  __MSeq_append__ __print_exit_error__ mseq "A" ,()
+  __MSeq_append__ __print_exit_error__ mseq "B" ,()
+  __MSeq_set_head__ __print_exit_error__ mseq "A2" ,()
+  __MSeq_uncons__ __print_exit_error__ mseq ,(head tail)
+  __MSeq_set_head__ __print_exit_error__ tail "B2" ,()
+  __MSeq_append__ __print_exit_error__ mseq "C" ,()
+  println "mseq:" ,()
+  MSeq_print mseq ,()
+  println "tail:" ,()
+  MSeq_print tail ,()
+  )
+
+;; case3: MSeq でない値や空の MSeq は onError に渡される
+(define case3 ,()
+  __MSeq_new__ ,(empty)
+  __MSeq_is_empty__ (,(msg) recoverWith __FALSE__ msg) "abc" ,(r) printBoolean r ,()
+  __MSeq_uncons__ recoverUncons empty ,(head tail) println head ,()
+  __MSeq_uncons__ recoverUncons __NULL__ ,(head tail) println head ,()
+  __MSeq_set_head__ recover empty "X" ,()
+  __Dict_new__ ,(dict)
+  __MSeq_append__ recover dict "X" ,()
+  __MSeq_is_empty__ __print_exit_error__ empty ,(r) printBoolean r ,()
+  )
+
+;; case4: Dict の登録、検索、置き換え、削除。キーの比較は PDict と同じ
+(define case4 ,()
+  __Dict_new__ ,(dict)
+  __Dict_put__ dict "name" "Alice" ,()
+  __Dict_put__ dict "lang" "ConMa" ,()
+  printLookup dict "name" ,()
+  printLookup dict "none" ,()
+  __Dict_put__ dict "name" "Bob" ,()
+  printLookup dict "name" ,()
+  __Dict_remove__ dict "name" ,()
+  printLookup dict "name" ,()
+  __Dict_remove__ dict "none" ,()
+  printLookup dict "lang" ,()
+  num "1" ,(one)
+  num "1.0" ,(oneFloat)
+  __Dict_put__ dict one "number one" ,()
+  printLookup dict oneFloat ,()
+  printLookup dict "1" ,()
+  __Dict_new__ ,(other)
+  printLookup other "lang" ,()
+  )
+
+;; case5: __Dict_keys__ は登録順のキーを Seq として返す。
+;; 値を置き換えても順序は変わらず、削除して登録し直すと末尾になる
+(define case5 ,()
+  __Dict_new__ ,(dict)
+  printKeys dict ,()
+  __Dict_put__ dict "a" "1" ,()
+  __Dict_put__ dict "b" "2" ,()
+  __Dict_put__ dict "c" "3" ,()
+  printKeys dict ,()
+  __Dict_put__ dict "a" "one" ,()
+  __Dict_remove__ dict "b" ,()
+  __Dict_put__ dict "b" "two" ,()
+  printKeys dict ,()
+  )
+
+;; 見つからないとき、呼び出し元に戻らずに return へ脱出する
+(define lookupOrEscape ,(dict key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ dict key (,(key)
+    println "escape" ,()
+    return) ,(value)
+  println value ,()
+  )
+
+;; case6: onMissing が LCont を呼ばなければ、検索の続きは実行されない。
+;; MSeq や Dict を別のコンテナの値にもできる
+(define case6 ,()
+  __Dict_new__ ,(dict)
+  __MSeq_new__ ,(mseq)
+  __MSeq_append__ __print_exit_error__ mseq "inside" ,()
+  __Dict_put__ dict "mseq" mseq ,()
+  __Dict_lookup_or__ dict "mseq" __print_exit_error__ ,(found)
+  MSeq_print found ,()
+  lookupOrEscape dict "absent" ,()
+  println "after escape" ,()
+  )
+
+;; case7: Dict でない値を渡すとエラー終了する
+(define case7 ,()
+  __MSeq_new__ ,(mseq)
+  __Dict_put__ mseq "key" "value" ,()
+  println "not reached" ,()
+  )

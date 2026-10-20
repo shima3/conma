@@ -1,0 +1,4 @@
+[first line
+][second "line" \\n
+][last line without newline]<EOF>
+exit: 0

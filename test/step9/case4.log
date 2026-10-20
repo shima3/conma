@@ -1,0 +1,6 @@
+Error: __OS_read__: expected input Stream, got output Stream
+Error: __OS_write__: expected output Stream, got input Stream
+Error: __OS_close__: expected Stream, got String
+Error: __OS_close__: closed input Stream
+Error: __OS_write__: [Errno 32] Broken pipe
+exit: 0

@@ -1,4 +1,5 @@
 Message: Hello
 
-Error: __OS_write__: [Errno 9] Bad file descriptor
-Error: __OS_read__: [Errno 9] Bad file descriptor
+Error: __OS_write__: closed output Stream
+Error: __OS_read__: closed input Stream
+exit: 0

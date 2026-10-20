@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math
+import sys, re, math, os, codecs
 import types
 
 class VProcError(Exception): pass
@@ -74,6 +74,14 @@ def quoted(s):
     if isinstance(s, str) and not (s.startswith('"') and s.endswith('"')): return f'"{s}"'
     return s
 
+_STRING_ESCAPES = {'"': '\\"', '\\': '\\\\', '\n': '\\n', '\t': '\\t', '\r': '\\r'}
+
+def string_value(text):
+    """Make a String value from Python text produced at run time.
+    Strings are kept in source form (quoted, escaped) like String literals,
+    so the text is escaped as SPEC.md defines and always quoted."""
+    return '"' + ''.join(_STRING_ESCAPES.get(ch, ch) for ch in text) + '"'
+
 class Closure:
     def __init__(self, params, body, lvenv):
         self.params, self.body, self.lvenv = list(params), body, list(lvenv)
@@ -88,17 +96,24 @@ class CFrame:
     def __init__(self, closure, sinfo): self.closure, self.sinfo = closure, sinfo
 class Stream:
     """Wraps a raw OS file descriptor as a ConMa value."""
+    _count = 0
     def __init__(self, fd, mode):
+        Stream._count += 1
+        self.serial = Stream._count     # identifies the Stream in traces
         self.fd   = fd                  # raw file descriptor
         self.mode = mode                # "r" or "w"
-        self._closed = False
+        self.closed = False
+        # Decodes UTF-8 across reads; a character may be split between reads.
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     def close(self):
-        if not self._closed:
-            import os
+        # Mark closed first: the fd number may be reused by a later pipe.
+        if not self.closed:
+            self.closed = True
             os.close(self.fd)
-            self._closed = True
+    def kind(self):
+        return "input Stream" if self.mode == "r" else "output Stream"
     def value_to_sexp(self):
-        return ["__OSStream__", f'"{self.mode}:{id(self)}"']
+        return ["__OSStream__", f'"{self.mode}:{self.serial}"']
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
 class Number:
@@ -121,6 +136,38 @@ class Ref:
         return ["__Ref__", quoted(str(self.serial))]
     def __repr__(self):
         return f"Ref({self.serial})"
+
+class MSeq:
+    """A mutable sequence of ConMa values."""
+    _count = 0
+    def __init__(self, items=()):
+        MSeq._count += 1
+        self.serial = MSeq._count   # identifies the MSeq in traces
+        self.items  = list(items)
+    def value_to_sexp(self):
+        # The content is not shown: an MSeq may contain itself.
+        return ["__MSeq__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"MSeq({self.serial})"
+
+class Dict:
+    """A mutable mapping from keys to ConMa values, in insertion order.
+    Keys are compared with values_equal."""
+    _count = 0
+    def __init__(self):
+        Dict._count += 1
+        self.serial  = Dict._count  # identifies the Dict in traces
+        self.entries = []           # list of (key, value)
+    def find(self, key):
+        """Return the index of key, or -1."""
+        for i, (k, _) in enumerate(self.entries):
+            if values_equal(k, key): return i
+        return -1
+    def value_to_sexp(self):
+        # The content is not shown: a Dict may contain itself.
+        return ["__Dict__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"Dict({self.serial})"
 
 class LList:
     """A cons cell representing a node in a linked list (also used for CChain)."""
@@ -154,6 +201,7 @@ def value_type_name(v):
     if is_null_value(v): return "null"
     if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v) or callable(v): return "Closure"
     if isinstance(v, CFrame): return "CFrame"
+    if isinstance(v, Stream): return v.kind()
     if isinstance(v, list) and v: return v[0]  # AST value node, e.g. "String"
     if isinstance(v, str): return "String"
     return type(v).__name__
@@ -227,7 +275,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, Ref): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -589,16 +637,35 @@ def prim_OS_print_error(vp, gvenv):
 def _prim_error(vp, on_error, message):
     """Invoke onError closure with an error message string."""
     vp["operator"] = on_error
-    vp["olist"]    = [quoted(message)]
+    vp["olist"]    = [string_value(message)]
     # do not clear lcont to continue after error handling
     # vp["lcont"]    = None
 
 
+def prim_OS_get_String(vp, gvenv):
+    """__OS_get_String__ ,(String) — read one line from standard input.
+    The String includes the trailing newline, if any. Passes null at EOF."""
+    line = sys.stdin.readline()
+    _prim_return(vp, [string_value(line) if line else NULL])
+
+
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
-    import os
     r_fd, w_fd = os.pipe()
     _prim_return(vp, [Stream(r_fd, 'r'), Stream(w_fd, 'w')])
+
+
+def _check_stream(vp, on_error, name, stream, mode=None):
+    """Check that stream is an open Stream (of the given mode, if any).
+    Invokes onError and returns False if not."""
+    if not isinstance(stream, Stream) or (mode and stream.mode != mode):
+        expected = {"r": "input Stream", "w": "output Stream"}.get(mode, "Stream")
+        _prim_error(vp, on_error, f"{name}: expected {expected}, got {value_type_name(stream)}")
+        return False
+    if stream.closed:
+        _prim_error(vp, on_error, f"{name}: closed {stream.kind()}")
+        return False
+    return True
 
 
 def prim_OS_read(vp, gvenv):
@@ -609,28 +676,30 @@ def prim_OS_read(vp, gvenv):
       null   — EOF (writer closed)
     On error, calls onError with an error message string.
     """
-    import fcntl, os
+    import fcntl
     olist = vp["olist"]
     if len(olist) < 2:
         raise VProcError("__OS_read__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
-    if not isinstance(stream, Stream) or stream.mode != 'r':
-        _prim_error(vp, on_error, f"__OS_read__: expected readable Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_read__", stream, "r"): return
     try:
         # set O_NONBLOCK on the raw fd
         flags = fcntl.fcntl(stream.fd, fcntl.F_GETFL)
         fcntl.fcntl(stream.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
         data = os.read(stream.fd, 4096)
-        if data == b"":
-            _prim_return(vp, [NULL])                          # EOF
-        else:
-            _prim_return(vp, [quoted(data.decode('utf-8'))])  # data
     except BlockingIOError:
-        _prim_return(vp, [quoted("")])                        # no data yet
+        _prim_return(vp, [string_value("")])                      # no data yet
+        return
     except OSError as e:
         _prim_error(vp, on_error, f"__OS_read__: {e}")
+        return
+    if data == b"":
+        rest = stream.decoder.decode(b"", final=True)         # incomplete character at EOF
+        _prim_return(vp, [string_value(rest) if rest else NULL])    # EOF
+    else:
+        # "" if the data ends inside a character and nothing else was read
+        _prim_return(vp, [string_value(stream.decoder.decode(data))])
 
 
 def prim_OS_write(vp, gvenv):
@@ -639,19 +708,17 @@ def prim_OS_write(vp, gvenv):
     On success, resumes LCont with an empty OList.
     On error, calls onError with an error message string.
     """
-    import os
     olist = vp["olist"]
     if len(olist) < 3:
         raise VProcError("__OS_write__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
     val      = olist.pop(0)
-    if not isinstance(stream, Stream) or stream.mode != 'w':
-        _prim_error(vp, on_error, f"__OS_write__: expected writable Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_write__", stream, "w"): return
     data = _value_to_display(val).encode('utf-8')
     try:
-        os.write(stream.fd, data)
+        while data:                     # os.write may write only part of data
+            data = data[os.write(stream.fd, data):]
     except OSError as e:
         _prim_error(vp, on_error, f"__OS_write__: {e}")
         return
@@ -669,9 +736,7 @@ def prim_OS_close(vp, gvenv):
         raise VProcError("__OS_close__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
-    if not isinstance(stream, Stream):
-        _prim_error(vp, on_error, f"__OS_close__: expected Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_close__", stream): return
     try:
         stream.close()
     except OSError as e:
@@ -715,7 +780,7 @@ def prim_Number_toString(vp, gvenv):
     if not olist: raise VProcError("__Number_toString__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_toString__", val)
-    _prim_return(vp, [quoted(number_to_str(val.value))])
+    _prim_return(vp, [string_value(number_to_str(val.value))])
 
 def prim_Number_is_zero(vp, gvenv):
     """__Number_is_zero__ Number ,(Boolean)"""
@@ -927,6 +992,113 @@ def prim_PDict_lookup_or(vp, gvenv):
     vp["olist"]    = [key]
 
 
+# ── MSeq Primitives ───────────────────────────────────────────────────────────
+
+def _mseq_args(vp, name, count):
+    """Pop onError, an MSeq and count-2 more arguments.
+    Returns (onError, mseq, rest), or None after invoking onError if the
+    second argument is not an MSeq."""
+    olist = vp["olist"]
+    if len(olist) < count: raise VProcError(f"{name}: missing argument(s)")
+    args = [olist.pop(0) for _ in range(count)]
+    on_error, mseq, rest = args[0], args[1], args[2:]
+    if not isinstance(mseq, MSeq):
+        _prim_error(vp, on_error, f"{name}: expected MSeq, got {value_type_name(mseq)}")
+        return None
+    return on_error, mseq, rest
+
+def prim_MSeq_new(vp, gvenv):
+    """__MSeq_new__ ,(MSeq)"""
+    _prim_return(vp, [MSeq()])
+
+def prim_MSeq_is_empty(vp, gvenv):
+    """__MSeq_is_empty__ onError mseq ,(Boolean)"""
+    args = _mseq_args(vp, "__MSeq_is_empty__", 2)
+    if args is None: return
+    _, mseq, _ = args
+    _prim_return(vp, [TRUE_CLOSURE if not mseq.items else FALSE_CLOSURE])
+
+def prim_MSeq_uncons(vp, gvenv):
+    """__MSeq_uncons__ onError mseq ,(head tail)
+
+    tail is a new MSeq holding the remaining elements; it does not share
+    storage with mseq."""
+    args = _mseq_args(vp, "__MSeq_uncons__", 2)
+    if args is None: return
+    on_error, mseq, _ = args
+    if not mseq.items:
+        _prim_error(vp, on_error, "__MSeq_uncons__: empty MSeq")
+        return
+    _prim_return(vp, [mseq.items[0], MSeq(mseq.items[1:])])
+
+def prim_MSeq_set_head(vp, gvenv):
+    """__MSeq_set_head__ onError mseq value ,()"""
+    args = _mseq_args(vp, "__MSeq_set_head__", 3)
+    if args is None: return
+    on_error, mseq, (value,) = args
+    if not mseq.items:
+        _prim_error(vp, on_error, "__MSeq_set_head__: empty MSeq")
+        return
+    mseq.items[0] = value
+    _prim_return(vp, [])
+
+def prim_MSeq_append(vp, gvenv):
+    """__MSeq_append__ onError mseq value ,()"""
+    args = _mseq_args(vp, "__MSeq_append__", 3)
+    if args is None: return
+    _, mseq, (value,) = args
+    mseq.items.append(value)
+    _prim_return(vp, [])
+
+
+# ── Dict Primitives ───────────────────────────────────────────────────────────
+
+def _dict_args(vp, name, count):
+    """Pop a Dict and count-1 more arguments; raise if the first is not a Dict."""
+    olist = vp["olist"]
+    if len(olist) < count: raise VProcError(f"{name}: missing argument(s)")
+    args = [olist.pop(0) for _ in range(count)]
+    if not isinstance(args[0], Dict):
+        raise VProcError(f"{name}: expected Dict, got {value_type_name(args[0])}")
+    return args
+
+def prim_Dict_new(vp, gvenv):
+    """__Dict_new__ ,(Dict)"""
+    _prim_return(vp, [Dict()])
+
+def prim_Dict_put(vp, gvenv):
+    """__Dict_put__ Dict key value ,()"""
+    d, key, value = _dict_args(vp, "__Dict_put__", 3)
+    i = d.find(key)
+    if i < 0: d.entries.append((key, value))
+    else:     d.entries[i] = (d.entries[i][0], value)
+    _prim_return(vp, [])
+
+def prim_Dict_lookup_or(vp, gvenv):
+    """__Dict_lookup_or__ Dict key onMissing ,(value)
+
+    If key is missing, onMissing is applied to key with the same LCont."""
+    d, key, on_missing = _dict_args(vp, "__Dict_lookup_or__", 3)
+    i = d.find(key)
+    if i >= 0:
+        _prim_return(vp, [d.entries[i][1]])
+        return
+    vp["operator"] = on_missing
+    vp["olist"]    = [key]
+
+def prim_Dict_remove(vp, gvenv):
+    """__Dict_remove__ Dict key ,()"""
+    d, key = _dict_args(vp, "__Dict_remove__", 2)
+    i = d.find(key)
+    if i >= 0: del d.entries[i]
+    _prim_return(vp, [])
+
+def prim_Dict_keys(vp, gvenv):
+    """__Dict_keys__ Dict ,(Seq) — the keys in insertion order."""
+    (d,) = _dict_args(vp, "__Dict_keys__", 1)
+    _prim_return(vp, [SeqClosure([k for k, _ in d.entries], None, [])])
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -948,7 +1120,7 @@ def prim_CFrame_get_SInfo(vp, gvenv):
     if not isinstance(val, CFrame):
         raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {value_type_name(val)}")
     s = ":".join(unquote(x) for x in (val.sinfo or []) if isinstance(x, str))
-    _prim_return(vp, [quoted(s)])
+    _prim_return(vp, [string_value(s)])
 
 def prim_CFrame_new(vp, gvenv):
     """__CFrame_new__ FuncExp SInfo ,(CFrame)
@@ -979,6 +1151,7 @@ PRIMITIVES = {
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
+    "__OS_get_String__":       prim_OS_get_String,
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,
@@ -1006,6 +1179,16 @@ PRIMITIVES = {
     "__Ref_set__":             prim_Ref_set,
     "__PDict_put__":           prim_PDict_put,
     "__PDict_lookup_or__":     prim_PDict_lookup_or,
+    "__MSeq_new__":            prim_MSeq_new,
+    "__MSeq_is_empty__":       prim_MSeq_is_empty,
+    "__MSeq_uncons__":         prim_MSeq_uncons,
+    "__MSeq_set_head__":       prim_MSeq_set_head,
+    "__MSeq_append__":         prim_MSeq_append,
+    "__Dict_new__":            prim_Dict_new,
+    "__Dict_put__":            prim_Dict_put,
+    "__Dict_lookup_or__":      prim_Dict_lookup_or,
+    "__Dict_remove__":         prim_Dict_remove,
+    "__Dict_keys__":           prim_Dict_keys,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
