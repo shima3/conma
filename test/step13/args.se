@@ -1,0 +1,23 @@
+;; Step13: vproc_run.py --main で起動するプログラム。
+;; 引数を1行ずつ出力し、標準入力の各行に番号を付けて出力する
+(include "util.se")
+
+(define printArgSink ,(arg)
+  stdout "arg: [" arg "]\n" ,(out)
+  printArgSink)
+
+;; 行番号 n を付けて出力し、次の番号の Sink を返す
+(define numberSink ,(n line)
+  __Number_toString__ n ,(s)
+  stdout s ": " line ,(out)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  __NULL__ (,(line) numberSink n line))
+
+(define main ,(args)
+  args printArgSink ,(sink)
+  stderr "to stderr\n" ,(err)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  stdin (,(line) numberSink one line) ,(sink)
+  __print__ "bye" ,()
+  )

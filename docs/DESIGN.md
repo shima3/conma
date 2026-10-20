@@ -50,7 +50,7 @@ For debugging purposes, when a VProc is represented as an S-expression, the GVEn
 
 ### One GVEnv per program
 
-Each program has its own GVEnv: the first program run by `test/vproc_run.py`, and each program loaded by `__VProc_spawn__`.
+Each program has its own GVEnv: the first program run by `test/vproc_run.py` (with or without `--main`), and each program loaded by `__VProc_spawn__`.
 `__VProc_spawn__` loads `sourceFileName` (relative to the current directory) by running `bin/includer --include include/` and `bin/resolver` as external commands; `bin/` and `include/` are found relative to `test/vproc_step.py`.
 File names in the SInfo are made relative to the directory above the repository (for example `"conma/test/step10/child.se"`), as `test/resolver.sh` does, so that output does not depend on where the repository is.
 
@@ -456,5 +456,6 @@ The interpreter exits:
 * with code 2 on deadlock.
 
 Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
+Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__Stream_lines__` reads again, so other VProcs keep running.
 OS processes started by `__OS_spawn__` that are still running when the interpreter exits are left running.
 

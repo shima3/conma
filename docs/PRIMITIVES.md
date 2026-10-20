@@ -44,6 +44,12 @@ Terminates the current OS Process (that is, the interpreter) with an exit code o
 ### `__OS_get_String__ ,(String)`
 Behavior:
 Gets a `String` from standard input and passes it to the LCont.
+It reads through its own buffer, so a program should not mix it with reading the Stream from `__OS_get_stdin__`.
+
+### `__OS_get_stdin__ ,(inputStream)` / `__OS_get_stdout__ ,(outputStream)` / `__OS_get_stderr__ ,(outputStream)`
+* **Description**: Passes the interpreter's own standard input (an input Stream), standard output or standard error (output Streams) to the LCont.
+* **Returns**: The same Stream each time it is called, so closing it is seen by every later call.
+* **Behavior**: These Streams can be used with `__OS_read__`, `__OS_write__`, `__OS_close__` and `__OS_spawn__` like a pipe end. Writing to standard output or standard error keeps the order with `__OS_print__` and `__OS_print_error__`. Closing one marks the Stream as closed, but the interpreter keeps the OS file descriptor open for its own output.
 
 ### `__OS_print__ String ,()`
 Behavior:

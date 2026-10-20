@@ -80,6 +80,7 @@ The "Pre-step" resolution logic (which clarifies the confusion in the previous v
 * **FuncExp Capture**: Function expressions are transformed into **Closures** by capturing the current `VEnv` and `gvenv`.
 * **Literal Promotion**: Strings and numbers are treated as terminal values.
 * **Strings produced at run time**: A String is kept in source form (quoted and escaped), like a String literal node. Primitives that make a String from Python text (read data, error messages, `__Number_toString__`, ...) use `string_value()`, which always quotes and escapes, so backslashes and quotes in the text are kept.
+* **Standard Streams**: `__OS_get_stdin__`, `__OS_get_stdout__` and `__OS_get_stderr__` return `Stream` objects for fds 0, 1 and 2, made on first use and kept in `_STD_STREAMS`, with `std` set. `Stream.close()` only marks such a Stream closed and leaves the fd open, because `print` and the error messages of the interpreter still use it. `__OS_write__` to such a Stream first flushes `sys.stdout` and `sys.stderr`, so its output stays in order with `__OS_print__`.
 * **String primitives**: `__String_length__`, `__String_substring__`, `__String_concat__` and `__String_equal__` first turn their String arguments into Python text with escapes processed (`_string_args`, through `_value_to_display`), so `\n` is one character and positions count code points. Results are made with `string_value()` again, so a String literal and a String made at run time are handled the same way.
 
 #### **5. Module and Environment Management**
@@ -106,6 +107,7 @@ The "Pre-step" resolution logic (which clarifies the confusion in the previous v
 #### **6. Running VProcs: `vproc_run.py` and the Scheduler**
 
 `vproc_run.py [--trace] <module_file> <func_name>` loads a module produced by `test/resolver.sh` and starts the first VProc by applying the global function `func_name` to no arguments.
+`vproc_run.py [--trace] --main <module_file> [<arg> ...]` starts it the normal way instead: it applies `__start__` (`include/util.se`) to a `SeqClosure` of the `arg` Strings, and `__start__` calls `__main__` with Sinks and a Seq made from the standard Streams.
 It then runs the round-robin scheduler (`SCHEDULER`, a `Scheduler` in `vproc_step.py`) until every VProc has finished. `__VProc_spawn__` adds more VProcs to the same scheduler.
 See "Scheduling and Termination" in DESIGN.md for the states of a VProc and for when the interpreter exits.
 
@@ -117,7 +119,7 @@ See "Scheduling and Termination" in DESIGN.md for the states of a VProc and for 
 |---|---|
 | 0 | Every VProc has finished (some may have finished with an error), or `__OS_exit_normal__` was run. |
 | 1 | `__OS_exit_error__` was run, or the module or function could not be loaded. |
-| 2 | Deadlock: no VProc is ready but some are blocked. |
+| 2 | Deadlock: no VProc is ready but some are blocked. Also a wrong command line (reported by `argparse`, for example a missing `func_name`). |
 
 * **Trace** (`--trace`): Before the first step, `[initial]` and the state of the first VProc are written to standard error. After each step, `[step S]` and the state of the VProc that ran it; for any VProc other than the first, the label is `[step S vproc N]`. At the end, `[done] normal termination after S step(s).`
 

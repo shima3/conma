@@ -552,7 +552,13 @@ Example: (,(p1) p1) a1 a2 -> (,(f) f a2) a1
 
 A ConMa program must define a `main` function.
 A program is started by spawning a virtual process (`__VProc_spawn__`) with the entry point `"__main__"`, which applies `__main__` (defined in `include/util.se`) to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
-How the interpreter builds these arguments for the first VProc from the OS standard streams is not defined yet; the test runner `test/vproc_run.py` starts the first VProc by applying a named function to no arguments.
+The interpreter starts the first VProc with `__start__` (also in `include/util.se`), which builds these arguments from the OS standard streams and calls `__main__`:
+
+* err and out: Sinks that write each value to standard error and standard output (`__Stream_sink__`).
+* in: a Seq that reads standard input to EOF and passes each line, including its newline, to the Sink (`__Stream_lines__`). A last line without a newline is passed as it is.
+* args: a Seq of the program arguments given on the command line, as Strings.
+
+The test runner does this with `test/vproc_run.py --main <module_file> [<arg> ...]`; without `--main`, it applies a named function to no arguments.
 
 `__main__` calls the user-defined `main` function with the argumentSeq.
 The inputSeq, the outputSink, and the errorSink are passed via `PDict`.

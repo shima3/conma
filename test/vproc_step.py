@@ -107,13 +107,15 @@ class Stream:
         self.fd   = fd                  # raw file descriptor
         self.mode = mode                # "r" or "w"
         self.closed = False
+        self.std    = False             # one of the interpreter's own fds 0, 1, 2
         # Decodes UTF-8 across reads; a character may be split between reads.
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     def close(self):
         # Mark closed first: the fd number may be reused by a later pipe.
         if not self.closed:
             self.closed = True
-            os.close(self.fd)
+            # fds 0, 1, 2 stay open: the interpreter itself still prints to them.
+            if not self.std: os.close(self.fd)
     def kind(self):
         return "input Stream" if self.mode == "r" else "output Stream"
     def value_to_sexp(self):
@@ -784,6 +786,28 @@ def prim_OS_pipe(vp, gvenv):
     _prim_return(vp, [Stream(r_fd, 'r'), Stream(w_fd, 'w')])
 
 
+_STD_STREAMS = {}   # fd -> Stream, made on first use so that each call returns the same Stream
+
+def _std_stream(fd, mode):
+    if fd not in _STD_STREAMS:
+        stream = Stream(fd, mode)
+        stream.std = True
+        _STD_STREAMS[fd] = stream
+    return _STD_STREAMS[fd]
+
+def prim_OS_get_stdin(vp, gvenv):
+    """__OS_get_stdin__ ,(inputStream) — the interpreter's standard input."""
+    _prim_return(vp, [_std_stream(0, "r")])
+
+def prim_OS_get_stdout(vp, gvenv):
+    """__OS_get_stdout__ ,(outputStream) — the interpreter's standard output."""
+    _prim_return(vp, [_std_stream(1, "w")])
+
+def prim_OS_get_stderr(vp, gvenv):
+    """__OS_get_stderr__ ,(outputStream) — the interpreter's standard error."""
+    _prim_return(vp, [_std_stream(2, "w")])
+
+
 def _check_stream(vp, on_error, name, stream, mode=None):
     """Check that stream is an open Stream (of the given mode, if any).
     Invokes onError and returns False if not."""
@@ -845,6 +869,10 @@ def prim_OS_write(vp, gvenv):
     val      = olist.pop(0)
     if not _check_stream(vp, on_error, "__OS_write__", stream, "w"): return
     data = _value_to_display(val).encode('utf-8')
+    if stream.std:
+        # Write out what __OS_print__ has buffered, so that the order is kept.
+        sys.stdout.flush()
+        sys.stderr.flush()
     try:
         while data:                     # os.write may write only part of data
             data = data[os.write(stream.fd, data):]
@@ -1508,6 +1536,9 @@ PRIMITIVES = {
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
+    "__OS_get_stdin__":        prim_OS_get_stdin,
+    "__OS_get_stdout__":       prim_OS_get_stdout,
+    "__OS_get_stderr__":       prim_OS_get_stderr,
     "__OS_get_String__":       prim_OS_get_String,
     "__OS_get_envDict__":      prim_OS_get_envDict,
     "__OS_spawn__":            prim_OS_spawn,

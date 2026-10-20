@@ -1,0 +1,9 @@
+arg: [a]
+arg: [b c]
+arg: [日本語]
+to stderr
+1: first line
+2: 
+3: 日本語の行
+4: last line without newlinebye
+exit: 0

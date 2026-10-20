@@ -1,0 +1,134 @@
+;; Step13: 標準入出力の Stream
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printBoolean ,(Boolean)
+  __if_then_else__ Boolean
+    (,() println "true")
+    (,() println "false"))
+
+;; エラーメッセージを標準出力に書き、値を返さずに LCont に戻る
+(define recover ,(msg)
+  println msg ,()
+  )
+
+;; エラーメッセージを標準出力に書き、null を LCont に返す
+(define recoverNull ,(msg)
+  println msg ,()
+  __NULL__ __NULL__)
+
+;; 受け取った行を [ と ] で囲んで出力する Sink。改行は \n と見えるように出力する
+(define printLineSink ,(line)
+  __String_length__ line ,(len)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ (,(msg) __NULL__ "") line last len ,(ch)
+  __OS_print__ "[" ,()
+  __if_then_else__ (,() __String_equal__ ch "\n")
+    (,()
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __String_substring__ __print_exit_error__ line zero last ,(body)
+      __OS_print__ body ,()
+      println "\\n]")
+    (,()
+      __OS_print__ line ,()
+      println "]") ,()
+  printLineSink)
+
+;; null (EOF) になるまで読み込み、そのまま出力する
+(define readAll ,(in)
+  __OS_read__ __print_exit_error__ in ,(data)
+  __unless__ (,() __is_null__ data)
+  (,()
+    __OS_print__ data ,()
+    readAll in))
+
+(define waitExit ,(proc)
+  __OS_poll__ __print_exit_error__ proc ,(status)
+  __if_then_else__ (,() __is_null__ status)
+    (,() waitExit proc)
+    (,() __NULL__ status))
+
+;; case1: 標準出力・標準エラー出力の Stream への書き込みと __OS_print__ の順序が保たれる。
+;; 呼ぶたびに同じ Stream が返る
+(define case1 ,()
+  __OS_get_stdout__ ,(out)
+  __OS_get_stderr__ ,(err)
+  println out ,()
+  println err ,()
+  __OS_print__ "print 1\n" ,()
+  __OS_write__ __print_exit_error__ out "write 1\n" ,()
+  __OS_print_error__ "print_error 1\n" ,()
+  __OS_write__ __print_exit_error__ err "write_error 1\n" ,()
+  __OS_print__ "print 2\n" ,()
+  __OS_get_stdout__ ,(out2)
+  __OS_get_stdin__ ,(in)
+  __OS_get_stdin__ ,(in2)
+  println in ,()
+  println out2 ,()
+  println in2 ,()
+  )
+
+;; case2: 標準入力の Stream を __OS_read__ で EOF まで読む（input.txt）
+(define case2 ,()
+  __OS_get_stdin__ ,(in)
+  readAll in ,()
+  println "EOF" ,()
+  )
+
+;; case3: __Stream_lines__ は標準入力を1行ずつ渡す。
+;; 空行、日本語、改行のない最後の行（lines.txt）
+(define case3 ,()
+  __OS_get_stdin__ ,(in)
+  __Stream_lines__ in printLineSink ,(sink)
+  println "end" ,()
+  )
+
+;; case4: __Stream_sink__ は output Stream に書き込む Sink を作る。
+;; 空の入力では __Stream_lines__ は何も渡さない（/dev/null）
+(define case4 ,()
+  __OS_get_stdout__ ,(out)
+  __Stream_sink__ out "A" "B\n" "C\n" ,(sink)
+  sink "D\n" ,(sink)
+  __OS_get_stdin__ ,(in)
+  __Stream_lines__ in printLineSink ,(sink)
+  println "no lines" ,()
+  )
+
+;; case5: 標準出力の Stream を閉じると、その Stream には書き込めなくなる。
+;; インタプリタ自身の出力（__OS_print__）は続けられる
+(define case5 ,()
+  __OS_get_stdout__ ,(out)
+  __OS_close__ __print_exit_error__ out ,()
+  __OS_write__ recover out "not written\n" ,()
+  __OS_close__ recover out ,()
+  __OS_get_stdout__ ,(out2)
+  __OS_write__ recover out2 "not written\n" ,()
+  println "print still works" ,()
+  )
+
+;; case6: 向きの違う使い方は onError に渡される
+(define case6 ,()
+  __OS_get_stdin__ ,(in)
+  __OS_get_stdout__ ,(out)
+  __OS_write__ recover in "x" ,()
+  __OS_read__ recoverNull out ,(data)
+  println "done" ,()
+  )
+
+;; case7: 標準入出力の Stream を子プロセスにそのまま渡せる（input.txt）
+(define case7 ,()
+  __OS_get_stdin__ ,(in)
+  __OS_get_stdout__ ,(out)
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "/bin/cat" ,()
+  __Dict_new__ ,(env)
+  println "before cat" ,()
+  __OS_spawn__ __print_exit_error__ cmd in out __NULL__ env ,(proc)
+  waitExit proc ,(status)
+  println "after cat" ,()
+  )
