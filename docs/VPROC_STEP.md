@@ -80,6 +80,7 @@ The "Pre-step" resolution logic (which clarifies the confusion in the previous v
 * **FuncExp Capture**: Function expressions are transformed into **Closures** by capturing the current `VEnv` and `gvenv`.
 * **Literal Promotion**: Strings and numbers are treated as terminal values.
 * **Strings produced at run time**: A String is kept in source form (quoted and escaped), like a String literal node. Primitives that make a String from Python text (read data, error messages, `__Number_toString__`, ...) use `string_value()`, which always quotes and escapes, so backslashes and quotes in the text are kept.
+* **String primitives**: `__String_length__`, `__String_substring__`, `__String_concat__` and `__String_equal__` first turn their String arguments into Python text with escapes processed (`_string_args`, through `_value_to_display`), so `\n` is one character and positions count code points. Results are made with `string_value()` again, so a String literal and a String made at run time are handled the same way.
 
 #### **5. Module and Environment Management**
 * **`gvenv`**: A dictionary of global definitions. Each program has its own `gvenv`: the program run by `vproc_run.py` and each program loaded by `__VProc_spawn__` (`load_program()`, which runs `bin/includer` and `bin/resolver`).
