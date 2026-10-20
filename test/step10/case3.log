@@ -1,0 +1,4 @@
+parent: suspending
+child: parent is suspending
+parent: resumed after child set the value
+exit: 0

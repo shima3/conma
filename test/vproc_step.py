@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs
+import sys, re, math, os, codecs, subprocess, pathlib
+from collections import deque
 import types
 
 class VProcError(Exception): pass
@@ -83,8 +84,11 @@ def string_value(text):
     return '"' + ''.join(_STRING_ESCAPES.get(ch, ch) for ch in text) + '"'
 
 class Closure:
-    def __init__(self, params, body, lvenv):
+    def __init__(self, params, body, lvenv, gvenv=None):
         self.params, self.body, self.lvenv = list(params), body, list(lvenv)
+        # GVEnv of the module the closure was defined in. Global variables in
+        # the body are looked up here, not in the GVEnv of the running VProc.
+        self.gvenv = gvenv
     def __repr__(self): return f"Closure(params={self.params})"
 
 class SeqClosure:
@@ -208,7 +212,7 @@ def value_type_name(v):
 
 # ── Module ────────────────────────────────────────────────────────────────────
 
-def closure_from_function(func_ast, lvenv):
+def closure_from_function(func_ast, lvenv, gvenv):
     head_node = body_node = None
     for child in func_ast[2:]:
         if isinstance(child, list):
@@ -216,7 +220,7 @@ def closure_from_function(func_ast, lvenv):
             elif child[0] == "Body": body_node = child
     params = [unquote(c[2]) for c in (head_node[2:] if head_node else [])
               if isinstance(c, list) and c[0] == "Variable"]
-    return Closure(params, body_node, lvenv)
+    return Closure(params, body_node, lvenv, gvenv)
 
 def load_module(module_sexp):
     gvenv = {}
@@ -229,7 +233,7 @@ def load_module(module_sexp):
         else:
             val = item[3]
             if isinstance(val, list) and val[0] == "Function":
-                gvenv[gid] = closure_from_function(val, [])
+                gvenv[gid] = closure_from_function(val, [], gvenv)
             elif isinstance(val, list) and val[0] == "Null":
                 gvenv[gid] = NULL
             elif isinstance(val, list) and val[0] == "PrimFunc":
@@ -260,7 +264,7 @@ def sexp_to_value(sexp, gvenv):
         params = [unquote(c[2]) for c in (head_node[2:] if isinstance(head_node,list) else [])
                   if isinstance(c,list) and c[0]=="Variable"]
         inner_lvenv = parse_lvenv_node(lvenv_node, gvenv)
-        return Closure(params, body_node, inner_lvenv)
+        return Closure(params, body_node, inner_lvenv, gvenv)
     if tag == "Null": return NULL
     return sexp  # raw AST
 
@@ -275,7 +279,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, (Ref, MSeq, Dict)): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict, VProc)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -338,11 +342,45 @@ def list_to_cchain(frames):
 
 # ── VProc ─────────────────────────────────────────────────────────────────────
 
+class VProc(dict):
+    """The state of a Virtual Process. It is also the ConMa value that
+    __VProc_current__ and __VProc_spawn__ return.
+    Besides the fields of the S-expression format it has
+      serial  — number shown in traces and error messages
+      state   — "ready", "running", "blocked" or "finished"
+      gvenv   — GVEnv of the program the VProc was started with"""
+    _count = 0
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        VProc._count += 1
+        self.serial = VProc._count
+        self.state  = "ready"
+    def value_to_sexp(self):
+        return ["__VProcRef__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"VProc({self.serial})"
+    __hash__ = object.__hash__
+    __eq__   = object.__eq__
+
+def make_vproc(operator, olist, source_file, gvenv):
+    """Create a VProc that applies operator to olist."""
+    vp = VProc(sinfo=None, operator=operator, olist=list(olist), lcont=None,
+               lvenv=[], gvenv_files=[source_file], cchain=NULL, pdict=[])
+    vp["gvenv"] = gvenv
+    return vp
+
+def is_terminal(vp):
+    """True when the VProc has reached a normal halting state."""
+    return (is_null_value(vp["operator"]) and vp["lcont"] is None
+            and cchain_is_empty(vp["cchain"]))
+
+# ── VProc ─────────────────────────────────────────────────────────────────────
+
 def vproc_from_sexp(sexp, gvenv):
     if sexp[0] != "__VProc__": raise VProcError(f"Expected __VProc__")
     raw = {item[0]: item[1:] for item in sexp[1:]}
 
-    vp = {}
+    vp = VProc()
     vp["sinfo"] = list(raw["__SInfo__"]) if raw.get("__SInfo__") else None
     op_items = raw.get("__Operator__", [])
     vp["operator"] = sexp_to_value(op_items[0], gvenv) if op_items else None
@@ -407,7 +445,7 @@ def eval_expr(expr, lvenv, gvenv):
         raise VProcError(f"Unknown binding: {b!r}")
     if kind == "String": return expr          # preserve AST node
     if kind == "Null":   return NULL          # omitted Operator → null value
-    if kind == "FuncExp": return closure_from_function(expr[2], lvenv)
+    if kind == "FuncExp": return closure_from_function(expr[2], lvenv, gvenv)
     raise VProcError(f"Unknown expr kind: {kind!r}")
 
 def extract_body(body_node, lvenv, gvenv):
@@ -426,7 +464,7 @@ def extract_body(body_node, lvenv, gvenv):
             if isinstance(lc, list) and lc[0] == "Null":
                 lcont_val = None    # absent
             elif isinstance(lc, list) and lc[0] == "Function":
-                lcont_val = closure_from_function(lc, lvenv)
+                lcont_val = closure_from_function(lc, lvenv, gvenv)
             elif isinstance(lc, list) and lc[0] == "__Closure__":
                 lcont_val = sexp_to_value(lc, gvenv)
     return sinfo, operator_val, olist_vals, lcont_val
@@ -498,7 +536,8 @@ def step(vp, gvenv):
             vp["olist"] = []
         # Step 3: load Body
         if body_node is None: raise VProcError("Closure has no Body")
-        sinfo, op_val, olist_vals, lc_val = extract_body(body_node, closure_lvenv, gvenv)
+        body_gvenv = operator.gvenv if operator.gvenv is not None else gvenv
+        sinfo, op_val, olist_vals, lc_val = extract_body(body_node, closure_lvenv, body_gvenv)
         vp["sinfo"]    = sinfo
         vp["operator"] = op_val
         vp["olist"]    = olist_vals
@@ -513,7 +552,7 @@ def step(vp, gvenv):
         rem_olist  = list(olist)
         while new_params and rem_olist:
             new_lvenv = [(new_params.pop(0), rem_olist.pop(0))] + new_lvenv
-        vp["operator"] = Closure(new_params, body_node, new_lvenv)
+        vp["operator"] = Closure(new_params, body_node, new_lvenv, operator.gvenv)
         vp["olist"]    = rem_olist
         return
 
@@ -1099,6 +1138,180 @@ def prim_Dict_keys(vp, gvenv):
     _prim_return(vp, [SeqClosure([k for k, _ in d.entries], None, [])])
 
 
+# ── Scheduler ─────────────────────────────────────────────────────────────────
+
+class Scheduler:
+    """Round-robin scheduler. Each scheduling step runs one Operator
+    application of the VProc at the front of the ready queue."""
+    def __init__(self):
+        self.ready   = deque()   # VProcs waiting to run
+        self.vprocs  = []        # every VProc, in creation order
+        self.current = None      # the VProc running the current step
+        self.steps   = 0         # number of steps run so far
+
+    def add(self, vp):
+        vp.state = "ready"
+        self.vprocs.append(vp)
+        self.ready.append(vp)
+
+    def suspend(self, vp):
+        """Block vp. A blocked or finished VProc is left as it is."""
+        if vp.state == "ready":
+            self.ready.remove(vp)
+            vp.state = "blocked"
+        elif vp.state == "running":
+            vp.state = "blocked"         # not put back into the ready queue
+
+    def resume(self, vp):
+        """Make a blocked vp ready. Any other VProc is left as it is."""
+        if vp.state == "blocked":
+            vp.state = "ready"
+            self.ready.append(vp)
+
+    def run(self, on_step=None):
+        """Run until every VProc has finished. on_step(vp) is called after
+        each step. A VProc that raises VProcError is finished with an error
+        message; the others keep running. Returns normally when every VProc
+        has finished; exits with code 2 on deadlock."""
+        while True:
+            while self.ready and is_terminal(self.ready[0]):
+                self.ready.popleft().state = "finished"
+            if not self.ready:
+                blocked = [vp for vp in self.vprocs if vp.state == "blocked"]
+                if not blocked:
+                    return
+                ids = ", ".join(str(vp.serial) for vp in blocked)
+                print(f"Deadlock: no VProc is ready; blocked VProc(s): {ids}", file=sys.stderr)
+                sys.exit(2)
+            vp = self.ready.popleft()
+            vp.state = "running"
+            self.current = vp
+            try:
+                step(vp, vp.get("gvenv"))
+                self.steps += 1
+                if on_step: on_step(vp)
+            except VProcError as e:
+                # The step number is the number of steps completed before the error.
+                print(f"Error in VProc {vp.serial} at step {self.steps}: {e}", file=sys.stderr)
+                self.steps += 1
+                vp.state = "finished"
+            finally:
+                self.current = None
+            if vp.state == "running":
+                if is_terminal(vp):
+                    vp.state = "finished"
+                else:
+                    vp.state = "ready"
+                    self.ready.append(vp)
+
+SCHEDULER = Scheduler()
+
+
+# ── Program loading ───────────────────────────────────────────────────────────
+
+ROOT_DIR    = pathlib.Path(__file__).resolve().parent.parent   # the repository
+BIN_DIR     = ROOT_DIR / "bin"
+INCLUDE_DIR = ROOT_DIR / "include"
+
+class LoadError(Exception): pass
+
+def build_name_index(module_sexp):
+    """Map each global name in a module to its GID."""
+    index = {}
+    for item in module_sexp[2:]:
+        if not isinstance(item, list) or item[0] != "G": continue
+        name = unquote(item[2]) if len(item) > 2 else None
+        if name: index[name] = int(item[1])
+    return index
+
+def load_program(source_file):
+    """Run bin/includer and bin/resolver on source_file (relative to the
+    current directory) and load the result. Returns (module_sexp, gvenv).
+    Raises LoadError if the file is missing or a tool fails."""
+    if not os.path.isfile(source_file):
+        raise LoadError(f"file not found: {source_file}")
+    try:
+        inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR), source_file],
+                             capture_output=True, text=True)
+    except OSError as e:
+        raise LoadError(f"cannot run includer: {e}")
+    if inc.returncode != 0:
+        raise LoadError(f"includer failed: {inc.stderr.strip()}")
+    # Make file names in SInfo relative to the directory above the
+    # repository, as test/resolver.sh does, so that logs do not depend on
+    # where the repository is.
+    ast = inc.stdout.replace(f'"{ROOT_DIR.parent}/', '"')
+    try:
+        res = subprocess.run([str(BIN_DIR / "resolver")], input=ast, capture_output=True, text=True)
+    except OSError as e:
+        raise LoadError(f"cannot run resolver: {e}")
+    if res.returncode != 0:
+        raise LoadError(f"resolver failed: {res.stderr.strip()}")
+    module_sexp = parse_sexp(res.stdout)
+    return module_sexp, load_module(module_sexp)
+
+
+# ── VProc Primitives ──────────────────────────────────────────────────────────
+
+def _check_vproc(name, val):
+    if not isinstance(val, VProc):
+        raise VProcError(f"{name}: expected VProc, got {value_type_name(val)}")
+
+def prim_VProc_current(vp, gvenv):
+    """__VProc_current__ ,(VProc)"""
+    _prim_return(vp, [vp])
+
+def prim_VProc_suspend(vp, gvenv):
+    """__VProc_suspend__ VProc ,()
+    Suspending the current VProc blocks it; it continues with its LCont
+    when resumed."""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__VProc_suspend__: missing argument")
+    target = olist.pop(0)
+    _check_vproc("__VProc_suspend__", target)
+    _prim_return(vp, [])
+    SCHEDULER.suspend(target)
+
+def prim_VProc_resume(vp, gvenv):
+    """__VProc_resume__ VProc ,()"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__VProc_resume__: missing argument")
+    target = olist.pop(0)
+    _check_vproc("__VProc_resume__", target)
+    _prim_return(vp, [])
+    SCHEDULER.resume(target)
+
+def prim_VProc_spawn(vp, gvenv):
+    """__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)
+
+    Loads sourceFileName as a new program and starts a VProc that applies
+    its global function entryPoint to errorSink argumentSeq inputSeq
+    outputSink. If the file is missing, includer or resolver fails, or
+    entryPoint is not defined, onError is applied to an error message."""
+    olist = vp["olist"]
+    if len(olist) < 7: raise VProcError("__VProc_spawn__: missing argument(s)")
+    on_error, entry, source = olist.pop(0), olist.pop(0), olist.pop(0)
+    sink_args = [olist.pop(0) for _ in range(4)]
+    for what, val in (("entryPoint", entry), ("sourceFileName", source)):
+        if value_type_name(val) != "String":
+            _prim_error(vp, on_error, f"__VProc_spawn__: expected String {what}, got {value_type_name(val)}")
+            return
+    entry, source = _value_to_display(entry), _value_to_display(source)
+    try:
+        module_sexp, child_gvenv = load_program(source)
+    except LoadError as e:
+        _prim_error(vp, on_error, f"__VProc_spawn__: {e}")
+        return
+    gid = build_name_index(module_sexp).get(entry)
+    func = child_gvenv.get(gid) if gid is not None else None
+    if func is None or is_null_value(func):
+        _prim_error(vp, on_error, f"__VProc_spawn__: entry point not defined: {entry}")
+        return
+    child = make_vproc(func, sink_args, source, child_gvenv)
+    SCHEDULER.add(child)
+    _prim_return(vp, [child])
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -1189,6 +1402,10 @@ PRIMITIVES = {
     "__Dict_lookup_or__":      prim_Dict_lookup_or,
     "__Dict_remove__":         prim_Dict_remove,
     "__Dict_keys__":           prim_Dict_keys,
+    "__VProc_current__":       prim_VProc_current,
+    "__VProc_suspend__":       prim_VProc_suspend,
+    "__VProc_resume__":        prim_VProc_resume,
+    "__VProc_spawn__":         prim_VProc_spawn,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

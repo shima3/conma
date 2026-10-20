@@ -1,0 +1,154 @@
+;; Step10: VProc
+;; 子 VProc は child.se と main.se から起動する。
+;; VProc 間の出力が競合しないように、Ref と suspend/resume で同期してから出力する。
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; Ref が null でなくなるまで待つ（suspend せずに繰り返し確認する）
+(define waitNonNull ,(ref)
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() waitNonNull ref)
+    __nop__)
+
+;; 親のモジュールで定義した Sink。子 VProc の中で呼ばれても、
+;; 親のモジュールの大域変数（parentSink 自身、__OS_print__）を参照する
+(define parentSink ,(str)
+  __OS_print__ str ,()
+  parentSink)
+
+(define errSink ,(str)
+  __OS_print_error__ str ,()
+  errSink)
+
+;; エラーメッセージを標準エラー出力に書き、VProc の代わりに null を返す
+(define spawnFailed ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ __NULL__)
+
+;; entryPoint を child.se から起動する。引数の Seq は args
+(define spawnChild ,(entry args)
+  __VProc_spawn__ __print_exit_error__ entry "child.se" errSink args __NULL__ parentSink)
+
+;; case1: __VProc_current__ は実行中の VProc を返す。同じ VProc は同じ値になる
+(define case1 ,()
+  __VProc_current__ ,(a)
+  __VProc_current__ ,(b)
+  println a ,()
+  println b ,()
+  )
+
+;; case2: 別のファイルのプログラムを子 VProc として起動する。
+;; 子は Seq で渡した引数と、親で定義した Sink を使える。Ref は VProc 間で共有される
+(define case2 ,()
+  __Ref_new__ __NULL__ ,(go)
+  __Ref_new__ __NULL__ ,(done)
+  spawnChild "childHello" (,(sink) sink "world" go done) ,(child)
+  println "parent: spawned" ,()
+  __Ref_set__ go "go" ,()
+  waitNonNull done ,()
+  println "parent: child done" ,()
+  )
+
+;; case3: 自分自身を suspend するとブロックし、子に resume されるとその続きから実行する
+(define case3 ,()
+  __VProc_current__ ,(me)
+  __Ref_new__ __NULL__ ,(suspending)
+  __Ref_new__ __NULL__ ,(resumed)
+  __Ref_new__ __NULL__ ,(value)
+  spawnChild "childResumer" (,(sink) sink me suspending resumed value) ,(child)
+  println "parent: suspending" ,()
+  __Ref_set__ suspending "yes" ,()
+  __VProc_suspend__ me ,()
+  __Ref_set__ resumed "yes" ,()
+  __Ref_get__ value ,(v)
+  println v ,()
+  )
+
+;; case4: 実行可能な別の VProc を suspend すると、resume するまで実行されない。
+;; 実行中の VProc の resume、ブロック中の VProc の suspend、
+;; 終了済みの VProc の suspend と resume は何もしない
+(define case4 ,()
+  __VProc_current__ ,(me)
+  __Ref_new__ __NULL__ ,(flag)
+  __Ref_new__ __NULL__ ,(done)
+  spawnChild "childWait" (,(sink) sink flag done) ,(child)
+  __VProc_suspend__ child ,()
+  __VProc_suspend__ child ,()
+  __VProc_resume__ me ,()
+  __Ref_set__ flag "set" ,()
+  println "parent: flag set while child is suspended" ,()
+  __VProc_resume__ child ,()
+  waitNonNull done ,()
+  println "parent: child finished" ,()
+  __VProc_suspend__ child ,()
+  __VProc_resume__ child ,()
+  println "parent: end" ,()
+  )
+
+;; case5: 起動に失敗すると onError が呼ばれる
+;; （ファイルがない、構文エラー、entryPoint が未定義、引数が String でない）
+(define case5 ,()
+  __VProc_spawn__ spawnFailed "childHello" "missing.se" errSink __NULL__ __NULL__ parentSink ,(c)
+  __VProc_spawn__ spawnFailed "childHello" "bad.se" errSink __NULL__ __NULL__ parentSink ,(c)
+  __VProc_spawn__ spawnFailed "noSuchFunc" "child.se" errSink __NULL__ __NULL__ parentSink ,(c)
+  __VProc_spawn__ spawnFailed __NULL__ "child.se" errSink __NULL__ __NULL__ parentSink ,(c)
+  __is_null__ c ,(failed)
+  __if_then_else__ failed
+    (,() println "spawn passed null")
+    (,() println "spawn passed a VProc") ,()
+  )
+
+;; case6: 子 VProc の実行時エラーはその VProc だけを終了させる。
+;; 他の VProc は実行を続け、インタプリタは正常終了する
+(define case6 ,()
+  __Ref_new__ __NULL__ ,(failing)
+  spawnChild "childError" (,(sink) sink failing) ,(c1)
+  spawnChild "childAfter" (,(sink) sink failing) ,(c2)
+  )
+
+;; case7: どの VProc が __OS_exit_error__ を実行しても、インタプリタ全体が終了コード 1 で終了する
+(define case7 ,()
+  __Ref_new__ __NULL__ ,(never)
+  spawnChild "childExitError" __NULL__ ,(child)
+  waitNonNull never ,()
+  println "not reached" ,()
+  )
+
+;; case8: __OS_exit_normal__ も、他の VProc が実行中でもインタプリタ全体を終了コード 0 で終了する
+(define case8 ,()
+  __Ref_new__ __NULL__ ,(never)
+  spawnChild "childExitNormal" __NULL__ ,(child)
+  waitNonNull never ,()
+  println "not reached" ,()
+  )
+
+;; case9: 実行可能な VProc がなく、ブロックされた VProc が残るとデッドロックとして終了コード 2 で終了する
+(define case9 ,()
+  __VProc_current__ ,(me)
+  __Ref_new__ __NULL__ ,(blocking)
+  spawnChild "childSuspendSelf" (,(sink) sink blocking) ,(child)
+  waitNonNull blocking ,()
+  println "parent: suspending" ,()
+  __VProc_suspend__ me ,()
+  println "not reached" ,()
+  )
+
+;; case10: entryPoint に "__main__" を指定すると、err/in/out が子の PDict に登録され、main が呼ばれる。
+;; PDict は VProc ごとに別で、子の登録は親に影響しない
+(define case10 ,()
+  __PDict_lookup_or__ "__STD_OUT__" (,(key) __CChain_pop_LCont__ "(missing)") ,(value)
+  println value ,()
+  __VProc_spawn__ __print_exit_error__ "__main__" "main.se" errSink (,(sink) sink "ConMa") __NULL__ parentSink ,(child)
+  )
+
+;; case11: VProc でない値を渡すとエラーで VProc が終了する
+(define case11 ,()
+  __VProc_resume__ "abc" ,()
+  println "not reached" ,()
+  )

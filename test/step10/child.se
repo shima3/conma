@@ -1,0 +1,81 @@
+;; Step10: test.se から子 VProc として起動するプログラム。
+;; 各関数は __VProc_spawn__ の entryPoint で、err args in out を受け取る
+(include "util.se")
+
+;; Ref が null でなくなるまで待つ（suspend せずに繰り返し確認する）
+(define waitNonNull ,(ref)
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() waitNonNull ref)
+    __nop__)
+
+;; Ref が null でなくなるまで、VProc を resume し続ける
+(define resumeUntil ,(proc ref)
+  __VProc_resume__ proc ,()
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() resumeUntil proc ref)
+    __nop__)
+
+;; n 回繰り返してから戻る
+(define delay ,(n)
+  __Number_is_zero__ n ,(zero)
+  __unless__ zero
+  (,()
+    __Number_fromString__ __print_exit_error__ "1" ,(one)
+    __Number_subtract__ n one ,(m)
+    delay m))
+
+(define childHello ,(err args in out)
+  args (,(name go done)
+    waitNonNull go ,()
+    out "child: hello, " name "\n" ,(out2)
+    __Ref_set__ done "done" ,()
+    ))
+
+(define childResumer ,(err args in out)
+  args (,(parent suspending resumed value)
+    waitNonNull suspending ,()
+    out "child: parent is suspending\n" ,(out2)
+    __Ref_set__ value "parent: resumed after child set the value" ,()
+    resumeUntil parent resumed ,()
+    ))
+
+(define childWait ,(err args in out)
+  args (,(flag done)
+    waitNonNull flag ,()
+    out "child: saw the flag\n" ,(out2)
+    __Ref_set__ done "done" ,()
+    ))
+
+(define childError ,(err args in out)
+  args (,(failing)
+    out "child 2: failing\n" ,(out2)
+    __Ref_set__ failing "yes" ,()
+    __Ref_get__ "abc" ,(value)
+    out "not reached\n" ,(out3)
+    ))
+
+(define childAfter ,(err args in out)
+  args (,(failing)
+    waitNonNull failing ,()
+    __Number_fromString__ __print_exit_error__ "50" ,(n)
+    delay n ,()
+    out "child 3: still running\n" ,(out2)
+    ))
+
+(define childExitError ,(err args in out)
+  out "child: exit with error\n" ,(out2)
+  __OS_exit_error__)
+
+(define childExitNormal ,(err args in out)
+  out "child: exit normally\n" ,(out2)
+  __OS_exit_normal__)
+
+(define childSuspendSelf ,(err args in out)
+  args (,(blocking)
+    __VProc_current__ ,(me)
+    __Ref_set__ blocking "yes" ,()
+    __VProc_suspend__ me ,()
+    out "not reached\n" ,(out2)
+    ))

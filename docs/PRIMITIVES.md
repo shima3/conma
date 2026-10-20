@@ -218,19 +218,23 @@ Passes a string formed by concatenating the strings contained in the SInfo store
 
 ## 6. VProc Primitives
 
-### `__VProc_spawn__ errorSink sourceFileName argumentSeq inputSeq outputSink ,(VProc)`
+### `__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)`
 Behavior:
 Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
-1. **Process Initialization**: A new, isolated Virtual Process is allocated with its own independent memory, CChain, and Process Dictionary.
-2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `sourceFileName`. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
-3. **Environment Binding**: All identifiers identified during the scan are registered in the new VProc’s `VEnv`. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
-4. **Entry Point Execution**: The interpreter invokes the `main` function of the loaded program by applying the `__main__` wrapper.
-5. **Context Injection**: The `__main__` function is applied to the following arguments:
+1. **Process Initialization**: A new Virtual Process is allocated with its own CChain and Process Dictionary.
+2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `sourceFileName`, relative to the current directory. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
+3. **Environment Binding**: All identifiers identified during the scan are registered in the new program's GVEnv. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
+4. **Entry Point Execution**: The new VProc applies the global function named by the String `entryPoint` to the following arguments. A program normally uses `"__main__"`, which calls the program's `main` (see "Main" in SPEC.md).
 * `errorSink`: For handling standard error output.
 * `argumentSeq`: For program startup arguments.
 * `inputSeq`: Representing the standard input stream.
 * `outputSink`: For standard output.
+
+The new VProc is placed at the end of the ready queue, and the `VProc` is passed to the LCont.
+The arguments are passed as they are: a closure passed from the parent keeps referring to the parent's program (its GVEnv), and the Refs and other values it refers to are shared.
+
+* **Error**: If `sourceFileName` does not exist, loading it fails (for example, a syntax error), or `entryPoint` is not defined in the program, the interpreter invokes `onError` with an error message String, and no VProc is created. An error that occurs while the new VProc runs does not invoke `onError`.
 
 ### `__VProc_current__ ,(VProc)`
 Behavior:
@@ -240,11 +244,14 @@ Passes the current VProc to the LCont.
 Behavior:
 Suspends the `VProc`.
 Moves the `VProc` from the ready queue to the blocked queue.
+If the `VProc` is the current VProc, it stops after this primitive and, when it is resumed, continues with the LCont.
+If the `VProc` is already blocked or has finished, nothing happens.
 
 ### `__VProc_resume__ VProc ,()`
 Behavior:
 Resumes the `VProc`.
-Moves the `VProc` from the blocked queue to the ready queue.
+Moves the `VProc` from the blocked queue to the end of the ready queue.
+If the `VProc` is not blocked (it is ready, running, or has finished), nothing happens.
 
 ---
 

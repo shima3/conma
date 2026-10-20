@@ -1,2 +1,2 @@
-Error at step 1: __Ref_set__: expected Ref, got null
-exit: 1
+Error in VProc 1 at step 1: __Ref_set__: expected Ref, got null
+exit: 0
