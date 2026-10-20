@@ -272,11 +272,15 @@ Example:
 
 ### `Naming conventions`
 Names of the form `__name__` are reserved for built-in primitives and standard definitions.
+In ConMa, constants are also a kind of function: each of them can be applied as an operator.
+The case of a name follows how the thing it names would be treated in a non-functional language: a name that would be a constant there is written in upper case, and a name that would be a function there is written in lower case.
 They follow these rules:
 * **Constants** are written in upper case: `__NULL__`, `__TRUE__`, `__FALSE__`.
-  A constant is a name that is used as a value, not called to perform an operation.
-  For example, `__TRUE__` is a closure `,(then else) ...`, but it is a constant because it is used as a Boolean value.
+  A constant names one specific value of a data type, such as null or a Boolean.
+  For example, `__TRUE__` is a closure `,(then else) ...` and is applied to select a branch, but it is a constant because it stands for the Boolean value true.
 * **Functions** are written in lower case: `__nop__`, `__not__`, `__if_then_else__`.
+  A function names an operation.
+  It is still a function when it is passed as a value, such as `__nop__` passed to `__if__` or `__print_exit_error__` passed as `onError`.
 * When a function name starts with a type name, the type name keeps its own spelling and the operation part is in lower case: `__CChain_get__`, `__OS_print__`, `__PDict_lookup_or__`.
 
 ---
