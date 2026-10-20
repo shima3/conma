@@ -1228,6 +1228,60 @@ def prim_Dict_keys(vp, gvenv):
     _prim_return(vp, [SeqClosure([k for k, _ in d.entries], None, [])])
 
 
+# ── String Primitives ─────────────────────────────────────────────────────────
+
+def _string_args(vp, name, count):
+    """Pop count Strings and return their text (escapes processed);
+    raise if any argument is not a String. Indices count code points."""
+    olist = vp["olist"]
+    if len(olist) < count: raise VProcError(f"{name}: missing argument(s)")
+    args = [olist.pop(0) for _ in range(count)]
+    for a in args:
+        if value_type_name(a) != "String":
+            raise VProcError(f"{name}: expected String, got {value_type_name(a)}")
+    return [_value_to_display(a) for a in args]
+
+def prim_String_length(vp, gvenv):
+    """__String_length__ String ,(Number)"""
+    (s,) = _string_args(vp, "__String_length__", 1)
+    _prim_return(vp, [Number(float(len(s)))])
+
+def prim_String_concat(vp, gvenv):
+    """__String_concat__ aString bString ,(String)"""
+    a, b = _string_args(vp, "__String_concat__", 2)
+    _prim_return(vp, [string_value(a + b)])
+
+def prim_String_equal(vp, gvenv):
+    """__String_equal__ aString bString ,(Boolean)"""
+    a, b = _string_args(vp, "__String_equal__", 2)
+    _prim_return(vp, [TRUE_CLOSURE if a == b else FALSE_CLOSURE])
+
+def prim_String_substring(vp, gvenv):
+    """__String_substring__ onError String start end ,(String)
+
+    The code points from start up to, but not including, end. start and end
+    must be integers with 0 <= start <= end <= length, or onError is invoked."""
+    name  = "__String_substring__"
+    olist = vp["olist"]
+    if len(olist) < 4: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    (s,) = _string_args(vp, name, 1)
+    start = olist.pop(0)
+    end   = olist.pop(0)
+    _check_number(name, start)
+    _check_number(name, end)
+    for x in (start.value, end.value):
+        if not (math.isfinite(x) and x == int(x)):
+            _prim_error(vp, on_error, f"{name}: not an integer index: {number_to_str(x)}")
+            return
+    i, j = int(start.value), int(end.value)
+    if not (0 <= i <= j <= len(s)):
+        _prim_error(vp, on_error,
+                    f"{name}: index out of range: {i} {j} (length {len(s)})")
+        return
+    _prim_return(vp, [string_value(s[i:j])])
+
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 class Scheduler:
@@ -1495,6 +1549,10 @@ PRIMITIVES = {
     "__Dict_lookup_or__":      prim_Dict_lookup_or,
     "__Dict_remove__":         prim_Dict_remove,
     "__Dict_keys__":           prim_Dict_keys,
+    "__String_length__":       prim_String_length,
+    "__String_substring__":    prim_String_substring,
+    "__String_concat__":       prim_String_concat,
+    "__String_equal__":        prim_String_equal,
     "__VProc_current__":       prim_VProc_current,
     "__VProc_suspend__":       prim_VProc_suspend,
     "__VProc_resume__":        prim_VProc_resume,
