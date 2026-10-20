@@ -316,7 +316,7 @@ Invokes the current LCont with no argument
 
 ### `__is_null__ Value ,(Boolean)`
 Behavior:
-Passes `(,(t f) __NULL__ t)` to the LCont if the `Value` is null, otherwise passes `(,(t f) __NULL__ f)`.
+Passes `__TRUE__` to the LCont if the `Value` is null, otherwise passes `__FALSE__`.
 
 ### `__NULL__`
 A variable defined as null.
@@ -328,7 +328,7 @@ A variable defined as null.
 ### **`__MSeq_is_empty__ onError mseq ,(Boolean)`**
 
 * **Description**: Takes an **mseq** and returns whether it is empty.
-* **Returns**: `__true__` if the mseq is an empty MSeq; `__false__` if the mseq is a MSeq and it contains one or more elements.
+* **Returns**: `__TRUE__` if the mseq is an empty MSeq; `__FALSE__` if the mseq is a MSeq and it contains one or more elements.
 * **Error**: `onError` is called with an error message String if the mseq is not a MSeq.
 
 ### **`__MSeq_uncons__ onError mseq ,(head tail)`**

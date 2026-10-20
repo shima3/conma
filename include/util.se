@@ -27,6 +27,8 @@
   __CFrame_get_Closure__ cf2 ,(lc2)
   lc lc2)
 
+;; __nop__ と同様に何も実行しない関数
+;; LCont を明示的に取得し、呼び出す点が __nop__ と異なる。
 (define __noop__ ,()
   __CChain_pop_LCont__ ,(lc)
   lc)

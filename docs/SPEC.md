@@ -270,6 +270,17 @@ Example:
 
 # Standard Definition
 
+### `Naming conventions`
+Names of the form `__name__` are reserved for built-in primitives and standard definitions.
+They follow these rules:
+* **Constants** are written in upper case: `__NULL__`, `__TRUE__`, `__FALSE__`.
+  A constant is a name that is used as a value, not called to perform an operation.
+  For example, `__TRUE__` is a closure `,(then else) ...`, but it is a constant because it is used as a Boolean value.
+* **Functions** are written in lower case: `__nop__`, `__not__`, `__if_then_else__`.
+* When a function name starts with a type name, the type name keeps its own spelling and the operation part is in lower case: `__CChain_get__`, `__OS_print__`, `__PDict_lookup_or__`.
+
+---
+
 ### `No operation`
 Behavior:
 Do nothing.
@@ -491,14 +502,14 @@ Example:
 (define __fix__ ,(x)
   x (,() __fix__ x))
 
-(define __true__ ,(then else)
+(define __TRUE__ ,(then else)
   __NULL__ then)
 
-(define __false__ ,(then else)
+(define __FALSE__ ,(then else)
   __NULL__ else)
 
 (define __not__ ,(Boolean)
-  Boolean __false__ __true__)
+  Boolean __FALSE__ __TRUE__)
 ```
 
 # Execution Rules

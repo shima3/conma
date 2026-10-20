@@ -3,6 +3,10 @@ test/module3 -> test/step1
 test/module4 -> test/step9
 test/module5 -> test/step4
 
+気になった点
+- docs/PRIMITIVES.md:331 の __MSeq_is_empty__ の説明で、真偽値が小文字の __true__ / __false__ になっています。pure.se と ROADMAP は __TRUE__ / __FALSE__ なので、大文字にそろえるべきだと思います。Step 8 に入る前に直しておくと安全です。
+- pure.se の __nop__ と util.se の __noop__ は、名前が似ていますが別の定義です。ROADMAP の Step 4 の記述（__noop__）は正しいです。ただ、紛らわしいので意図どおりか確認したほうがよいと思います。
+
 2026/10/19 Mon
 $ git status
 On branch claude
