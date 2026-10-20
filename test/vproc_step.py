@@ -120,7 +120,8 @@ def is_prim_func(v):
 def value_type_name(v):
     """Return the ConMa type name of a value, for error messages."""
     if is_null_value(v): return "null"
-    if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v): return "Closure"
+    if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v) or callable(v): return "Closure"
+    if isinstance(v, CFrame): return "CFrame"
     if isinstance(v, list) and v: return v[0]  # AST value node, e.g. "String"
     if isinstance(v, str): return "String"
     return type(v).__name__
@@ -767,7 +768,7 @@ def prim_CChain_set(vp, gvenv):
         raise VProcError("__CChain_set__: missing argument")
     cc = olist.pop(0)
     if not (is_null_value(cc) or isinstance(cc, LList)):
-        raise VProcError(f"__CChain_set__: expected CChain (LList or null), got {cc!r}")
+        raise VProcError(f"__CChain_set__: expected CChain (LList or null), got {value_type_name(cc)}")
     vp["cchain"] = cc
     lc = vp["lcont"]
     vp["operator"] = lc if lc is not None else NULL
@@ -782,7 +783,7 @@ def prim_CChain_push_CFrame(vp, gvenv):
         raise VProcError("__CChain_push_CFrame__: missing argument")
     cf = olist.pop(0)
     if not isinstance(cf, CFrame):
-        raise VProcError(f"__CChain_push_CFrame__: expected CFrame, got {cf!r}")
+        raise VProcError(f"__CChain_push_CFrame__: expected CFrame, got {value_type_name(cf)}")
     vp["cchain"] = cchain_push(vp["cchain"], cf)
     _prim_return(vp, [])
 
@@ -830,7 +831,7 @@ def prim_CFrame_get_Closure(vp, gvenv):
         raise VProcError("__CFrame_get_Closure__: missing argument")
     val = olist.pop(0)
     if not isinstance(val, CFrame):
-        raise VProcError(f"__CFrame_get_Closure__: expected CFrame, got {val!r}")
+        raise VProcError(f"__CFrame_get_Closure__: expected CFrame, got {value_type_name(val)}")
     _prim_return(vp, [val.closure])
 
 def prim_CFrame_get_SInfo(vp, gvenv):
@@ -840,9 +841,30 @@ def prim_CFrame_get_SInfo(vp, gvenv):
         raise VProcError("__CFrame_get_SInfo__: missing argument")
     val = olist.pop(0)
     if not isinstance(val, CFrame):
-        raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {val!r}")
-    s = sinfo_to_str(val.sinfo) or ""
+        raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {value_type_name(val)}")
+    s = ":".join(unquote(x) for x in (val.sinfo or []) if isinstance(x, str))
     _prim_return(vp, [quoted(s)])
+
+def prim_CFrame_new(vp, gvenv):
+    """__CFrame_new__ FuncExp SInfo ,(CFrame)
+
+    SInfo is a colon-separated String, as returned by __CFrame_get_SInfo__,
+    or null for no SInfo."""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__CFrame_new__: missing argument(s)")
+    closure = olist.pop(0)
+    sinfo   = olist.pop(0)
+    if value_type_name(closure) != "Closure":
+        raise VProcError(f"__CFrame_new__: expected Closure, got {value_type_name(closure)}")
+    if is_null_value(sinfo):
+        parts = []
+    elif value_type_name(sinfo) == "String":
+        text  = _value_to_display(sinfo)
+        parts = [quoted(x) for x in text.split(":")] if text else []
+    else:
+        raise VProcError(f"__CFrame_new__: expected String or null SInfo, got {value_type_name(sinfo)}")
+    _prim_return(vp, [CFrame(closure, parts)])
 
 
 PRIMITIVES = {
@@ -873,6 +895,7 @@ PRIMITIVES = {
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,
     "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,
+    "__CFrame_new__":          prim_CFrame_new,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

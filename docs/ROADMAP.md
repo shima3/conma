@@ -49,9 +49,10 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 | `__CChain_set__` | implemented |
 | `__CChain_pop_CFrame__` | implemented |
 | `__CChain_push_CFrame__` | implemented |
-| `__CFrame_new__` | not implemented |
+| `__CFrame_new__` | implemented |
 
 * Implement in the order above: first read the CChain, then replace it, then pop and push individual CFrames.
+* `__CFrame_new__` takes its SInfo as a colon-separated String, the same form `__CFrame_get_SInfo__` returns (for example `"file.se:12:5"`), or null for no SInfo.
 * Library definitions that become available: `__Cont_get__` (escape continuation), `__CChain_pop_LCont__`, `__noop__`.
 
 ## Step 5: Number
