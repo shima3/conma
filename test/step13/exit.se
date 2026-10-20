@@ -1,0 +1,8 @@
+;; Step13: __exit__ で main の途中から終了する
+(include "util.se")
+
+(define main ,(args)
+  __print__ "before exit" ,()
+  __exit__ "" ,()
+  __print__ "not reached" ,()
+  )

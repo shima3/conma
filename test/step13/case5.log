@@ -1,0 +1,5 @@
+__OS_write__: closed output Stream
+__OS_close__: closed output Stream
+__OS_write__: closed output Stream
+print still works
+exit: 0

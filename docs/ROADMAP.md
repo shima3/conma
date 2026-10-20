@@ -2,20 +2,20 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step12`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step13`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
 ## Tests
 
-Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py`, and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
+Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
-* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`).
+* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file).
 * Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
 
 ## Step 1: VM foundation
@@ -160,7 +160,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 * `__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)`: `onError` and `entryPoint` were added to the signature. It runs `bin/includer` and `bin/resolver` (found relative to `test/vproc_step.py`; `include/` is the include path) on `sourceFileName` (relative to the current directory).
 * Memory is shared between VProcs (TERMS.md was changed). Each closure keeps the GVEnv of the module it was defined in, so a closure passed from a parent still refers to the parent's globals when a child runs it.
 * Termination and exit codes are described under "Runtime Model" in SPEC.md: a runtime error finishes only that VProc; `__OS_exit_*__` exits the interpreter; a deadlock exits with code 2.
-* `__main__` was added to `include/util.se`. How the first VProc gets its err/args/in/out from the OS streams is still open; `test/vproc_run.py` runs a named function with no arguments as before.
+* `__main__` was added to `include/util.se`. How the first VProc gets its err/args/in/out from the OS streams was left open here and decided in Step 13.
 * Blocking I/O (`__OS_get_String__`) stops every VProc while it waits; this is accepted for now.
 * A runtime error now finishes only the VProc and leaves the exit code at 0, so the logs of the error cases of Steps 4, 5, 6 and 8 changed from `Error at step S: ... / exit: 1` to `Error in VProc 1 at step S: ... / exit: 0`.
 * Tests (`test/step10`): `test.se` starts child VProcs from `child.se` (one entry point per case), `main.se` (`"__main__"`) and `bad.se` (a syntax error).
@@ -231,3 +231,36 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case5 | `__String_equal__`: by content, with Strings made at run time |
 | case6 | splitting a command line into words with these primitives only (spaces only, no quoting) |
 | case7 | a non-String argument finishes the VProc with an error |
+
+## Step 13: Standard Streams and program start
+
+| Primitive | Status |
+|---|---|
+| `__OS_get_stdin__` | implemented |
+| `__OS_get_stdout__` | implemented |
+| `__OS_get_stderr__` | implemented |
+
+* Goal: Start the first VProc the normal way, through `__main__` with err/args/in/out made from the interpreter's standard streams, and let a program read standard input without blocking every VProc.
+* The three primitives return the Streams of fds 0, 1 and 2. They return the same Stream each time. They work with `__OS_read__`, `__OS_write__`, `__OS_close__` and `__OS_spawn__` like pipe ends.
+* Closing one of them marks the Stream closed (later use goes to `onError`) but keeps the fd open, because the interpreter still prints to it.
+* `__OS_write__` to standard output or standard error flushes what `__OS_print__` and `__OS_print_error__` have buffered first, so the order is kept.
+* Library definitions in `include/util.se` (depend on Step 12):
+  * `__Stream_sink__ stream`: a Sink that writes each value to an output Stream.
+  * `__Stream_lines__ stream`: a Seq that reads an input Stream to EOF and passes each line, including its newline; a last line without a newline is passed as it is. While no data is available it reads again, which yields to other VProcs (busy waiting until Step 15).
+  * `__start__ args`: builds err, in and out from the three Streams and calls `__main__`.
+* `test/vproc_run.py --main <module_file> [<arg> ...]` applies `__start__` to a Seq of the `arg` Strings. The Seq holds only the arguments, not the program name. Without `--main`, it runs a named function with no arguments as before.
+* `__OS_get_String__` reads through Python's own buffer, so a program should not mix it with the stdin Stream.
+* Tests (`test/step13`): case1 to case7 run functions of `test.se`, with `input.txt` or `lines.txt` as standard input where needed. case8 to case10 run `args.se` and `exit.se` with `--main`. Reading input that arrives later (`(sleep 1; echo x) | ...`) was checked by hand and is not covered by a test.
+
+| Case | What it checks |
+|---|---|
+| case1 | writes to the stdout and stderr Streams stay in order with `__OS_print__` and `__OS_print_error__`; each call returns the same Stream |
+| case2 | reading the stdin Stream with `__OS_read__` to EOF |
+| case3 | `__Stream_lines__`: an empty line, Japanese text, a last line without a newline |
+| case4 | `__Stream_sink__` with several values in one call; `__Stream_lines__` on empty input passes nothing |
+| case5 | a closed stdout Stream goes to `onError`, also when it is got again; `__OS_print__` still works |
+| case6 | `onError` for writing to the stdin Stream and reading from the stdout Stream |
+| case7 | the standard Streams passed to `__OS_spawn__` (`/bin/cat` reads the interpreter's input) |
+| case8 | `--main` with arguments: args, stdin lines through `stdin`, a message through `stderr`, `__print__` |
+| case9 | `--main` with no arguments and empty input |
+| case10 | `__exit__` leaves `main` early |

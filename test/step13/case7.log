@@ -1,0 +1,4 @@
+before cat
+hello from stdin
+after cat
+exit: 0

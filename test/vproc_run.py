@@ -3,8 +3,15 @@
 
 Usage:
     vproc_run.py [options] <module_file> <func_name>
+    vproc_run.py [options] --main <module_file> [<arg> ...]
+
+The first form applies the function <func_name> to no arguments.
+The second form starts the program the normal way: it applies __start__
+(include/util.se) to a Seq of the <arg> Strings; __start__ makes err, in and
+out from the interpreter's standard streams and calls __main__.
 
 Options:
+    -m, --main      Start the program with __start__ and pass the <arg>s.
     -t, --trace     Print the VProc state to stderr before each step.
     -h, --help      Show this message and exit.
 
@@ -12,7 +19,8 @@ Exit codes:
     0   Every VProc has finished. A VProc that stopped with a runtime error
         (VProcError) does not change the exit code.
     1   __OS_exit_error__ was executed, or the module could not be loaded.
-    2   Deadlock: no VProc is ready but some are blocked.
+    2   Deadlock: no VProc is ready but some are blocked, or a wrong
+        command line (reported by argparse).
 """
 
 import sys, pathlib, importlib.util, argparse
@@ -61,7 +69,7 @@ def print_trace(vp, step_n):
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 
-def run(module_file, func_name, trace=False):
+def run(module_file, func_name, trace=False, program_args=None):
     try:
         module_text = open(module_file).read()
     except OSError as e:
@@ -88,7 +96,10 @@ def run(module_file, func_name, trace=False):
         print(f"Error: GID {gid} ({func_name!r}) is undefined.", file=sys.stderr)
         sys.exit(1)
 
-    vp        = vs.make_vproc(closure, [], module_file, gvenv)
+    olist = []
+    if program_args is not None:
+        olist = [vs.SeqClosure([vs.string_value(a) for a in program_args], None, [])]
+    vp        = vs.make_vproc(closure, olist, module_file, gvenv)
     scheduler = vs.SCHEDULER
     scheduler.add(vp)
 
@@ -112,11 +123,22 @@ def main():
         action="store_true",
         help="Print VProc state to stderr before each step.",
     )
+    parser.add_argument(
+        "-m", "--main",
+        action="store_true",
+        help="Start the program with __start__ and pass the remaining arguments.",
+    )
     parser.add_argument("module_file", help="Path to the module S-expression file.")
-    parser.add_argument("func_name",   help="Name of the function to call.")
+    parser.add_argument("names", nargs="*", metavar="func_name | arg",
+                        help="Name of the function to call, or with --main the program arguments.")
 
     args = parser.parse_args()
-    run(args.module_file, args.func_name, trace=args.trace)
+    if args.main:
+        run(args.module_file, "__start__", trace=args.trace, program_args=args.names)
+    elif len(args.names) == 1:
+        run(args.module_file, args.names[0], trace=args.trace)
+    else:
+        parser.error("expected exactly one func_name (or use --main)")
 
 if __name__ == "__main__":
     main()

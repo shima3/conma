@@ -57,3 +57,66 @@
   __PDict_put__ "__STD_ERR__" err ,()
   main args ,()
   exit "")
+
+;; ── 標準入出力 ──
+
+;; output Stream に value を書き込み、続けて書き込む Sink を返す
+(define __Stream_sink__ ,(stream value)
+  __OS_write__ __print_exit_error__ stream value ,()
+  __NULL__ (,(value) __Stream_sink__ stream value))
+
+;; input Stream を EOF まで読み、1行ずつ（改行を含めて）sink に渡す Seq。
+;; 最後の行に改行がなければ、改行なしで渡す。最後の Sink を返す。
+;; データがまだ来ていなければ、ほかの VProc に譲りながら読み直す
+(define __Stream_lines__ ,(stream sink)
+  __Stream_lines_read__ stream "" sink)
+
+;; buf は、まだ改行が来ていない行の途中
+(define __Stream_lines_read__ ,(stream buf sink)
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,()
+      __String_length__ buf ,(len)
+      __if_then_else__ (,() __Number_is_zero__ len)
+        (,() __NULL__ sink)
+        (,() sink buf))
+    (,()
+      __String_length__ data ,(dataLen)
+      __if_then_else__ (,() __Number_is_zero__ dataLen)
+        (,() __Stream_lines_read__ stream buf sink)
+        (,()
+          __String_length__ buf ,(start)
+          __String_concat__ buf data ,(buf)
+          __String_length__ buf ,(len)
+          __Number_fromString__ __print_exit_error__ "0" ,(zero)
+          __Stream_lines_scan__ stream buf len zero start sink)))
+
+;; buf の i 文字目から改行を探す。lineStart から改行までを1行として sink に渡す
+(define __Stream_lines_scan__ ,(stream buf len lineStart i sink)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,()
+      __String_substring__ __print_exit_error__ buf lineStart len ,(buf)
+      __Stream_lines_read__ stream buf sink)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ buf i next ,(ch)
+      __if_then_else__ (,() __String_equal__ ch "\n")
+        (,()
+          __String_substring__ __print_exit_error__ buf lineStart next ,(line)
+          sink line ,(sink)
+          __Stream_lines_scan__ stream buf len next next sink)
+        (,() __Stream_lines_scan__ stream buf len lineStart next sink)))
+
+;; インタプリタが最初の VProc を起動する入口（vproc_run.py --main）。
+;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ
+(define __start__ ,(args)
+  __OS_get_stderr__ ,(errStream)
+  __OS_get_stdin__ ,(inStream)
+  __OS_get_stdout__ ,(outStream)
+  __main__
+    (,(value) __Stream_sink__ errStream value)
+    args
+    (,(sink) __Stream_lines__ inStream sink)
+    (,(value) __Stream_sink__ outStream value))

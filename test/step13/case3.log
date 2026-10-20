@@ -1,0 +1,6 @@
+[first line\n]
+[\n]
+[日本語の行\n]
+[last line without newline]
+end
+exit: 0

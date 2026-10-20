@@ -1,0 +1,11 @@
+(__OSStream__ "w:1")
+(__OSStream__ "w:2")
+print 1
+write 1
+print_error 1
+write_error 1
+print 2
+(__OSStream__ "r:3")
+(__OSStream__ "w:1")
+(__OSStream__ "r:3")
+exit: 0
