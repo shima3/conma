@@ -7,6 +7,107 @@ test/module5 -> test/step4
 - docs/PRIMITIVES.md:331 の __MSeq_is_empty__ の説明で、真偽値が小文字の __true__ / __false__ になっています。pure.se と ROADMAP は __TRUE__ / __FALSE__ なので、大文字にそろえるべきだと思います。Step 8 に入る前に直しておくと安全です。
 - pure.se の __nop__ と util.se の __noop__ は、名前が似ていますが別の定義です。ROADMAP の Step 4 の記述（__noop__）は正しいです。ただ、紛らわしいので意図どおりか確認したほうがよいと思います。
 
+以下の方針で問題なければ、Step 10の実装とテストを行ってください。
+---
+1. Is memory shared between VProcs?
+TERMS.mdを変更し、VProc間のメモリ共有を許します。
+
+2. How does __VProc_spawn__ load the source file?
+外部コマンドとして、includerとresolverを実行します。
+bin と include は、インタプリタ（test/vproc_step.py）の場所を基準に解決する。
+sourceFileName は、カレントディレクトリを基準に解決する。
+
+3. What happens when spawn fails?
+__VProc_spawn__ の引数として onError を追加します。
+起動に失敗した場合、onError を実行します。
+引数の位置: 他のプリミティブに合わせて先頭にします。
+起動失敗の範囲: 次の3つとします。
+- ファイルがない
+- includer や resolver がエラーになる
+- entryPoint が定義されていない
+起動後に子 VProc の実行中に起きたエラーは、4.3 の扱いになります。onError は呼びません。
+
+4. Termination
+4.1. When does the interpreter exit? When every VProc has finished, or when the first VProc has?
+すべての VProc が終了したとき、インタプリタを終了します。
+
+4.2. When there are no ready VProcs but some are blocked (deadlock), should it exit with an error?
+終了コードを 2 としてデッドロック異常終了します。
+
+4.3. On an execution error (Partial apply, a type error, etc.), stop only that VProc, or the whole interpreter?
+あるVProcの実行時にエラーが起こったとき、そのVProcだけ終了し、インタプリタや他のVProcは実行を続けます。
+メッセージ: どの VProc のエラーか分かるように番号を付けて、標準エラー出力に出します。
+__OS_exit_*__: 終了コードを設定してインタプリタ全体を終了します。
+終了コード: すべての VProc が終了したとき、インタプリタは正常終了します。VProc が1つでも __OS_exit_error__ を実行するとインタプリタは異常終了します。__OS_exit_*__ を実行しなかった VProc がエラー終了か正常終了かは、インタプリタの終了コードに影響しません。
+
+5. Edge cases for suspend/resume
+__VProc_suspend__ をそれ自身に対して呼び出した場合：ブロックし、再開された時点で LCont を用いて処理を続行する。
+すでにブロックされている VProc に対して suspend を呼び出した場合、すでに実行可能な状態にある VProc に対して resume を呼び出した場合、終了済みの VProc に対して suspend または resume を呼び出した場合：いずれも何も行わない。
+
+6. How to test suspend/resume, 7. The entry point (__main__)
+__VProc_spawn__ の引数として entryPoint を追加します。
+entryPoint は読み込んだプログラムの大域関数名を表す String とします。
+引数の順序は __VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc) とします。
+__main__ を util.se に追加します。
+未解決の点: 最初の VProc に渡す err/args/in/out を OS の入出力からどう作るかは、この方針ではまだ決まっていません。今回は先送りし、vproc_run.py は今までどおり関数名を指定して引数なしで実行する形にします。
+
+8. Blocking I/O
+入出力に伴う VProc の停止は容認します。
+
+9. How deterministic test output is
+テストでは競合状態にならないように、suspend や resume と同期してログを出力します。
+
+10. クロージャの GVEnv
+クロージャは自分のモジュールの GVEnv を持つ。
+クロージャを実行するときは、実行中の VProc の GVEnv ではなく、そのクロージャが持つ GVEnv を参照する。
+
+以下の方針に問題なければ Step 11 を実装し、テストしてください。
+---
+1. Which Stream ends go to __OS_spawn__?
+
+From the child’s side, standard input is the read end and standard output/error are the write ends. So inputStream should be an input Stream (read end) and outputStream/errorStream should be output Streams (write ends).
+A wrong direction or a closed Stream goes to onError.
+
+2. A way to pass the interpreter’s own standard I/O
+
+Passing null for a Stream argument means the child inherits the interpreter’s own stdin/stdout/stderr. Before spawning, the interpreter flushes its own buffered output so the order doesn’t get mixed up.
+
+3. Who closes the parent’s copies of the Streams?
+
+__OS_spawn__ doesn’t close anything; the program closes the Streams it no longer needs with __OS_close__. The tests also demonstrate this. Closing them automatically on spawn is another option.
+
+4. Locating the executable
+
+If the first element of commandMSeq contains /, use it as a path; otherwise search the PATH in envDict. That is the same as execvpe, i.e. the environment is exactly envDict.
+The working directory is the interpreter’s current directory.
+An empty MSeq, a non-String element, or a non-String key/value in envDict goes to onError.
+Exec failures (not found, no permission) also go to onError.
+
+5. Exit status of a process killed by a signal
+
+Return the signal number as a negative value (e.g. -9), as Python does. The shell-style 128 + signal number is the other option.
+After a process has exited, __OS_poll__ keeps returning the same exit code.
+
+6. OS processes still running when the interpreter exits
+
+Leave them running, neither waiting for nor killing them. Waiting for them, or killing them, are the other options.
+
+7. How to wait for exit
+
+__OS_poll__ doesn’t block, so waiting means looping on it while yielding to other VProcs (busy waiting).
+
+8. __OS_get_envDict__
+
+It returns a new Dict copied from the interpreter’s environment variables. Changing that Dict doesn’t change the interpreter’s own environment.
+
+9. Displaying an OSProc value
+
+Like VProc, it’s shown with a sequential number, (__OSProc__ "N"), not the PID, because the PID changes on every run.
+
+10. Commands used in tests
+
+To get the same results on macOS and Linux, the tests only use /bin/sh, /bin/echo, /bin/cat and /usr/bin/env. Every output and every exit code is read only after __OS_poll__ has confirmed the process exited, which keeps the logs deterministic.
+
 2026/10/19 Mon
 $ git status
 On branch claude
