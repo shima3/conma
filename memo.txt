@@ -111,7 +111,9 @@ To get the same results on macOS and Linux, the tests only use /bin/sh, /bin/ech
 
 「Step12: String の操作」を実装し、テストしてください。
 
-実装とテストの変更をドキュメントに反映し、コミットしてください。
+実装とテストの変更をドキュメントに反映してください。
+
+git add memo.txt
 
 2026/10/19 Mon
 $ git status
