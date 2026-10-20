@@ -1,0 +1,8 @@
+__Number_divide__: division by zero
+fallback
+inf
+-inf
+inf
+nan
+false
+exit: 0

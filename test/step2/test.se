@@ -1,0 +1,50 @@
+;; Step2: 終了とエラー出力
+(include "util.se")
+
+;; case1: __OS_print_error__ は標準エラー出力に書き、LCont を継続する
+(define case1 ,()
+  __OS_print__ "stdout 1\n" ,()
+  __OS_print_error__ "stderr 1\n" ,()
+  __OS_print__ "stdout 2\n" ,()
+  __OS_print_error__ "stderr " ,()
+  __OS_print_error__ "2\n" ,()
+  __OS_print__ "end\n" ,()
+  )
+
+;; CChain が空でない状態で終了するための入れ子呼び出し
+(define nested ,(exit)
+  __OS_print__ "in nested\n" ,()
+  exit ,()
+  __OS_print__ "not reached (nested)\n" ,()
+  )
+
+;; case2: __OS_exit_normal__ は CChain が残っていても終了コード 0 で終了する
+(define case2 ,()
+  __OS_print__ "before\n" ,()
+  nested __OS_exit_normal__ ,()
+  __OS_print__ "not reached\n" ,()
+  )
+
+;; case3: __OS_exit_error__ は CChain が残っていても終了コード 1 で終了する
+(define case3 ,()
+  __OS_print__ "before\n" ,()
+  nested __OS_exit_error__ ,()
+  __OS_print__ "not reached\n" ,()
+  )
+
+;; onError を受け取り、エラーメッセージを渡して呼び出す関数
+(define fail ,(onError)
+  onError "something failed\n")
+
+;; onError を受け取るが、呼び出さずに正常に戻る関数
+(define succeed ,(onError)
+  __OS_print__ "succeeded\n" ,()
+  )
+
+;; case4: onError 規約。成功時は onError を呼ばず、失敗時は
+;; __print_exit_error__ がメッセージを出力して終了コード 1 で終了する
+(define case4 ,()
+  succeed __print_exit_error__ ,()
+  fail __print_exit_error__ ,()
+  __OS_print__ "not reached\n" ,()
+  )

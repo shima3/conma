@@ -1,0 +1,21 @@
+__Number_fromString__: invalid number: "abc"
+fallback
+__Number_fromString__: invalid number: ""
+fallback
+__Number_fromString__: invalid number: " 12"
+fallback
+__Number_fromString__: invalid number: "1_000"
+fallback
+__Number_fromString__: invalid number: "0x10"
+fallback
+__Number_fromString__: invalid number: "inf"
+fallback
+__Number_fromString__: invalid number: "nan"
+fallback
+__Number_fromString__: invalid number: "１２"
+fallback
+__Number_fromString__: out of range: "1e400"
+fallback
+__Number_fromString__: expected String, got null
+fallback
+exit: 0

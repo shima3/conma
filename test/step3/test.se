@@ -1,0 +1,77 @@
+;; Step3: LList
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; LList の要素を先頭から順に1行ずつ出力する
+(define LList_print ,(list)
+  __unless__ (,() __LList_is_empty__ list)
+  (,()
+    __LList_uncons__ __print_exit_error__ list ,(first rest)
+    println first ,()
+    LList_print rest))
+
+;; エラーメッセージを標準エラー出力に書き、既定値 "default" と null を LCont に返す
+(define recover ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ "default" __NULL__)
+
+;; case1: cons で作ったリストを uncons で先頭から分解する
+(define case1 ,()
+  __LList_cons__ "C" __NULL__ ,(list)
+  __LList_cons__ "B" list ,(list)
+  __LList_cons__ "A" list ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(first rest)
+  println first ,()
+  __LList_uncons__ __print_exit_error__ rest ,(second rest)
+  println second ,()
+  __LList_uncons__ __print_exit_error__ rest ,(third rest)
+  println third ,()
+  __is_null__ rest ,(empty)
+  __if_then_else__ empty
+    (,() println "rest is null")
+    (,() println "rest is not null") ,()
+  )
+
+;; case2: 同じ tail を共有する2つのリストを作っても、互いに影響しない
+(define case2 ,()
+  __LList_cons__ "tail" __NULL__ ,(shared)
+  __LList_cons__ "X" shared ,(listX)
+  __LList_cons__ "Y" shared ,(listY)
+  LList_print listX ,()
+  LList_print listY ,()
+  LList_print shared ,()
+  )
+
+;; case3: 要素には任意の値を置ける（リスト、クロージャ）
+(define case3 ,()
+  __LList_cons__ "inner" __NULL__ ,(inner)
+  __LList_cons__ inner __NULL__ ,(list)
+  __LList_cons__ (,() println "called") list ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(func rest)
+  func ,()
+  __LList_uncons__ __print_exit_error__ rest ,(nested rest)
+  LList_print nested ,()
+  )
+
+;; case4: null や LList でない値を uncons すると onError がエラーメッセージで呼ばれ、
+;; onError が返した値は uncons の LCont に渡される
+(define case4 ,()
+  __LList_uncons__ recover __NULL__ ,(first rest)
+  println first ,()
+  __LList_uncons__ recover "abc" ,(first rest)
+  println first ,()
+  __LList_uncons__ recover println ,(first rest)
+  println first ,()
+  )
+
+;; case5: onError に __print_exit_error__ を渡すと、エラー時に終了コード 1 で終了する
+(define case5 ,()
+  println "before" ,()
+  __LList_uncons__ __print_exit_error__ __NULL__ ,(first rest)
+  println "not reached" ,()
+  )
