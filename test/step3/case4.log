@@ -1,0 +1,7 @@
+__LList_uncons__: expected LList, got null
+default
+__LList_uncons__: expected LList, got String
+default
+__LList_uncons__: expected LList, got Closure
+default
+exit: 0

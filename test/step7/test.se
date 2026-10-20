@@ -1,0 +1,97 @@
+;; Step7: PDict
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; key を検索し、値を出力する。見つからなければ "(missing)" を出力する
+(define printLookup ,(key)
+  __PDict_lookup_or__ key (,(key) __CChain_pop_LCont__ "(missing)") ,(value)
+  println value)
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; case1: String のキーで登録と検索をする。
+;; 別の位置に書かれた同じ文字列は同じキーとみなす。登録済みのキーに put すると値を置き換える
+(define case1 ,()
+  __PDict_put__ "name" "Alice" ,()
+  __PDict_put__ "lang" "ConMa" ,()
+  printLookup "name" ,()
+  printLookup "lang" ,()
+  printLookup "none" ,()
+  __PDict_put__ "name" "Bob" ,()
+  printLookup "name" ,()
+  __PDict_lookup_or__ "none" (,(key) __CChain_pop_LCont__ __NULL__) ,(value)
+  __is_null__ value ,(missing)
+  __if_then_else__ missing
+    (,() println "missing key gives null")
+    (,() println "missing key gives a value") ,()
+  )
+
+;; case2: Number のキーは値で比較する。String の "1" と Number の 1 は別のキー。
+;; null もキーにできる
+(define case2 ,()
+  num "1" ,(one)
+  num "1.0" ,(oneFloat)
+  __PDict_put__ one "number one" ,()
+  __PDict_lookup_or__ oneFloat (,(key) __CChain_pop_LCont__ "(missing)") ,(value)
+  println value ,()
+  printLookup "1" ,()
+  __PDict_put__ "1" "string one" ,()
+  printLookup "1" ,()
+  printLookup one ,()
+  __PDict_put__ __NULL__ "null key" ,()
+  printLookup __NULL__ ,()
+  )
+
+;; case3: Ref やクロージャのキーは同一のものだけが一致する
+(define case3 ,()
+  __Ref_new__ "same content" ,(refA)
+  __Ref_new__ "same content" ,(refB)
+  __PDict_put__ refA "value for refA" ,()
+  printLookup refA ,()
+  printLookup refB ,()
+  __NULL__ (,() println "closure") ,(func)
+  __PDict_put__ func "value for func" ,()
+  printLookup func ,()
+  printLookup (,() println "closure") ,()
+  )
+
+;; 見つからないとき、呼び出し元に戻らずに return へ脱出する
+(define lookupOrEscape ,(key)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ key (,(key)
+    println "escape" ,()
+    return) ,(value)
+  println value ,()
+  )
+
+;; case4: onMissing が LCont を呼ばなければ、検索の続きは実行されない
+(define case4 ,()
+  __PDict_put__ "found" "found value" ,()
+  lookupOrEscape "found" ,()
+  lookupOrEscape "absent" ,()
+  println "after escape" ,()
+  )
+
+;; 標準出力に書き、自分自身を返す Sink
+(define sink ,(str)
+  __OS_print__ "[sink] " ,()
+  __OS_print__ str ,()
+  sink)
+
+;; case5: util.se の stdout は PDict の "__STD_OUT__" から Sink を取り出す
+(define case5 ,()
+  __PDict_put__ "__STD_OUT__" sink ,()
+  __print__ "hello" ,()
+  stdout "a" "b\n" ,(out)
+  )
+
+;; case6: util.se の __PDict_lookup_or_error__ は、見つからなければエラー終了する
+(define case6 ,()
+  __PDict_lookup_or_error__ "__STD_OUT__" ,(out)
+  println "not reached" ,()
+  )

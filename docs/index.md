@@ -12,6 +12,8 @@ ConMa is an intermediate language that provides higher-order functions and conti
 - [Abstract Syntax Tree](AST.html)
 - [Extended Backus–Naur Form](EBNF.html)
 - [Terminology](TERMS.html)
+- [Primitives](PRIMITIVES.html)
+- [Primitive Implementation Roadmap](ROADMAP.html)
 
 ## Tools
 - [Lexical Analyzer](LEXER.html)

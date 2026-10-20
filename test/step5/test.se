@@ -1,0 +1,118 @@
+;; Step5: Number
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; Number を文字列に変換して1行で出力する
+(define printNumber ,(Number)
+  __Number_toString__ Number ,(str)
+  println str)
+
+(define printBoolean ,(Boolean)
+  __if_then_else__ Boolean
+    (,() println "true")
+    (,() println "false"))
+
+;; 文字列を Number に変換し、文字列に戻して出力する
+(define roundTrip ,(str)
+  __Number_fromString__ __print_exit_error__ str ,(n)
+  printNumber n)
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; エラーメッセージを標準エラー出力に書き、"fallback" を LCont に返す
+(define recover ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __NULL__ "fallback")
+
+;; case1: __Number_fromString__ と __Number_toString__。
+;; 整数値は小数点なしで、それ以外は最短の表現で出力する
+(define case1 ,()
+  roundTrip "42" ,()
+  roundTrip "-7" ,()
+  roundTrip "3.14" ,()
+  roundTrip "+1.5e3" ,()
+  roundTrip ".5" ,()
+  roundTrip "5." ,()
+  roundTrip "0.1" ,()
+  roundTrip "-0" ,()
+  roundTrip "123456789012345678901" ,()
+  roundTrip "1e21" ,()
+  roundTrip "1e-7" ,()
+  )
+
+;; case2: 四則演算と floor
+(define case2 ,()
+  num "7" ,(seven)
+  num "2" ,(two)
+  num "-3.5" ,(minus3_5)
+  num "0.1" ,(a)
+  num "0.2" ,(b)
+  __Number_add__ seven two ,(n) printNumber n ,()
+  __Number_subtract__ two seven ,(n) printNumber n ,()
+  __Number_multiply__ seven minus3_5 ,(n) printNumber n ,()
+  __Number_divide__ __print_exit_error__ seven two ,(n) printNumber n ,()
+  __Number_divide__ __print_exit_error__ two seven ,(n) printNumber n ,()
+  __Number_add__ a b ,(n) printNumber n ,()
+  __Number_floor__ minus3_5 ,(n) printNumber n ,()
+  __Number_divide__ __print_exit_error__ seven two ,(n)
+  __Number_floor__ n ,(n) printNumber n ,()
+  __Number_floor__ seven ,(n) printNumber n ,()
+  )
+
+;; case3: 符号の判定
+(define case3 ,()
+  num "-2" ,(neg)
+  num "0" ,(zero)
+  num "-0" ,(negzero)
+  num "3" ,(pos)
+  __Number_is_zero__ neg ,(r) printBoolean r ,()
+  __Number_is_zero__ zero ,(r) printBoolean r ,()
+  __Number_is_zero__ negzero ,(r) printBoolean r ,()
+  __Number_is_positive__ pos ,(r) printBoolean r ,()
+  __Number_is_positive__ zero ,(r) printBoolean r ,()
+  __Number_is_positive__ neg ,(r) printBoolean r ,()
+  __Number_is_negative__ neg ,(r) printBoolean r ,()
+  __Number_is_negative__ zero ,(r) printBoolean r ,()
+  __Number_is_negative__ pos ,(r) printBoolean r ,()
+  )
+
+;; case4: 数値として不正な文字列や String でない値は onError に渡される
+(define case4 ,()
+  __Number_fromString__ recover "abc" ,(n) println n ,()
+  __Number_fromString__ recover "" ,(n) println n ,()
+  __Number_fromString__ recover " 12" ,(n) println n ,()
+  __Number_fromString__ recover "1_000" ,(n) println n ,()
+  __Number_fromString__ recover "0x10" ,(n) println n ,()
+  __Number_fromString__ recover "inf" ,(n) println n ,()
+  __Number_fromString__ recover "nan" ,(n) println n ,()
+  __Number_fromString__ recover "１２" ,(n) println n ,()
+  __Number_fromString__ recover "1e400" ,(n) println n ,()
+  __Number_fromString__ recover __NULL__ ,(n) println n ,()
+  )
+
+;; case5: 0 による除算は onError に渡される。
+;; 演算のオーバーフローは inf、inf - inf は nan になる
+(define case5 ,()
+  num "1" ,(one)
+  num "0" ,(zero)
+  num "1e308" ,(big)
+  num "10" ,(ten)
+  __Number_divide__ recover one zero ,(n) println n ,()
+  __Number_multiply__ big ten ,(inf) printNumber inf ,()
+  __Number_subtract__ zero inf ,(minf) printNumber minf ,()
+  __Number_floor__ inf ,(n) printNumber n ,()
+  __Number_subtract__ inf inf ,(nan) printNumber nan ,()
+  __Number_is_zero__ nan ,(r) printBoolean r ,()
+  )
+
+;; case6: Number でない値を演算に渡すとエラー終了する
+(define case6 ,()
+  __Number_add__ "1" "2" ,(n)
+  println "not reached" ,()
+  )

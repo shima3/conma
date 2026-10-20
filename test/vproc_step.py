@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re
+import sys, re, math
 import types
 
 class VProcError(Exception): pass
@@ -40,11 +40,22 @@ def parse_tokens(tokens):
 
 def parse_sexp(text): return parse_tokens(tokenize(text))
 
+def _inline_len(x, limit):
+    # Length of x printed on one line, stopping early once it exceeds limit
+    # (so checking whether a deep tree fits costs O(limit), not O(tree size)).
+    if not isinstance(x, list): return len(str(x))
+    if not x: return 2
+    n = 1
+    for i in x:
+        n += _inline_len(i, limit - n) + 1
+        if n > limit: return n
+    return n
+
 def sexp_to_str(x, indent=0):
     if not isinstance(x, list): return str(x)
     if not x: return "()"
-    inline = "(" + " ".join(sexp_to_str(i) for i in x) + ")"
-    if len(inline) <= 80: return inline
+    if _inline_len(x, 80) <= 80:
+        return "(" + " ".join(sexp_to_str(i) for i in x) + ")"
     pad = "  " * (indent + 1)
     inner = ("\n" + pad).join(sexp_to_str(i, indent + 1) for i in x)
     return "(" + inner + ")"
@@ -91,13 +102,26 @@ class Stream:
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
 class Number:
-    """An immutable numeric value (int or float) as a ConMa value."""
+    """An immutable floating-point number as a ConMa value."""
     def __init__(self, value):
-        self.value = value   # Python int or float
+        self.value = float(value)
     def value_to_sexp(self):
-        return ["__Number__", str(self.value)]
+        return ["__Number__", number_to_str(self.value)]
     def __repr__(self):
         return f"Number({self.value!r})"
+class Ref:
+    """A mutable cell holding a single ConMa value."""
+    _count = 0
+    def __init__(self, value):
+        Ref._count += 1
+        self.serial = Ref._count   # identifies the Ref in traces
+        self.value  = value
+    def value_to_sexp(self):
+        # The content is not shown: a Ref may contain itself.
+        return ["__Ref__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"Ref({self.serial})"
+
 class LList:
     """A cons cell representing a node in a linked list (also used for CChain)."""
     def __init__(self, head, tail):
@@ -116,6 +140,23 @@ def is_null_value(v):
 
 def is_prim_func(v):
     return isinstance(v, list) and v[0] == "PrimFunc"
+
+def number_to_str(x):
+    """Format a float: integer values without a decimal point (below 1e21),
+    other finite values by shortest repr, and inf, -inf, nan as such."""
+    if math.isnan(x): return "nan"
+    if math.isinf(x): return "inf" if x > 0 else "-inf"
+    if x == int(x) and abs(x) < 1e21: return str(int(x))
+    return repr(x)
+
+def value_type_name(v):
+    """Return the ConMa type name of a value, for error messages."""
+    if is_null_value(v): return "null"
+    if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v) or callable(v): return "Closure"
+    if isinstance(v, CFrame): return "CFrame"
+    if isinstance(v, list) and v: return v[0]  # AST value node, e.g. "String"
+    if isinstance(v, str): return "String"
+    return type(v).__name__
 
 # ── Module ────────────────────────────────────────────────────────────────────
 
@@ -186,6 +227,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
+    if isinstance(val, Ref): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -640,9 +682,12 @@ def prim_OS_close(vp, gvenv):
 
 # ── Number Primitives ─────────────────────────────────────────────────────────
 
+# Optional sign, digits with an optional fraction, optional exponent (ASCII only)
+_NUMBER_RE = re.compile(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?')
+
 def _check_number(name, val):
     if not isinstance(val, Number):
-        raise VProcError(f"{name}: expected Number, got {val!r}")
+        raise VProcError(f"{name}: expected Number, got {value_type_name(val)}")
 
 def prim_Number_fromString(vp, gvenv):
     """__Number_fromString__ onError String ,(Number)"""
@@ -651,15 +696,17 @@ def prim_Number_fromString(vp, gvenv):
         raise VProcError("__Number_fromString__: missing argument(s)")
     on_error = olist.pop(0)
     val      = olist.pop(0)
-    s = unescape(unquote(val)) if isinstance(val, str) else _value_to_display(val)
-    try:
-        n = int(s)
-    except ValueError:
-        try:
-            n = float(s)
-        except ValueError:
-            _prim_error(vp, on_error, f"__Number_fromString__: invalid number: {s!r}")
-            return
+    if value_type_name(val) != "String":
+        _prim_error(vp, on_error, f"__Number_fromString__: expected String, got {value_type_name(val)}")
+        return
+    s = _value_to_display(val)
+    if not _NUMBER_RE.fullmatch(s):
+        _prim_error(vp, on_error, f"__Number_fromString__: invalid number: \"{s}\"")
+        return
+    n = float(s)
+    if math.isinf(n):
+        _prim_error(vp, on_error, f"__Number_fromString__: out of range: \"{s}\"")
+        return
     _prim_return(vp, [Number(n)])
 
 def prim_Number_toString(vp, gvenv):
@@ -668,9 +715,7 @@ def prim_Number_toString(vp, gvenv):
     if not olist: raise VProcError("__Number_toString__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_toString__", val)
-    n = val.value
-    s = str(int(n)) if isinstance(n, float) and n == int(n) else str(n)
-    _prim_return(vp, [quoted(s)])
+    _prim_return(vp, [quoted(number_to_str(val.value))])
 
 def prim_Number_is_zero(vp, gvenv):
     """__Number_is_zero__ Number ,(Boolean)"""
@@ -729,20 +774,16 @@ def prim_Number_divide(vp, gvenv):
     if b.value == 0:
         _prim_error(vp, on_error, "__Number_divide__: division by zero")
         return
-    result = a.value / b.value
-    # preserve int when possible
-    if isinstance(a.value, int) and isinstance(b.value, int) and result == int(result):
-        result = int(result)
-    _prim_return(vp, [Number(result)])
+    _prim_return(vp, [Number(a.value / b.value)])
 
 def prim_Number_floor(vp, gvenv):
     """__Number_floor__ Number ,(Number)"""
-    import math
     olist = vp["olist"]
     if not olist: raise VProcError("__Number_floor__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_floor__", val)
-    _prim_return(vp, [Number(int(math.floor(val.value)))])
+    x = val.value
+    _prim_return(vp, [Number(math.floor(x) if math.isfinite(x) else x)])
 
 
 # ── CChain / CFrame Primitives ────────────────────────────────────────────────
@@ -759,7 +800,7 @@ def prim_CChain_set(vp, gvenv):
         raise VProcError("__CChain_set__: missing argument")
     cc = olist.pop(0)
     if not (is_null_value(cc) or isinstance(cc, LList)):
-        raise VProcError(f"__CChain_set__: expected CChain (LList or null), got {cc!r}")
+        raise VProcError(f"__CChain_set__: expected CChain (LList or null), got {value_type_name(cc)}")
     vp["cchain"] = cc
     lc = vp["lcont"]
     vp["operator"] = lc if lc is not None else NULL
@@ -774,7 +815,7 @@ def prim_CChain_push_CFrame(vp, gvenv):
         raise VProcError("__CChain_push_CFrame__: missing argument")
     cf = olist.pop(0)
     if not isinstance(cf, CFrame):
-        raise VProcError(f"__CChain_push_CFrame__: expected CFrame, got {cf!r}")
+        raise VProcError(f"__CChain_push_CFrame__: expected CFrame, got {value_type_name(cf)}")
     vp["cchain"] = cchain_push(vp["cchain"], cf)
     _prim_return(vp, [])
 
@@ -808,9 +849,82 @@ def prim_LList_uncons(vp, gvenv):
     on_error = olist.pop(0)
     lst      = olist.pop(0)
     if not isinstance(lst, LList):
-        _prim_error(vp, on_error, f"__LList_uncons__: expected LList, got {lst!r}")
+        _prim_error(vp, on_error, f"__LList_uncons__: expected LList, got {value_type_name(lst)}")
         return
     _prim_return(vp, [lst.head, lst.tail])
+
+
+# ── Ref Primitives ────────────────────────────────────────────────────────────
+
+def prim_Ref_new(vp, gvenv):
+    """__Ref_new__ value ,(Ref)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Ref_new__: missing argument")
+    _prim_return(vp, [Ref(olist.pop(0))])
+
+def prim_Ref_get(vp, gvenv):
+    """__Ref_get__ Ref ,(value)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Ref_get__: missing argument")
+    ref = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"__Ref_get__: expected Ref, got {value_type_name(ref)}")
+    _prim_return(vp, [ref.value])
+
+def prim_Ref_set(vp, gvenv):
+    """__Ref_set__ Ref value ,()"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__Ref_set__: missing argument(s)")
+    ref   = olist.pop(0)
+    value = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"__Ref_set__: expected Ref, got {value_type_name(ref)}")
+    ref.value = value
+    _prim_return(vp, [])
+
+
+# ── PDict Primitives ──────────────────────────────────────────────────────────
+
+def values_equal(a, b):
+    """Key equality for PDict and Dict.
+    Strings compare by content, Numbers by value and null equals null;
+    any other value is equal only to itself."""
+    ta, tb = value_type_name(a), value_type_name(b)
+    if ta != tb: return False
+    if ta == "null": return True
+    if ta == "String": return _value_to_display(a) == _value_to_display(b)
+    if ta == "Number": return a.value == b.value
+    return a is b
+
+def prim_PDict_put(vp, gvenv):
+    """__PDict_put__ key value ,()"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__PDict_put__: missing argument(s)")
+    key   = olist.pop(0)
+    value = olist.pop(0)
+    pdict = vp["pdict"]
+    for i, (k, _) in enumerate(pdict):
+        if values_equal(k, key):
+            pdict[i] = (k, value)
+            break
+    else:
+        pdict.append((key, value))
+    _prim_return(vp, [])
+
+def prim_PDict_lookup_or(vp, gvenv):
+    """__PDict_lookup_or__ key onMissing ,(value)
+
+    If key is missing, onMissing is applied to key with the same LCont."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__PDict_lookup_or__: missing argument(s)")
+    key        = olist.pop(0)
+    on_missing = olist.pop(0)
+    for k, v in vp["pdict"]:
+        if values_equal(k, key):
+            _prim_return(vp, [v])
+            return
+    vp["operator"] = on_missing
+    vp["olist"]    = [key]
 
 
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
@@ -822,7 +936,7 @@ def prim_CFrame_get_Closure(vp, gvenv):
         raise VProcError("__CFrame_get_Closure__: missing argument")
     val = olist.pop(0)
     if not isinstance(val, CFrame):
-        raise VProcError(f"__CFrame_get_Closure__: expected CFrame, got {val!r}")
+        raise VProcError(f"__CFrame_get_Closure__: expected CFrame, got {value_type_name(val)}")
     _prim_return(vp, [val.closure])
 
 def prim_CFrame_get_SInfo(vp, gvenv):
@@ -832,9 +946,30 @@ def prim_CFrame_get_SInfo(vp, gvenv):
         raise VProcError("__CFrame_get_SInfo__: missing argument")
     val = olist.pop(0)
     if not isinstance(val, CFrame):
-        raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {val!r}")
-    s = sinfo_to_str(val.sinfo) or ""
+        raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {value_type_name(val)}")
+    s = ":".join(unquote(x) for x in (val.sinfo or []) if isinstance(x, str))
     _prim_return(vp, [quoted(s)])
+
+def prim_CFrame_new(vp, gvenv):
+    """__CFrame_new__ FuncExp SInfo ,(CFrame)
+
+    SInfo is a colon-separated String, as returned by __CFrame_get_SInfo__,
+    or null for no SInfo."""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__CFrame_new__: missing argument(s)")
+    closure = olist.pop(0)
+    sinfo   = olist.pop(0)
+    if value_type_name(closure) != "Closure":
+        raise VProcError(f"__CFrame_new__: expected Closure, got {value_type_name(closure)}")
+    if is_null_value(sinfo):
+        parts = []
+    elif value_type_name(sinfo) == "String":
+        text  = _value_to_display(sinfo)
+        parts = [quoted(x) for x in text.split(":")] if text else []
+    else:
+        raise VProcError(f"__CFrame_new__: expected String or null SInfo, got {value_type_name(sinfo)}")
+    _prim_return(vp, [CFrame(closure, parts)])
 
 
 PRIMITIVES = {
@@ -865,6 +1000,12 @@ PRIMITIVES = {
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,
     "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,
+    "__CFrame_new__":          prim_CFrame_new,
+    "__Ref_new__":             prim_Ref_new,
+    "__Ref_get__":             prim_Ref_get,
+    "__Ref_set__":             prim_Ref_set,
+    "__PDict_put__":           prim_PDict_put,
+    "__PDict_lookup_or__":     prim_PDict_lookup_or,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
