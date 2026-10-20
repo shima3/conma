@@ -98,6 +98,19 @@ class Number:
         return ["__Number__", number_to_str(self.value)]
     def __repr__(self):
         return f"Number({self.value!r})"
+class Ref:
+    """A mutable cell holding a single ConMa value."""
+    _count = 0
+    def __init__(self, value):
+        Ref._count += 1
+        self.serial = Ref._count   # identifies the Ref in traces
+        self.value  = value
+    def value_to_sexp(self):
+        # The content is not shown: a Ref may contain itself.
+        return ["__Ref__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"Ref({self.serial})"
+
 class LList:
     """A cons cell representing a node in a linked list (also used for CChain)."""
     def __init__(self, head, tail):
@@ -203,6 +216,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
+    if isinstance(val, Ref): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -829,6 +843,35 @@ def prim_LList_uncons(vp, gvenv):
     _prim_return(vp, [lst.head, lst.tail])
 
 
+# ── Ref Primitives ────────────────────────────────────────────────────────────
+
+def prim_Ref_new(vp, gvenv):
+    """__Ref_new__ value ,(Ref)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Ref_new__: missing argument")
+    _prim_return(vp, [Ref(olist.pop(0))])
+
+def prim_Ref_get(vp, gvenv):
+    """__Ref_get__ Ref ,(value)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Ref_get__: missing argument")
+    ref = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"__Ref_get__: expected Ref, got {value_type_name(ref)}")
+    _prim_return(vp, [ref.value])
+
+def prim_Ref_set(vp, gvenv):
+    """__Ref_set__ Ref value ,()"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__Ref_set__: missing argument(s)")
+    ref   = olist.pop(0)
+    value = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"__Ref_set__: expected Ref, got {value_type_name(ref)}")
+    ref.value = value
+    _prim_return(vp, [])
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -903,6 +946,9 @@ PRIMITIVES = {
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,
     "__CFrame_get_SInfo__":    prim_CFrame_get_SInfo,
     "__CFrame_new__":          prim_CFrame_new,
+    "__Ref_new__":             prim_Ref_new,
+    "__Ref_get__":             prim_Ref_get,
+    "__Ref_set__":             prim_Ref_set,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

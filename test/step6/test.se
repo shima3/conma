@@ -1,0 +1,100 @@
+;; Step6: Ref
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define printRef ,(ref)
+  __Ref_get__ ref ,(value)
+  println value)
+
+(define printNumber ,(Number)
+  __Number_toString__ Number ,(str)
+  println str)
+
+;; case1: 作成、取得、更新
+(define case1 ,()
+  __Ref_new__ "first" ,(ref)
+  printRef ref ,()
+  __Ref_set__ ref "second" ,()
+  printRef ref ,()
+  printRef ref ,()
+  __Ref_set__ ref "third" ,()
+  printRef ref ,()
+  )
+
+;; 呼び出すたびに 1 増えた値を返すカウンタ関数を作る
+(define makeCounter ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(ref)
+  __NULL__ (,()
+    __Number_fromString__ __print_exit_error__ "1" ,(one)
+    __Ref_get__ ref ,(n)
+    __Number_add__ n one ,(n)
+    __Ref_set__ ref n ,()
+    __NULL__ n))
+
+;; case2: 同じ Ref を参照する変数やクロージャの間で更新が共有される。
+;; 別に作った Ref は独立している
+(define case2 ,()
+  __Ref_new__ "shared" ,(ref)
+  __NULL__ ref ,(alias)
+  __Ref_set__ alias "updated via alias" ,()
+  printRef ref ,()
+  makeCounter ,(counterA)
+  makeCounter ,(counterB)
+  counterA ,(n) printNumber n ,()
+  counterA ,(n) printNumber n ,()
+  counterA ,(n) printNumber n ,()
+  counterB ,(n) printNumber n ,()
+  )
+
+;; case3: Ref には任意の値を入れられる（null、クロージャ、LList、Ref 自身）
+(define case3 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __Ref_get__ ref ,(value)
+  __is_null__ value ,(empty)
+  __if_then_else__ empty
+    (,() println "holds null")
+    (,() println "holds a value") ,()
+  __Ref_set__ ref (,() println "closure called") ,()
+  __Ref_get__ ref ,(func)
+  func ,()
+  __LList_cons__ "list head" __NULL__ ,(list)
+  __Ref_set__ ref list ,()
+  __Ref_get__ ref ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  println head ,()
+  __Ref_set__ ref ref ,()
+  __Ref_get__ ref ,(self)
+  __Ref_get__ self ,(self2)
+  println self2 ,()
+  )
+
+;; Ref を更新してから、保存した CChain に戻って途中の処理を飛ばす
+(define setAndEscape ,(ref)
+  __CChain_get__ ,(saved)
+  __Ref_set__ ref "set before escape" ,()
+  __CChain_set__ saved ,()
+  )
+
+;; case4: Ref の更新は __CChain_set__ による脱出の後も残る
+(define case4 ,()
+  __Ref_new__ "initial" ,(ref)
+  setAndEscape ref ,()
+  printRef ref ,()
+  )
+
+;; case5: Ref でない値を渡すとエラー終了する
+(define case5 ,()
+  __Ref_get__ "abc" ,(value)
+  println "not reached" ,()
+  )
+
+;; case6: __Ref_set__ に Ref でない値を渡してもエラー終了する
+(define case6 ,()
+  __Ref_set__ __NULL__ "value" ,()
+  println "not reached" ,()
+  )

@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step5` and `step9`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step6` and `step9`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
 
@@ -75,11 +75,13 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 
 | Primitive | Status |
 |---|---|
-| `__Ref_new__` | not implemented |
-| `__Ref_get__` | not implemented |
-| `__Ref_set__` | not implemented |
+| `__Ref_new__` | implemented |
+| `__Ref_get__` | implemented |
+| `__Ref_set__` | implemented |
 
 * The first mutable state. It does not need key lookup, so it is the simplest place to introduce mutation.
+* `__Ref_get__` and `__Ref_set__` take no `onError`, so a non-Ref argument stops the VProc with an error.
+* In traces a Ref is shown as `(__Ref__ "N")`, where N is its creation number, not its content, because a Ref may contain itself.
 
 ## Step 7: PDict
 
