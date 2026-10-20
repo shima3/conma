@@ -126,8 +126,12 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 | `__OS_write__` | implemented |
 | `__OS_read__` | implemented |
 | `__OS_close__` | implemented |
-| `__OS_get_String__` | not implemented |
+| `__OS_get_String__` | implemented |
 
+* `__OS_get_String__` reads one line from standard input, including its newline, and passes null at EOF.
+* Using a closed Stream goes to `onError` (`closed input Stream` / `closed output Stream`); the closed fd is never touched, because its number may already belong to a newer pipe.
+* `__OS_read__` decodes UTF-8 across reads, so a character split between reads is returned whole by the later read; invalid bytes become U+FFFD.
+* Strings produced at run time (read data, error messages, ...) are escaped as String literals are, so backslashes and quotes in the data are kept as they are.
 * `__OS_read__` is non-blocking and returns `""` when no data is available. A reader that waits for data needs to yield to other VProcs, which is done in Step 10.
 
 ## Step 10: VProc

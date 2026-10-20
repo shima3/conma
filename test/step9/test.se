@@ -1,4 +1,5 @@
 ;; Step 9: OS I/Oストリーム
+(include "pure.se")
 (define stdout ,(str)
   __OS_print__ str ,()
   stdout)
@@ -27,7 +28,76 @@
   __OS_read__ print_and_return_error in ,(msg)
   )
 
-(define test ,()
-  case1 ,()
-  case2 ,()
+;; case1 の後半は、閉じた Stream への書き込みと読み込みがエラーになることを確かめる
+
+;; 読み込みに失敗したら、エラーを出力して終了コード 1 で終了する
+(define readOrExit ,(in)
+  __OS_read__ (,(msg) stderr msg "\n" ,(dummy) __OS_exit_error__) in)
+
+;; null (EOF) になるまで読み込み、読んだデータをそのまま出力する
+(define readAll ,(in)
+  readOrExit in ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,() stdout "<EOF>\n" ,(dummy))
+    (,()
+      stdout data ,(dummy)
+      readAll in) ,()
+  )
+
+;; case2: 書き込んだデータは連結して読み込まれる。データがなければ ""、
+;; 書き込み側を閉じると残りのデータの後に null (EOF) が返る
+(define case2 ,()
+  __OS_pipe__ ,(in out)
+  readOrExit in ,(data)
+  stdout "empty: [" data "]\n" ,(dummy)
+  __OS_write__ print_error out "line 1\n" ,()
+  __OS_write__ print_error out "line 2\n" ,()
+  readOrExit in ,(data)
+  stdout data ,(dummy)
+  __OS_write__ print_error out "line 3\n" ,()
+  __OS_close__ print_error out ,()
+  readAll in ,()
+  readOrExit in ,(data)
+  __is_null__ data ,(eof)
+  __if_then_else__ eof
+    (,() stdout "still EOF\n" ,(dummy))
+    (,() stdout "not EOF\n" ,(dummy)) ,()
+  __OS_close__ print_error in ,()
+  )
+
+;; case3: 多バイト文字や引用符、バックスラッシュもそのまま読み書きできる
+(define case3 ,()
+  __OS_pipe__ ,(in out)
+  __OS_write__ print_error out "日本語\n" ,()
+  __OS_write__ print_error out "quote: \" backslash: \\ \\n\n" ,()
+  __OS_close__ print_error out ,()
+  readAll in ,()
+  )
+
+;; case4: Stream の種類の誤り、閉じた Stream、読み込み側が閉じたパイプへの書き込みは
+;; onError に渡される
+(define case4 ,()
+  __OS_pipe__ ,(in out)
+  __OS_read__ print_and_return_error out ,(msg)
+  __OS_write__ print_error in "data" ,()
+  __OS_close__ print_error "abc" ,()
+  __OS_close__ print_error in ,()
+  __OS_close__ print_error in ,()
+  __OS_write__ print_error out "data" ,()
+  __OS_close__ print_error out ,()
+  )
+
+;; 標準入力から null (EOF) になるまで1行ずつ読み込み、括弧で囲んで出力する
+(define getLines ,()
+  __OS_get_String__ ,(line)
+  __if_then_else__ (,() __is_null__ line)
+    (,() stdout "<EOF>\n" ,(dummy))
+    (,()
+      stdout "[" line "]" ,(dummy)
+      getLines) ,()
+  )
+
+;; case5: __OS_get_String__ は標準入力から改行を含めて1行ずつ読み込み、EOF で null を返す
+(define case5 ,()
+  getLines ,()
   )

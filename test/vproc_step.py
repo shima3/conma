@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math
+import sys, re, math, os, codecs
 import types
 
 class VProcError(Exception): pass
@@ -74,6 +74,14 @@ def quoted(s):
     if isinstance(s, str) and not (s.startswith('"') and s.endswith('"')): return f'"{s}"'
     return s
 
+_STRING_ESCAPES = {'"': '\\"', '\\': '\\\\', '\n': '\\n', '\t': '\\t', '\r': '\\r'}
+
+def string_value(text):
+    """Make a String value from Python text produced at run time.
+    Strings are kept in source form (quoted, escaped) like String literals,
+    so the text is escaped as SPEC.md defines and always quoted."""
+    return '"' + ''.join(_STRING_ESCAPES.get(ch, ch) for ch in text) + '"'
+
 class Closure:
     def __init__(self, params, body, lvenv):
         self.params, self.body, self.lvenv = list(params), body, list(lvenv)
@@ -88,17 +96,24 @@ class CFrame:
     def __init__(self, closure, sinfo): self.closure, self.sinfo = closure, sinfo
 class Stream:
     """Wraps a raw OS file descriptor as a ConMa value."""
+    _count = 0
     def __init__(self, fd, mode):
+        Stream._count += 1
+        self.serial = Stream._count     # identifies the Stream in traces
         self.fd   = fd                  # raw file descriptor
         self.mode = mode                # "r" or "w"
-        self._closed = False
+        self.closed = False
+        # Decodes UTF-8 across reads; a character may be split between reads.
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     def close(self):
-        if not self._closed:
-            import os
+        # Mark closed first: the fd number may be reused by a later pipe.
+        if not self.closed:
+            self.closed = True
             os.close(self.fd)
-            self._closed = True
+    def kind(self):
+        return "input Stream" if self.mode == "r" else "output Stream"
     def value_to_sexp(self):
-        return ["__OSStream__", f'"{self.mode}:{id(self)}"']
+        return ["__OSStream__", f'"{self.mode}:{self.serial}"']
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
 class Number:
@@ -186,6 +201,7 @@ def value_type_name(v):
     if is_null_value(v): return "null"
     if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v) or callable(v): return "Closure"
     if isinstance(v, CFrame): return "CFrame"
+    if isinstance(v, Stream): return v.kind()
     if isinstance(v, list) and v: return v[0]  # AST value node, e.g. "String"
     if isinstance(v, str): return "String"
     return type(v).__name__
@@ -621,16 +637,35 @@ def prim_OS_print_error(vp, gvenv):
 def _prim_error(vp, on_error, message):
     """Invoke onError closure with an error message string."""
     vp["operator"] = on_error
-    vp["olist"]    = [quoted(message)]
+    vp["olist"]    = [string_value(message)]
     # do not clear lcont to continue after error handling
     # vp["lcont"]    = None
 
 
+def prim_OS_get_String(vp, gvenv):
+    """__OS_get_String__ ,(String) — read one line from standard input.
+    The String includes the trailing newline, if any. Passes null at EOF."""
+    line = sys.stdin.readline()
+    _prim_return(vp, [string_value(line) if line else NULL])
+
+
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
-    import os
     r_fd, w_fd = os.pipe()
     _prim_return(vp, [Stream(r_fd, 'r'), Stream(w_fd, 'w')])
+
+
+def _check_stream(vp, on_error, name, stream, mode=None):
+    """Check that stream is an open Stream (of the given mode, if any).
+    Invokes onError and returns False if not."""
+    if not isinstance(stream, Stream) or (mode and stream.mode != mode):
+        expected = {"r": "input Stream", "w": "output Stream"}.get(mode, "Stream")
+        _prim_error(vp, on_error, f"{name}: expected {expected}, got {value_type_name(stream)}")
+        return False
+    if stream.closed:
+        _prim_error(vp, on_error, f"{name}: closed {stream.kind()}")
+        return False
+    return True
 
 
 def prim_OS_read(vp, gvenv):
@@ -641,28 +676,30 @@ def prim_OS_read(vp, gvenv):
       null   — EOF (writer closed)
     On error, calls onError with an error message string.
     """
-    import fcntl, os
+    import fcntl
     olist = vp["olist"]
     if len(olist) < 2:
         raise VProcError("__OS_read__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
-    if not isinstance(stream, Stream) or stream.mode != 'r':
-        _prim_error(vp, on_error, f"__OS_read__: expected readable Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_read__", stream, "r"): return
     try:
         # set O_NONBLOCK on the raw fd
         flags = fcntl.fcntl(stream.fd, fcntl.F_GETFL)
         fcntl.fcntl(stream.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
         data = os.read(stream.fd, 4096)
-        if data == b"":
-            _prim_return(vp, [NULL])                          # EOF
-        else:
-            _prim_return(vp, [quoted(data.decode('utf-8'))])  # data
     except BlockingIOError:
-        _prim_return(vp, [quoted("")])                        # no data yet
+        _prim_return(vp, [string_value("")])                      # no data yet
+        return
     except OSError as e:
         _prim_error(vp, on_error, f"__OS_read__: {e}")
+        return
+    if data == b"":
+        rest = stream.decoder.decode(b"", final=True)         # incomplete character at EOF
+        _prim_return(vp, [string_value(rest) if rest else NULL])    # EOF
+    else:
+        # "" if the data ends inside a character and nothing else was read
+        _prim_return(vp, [string_value(stream.decoder.decode(data))])
 
 
 def prim_OS_write(vp, gvenv):
@@ -671,19 +708,17 @@ def prim_OS_write(vp, gvenv):
     On success, resumes LCont with an empty OList.
     On error, calls onError with an error message string.
     """
-    import os
     olist = vp["olist"]
     if len(olist) < 3:
         raise VProcError("__OS_write__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
     val      = olist.pop(0)
-    if not isinstance(stream, Stream) or stream.mode != 'w':
-        _prim_error(vp, on_error, f"__OS_write__: expected writable Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_write__", stream, "w"): return
     data = _value_to_display(val).encode('utf-8')
     try:
-        os.write(stream.fd, data)
+        while data:                     # os.write may write only part of data
+            data = data[os.write(stream.fd, data):]
     except OSError as e:
         _prim_error(vp, on_error, f"__OS_write__: {e}")
         return
@@ -701,9 +736,7 @@ def prim_OS_close(vp, gvenv):
         raise VProcError("__OS_close__: missing argument(s)")
     on_error = olist.pop(0)
     stream   = olist.pop(0)
-    if not isinstance(stream, Stream):
-        _prim_error(vp, on_error, f"__OS_close__: expected Stream, got {stream!r}")
-        return
+    if not _check_stream(vp, on_error, "__OS_close__", stream): return
     try:
         stream.close()
     except OSError as e:
@@ -747,7 +780,7 @@ def prim_Number_toString(vp, gvenv):
     if not olist: raise VProcError("__Number_toString__: missing argument")
     val = olist.pop(0)
     _check_number("__Number_toString__", val)
-    _prim_return(vp, [quoted(number_to_str(val.value))])
+    _prim_return(vp, [string_value(number_to_str(val.value))])
 
 def prim_Number_is_zero(vp, gvenv):
     """__Number_is_zero__ Number ,(Boolean)"""
@@ -1087,7 +1120,7 @@ def prim_CFrame_get_SInfo(vp, gvenv):
     if not isinstance(val, CFrame):
         raise VProcError(f"__CFrame_get_SInfo__: expected CFrame, got {value_type_name(val)}")
     s = ":".join(unquote(x) for x in (val.sinfo or []) if isinstance(x, str))
-    _prim_return(vp, [quoted(s)])
+    _prim_return(vp, [string_value(s)])
 
 def prim_CFrame_new(vp, gvenv):
     """__CFrame_new__ FuncExp SInfo ,(CFrame)
@@ -1118,6 +1151,7 @@ PRIMITIVES = {
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
+    "__OS_get_String__":       prim_OS_get_String,
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,
