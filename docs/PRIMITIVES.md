@@ -20,7 +20,7 @@ These primitives manage external processes and stream-based I/O.
     * `errorStream`: An output Stream for the process's standard error, or null to inherit the interpreter's standard error.
     * `envDict`: A Dict (String → String) defining environment variables for the spawned process. The environment of the new process is exactly envDict.
 * **Behavior**:
-    * The process runs in the interpreter's current directory.
+    * The process runs in the interpreter's current directory (see `__OS_chdir__`).
     * Before the process starts, the interpreter writes out its own buffered standard output and standard error, so that they come before the process's output.
     * The Streams are not closed. The program closes the Streams it no longer needs with `__OS_close__`; for example, a reader of the process's output sees EOF only after every copy of the write end, including the program's own, has been closed.
     * When the interpreter exits, processes that are still running are left running; they are neither waited for nor killed.
@@ -84,6 +84,23 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 * **Description**: Closes the specified `stream` (input or output).
 * **Behavior**: Upon completion, resumes the continuation with an empty OList.
 * **Error**: If the stream cannot be closed (e.g., already closed or invalid handle), invokes `onError` with an error message string.
+
+### **`__OS_open__ onError path mode ,(Stream)`**
+* **Description**: Opens the file `path`, relative to the current directory.
+* **Behavior**: `mode` is one of the following Strings:
+    * **`"r"`**: Opens the file for reading and returns an input Stream.
+    * **`"w"`**: Creates the file, or empties it if it exists, and returns an output Stream.
+    * **`"a"`**: Creates the file if it does not exist and returns an output Stream that writes at the end of the file.
+* **Returns**: The Stream. It is used with `__OS_read__`, `__OS_write__`, `__OS_close__` and `__OS_spawn__` like a pipe end.
+* **Error**: If `path` or `mode` is not a String, `mode` is not one of the above, `path` is a directory, or the OS cannot open the file (for example, it does not exist or permission is denied), invokes `onError` with an error message string.
+
+### **`__OS_chdir__ onError path ,()`**
+* **Description**: Changes the interpreter's current directory to `path`.
+* **Behavior**: Every VProc shares the current directory. It is used for relative paths in `__OS_open__`, `__OS_chdir__` and the `sourceFileName` of `__VProc_spawn__`, and as the working directory of processes started by `__OS_spawn__`.
+* **Error**: If `path` is not a String, or the OS cannot change to it (for example, it does not exist or is not a directory), invokes `onError` with an error message string.
+
+### **`__OS_getcwd__ ,(String)`**
+* **Description**: Passes the absolute path of the current directory to the LCont.
 
 ---
 
@@ -235,7 +252,7 @@ Behavior:
 Initiates the creation and execution of a new Virtual Process (VProc) through the following sequential phases:
 
 1. **Process Initialization**: A new Virtual Process is allocated with its own CChain and Process Dictionary.
-2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `sourceFileName`, relative to the current directory. During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
+2. **Static Analysis and Loading**: The interpreter loads the program from the file specified by `sourceFileName`, relative to the current directory (see `__OS_chdir__`). During this loading phase, the interpreter performs a **global scan** of all `define` statements within the file and any included files.
 3. **Environment Binding**: All identifiers identified during the scan are registered in the new program's GVEnv. This ensures that named functions can refer to each other recursively or out of order from the moment execution begins.
 4. **Entry Point Execution**: The new VProc applies the global function named by the String `entryPoint` to the following arguments. A program normally uses `"__main__"`, which calls the program's `main` (see "Main" in SPEC.md).
 * `errorSink`: For handling standard error output.

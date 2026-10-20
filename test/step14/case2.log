@@ -1,0 +1,9 @@
+first
+second
+--
+replaced
+--
+appended to a new file
+(__OSStream__ "w:8")
+__OS_read__: expected input Stream, got output Stream
+exit: 0

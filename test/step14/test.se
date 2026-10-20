@@ -1,0 +1,137 @@
+;; Step14: ファイルを開く・作業ディレクトリ
+;; 書き込むファイルは test.sh が作る work/ の中に置く
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; エラーメッセージを標準出力に書き、値を返さずに LCont に戻る
+(define recover ,(msg)
+  println msg ,()
+  )
+
+;; エラーメッセージを標準出力に書き、null を LCont に返す
+(define recoverNull ,(msg)
+  println msg ,()
+  __NULL__ __NULL__)
+
+;; null (EOF) になるまで読み込み、そのまま出力する
+(define readAll ,(in)
+  __OS_read__ __print_exit_error__ in ,(data)
+  __unless__ (,() __is_null__ data)
+  (,()
+    __OS_print__ data ,()
+    readAll in))
+
+;; ファイルの内容を出力する
+(define printFile ,(path)
+  __OS_open__ __print_exit_error__ path "r" ,(in)
+  readAll in ,()
+  __OS_close__ __print_exit_error__ in ,()
+  )
+
+;; ファイルに str を書き込む（mode は "w" または "a"）
+(define writeFile ,(path mode str)
+  __OS_open__ __print_exit_error__ path mode ,(out)
+  __OS_write__ __print_exit_error__ out str ,()
+  __OS_close__ __print_exit_error__ out ,()
+  )
+
+(define printCwd ,()
+  __OS_getcwd__ ,(cwd)
+  println cwd)
+
+(define waitExit ,(proc)
+  __OS_poll__ __print_exit_error__ proc ,(status)
+  __if_then_else__ (,() __is_null__ status)
+    (,() waitExit proc)
+    (,() __NULL__ status))
+
+(define makeCmd2 ,(a b)
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd a ,()
+  __MSeq_append__ __print_exit_error__ cmd b ,()
+  __NULL__ cmd)
+
+;; case1: "r" で開くと input Stream になり、EOF まで読める
+(define case1 ,()
+  __OS_open__ __print_exit_error__ "input.txt" "r" ,(in)
+  println in ,()
+  readAll in ,()
+  __OS_close__ __print_exit_error__ in ,()
+  __OS_read__ recoverNull in ,(data)
+  )
+
+;; case2: "w" は新しく作るか空にしてから書き、"a" は末尾に追加する
+(define case2 ,()
+  writeFile "work/out.txt" "w" "first\n" ,()
+  writeFile "work/out.txt" "a" "second\n" ,()
+  printFile "work/out.txt" ,()
+  println "--" ,()
+  writeFile "work/out.txt" "w" "replaced\n" ,()
+  printFile "work/out.txt" ,()
+  println "--" ,()
+  writeFile "work/new.txt" "a" "appended to a new file\n" ,()
+  printFile "work/new.txt" ,()
+  __OS_open__ __print_exit_error__ "work/out.txt" "w" ,(out)
+  println out ,()
+  __OS_read__ recoverNull out ,(data)
+  __OS_close__ __print_exit_error__ out ,()
+  )
+
+;; case3: 開けないときは onError に渡される
+(define case3 ,()
+  __OS_open__ recoverNull "none.txt" "r" ,(s)
+  __OS_open__ recoverNull "work/none/out.txt" "w" ,(s)
+  __OS_open__ recoverNull "work" "r" ,(s)
+  __OS_open__ recoverNull "work" "w" ,(s)
+  __OS_open__ recoverNull "input.txt" "x" ,(s)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __OS_open__ recoverNull one "r" ,(s)
+  __OS_open__ recoverNull "input.txt" one ,(s)
+  println "done" ,()
+  )
+
+;; case4: __OS_chdir__ で作業ディレクトリを変えると、相対パスはそこから解決される
+(define case4 ,()
+  printCwd ,()
+  __OS_chdir__ __print_exit_error__ "work" ,()
+  printCwd ,()
+  writeFile "here.txt" "w" "in work\n" ,()
+  __OS_chdir__ __print_exit_error__ ".." ,()
+  printCwd ,()
+  printFile "work/here.txt" ,()
+  __OS_chdir__ recover "none" ,()
+  __OS_chdir__ recover "input.txt" ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __OS_chdir__ recover one ,()
+  printCwd ,()
+  )
+
+;; case5: 開いたファイルを子プロセスの標準入出力にする（cat < input.txt > work/cat.txt）
+(define case5 ,()
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "/bin/cat" ,()
+  __Dict_new__ ,(env)
+  __OS_open__ __print_exit_error__ "input.txt" "r" ,(in)
+  __OS_open__ __print_exit_error__ "work/cat.txt" "w" ,(out)
+  __OS_spawn__ __print_exit_error__ cmd in out __NULL__ env ,(proc)
+  __OS_close__ __print_exit_error__ in ,()
+  __OS_close__ __print_exit_error__ out ,()
+  waitExit proc ,(status)
+  println "cat.txt:" ,()
+  printFile "work/cat.txt" ,()
+  )
+
+;; case6: 子プロセスと、__VProc_spawn__ で読み込むファイルにも作業ディレクトリが使われる
+(define case6 ,()
+  __OS_chdir__ __print_exit_error__ "work" ,()
+  makeCmd2 "/bin/sh" "-c" ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "pwd" ,()
+  __Dict_new__ ,(env)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  waitExit proc ,(status)
+  __VProc_spawn__ recoverNull "__main__" "../child.se" __NULL__ __NULL__ __NULL__ __NULL__ ,(child)
+  )
