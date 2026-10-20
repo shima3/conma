@@ -107,6 +107,11 @@ Like VProc, it’s shown with a sequential number, (__OSProc__ "N"), not the PID
 10. Commands used in tests
 
 To get the same results on macOS and Linux, the tests only use /bin/sh, /bin/echo, /bin/cat and /usr/bin/env. Every output and every exit code is read only after __OS_poll__ has confirmed the process exited, which keeps the logs deterministic.
+---
+
+「Step12: String の操作」を実装し、テストしてください。
+
+実装とテストの変更をドキュメントに反映し、コミットしてください。
 
 2026/10/19 Mon
 $ git status
