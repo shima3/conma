@@ -791,6 +791,9 @@ def prim_OS_wait(vp, gvenv):
     if not isinstance(proc, OSProc):
         _prim_error(vp, on_error, f"__OS_wait__: expected OSProc, got {value_type_name(proc)}")
         return
+    # Install the SIGCHLD wakeup before polling: if the process exited after
+    # the poll but before the install, select() would never be woken up.
+    SCHEDULER._install_sigchld()
     code = proc.popen.poll()
     if code is not None:
         _prim_return(vp, [Number(code)])
