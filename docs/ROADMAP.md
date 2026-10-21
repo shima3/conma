@@ -124,9 +124,9 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 
 * Dict uses the same key equality as the PDict (Step 7).
 * `__MSeq_uncons__` returns the tail as a new MSeq that does not share storage with the original.
-* `__MSeq_set_head__` on an empty MSeq goes to `onError`, following its Behavior and Error entries (its Description says the head is created instead).
+* `__MSeq_set_head__` on an empty MSeq goes to `onError`, following its Behavior and Error entries. (Its Description used to say the head is created; PRIMITIVES.md was corrected to match.)
 * Dict primitives take no `onError`, so a non-Dict argument stops the VProc with an error.
-* `__Dict_keys__` returns the keys in insertion order. Replacing a value keeps the key's position; removing and re-adding a key moves it to the end.
+* `__Dict_keys__` returns the keys in insertion order. This is a detail of this implementation: PRIMITIVES.md leaves the order implementation-defined, and only the tests (`test/step8` case5) rely on it. Replacing a value keeps the key's position; removing and re-adding a key moves it to the end.
 * In traces an MSeq or Dict is shown as `(__MSeq__ "N")` or `(__Dict__ "N")`, like a Ref.
 * `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](SPEC.html)).
 * Both are needed by Step 11 (`commandMSeq`, `envDict`).
