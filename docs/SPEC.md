@@ -289,6 +289,7 @@ They follow these rules:
   A function names an operation.
   It is still a function when it is passed as a value, such as `__nop__` passed to `__if__` or `__print_exit_error__` passed as `onError`.
 * When a function name starts with a type name, the type name keeps its own spelling and the operation part is in lower case: `__CChain_get__`, `__OS_print__`, `__PDict_lookup_or__`.
+* A type name inside the operation part also keeps its own spelling, joined to the neighboring word without `_`: `__Number_fromString__`, `__Number_toString__`, `__OS_get_envDict__` (an env `Dict`). After `_`, it is written as its own word: `__OS_get_String__`.
 
 ---
 

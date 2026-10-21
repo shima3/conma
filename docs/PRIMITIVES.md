@@ -385,7 +385,7 @@ A variable defined as null.
 
 ### **`__MSeq_set_head__ onError mseq value ,()`**
 
-* **Description**: Performs a conditional destructive update on the first position of the **mseq**. The head position is defined as index 0; if it does not exist, it is created.
+* **Description**: Performs a destructive update on the first position (index 0) of the **mseq**. An empty MSeq has no head, so nothing is created; see Error.
 * **Behavior**: If the mseq is a MSeq and not empty, replaces the current **head** element with the provided `value` via an in-place update.
 * **Error**: If the mseq is not a MSeq or is an empty MSeq, the Closure `onError` is invoked as an Operator Application with an error message String.
 * **Returns**: Nothing (performs a side effect on the MSeq).
@@ -445,7 +445,7 @@ A variable defined as null.
   Produces a Sequence containing all keys in the Dict.
 * **Behavior**:
   * The resulting Seq enumerates each key exactly once.
-  * The order of keys is **implementation-defined**.
+  * The order of keys is **implementation-defined**; a program should not rely on it. (`test/vproc_step.py` uses insertion order; see Step 8 in ROADMAP.md.)
 * **Returns**:
   A Seq of keys.
 
