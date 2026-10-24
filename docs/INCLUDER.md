@@ -21,6 +21,18 @@ On error the program exits with a non-zero status.
 
 ---
 
+# Invocation
+
+```
+includer [--include DIR]... [--bin DIR] <source_file>
+```
+
+* `<source_file>`: the first file to process. A relative path is relative to the current directory. If it does not exist, an error is written and the program exits with code 1.
+* `--include DIR`: an include directory, searched for relative include file names (see **Includer File Resolution**). It may be given several times; the directories are searched in the order given. Each one is normalised with `realpath`, and if it is not a directory, an error is written and the program exits with code 1.
+* `--bin DIR`: the directory that contains `lexer`, `comment_remover` and `parser`. By default, the directory of `includer` itself. If a tool is not found there, an error is written and the program exits with code 1.
+
+---
+
 # Processing Loop
 
 The program maintains a **file list** of absolute, `realpath`-normalised paths and a **file index** initialised to 0. The loop runs as follows:
@@ -114,9 +126,9 @@ No separator is inserted between consecutive AST outputs.
 
 ---
 
-# Circular Include Handling
+# Duplicate Include Handling
 
-If an included file resolves to a path that already exists in the file list (after `realpath` normalisation), the include is ignored and the program writes a warning to standard error:
+If an included file resolves to a path that already exists in the file list (after `realpath` normalisation), the include is ignored and the program writes a warning to standard error. This happens for any file that is included again, not only for a circular include: for example, when two files both include `util.se`, the second include is ignored with this warning, although the message says "circular":
 
 ```
 Warning: circular include ignored: '<path>' (from '<file>')

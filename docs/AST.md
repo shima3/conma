@@ -48,10 +48,10 @@ Non-terminal nodes always emit a closing `)`, even when they have no children.
 | NodeType | Corresponding grammar element | Terminal? |
 | --- | --- | --- |
 | `Program` | Program | No |
-| `FileName` | — (meta information) | Yes (value = filename) |
 | `Definition` | Definition | No |
 | `Includer` | Includer | No |
 | `Function` | Function | No |
+| `FuncExp` | FuncExp (a Function in parentheses, as an Operator or an Expression) | No |
 | `Head` | Head | No |
 | `Body` | Body | No |
 | `SInfo` | SInfo | Yes (value = string literals) |
@@ -62,6 +62,8 @@ Non-terminal nodes always emit a closing `)`, even when they have no children.
 | `String` | STRING token | Yes (value = text) |
 | `Null` | — (empty element) | Yes |
 
+There is no `FileName` node in the output: the file name is part of the coordinate tuple of `Program` (see Structural Rules).
+
 ---
 
 ### 4. Structural Rules
@@ -71,8 +73,9 @@ Non-terminal nodes always emit a closing `)`, even when they have no children.
 * If `--file` is absent but a `FILE` token exists, the filename from the `FILE` token is embedded in the `Program` coordinate tuple.
 
 
-2. **LCont**: `Body` always contains an `LCont` node as its last child. If `LCont` is absent in the source, a `Null` node is emitted inside `LCont`.
-3. **SInfo Priority**: When `--file` is specified, `SInfo` is auto-inserted into `Body` unless an explicit `(__SInfo__ ...)` exists. Auto-inserted `SInfo` uses the location of the `Operator`.
+2. **LCont**: `Body` always contains an `LCont` node as its last child. If `LCont` is absent in the source, the `LCont` node has no children: `(LCont (line col))`, positioned just after the last token of the `OList` (or at the next token if the `OList` is empty).
+3. **Operator and OList**: if a `Body` has no Operator (it is empty or has only an LCont), the `Operator` node holds a `Null` node, `(Operator (line col) (Null (line col)))`, and the `OList` node has no children, both at the position of the next token.
+4. **SInfo Priority**: When `--file` is specified, `SInfo` is auto-inserted into `Body` unless an explicit `(__SInfo__ ...)` exists. Auto-inserted `SInfo` uses the location of the `Operator`.
 
 ---
 
@@ -110,6 +113,5 @@ When multiple source files are processed, each produces one `Program` node. They
           (Variable (3 3) "__print__"))
         (OList (3 13)
           (String (3 13) "Hello"))
-        (LCont (3 20)
-          (Null (3 20)))))))
+        (LCont (3 20))))))
 ```

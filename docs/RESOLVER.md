@@ -90,7 +90,7 @@ The tokenizer splits the input text into four token kinds: `(`, `)`, quoted stri
 Node-type-specific parsing rules:
 - `Variable`: one quoted atom follows the coordinates (the variable name in double quotes).
 - `String`: one quoted string follows the coordinates.
-- `SInfo`: one or more quoted strings follow the coordinates; they are joined with spaces as the node value.
+- `SInfo`: zero or more quoted strings follow the coordinates; they are joined with spaces as the node value. An explicit `(__SInfo__)` without Strings gives an `SInfo` with no strings, which is passed through.
 - `Null`: no further elements.
 - `Program`: an optional quoted filename in the coordinate tuple; remaining elements are child S-expressions.
 - All other node types: remaining elements are child S-expressions.
@@ -109,10 +109,10 @@ Pass 1 does not assign global sequence numbers.
 
 Pass 2 traverses each `Program` tree recursively (depth-first, pre-order) with a **scope stack**, initially empty. The scope stack is a list of scopes; each scope is an ordered list of parameter name strings. The bottom of the stack corresponds to the outermost enclosing function.
 
-**On entering a `Function` or `Lambda` node:**
-The `Head` child (if present) is examined. The value of each `Variable` child of `Head`, unquoted, is collected in order into a new scope list. This scope list is pushed onto the scope stack before the children of `Function`/`Lambda` are visited.
+**On entering a `Function` node** (also the `Function` inside a `FuncExp` or an `LCont`):
+The `Head` child (if present) is examined. The value of each `Variable` child of `Head`, unquoted, is collected in order into a new scope list. This scope list is pushed onto the scope stack before the children of `Function` are visited.
 
-**On leaving a `Function` or `Lambda` node:**
+**On leaving a `Function` node:**
 The scope list that was pushed on entry is popped from the scope stack.
 
 **On visiting a `Variable` node:**
@@ -141,9 +141,7 @@ The de Bruijn index used here is the standard nameless representation for lambda
 - Index 0 refers to the parameter of the immediately enclosing function.
 - Index 1 refers to the parameter of the next enclosing function, and so on.
 
-Since all ConMa functions are curried (each `Head` binds exactly one parameter in practice), each scope on the stack contains exactly one name and the index equals the nesting depth of the binding function counted from the innermost enclosing one.
-
-When a `Head` contains multiple parameters (non-standard usage), parameters are indexed right-to-left within the same scope before moving to outer scopes.
+A `Head` may bind several parameters, as in `,(Boolean then else)`. The parameters of one `Head` are indexed right to left within its scope, before the scopes of outer functions: in `,(x) ... ,(s t) ...`, inside the inner function `t` is 0, `s` is 1 and `x` is 2. This matches the local environment of the interpreter, where the last bound parameter comes first. When every `Head` has exactly one parameter, the index equals the nesting depth of the binding function counted from the innermost enclosing one.
 
 ---
 
@@ -171,8 +169,7 @@ When a `Head` contains multiple parameters (non-standard usage), parameters are 
           (Variable (2 3) "__print__"))
         (OList (2 13)
           (String (2 13) "Hello"))
-        (LCont (2 20)
-          (Null (2 20)))))))
+        (LCont (2 20))))))
 ```
 
 #### Output
@@ -189,8 +186,7 @@ When a `Head` contains multiple parameters (non-standard usage), parameters are 
           (Variable (2 3) "__print__" (G 1)))
         (OList (2 13)
           (String (2 13) "Hello"))
-        (LCont (2 20)
-          (Null (2 20))))))
+        (LCont (2 20)))))
   (G 1 "__print__" Undefined))
 ```
 

@@ -120,7 +120,7 @@ Tokens and AST nodes are passed between components, so their functions are named
 |---|---|
 | `__Token_new__ kind value line col ,(Token)` | Makes a Token. `kind` and `value` are Strings, `line` and `col` are Numbers. |
 | `__Token_get_kind__ Token ,(String)` | The kind, such as `"SYMBOL"` (see [LEXER.md](LEXER.html)). |
-| `__Token_get_value__ Token ,(String)` | The source text of the token. A `NEWLINE` token holds the newline itself (`"\n"` or `"\r\n"`). |
+| `__Token_get_value__ Token ,(String)` | The source text of the token. A `NEWLINE` token holds the newline itself, always `"\n"` (see the lexer above). |
 | `__Token_get_line__ Token ,(Number)` / `__Token_get_col__ Token ,(Number)` | The position of the first character. The `FILE` token is at `0 0`. |
 | `__Token_toSexp__ Token ,(String)` | `(Token (line col) KIND "value")`, for example `(Token (4 2) SYMBOL "define")`. |
 
