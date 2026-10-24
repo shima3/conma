@@ -1,0 +1,7 @@
+__OS_realpath__: No such file or directory: none
+__OS_realpath__: No such file or directory: work/none/..
+__OS_realpath__: Not a directory: test.se/x
+__OS_realpath__: No such file or directory: 
+__OS_realpath__: expected String path, got Number
+<dir>/test.se
+exit: 0

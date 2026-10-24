@@ -1,0 +1,8 @@
+stdin: Stream
+stdout: Stream
+pipe input: Stream
+pipe output: Stream
+file: Stream
+closed file: Stream
+OSProc: OSProc
+exit: 0
