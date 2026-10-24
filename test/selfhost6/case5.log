@@ -1,0 +1,19 @@
+== lexerr.se lib
+exit: python 0, conma 0
+compare: 0
+-- files
+<dir>/lexerr.se
+<dir>/lib/lib.se
+-- python stderr
+Error: Unexpected character '@' at line 2, column 15
+-- conma stderr
+Error: Unexpected character '@' at line 2, column 15
+== ../step14/test.se ../../include
+exit: python 0, conma 0
+compare: 0
+-- files
+/Users/shima/tmp/conma/test/step14/test.se
+/Users/shima/tmp/conma/include/util.se
+/Users/shima/tmp/conma/include/pure.se
+-- python stderr
+-- conma stderr

@@ -1,0 +1,35 @@
+== missing.se lib
+exit: python 1, conma 1
+-- python stderr
+Error: included file not found: 'nothere.se' (from '<dir>/missing.se')
+-- conma stderr
+Error: included file not found: 'nothere.se' (from '<dir>/missing.se')
+== syntax.se lib
+exit: python 1, conma 1
+-- python stderr
+Error: parser exited with code 1
+SyntaxError: 2:1: expected '(' to start a statement
+-- conma stderr
+SyntaxError: 2:1: expected '(' to start a statement
+== none.se
+exit: python 1, conma 1
+-- python stderr
+Error: source file not found: 'none.se'
+-- conma stderr
+Error: source file not found: 'none.se'
+== main.se nodir
+exit: python 1, conma 1
+-- python stderr
+Error: --include directory not found: 'nodir'
+-- conma stderr
+Error: --include directory not found: 'nodir'
+== work/abs_missing.se
+exit: python 1, conma 1
+-- python stderr
+    with open(filename, 'r', encoding='utf-8') as f:
+  File "/Users/shima/tmp/conma/bin/lexer", line 242, in <module>
+Error: lexer exited with code 1
+FileNotFoundError: [Errno 2] No such file or directory: '<dir>/none.se'
+Traceback (most recent call last):
+-- conma stderr
+Error: included file not found: '<dir>/none.se' (from '<dir>/work/abs_missing.se')

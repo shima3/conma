@@ -1,0 +1,175 @@
+;; includer: ソースファイルと、それが include するファイルを解析する（INCLUDER.md, SELFHOST.md）
+;;
+;; __Includer_main__ onError sourceName includeDirs ,(Programs)
+;;   sourceName はソースファイルの名前（相対パスはカレントディレクトリから）。
+;;   includeDirs は include ディレクトリの名前の LList。
+;;   ファイルごとに lexer、comment_remover、parser を呼び、Program を作る。
+;;   Program の LList を、ファイル一覧の順に返す。
+;;   エラーでは、__Includer_main__ を呼んだときの CChain に戻して onError にメッセージを渡す。
+;;
+;; ファイル一覧は、realpath で正規化した絶対パスの列で、最初はソースファイルだけ。
+;; 一覧の先頭から順にファイルを解析し、その include 文が指すファイルを一覧の末尾に加える（幅優先）。
+;; 一覧にすでにあるファイル（解析済みかどうかによらない）は、警告を出して読み飛ばす。
+(include "lexer.se")
+(include "comment_remover.se")
+(include "parser.se")
+
+(define __Includer_main__ ,(onError sourceName includeDirs)
+  __CChain_get__ ,(cc)
+  __NULL__ (,(msg) __CChain_set__ cc ,() onError msg) ,(fail)
+  __Includer_dirs__ fail includeDirs ,(dirs)
+  __OS_realpath__
+    (,(e)
+      __Parser_repr__ sourceName ,(name)
+      __String_concat__ "Error: source file not found: " name ,(msg)
+      fail msg)
+    sourceName ,(sourceAbs)
+  __Dict_new__ ,(seen)
+  __Dict_put__ seen sourceAbs __TRUE__ ,()
+  __LList_cons__ sourceAbs __NULL__ ,(queue)
+  __Includer_loop__ fail dirs seen queue __NULL__)
+
+;; include ディレクトリを realpath で正規化する。存在しなければエラー
+(define __Includer_dirs__ ,(fail dirs)
+  __if_then_else__ (,() __is_null__ dirs)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ dirs ,(dir rest)
+      __OS_realpath__
+        (,(e)
+          __Parser_repr__ dir ,(name)
+          __String_concat__ "Error: --include directory not found: " name ,(msg)
+          fail msg)
+        dir ,(real)
+      __Includer_dirs__ fail rest ,(rest)
+      __LList_cons__ real rest))
+
+;; queue の先頭のファイルを解析し、Program を acc に加えて続ける。queue が空なら Program の LList を返す
+(define __Includer_loop__ ,(fail dirs seen queue acc)
+  __if_then_else__ (,() __is_null__ queue)
+    (,() __Parser_reverse__ acc __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ queue ,(file queue)
+      __Includer_parse__ fail file ,(program)
+      __Includer_dirname__ file ,(baseDir)
+      __AST_get_children__ program ,(statements)
+      __Includer_statements__ fail dirs seen file baseDir statements queue ,(queue)
+      __LList_cons__ program acc ,(acc)
+      __Includer_loop__ fail dirs seen queue acc))
+
+;; ファイルを lexer、comment_remover、parser に通して Program を作る
+(define __Includer_parse__ ,(fail file)
+  __OS_open__ (,(e) fail e) file "r" ,(stream)
+  __Lexer_main__ file (,(sink) __Stream_lines__ stream sink) ,(tokens)
+  __CommentRemover_main__ tokens ,(tokens)
+  __Parser_main__
+    (,(msg)
+      __OS_close__ __print_exit_error__ stream ,()
+      __String_concat__ "SyntaxError: " msg ,(msg)
+      fail msg)
+    file tokens ,(program)
+  __OS_close__ __print_exit_error__ stream ,()
+  __NULL__ program)
+
+;; Program の子のうち Includer のファイルを解決し、新しいものを queue の末尾に加えた queue を返す
+(define __Includer_statements__ ,(fail dirs seen file baseDir statements queue)
+  __if_then_else__ (,() __is_null__ statements)
+    (,() __NULL__ queue)
+    (,()
+      __LList_uncons__ __print_exit_error__ statements ,(statement rest)
+      __AST_get_kind__ statement ,(kind)
+      __if_then_else__ (,() __String_equal__ kind "Includer")
+        (,() __Includer_add__ fail dirs seen file baseDir statement queue)
+        (,() __NULL__ queue) ,(queue)
+      __Includer_statements__ fail dirs seen file baseDir rest queue))
+
+;; Includer の String の値（ファイル名）を解決し、一覧になければ queue の末尾に加える
+(define __Includer_add__ ,(fail dirs seen file baseDir includer queue)
+  __AST_get_children__ includer ,(children)
+  __LList_uncons__ __print_exit_error__ children ,(str rest)
+  __AST_get_children__ str ,(values)
+  __LList_uncons__ __print_exit_error__ values ,(name rest)
+  __Includer_resolve__ fail dirs file baseDir name ,(path)
+  __Dict_lookup_or__ seen path (,(key) __NULL__ __FALSE__) ,(found)
+  __if_then_else__ (,() __NULL__ found)
+    (,()
+      __Parser_repr__ path ,(pathRepr)
+      __Parser_repr__ file ,(fileRepr)
+      __Parser_concat__ "Warning: circular include ignored: " pathRepr " (from " fileRepr ")\n" ,(msg)
+      __OS_print_error__ msg ,()
+      __NULL__ queue)
+    (,()
+      __Dict_put__ seen path __TRUE__ ,()
+      __LList_cons__ path __NULL__ ,(last)
+      __Parser_reverse__ queue __NULL__ ,(reversed)
+      __Parser_reverse__ reversed last))
+
+;; name を絶対パスにする。絶対パスはそのまま正規化する。
+;; 相対パスは、include 文のあるファイルのディレクトリ、include ディレクトリの順に探す
+(define __Includer_resolve__ ,(fail dirs file baseDir name)
+  __Includer_is_absolute__ name ,(absolute)
+  __if_then_else__ (,() __NULL__ absolute)
+    (,() __OS_realpath__ (,(e) __Includer_not_found__ fail file name) name)
+    (,()
+      __LList_cons__ baseDir dirs ,(dirs)
+      __Includer_search__ fail dirs file name))
+
+;; dirs のディレクトリに name があれば、その正規化した絶対パスを返す
+(define __Includer_search__ ,(fail dirs file name)
+  __if_then_else__ (,() __is_null__ dirs)
+    (,() __Includer_not_found__ fail file name)
+    (,()
+      __LList_uncons__ __print_exit_error__ dirs ,(dir rest)
+      __Includer_join__ dir name ,(candidate)
+      __OS_realpath__ (,(e) __Includer_search__ fail rest file name) candidate))
+
+(define __Includer_not_found__ ,(fail file name)
+  __Parser_repr__ name ,(nameRepr)
+  __Parser_repr__ file ,(fileRepr)
+  __Parser_concat__ "Error: included file not found: " nameRepr " (from " fileRepr ")" ,(msg)
+  fail msg)
+
+;; ── パス ──
+
+(define __Includer_is_absolute__ ,(path)
+  __String_length__ path ,(len)
+  __if_then_else__ (,() __Number_is_zero__ len)
+    (,() __NULL__ __FALSE__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __String_substring__ __print_exit_error__ path zero one ,(first)
+      __String_equal__ first "/"))
+
+;; dir と name を "/" でつなぐ。dir が "/" で終わっていれば、そのままつなぐ
+(define __Includer_join__ ,(dir name)
+  __String_length__ dir ,(len)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ __print_exit_error__ dir last len ,(end)
+  __if_then_else__ (,() __String_equal__ end "/")
+    (,() __NULL__ dir)
+    (,() __String_concat__ dir "/") ,(dir)
+  __String_concat__ dir name)
+
+;; 絶対パス path のディレクトリ部分。最後の "/" の前まで（ルートの "/" は残す）
+(define __Includer_dirname__ ,(path)
+  __String_length__ path ,(len)
+  __Includer_last_slash__ path len ,(i)
+  __if_then_else__ (,() __Number_is_zero__ i)
+    (,() __NULL__ "/")
+    (,()
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __String_substring__ __print_exit_error__ path zero i))
+
+;; path の i 文字目より前で、最後の "/" の位置
+(define __Includer_last_slash__ ,(path i)
+  __if_then_else__ (,() __Number_is_zero__ i)
+    (,() __NULL__ i)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_subtract__ i one ,(j)
+      __String_substring__ __print_exit_error__ path j i ,(c)
+      __if_then_else__ (,() __String_equal__ c "/")
+        (,() __NULL__ j)
+        (,() __Includer_last_slash__ path j)))

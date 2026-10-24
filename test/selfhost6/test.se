@@ -1,0 +1,40 @@
+;; SELFHOST.md の手順6: includer
+(include "includer.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; エラーメッセージを標準エラー出力に書き、終了コード 1 で終わる
+(define includeError ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+;; Program を1行ずつ S式で出力する
+(define printPrograms ,(programs)
+  __unless__ (,() __is_null__ programs)
+    (,()
+      __LList_uncons__ __print_exit_error__ programs ,(program rest)
+      __AST_toSexp__ program ,(str)
+      println str ,()
+      printPrograms rest))
+
+;; 引数を LList に集める Sink。null を渡すと LList を返す
+(define listSink ,(acc)
+  __NULL__ (,(arg)
+    __if_then_else__ (,() __is_null__ arg)
+      (,() __Parser_reverse__ acc __NULL__)
+      (,()
+        __LList_cons__ arg acc ,(acc)
+        listSink acc)))
+
+;; 引数: ソースファイル、続けて include ディレクトリ
+(define main ,(args)
+  listSink __NULL__ ,(sink)
+  args sink ,(sink)
+  sink __NULL__ ,(list)
+  __LList_uncons__ (,(msg) __exit__ "usage: test.se <source> [<include dir> ...]") list ,(source dirs)
+  __Includer_main__ includeError source dirs ,(programs)
+  printPrograms programs)

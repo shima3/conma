@@ -1,0 +1,2 @@
+(include "lib.se")
+(define e ,() @ e)

@@ -84,7 +84,13 @@ __Parser_main__ onError fileName tokens ,(Program)
 
 ### includer
 
-Follows [INCLUDER.md](INCLUDER.html):
+Follows [INCLUDER.md](INCLUDER.html) and gives the same `Program`s, warnings and most error messages as `bin/includer` (`include/includer.se`).
+
+```
+__Includer_main__ onError sourceName includeDirs ,(Programs)
+```
+
+`includeDirs` is an LList of directory names. The result is an LList of `Program`s, which is the input of `resolver`.
 
 1. It takes one source file name and zero or more include directory names. It normalizes the source file name to an absolute path with `__OS_realpath__` and adds it to the file list.
 2. For each file in the file list, in order, it runs `lexer`, `comment_remover` and `parser` and makes a `Program`.
@@ -97,6 +103,18 @@ Follows [INCLUDER.md](INCLUDER.html):
 The order matters: `resolver` numbers the global variables in the order of the `Program`s, so a different order would give a different module.
 
 If a directory with the name given in an include statement exists in a directory that is searched (the directory of the file that contains the include statement, or an include directory), the behavior is undefined.
+
+* Each file is passed to `__Lexer_main__` and `__Parser_main__` by its normalized absolute path, as `bin/includer` passes it to `lexer` and `parser --file`. The value of each `Includer`'s `String` node is used as the file name as it is, without processing escape sequences.
+* The file list is a queue of paths, with a Dict of the paths in it for the duplicate check. A relative name is joined to each directory in turn (`__Includer_join__`), and the next directory is tried in the `onError` of `__OS_realpath__`.
+* The include directories are normalized with `__OS_realpath__` first; one that does not exist is an error. The directory of a file is the part of its path before the last `/` (`__Includer_dirname__`).
+* Errors go to `onError` in the same way as in the parser: the CChain is set back to that of the call. The messages are those of `bin/includer`: `Error: source file not found: ...`, `Error: --include directory not found: ...` and `Error: included file not found: ... (from ...)`. The warning for a duplicate is written to standard error with the same text as `bin/includer` (`Warning: circular include ignored: ...`).
+* Messages show paths as Python's `repr` does, with `__Parser_repr__`. The includer also uses `__Parser_concat__` and `__Parser_reverse__` of `parser.se`.
+* Differences from `bin/includer`:
+  * A syntax error in a file goes to `onError` as `SyntaxError: <message>`. `bin/includer` writes the message of `parser` and then `Error: parser exited with code 1`.
+  * An absolute path in an include statement that does not exist is an `included file not found` error at once. `bin/includer` adds it to the file list, and `lexer` fails when it opens the file (`Error: lexer exited with code 1`).
+  * An include directory that is a file is not an error (`__OS_realpath__` does not tell files and directories apart). `bin/includer` reports it as not found.
+  * `bin/includer` writes the AST of each file as soon as it is made, so the files before an error are already written. The ConMa includer returns all `Program`s at the end, and nothing on an error.
+  * There is no `--bin` option: the ConMa components are called directly.
 
 ### resolver
 
@@ -234,7 +252,7 @@ test/selfhost_compare.py ast    <python_output> <conma_output>
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5; do test/$t/test.sh; done
+for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -292,6 +310,18 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5; do test/$t/test.sh; 
 | case4 | syntax errors at the top level: no `(`, an unknown keyword, no Symbol after `(`, `(` alone, an Includer without a String |
 | case5 | syntax errors in a Definition: no `,`, a String as a parameter (its `repr` has `\'`), a String as Operator, the end of input |
 | case6 | `recover`: the value of `onError` is the value of `__Parser_main__`, also for an error deep in the recursion, and the program goes on after it |
+
+`test/selfhost6` tests the includer. `test.se` takes a source file and include directories, and writes each `Program` on one line; an error is written to standard error and ends the program with exit code 1. `test.sh` runs it and `bin/includer --include <dir>... <source>` and prints the exit codes, the result of `selfhost_compare.py ast` when both succeed, the files in the order the ConMa includer processed them, and the standard error of both sides, sorted, with the test directory written as `<dir>`. Before the cases it makes `link.se`, a symbolic link to `a.se`, and `work/abs.se` and `work/abs_missing.se`, which include files by absolute paths; it removes them at the end. The whole test takes about 25 seconds.
+
+`main.se` includes `a.se`, `b.se`, `link.se` and `only2.se`; `a.se` includes `sub/c.se` and `lib.se`; `b.se` includes `a.se` and `lib.se`; `sub/c.se` includes `../b.se` and `c2.se`. `c2.se` is in `sub/` and in `lib/`, `lib.se` in `lib/` and `lib2/`, `only2.se` only in `lib2/`.
+
+| Case | What it checks |
+|---|---|
+| case1 | `main.se` with `lib` and `lib2`: breadth-first order; duplicates by name, by `../` and by a symbolic link; the directory of the including file is searched before the include directories, which are searched in order |
+| case2 | `main.se` with `lib2` and `lib` (another `lib.se` is found); `self.se`, which includes itself |
+| case3 | `work/abs.se`: absolute paths, one with `..` and `.` |
+| case4 | errors: an included file not found, a syntax error, a missing source file, a missing include directory, an absolute path that does not exist (the two differences above show in the messages) |
+| case5 | lexical errors in a file; `test/step14/test.se` with `include/` as the include directory |
 
 ---
 
