@@ -3,8 +3,9 @@ includerがlexer, comment_remover, parserを呼び出し、ASTを生成する。
 resolverがASTからモジュールを生成する。
 vproc_stepがモジュールを実行する。
 
-以下の方針に問題ない？
-修正しました。どの順に実装すると良いですか？
+修正した。どの順に実装すると良い？
+修正した。以下の方針に問題ない？
+修正した。問題なければ、英語で docs/SELFHOST.md にまとめ、必要なプリミティブについて docs/ROADMAP.md に追加してください。
 ---
 evalの実装の前に、ConMa言語でincluder, lexer, comment_remover, parser, resolverを実装したい。
 ただし、それらの間で、その都度、ファイル入出力を行うと効率が悪い。
@@ -14,7 +15,11 @@ lexer, comment_remover, parserの間はSeqで受け渡す。
 parserは1つのProgramをLListで出力する。
 
 resolverは1つまたは複数のProgramの並びをLListで受け取り、1つのモジュールをLListで出力する。
-受け渡されたデータが正しいかテストするため、S式に変換し、python版の出力と比較する。
+resolver は Module、(F ...)、(G id "name" ...) を出力し、Variable に (L n) / (G n) の注釈を付ける。
+このため、子ノードの末尾に (L n) / (G n) を加えた Variable ノードを __AST_new__ で新しく作る。
+また、位置情報を持たないノードもあるので、__AST_new__で位置を省略できるようにする。
+ASTのStringノードでは、文字列の両端の二重引用符を除き、エスケープはソースのままで持つ。
+SInfoノードは(SInfo (2 3) "s.se" "2" "3")のように、ノード位置は2つの数値のリストで示すが、ファイル名の後に行番号と列番号を文字列で示す。
 
 includerは
 - 1つのソースファイル名と複数のincludeディレクトリ名を引数として受け取り、ソースファイル名の正規化済み絶対パスをファイル一覧に追加する。
@@ -32,11 +37,90 @@ includerは
 __OS_realpath__ onError path ,(String)
 - 相対パスはカレントディレクトリを基準にする。
 - パスが存在しなければonErrorを呼ぶ。
+以下のケースについてテストを行う。
+- 絶対パス
+- 相対パス（__OS_chdir__ で移動した後も、移動先のディレクトリを基準にすること）
+- .. やシンボリックリンクを含むパスが正規化されること
+- 存在しないパスで onError が呼ばれること
 
 lexerは行番号・列番号、ブロックコメントの入れ子の深さ、コメント本文のバッファ、コメント開始位置の行番号・列番号を状態として持つ。
 
 comment_removerはS式コメントとブロックコメントを処理するため、それらの入れ子の深さを状態として持つ。
+
+受け渡されたデータが正しいかテストするため、S式に変換し、python版の出力と比較する。
+
+以下のように命名する。
+| 部品 | ファイル | 入口の関数 | ヘルパーの接頭辞 |
+|---|---|---|---|
+| lexer | `include/lexer.se` | `__Lexer_main__` | `__Lexer_…__` |
+| comment_remover | `include/comment_remover.se` | `__CommentRemover_main__` | `__CommentRemover_…__` |
+| parser | `include/parser.se` | `__Parser_main__` | `__Parser_…__` |
+| resolver | `include/resolver.se` | `__Resolver_main__` | `__Resolver_…__` |
+| includer | `include/includer.se` | `__Includer_main__` | `__Includer_…__` |
+
+トークンや AST ノードは部品の間で受け渡すデータなので、部品名ではなくデータの型名で、作成と取得の関数を定義する。
+- `__Token_new__`、`__Token_get_kind__`、`__Token_get_value__`, `__Token_get_line__`、`__Token_get_col__`
+- `__AST_new__`、`__AST_get_kind__`、`__AST_get_children__`、`__AST_get_pos__`
+- S式への変換：`__Token_toSexp__`、`__AST_toSexp__`
+これらは複数の部品で使うので、`include/token.se` と `include/ast.se` のように別のファイルに分ける。
+token.se は lexer、comment_remover、parser で使う。
+ast.se は parser、resolver、includer で使う。
+
+Programノードの位置は(1 1 "s.se")のように、数値２つの後にファイル名の文字列が続く３要素になる。
+`__AST_get_pos__`と`__AST_toSexp__`は、位置の要素が２つの場合と３つの場合の両方に対応する。
+
+子ノードの LList には、"name" のような文字列、数値、AST ノードが混ざる。
+__AST_toSexp__ は
+- 文字列のとき、"..." で囲んで出力する。
+- 数値のとき、__Number_toString__ で変換し、引用符で囲まずに出力する。
+
+__AST_toSexp__ は、__type_name__ が "LList" を返したら AST ノードだと判断する。
+そのため、AST ノードは LList で表す必要がある。クロージャで表すと判定できない。
+位置を省略したノードの位置は null とする。
+
+以下のようなプリミティブを追加し、`__AST_toSexp__`で用いる。
+`__type_name__ Value ,(String)`
+- 値の型名を `"String"`、`"Number"`、`"LList"` のような文字列で返す。
+- 型を判定するときは `__String_equal__` と組み合わせる。
+```
+  __type_name__ child ,(t)
+  __String_equal__ t "String" ,(isString)
+  __if_then_else__ isString ...
+```
+
+**返す型名の一覧**
+| 値 | 返す文字列 |
+|---|---|
+| null（空の LList、空の CChain を含む） | `"null"` |
+| 文字列（リテラルも、実行時に作ったものも） | `"String"` |
+| 数値 | `"Number"` |
+| クロージャ、プリミティブ関数 | `"Closure"` |
+| Ref, CFrame, LList, MSeq, Dict, VProc, OSProc | それぞれの型名 |
+| Stream | `"Stream"`（読み込み用・書き込み用も同じ） |
+
+以下の制限を仕様に書く。
+- Boolean、Seq、Sink はどれもクロージャなので、`"Closure"` としか判定できない。
+- CChain は CFrame の LList なので、`"LList"` と返る。
+
+**ドキュメントとテスト**
+- [PRIMITIVES.md](docs/PRIMITIVES.md) に新しい節を追加する。
+- [ROADMAP.md](docs/ROADMAP.md) に新しい Step を追加する。
+`__OS_realpath__` と同じ Step にまとめる。
+- `test/stepN` に、型ごとに1ケースずつテストを用意する。
+文字列は、リテラルと実行時に作ったものの両方で確かめる。
+
+**実装の順番**
+0. プリミティブ__type_name__と__OS_realpath__を追加し、ドキュメントとテストを書く。
+1. token.seとast.seを作成し、テストし、ドキュメントに反映する。
+2. Python版とConMa版の出力を比較するためのPythonスクリプトを作成し、テストし、ドキュメントに反映する。
+3. include/lexer.seを作成し、テストし、ドキュメントに反映する。
+4. include/comment_remover.seを作成し、テストし、ドキュメントに反映してください。
+5. include/parser.seを作成し、テストし、ドキュメントに反映してください。
+6. include/includer.seを作成し、テストし、ドキュメントに反映してください。
+7. include/resolver.seを作成し、テストし、ドキュメントに反映してください。
 ---
+
+evalを実装する前にやるべきことは、もうない？
 
 2026/10/23 Fri
 eval をどうする？
