@@ -118,8 +118,19 @@ If a directory with the name given in an include statement exists in a directory
 
 ### resolver
 
-Follows [RESOLVER.md](RESOLVER.html). It takes an LList of one or more `Program`s and returns the `Module`, with its `(F ...)` and `(G id "name" ...)` entries.
+Follows [RESOLVER.md](RESOLVER.html) and gives the same `Module` as `bin/resolver` (`include/resolver.se`). It takes an LList of one or more `Program`s and returns the `Module`, with its `(F ...)` and `(G id "name" ...)` entries.
 It annotates each `Variable` with `(L n)` or `(G n)` by making a new `Variable` node with `__AST_new__`, with the annotation added at the end of its children.
+
+```
+__Resolver_main__ programs ,(Module)
+```
+
+* `programs` is the LList that `__Includer_main__` returns. There are no errors.
+* AST nodes cannot be changed, so the resolver makes a new tree with the annotations. It goes through all `Program`s once, in pre-order. `bin/resolver` first collects the `Definition`s in a pass of its own; here, the annotated `Function` of the first `Definition` of each name is put into a Dict when that `Definition` is reached. The result is the same: a name defined twice gets the `Function` of its first `Definition`, and the second one still numbers the global variables it uses.
+* Global numbers are kept in a Dict from names to numbers, with the next number and the list of numbered names in Refs. The `G` entries are made in the order of their numbers; a name with no `Definition` gets `Undefined`.
+* The scope stack is an LList of scopes, innermost first; a scope is the LList of the parameter names of a `Head`, the rightmost first. The index of a name is the number of parameters in the inner scopes plus its position in its scope. As in `bin/resolver`, if a name appears twice in one `Head`, the rightmost one is used.
+* As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`. [RESOLVER.md](RESOLVER.html) does not describe this.
+* `(F)` with no file names would be written as `F` by `__AST_toSexp__` (a node without a position and children). This does not happen, because every `Program` from `__Includer_main__` has a file name.
 
 ---
 
@@ -252,7 +263,7 @@ test/selfhost_compare.py ast    <python_output> <conma_output>
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6; do test/$t/test.sh; done
+for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -322,6 +333,16 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6; do test/$t
 | case3 | `work/abs.se`: absolute paths, one with `..` and `.` |
 | case4 | errors: an included file not found, a syntax error, a missing source file, a missing include directory, an absolute path that does not exist (the two differences above show in the messages) |
 | case5 | lexical errors in a file; `test/step14/test.se` with `include/` as the include directory |
+
+`test/selfhost7` tests the resolver. `test.se` takes a source file and include directories, runs `__Includer_main__` and `__Resolver_main__`, and writes the `Module` on one line. `test.sh` compares it with `bin/includer --include <dir>... <source> | bin/resolver` by `selfhost_compare.py ast`; for the small sources, the log also shows the `Module`, with the `test` directory written as `<dir>`. The whole test takes about 20 seconds.
+
+| Case | What it checks |
+|---|---|
+| case1 | `scope.se`: de Bruijn indexes with several parameters in a `Head`, nested functions, shadowing, the same name twice in a `Head`, an LCont and a FuncExp; a free variable |
+| case2 | `globals.se`: a name defined twice, a reference before its definition, `__NULL__` as a global and as a parameter, an `SInfo` without Strings, an empty Body |
+| case3 | `empty.se`: a `Module` with only `F` |
+| case4 | several files: the includes of `selfhost6/main.se` (it makes `selfhost6/link.se` as `selfhost6/test.sh` does) |
+| case5 | `test/step14/test.se` with the standard library |
 
 ---
 

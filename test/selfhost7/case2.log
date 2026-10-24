@@ -1,0 +1,4 @@
+== globals.se
+exit: python 0, conma 0
+compare: 0
+(Module (F "<dir>/selfhost7/globals.se") (G 0 "first" (Function (1 15) (Head (1 16)) (Body (1 19) (SInfo (1 19) "<dir>/selfhost7/globals.se" "1" "19") (Operator (1 19) (Variable (1 19) "later" (G 1))) (OList (1 25) (Null (1 25))) (LCont (1 33))))) (G 1 "later" (Function (2 15) (Head (2 16)) (Body (2 19) (SInfo (2 19)) (Operator (2 31) (Variable (2 31) "first" (G 0))) (OList (2 36)) (LCont (2 36))))) (G 2 "__NULL__" Undefined) (G 3 "other" Undefined) (G 4 "n" (Function (4 11) (Head (4 12) (Null (4 13))) (Body (4 23) (SInfo (4 23) "<dir>/selfhost7/globals.se" "4" "23") (Operator (4 23) (Null (4 23))) (OList (4 31)) (LCont (4 31))))) (G 5 "e" (Function (5 11) (Head (5 12)) (Body (5 14) (SInfo (5 14) "<dir>/selfhost7/globals.se" "5" "14") (Operator (5 14) (Null (5 14))) (OList (5 14)) (LCont (5 14))))))
