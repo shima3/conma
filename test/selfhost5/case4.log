@@ -1,0 +1,25 @@
+== err_toplevel.se
+file: exit python 1, conma 1
+SyntaxError: 1:1: expected '(' to start a statement
+nofile: exit python 1, conma 1
+SyntaxError: 1:1: expected '(' to start a statement
+== err_keyword.se
+file: exit python 1, conma 1
+SyntaxError: 1:2: expected 'include' or 'define', got 'defun'
+nofile: exit python 1, conma 1
+SyntaxError: 1:2: expected 'include' or 'define', got 'defun'
+== err_after_paren.se
+file: exit python 1, conma 1
+SyntaxError: 1:1: expected 'include' or 'define' after '('
+nofile: exit python 1, conma 1
+SyntaxError: 1:1: expected 'include' or 'define' after '('
+== err_empty_paren.se
+file: exit python 1, conma 1
+SyntaxError: 1:1: expected 'include' or 'define' after '('
+nofile: exit python 1, conma 1
+SyntaxError: 1:1: expected 'include' or 'define' after '('
+== err_include.se
+file: exit python 1, conma 1
+SyntaxError: 1:10: expected 'STRING', got 'SYMBOL' 'x'
+nofile: exit python 1, conma 1
+SyntaxError: 1:10: expected 'STRING', got 'SYMBOL' 'x'

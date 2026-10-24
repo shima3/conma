@@ -1,0 +1,20 @@
+== err_comma.se
+file: exit python 1, conma 1
+SyntaxError: 1:11: expected 'COMMA', got 'SYMBOL' 'g'
+nofile: exit python 1, conma 1
+SyntaxError: 1:11: expected 'COMMA', got 'SYMBOL' 'g'
+== err_param.se
+file: exit python 1, conma 1
+SyntaxError: 1:13: expected 'SYMBOL', got 'STRING' '"it\'s"'
+nofile: exit python 1, conma 1
+SyntaxError: 1:13: expected 'SYMBOL', got 'STRING' '"it\'s"'
+== err_operator.se
+file: exit python 1, conma 1
+SyntaxError: 1:15: expected Operator, got 'STRING' '"s"'
+nofile: exit python 1, conma 1
+SyntaxError: 1:15: expected Operator, got 'STRING' '"s"'
+== err_end.se
+file: exit python 1, conma 1
+SyntaxError: Unexpected end of input; expected 'RPAREN'
+nofile: exit python 1, conma 1
+SyntaxError: Unexpected end of input; expected 'RPAREN'

@@ -1,0 +1,62 @@
+;; SELFHOST.md の手順5: parser
+(include "lexer.se")
+(include "comment_remover.se")
+(include "parser.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; 構文エラーは bin/parser と同じく "SyntaxError: " を付けて標準エラー出力に書き、終了コード 1 で終わる
+(define syntaxError ,(msg)
+  __OS_print_error__ "SyntaxError: " ,()
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+;; ファイル path を解析し、Program を S式で出力する。
+;; fileName は __Parser_main__ に渡す名前（null なら FILE Token の値を使う）
+(define parseFile ,(path fileName)
+  __OS_open__ __print_exit_error__ path "r" ,(stream)
+  __Lexer_main__ path (,(sink) __Stream_lines__ stream sink) ,(tokens)
+  __CommentRemover_main__ tokens ,(tokens)
+  __Parser_main__ syntaxError fileName tokens ,(program)
+  __OS_close__ __print_exit_error__ stream ,()
+  __AST_toSexp__ program ,(str)
+  println str)
+
+;; 引数: "file"、"nofile" または "recover" に続けてファイル。
+;; "file" ならファイル名を __Parser_main__ に渡す（bin/parser --file と同じ）。
+;; "recover" なら、エラーを出力して値を返す onError を渡す
+(define modeSink ,(mode)
+  __NULL__ (,(path) fileSink mode path))
+
+(define fileSink ,(mode path)
+  __if_then_else__ (,() __String_equal__ mode "recover")
+    (,() recoverFile path)
+    (,()
+      __if_then_else__ (,() __String_equal__ mode "file")
+        (,() __NULL__ path)
+        (,() __NULL__ __NULL__) ,(fileName)
+      parseFile path fileName) ,()
+  __NULL__ (,(path) fileSink mode path))
+
+;; onError が値を返すと、それが __Parser_main__ の値になる。
+;; 再帰の深いところでエラーになっても、__Parser_main__ を呼んだところに戻る
+(define recoverFile ,(path)
+  __OS_open__ __print_exit_error__ path "r" ,(stream)
+  __Lexer_main__ path (,(sink) __Stream_lines__ stream sink) ,(tokens)
+  __CommentRemover_main__ tokens ,(tokens)
+  __Parser_main__ (,(msg) println msg ,() __NULL__ "recovered") path tokens ,(result)
+  __OS_close__ __print_exit_error__ stream ,()
+  __type_name__ result ,(type)
+  __OS_print__ "result: " ,()
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,() println result)
+    (,() println type) ,()
+  println "after __Parser_main__")
+
+(define main ,(args)
+  args modeSink ,(sink)
+  )

@@ -68,7 +68,19 @@ __CommentRemover_main__ tokens ,(tokens)
 
 ### parser
 
-Follows [PARSER.md](PARSER.html) with automatic SInfo insertion, the mode `includer` uses (`parser --file <file>`). It returns one `Program` as an LList.
+Follows [PARSER.md](PARSER.html) and gives the same AST and error messages as `bin/parser` (`include/parser.se`). It returns one `Program` as an LList.
+
+```
+__Parser_main__ onError fileName tokens ,(Program)
+```
+
+* `tokens` is the Seq of Tokens that `__CommentRemover_main__` returns.
+* If `fileName` is not null, it works as `bin/parser --file <fileName>`, the mode `includer` uses: the position of the `Program` holds `fileName`, and a `Body` without an explicit `(__SInfo__ ...)` gets an `SInfo` with the position of its Operator. If `fileName` is null, the position of the `Program` holds the value of the `FILE` token, if there is one, and no `SInfo` is added.
+* On a syntax error, the CChain is set back to what it was when `__Parser_main__` was called, and `onError` is applied to the message, which is the message of `bin/parser` without `SyntaxError: `. So if `onError` returns a value, it becomes the value of `__Parser_main__`, as with `onMissing` of `__PDict_lookup_or__`.
+* The Tokens are collected into an LList first, and the parser is a recursive descent over it. A function for a rule returns the node and the rest of the LList; a function for an expression also returns the last Token it read, because a `Body` without an LCont puts its `LCont` just after that Token.
+* Messages show values as Python's `repr` does: in single quotes, or in double quotes if the value has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped.
+* As in `bin/parser`, a `Body` without an LCont has an `LCont` with no children, `(LCont (line col))`. The example in [PARSER.md](PARSER.html) shows `(LCont (2 20) (Null (2 20)))` instead.
+* A `String` node holds the value of the `STRING` token without its first and last characters, the double quotes. For a String that the lexer reports as unterminated, this drops its last character; `bin/parser` writes such a String without a closing quote, which is not a valid S-expression either.
 
 ### includer
 
@@ -222,7 +234,7 @@ test/selfhost_compare.py ast    <python_output> <conma_output>
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1 selfhost2 selfhost3 selfhost4; do test/$t/test.sh; done
+for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -269,6 +281,17 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4; do test/$t/test.sh; done
 | case3 | the end of the source: an S-expression comment that is not closed (no error), `#;` at the end (error), a block comment that is not closed (`selfhost3/open.se`) |
 | case4 | `selfhost2/sample.se`, `selfhost3/edge.se` and `include/util.se` |
 | case5 | `BLOCK_COMMENT_TEXT` and `BLOCK_COMMENT_END` outside a block comment, which the lexer does not give |
+
+`test/selfhost5` tests the parser. `test.se` takes a mode and files: `file` passes the file name to `__Parser_main__`, `nofile` passes null, and `recover` passes an `onError` that returns a value. In the modes `file` and `nofile`, a syntax error is written as `SyntaxError: <message>` and ends the program with exit code 1, as `bin/parser` does. `test.sh` compares each file in both modes with `bin/lexer <file> | bin/comment_remover | bin/parser [--file <file>]`: the exit codes, the AST by `selfhost_compare.py ast`, and the error messages. The whole test takes about 40 seconds.
+
+| Case | What it checks |
+|---|---|
+| case1 | `selfhost2/sample.se`, `selfhost2/inc.se` and `include/util.se` |
+| case2 | `body.se`: explicit `SInfo` with and without Strings, an empty Body, a Body with only an LCont, a FuncExp as Operator and as the last operand, nested functions, a String with escapes, an Includer after a Definition |
+| case3 | no statements: an empty file and a file with only a comment |
+| case4 | syntax errors at the top level: no `(`, an unknown keyword, no Symbol after `(`, `(` alone, an Includer without a String |
+| case5 | syntax errors in a Definition: no `,`, a String as a parameter (its `repr` has `\'`), a String as Operator, the end of input |
+| case6 | `recover`: the value of `onError` is the value of `__Parser_main__`, also for an error deep in the recursion, and the program goes on after it |
 
 ---
 
