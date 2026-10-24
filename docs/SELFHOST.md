@@ -29,12 +29,24 @@ includer
 
 ### lexer
 
-Follows [LEXER.md](LEXER.html). The source is read in pieces, so the following state is kept across them:
+Follows [LEXER.md](LEXER.html) and gives the same tokens and error messages as `bin/lexer` (`include/lexer.se`).
 
-* the current line and column numbers;
-* the nesting depth of block comments;
-* the buffer of block comment text;
-* the line and column numbers where that text starts (a `BLOCK_COMMENT_TEXT` token may span several lines).
+```
+__Lexer_main__ fileName lines ,(tokens)
+```
+
+* `lines` is a Seq that passes the source one line at a time, each line with its newline (the last one may have none), as `__Stream_lines__` does. `tokens` is a Seq that passes the `FILE` token with `fileName` as its value, then the tokens of the source.
+* The source is read line by line, so the following state is kept across lines:
+  * the current line number (the column is counted from where the line starts);
+  * the nesting depth of block comments;
+  * the buffer of block comment text;
+  * the line and column numbers where that text starts (a `BLOCK_COMMENT_TEXT` token may span several lines).
+* The state is held by the Sink that `__Lexer_main__` passes to `lines` (the line Sink). Each line returns a new line Sink with the new state. At the end, the line Sink is applied to null: it writes the rest of the block comment text and returns the Sink of the tokens.
+* `bin/lexer` reads the source in text mode, so `\r\n` and a lone `\r` become `\n` before it is scanned. The ConMa lexer treats them as newlines in the same way: a `NEWLINE` token always holds `"\n"`, and a newline inside a block comment is added to the text as `"\n"`.
+* Outside a block comment, the first character selects a handler from a Dict (`__Lexer_handlers__`), and SymbolChars are looked up in another Dict, instead of comparing the character with each rule in turn. Lines are scanned one by one, so the String primitives only work on short Strings.
+* Errors are written to standard error with the messages of `bin/lexer`, and scanning goes on.
+* One difference: a `\` just before a newline inside a String. `bin/lexer` takes the newline into the String and goes on without counting the line (see Limitations in [LEXER.md](LEXER.html)). The ConMa lexer ends the String after the `\` and reports it as unterminated.
+* Speed: with `test/vproc_run.py`, `include/util.se` (about 120 lines) takes about 3 seconds and `include/lexer.se` (about 360 lines) about 11 seconds.
 
 ### comment_remover
 
@@ -196,7 +208,7 @@ test/selfhost_compare.py ast    <python_output> <conma_output>
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1 selfhost2; do test/$t/test.sh; done
+for t in selfhost1 selfhost2 selfhost3; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -223,6 +235,16 @@ for t in selfhost1 selfhost2; do test/$t/test.sh; done
 | case5 | exit code 2: a line that is not a Token, a line that is not a TSV token, unbalanced parentheses, a missing file, an unknown mode |
 
 `bin/lexer` reads the source in text mode, so a `\r\n` line ending becomes `\n` before it is scanned: `inc.se` ends with `\r\n`, but its `NEWLINE` token is `\n`. The ConMa lexer has to do the same to give the same tokens.
+
+`test/selfhost3` tests the lexer. `test.se` is a program for `vproc_run.py --main` that lexes each file given as an argument and writes the tokens with `__Token_toSexp__`. For each file, `test.sh` compares the tokens with `bin/lexer` by `selfhost_compare.py tokens`, and the error messages with `diff`, which prints nothing when they are the same.
+
+| Case | What it checks |
+|---|---|
+| case1 | `selfhost2/sample.se` and `selfhost2/inc.se`: comments, strings, Japanese text, a `\r\n` line ending |
+| case2 | `edge.se`: `\|#` after a Symbol and outside a block comment, `\|` as a Symbol, unexpected characters (`#`, `@`, `` ` ``, `\`, Japanese text), escapes, an empty String and an empty line comment, an unterminated String, a lone `\r` and `\r\n`, block comments one after another and nested over two lines, no newline at the end |
+| case3 | `open.se`: a block comment that is not closed at the end; `empty.se`: an empty file |
+| case4 | real sources: `include/util.se` and `test/step14/test.se` |
+| case5 | `backslash.se`: the difference above; `selfhost_compare.py` reports the String and exits with 1 |
 
 ---
 

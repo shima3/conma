@@ -1,0 +1,10 @@
+(a|#b) abc|#
+|x| # #a @ ` \ 
+"esc \" \\ \n" "" ;
+"unterminated
+ab
+c	
+#|a|#|#b|#
+#|x#|y|#z
+ w |# 日本語 #;(q)
+end

@@ -1,0 +1,30 @@
+;; SELFHOST.md の手順3: lexer
+(include "lexer.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; Token を1行ずつ S式で出力する Sink
+(define printSink ,(token)
+  __Token_toSexp__ token ,(str)
+  println str ,()
+  __NULL__ printSink)
+
+;; ファイル path を字句解析し、Token を出力する
+(define lexFile ,(path)
+  __OS_open__ __print_exit_error__ path "r" ,(stream)
+  __Lexer_main__ path (,(sink) __Stream_lines__ stream sink) ,(tokens)
+  tokens printSink ,(sink)
+  __OS_close__ __print_exit_error__ stream ,()
+  )
+
+;; 引数のファイルを順に字句解析する
+(define lexSink ,(path)
+  lexFile path ,()
+  __NULL__ lexSink)
+
+(define main ,(args)
+  args lexSink ,(sink)
+  )

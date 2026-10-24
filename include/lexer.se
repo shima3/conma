@@ -1,0 +1,359 @@
+;; lexer: ConMa のソースを Token の Seq にする（LEXER.md, SELFHOST.md）
+;;
+;; __Lexer_main__ fileName lines ,(tokens)
+;;   lines は、ソースを1行ずつ（改行を含めて）渡す Seq（__Stream_lines__ と同じ形）。
+;;   tokens は Token を1つずつ渡す Seq。最初に FILE Token を渡す。
+;;
+;; bin/lexer はソースをテキストモードで読むので、"\r\n" と単独の "\r" は "\n" として扱う。
+;; 状態は、行番号、ブロックコメントの入れ子の深さ、コメント本文のバッファと、その開始位置。
+;; 行をまたいで持ち越すため、lines に渡す Sink（行 Sink）が状態を持つ。
+;; 行 Sink に null を渡すと、残りのコメント本文を出力し、Token の Sink を返す。
+(include "token.se")
+
+(define __Lexer_main__ ,(fileName lines)
+  __NULL__ (,(sink)
+    __Lexer_handlers__ ,(handlers)
+    __Lexer_symbol_chars__ ,(symbols)
+    __Number_fromString__ __print_exit_error__ "0" ,(zero)
+    __Number_fromString__ __print_exit_error__ "1" ,(one)
+    __Lexer_emit__ sink "FILE" fileName zero zero ,(sink)
+    __Lexer_line_sink__ handlers symbols sink one zero "" zero zero ,(lineSink)
+    lines lineSink ,(lineSink)
+    lineSink __NULL__))
+
+;; ── 状態を持つ行 Sink ──
+
+(define __Lexer_line_sink__ ,(handlers symbols sink line depth buf bufLine bufCol)
+  __NULL__ (,(text)
+    __if_then_else__ (,() __is_null__ text)
+      (,() __Lexer_finish__ sink depth buf bufLine bufCol)
+      (,()
+        __String_length__ text ,(len)
+        __Number_fromString__ __print_exit_error__ "0" ,(zero)
+        __Lexer_scan__ handlers symbols sink text len zero line zero depth buf bufLine bufCol)))
+
+(define __Lexer_finish__ ,(sink depth buf bufLine bufCol)
+  __Lexer_flush__ sink buf bufLine bufCol ,(sink)
+  __if_then_else__ (,() __Number_is_zero__ depth)
+    (,() __NULL__ sink)
+    (,()
+      __OS_print_error__ "Error: Unterminated block comment at end of file\n" ,()
+      __NULL__ sink))
+
+;; ── 走査 ──
+;; text の i 文字目から走査する。start は現在の行が text の中で始まる位置（列番号の基準）
+
+(define __Lexer_scan__ ,(handlers symbols sink text len i line start depth buf bufLine bufCol)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __Lexer_line_sink__ handlers symbols sink line depth buf bufLine bufCol)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ text i next ,(ch)
+      __Lexer_two__ text len i ,(two)
+      __Number_subtract__ i start ,(col)
+      __Number_add__ col one ,(col)
+      __if_then_else__ (,() __Number_is_zero__ depth)
+        (,()
+          __Dict_lookup_or__ handlers ch (,(key) __NULL__ __Lexer_on_other__) ,(handler)
+          handler handlers symbols sink text len i line start ch two col)
+        (,() __Lexer_inside__ handlers symbols sink text len i line start depth buf bufLine bufCol ch two col)))
+
+;; i 文字目からの2文字（行末では1文字）
+(define __Lexer_two__ ,(text len i)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __Number_add__ i two ,(end)
+  __Number_subtract__ len end ,(rest)
+  __if_then_else__ (,() __Number_is_negative__ rest)
+    (,() __String_substring__ __print_exit_error__ text i len)
+    (,() __String_substring__ __print_exit_error__ text i end))
+
+;; ブロックコメントの外で、n 文字進めて走査を続ける（n は "1" や "2"）
+(define __Lexer_skip__ ,(handlers symbols sink text len i line start n)
+  __Number_fromString__ __print_exit_error__ n ,(n)
+  __Number_add__ i n ,(i)
+  __Lexer_continue__ handlers symbols sink text len i line start)
+
+;; ブロックコメントの外で、i 文字目から走査を続ける
+(define __Lexer_continue__ ,(handlers symbols sink text len i line start)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Lexer_scan__ handlers symbols sink text len i line start zero "" zero zero)
+
+(define __Lexer_emit__ ,(sink kind value line col)
+  __Token_new__ kind value line col ,(token)
+  sink token)
+
+;; ── ブロックコメントの外: 文字ごとの処理 ──
+;; handlers は1文字目から処理関数を引く Dict。どれも同じ引数を取る:
+;;   handlers symbols sink text len i line start ch two col
+
+(define __Lexer_handlers__ ,()
+  __Dict_new__ ,(handlers)
+  __Dict_put__ handlers "#" __Lexer_on_hash__ ,()
+  __Dict_put__ handlers "|" __Lexer_on_bar__ ,()
+  __Dict_put__ handlers "\r" __Lexer_on_cr__ ,()
+  __Dict_put__ handlers "\n" __Lexer_on_lf__ ,()
+  __Dict_put__ handlers " " __Lexer_on_space__ ,()
+  __Dict_put__ handlers "\t" __Lexer_on_space__ ,()
+  __Dict_put__ handlers ";" __Lexer_on_semicolon__ ,()
+  __Dict_put__ handlers "(" __Lexer_on_lparen__ ,()
+  __Dict_put__ handlers ")" __Lexer_on_rparen__ ,()
+  __Dict_put__ handlers "," __Lexer_on_comma__ ,()
+  __Dict_put__ handlers "\"" __Lexer_on_quote__ ,()
+  __Lexer_put_all__ handlers "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!?*+-/=<>$%&.^" __Lexer_on_symbol__ ,()
+  __NULL__ handlers)
+
+;; SymbolChar の集合（値は __TRUE__）
+(define __Lexer_symbol_chars__ ,()
+  __Dict_new__ ,(symbols)
+  __Lexer_put_all__ symbols "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!?*+-/=<>$%&|.^" __TRUE__ ,()
+  __NULL__ symbols)
+
+;; chars の各文字をキーにして value を登録する
+(define __Lexer_put_all__ ,(dict chars value)
+  __String_length__ chars ,(len)
+  __if_then_else__ (,() __Number_is_zero__ len)
+    __nop__
+    (,()
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __String_substring__ __print_exit_error__ chars zero one ,(ch)
+      __String_substring__ __print_exit_error__ chars one len ,(rest)
+      __Dict_put__ dict ch value ,()
+      __Lexer_put_all__ dict rest value))
+
+;; "#|" ブロックコメントの始まり、"#;" S式コメントの始まり。それ以外の "#" はエラー
+(define __Lexer_on_hash__ ,(handlers symbols sink text len i line start ch two col)
+  __if_then_else__ (,() __String_equal__ two "#|")
+    (,()
+      __Lexer_emit__ sink "BLOCK_COMMENT_BEGIN" "#|" line col ,(sink)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_fromString__ __print_exit_error__ "2" ,(n)
+      __Number_add__ i n ,(i)
+      __Lexer_scan__ handlers symbols sink text len i line start one "" zero zero) (,()
+  __if_then_else__ (,() __String_equal__ two "#;")
+    (,()
+      __Lexer_emit__ sink "SEXP_COMMENT_BEGIN" "#;" line col ,(sink)
+      __Lexer_skip__ handlers symbols sink text len i line start "2")
+    (,() __Lexer_on_other__ handlers symbols sink text len i line start ch two col)))
+
+;; "|#" は対応のないブロックコメントの終わり。それ以外の "|" は Symbol
+(define __Lexer_on_bar__ ,(handlers symbols sink text len i line start ch two col)
+  __if_then_else__ (,() __String_equal__ two "|#")
+    (,()
+      __Lexer_emit__ sink "BLOCK_COMMENT_END" "|#" line col ,(sink)
+      __Lexer_skip__ handlers symbols sink text len i line start "2")
+    (,() __Lexer_on_symbol__ handlers symbols sink text len i line start ch two col))
+
+(define __Lexer_on_cr__ ,(handlers symbols sink text len i line start ch two col)
+  __if_then_else__ (,() __String_equal__ two "\r\n")
+    (,() __Lexer_newline__ handlers symbols sink text len i line col "2")
+    (,() __Lexer_newline__ handlers symbols sink text len i line col "1"))
+
+(define __Lexer_on_lf__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_newline__ handlers symbols sink text len i line col "1")
+
+;; n 文字の改行。NEWLINE の値はいつも "\n"
+(define __Lexer_newline__ ,(handlers symbols sink text len i line col n)
+  __Lexer_emit__ sink "NEWLINE" "\n" line col ,(sink)
+  __Number_fromString__ __print_exit_error__ n ,(n)
+  __Number_add__ i n ,(i)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ line one ,(line)
+  __Lexer_continue__ handlers symbols sink text len i line i)
+
+(define __Lexer_on_space__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_skip__ handlers symbols sink text len i line start "1")
+
+(define __Lexer_on_lparen__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_emit__ sink "LPAREN" "(" line col ,(sink)
+  __Lexer_skip__ handlers symbols sink text len i line start "1")
+
+(define __Lexer_on_rparen__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_emit__ sink "RPAREN" ")" line col ,(sink)
+  __Lexer_skip__ handlers symbols sink text len i line start "1")
+
+(define __Lexer_on_comma__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_emit__ sink "COMMA" "," line col ,(sink)
+  __Lexer_skip__ handlers symbols sink text len i line start "1")
+
+;; ";" から改行の前までが行コメント。本文が空なら LINE_COMMENT_CONTENT は出さない
+(define __Lexer_on_semicolon__ ,(handlers symbols sink text len i line start ch two col)
+  __Lexer_emit__ sink "LINE_COMMENT_BEGIN" ";" line col ,(sink)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(begin)
+  __Lexer_line_end__ text len begin ,(end)
+  __Number_subtract__ end begin ,(size)
+  __if_then_else__ (,() __Number_is_zero__ size)
+    (,() __NULL__ sink)
+    (,()
+      __String_substring__ __print_exit_error__ text begin end ,(content)
+      __Number_add__ col one ,(col)
+      __Lexer_emit__ sink "LINE_COMMENT_CONTENT" content line col) ,(sink)
+  __Lexer_continue__ handlers symbols sink text len end line start)
+
+;; j 文字目から、最初の改行（"\n" または "\r"）の位置。なければ len
+(define __Lexer_line_end__ ,(text len j)
+  __Number_subtract__ len j ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ j)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ j one ,(next)
+      __String_substring__ __print_exit_error__ text j next ,(c)
+      __Lexer_is_newline__ c ,(isNewline)
+      __if_then_else__ (,() __NULL__ isNewline)
+        (,() __NULL__ j)
+        (,() __Lexer_line_end__ text len next)))
+
+(define __Lexer_is_newline__ ,(c)
+  __String_equal__ c "\n" ,(lf)
+  __String_equal__ c "\r" ,(cr)
+  __or__ lf cr)
+
+;; String。閉じる " がないまま改行に来たら、そこまでを STRING にしてエラーを出す
+(define __Lexer_on_quote__ ,(handlers symbols sink text len i line start ch two col)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(j)
+  __Lexer_string_end__ text len j ,(end unterminated)
+  __String_substring__ __print_exit_error__ text i end ,(value)
+  __if__ (,() __NULL__ unterminated)
+    (,()
+      __Number_toString__ line ,(lineStr)
+      __Number_toString__ col ,(colStr)
+      __String_concat__ "Error: Unterminated string at line " lineStr ,(msg)
+      __String_concat__ msg ", column " ,(msg)
+      __String_concat__ msg colStr ,(msg)
+      __String_concat__ msg "\n" ,(msg)
+      __OS_print_error__ msg) ,()
+  __Lexer_emit__ sink "STRING" value line col ,(sink)
+  __Lexer_continue__ handlers symbols sink text len end line start)
+
+;; j 文字目から String の終わりを探す。終わりの位置と、閉じていないかを返す。
+;; "\" の次の文字は読み飛ばす。ただし改行の前の "\" では、"\" までで閉じていないとする
+(define __Lexer_string_end__ ,(text len j)
+  __Number_subtract__ len j ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ j __FALSE__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ j one ,(next)
+      __String_substring__ __print_exit_error__ text j next ,(c)
+      __if_then_else__ (,() __String_equal__ c "\"")
+        (,() __NULL__ next __FALSE__) (,()
+      __Lexer_is_newline__ c ,(isNewline)
+      __if_then_else__ (,() __NULL__ isNewline)
+        (,() __NULL__ j __TRUE__) (,()
+      __if_then_else__ (,() __String_equal__ c "\\")
+        (,() __Lexer_string_escape__ text len next)
+        (,() __Lexer_string_end__ text len next)))))
+
+;; "\" の次の文字（next 文字目）を読み飛ばす
+(define __Lexer_string_escape__ ,(text len next)
+  __Number_subtract__ len next ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ next __FALSE__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ next one ,(after)
+      __String_substring__ __print_exit_error__ text next after ,(c)
+      __Lexer_is_newline__ c ,(isNewline)
+      __if_then_else__ (,() __NULL__ isNewline)
+        (,() __NULL__ next __TRUE__)
+        (,() __Lexer_string_end__ text len after)))
+
+;; SymbolChar が続く限りを SYMBOL にする。"|#" の前で止まる
+(define __Lexer_on_symbol__ ,(handlers symbols sink text len i line start ch two col)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(j)
+  __Lexer_symbol_end__ symbols text len j ,(end)
+  __String_substring__ __print_exit_error__ text i end ,(value)
+  __Lexer_emit__ sink "SYMBOL" value line col ,(sink)
+  __Lexer_continue__ handlers symbols sink text len end line start)
+
+(define __Lexer_symbol_end__ ,(symbols text len j)
+  __Number_subtract__ len j ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ j)
+    (,()
+      __Lexer_two__ text len j ,(two)
+      __if_then_else__ (,() __String_equal__ two "|#")
+        (,() __NULL__ j)
+        (,()
+          __Number_fromString__ __print_exit_error__ "1" ,(one)
+          __Number_add__ j one ,(next)
+          __String_substring__ __print_exit_error__ text j next ,(c)
+          __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
+          __if_then_else__ (,() __NULL__ isSymbol)
+            (,() __Lexer_symbol_end__ symbols text len next)
+            (,() __NULL__ j))))
+
+;; どの規則にも合わない文字はエラー。読み飛ばして続ける
+(define __Lexer_on_other__ ,(handlers symbols sink text len i line start ch two col)
+  __if_then_else__ (,() __String_equal__ ch "\\")
+    (,() __NULL__ "\\\\")
+    (,() __NULL__ ch) ,(shown)
+  __Number_toString__ line ,(lineStr)
+  __Number_toString__ col ,(colStr)
+  __String_concat__ "Error: Unexpected character '" shown ,(msg)
+  __String_concat__ msg "' at line " ,(msg)
+  __String_concat__ msg lineStr ,(msg)
+  __String_concat__ msg ", column " ,(msg)
+  __String_concat__ msg colStr ,(msg)
+  __String_concat__ msg "\n" ,(msg)
+  __OS_print_error__ msg ,()
+  __Lexer_skip__ handlers symbols sink text len i line start "1")
+
+;; ── ブロックコメントの中 ──
+
+(define __Lexer_inside__ ,(handlers symbols sink text len i line start depth buf bufLine bufCol ch two col)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "2" ,(n2)
+  __if_then_else__ (,() __String_equal__ two "#|")
+    (,()
+      __Lexer_flush__ sink buf bufLine bufCol ,(sink)
+      __Lexer_emit__ sink "BLOCK_COMMENT_BEGIN" "#|" line col ,(sink)
+      __Number_add__ depth one ,(depth)
+      __Number_add__ i n2 ,(i)
+      __Lexer_scan__ handlers symbols sink text len i line start depth "" zero zero) (,()
+  __if_then_else__ (,() __String_equal__ two "|#")
+    (,()
+      __Lexer_flush__ sink buf bufLine bufCol ,(sink)
+      __Lexer_emit__ sink "BLOCK_COMMENT_END" "|#" line col ,(sink)
+      __Number_subtract__ depth one ,(depth)
+      __Number_add__ i n2 ,(i)
+      __Lexer_scan__ handlers symbols sink text len i line start depth "" zero zero) (,()
+  __if_then_else__ (,() __String_equal__ two "\r\n")
+    (,()
+      __Lexer_accum__ buf bufLine bufCol "\n" line col ,(buf bufLine bufCol)
+      __Number_add__ i n2 ,(i)
+      __Number_add__ line one ,(line)
+      __Lexer_scan__ handlers symbols sink text len i line i depth buf bufLine bufCol) (,()
+  __Lexer_is_newline__ ch ,(isNewline)
+  __if_then_else__ (,() __NULL__ isNewline)
+    (,()
+      __Lexer_accum__ buf bufLine bufCol "\n" line col ,(buf bufLine bufCol)
+      __Number_add__ i one ,(i)
+      __Number_add__ line one ,(line)
+      __Lexer_scan__ handlers symbols sink text len i line i depth buf bufLine bufCol)
+    (,()
+      __Lexer_accum__ buf bufLine bufCol ch line col ,(buf bufLine bufCol)
+      __Number_add__ i one ,(i)
+      __Lexer_scan__ handlers symbols sink text len i line start depth buf bufLine bufCol)))))
+
+;; コメント本文に ch を加える。空のバッファに加えるときは、その位置を本文の開始位置にする
+(define __Lexer_accum__ ,(buf bufLine bufCol ch line col)
+  __if_then_else__ (,() __String_equal__ buf "")
+    (,() __NULL__ ch line col)
+    (,()
+      __String_concat__ buf ch ,(buf)
+      __NULL__ buf bufLine bufCol))
+
+;; コメント本文が空でなければ BLOCK_COMMENT_TEXT として出力する
+(define __Lexer_flush__ ,(sink buf bufLine bufCol)
+  __if_then_else__ (,() __String_equal__ buf "")
+    (,() __NULL__ sink)
+    (,() __Lexer_emit__ sink "BLOCK_COMMENT_TEXT" buf bufLine bufCol))
