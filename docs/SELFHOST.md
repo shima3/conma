@@ -76,15 +76,39 @@ Tokens and AST nodes are passed between components, so their functions are named
 | `include/token.se` | `__Token_new__`, `__Token_get_kind__`, `__Token_get_value__`, `__Token_get_line__`, `__Token_get_col__`, `__Token_toSexp__` | lexer, comment_remover, parser |
 | `include/ast.se` | `__AST_new__`, `__AST_get_kind__`, `__AST_get_children__`, `__AST_get_pos__`, `__AST_toSexp__` | parser, resolver, includer |
 
+### Tokens
+
+| Function | Description |
+|---|---|
+| `__Token_new__ kind value line col ,(Token)` | Makes a Token. `kind` and `value` are Strings, `line` and `col` are Numbers. |
+| `__Token_get_kind__ Token ,(String)` | The kind, such as `"SYMBOL"` (see [LEXER.md](LEXER.html)). |
+| `__Token_get_value__ Token ,(String)` | The source text of the token. A `NEWLINE` token holds the newline itself (`"\n"` or `"\r\n"`). |
+| `__Token_get_line__ Token ,(Number)` / `__Token_get_col__ Token ,(Number)` | The position of the first character. The `FILE` token is at `0 0`. |
+| `__Token_toSexp__ Token ,(String)` | `(Token (line col) KIND "value")`, for example `(Token (4 2) SYMBOL "define")`. |
+
+* A Token is the LList `(kind value line col)`.
+* `__Token_toSexp__` escapes `\`, `"`, newline, tab and carriage return in the value as String literals do (`\\`, `\"`, `\n`, `\t`, `\r`), because the value of a comment token or a `NEWLINE` can hold any of them. The value of a `STRING` token keeps its double quotes, so `"s\"x"` is written as `"\"s\\\"x\""`.
+
 ### AST nodes
 
-* An AST node is an LList. `__AST_toSexp__` recognizes a node by `__type_name__` returning `"LList"`, so a node cannot be a Closure.
+| Function | Description |
+|---|---|
+| `__AST_new__ kind pos children ,(AST)` | Makes a node. `kind` is a String, `pos` is an LList or null, `children` is an LList or null. |
+| `__AST_get_kind__ AST ,(String)` | The kind, such as `"Variable"` (see [AST.md](AST.html)). |
+| `__AST_get_pos__ AST ,(pos)` | The position, or null. |
+| `__AST_get_children__ AST ,(children)` | The children, or null if there are none. |
+| `__AST_toSexp__ AST ,(String)` | The node as an S-expression on one line, such as `(Variable (4 26) "x" (L 0))`. |
+
+* An AST node is the LList `(kind pos child ...)`: `__AST_new__` puts `kind` and `pos` in front of `children`. `__AST_toSexp__` recognizes a node by `__type_name__` returning `"LList"`, so a node cannot be a Closure.
 * The position of a node is a list of two Numbers, `(line col)`. The position of a `Program` has three elements, two Numbers followed by the file name String: `(1 1 "s.se")`. `__AST_get_pos__` and `__AST_toSexp__` handle both.
-* Some nodes have no position (`Module`, `(F ...)`, `(G ...)`). `__AST_new__` accepts null for the position, and `__AST_toSexp__` writes no position for it.
+* Some nodes have no position (`Module`, `(F ...)`, `(G ...)`, `(L n)`). `__AST_new__` accepts null for the position, and `__AST_toSexp__` writes no position for it.
+* A node with neither a position nor children is written as its kind alone. This is how `resolver` writes an undefined global variable: `(G 1 "g" Undefined)`.
 * The children of a node are an LList of Strings (such as `"name"`), Numbers and AST nodes. `__AST_toSexp__` writes:
-  * a String in double quotes;
+  * a String in double quotes, without escaping (see the next item);
   * a Number converted with `__Number_toString__`, without quotes;
   * an AST node recursively.
+
+  Any other value stops the program with an error.
 * A `String` node holds the source text of the literal without the surrounding double quotes. Escape sequences are kept as they are in the source, so `"a\"b\n"` is held as `a\"b\n`.
 * An `SInfo` node holds its position as Numbers, but the file name, line and column after it as Strings: `(SInfo (2 3) "s.se" "2" "3")`.
 
@@ -154,6 +178,25 @@ The result of each component is converted to an S-expression with `__Token_toSex
 | resolver | `bin/includer <file> \| bin/resolver` |
 
 A Python script reads both outputs and compares them as data, so the ConMa side does not need to reproduce the indentation of the Python versions.
+
+`test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
+
+```
+for t in selfhost1; do test/$t/test.sh; done
+```
+
+`test/selfhost1` tests `token.se` and `ast.se`:
+
+| Case | What it checks |
+|---|---|
+| case1 | `__Token_new__` and the four getters |
+| case2 | `__Token_toSexp__`: the `FILE` token, a `STRING` token, `NEWLINE` tokens, comment text with quotes, backslashes, newlines, tabs and Japanese text, an empty value |
+| case3 | `__AST_new__` and the getters, also for a node with no position and no children |
+| case4 | `__AST_toSexp__`: a `String` node is not escaped again; a `Variable` with `(L 0)`; `SInfo`; a node with no children; nested nodes |
+| case5 | the three-element position of a `Program`; `Module`, `F` and `G` with no position; `Undefined` |
+| case6 | a child that is not a String, Number or node stops the program with an error |
+
+`bin/includer` prints a warning (`circular include ignored`) for `util.se`, because both `token.se` and `ast.se` include it. The warning is expected and does not change the result.
 
 ---
 

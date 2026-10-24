@@ -1,0 +1,6 @@
+(String (4 18) "s\"\\")
+(Variable (4 26) "x" (L 0))
+(SInfo (4 16) "t.se" "4" "16")
+(LCont (4 27))
+(OList (4 18) (String (4 18) "s\"\\") (Variable (4 26) "x" (L 0)))
+exit: 0

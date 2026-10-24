@@ -1,0 +1,80 @@
+;; AST: parser、resolver、includer の間で受け渡す構文木のノード（SELFHOST.md）
+;; ノードは (kind pos child ...) の LList。
+;; kind は String。pos は (line col) または (line col filename) の LList、位置がなければ null。
+;; 子ノードは String、Number、ノードのいずれか
+(include "util.se")
+
+(define __AST_new__ ,(kind pos children)
+  __LList_cons__ pos children ,(rest)
+  __LList_cons__ kind rest)
+
+(define __AST_get_kind__ ,(node)
+  __LList_uncons__ __print_exit_error__ node ,(kind rest)
+  __NULL__ kind)
+
+(define __AST_get_pos__ ,(node)
+  __LList_uncons__ __print_exit_error__ node ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pos children)
+  __NULL__ pos)
+
+(define __AST_get_children__ ,(node)
+  __LList_uncons__ __print_exit_error__ node ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pos children)
+  __NULL__ children)
+
+;; ノードを1行の S式の String にする。
+;; String は "..." で囲むだけでエスケープしない（ソースのエスケープをそのまま持っているため）。
+;; 位置も子ノードもないノードは、kind だけを書く（resolver の Undefined）
+(define __AST_toSexp__ ,(node)
+  __AST_get_kind__ node ,(kind)
+  __AST_get_pos__ node ,(pos)
+  __AST_get_children__ node ,(children)
+  __is_null__ pos ,(noPos)
+  __is_null__ children ,(noChildren)
+  __if_then_else__ (,() __and__ noPos noChildren)
+    (,() __NULL__ kind)
+    (,()
+      __String_concat__ "(" kind ,(s)
+      __if_then_else__ (,() __is_null__ pos)
+        (,() __NULL__ s)
+        (,()
+          __AST_list_toSexp__ pos "(" ,(posStr)
+          __String_concat__ s " " ,(s)
+          __String_concat__ s posStr) ,(s)
+      __AST_children_toSexp__ children s ,(s)
+      __String_concat__ s ")"))
+
+;; list の要素を空白で区切り、open と ")" で囲む
+(define __AST_list_toSexp__ ,(list open)
+  __LList_uncons__ __print_exit_error__ list ,(first rest)
+  __AST_value_toSexp__ first ,(str)
+  __String_concat__ open str ,(s)
+  __AST_children_toSexp__ rest s ,(s)
+  __String_concat__ s ")")
+
+;; children の各要素を、空白に続けて acc の後ろにつなげる
+(define __AST_children_toSexp__ ,(children acc)
+  __if_then_else__ (,() __is_null__ children)
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ children ,(child rest)
+      __AST_value_toSexp__ child ,(str)
+      __String_concat__ acc " " ,(acc)
+      __String_concat__ acc str ,(acc)
+      __AST_children_toSexp__ rest acc))
+
+;; String、Number、ノードを S式の String にする。それ以外の値はエラー
+(define __AST_value_toSexp__ ,(value)
+  __type_name__ value ,(type)
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,()
+      __String_concat__ "\"" value ,(s)
+      __String_concat__ s "\"") (,()
+  __if_then_else__ (,() __String_equal__ type "Number")
+    (,() __Number_toString__ value) (,()
+  __if_then_else__ (,() __String_equal__ type "LList")
+    (,() __AST_toSexp__ value)
+    (,()
+      __String_concat__ "__AST_toSexp__: unexpected value of type " type ,(msg)
+      __String_concat__ msg "\n" ,(msg)
+      __print_exit_error__ msg))))

@@ -1,0 +1,4 @@
+(Program (1 1 "t.se") (Definition (1 2)))
+t.se
+(Module (F "t.se") (G 0 "f" (Function (4 11))) (G 1 "g" Undefined))
+exit: 0
