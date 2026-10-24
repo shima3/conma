@@ -1,0 +1,145 @@
+;; Step17: VProc の終了を待つ
+;; 子 VProc は child.se から起動する。
+;; 親は __VProc_wait__ から戻ってから出力するので、出力は VProc の切り替えの順序によらない
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define errSink ,(str)
+  __OS_print_error__ str ,()
+  errSink)
+
+;; エラーメッセージを出力し、値を返さずに LCont に戻る
+(define recover ,(msg)
+  println msg ,()
+  )
+
+;; 子が out に渡した値を ref に入れる Sink
+(define refSink ,(ref)
+  __NULL__ (,(value)
+    __Ref_set__ ref value ,()
+    refSink ref))
+
+;; entry を child.se から起動する。子が out に渡した値は ref に入る
+(define spawnChild ,(entry args ref)
+  refSink ref ,(out)
+  __VProc_spawn__ __print_exit_error__ entry "child.se" errSink args __NULL__ out)
+
+;; ref の値を出力する。null なら "(null)"
+(define printRef ,(ref)
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() println "(null)")
+    (,() println value))
+
+;; case1: 子 VProc が終わるまで待ち、子が out に渡した値を読む
+(define case1 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childWork" __NULL__ ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "parent: the child has finished" ,()
+  printRef ref)
+
+;; case2: 終わっている VProc を待つと、すぐに戻る。何度待ってもよい
+(define case2 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childQuick" __NULL__ ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "parent: waited twice" ,()
+  printRef ref)
+
+;; case3: 子 VProc が実行時エラーで終わっても、待っている親は戻る。結果がないことで失敗がわかる
+(define case3 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childError" __NULL__ ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "parent: the child has finished" ,()
+  printRef ref)
+
+;; case4: VProc でない値と、自分自身を待つことは onError になる
+(define case4 ,()
+  __VProc_wait__ recover "abc" ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __VProc_wait__ recover one ,()
+  __VProc_current__ ,(me)
+  __VProc_wait__ recover me ,()
+  println "parent: continued")
+
+;; case5: 2つの VProc が同じ VProc を待つ。親はその2つを待つ
+(define case5 ,()
+  __Ref_new__ __NULL__ ,(workRef)
+  __Ref_new__ __NULL__ ,(ref1)
+  __Ref_new__ __NULL__ ,(ref2)
+  spawnChild "childWork" __NULL__ workRef ,(worker)
+  spawnChild "childWaiter" (,(sink) sink worker "waiter 1: the worker has finished") ref1 ,(waiter1)
+  spawnChild "childWaiter" (,(sink) sink worker "waiter 2: the worker has finished") ref2 ,(waiter2)
+  __VProc_wait__ __print_exit_error__ waiter1 ,()
+  __VProc_wait__ __print_exit_error__ waiter2 ,()
+  printRef workRef ,()
+  printRef ref1 ,()
+  printRef ref2)
+
+;; case6: __VProc_suspend__ と __VProc_resume__ は、待っている VProc を変えない。
+;; 子が親を suspend して resume しても、親は子が終わるまで待ち続ける
+(define case6 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __VProc_current__ ,(me)
+  spawnChild "childPoke" (,(sink) sink me) ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "parent: the child has finished" ,()
+  printRef ref)
+
+;; case7: 待っている VProc しか残らなければデッドロック（終了コード 2）。
+;; 子は自分を suspend したまま止まり、親はその子を待つ
+(define case7 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childSuspend" __NULL__ ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "never")
+
+;; case8: 親と子が互いを待つとデッドロック
+(define case8 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __VProc_current__ ,(me)
+  spawnChild "childWaitParent" (,(sink) sink me) ref ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "never")
+
+;; ファイル file の関数 entry を引数 args で呼び、out に渡された値を返す。
+;; 読み込めないとき、または実行時エラーで値がないときは、onError が返す値を返す。
+;; 読み込めないときは、call を呼んだときの CChain に戻してから onError を呼ぶ
+(define call ,(onError entry file args)
+  __CChain_get__ ,(cc)
+  __Ref_new__ __NULL__ ,(ref)
+  refSink ref ,(out)
+  __VProc_spawn__ (,(msg) __CChain_set__ cc ,() onError msg) entry file errSink args __NULL__ out ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() onError "call: no result")
+    (,() __NULL__ value))
+
+;; エラーメッセージを出力し、null を返す
+(define recoverNull ,(msg)
+  println msg ,()
+  __NULL__ __NULL__)
+
+;; case9: __VProc_spawn__ と __VProc_wait__ で、別のファイルの関数を呼んで結果を受け取る
+(define case9 ,()
+  call recoverNull "add" "child.se" (,(sink) sink "1" "2") ,(sum)
+  __Number_toString__ sum ,(str)
+  println str ,()
+  call recoverNull "childError" "child.se" __NULL__ ,(value)
+  printRefValue value ,()
+  call recoverNull "noSuchFunction" "child.se" __NULL__ ,(value)
+  printRefValue value ,()
+  println "parent: continued")
+
+(define printRefValue ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() println "value: (null)")
+    (,() println "value: not null"))

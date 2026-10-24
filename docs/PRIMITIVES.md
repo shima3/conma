@@ -297,6 +297,16 @@ Resumes the `VProc`.
 Moves the `VProc` from the blocked queue to the end of the ready queue.
 If the `VProc` is not blocked (it is ready, running, or has finished), nothing happens.
 
+### `__VProc_wait__ onError VProc ,()`
+Behavior:
+The current VProc waits until `VProc` has finished, normally or with a runtime error, and then continues with its LCont. While it waits, it is not in the ready queue, and other VProcs keep running.
+If `VProc` has already finished, it continues at once. Several VProcs may wait for the same `VProc`.
+`__VProc_suspend__` and `__VProc_resume__` do not change a VProc that waits.
+A VProc that waits for another VProc can only wake up when that one finishes: if no VProc is ready and none waits for the OS, the VProcs that wait for a VProc count as blocked for the deadlock check (see "Runtime Model" in SPEC.md).
+The result of `VProc` is not returned. To get it, pass the child a Sink (for example, as `outputSink` of `__VProc_spawn__`) that puts its values into a Ref, and read the Ref after waiting; an empty Ref then means that the child finished without a result, for example with a runtime error.
+
+* **Error**: If `VProc` is not a VProc, or is the current VProc, the interpreter invokes `onError` with an error message String.
+
 ---
 
 ## 7. PDict Primitives

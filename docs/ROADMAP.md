@@ -2,16 +2,16 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step16`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step17`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-24).
+Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-25).
 
 ## Tests
 
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -336,3 +336,29 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case5 | `__OS_realpath__`: an absolute path; relative paths before and after `__OS_chdir__` |
 | case6 | paths with `.`, `..` and the symbolic link are normalized, also an absolute path |
 | case7 | `onError` for a missing path, a path through a missing directory, a path under a file, the empty String and a non-String argument |
+
+## Step 17: Waiting for a VProc
+
+| Primitive | Status |
+|---|---|
+| `__VProc_wait__` | implemented |
+
+* Goal: Let a VProc call a function of another program and get its result, with `__VProc_spawn__` instead of an `eval` primitive. The parent spawns the child, waits for it to finish, and reads the result that the child passed to a Sink of the parent (see case9).
+* `__VProc_wait__ onError VProc ,()` waits until the VProc has finished, normally or with a runtime error, and returns at once if it already has. A non-VProc argument or the current VProc goes to `onError`. The result of the VProc is not returned: an empty Ref after waiting shows that the child finished without a result.
+* A VProc that waits for a VProc is in the state `waiting`, as for the OS waits of Step 15, and `__VProc_suspend__` and `__VProc_resume__` do not change it. The scheduler wakes it at the start of a scheduling step after its VProc has finished.
+* Unlike a VProc waiting for the OS, a VProc waiting for a VProc counts as blocked for the deadlock check: if no VProc is ready and none waits for the OS, it can never wake up. The deadlock message lists it with the blocked VProcs.
+* Waiting with a Ref and `__VProc_suspend__` / `__VProc_resume__` loses the wakeup if the child resumes the parent before the parent has suspended itself, and leaves the parent blocked if the child stops with a runtime error; `__VProc_wait__` avoids both.
+* `__Cont_get__` cannot be used to return a value from an `onError` in this way: the `return` it gives does not pass values to the caller (the example of `__Cont_get__` in SPEC.md, `return "12" "34"`, ends with a partial-application error). case9 sets the CChain back with `__CChain_get__` and `__CChain_set__` instead, as `__Parser_main__` does.
+* Tests (`test/step17`): `test.se` starts child VProcs from `child.se` (one entry point per case). The parent writes only after `__VProc_wait__` returns, so the output does not depend on how the scheduler interleaves the VProcs.
+
+| Case | What it checks |
+|---|---|
+| case1 | the parent waits for a child that runs for a while, then reads the value the child passed to its Sink |
+| case2 | waiting for a VProc that has already finished returns at once, also a second time |
+| case3 | a child that stops with a runtime error wakes the parent; the Ref is still null |
+| case4 | `onError` for a String, a Number and the current VProc |
+| case5 | two VProcs wait for the same VProc, and the parent waits for both |
+| case6 | a child suspends and resumes the parent that waits for it; the parent still waits until the child has finished |
+| case7 | deadlock: the child suspends itself and the parent waits for it, exit code 2 |
+| case8 | deadlock: the parent and the child wait for each other, exit code 2 |
+| case9 | `call`, made of `__VProc_spawn__`, `__VProc_wait__` and a Ref, calls `add` in `child.se` and returns its result; a runtime error and an undefined entry point give `onError` |

@@ -223,14 +223,14 @@ Invoking LCont is considered part of the following Operator application.
 Internal primitives are executed as one Operator application.
 
 At that point, the scheduler may switch execution to another VProc.
-If the executing VProc becomes blocked (for example, __VProc_suspend__) or waits for the OS (__OS_wait__, __OS_wait_readable__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
+If the executing VProc becomes blocked (for example, __VProc_suspend__), waits for the OS (__OS_wait__, __OS_wait_readable__) or waits for another VProc to finish (__VProc_wait__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
 
 Termination:
 * A VProc finishes when its Operator is null, its LCont is absent, and its CChain is empty.
 * If an error occurs while a VProc runs (for example, an unbound variable or a primitive applied to a value of the wrong type), only that VProc finishes. An error message with the VProc's number is written to standard error, and the other VProcs keep running.
 * The interpreter exits when every VProc has finished. Its exit code is 0, whether or not some VProcs finished with an error.
 * `__OS_exit_normal__` and `__OS_exit_error__` exit the whole interpreter at once, with exit code 0 and 1 respectively, even if other VProcs are still running.
-* If no VProc is ready or waiting for the OS but some are blocked, the interpreter reports a deadlock and exits with exit code 2.
+* If no VProc is ready or waiting for the OS but some are blocked or waiting for another VProc, the interpreter reports a deadlock and exits with exit code 2.
 
 The function designated as the `Operator` in `Body` is applied to `OList`.
 A CFrame consisting of `SInfo` and the closure of `LCont` is pushed onto the CChain.

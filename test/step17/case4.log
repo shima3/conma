@@ -1,0 +1,5 @@
+__VProc_wait__: expected VProc, got String
+__VProc_wait__: expected VProc, got Number
+__VProc_wait__: a VProc cannot wait for itself
+parent: continued
+exit: 0

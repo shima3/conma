@@ -1,0 +1,8 @@
+3
+Error in VProc 3 at step 212: G9 ('undefinedFunction') Undefined
+call: no result
+value: (null)
+__VProc_spawn__: entry point not defined: noSuchFunction
+value: (null)
+parent: continued
+exit: 0
