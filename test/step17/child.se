@@ -1,0 +1,63 @@
+;; Step17: test.se から子 VProc として起動するプログラム。
+;; 各関数は __VProc_spawn__ の entryPoint で、err args in out を受け取る
+(include "util.se")
+
+;; n 回繰り返してから戻る
+(define delay ,(n)
+  __Number_is_zero__ n ,(zero)
+  __unless__ zero
+  (,()
+    __Number_fromString__ __print_exit_error__ "1" ,(one)
+    __Number_subtract__ n one ,(m)
+    delay m))
+
+;; しばらく動いてから、out に結果を渡して終わる
+(define childWork ,(err args in out)
+  __Number_fromString__ __print_exit_error__ "20" ,(n)
+  delay n ,()
+  out "child: done")
+
+;; すぐに終わる
+(define childQuick ,(err args in out)
+  out "child: quick")
+
+;; 実行時エラーで終わる（未定義の大域変数）
+(define childError ,(err args in out)
+  __Number_fromString__ __print_exit_error__ "5" ,(n)
+  delay n ,()
+  undefinedFunction)
+
+;; args の2つの数を足して out に渡す（__eval__ のような使い方の例）
+(define add ,(err args in out)
+  args (,(a b)
+    __Number_fromString__ __print_exit_error__ a ,(x)
+    __Number_fromString__ __print_exit_error__ b ,(y)
+    __Number_add__ x y ,(sum)
+    out sum))
+
+;; args の VProc を待ってから、out にメッセージを渡す
+(define childWaiter ,(err args in out)
+  args (,(target name)
+    __VProc_wait__ __print_exit_error__ target ,()
+    out name))
+
+;; 自分を suspend して、resume されないまま止まる
+(define childSuspend ,(err args in out)
+  __VProc_current__ ,(me)
+  __VProc_suspend__ me ,()
+  out "never")
+
+;; args の VProc（親）を待つ。親もこの VProc を待つと、どちらも起きない
+(define childWaitParent ,(err args in out)
+  args (,(parent)
+    __VProc_wait__ __print_exit_error__ parent ,()
+    out "never"))
+
+;; 自分を待っている親を suspend し、resume してから、しばらく動いて終わる
+(define childPoke ,(err args in out)
+  args (,(parent)
+    __VProc_suspend__ parent ,()
+    __VProc_resume__ parent ,()
+    __Number_fromString__ __print_exit_error__ "10" ,(n)
+    delay n ,()
+    out "child: done after suspend and resume"))

@@ -1468,6 +1468,7 @@ class Scheduler:
         self.current = None      # the VProc running the current step
         self.steps   = 0         # number of steps run so far
         self.waiting = []        # (VProc, OSProc or Stream) waiting for the OS
+        self.joining = []        # (VProc, VProc) waiting for another VProc to finish
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
 
     def _install_sigchld(self):
@@ -1489,6 +1490,24 @@ class Scheduler:
         if vp.state == "ready": self.ready.remove(vp)
         vp.state = "waiting"
         self.waiting.append((vp, target))
+
+    def join(self, vp, target):
+        """Make vp wait until the VProc target has finished. vp has already
+        returned to its LCont."""
+        if vp.state == "ready": self.ready.remove(vp)
+        vp.state = "waiting"
+        self.joining.append((vp, target))
+
+    def check_joining(self):
+        """Wake the VProcs whose target VProc has finished."""
+        still = []
+        for vp, target in self.joining:
+            if target.state == "finished":
+                vp.state = "ready"
+                self.ready.append(vp)
+            else:
+                still.append((vp, target))
+        self.joining = still
 
     def check_waiting(self, block):
         """Wake the VProcs whose OSProc has exited or whose Stream is
@@ -1544,12 +1563,16 @@ class Scheduler:
         while True:
             while self.ready and is_terminal(self.ready[0]):
                 self.ready.popleft().state = "finished"
+            if self.joining:
+                self.check_joining()
             if self.waiting:
                 # Without a ready VProc, sleep in the OS instead of busy waiting.
                 self.check_waiting(block=not self.ready)
                 if not self.ready: continue
             if not self.ready:
-                blocked = [vp for vp in self.vprocs if vp.state == "blocked"]
+                # A VProc waiting for another VProc cannot wake up either.
+                joining = [vp for vp, _ in self.joining]
+                blocked = [vp for vp in self.vprocs if vp.state == "blocked" or vp in joining]
                 if not blocked:
                     return
                 ids = ", ".join(str(vp.serial) for vp in blocked)
@@ -1652,6 +1675,25 @@ def prim_VProc_resume(vp, gvenv):
     _check_vproc("__VProc_resume__", target)
     _prim_return(vp, [])
     SCHEDULER.resume(target)
+
+def prim_VProc_wait(vp, gvenv):
+    """__VProc_wait__ onError VProc ,()
+    The current VProc waits until VProc has finished, normally or with a
+    runtime error. It returns at once if VProc has already finished."""
+    name  = "__VProc_wait__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    target   = olist.pop(0)
+    if not isinstance(target, VProc):
+        _prim_error(vp, on_error, f"{name}: expected VProc, got {value_type_name(target)}")
+        return
+    if target is vp:
+        _prim_error(vp, on_error, f"{name}: a VProc cannot wait for itself")
+        return
+    _prim_return(vp, [])
+    if target.state != "finished":
+        SCHEDULER.join(vp, target)
 
 def prim_VProc_spawn(vp, gvenv):
     """__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)
@@ -1794,6 +1836,7 @@ PRIMITIVES = {
     "__VProc_current__":       prim_VProc_current,
     "__VProc_suspend__":       prim_VProc_suspend,
     "__VProc_resume__":        prim_VProc_resume,
+    "__VProc_wait__":          prim_VProc_wait,
     "__VProc_spawn__":         prim_VProc_spawn,
 }
 
