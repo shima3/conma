@@ -14,6 +14,7 @@ ConMa is an intermediate language that provides higher-order functions and conti
 - [Terminology](TERMS.html)
 - [Primitives](PRIMITIVES.html)
 - [Primitive Implementation Roadmap](ROADMAP.html)
+- [Self-hosted Front End](SELFHOST.html)
 
 ## Tools
 - [Lexical Analyzer](LEXER.html)
