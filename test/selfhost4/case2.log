@@ -1,0 +1,4 @@
+== block.se
+exit: 0
+compare: 0
+Error: Unexpected BLOCK_COMMENT_END at 1:3

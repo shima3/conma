@@ -50,7 +50,21 @@ __Lexer_main__ fileName lines ,(tokens)
 
 ### comment_remover
 
-Follows [COMMENT_REMOVER.md](COMMENT_REMOVER.html). It keeps the nesting depth of block comments and the parenthesis depth of an S-expression comment (`#;`) as its state.
+Follows [COMMENT_REMOVER.md](COMMENT_REMOVER.html) and gives the same tokens and error messages as `bin/comment_remover` (`include/comment_remover.se`).
+
+```
+__CommentRemover_main__ tokens ,(tokens)
+```
+
+* `tokens` is the Seq of Tokens that `__Lexer_main__` returns. The result is a Seq of the Tokens without comments and `NEWLINE`s, so the two can be chained: `__Lexer_main__ path lines ,(tokens) __CommentRemover_main__ tokens ,(tokens)`.
+* It keeps the nesting depth of block comments and the parenthesis depth of an S-expression comment (`#;`) as its state. The state is the Sink passed to `tokens` (the state Sink), one for each of these states:
+  * `normal`: outside comments;
+  * `after_line`: just after `LINE_COMMENT_BEGIN`, to remove a `LINE_COMMENT_CONTENT`;
+  * `block`: in a block comment, with its depth;
+  * `after_sexp`: just after `SEXP_COMMENT_BEGIN`, with that token for the error message;
+  * `sexp`: in the parentheses of an S-expression comment, with their depth.
+* A state Sink takes a Token and returns the next state Sink. At the end it is applied to null: it reports a block comment or an S-expression comment start that is not finished, and returns the Sink of the output.
+* As in `bin/comment_remover`, the token after `SEXP_COMMENT_BEGIN` must be `SYMBOL`, `STRING` or `LPAREN`; anything else, a `NEWLINE` included, is an error, and that token is processed as usual.
 
 ### parser
 
@@ -208,7 +222,7 @@ test/selfhost_compare.py ast    <python_output> <conma_output>
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1 selfhost2 selfhost3; do test/$t/test.sh; done
+for t in selfhost1 selfhost2 selfhost3 selfhost4; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -245,6 +259,16 @@ for t in selfhost1 selfhost2 selfhost3; do test/$t/test.sh; done
 | case3 | `open.se`: a block comment that is not closed at the end; `empty.se`: an empty file |
 | case4 | real sources: `include/util.se` and `test/step14/test.se` |
 | case5 | `backslash.se`: the difference above; `selfhost_compare.py` reports the String and exits with 1 |
+
+`test/selfhost4` tests the comment remover in the same way. `test.se` lexes each file, removes the comments and writes the tokens; it is compared with `bin/lexer <file> | bin/comment_remover`. The ConMa lexer and comment remover run together, so their error messages are mixed: both sides are sorted before `diff`, and the log shows them. An argument `=tokens` runs a Seq of Tokens made by hand instead of a file.
+
+| Case | What it checks |
+|---|---|
+| case1 | `sexp.se`: S-expression comments of an atom, a String and a nested list; errors for a newline, another `#;` and `)` after `#;`; line comments with and without text |
+| case2 | `block.se`: an unmatched `\|#`; block comments that hold `#;`, `(` and nested comments over several lines, also between tokens without spaces |
+| case3 | the end of the source: an S-expression comment that is not closed (no error), `#;` at the end (error), a block comment that is not closed (`selfhost3/open.se`) |
+| case4 | `selfhost2/sample.se`, `selfhost3/edge.se` and `include/util.se` |
+| case5 | `BLOCK_COMMENT_TEXT` and `BLOCK_COMMENT_END` outside a block comment, which the lexer does not give |
 
 ---
 

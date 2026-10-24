@@ -1,0 +1,47 @@
+;; SELFHOST.md の手順4: comment_remover
+(include "lexer.se")
+(include "comment_remover.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; Token を1行ずつ S式で出力する Sink
+(define printSink ,(token)
+  __Token_toSexp__ token ,(str)
+  println str ,()
+  __NULL__ printSink)
+
+;; ファイル path を字句解析してコメントを取り除き、Token を出力する
+(define removeFile ,(path)
+  __OS_open__ __print_exit_error__ path "r" ,(stream)
+  __Lexer_main__ path (,(sink) __Stream_lines__ stream sink) ,(tokens)
+  __CommentRemover_main__ tokens ,(tokens)
+  tokens printSink ,(sink)
+  __OS_close__ __print_exit_error__ stream ,()
+  )
+
+;; 引数のファイルを順に処理する。引数 "=tokens" なら、lexer が出さない Token の並びを処理する
+(define removeSink ,(path)
+  __if_then_else__ (,() __String_equal__ path "=tokens")
+    (,() removeTokens)
+    (,() removeFile path) ,()
+  __NULL__ removeSink)
+
+(define main ,(args)
+  args removeSink ,(sink)
+  )
+
+;; ブロックコメントの外の BLOCK_COMMENT_TEXT と BLOCK_COMMENT_END はエラーになり、取り除かれる
+(define removeTokens ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "3" ,(three)
+  __Number_fromString__ __print_exit_error__ "5" ,(five)
+  __Token_new__ "SYMBOL" "a" one one ,(a)
+  __Token_new__ "BLOCK_COMMENT_TEXT" "text" one three ,(text)
+  __Token_new__ "BLOCK_COMMENT_END" "|#" one five ,(end)
+  __Token_new__ "SYMBOL" "b" three one ,(b)
+  __CommentRemover_main__ (,(sink) sink a text end b) ,(tokens)
+  tokens printSink ,(sink)
+  )
