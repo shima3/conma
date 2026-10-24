@@ -1,0 +1,10 @@
+== recover
+Unexpected end of input; expected 'RPAREN'
+result: recovered
+after __Parser_main__
+1:1: expected '(' to start a statement
+result: recovered
+after __Parser_main__
+result: LList
+after __Parser_main__
+exit: 0

@@ -1,0 +1,5 @@
+(define first ,() later __NULL__)
+(define later ,() (__SInfo__) first)
+(define first ,() other)
+(define n ,(__NULL__) __NULL__)
+(define e ,())

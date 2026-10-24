@@ -1,0 +1,254 @@
+;; resolver: Program の LList から1つの Module を作る（RESOLVER.md, SELFHOST.md）
+;;
+;; __Resolver_main__ programs ,(Module)
+;;   programs は includer が返す Program の LList。
+;;   各 Variable に (L n)（de Bruijn index）か (G n)（グローバル変数の番号）を加え、
+;;   (Module (F file ...) (G id "name" Function) ... (G id "name" Undefined) ...) を返す。
+;;
+;; ノードは書き換えられないので、注釈を加えた新しいノードを作る。
+;; グローバル変数の番号は、すべての Program を前順にたどり、ローカルでない名前に初めて出会った順に振る。
+;; Definition の名前もその1つ。同じ名前の Definition が複数あれば、最初のものの Function を使う。
+;; 名前が __NULL__ の Variable は、番号を振ったうえで (Null pos) として出力する（bin/resolver と同じ）。
+;;
+;; 状態（どの関数も最初の4つの引数として受け取る）:
+;;   globals  名前から番号への Dict
+;;   values   名前から、注釈を加えた Function への Dict（最初の Definition のもの）
+;;   count    次に振る番号を持つ Ref
+;;   order    番号を振った名前の LList（新しいものが先頭）を持つ Ref
+;; ローカル変数のスコープは、内側のものが先頭の LList。
+;; 各スコープは Head のパラメータ名の LList で、右のパラメータが先頭（index 0 に近い）。
+(include "ast.se")
+
+(define __Resolver_main__ ,(programs)
+  __Dict_new__ ,(globals)
+  __Dict_new__ ,(values)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(count)
+  __Ref_new__ __NULL__ ,(order)
+  __Resolver_nodes__ globals values count order __NULL__ programs ,(resolved)
+  __Resolver_files__ programs ,(files)
+  __AST_new__ "F" __NULL__ files ,(f)
+  __Ref_get__ order ,(names)
+  __Resolver_reverse__ names __NULL__ ,(names)
+  __Resolver_entries__ globals values names ,(entries)
+  __LList_cons__ f entries ,(children)
+  __AST_new__ "Module" __NULL__ children)
+
+;; ── 注釈 ──
+
+;; node に注釈を加えた新しいノードを返す
+(define __Resolver_node__ ,(globals values count order scopes node)
+  __AST_get_kind__ node ,(kind)
+  __if_then_else__ (,() __String_equal__ kind "Variable")
+    (,() __Resolver_variable__ globals values count order scopes node) (,()
+  __if_then_else__ (,() __String_equal__ kind "Function")
+    (,() __Resolver_function__ globals values count order scopes node) (,()
+  __if_then_else__ (,() __String_equal__ kind "Definition")
+    (,() __Resolver_definition__ globals values count order scopes node) (,()
+  __String_equal__ kind "String" ,(isString)
+  __String_equal__ kind "SInfo" ,(isSInfo)
+  __String_equal__ kind "Null" ,(isNull)
+  __or__ isString isSInfo ,(b)
+  __if_then_else__ (,() __or__ b isNull)
+    (,() __NULL__ node)
+    (,() __Resolver_children__ globals values count order scopes node)))))
+
+;; 子ノードに注釈を加えた、同じ kind と位置のノードを返す
+(define __Resolver_children__ ,(globals values count order scopes node)
+  __AST_get_kind__ node ,(kind)
+  __AST_get_pos__ node ,(pos)
+  __AST_get_children__ node ,(children)
+  __Resolver_nodes__ globals values count order scopes children ,(children)
+  __AST_new__ kind pos children)
+
+;; ノードの LList のそれぞれに注釈を加える（前から順に）
+(define __Resolver_nodes__ ,(globals values count order scopes nodes)
+  __if_then_else__ (,() __is_null__ nodes)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ nodes ,(node rest)
+      __Resolver_node__ globals values count order scopes node ,(node)
+      __Resolver_nodes__ globals values count order scopes rest ,(rest)
+      __LList_cons__ node rest))
+
+;; Function: Head のパラメータを新しいスコープにして、子ノード（Head も含む）に注釈を加える
+(define __Resolver_function__ ,(globals values count order scopes node)
+  __AST_get_children__ node ,(children)
+  __Resolver_find__ children "Head" ,(head)
+  __if_then_else__ (,() __is_null__ head)
+    (,() __NULL__ scopes)
+    (,()
+      __AST_get_children__ head ,(params)
+      __Resolver_param_names__ params __NULL__ ,(scope)
+      __LList_cons__ scope scopes) ,(scopes)
+  __Resolver_children__ globals values count order scopes node)
+
+;; パラメータの Variable の名前を、右のものが先頭になるように acc の前に加える
+(define __Resolver_param_names__ ,(params acc)
+  __if_then_else__ (,() __is_null__ params)
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ params ,(param rest)
+      __AST_get_kind__ param ,(kind)
+      __if_then_else__ (,() __String_equal__ kind "Variable")
+        (,()
+          __Resolver_name__ param ,(name)
+          __LList_cons__ name acc)
+        (,() __NULL__ acc) ,(acc)
+      __Resolver_param_names__ rest acc))
+
+;; Definition: 子ノードに注釈を加える。その名前の最初の Definition なら、Function を values に入れる
+(define __Resolver_definition__ ,(globals values count order scopes node)
+  __Resolver_children__ globals values count order scopes node ,(node)
+  __AST_get_children__ node ,(children)
+  __Resolver_find__ children "Variable" ,(var)
+  __Resolver_name_of__ var ,(name)
+  __LList_uncons__ __print_exit_error__ children ,(first rest)
+  __unless__ (,() __is_null__ rest)
+    (,()
+      __LList_uncons__ __print_exit_error__ rest ,(value rest)
+      __Dict_lookup_or__ values name (,(key) __NULL__ __NULL__) ,(old)
+      __if__ (,() __is_null__ old)
+        (,() __Dict_put__ values name value)) ,()
+  __NULL__ node)
+
+;; Variable: ローカルなら (L index)、そうでなければ (G 番号) を加える。__NULL__ は Null にする
+(define __Resolver_variable__ ,(globals values count order scopes node)
+  __Resolver_name__ node ,(name)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Resolver_local__ scopes name zero ,(index)
+  __if_then_else__ (,() __is_null__ index)
+    (,()
+      __Resolver_global__ globals count order name ,(id)
+      __NULL__ "G" id)
+    (,() __NULL__ "L" index) ,(tag index)
+  __AST_get_pos__ node ,(pos)
+  __if_then_else__ (,() __String_equal__ name "__NULL__")
+    (,() __AST_new__ "Null" pos __NULL__)
+    (,()
+      __LList_cons__ index __NULL__ ,(annotation)
+      __AST_new__ tag __NULL__ annotation ,(annotation)
+      __AST_get_children__ node ,(children)
+      __Resolver_append__ children annotation ,(children)
+      __AST_new__ "Variable" pos children))
+
+;; scopes の中の name の de Bruijn index。見つからなければ null。
+;; acc は、それまでに調べた（外側でない）スコープのパラメータの数
+(define __Resolver_local__ ,(scopes name acc)
+  __if_then_else__ (,() __is_null__ scopes)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ scopes ,(scope rest)
+      __Resolver_position__ scope name acc ,(index size)
+      __if_then_else__ (,() __is_null__ index)
+        (,()
+          __Number_add__ acc size ,(acc)
+          __Resolver_local__ rest name acc)
+        (,() __NULL__ index)))
+
+;; scope の中の name の位置に acc を足したもの（なければ null）と、scope のパラメータの数
+(define __Resolver_position__ ,(scope name acc)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Resolver_position_loop__ scope name acc zero __NULL__)
+
+(define __Resolver_position_loop__ ,(scope name acc i found)
+  __if_then_else__ (,() __is_null__ scope)
+    (,() __NULL__ found i)
+    (,()
+      __LList_uncons__ __print_exit_error__ scope ,(param rest)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __if_then_else__ (,() __is_null__ found)
+        (,()
+          __if_then_else__ (,() __String_equal__ param name)
+            (,() __Number_add__ acc i)
+            (,() __NULL__ __NULL__))
+        (,() __NULL__ found) ,(found)
+      __Resolver_position_loop__ rest name acc next found))
+
+;; name のグローバル変数の番号。まだなければ次の番号を振る
+(define __Resolver_global__ ,(globals count order name)
+  __Dict_lookup_or__ globals name (,(key) __NULL__ __NULL__) ,(id)
+  __if_then_else__ (,() __is_null__ id)
+    (,()
+      __Ref_get__ count ,(id)
+      __Dict_put__ globals name id ,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ id one ,(next)
+      __Ref_set__ count next ,()
+      __Ref_get__ order ,(names)
+      __LList_cons__ name names ,(names)
+      __Ref_set__ order names ,()
+      __NULL__ id)
+    (,() __NULL__ id))
+
+;; ── Module ──
+
+;; Program の位置にあるファイル名の LList
+(define __Resolver_files__ ,(programs)
+  __if_then_else__ (,() __is_null__ programs)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ programs ,(program rest)
+      __Resolver_files__ rest ,(files)
+      __AST_get_pos__ program ,(pos)
+      __LList_uncons__ __print_exit_error__ pos ,(line pos)
+      __LList_uncons__ __print_exit_error__ pos ,(col pos)
+      __if_then_else__ (,() __is_null__ pos)
+        (,() __NULL__ files)
+        (,()
+          __LList_uncons__ __print_exit_error__ pos ,(file pos)
+          __LList_cons__ file files)))
+
+;; names の順に (G id "name" Function) か (G id "name" Undefined) を作る
+(define __Resolver_entries__ ,(globals values names)
+  __if_then_else__ (,() __is_null__ names)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ names ,(name rest)
+      __Resolver_entries__ globals values rest ,(entries)
+      __Dict_lookup_or__ globals name __print_exit_error__ ,(id)
+      __Dict_lookup_or__ values name (,(key) __AST_new__ "Undefined" __NULL__ __NULL__) ,(value)
+      __LList_cons__ value __NULL__ ,(children)
+      __LList_cons__ name children ,(children)
+      __LList_cons__ id children ,(children)
+      __AST_new__ "G" __NULL__ children ,(entry)
+      __LList_cons__ entry entries))
+
+;; ── 補助 ──
+
+;; nodes の中で最初の kind のノード。なければ null
+(define __Resolver_find__ ,(nodes kind)
+  __if_then_else__ (,() __is_null__ nodes)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ nodes ,(node rest)
+      __AST_get_kind__ node ,(k)
+      __if_then_else__ (,() __String_equal__ k kind)
+        (,() __NULL__ node)
+        (,() __Resolver_find__ rest kind)))
+
+;; Variable の名前（最初の子）
+(define __Resolver_name__ ,(var)
+  __AST_get_children__ var ,(children)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __NULL__ name)
+
+;; var が null でなければその名前、null なら null
+(define __Resolver_name_of__ ,(var)
+  __if_then_else__ (,() __is_null__ var)
+    (,() __NULL__ __NULL__)
+    (,() __Resolver_name__ var))
+
+(define __Resolver_append__ ,(list x)
+  __LList_cons__ x __NULL__ ,(last)
+  __Resolver_reverse__ list __NULL__ ,(reversed)
+  __Resolver_reverse__ reversed last)
+
+(define __Resolver_reverse__ ,(list acc)
+  __if_then_else__ (,() __is_null__ list)
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(head rest)
+      __LList_cons__ head acc ,(acc)
+      __Resolver_reverse__ rest acc))

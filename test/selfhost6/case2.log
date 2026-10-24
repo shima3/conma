@@ -1,0 +1,30 @@
+== main.se lib2 lib
+exit: python 0, conma 0
+compare: 0
+-- files
+<dir>/main.se
+<dir>/a.se
+<dir>/b.se
+<dir>/lib2/only2.se
+<dir>/sub/c.se
+<dir>/lib2/lib.se
+<dir>/sub/c2.se
+-- python stderr
+Warning: circular include ignored: '<dir>/a.se' (from '<dir>/b.se')
+Warning: circular include ignored: '<dir>/a.se' (from '<dir>/main.se')
+Warning: circular include ignored: '<dir>/b.se' (from '<dir>/sub/c.se')
+Warning: circular include ignored: '<dir>/lib2/lib.se' (from '<dir>/b.se')
+-- conma stderr
+Warning: circular include ignored: '<dir>/a.se' (from '<dir>/b.se')
+Warning: circular include ignored: '<dir>/a.se' (from '<dir>/main.se')
+Warning: circular include ignored: '<dir>/b.se' (from '<dir>/sub/c.se')
+Warning: circular include ignored: '<dir>/lib2/lib.se' (from '<dir>/b.se')
+== self.se
+exit: python 0, conma 0
+compare: 0
+-- files
+<dir>/self.se
+-- python stderr
+Warning: circular include ignored: '<dir>/self.se' (from '<dir>/self.se')
+-- conma stderr
+Warning: circular include ignored: '<dir>/self.se' (from '<dir>/self.se')

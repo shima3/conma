@@ -224,6 +224,21 @@ def value_type_name(v):
     if isinstance(v, str): return "String"
     return type(v).__name__
 
+# Type names returned by __type_name__, besides "null", "String" and "Closure"
+_TYPE_NAMES = ((Number, "Number"), (Ref, "Ref"), (CFrame, "CFrame"), (LList, "LList"),
+               (MSeq, "MSeq"), (Dict, "Dict"), (OSProc, "OSProc"), (Stream, "Stream"))
+
+def type_name(v):
+    """Return the type name that __type_name__ gives for a value. Unlike
+    value_type_name, the names are a fixed list (see PRIMITIVES.md)."""
+    if v is None or is_null_value(v): return "null"
+    if isinstance(v, str) or (isinstance(v, list) and v and v[0] == "String"): return "String"
+    if isinstance(v, (Closure, SeqClosure)) or is_prim_func(v) or callable(v): return "Closure"
+    if isinstance(v, VProc): return "VProc"
+    for cls, name in _TYPE_NAMES:
+        if isinstance(v, cls): return name
+    raise VProcError(f"__type_name__: unknown value: {v!r}")
+
 # ── Module ────────────────────────────────────────────────────────────────────
 
 def closure_from_function(func_ast, lvenv, gvenv):
@@ -601,6 +616,14 @@ def prim_is_null(vp, gvenv):
     # Represented as Closure objects with appropriate bodies.
     result = TRUE_CLOSURE if is_null_value(val) else FALSE_CLOSURE
     _prim_return(vp, [result])
+
+
+def prim_type_name(vp, gvenv):
+    """__type_name__ Value ,(String) — the name of the type of Value."""
+    if not vp["olist"]:
+        raise VProcError("__type_name__: missing argument")
+    val = vp["olist"].pop(0)
+    _prim_return(vp, [string_value(type_name(val))])
 
 
 def prim_null(vp, gvenv):
@@ -1002,6 +1025,28 @@ def prim_OS_getcwd(vp, gvenv):
     except OSError as e:
         raise VProcError(f"__OS_getcwd__: {e.strerror}")
     _prim_return(vp, [string_value(cwd)])
+
+def prim_OS_realpath(vp, gvenv):
+    """__OS_realpath__ onError path ,(String)
+    The absolute path of path (relative to the current directory) with
+    "..", "." and symbolic links resolved. A missing path goes to onError."""
+    name  = "__OS_realpath__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    path     = olist.pop(0)
+    if value_type_name(path) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String path, got {value_type_name(path)}")
+        return
+    path = _value_to_display(path)
+    try:
+        # realpath() has no strict mode before Python 3.10: check the path first
+        os.stat(path)
+        real = os.path.realpath(path)
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
+        return
+    _prim_return(vp, [string_value(real)])
 
 
 # ── Number Primitives ─────────────────────────────────────────────────────────
@@ -1686,6 +1731,7 @@ def prim_CFrame_new(vp, gvenv):
 
 PRIMITIVES = {
     "__is_null__":             prim_is_null,
+    "__type_name__":           prim_type_name,
     "__OS_exit_normal__":      prim_OS_exit_normal,
     "__OS_exit_error__":       prim_OS_exit_error,
     "__OS_print__":            prim_OS_print,
@@ -1706,6 +1752,7 @@ PRIMITIVES = {
     "__OS_open__":             prim_OS_open,
     "__OS_chdir__":            prim_OS_chdir,
     "__OS_getcwd__":           prim_OS_getcwd,
+    "__OS_realpath__":         prim_OS_realpath,
     "__Number_fromString__":   prim_Number_fromString,
     "__Number_toString__":     prim_Number_toString,
     "__Number_is_zero__":      prim_Number_is_zero,

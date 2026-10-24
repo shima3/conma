@@ -1,0 +1,22 @@
+== ../selfhost2/sample.se
+exit: 0
+compare: 0
+== ../selfhost3/edge.se
+exit: 0
+compare: 0
+Error: Unexpected BLOCK_COMMENT_END at 1:11
+Error: Unexpected BLOCK_COMMENT_END at 1:3
+Error: Unexpected BLOCK_COMMENT_END at 8:6
+Error: Unexpected BLOCK_COMMENT_END at 8:9
+Error: Unexpected character '#' at line 2, column 5
+Error: Unexpected character '#' at line 2, column 7
+Error: Unexpected character '@' at line 2, column 10
+Error: Unexpected character '\\' at line 2, column 14
+Error: Unexpected character '`' at line 2, column 12
+Error: Unexpected character '日' at line 10, column 7
+Error: Unexpected character '本' at line 10, column 8
+Error: Unexpected character '語' at line 10, column 9
+Error: Unterminated string at line 4, column 1
+== ../../include/util.se
+exit: 0
+compare: 0

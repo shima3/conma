@@ -1,0 +1,9 @@
+== work/abs.se
+exit: python 0, conma 0
+compare: 0
+-- files
+<dir>/work/abs.se
+<dir>/lib/lib.se
+<dir>/lib/c2.se
+-- python stderr
+-- conma stderr

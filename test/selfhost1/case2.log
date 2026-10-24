@@ -1,0 +1,9 @@
+(Token (0 0) FILE "t.se")
+(Token (1 1) LPAREN "(")
+(Token (1 3) STRING "\"s\\\"\\\\\"")
+(Token (1 3) NEWLINE "\n")
+(Token (1 3) NEWLINE "\r\n")
+(Token (1 3) BLOCK_COMMENT_TEXT " a\n \"b\" \\ ")
+(Token (1 3) LINE_COMMENT_CONTENT " c\t\"d\" 日本語")
+(Token (1 3) BLOCK_COMMENT_TEXT "")
+exit: 0

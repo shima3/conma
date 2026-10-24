@@ -1,0 +1,5 @@
+(include "a.se")
+(include "b.se")
+(include "link.se")
+(include "only2.se")
+(define main ,() a b)

@@ -1,0 +1,7 @@
+(define a ,(x) (__SInfo__ "a.se" "3" "4") f x)
+(define b ,() (__SInfo__) g)
+(define c ,())
+(define d ,() ,(y) y)
+(define e ,(p q) (,(x) x q) "s\"t" p ,(r)
+  h r (,() i) (,(z) z ,() j))
+(include "x.se")

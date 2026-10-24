@@ -14,11 +14,13 @@ lexer <source_file>
 
 The program accepts exactly one command-line argument: the path to the source file. The file is read in UTF-8 encoding. If no argument is provided, a usage message is printed and the program exits.
 
+The file is read in text mode, so every `\r\n` and every lone `\r` in the file becomes `\n` before scanning. The rules below for `\r\n` and for an isolated CR therefore never apply to a file read by `lexer`; they describe the scanner for text that still contains them.
+
 ---
 
 ### Output Format
 
-Each recognized token is printed to standard output as a single line of four tab-separated fields:
+Each recognized token is printed to standard output as a line of four tab-separated fields:
 
 ```
 <line> TAB <column> TAB <kind> TAB <value>
@@ -50,7 +52,8 @@ Each recognized token is printed to standard output as a single line of four tab
 A `FILE` token is emitted once as the very first token, before any source text is scanned. Its `line` and `col` fields are both `0`, which distinguishes it from all source-derived tokens (which are 1-based). Its `value` is the filename string exactly as supplied on the command line.
 `LINE_COMMENT_CONTENT` is emitted only when the content is non-empty.
 `BLOCK_COMMENT_TEXT` is emitted only when the content is non-empty.
-`NEWLINE` value is written as the two-character escape sequence `\n` or `\r\n` so that the output remains valid line-oriented TSV.
+`NEWLINE` value is written as the two-character escape sequence `\n` or `\r\n` so that the output remains valid line-oriented TSV. Because the file is read in text mode (see Invocation), it is always `\n` in practice.
+Other values are written as they are. A `BLOCK_COMMENT_TEXT` that spans several lines contains newlines, so its output continues over several lines that do not start with `<line> TAB <column> TAB <kind> TAB`. `comment_remover` skips such lines (unless they happen to have four tab-separated fields), which is harmless because the comment text is removed anyway; `test/selfhost_compare.py` reads them as the continuation of the previous value. A tab in a comment is also written as it is.
 
 ---
 

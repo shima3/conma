@@ -1,0 +1,3 @@
+(include "a.se")
+(include "lib.se")
+(define b ,() lib)

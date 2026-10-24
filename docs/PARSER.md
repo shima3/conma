@@ -115,8 +115,7 @@ Non-terminal nodes always emit a closing `)`, even when they have no children.
           (Variable (2 3) "__print__"))
         (OList (2 13)
           (String (2 13) "Hello"))
-        (LCont (2 20)
-          (Null (2 20)))))))
+        (LCont (2 20))))))
 ```
 
 ---

@@ -1,0 +1,15 @@
+== ../selfhost2/sample.se
+file: exit python 0, conma 0
+compare: 0
+nofile: exit python 0, conma 0
+compare: 0
+== ../selfhost2/inc.se
+file: exit python 0, conma 0
+compare: 0
+nofile: exit python 0, conma 0
+compare: 0
+== ../../include/util.se
+file: exit python 0, conma 0
+compare: 0
+nofile: exit python 0, conma 0
+compare: 0

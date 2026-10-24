@@ -1,0 +1,3 @@
+(include "sub/c.se")
+(include "lib.se")
+(define a ,() c)

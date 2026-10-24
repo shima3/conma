@@ -1,0 +1,3 @@
+(include "../b.se")
+(include "c2.se")
+(define c ,() x)

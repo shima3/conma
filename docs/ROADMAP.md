@@ -2,16 +2,16 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step15`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step16`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-20).
+Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-24).
 
 ## Tests
 
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -313,3 +313,26 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | case5 | returns at once when data or EOF is there; `onError` for a closed Stream, an output Stream and a non-OSProc |
 | case6 | a VProc that waits is not a deadlock while its parent is suspended; it resumes the parent afterwards |
 | case7 | closing a Stream in another VProc wakes the VProc waiting on it, and its read goes to `onError` |
+
+## Step 16: Type names and real paths
+
+| Primitive | Status |
+|---|---|
+| `__type_name__` | implemented |
+| `__OS_realpath__` | implemented |
+
+* Goal: Provide what the ConMa versions of the front end tools need (see [SELFHOST.md](SELFHOST.html)). `__AST_toSexp__` uses `__type_name__` to tell Strings, Numbers and AST nodes apart, and `includer` uses `__OS_realpath__` to check that a file exists and to find duplicate files.
+* `__type_name__ Value ,(String)` returns `"null"` (also for `__NULL__`, an empty LList and an empty CChain), `"String"` (a literal or one made at run time), `"Number"`, `"Closure"` (also for a primitive function), `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` or `"Stream"` (the same for input and output Streams). A Boolean, a Seq and a Sink are Closures, and a CChain is an LList. It takes no `onError`, because every value has a type.
+* `__OS_realpath__ onError path ,(String)` returns the absolute path with `..`, `.` and symbolic links resolved. A relative path is relative to the current directory (Step 14). A path that does not exist, or a non-String argument, goes to `onError`. Python 3.9 has no `strict` mode for `os.path.realpath`, so the path is checked with `os.stat` first; a path through a missing directory (`none/..`) is therefore an error, as in the OS.
+* `value_type_name` in `test/vproc_step.py` gives type names for error messages, but it returns `"input Stream"` / `"output Stream"` and Python class names for other values, so `__type_name__` needs its own fixed list of names.
+* Tests (`test/step16`): `test.sh` gives every case a new `work/` directory with `sub/` and a symbolic link `up` to the test directory, and removes it at the end. The test directory is printed as `<dir>`.
+
+| Case | What it checks |
+|---|---|
+| case1 | `__type_name__`: `"null"` for `__NULL__` and an empty LList; `"String"` for literals, the empty String and Strings made at run time; `"Number"` |
+| case2 | `"Closure"` for a FuncExp, a defined function, a primitive, `__TRUE__`, a Boolean result, a Seq and a Sink |
+| case3 | `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`; an empty CChain gives `"null"`, a CChain with a CFrame gives `"LList"` |
+| case4 | `"Stream"` for stdin, stdout, both pipe ends and a file Stream, also after closing it; `"OSProc"` |
+| case5 | `__OS_realpath__`: an absolute path; relative paths before and after `__OS_chdir__` |
+| case6 | paths with `.`, `..` and the symbolic link are normalized, also an absolute path |
+| case7 | `onError` for a missing path, a path through a missing directory, a path under a file, the empty String and a non-String argument |

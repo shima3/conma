@@ -1,0 +1,27 @@
+== string
+at item 1 > Program (2 1 "sample.se") > Definition (6 2) > Function (6 11) > Body (8 3) > OList (8 5) > String (8 5) "a\"b\\c\n":
+  python: "a\"b\\c\n"
+  conma:  "a\"B\\c\n"
+exit: 1
+== atom
+at item 1 > Module > G 0 "f" > Function (6 11) > Body (8 3) > LCont (8 19) > Function (8 19) > Body (9 3) > Operator (9 3) > Variable (9 3) "h" > G 2:
+  python: G
+  conma:  L
+exit: 1
+== missing-child
+at item 1 > Program (2 1 "sample.se") > Definition (6 2) > Function (6 11) > Body (8 3) > LCont (8 19) > Function (8 19) > Body (9 3): python has 6 items, conma has 5
+  python item 6: (LCont (9 6))
+exit: 1
+== extra-child
+at item 1 > Program (2 1 "sample.se") > Definition (6 2) > Function (6 11) > Body (8 3) > LCont (8 19) > Function (8 19) > Body (9 3) > OList (9 5) > Variable (9 5) "y":
+  python: Variable
+  conma:  Null
+exit: 1
+== missing-item
+python has 2 S-expressions, conma has 1
+  python item 2: (Program (1 1 "<dir>/inc.se") (Definition (1 2) (Variable (1 9) "g") (Function (1 11) (Head (1 12) ( ...
+exit: 1
+== extra-item
+python has 2 S-expressions, conma has 3
+  conma item 3: (Program (1 1 "<dir>/inc.se") (Definition (1 2) (Variable (1 9) "g") (Function (1 11) (Head (1 12) ( ...
+exit: 1

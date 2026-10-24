@@ -1,0 +1,9 @@
+;; selfhost_compare.py のテスト用のソース
+(include "inc.se")
+
+#| ブロックコメント "引用符" と \ を含む
+   #| 入れ子 |# 2行目 |#
+(define f ,(x)	; タブの後のコメント
+  #; (g "skip")
+  g "a\"b\\c\n" x ,(y)
+  h y)

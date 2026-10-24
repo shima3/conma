@@ -112,6 +112,11 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 ### **`__OS_getcwd__ ,(String)`**
 * **Description**: Passes the absolute path of the current directory to the LCont.
 
+### **`__OS_realpath__ onError path ,(String)`**
+* **Description**: Returns the absolute path of `path`, with `.`, `..` and symbolic links resolved.
+* **Behavior**: A relative `path` is relative to the current directory (see `__OS_chdir__`). Two paths name the same file if their real paths are equal, so this can be used to find a file that is given twice under different names.
+* **Error**: If `path` is not a String, or does not exist (including the empty String and a path that goes through a missing directory, such as `none/..`), invokes `onError` with an error message string.
+
 ---
 
 ## 2. Number Primitives
@@ -469,3 +474,31 @@ A non-String argument (or, for `__String_substring__`, a non-Number position) st
 
 ### **`__String_equal__ aString bString ,(Boolean)`**
 * **Description**: Returns `__TRUE__` if the two Strings have the same content, `__FALSE__` otherwise. A String made at run time equals a String literal with the same content.
+
+---
+
+## 13. Type Primitives
+
+### **`__type_name__ Value ,(String)`**
+* **Description**: Returns the name of the type of `Value`.
+* **Returns**: One of the following Strings:
+
+| Value | Result |
+|---|---|
+| null (including an empty LList and an empty CChain) | `"null"` |
+| a String, a literal or one made at run time | `"String"` |
+| a Number | `"Number"` |
+| a Closure or a primitive | `"Closure"` |
+| a Ref, CFrame, LList, MSeq, Dict, VProc or OSProc | `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` |
+| a Stream, for input or output | `"Stream"` |
+
+* **Behavior**: A type is tested by comparing the result with `__String_equal__`:
+```
+__type_name__ value ,(t)
+__String_equal__ t "String" ,(isString)
+__if_then_else__ isString ...
+```
+* **Limitations**:
+    * A Boolean, a Seq and a Sink are Closures, so they give `"Closure"`.
+    * A non-empty CChain is an LList of CFrames, so it gives `"LList"`.
+* **Error**: None. Every value has a type, so there is no `onError`.

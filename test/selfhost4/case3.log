@@ -1,0 +1,12 @@
+== sexp_open.se
+exit: 0
+compare: 0
+== sexp_end.se
+exit: 0
+compare: 0
+Error: SEXP_COMMENT_BEGIN at 1:3 not followed by a valid S-expression
+== ../selfhost3/open.se
+exit: 0
+compare: 0
+Error: Unterminated block comment
+Error: Unterminated block comment at end of file

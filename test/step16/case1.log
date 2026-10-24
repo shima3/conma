@@ -1,0 +1,9 @@
+__NULL__: null
+empty LList: null
+String literal: String
+empty String: String
+String_concat: String
+Number: Number
+Number_toString: String
+OS_getcwd: String
+exit: 0

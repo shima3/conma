@@ -1,0 +1,6 @@
+== backslash.se
+exit: 0
+token 2 differs:
+  python: (1, 1, 'STRING', '"bs at end\\\nnext')
+  conma:  (1, 1, 'STRING', '"bs at end\\')
+compare: 1

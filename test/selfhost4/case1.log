@@ -1,0 +1,6 @@
+== sexp.se
+exit: 0
+compare: 0
+Error: SEXP_COMMENT_BEGIN at 4:1 not followed by a valid S-expression
+Error: SEXP_COMMENT_BEGIN at 6:1 not followed by a valid S-expression
+Error: SEXP_COMMENT_BEGIN at 7:4 not followed by a valid S-expression

@@ -1,0 +1,6 @@
+== tokens
+(Token (1 1) SYMBOL "a")
+Error: Unexpected BLOCK_COMMENT_TEXT at 1:3
+Error: Unexpected BLOCK_COMMENT_END at 1:5
+(Token (3 1) SYMBOL "b")
+exit: 0
