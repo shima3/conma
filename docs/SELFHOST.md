@@ -177,12 +177,26 @@ The result of each component is converted to an S-expression with `__Token_toSex
 | includer | `bin/includer <file>` |
 | resolver | `bin/includer <file> \| bin/resolver` |
 
-A Python script reads both outputs and compares them as data, so the ConMa side does not need to reproduce the indentation of the Python versions.
+### Comparing outputs
+
+`test/selfhost_compare.py` reads both outputs and compares them as data, so the ConMa side does not need to reproduce the layout of the Python versions:
+
+```
+test/selfhost_compare.py tokens <python_output> <conma_output>
+test/selfhost_compare.py ast    <python_output> <conma_output>
+```
+
+* `tokens` compares the tab-separated output of `bin/lexer` or `bin/comment_remover` with one `(Token (line col) KIND "value")` per line, as `__Token_toSexp__` writes it. Both sides become lists of `(line, col, kind, value)` with the real characters in the value:
+  * In the Python output, a line that does not start with `line TAB col TAB KIND TAB` continues the value of the previous token, because `bin/lexer` writes a `BLOCK_COMMENT_TEXT` that spans several lines as it is. The `NEWLINE` values `\n` and `\r\n` become the newline characters.
+  * In the ConMa output, the escape sequences of the value are processed.
+* `ast` compares two sequences of S-expressions, such as the output of `bin/parser`, `bin/includer` or `bin/resolver` with what `__AST_toSexp__` writes. Spaces and newlines between items are ignored. Strings are compared as source text, with their quotes and escape sequences, because both sides keep them that way.
+* A file name `-` reads standard input.
+* The exit code is 0 when the outputs are equal, 1 when they differ, and 2 for an output that cannot be read or a wrong command line. For a difference it prints the first one: the number of the token and both tokens, or the path to the differing item (such as `item 1 > Module > G 0 "f" > Function (6 11) > ...`) and both items.
 
 `test/selfhostN` holds the tests of step N of the implementation order below. Each `test.sh` runs its cases like the tests of [ROADMAP.md](ROADMAP.html) and prints only the differences from the expected logs:
 
 ```
-for t in selfhost1; do test/$t/test.sh; done
+for t in selfhost1 selfhost2; do test/$t/test.sh; done
 ```
 
 `test/selfhost1` tests `token.se` and `ast.se`:
@@ -198,13 +212,25 @@ for t in selfhost1; do test/$t/test.sh; done
 
 `bin/includer` prints a warning (`circular include ignored`) for `util.se`, because both `token.se` and `ast.se` include it. The warning is expected and does not change the result.
 
+`test/selfhost2` tests `selfhost_compare.py`. `test.sh` runs the Python tools on `sample.se` (which includes `inc.se`); `conma/*.txt` holds the same outputs in the ConMa format. Absolute paths in the outputs of `bin/includer` and `bin/resolver` are written as `<dir>`. The differences are made by changing a copy of `conma/*.txt` with `sed`.
+
+| Case | What it checks |
+|---|---|
+| case1 | equal tokens for `bin/lexer` and `bin/comment_remover`: comments with quotes, backslashes, tabs and Japanese text, a nested block comment over two lines, an S-expression comment; standard input |
+| case2 | equal S-expressions for `bin/parser`, `bin/includer` and `bin/resolver`, one line per S-expression on the ConMa side |
+| case3 | token differences: a value, an escape sequence, a column, a kind, a missing and an extra token |
+| case4 | S-expression differences: a String, an atom (`G` and `L`), a missing and an extra child, a missing and an extra S-expression |
+| case5 | exit code 2: a line that is not a Token, a line that is not a TSV token, unbalanced parentheses, a missing file, an unknown mode |
+
+`bin/lexer` reads the source in text mode, so a `\r\n` line ending becomes `\n` before it is scanned: `inc.se` ends with `\r\n`, but its `NEWLINE` token is `\n`. The ConMa lexer has to do the same to give the same tokens.
+
 ---
 
 ## Implementation Order
 
 0. Add the primitives `__type_name__` and `__OS_realpath__`, with documentation and tests (Step 16 in [ROADMAP.md](ROADMAP.html)).
 1. Write `include/token.se` and `include/ast.se`.
-2. Write the Python script that compares the outputs of the Python and ConMa versions.
+2. Write the Python script that compares the outputs of the Python and ConMa versions (`test/selfhost_compare.py`).
 3. lexer
 4. comment_remover
 5. parser

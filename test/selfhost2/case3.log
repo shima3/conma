@@ -1,0 +1,28 @@
+== value
+token 20 differs:
+  python: (6, 2, 'SYMBOL', 'define')
+  conma:  (6, 2, 'SYMBOL', 'defun')
+exit: 1
+== escape
+token 7 differs:
+  python: (2, 10, 'STRING', '"inc.se"')
+  conma:  (2, 10, 'STRING', 'inc.se')
+exit: 1
+== column
+token 21 differs:
+  python: (6, 9, 'SYMBOL', 'f')
+  conma:  (6, 10, 'SYMBOL', 'f')
+exit: 1
+== kind
+token 5 differs:
+  python: (2, 1, 'LPAREN', '(')
+  conma:  (2, 1, 'RPAREN', '(')
+exit: 1
+== missing
+python has 46 tokens, conma has 45
+  python token 46: (9, 7, 'NEWLINE', '\n')
+exit: 1
+== extra
+python has 46 tokens, conma has 47
+  conma token 47: (9, 7, 'NEWLINE', '\n')
+exit: 1

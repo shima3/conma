@@ -1,0 +1,18 @@
+== not-a-token
+error: conma output /tmp/selfhost2.changed.txt: item 1: not a Token: (Tok (0 0) FILE "sample.se")
+exit: 2
+== bad-tsv
+error: python output /tmp/selfhost2.changed.txt: line 1: not a token: 'FILE\tsample.se'
+exit: 2
+== unbalanced
+error: conma output /tmp/selfhost2.changed.txt: unexpected end: missing ')'
+exit: 2
+== extra-paren
+error: conma output /tmp/selfhost2.changed.txt: offset 514: unexpected ')'
+exit: 2
+== no-file
+error: conma output none.txt: [Errno 2] No such file or directory: 'none.txt'
+exit: 2
+== bad-mode
+selfhost_compare.py — Compare the output of a Python front end tool with
+exit: 2
