@@ -29,6 +29,13 @@ The transition logic in `step(vp, gvenv)` is driven by the type of the **Operato
 * **Closure Application**:
     * When the **Operator** is a **Closure**, the interpreter applies it to the current **OList** based on the following three sub-cases, determined by the presence of parameters in the closure's `Head` and values in the `OList`.
 
+* **Case 0: Application of a Variadic Closure**
+    If the closure is variadic (`Closure.variadic`, made from a Head `(Head pos Rest (Variable ...))`):
+    1.  **LCont Preservation**: If the current **LCont** is present, it is pushed onto the **CChain** as a new **CFrame**.
+    2.  **Binding**: The whole current **OList** (possibly empty) is wrapped into a **SeqClosure** (capturing the current `VEnv`), which is bound to the closure's one parameter.
+    3.  **Body Execution**: The closure's `Body` is extracted in the extended `VEnv` and executed as in Case 1. The closure is executed even when the OList is empty, and there are no surplus operands.
+    In traces, the Head of a variadic closure is written `(Head (0 0) Rest (Variable (0 0) "args"))`, and it is read back as variadic.
+
 * **Case 1: Application of a Parameterless Closure (Zero-arity)**
     If the closure's `Head` is empty (no parameters):
     1.  **LCont Preservation**: If the current **LCont** is present, it is pushed onto the **CChain** as a new **CFrame**.

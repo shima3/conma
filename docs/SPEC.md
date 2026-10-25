@@ -69,7 +69,7 @@ Definition = "(", "define", Variable, Function, ")" ;
 Variable   = Symbol - Hat ;
 Function   = Hat, Head, Body ;
 Hat        = "," ;
-Head       = "(", { Parameter }, ")" ;
+Head       = "(", { Parameter }, ")" | Parameter ;
 Parameter  = Variable ;
 Body       = [ SInfo ], [ Operator, OList ], [ LCont ] ;
 Operator   = Variable | FuncExp ;
@@ -82,6 +82,8 @@ SInfo      = "(", "__SInfo__", { String }, ")" ;
 ```
 
 In `Body`, the first `Expression` is the **Operator**, and the second and subsequent `Expression`s form the **OList**.
+
+A `Head` that is a single `Parameter` without parentheses makes the `Function` **variadic**: `, args Body` (see "Variadic Functions" below).
 
 **LCont Rules:**
 - Any `Function` intended to be an `Operand` must be wrapped in parentheses as a `FuncExp`.
@@ -186,6 +188,27 @@ Evaluation proceeds as follows:
 * The closure of `(,() A3)` is assigned to `p3`.
 
 After these assignments, `B` is evaluated.
+
+### Variadic Functions
+
+A `Function` whose `Head` is a single `Parameter` without parentheses, `, args Body`, is **variadic**.
+
+* When it is applied, all the values of the `OList` of that application are put into one `Sequence` (a `Seq`, see "Sequence" below), which is bound to the `Parameter`. With no values, an empty `Seq` is bound.
+* A variadic function in the Operator position is always executed, even without values. (A function with parameters that is applied to no values is not executed but passed on as a value; see DESIGN.md.) To pass a variadic function without executing it, use it as an `Operand`, or pass it with `__NULL__`: `__NULL__ (, args ...) ,(f)`.
+* It takes the values of one application only, so there are never surplus operands. In `(, args B) a1 a2 ,(sink) sink a3 a4`, `args` is the `Seq` of `a1 a2`; `a3 a4` are applied to what the function returns.
+* A `Seq` passes its elements to a `Sink` grouped in an implementation-defined way. A variadic function used as the `Sink` of a `Seq` may therefore receive the elements in several applications.
+* `args` is a single variable: for the de Bruijn index it counts as one parameter.
+
+Example:
+
+```
+(define show , args
+  args printSink)
+
+show ,()             ; args is an empty Seq
+show "a" "b" ,()     ; args is (,(sink) sink "a" "b")
+pair "x" "y" , values ...   ; as an LCont: values receives all the values returned by pair
+```
 
 ---
 
@@ -308,12 +331,17 @@ It is defined as follow:
 (define __Cont_get__ ,()
   __CChain_pop_LCont__ ,(lc)
   __CChain_get__ ,(cc)
-  lc (,()
-    __CChain_set__ cc ,()
-    __CChain_pop_LCont__))
+  lc (, args
+    __if_then_else__ (,() __is_null__ cc)
+      (,() __CChain_set__ cc)
+      (,()
+        __CChain_set__ cc ,()
+        __CChain_pop_LCont__ ,(lc)
+        args lc)))
 ```
-__Cont_get__ passes the CChain to the LCont.
-If you get the continuation at the beginning of the function with __Cont_get__, you can use it as return.
+__Cont_get__ passes a continuation to the LCont. If you get it at the beginning of a function, you can use it as return.
+The continuation is a variadic function: it sets the CChain back to that of the caller of the function and passes all its arguments to the caller's LCont. Without arguments, it returns to the caller without values. If the function has no caller (the CChain is empty), the continuation empties the CChain, so the VProc finishes.
+The continuation must be variadic: if it took its arguments as surplus operands, they would be kept on the CChain and lost when the CChain is set back.
 
 Example:
 

@@ -161,7 +161,17 @@ class Parser:
         return ('Function', comma[0], comma[1], [head, body])
 
     def parse_head(self):
-        # Head = "(", { Parameter }, ")"
+        # Head = "(", { Parameter }, ")" | Parameter
+        #
+        # A Head that is a single Parameter (without parentheses) makes the
+        # Function variadic. It is written as (Head pos Rest (Variable pos "name")),
+        # at the position of the Parameter.
+        tok = self.peek()
+        if tok is not None and tok[2] == 'SYMBOL':
+            vtok = self.consume()
+            return ('Head', vtok[0], vtok[1],
+                    [('Rest', vtok[0], vtok[1], None),
+                     ('Variable', vtok[0], vtok[1], vtok[3])])
         lparen = self.expect('LPAREN')
         params = []
         while self.peek() is not None and self.peek()[2] != 'RPAREN':
@@ -358,6 +368,10 @@ def format_ast(node, indent=0):
 
     elif kind == 'Null':
         print(f"{prefix}(Null ({line} {col}))")
+
+    elif kind == 'Rest':
+        # The mark of a variadic Head, written as an atom
+        print(f"{prefix}Rest")
 
     else:
         # Non-terminal: (Kind (line col) children...)

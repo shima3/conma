@@ -84,11 +84,14 @@ def string_value(text):
     return '"' + ''.join(_STRING_ESCAPES.get(ch, ch) for ch in text) + '"'
 
 class Closure:
-    def __init__(self, params, body, lvenv, gvenv=None):
+    def __init__(self, params, body, lvenv, gvenv=None, variadic=False):
         self.params, self.body, self.lvenv = list(params), body, list(lvenv)
         # GVEnv of the module the closure was defined in. Global variables in
         # the body are looked up here, not in the GVEnv of the running VProc.
         self.gvenv = gvenv
+        # A variadic closure (Head "Rest") has one parameter, bound to a Seq
+        # of all the operands of an application.
+        self.variadic = variadic
     def __repr__(self): return f"Closure(params={self.params})"
 
 class SeqClosure:
@@ -249,7 +252,11 @@ def closure_from_function(func_ast, lvenv, gvenv):
             elif child[0] == "Body": body_node = child
     params = [unquote(c[2]) for c in (head_node[2:] if head_node else [])
               if isinstance(c, list) and c[0] == "Variable"]
-    return Closure(params, body_node, lvenv, gvenv)
+    return Closure(params, body_node, lvenv, gvenv, is_variadic_head(head_node))
+
+def is_variadic_head(head_node):
+    """True for the Head of a variadic Function: (Head pos Rest (Variable ...))."""
+    return isinstance(head_node, list) and "Rest" in head_node[2:]
 
 def load_module(module_sexp):
     gvenv = {}
@@ -293,7 +300,7 @@ def sexp_to_value(sexp, gvenv):
         params = [unquote(c[2]) for c in (head_node[2:] if isinstance(head_node,list) else [])
                   if isinstance(c,list) and c[0]=="Variable"]
         inner_lvenv = parse_lvenv_node(lvenv_node, gvenv)
-        return Closure(params, body_node, inner_lvenv, gvenv)
+        return Closure(params, body_node, inner_lvenv, gvenv, is_variadic_head(head_node))
     if tag == "Null": return NULL
     return sexp  # raw AST
 
@@ -314,6 +321,7 @@ def value_to_sexp(val):
 
 def closure_to_sexp(c):
     head_children = [["Variable",["0","0"],quoted(p)] for p in c.params]
+    if c.variadic: head_children = ["Rest"] + head_children
     return ["__Closure__",
             ["Head",["0","0"]] + head_children,
             c.body if c.body is not None else ["Body",["0","0"]],
@@ -551,6 +559,25 @@ def step(vp, gvenv):
     params = operator.params
     body_node = operator.body
     closure_lvenv = operator.lvenv
+
+    # Variadic: the parameter is bound to a Seq of all the operands (an
+    # empty Seq if there are none). The closure runs even without operands,
+    # so there are never surplus operands.
+    if operator.variadic:
+        cur_sinfo = vp["sinfo"]
+        if lcont is not None:
+            vp["cchain"] = cchain_push(vp["cchain"], CFrame(lcont, cur_sinfo))
+        seq = SeqClosure(list(olist), cur_sinfo, vp["lvenv"])
+        new_lvenv = [(params[0], seq)] + list(closure_lvenv)
+        if body_node is None: raise VProcError("Closure has no Body")
+        body_gvenv = operator.gvenv if operator.gvenv is not None else gvenv
+        sinfo, op_val, olist_vals, lc_val = extract_body(body_node, new_lvenv, body_gvenv)
+        vp["sinfo"]    = sinfo
+        vp["operator"] = op_val
+        vp["olist"]    = olist_vals
+        vp["lcont"]    = lc_val
+        vp["lvenv"]    = new_lvenv
+        return
 
     # Head empty
     if not params:

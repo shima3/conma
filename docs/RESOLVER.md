@@ -93,7 +93,7 @@ Node-type-specific parsing rules:
 - `SInfo`: zero or more quoted strings follow the coordinates; they are joined with spaces as the node value. An explicit `(__SInfo__)` without Strings gives an `SInfo` with no strings, which is passed through.
 - `Null`: no further elements.
 - `Program`: an optional quoted filename in the coordinate tuple; remaining elements are child S-expressions.
-- All other node types: remaining elements are child S-expressions.
+- All other node types: remaining elements are child S-expressions. An atom among them (`Rest` in a variadic `Head`) is kept as a node of that type without a position, and is written back as the atom.
 
 #### Pass 1: Definition Collection
 
@@ -110,7 +110,7 @@ Pass 1 does not assign global sequence numbers.
 Pass 2 traverses each `Program` tree recursively (depth-first, pre-order) with a **scope stack**, initially empty. The scope stack is a list of scopes; each scope is an ordered list of parameter name strings. The bottom of the stack corresponds to the outermost enclosing function.
 
 **On entering a `Function` node** (also the `Function` inside a `FuncExp` or an `LCont`):
-The `Head` child (if present) is examined. The value of each `Variable` child of `Head`, unquoted, is collected in order into a new scope list. This scope list is pushed onto the scope stack before the children of `Function` are visited.
+The `Head` child (if present) is examined. The value of each `Variable` child of `Head`, unquoted, is collected in order into a new scope list. A variadic `Head`, `(Head pos Rest (Variable ...))`, gives a scope with its one parameter. This scope list is pushed onto the scope stack before the children of `Function` are visited.
 
 **On leaving a `Function` node:**
 The scope list that was pushed on entry is popped from the scope stack.

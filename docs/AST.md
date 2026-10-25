@@ -53,6 +53,7 @@ Non-terminal nodes always emit a closing `)`, even when they have no children.
 | `Function` | Function | No |
 | `FuncExp` | FuncExp (a Function in parentheses, as an Operator or an Expression) | No |
 | `Head` | Head | No |
+| `Rest` | — (mark of a variadic Head) | Yes (written as the atom `Rest`) |
 | `Body` | Body | No |
 | `SInfo` | SInfo | Yes (value = string literals) |
 | `Operator` | Operator | No |
@@ -74,8 +75,9 @@ There is no `FileName` node in the output: the file name is part of the coordina
 
 
 2. **LCont**: `Body` always contains an `LCont` node as its last child. If `LCont` is absent in the source, the `LCont` node has no children: `(LCont (line col))`, positioned just after the last token of the `OList` (or at the next token if the `OList` is empty).
-3. **Operator and OList**: if a `Body` has no Operator (it is empty or has only an LCont), the `Operator` node holds a `Null` node, `(Operator (line col) (Null (line col)))`, and the `OList` node has no children, both at the position of the next token.
-4. **SInfo Priority**: When `--file` is specified, `SInfo` is auto-inserted into `Body` unless an explicit `(__SInfo__ ...)` exists. Auto-inserted `SInfo` uses the location of the `Operator`.
+3. **Variadic Head**: a `Head` that is a single parameter without parentheses (`, args`) is written as `(Head (line col) Rest (Variable (line col) "args"))`, with the atom `Rest` before the `Variable`, both at the position of the parameter. A `Head` in parentheses, `,(args)`, is `(Head (line col) (Variable (line col) "args"))` at the position of `(`. The two are told apart by whether the element after the coordinate tuple is a list.
+4. **Operator and OList**: if a `Body` has no Operator (it is empty or has only an LCont), the `Operator` node holds a `Null` node, `(Operator (line col) (Null (line col)))`, and the `OList` node has no children, both at the position of the next token.
+5. **SInfo Priority**: When `--file` is specified, `SInfo` is auto-inserted into `Body` unless an explicit `(__SInfo__ ...)` exists. Auto-inserted `SInfo` uses the location of the `Operator`.
 
 ---
 

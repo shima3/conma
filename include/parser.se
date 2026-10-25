@@ -243,8 +243,24 @@
   __Parser_node__ "Function" comma children ,(node)
   __NULL__ node toks)
 
-;; Head = "(", { Variable }, ")"
+;; Head = "(", { Variable }, ")" | Variable
+;; 括弧のない1つの Variable は可変長引数の Head で、(Head pos Rest (Variable pos "name")) にする。
+;; Rest は位置も子もないノードなので、__AST_toSexp__ は Rest とだけ書く
 (define __Parser_head__ ,(fail toks)
+  __Parser_next_is__ toks "SYMBOL" ,(isSymbol)
+  __if_then_else__ (,() __NULL__ isSymbol)
+    (,() __Parser_rest_head__ toks)
+    (,() __Parser_list_head__ fail toks))
+
+(define __Parser_rest_head__ ,(toks)
+  __LList_uncons__ __print_exit_error__ toks ,(vtok toks)
+  __Parser_variable__ vtok ,(var)
+  __AST_new__ "Rest" __NULL__ __NULL__ ,(rest)
+  __Parser_list2__ rest var ,(children)
+  __Parser_node__ "Head" vtok children ,(node)
+  __NULL__ node toks)
+
+(define __Parser_list_head__ ,(fail toks)
   __Parser_expect__ fail toks "LPAREN" __NULL__ ,(lparen toks)
   __Parser_params__ fail toks __NULL__ ,(params toks)
   __Parser_expect__ fail toks "RPAREN" __NULL__ ,(rparen toks)

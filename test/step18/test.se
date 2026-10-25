@@ -1,0 +1,126 @@
+;; Step18: 可変長引数（Head が括弧のない1つのパラメータの Function）
+;; 呼び出すと、その適用のオペランドすべてを1つの Seq にして、パラメータに渡す
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; 値を1つずつ " [値]" の形で出力する Sink
+(define printSink ,(value)
+  __OS_print__ " [" ,()
+  __OS_print__ value ,()
+  __OS_print__ "]" ,()
+  printSink)
+
+;; label に続けて、Seq の要素を出力する
+(define printSeq ,(label seq)
+  __OS_print__ label ,()
+  seq printSink ,(sink)
+  __OS_print__ "\n" ,()
+  )
+
+;; 受け取った引数をすべて出力する可変長引数の関数
+(define showArgs , args
+  printSeq "args:" args)
+
+;; case1: 引数が 0 個、1 個、3 個のとき。0 個でも実行され、空の Seq を受け取る
+(define case1 ,()
+  showArgs ,()
+  showArgs "a" ,()
+  showArgs "a" "b" "c" ,()
+  __type_name__ showArgs ,(t1)
+  (, args __type_name__ args) "x" ,(t2)
+  println t1 ,()
+  println t2)
+
+;; 引数を出力してから、残りを受け取る関数を返す
+(define takeTwo , args
+  printSeq "takeTwo:" args ,()
+  __NULL__ (,(x y) printSeq "then:" (,(sink) sink x y)))
+
+;; case2: 1回の適用のオペランドだけが Seq になる。LCont で適用する a3 a4 は含まれない
+(define case2 ,()
+  takeTwo "a1" "a2" ,(k)
+  k "a3" "a4")
+
+;; 2つの値を返す
+(define pair ,(a b)
+  __NULL__ a b)
+
+;; case3: 可変長引数の関数を LCont にすると、返された値をすべて Seq で受け取る
+(define case3 ,()
+  pair "x" "y" , values
+  printSeq "values:" values ,()
+  __NULL__ , none
+  printSeq "none:" none)
+
+;; f を引数なしで呼ぶ
+(define callIt ,(f)
+  f)
+
+;; case4: Operator の位置にあると、引数がなくても実行される。
+;; 実行せずに値として渡すには、オペランドにするか __NULL__ で返す
+(define case4 ,()
+  __NULL__ (, args printSeq "called:" args) ,(f)
+  println "not called yet" ,()
+  callIt f ,()
+  callIt (, args printSeq "operand:" args) ,()
+  f "now" "with" "args")
+
+;; ネストした関数から、args と外側のパラメータの両方を参照する
+(define nested ,(x)
+  __NULL__ (, args
+    __NULL__ (,(y)
+      printSeq "args:" args ,()
+      println x ,()
+      println y)))
+
+;; case5: 可変長引数のパラメータは1つの変数（de Bruijn index の数え方は通常のパラメータと同じ）
+(define case5 ,()
+  nested "outer" ,(f)
+  f "a" "b" ,(g)
+  g "inner")
+
+;; ── __Cont_get__ ──
+
+(define returnTwo ,()
+  __Cont_get__ ,(return)
+  return "12" "34" ,()
+  println "not reached")
+
+(define returnNone ,()
+  __Cont_get__ ,(return)
+  return ,()
+  println "not reached")
+
+;; ネストした関数の中から、外側の関数の呼び出し元に戻る
+(define returnFromInside ,(list)
+  __Cont_get__ ,(return)
+  __LList_uncons__ (,(msg) return "empty") list ,(head tail)
+  (,()
+    return head "found" ,()
+    println "not reached") ,()
+  println "not reached")
+
+;; case6: __Cont_get__ の return は、受け取った値をそのまま呼び出し元に渡す
+(define case6 ,()
+  returnTwo ,(a b)
+  println a ,()
+  println b ,()
+  returnNone ,()
+  println "returned without values" ,()
+  __LList_cons__ "x" __NULL__ ,(list)
+  returnFromInside list ,(value status)
+  println value ,()
+  println status ,()
+  returnFromInside __NULL__ ,(value)
+  println value)
+
+;; case7: 呼び出し元のない return（VProc の最初の関数）は、VProc を終える
+(define case7 ,()
+  __Cont_get__ ,(return)
+  println "before return" ,()
+  return "ignored" ,()
+  println "not reached")
