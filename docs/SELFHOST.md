@@ -80,6 +80,7 @@ __Parser_main__ onError fileName tokens ,(Program)
 * The Tokens are collected into an LList first, and the parser is a recursive descent over it. A function for a rule returns the node and the rest of the LList; a function for an expression also returns the last Token it read, because a `Body` without an LCont puts its `LCont` just after that Token.
 * Messages show values as Python's `repr` does: in single quotes, or in double quotes if the value has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped.
 * As in `bin/parser`, a `Body` without an LCont has an `LCont` with no children, `(LCont (line col))`. The example in [PARSER.md](PARSER.html) shows `(LCont (2 20) (Null (2 20)))` instead.
+* A variadic Head (`, args`, a `SYMBOL` instead of `(` after `,`) is a `Head` node with two children: a node `Rest` without a position and children, which `__AST_toSexp__` writes as the atom `Rest`, and the `Variable` (Step 18 in [ROADMAP.md](ROADMAP.html)).
 * A `String` node holds the value of the `STRING` token without its first and last characters, the double quotes. For a String that the lexer reports as unterminated, this drops its last character; `bin/parser` writes such a String without a closing quote, which is not a valid S-expression either.
 
 ### includer
@@ -128,7 +129,7 @@ __Resolver_main__ programs ,(Module)
 * `programs` is the LList that `__Includer_main__` returns. There are no errors.
 * AST nodes cannot be changed, so the resolver makes a new tree with the annotations. It goes through all `Program`s once, in pre-order. `bin/resolver` first collects the `Definition`s in a pass of its own; here, the annotated `Function` of the first `Definition` of each name is put into a Dict when that `Definition` is reached. The result is the same: a name defined twice gets the `Function` of its first `Definition`, and the second one still numbers the global variables it uses.
 * Global numbers are kept in a Dict from names to numbers, with the next number and the list of numbered names in Refs. The `G` entries are made in the order of their numbers; a name with no `Definition` gets `Undefined`.
-* The scope stack is an LList of scopes, innermost first; a scope is the LList of the parameter names of a `Head`, the rightmost first. The index of a name is the number of parameters in the inner scopes plus its position in its scope. As in `bin/resolver`, if a name appears twice in one `Head`, the rightmost one is used.
+* The scope stack is an LList of scopes, innermost first; a scope is the LList of the parameter names of a `Head`, the rightmost first. The `Rest` node of a variadic `Head` is not a `Variable`, so its scope has the one parameter, and the node is copied as it is. The index of a name is the number of parameters in the inner scopes plus its position in its scope. As in `bin/resolver`, if a name appears twice in one `Head`, the rightmost one is used.
 * As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`. [RESOLVER.md](RESOLVER.html) does not describe this.
 * `(F)` with no file names would be written as `F` by `__AST_toSexp__` (a node without a position and children). This does not happen, because every `Program` from `__Includer_main__` has a file name.
 
@@ -316,7 +317,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | Case | What it checks |
 |---|---|
 | case1 | `selfhost2/sample.se`, `selfhost2/inc.se` and `include/util.se` |
-| case2 | `body.se`: explicit `SInfo` with and without Strings, an empty Body, a Body with only an LCont, a FuncExp as Operator and as the last operand, nested functions, a String with escapes, an Includer after a Definition |
+| case2 | `body.se`: explicit `SInfo` with and without Strings, an empty Body, a Body with only an LCont, a FuncExp as Operator and as the last operand, nested functions, a String with escapes, an Includer after a Definition; `variadic.se`: variadic Heads in a Definition, a FuncExp and an LCont |
 | case3 | no statements: an empty file and a file with only a comment |
 | case4 | syntax errors at the top level: no `(`, an unknown keyword, no Symbol after `(`, `(` alone, an Includer without a String |
 | case5 | syntax errors in a Definition: no `,`, a String as a parameter (its `repr` has `\'`), a String as Operator, the end of input |
@@ -338,7 +339,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 
 | Case | What it checks |
 |---|---|
-| case1 | `scope.se`: de Bruijn indexes with several parameters in a `Head`, nested functions, shadowing, the same name twice in a `Head`, an LCont and a FuncExp; a free variable |
+| case1 | `scope.se`: de Bruijn indexes with several parameters in a `Head`, nested functions, shadowing, the same name twice in a `Head`, an LCont and a FuncExp; a free variable; `variadic.se`: variadic Heads |
 | case2 | `globals.se`: a name defined twice, a reference before its definition, `__NULL__` as a global and as a parameter, an `SInfo` without Strings, an empty Body |
 | case3 | `empty.se`: a `Module` with only `F` |
 | case4 | several files: the includes of `selfhost6/main.se` (it makes `selfhost6/link.se` as `selfhost6/test.sh` does) |

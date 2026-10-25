@@ -32,9 +32,11 @@ case1() {
   parse ../../include/util.se
 }
 # case2: Body: explicit SInfo with and without Strings, an empty Body, only an LCont,
-# a FuncExp as Operator and as the last operand, nested functions, an Includer after a Definition
+# a FuncExp as Operator and as the last operand, nested functions, an Includer after a Definition;
+# variadic Heads in a Definition, a FuncExp and an LCont
 case2() {
   parse body.se
+  parse variadic.se
 }
 # case3: no statements: an empty file and a file with only a comment
 case3() {

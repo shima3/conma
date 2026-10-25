@@ -53,6 +53,14 @@ The AST is written to standard output as S-expressions. Each node is written as:
 
 where `line` and `col` are 1-based integers. Children are indented by 2 spaces. Consecutive closing parentheses on separate lines are merged onto the preceding line.
 
+A variadic Head (`, args`, a single Symbol after `,` instead of `(`) is written with the atom `Rest`, at the position of the Symbol:
+
+```
+(Head (line col)
+  Rest
+  (Variable (line col) "args"))
+```
+
 #### Terminal nodes
 
 | Node | Format |

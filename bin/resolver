@@ -10,6 +10,7 @@ class ASTNode:
         self.value = value
         self.children = []
         self.is_local = False
+        self.is_atom = False  # an atom child such as Rest, written without parentheses
         self.index = None # Local: True de Bruijn Index, Global: Sequence No
 
 def tokenize_sexp(text):
@@ -104,9 +105,15 @@ def parse_sexp_tokens(tokens, pos):
             child, pos = parse_sexp_tokens(tokens, pos)
             node.children.append(child)
     else:
-        # Non-terminal: parse children until ')'
+        # Non-terminal: parse children until ')'. An atom child (Rest in a
+        # variadic Head) is kept as a node of that type without a position.
         while tokens[pos] != ')':
-            child, pos = parse_sexp_tokens(tokens, pos)
+            if tokens[pos] == '(':
+                child, pos = parse_sexp_tokens(tokens, pos)
+            else:
+                child = ASTNode(tokens[pos], None, None)
+                child.is_atom = True
+                pos += 1
             node.children.append(child)
 
     assert tokens[pos] == ')'; pos += 1  # consume closing ')'
@@ -202,6 +209,9 @@ class Resolver:
         prefix = "  " * indent
         ntype = node.type
         l, c = node.line, node.col
+
+        if node.is_atom:
+            return [f"{prefix}{ntype}"]
 
         if ntype == "Variable":
             if node.value == "\"__NULL__\"":

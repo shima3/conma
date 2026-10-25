@@ -42,10 +42,20 @@
   __OS_print_error__ msg ,()
   __OS_exit_error__)
 
+;; 呼び出し元に戻る継続 return を LCont に渡す。
+;; return は可変長引数の関数で、受け取った引数をそのまま呼び出し元の LCont に渡す。
+;; 引数がなければ、引数なしで呼び出し元に戻る。
+;; 呼び出し元がない（CChain が空になる）ときは、CChain を空にして VProc を終える
 (define __Cont_get__ ,()
+  __CChain_pop_LCont__ ,(lc)
   __CChain_get__ ,(cc)
-  __LList_uncons__ __print_exit_error__ cc ,(first rest)
-  __NULL__ (,() __CChain_set__ rest))
+  lc (, args
+    __if_then_else__ (,() __is_null__ cc)
+      (,() __CChain_set__ cc)
+      (,()
+        __CChain_set__ cc ,()
+        __CChain_pop_LCont__ ,(lc)
+        args lc)))
 
 ;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
 ;; err, in, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。

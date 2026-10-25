@@ -1,0 +1,4 @@
+args: [a] [b]
+outer
+inner
+exit: 0

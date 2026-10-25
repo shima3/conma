@@ -3,3 +3,8 @@ file: exit python 0, conma 0
 compare: 0
 nofile: exit python 0, conma 0
 compare: 0
+== variadic.se
+file: exit python 0, conma 0
+compare: 0
+nofile: exit python 0, conma 0
+compare: 0

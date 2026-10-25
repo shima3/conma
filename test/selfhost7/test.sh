@@ -22,9 +22,11 @@ resolve() {
   echo "compare: $?"
 }
 # case1: de Bruijn indexes: several parameters, nested functions, shadowing,
-# the same name twice in a Head, an LCont and a FuncExp, a free variable
+# the same name twice in a Head, an LCont and a FuncExp, a free variable; variadic Heads
 case1() {
   resolve scope.se
+  sed -e "s|$dir|<dir>|g" /tmp/selfhost7.conma.txt
+  resolve variadic.se
   sed -e "s|$dir|<dir>|g" /tmp/selfhost7.conma.txt
 }
 # case2: global numbers: a name defined twice, a reference before the definition,

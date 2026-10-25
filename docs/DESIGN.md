@@ -195,7 +195,25 @@ This section describes the dynamic behavior of the VProc during code evaluation,
 
 A **Closure** consists of three components: **Head**, **Body**, and **LVEnv**.
 
-When a **VProc** executes an **Operator Application** where the **Operator** is a **Closure**, the **VProc** first checks whether the Head of the Operator Closure is empty.
+When a **VProc** executes an **Operator Application** where the **Operator** is a **Closure**, the **VProc** first checks whether the Operator Closure is variadic, and then whether its Head is empty.
+
+---
+
+#### **Execution of a Variadic Closure**
+
+A Closure made from a variadic Function (`, args Body`, whose Head is `Rest` and one parameter) is always executed, whether the OList is empty or not. The VProc updates its state as follows:
+
+**1. LCont Handling**
+
+As for an empty Head: if the LCont of the VProc is not absent, it is pushed onto the **CChain** as a new **CFrame**.
+
+**2. Binding**
+
+All the operands of the OList are put into a **Seq Closure** `(,(__Sink__) (__SInfo__ ...) __Sink__ a_1 a_2 ...)` with the VProc's current LVEnv, the same kind of closure as for surplus operands below. It is bound to the parameter: the LVEnv of the Operator Closure, extended with this binding, becomes the VProc's current LVEnv. If the OList is empty, the Seq Closure has no operands. Nothing is pushed for the operands, so there are no surplus operands.
+
+**3. State Update**
+
+The **SInfo**, **Operator**, **OList**, and **LCont** of the Operator Closure's Body are loaded into the VProc, evaluated in the extended LVEnv.
 
 ---
 
