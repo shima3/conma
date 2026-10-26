@@ -372,6 +372,10 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 * AST: a variadic Head is `(Head (line col) Rest (Variable (line col) "args"))` at the position of the parameter. `bin/parser`, `bin/resolver`, `include/parser.se` and `include/resolver.se` handle it; `test/selfhost5` and `test/selfhost7` compare a source with variadic Heads.
 * VM (`test/vproc_step.py`): a Closure has a `variadic` flag, set from a Head with `Rest`. Applying a variadic Closure pushes the LCont, binds a SeqClosure of the OList to the parameter, and runs the Body. Traces write the Head with `Rest` and read it back.
 * `__Cont_get__` gives a variadic `return`: it sets the CChain back to that of the caller, pops the caller's LCont and applies the Seq of its arguments to it, so the LCont gets all the values (none without arguments). If there is no caller (the CChain is empty), `return` empties the CChain and the VProc finishes, as before (for example `exit` in `__main__`).
+* Library definitions in `include/util.se` that use it:
+  * `__Seq_get__ onEmpty Seq ,(first rest)` (from SPEC.md). The definition in SPEC.md took as `rest`, after the last element, the LCont that calls `onEmpty`, so a later `__Seq_get__` on that `rest` applied the first `onEmpty`, not its own. Now that LCont acts as an empty Seq once the Sink has got an element (a Ref records it), and applies `onEmpty` only for an empty Seq.
+  * `__Seq_print__ Seq` writes the elements with `__OS_print__`, and `__println__ , args` writes all its arguments and a newline. They have reserved names, so that they do not clash with the `println` that many tests define for themselves.
+* `test/step4` case9 and case10 check that the `return` of `__Cont_get__` passes values and returns without them.
 * Tests (`test/step18`):
 
 | Case | What it checks |
@@ -383,3 +387,5 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | case5 | the variadic parameter is one variable for de Bruijn indexes, also in nested functions |
 | case6 | `return` of `__Cont_get__` with two values, with none, and from a nested function inside the function |
 | case7 | `return` in the first function of a VProc (no caller) finishes the VProc |
+| case8 | `__Seq_get__` four times on a Seq that passes its elements together, one by one, with one element, with none, and on a variadic Seq; the rest after the last element is empty, and each call applies its own `onEmpty` |
+| case9 | `__println__` with no, one and three arguments, and `__Seq_print__`; a file that defines its own `println` and `printSeq` does not affect them |

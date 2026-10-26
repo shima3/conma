@@ -133,22 +133,36 @@
     (,(sink) __Stream_lines__ inStream sink)
     (,(value) __Stream_sink__ outStream value))
 
+;; ── Seq ──
+
+;; Seq の最初の要素 first と、残りの Seq rest を返す。Seq が空なら onEmpty を呼ぶ。
+;; sink が first を受け取ったとき、残りの要素は次のどちらかにある。
+;;   ・余ったオペランドとして CChain に積まれた Seq Closure（要素をまとめて渡す Seq）
+;;   ・sink の適用の LCont（要素を1つずつ渡す Seq の続き）
+;; どちらも CChain の先頭なので、__CChain_pop_LCont__ で取り出して rest にする。
+;; 最後の要素では、取り出されるのは Seq の適用の LCont（下の ,(sink) ...）になる。
+;; これを後で rest として sink に適用すると、got が __TRUE__ なので sink をそのまま返し、空の Seq として働く。
+;; Seq が空なら sink は呼ばれず、Seq は sink をそのまま LCont に返すので、got が __FALSE__ になり onEmpty を呼ぶ
 (define __Seq_get__ ,(onEmpty Seq)
   __Cont_get__ ,(return)
+  __Ref_new__ __FALSE__ ,(got)
   Seq (,(first)
+        __Ref_set__ got __TRUE__ ,()
         __CChain_pop_LCont__ ,(rest)
-        return first rest) ,(dummy)
-  onEmpty)
+        return first rest) ,(sink)
+  __Ref_get__ got ,(gotOne)
+  __if_then_else__ (,() __NULL__ gotOne)
+    (,() __NULL__ sink)
+    onEmpty)
 
-(define printSeq ,(seq end)
-  __Seq_get__ end seq ,(str rest)
-  __OS_print__ str ,()
-  printSeq rest end ,()
-  )
-
-(define println , args
+;; Seq の要素を順に __OS_print__ で出力する
+(define __Seq_print__ ,(seq)
   __Cont_get__ ,(return)
-  printSeq args
-  (,()
-    __OS_print__ "\n" ,()
-    return))
+  __Seq_get__ return seq ,(str rest)
+  __OS_print__ str ,()
+  __Seq_print__ rest)
+
+;; 引数をすべて続けて出力し、改行する（可変長引数）
+(define __println__ , args
+  __Seq_print__ args ,()
+  __OS_print__ "\n")

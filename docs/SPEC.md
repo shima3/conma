@@ -365,16 +365,39 @@ Example:
 
 (define __Seq_get__ ,(onEmpty Seq)
   __Cont_get__ ,(return)
+  __Ref_new__ __FALSE__ ,(got)
   Seq (,(first)
-    __CChain_pop_LCont__ ,(rest)
-    return first rest) ,(dummy)
-  onEmpty)
+        __Ref_set__ got __TRUE__ ,()
+        __CChain_pop_LCont__ ,(rest)
+        return first rest) ,(sink)
+  __Ref_get__ got ,(gotOne)
+  __if_then_else__ (,() __NULL__ gotOne)
+    (,() __NULL__ sink)
+    onEmpty)
 
 (define __Seq_get_all__ ,(Seq)
   __CChain_pop_LCont__ ,(lc)
   Seq lc ,(dummy)
   __exit__ "__Seq_get_all__ insufficient number of elements")
+
+(define __Seq_print__ ,(seq)
+  __Cont_get__ ,(return)
+  __Seq_get__ return seq ,(str rest)
+  __OS_print__ str ,()
+  __Seq_print__ rest)
+
+(define __println__ , args
+  __Seq_print__ args ,()
+  __OS_print__ "\n")
 ```
+
+`__Seq_get__ onEmpty Seq ,(first rest)` returns the first element of `Seq` and a `Seq` of the rest. If `Seq` is empty, it applies `onEmpty` instead, with the continuation of `__Seq_get__`.
+When the `Sink` gets the first element, the rest of the `Seq` is on the top of the CChain: either as the Seq Closure of the surplus operands, if the `Seq` passes several elements in one application, or as the LCont of the application of the `Sink`, if it passes them one at a time. `__CChain_pop_LCont__` takes it as `rest`.
+After the last element, nothing is pushed, and `__CChain_pop_LCont__` takes the LCont of the application of `Seq`, `,(sink) ...`. Applied to a `Sink` later as `rest`, it returns the `Sink` (`got` is `__TRUE__`), so it is an empty `Seq`. When `Seq` is empty, the `Sink` is not applied and `Seq` returns it to the same LCont with `got` still `__FALSE__`, so `onEmpty` is applied.
+
+`__Seq_print__ Seq` writes the elements of `Seq` with `__OS_print__`, one after another. `__println__` is variadic: it writes all its arguments and then a newline.
+
+`__Seq_get__`, `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
 ---
 
 ### `Stream`

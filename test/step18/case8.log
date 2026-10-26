@@ -1,0 +1,6 @@
+together: a b c empty-4
+one by one: a b c empty-4
+one: a empty-2 empty-3 empty-4
+empty: empty-1 empty-2 empty-3 empty-4
+variadic: x y empty-3 empty-4
+exit: 0

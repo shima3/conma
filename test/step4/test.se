@@ -55,7 +55,7 @@
 (define peek_caller ,()
   __CChain_pop_CFrame__ ,(cf)
   __CFrame_get_SInfo__ cf ,(si)
-  println si ,()
+  __println__ si ,()
   __CChain_push_CFrame__ cf ,()
   )
 
@@ -65,21 +65,21 @@
   __CChain_pop_CFrame__ ,(cf)
   __is_null__ cf ,(empty)
   __if_then_else__ empty
-    (,() println "empty CChain gives null")
-    (,() println "empty CChain gives a CFrame") ,()
+    (,() __println__ "empty CChain gives null")
+    (,() __println__ "empty CChain gives a CFrame") ,()
   peek_caller ,()
-  println "returned" ,()
+  __println__ "returned" ,()
   )
 
 ;; case5: __CFrame_new__ で作った CFrame を積むと、関数の終了時にその Closure が実行される。
 ;; SInfo は __CFrame_get_SInfo__ でそのまま取り出せる
 (define case5 ,()
-  __CFrame_new__ (,() println "pushed frame runs") "custom.se:12:5" ,(cf)
+  __CFrame_new__ (,() __println__ "pushed frame runs") "custom.se:12:5" ,(cf)
   __CFrame_get_SInfo__ cf ,(si)
-  println si ,()
-  __CFrame_new__ (,() println "never") __NULL__ ,(cf2)
+  __println__ si ,()
+  __CFrame_new__ (,() __println__ "never") __NULL__ ,(cf2)
   __CFrame_get_SInfo__ cf2 ,(si2)
-  println si2 ,()
+  __println__ si2 ,()
   __CChain_push_CFrame__ cf ,()
   __CChain_get__ ,(cc)
   CChain_print cc ,()
@@ -93,7 +93,7 @@
 ;; case6: __CChain_pop_LCont__ で呼び出し元の LCont を取り出して値を返す
 (define case6 ,()
   return_hello ,(greeting)
-  println greeting ,()
+  __println__ greeting ,()
   )
 
 ;; 保存した CChain に置き換えて、途中の呼び出しを飛ばして戻る。
@@ -101,13 +101,13 @@
 (define deep ,(saved list)
   __if_then_else__ (,() __LList_is_empty__ list)
     (,()
-      println "escape" ,()
+      __println__ "escape" ,()
       __CChain_set__ saved ,()
       )
     (,()
       __LList_uncons__ __print_exit_error__ list ,(first rest)
       deep saved rest ,()
-      println "not reached" ,()
+      __println__ "not reached" ,()
       ) ,()
   )
 
@@ -124,46 +124,39 @@
   __LList_cons__ "b" list ,(list)
   __LList_cons__ "a" list ,(list)
   run_deep list ,()
-  println "back in case7" ,()
+  __println__ "back in case7" ,()
   __CChain_get__ ,(saved)
   deep saved list ,()
-  println "not reached (case7)" ,()
+  __println__ "not reached (case7)" ,()
   )
 
 ;; case8: CFrame でない値を渡すとエラー終了する
 (define case8 ,()
   __CFrame_get_SInfo__ "abc" ,(si)
-  println "not reached" ,()
+  __println__ "not reached" ,()
   )
 
-(define __Cont_get2__ ,()
-  __CChain_pop_LCont__ ,(lc)
-  __CChain_get__ ,(cc)
-  lc (, args
-       __CChain_set__ cc ,()
-       __unless__ (,() __is_null__ cc)
-       (,() __CChain_pop_LCont__ ,(lc)
-         args lc)))
-
+;; case9: __Cont_get__ の継続に渡した値は、呼び出し元の LCont に渡される
 (define case9sub ,()
-  __Cont_get2__ ,(ret)
+  __Cont_get__ ,(ret)
   ret "12" "34")
 
 (define case9 ,()
-  __Cont_get2__ ,(ret)
+  __Cont_get__ ,(ret)
   case9sub ,(x y)
-  println x ", " y ,()
+  __println__ x ", " y ,()
   ret)
 
+;; case10: 値を渡さない継続は、呼び出し元に戻る。VProc の最初の関数の継続は VProc を終える
 (define case10sub ,()
-  println "case10sub" ,()
-  __Cont_get2__ ,(ret)
-  println "case10sub 2" ,()
+  __println__ "case10sub" ,()
+  __Cont_get__ ,(ret)
+  __println__ "case10sub 2" ,()
   ret)
 
 (define case10 ,()
-  __Cont_get2__ ,(ret)
-  println "case10 2" ,()
+  __Cont_get__ ,(ret)
+  __println__ "case10 2" ,()
   case10sub ,()
-  println "case10 3" ,()
+  __println__ "case10 3" ,()
   ret)
