@@ -59,11 +59,12 @@
     (,() __NULL__ __FALSE__)
     (,() __String_equal__ k kind))
 
-;; 先頭の Token が kind（value が null でなければ、その値も）であることを確かめて読む
+;; 先頭の Token が kind（value が null でなければ、その値も）であることを確かめて読む。
+;; repr はエラーメッセージを作るときだけ求める（どの Token でも呼ばれるので）
 (define __Parser_expect__ ,(fail toks kind value)
-  __String_repr__ kind ,(kindRepr)
   __if_then_else__ (,() __is_null__ toks)
     (,()
+      __String_repr__ kind ,(kindRepr)
       __String_concat__ "Unexpected end of input; expected " kindRepr ,(msg)
       fail msg)
     (,()
@@ -84,6 +85,7 @@
                   __Parser_concat__ where "expected " valueRepr ", got " vRepr ,(msg)
                   fail msg)))
         (,()
+          __String_repr__ kind ,(kindRepr)
           __String_repr__ k ,(kRepr)
           __String_repr__ v ,(vRepr)
           __Parser_concat__ where "expected " kindRepr ", got " kRepr ,(msg)

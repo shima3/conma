@@ -280,10 +280,20 @@
 
 ;; Python の str.isprintable と同じく、表示できる文字なら __TRUE__。
 ;; 空白（32）以外の Cc、Cf、Zs、Zl、Zp、Co、Cs の文字（Unicode 15.1）が表示できない。
-;; 割り当てのない文字（Cn）は表示できるとする（Python はエスケープする）
+;; 割り当てのない文字（Cn）は表示できるとする（Python はエスケープする）。
+;; ASCII の 32〜126 は範囲の表を調べずに __TRUE__ にする（ほとんどの文字はこれなので）
 (define __String_repr_is_printable__ ,(code)
-  __String_repr_in_ranges__ code __String_repr_nonprintable__ ,(inRange)
-  __not__ inRange)
+  __Number_fromString__ __print_exit_error__ "32" ,(n32)
+  __Number_fromString__ __print_exit_error__ "126" ,(n126)
+  __Number_subtract__ code n32 ,(belowSpace)
+  __Number_subtract__ n126 code ,(aboveTilde)
+  __Number_is_negative__ belowSpace ,(isBelow)
+  __Number_is_negative__ aboveTilde ,(isAbove)
+  __if_then_else__ (,() __or__ isBelow isAbove)
+    (,()
+      __String_repr_in_ranges__ code __String_repr_nonprintable__ ,(inRange)
+      __not__ inRange)
+    (,() __NULL__ __TRUE__))
 
 ;; 表示できない文字の範囲。下限と上限の組を昇順に並べた Seq
 (define __String_repr_nonprintable__ ,(sink)
