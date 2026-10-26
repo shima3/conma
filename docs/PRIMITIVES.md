@@ -469,7 +469,7 @@ A variable defined as null.
 ## 12. String Primitives
 
 Positions and lengths count Unicode code points. An escape sequence such as `\n` is one character. Positions start at 0.
-A non-String argument (or, for `__String_substring__`, a non-Number position) stops the VProc with an error.
+A non-String argument (or, for `__String_substring__`, a non-Number position, and for `__String_fromCode__`, a non-Number) stops the VProc with an error.
 
 ### **`__String_length__ String ,(Number)`**
 * **Description**: Returns the number of characters in the `String`.
@@ -481,6 +481,14 @@ A non-String argument (or, for `__String_substring__`, a non-Number position) st
 
 ### **`__String_concat__ aString bString ,(String)`**
 * **Description**: Returns a new `String` made of `aString` followed by `bString`.
+
+### **`__String_toCode__ onError String ,(Number)`**
+* **Description**: Returns the Unicode code point of the one character of `String`.
+* **Error**: If `String` does not have exactly one character, the interpreter invokes `onError` with an error message string.
+
+### **`__String_fromCode__ onError Number ,(String)`**
+* **Description**: Returns a `String` of one character, whose code point is `Number`. It is the inverse of `__String_toCode__`, and can make characters that a String literal cannot write, such as control characters.
+* **Error**: If `Number` is not an integer from 0 to 0x10FFFF (1114111), or is a surrogate code point (0xD800 to 0xDFFF), the interpreter invokes `onError` with an error message string. A non-Number argument stops the VProc with an error.
 
 ### **`__String_equal__ aString bString ,(Boolean)`**
 * **Description**: Returns `__TRUE__` if the two Strings have the same content, `__FALSE__` otherwise. A String made at run time equals a String literal with the same content.

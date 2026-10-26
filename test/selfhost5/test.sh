@@ -65,7 +65,15 @@ case6() {
   PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/test.module.se recover err_end.se err_toplevel.se empty.se 2>&1
   echo "exit: $?"
 }
-for c in case1 case2 case3 case4 case5 case6
+# case7: an unterminated String that is only a double quote, at the end of a line,
+# at the end of the file and in an SInfo; a message with a full-width space, escaped as Python's repr does
+case7() {
+  parse quote_eol.se
+  parse quote_eof.se
+  parse quote_sinfo.se
+  parse err_space.se
+}
+for c in case1 case2 case3 case4 case5 case6 case7
 do
   $c > /tmp/$c.log 2>&1
   diff $c.log /tmp/$c.log

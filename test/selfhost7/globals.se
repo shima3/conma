@@ -3,3 +3,4 @@
 (define first ,() other)
 (define n ,(__NULL__) __NULL__)
 (define e ,())
+(define __NULL__ ,(x) x)

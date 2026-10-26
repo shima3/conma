@@ -30,7 +30,7 @@ case1() {
   sed -e "s|$dir|<dir>|g" /tmp/selfhost7.conma.txt
 }
 # case2: global numbers: a name defined twice, a reference before the definition,
-# __NULL__ as a global and as a parameter, an SInfo without Strings, an empty Body
+# __NULL__ as a global, as a parameter and as the name of a Definition, an SInfo without Strings, an empty Body
 case2() {
   resolve globals.se
   sed -e "s|$dir|<dir>|g" /tmp/selfhost7.conma.txt

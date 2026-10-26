@@ -98,12 +98,14 @@
         (,() __NULL__ acc) ,(acc)
       __Resolver_param_names__ rest acc))
 
-;; Definition: 子ノードに注釈を加える。その名前の最初の Definition なら、Function を values に入れる
+;; Definition: 子ノードに注釈を加える。その名前の最初の Definition なら、Function を values に入れる。
+;; 名前は注釈を加える前に取り出す（__NULL__ という名前の Variable は注釈で Null ノードに変わるため）
 (define __Resolver_definition__ ,(globals values count order scopes node)
-  __Resolver_children__ globals values count order scopes node ,(node)
   __AST_get_children__ node ,(children)
   __Resolver_find__ children "Variable" ,(var)
   __Resolver_name_of__ var ,(name)
+  __Resolver_children__ globals values count order scopes node ,(node)
+  __AST_get_children__ node ,(children)
   __LList_uncons__ __print_exit_error__ children ,(first rest)
   __unless__ (,() __is_null__ rest)
     (,()

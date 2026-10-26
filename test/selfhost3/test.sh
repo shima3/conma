@@ -39,7 +39,12 @@ case4() {
 case5() {
   lex backslash.se
 }
-for c in case1 case2 case3 case4 case5
+# case6: messages for unexpected characters show them as Python's repr does:
+# ' in double quotes, a full-width space, a no-break space and control characters escaped
+case6() {
+  lex chars.se
+}
+for c in case1 case2 case3 case4 case5 case6
 do
   $c > /tmp/$c.log 2>&1
   diff $c.log /tmp/$c.log

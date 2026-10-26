@@ -1,0 +1,9 @@
+__String_toCode__: expected one character, got length 0
+__String_toCode__: expected one character, got length 2
+__String_fromCode__: not a code point: 1.5
+__String_fromCode__: not a code point: -1
+__String_fromCode__: not a code point: 1114112
+__String_fromCode__: not a code point: 55296
+__String_fromCode__: not a code point: 57343
+1114111 ok
+exit: 0

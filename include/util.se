@@ -136,24 +136,65 @@
 ;; ── Seq ──
 
 ;; Seq の最初の要素 first と、残りの Seq rest を返す。Seq が空なら onEmpty を呼ぶ。
-;; sink が first を受け取ったとき、残りの要素は次のどちらかにある。
-;;   ・余ったオペランドとして CChain に積まれた Seq Closure（要素をまとめて渡す Seq）
+;; sink が first を受け取ったとき、Seq の残りの処理は、CChain のうち Seq の適用の LCont（下の ,(sink) ...）より上にある。
+;;   ・余ったオペランドとして積まれた Seq Closure（要素をまとめて渡す Seq）
 ;;   ・sink の適用の LCont（要素を1つずつ渡す Seq の続き）
-;; どちらも CChain の先頭なので、__CChain_pop_LCont__ で取り出して rest にする。
-;; 最後の要素では、取り出されるのは Seq の適用の LCont（下の ,(sink) ...）になる。
-;; これを後で rest として sink に適用すると、got が __TRUE__ なので sink をそのまま返し、空の Seq として働く。
-;; Seq が空なら sink は呼ばれず、Seq は sink をそのまま LCont に返すので、got が __FALSE__ になり onEmpty を呼ぶ
+;;   ・その下に、Seq の中で LCont を付けて呼ばれた関数の LCont（Seq を組み合わせて作ったとき）
+;; これらの CFrame をすべて取り出しておき、rest を sink に適用したときに、そのときの CChain の上に積み直す。
+;; 積み直した CChain の先頭の LCont に sink を返すと、Seq の続きが新しい sink で動き、最後に rest の呼び出し元に戻る。
+;; 最後の要素の後は取り出す CFrame がないので、rest は sink をそのまま返し、空の Seq として働く。
+;; Seq が空なら sink は呼ばれず、Seq は sink をそのまま LCont に返すので onEmpty を呼ぶ
 (define __Seq_get__ ,(onEmpty Seq)
   __Cont_get__ ,(return)
-  __Ref_new__ __FALSE__ ,(got)
+  __CChain_get__ ,(outer)
+  __LList_length__ outer ,(outerLen)
   Seq (,(first)
-        __Ref_set__ got __TRUE__ ,()
-        __CChain_pop_LCont__ ,(rest)
-        return first rest) ,(sink)
-  __Ref_get__ got ,(gotOne)
-  __if_then_else__ (,() __NULL__ gotOne)
-    (,() __NULL__ sink)
-    onEmpty)
+        __CChain_get__ ,(inner)
+        __LList_length__ inner ,(innerLen)
+        __Number_subtract__ innerLen outerLen ,(n)
+        __Number_fromString__ __print_exit_error__ "1" ,(one)
+        __Number_subtract__ n one ,(n)
+        __Seq_take_CFrames__ n inner __NULL__ ,(frames)
+        return first (,(sink)
+          __CChain_get__ ,(chain)
+          __Seq_push_CFrames__ frames chain ,(chain)
+          __CChain_set__ chain ,()
+          __NULL__ sink)) ,(sink)
+  onEmpty)
+
+;; chain の先頭から n 個の CFrame を取り出し、逆順にして acc の前に積んだ LList を返す
+(define __Seq_take_CFrames__ ,(n chain acc)
+  __if_then_else__ (,() __Number_is_zero__ n)
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ chain ,(cf chain)
+      __LList_cons__ cf acc ,(acc)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_subtract__ n one ,(n)
+      __Seq_take_CFrames__ n chain acc))
+
+;; __Seq_take_CFrames__ が返した frames を chain の上に積み直す（最後の CFrame が先頭になる）
+(define __Seq_push_CFrames__ ,(frames chain)
+  __if_then_else__ (,() __is_null__ frames)
+    (,() __NULL__ chain)
+    (,()
+      __LList_uncons__ __print_exit_error__ frames ,(cf frames)
+      __LList_cons__ cf chain ,(chain)
+      __Seq_push_CFrames__ frames chain))
+
+;; LList の要素の数
+(define __LList_length__ ,(list)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __LList_length_from__ list zero)
+
+(define __LList_length_from__ ,(list n)
+  __if_then_else__ (,() __is_null__ list)
+    (,() __NULL__ n)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(head tail)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ n one ,(n)
+      __LList_length_from__ tail n))
 
 ;; Seq の要素を順に __OS_print__ で出力する
 (define __Seq_print__ ,(seq)
@@ -161,6 +202,131 @@
   __Seq_get__ return seq ,(str rest)
   __OS_print__ str ,()
   __Seq_print__ rest)
+
+;; ── String ──
+
+;; Python の repr と同じく、str を引用符で囲む。
+;; ' を含み " を含まなければ "..."、それ以外は '...'。
+;; \ と囲む引用符、改行、タブ、復帰はエスケープし、表示できない文字は \xNN、\uNNNN、\UNNNNNNNN にする
+(define __String_repr__ ,(str)
+  __String_repr_contains__ str "'" ,(hasSingle)
+  __String_repr_contains__ str "\"" ,(hasDouble)
+  __not__ hasDouble ,(noDouble)
+  __if_then_else__ (,() __and__ hasSingle noDouble)
+    (,() __NULL__ "\"")
+    (,() __NULL__ "'") ,(quote)
+  __String_length__ str ,(len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_repr_loop__ str len zero quote quote ,(s)
+  __String_concat__ s quote)
+
+(define __String_repr_loop__ ,(str len i quote acc)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ acc)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ str i next ,(ch)
+      __String_repr_char__ ch quote ,(ch)
+      __String_concat__ acc ch ,(acc)
+      __String_repr_loop__ str len next quote acc))
+
+;; repr の中の1文字
+(define __String_repr_char__ ,(ch quote)
+  __if_then_else__ (,() __String_equal__ ch "\\") (,() __NULL__ "\\\\") (,()
+  __if_then_else__ (,() __String_equal__ ch quote) (,() __String_concat__ "\\" ch) (,()
+  __if_then_else__ (,() __String_equal__ ch "\n") (,() __NULL__ "\\n") (,()
+  __if_then_else__ (,() __String_equal__ ch "\t") (,() __NULL__ "\\t") (,()
+  __if_then_else__ (,() __String_equal__ ch "\r") (,() __NULL__ "\\r") (,()
+  __String_toCode__ __print_exit_error__ ch ,(code)
+  __String_repr_is_printable__ code ,(printable)
+  __if_then_else__ (,() __NULL__ printable)
+    (,() __NULL__ ch)
+    (,() __String_repr_escape__ code)))))))
+
+;; 表示できない文字のエスケープ。256 未満は \xNN、65536 未満は \uNNNN、それ以外は \UNNNNNNNN
+(define __String_repr_escape__ ,(code)
+  __Number_fromString__ __print_exit_error__ "256" ,(n256)
+  __Number_fromString__ __print_exit_error__ "65536" ,(n65536)
+  __Number_subtract__ code n256 ,(d256)
+  __Number_subtract__ code n65536 ,(d65536)
+  __if_then_else__ (,() __Number_is_negative__ d256)
+    (,() __NULL__ "\\x" "2")
+    (,()
+      __if_then_else__ (,() __Number_is_negative__ d65536)
+        (,() __NULL__ "\\u" "4")
+        (,() __NULL__ "\\U" "8")) ,(prefix widthStr)
+  __Number_fromString__ __print_exit_error__ widthStr ,(width)
+  __String_repr_hex__ code width "" ,(hex)
+  __String_concat__ prefix hex)
+
+;; code を width 桁の小文字の16進数にして、acc の前に付ける
+(define __String_repr_hex__ ,(code width acc)
+  __if_then_else__ (,() __Number_is_zero__ width)
+    (,() __NULL__ acc)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_fromString__ __print_exit_error__ "16" ,(sixteen)
+      __Number_divide__ __print_exit_error__ code sixteen ,(q)
+      __Number_floor__ q ,(q)
+      __Number_multiply__ q sixteen ,(m)
+      __Number_subtract__ code m ,(digit)
+      __Number_add__ digit one ,(digitEnd)
+      __String_substring__ __print_exit_error__ "0123456789abcdef" digit digitEnd ,(ch)
+      __String_concat__ ch acc ,(acc)
+      __Number_subtract__ width one ,(width)
+      __String_repr_hex__ q width acc))
+
+;; Python の str.isprintable と同じく、表示できる文字なら __TRUE__。
+;; 空白（32）以外の Cc、Cf、Zs、Zl、Zp、Co、Cs の文字（Unicode 15.1）が表示できない。
+;; 割り当てのない文字（Cn）は表示できるとする（Python はエスケープする）
+(define __String_repr_is_printable__ ,(code)
+  __String_repr_in_ranges__ code __String_repr_nonprintable__ ,(inRange)
+  __not__ inRange)
+
+;; 表示できない文字の範囲。下限と上限の組を昇順に並べた Seq
+(define __String_repr_nonprintable__ ,(sink)
+  sink "0" "31" "127" "160" "173" "173" "1536" "1541" "1564" "1564" "1757" "1757"
+    "1807" "1807" "2192" "2193" "2274" "2274" "5760" "5760" "6158" "6158"
+    "8192" "8207" "8232" "8239" "8287" "8292" "8294" "8303" "12288" "12288"
+    "55296" "63743" "65279" "65279" "65529" "65531" "69821" "69821" "69837" "69837"
+    "78896" "78911" "113824" "113827" "119155" "119162" "917505" "917505"
+    "917536" "917631" "983040" "1048573" "1048576" "1114109")
+
+;; code が ranges（下限と上限の組の昇順の Seq）のどれかに入れば __TRUE__
+(define __String_repr_in_ranges__ ,(code ranges)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() return __FALSE__) ranges ,(lowStr ranges)
+  __Seq_get__ (,() return __FALSE__) ranges ,(highStr ranges)
+  __Number_fromString__ __print_exit_error__ lowStr ,(low)
+  __Number_fromString__ __print_exit_error__ highStr ,(high)
+  __Number_subtract__ code low ,(belowLow)
+  __Number_subtract__ high code ,(aboveHigh)
+  __if_then_else__ (,() __Number_is_negative__ belowLow)
+    (,() return __FALSE__)
+    (,()
+      __if_then_else__ (,() __Number_is_negative__ aboveHigh)
+        (,() __String_repr_in_ranges__ code ranges)
+        (,() return __TRUE__)))
+
+;; str が ch（1文字）を含めば __TRUE__
+(define __String_repr_contains__ ,(str ch)
+  __String_length__ str ,(len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_repr_contains_loop__ str len zero ch)
+
+(define __String_repr_contains_loop__ ,(str len i ch)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ __FALSE__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ str i next ,(c)
+      __if_then_else__ (,() __String_equal__ c ch)
+        (,() __NULL__ __TRUE__)
+        (,() __String_repr_contains_loop__ str len next ch)))
 
 ;; 引数をすべて続けて出力し、改行する（可変長引数）
 (define __println__ , args
