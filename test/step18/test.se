@@ -124,3 +124,34 @@
   println "before return" ,()
   return "ignored" ,()
   println "not reached")
+
+;; ── __Seq_get__、__Seq_print__、__println__（include/util.se） ──
+
+;; seq から要素を4回取り出して出力する。空になったら、その回の番号の onEmpty が "empty-n" を返す
+(define getFour ,(label seq)
+  __Seq_get__ (,() __NULL__ "empty-1" seq) seq ,(a rest)
+  __Seq_get__ (,() __NULL__ "empty-2" rest) rest ,(b rest)
+  __Seq_get__ (,() __NULL__ "empty-3" rest) rest ,(c rest)
+  __Seq_get__ (,() __NULL__ "empty-4" rest) rest ,(d rest)
+  __println__ label a " " b " " c " " d)
+
+;; case8: __Seq_get__ は最初の要素と残りの Seq を返し、空なら onEmpty を呼ぶ。
+;; 要素をまとめて渡す Seq でも1つずつ渡す Seq でも、最後の要素の後の残りは空の Seq になる。
+;; 可変長引数で受け取った Seq からも取り出せる
+(define case8 ,()
+  getFour "together: " (,(sink) sink "a" "b" "c") ,()
+  getFour "one by one: " (,(sink) sink "a" ,(s) s "b" ,(s) s "c") ,()
+  getFour "one: " (,(sink) sink "a") ,()
+  getFour "empty: " (,(sink) sink) ,()
+  (, args __NULL__ args) "x" "y" ,(args)
+  getFour "variadic: " args)
+
+;; case9: __println__ は引数をすべて続けて出力して改行する。
+;; このファイルは println と printSeq を別の意味で定義しているが、__println__ には影響しない
+(define case9 ,()
+  __println__ ,()
+  __println__ "a" ,()
+  __println__ "a" "b" "c" ,()
+  __Seq_print__ (,(sink) sink "x" "y") ,()
+  __println__ ,()
+  println "own println")

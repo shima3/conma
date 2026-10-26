@@ -1,0 +1,5 @@
+case10 2
+case10sub
+case10sub 2
+case10 3
+exit: 0
