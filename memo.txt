@@ -1,3 +1,73 @@
+2026/10/25 Sun
+
+以下の方針に問題ない？
+**症状**
+__Cont_get__ ,(return) で取得した return に与えた引数を呼び出し元に渡せない。
+__Cont_get__ は docs/SPEC.md と include/util.se で異なる定義ある。
+定義の違いによって動作は異なるが、どちらも引数を呼び出し元に渡せない。
+ただし、return に引数がない場合、呼び出し元に戻ることはできる。
+
+**原因**
+__Cont_get__ が呼び出されたときの CChain を保存し、return が呼ばれたときに復元する。
+return に与えられた引数は CChain のトップにあるので、CChain の復元のときに削除される。
+
+**対策**
+方針：可変長引数を導入する。
+- 新しい種類の継続を追加する案もあるが、概念の複雑さが生じる。
+- 可変長引数の導入には多くの変更を必要とするが、別の用途にも役立つ利点がある。
+
+SPEC.md の Syntactic Definitions を次のように変更する。
+Head       = "(", { Parameter }, ")" | Parameter ;
+つまり、Function として次の形式を許す。
+Hat Parameter Body
+この形式の Function を呼び出すと、引数列を Seq 形式で Parameter に渡す。
+引数がない場合、空の Seq を渡す。
+
+__Cont_get__ を次のように定義する。
+(define __Cont_get__ ,()
+  __CChain_pop_LCont__ ,(lc)
+  __CChain_get__ ,(cc)
+  lc (, args
+    __CChain_set__ cc ,()
+    __CChain_pop_LCont__ , (lc)
+    args lc))
+
+__Cont_get__ ,(return) を実行したとき、return に次のクロージャを受け取る。
+(, args
+    __CChain_set__ cc ,()
+    __CChain_pop_LCont__ , (lc)
+    args lc)
+
+return "12" "34" を実行したとき、args に (,(__Sink__) __Sink__ "12" "34") のような Seq を受け取る。
+args lc を実行したとき、lc に "12" "34" が渡される。
+
+return を引数なしで実行したとき、args に (,(__Sink__) __Sink__) のような Seq を受け取る。
+args lc を実行したとき、lc を引数なしで呼び出す。
+
+`, args` の AST は (Head (l c) Rest (Variable (l c) "args")) とする。
+`,(args)` の AST は (Head (l c) (Variable (l2 c2) "args")) なので、要素がリストかどうかによって判別する。
+
+
+可変長引数の関数が先頭にあると実行される。
+実行せずに返すには、__NULL__ などを使う必要がある。
+
+(, args func ...) a1 a2 ,(Sink) Sink a3 a4 ...
+の場合、args は (,(sink) sink a1 a2) になる。
+(,(sink) sink a1 a2 a3 a4 ...) にはしない。
+
+上記の変更のため、test/step18 を追加する。
+また、以下を変更する必要がある。
+- docs/SPEC.md, AST.md, PARSER.md, RESOLVER.md, DESIGN.md, VPROC_STEP.md, ROADMAP.md, SELFHOST.md
+- bin/parser, bin/resolver
+- include/util.se
+- include/parser.se, include/resolver.se
+- test/vproc_step.py
+- test/selfhost5, test/selfhost7
+
+---
+
+上記の方針に問題がなければ、変更してください。
+
 2026/10/24 Sat
 includerがlexer, comment_remover, parserを呼び出し、ASTを生成する。
 resolverがASTからモジュールを生成する。
@@ -121,6 +191,12 @@ __AST_toSexp__ は、__type_name__ が "LList" を返したら AST ノードだ�
 ---
 
 evalを実装する前にやるべきことは、もうない？
+
+次のようにしたいが問題ある？
+---
+__eval__ onError 関数名 引数列 ソースファイル名 ,(r1 r2 ...)
+関数名とソースファイル名は String、引数列は (,(sink) sink 引数1 引数2 ...)、結果をr1, r2, ...に返す。
+---
 
 2026/10/23 Fri
 eval をどうする？

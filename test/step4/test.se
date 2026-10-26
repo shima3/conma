@@ -51,11 +51,6 @@
   __OS_print__ "end\n" ,()
   )
 
-(define println ,(str)
-  __OS_print__ str ,()
-  __OS_print__ "\n" ,()
-  )
-
 ;; 呼び出し元の CFrame を取り出して SInfo を表示し、元に戻してから返る
 (define peek_caller ,()
   __CChain_pop_CFrame__ ,(cf)
@@ -140,3 +135,35 @@
   __CFrame_get_SInfo__ "abc" ,(si)
   println "not reached" ,()
   )
+
+(define __Cont_get2__ ,()
+  __CChain_pop_LCont__ ,(lc)
+  __CChain_get__ ,(cc)
+  lc (, args
+       __CChain_set__ cc ,()
+       __unless__ (,() __is_null__ cc)
+       (,() __CChain_pop_LCont__ ,(lc)
+         args lc)))
+
+(define case9sub ,()
+  __Cont_get2__ ,(ret)
+  ret "12" "34")
+
+(define case9 ,()
+  __Cont_get2__ ,(ret)
+  case9sub ,(x y)
+  println x ", " y ,()
+  ret)
+
+(define case10sub ,()
+  println "case10sub" ,()
+  __Cont_get2__ ,(ret)
+  println "case10sub 2" ,()
+  ret)
+
+(define case10 ,()
+  __Cont_get2__ ,(ret)
+  println "case10 2" ,()
+  case10sub ,()
+  println "case10 3" ,()
+  ret)

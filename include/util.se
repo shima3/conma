@@ -132,3 +132,23 @@
     args
     (,(sink) __Stream_lines__ inStream sink)
     (,(value) __Stream_sink__ outStream value))
+
+(define __Seq_get__ ,(onEmpty Seq)
+  __Cont_get__ ,(return)
+  Seq (,(first)
+        __CChain_pop_LCont__ ,(rest)
+        return first rest) ,(dummy)
+  onEmpty)
+
+(define printSeq ,(seq end)
+  __Seq_get__ end seq ,(str rest)
+  __OS_print__ str ,()
+  printSeq rest end ,()
+  )
+
+(define println , args
+  __Cont_get__ ,(return)
+  printSeq args
+  (,()
+    __OS_print__ "\n" ,()
+    return))
