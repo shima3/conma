@@ -292,13 +292,11 @@
 
 ;; どの規則にも合わない文字はエラー。読み飛ばして続ける
 (define __Lexer_on_other__ ,(handlers symbols sink text len i line start ch two col)
-  __if_then_else__ (,() __String_equal__ ch "\\")
-    (,() __NULL__ "\\\\")
-    (,() __NULL__ ch) ,(shown)
+  __String_repr__ ch ,(shown)
   __Number_toString__ line ,(lineStr)
   __Number_toString__ col ,(colStr)
-  __String_concat__ "Error: Unexpected character '" shown ,(msg)
-  __String_concat__ msg "' at line " ,(msg)
+  __String_concat__ "Error: Unexpected character " shown ,(msg)
+  __String_concat__ msg " at line " ,(msg)
   __String_concat__ msg lineStr ,(msg)
   __String_concat__ msg ", column " ,(msg)
   __String_concat__ msg colStr ,(msg)

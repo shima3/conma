@@ -44,7 +44,7 @@ __Lexer_main__ fileName lines ,(tokens)
 * The state is held by the Sink that `__Lexer_main__` passes to `lines` (the line Sink). Each line returns a new line Sink with the new state. At the end, the line Sink is applied to null: it writes the rest of the block comment text and returns the Sink of the tokens.
 * `bin/lexer` reads the source in text mode, so `\r\n` and a lone `\r` become `\n` before it is scanned. The ConMa lexer treats them as newlines in the same way: a `NEWLINE` token always holds `"\n"`, and a newline inside a block comment is added to the text as `"\n"`.
 * Outside a block comment, the first character selects a handler from a Dict (`__Lexer_handlers__`), and SymbolChars are looked up in another Dict, instead of comparing the character with each rule in turn. Lines are scanned one by one, so the String primitives only work on short Strings.
-* Errors are written to standard error with the messages of `bin/lexer`, and scanning goes on.
+* Errors are written to standard error with the messages of `bin/lexer`, and scanning goes on. An unexpected character is shown with `__String_repr__` of `util.se`, as Python's `repr` does (for example `"'"` and `'\u3000'`).
 * One difference: a `\` just before a newline inside a String. `bin/lexer` takes the newline into the String and goes on without counting the line (see Limitations in [LEXER.md](LEXER.html)). The ConMa lexer ends the String after the `\` and reports it as unterminated.
 * Speed: with `test/vproc_run.py`, `include/util.se` (about 120 lines) takes about 3 seconds and `include/lexer.se` (about 360 lines) about 11 seconds.
 
@@ -78,10 +78,10 @@ __Parser_main__ onError fileName tokens ,(Program)
 * If `fileName` is not null, it works as `bin/parser --file <fileName>`, the mode `includer` uses: the position of the `Program` holds `fileName`, and a `Body` without an explicit `(__SInfo__ ...)` gets an `SInfo` with the position of its Operator. If `fileName` is null, the position of the `Program` holds the value of the `FILE` token, if there is one, and no `SInfo` is added.
 * On a syntax error, the CChain is set back to what it was when `__Parser_main__` was called, and `onError` is applied to the message, which is the message of `bin/parser` without `SyntaxError: `. So if `onError` returns a value, it becomes the value of `__Parser_main__`, as with `onMissing` of `__PDict_lookup_or__`.
 * The Tokens are collected into an LList first, and the parser is a recursive descent over it. A function for a rule returns the node and the rest of the LList; a function for an expression also returns the last Token it read, because a `Body` without an LCont puts its `LCont` just after that Token.
-* Messages show values as Python's `repr` does: in single quotes, or in double quotes if the value has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped.
+* Messages show values as Python's `repr` does, with `__String_repr__` of `util.se`: in single quotes, or in double quotes if the value has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped, and characters that Python does not print, such as control characters and a full-width space, are written as `\xNN`, `\uNNNN` or `\UNNNNNNNN` (Step 19 in [ROADMAP.md](ROADMAP.html)). Unlike Python, unassigned characters are not escaped.
 * As in `bin/parser`, a `Body` without an LCont has an `LCont` with no children, `(LCont (line col))`. The example in [PARSER.md](PARSER.html) shows `(LCont (2 20) (Null (2 20)))` instead.
 * A variadic Head (`, args`, a `SYMBOL` instead of `(` after `,`) is a `Head` node with two children: a node `Rest` without a position and children, which `__AST_toSexp__` writes as the atom `Rest`, and the `Variable` (Step 18 in [ROADMAP.md](ROADMAP.html)).
-* A `String` node holds the value of the `STRING` token without its first and last characters, the double quotes. For a String that the lexer reports as unterminated, this drops its last character; `bin/parser` writes such a String without a closing quote, which is not a valid S-expression either.
+* A `String` node holds the value of the `STRING` token without its first and last characters, the double quotes. For a String that the lexer reports as unterminated, this drops its last character, and a String that is only `"` becomes the empty String; `bin/parser` writes such a String without a closing quote, which is not a valid S-expression either.
 
 ### includer
 
@@ -109,7 +109,7 @@ If a directory with the name given in an include statement exists in a directory
 * The file list is a queue of paths, with a Dict of the paths in it for the duplicate check. A relative name is joined to each directory in turn (`__Includer_join__`), and the next directory is tried in the `onError` of `__OS_realpath__`.
 * The include directories are normalized with `__OS_realpath__` first; one that does not exist is an error. The directory of a file is the part of its path before the last `/` (`__Includer_dirname__`).
 * Errors go to `onError` in the same way as in the parser: the CChain is set back to that of the call. The messages are those of `bin/includer`: `Error: source file not found: ...`, `Error: --include directory not found: ...` and `Error: included file not found: ... (from ...)`. The warning for a duplicate is written to standard error with the same text as `bin/includer` (`Warning: circular include ignored: ...`).
-* Messages show paths as Python's `repr` does, with `__Parser_repr__`. The includer also uses `__Parser_concat__` and `__Parser_reverse__` of `parser.se`.
+* Messages show paths as Python's `repr` does, with `__String_repr__` of `util.se`. The includer also uses `__Parser_concat__` and `__Parser_reverse__` of `parser.se`.
 * Differences from `bin/includer`:
   * A syntax error in a file goes to `onError` as `SyntaxError: <message>`. `bin/includer` writes the message of `parser` and then `Error: parser exited with code 1`.
   * An absolute path in an include statement that does not exist is an `included file not found` error at once. `bin/includer` adds it to the file list, and `lexer` fails when it opens the file (`Error: lexer exited with code 1`).
@@ -130,7 +130,7 @@ __Resolver_main__ programs ,(Module)
 * AST nodes cannot be changed, so the resolver makes a new tree with the annotations. It goes through all `Program`s once, in pre-order. `bin/resolver` first collects the `Definition`s in a pass of its own; here, the annotated `Function` of the first `Definition` of each name is put into a Dict when that `Definition` is reached. The result is the same: a name defined twice gets the `Function` of its first `Definition`, and the second one still numbers the global variables it uses.
 * Global numbers are kept in a Dict from names to numbers, with the next number and the list of numbered names in Refs. The `G` entries are made in the order of their numbers; a name with no `Definition` gets `Undefined`.
 * The scope stack is an LList of scopes, innermost first; a scope is the LList of the parameter names of a `Head`, the rightmost first. The `Rest` node of a variadic `Head` is not a `Variable`, so its scope has the one parameter, and the node is copied as it is. The index of a name is the number of parameters in the inner scopes plus its position in its scope. As in `bin/resolver`, if a name appears twice in one `Head`, the rightmost one is used.
-* As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`. [RESOLVER.md](RESOLVER.html) does not describe this.
+* As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`, and to the name of a `Definition`: `(define __NULL__ ...)` gives `(G n "__NULL__" (Function ...))`, so the name is taken from the `Definition` before its children are annotated. [RESOLVER.md](RESOLVER.html) does not describe this.
 * `(F)` with no file names would be written as `F` by `__AST_toSexp__` (a node without a position and children). This does not happen, because every `Program` from `__Includer_main__` has a file name.
 
 ---
@@ -301,6 +301,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case3 | `open.se`: a block comment that is not closed at the end; `empty.se`: an empty file |
 | case4 | real sources: `include/util.se` and `test/step14/test.se` |
 | case5 | `backslash.se`: the difference above; `selfhost_compare.py` reports the String and exits with 1 |
+| case6 | `chars.se`: messages for unexpected characters: `'` in double quotes; a full-width space, a no-break space, a form feed, DEL and U+0001 escaped |
 
 `test/selfhost4` tests the comment remover in the same way. `test.se` lexes each file, removes the comments and writes the tokens; it is compared with `bin/lexer <file> | bin/comment_remover`. The ConMa lexer and comment remover run together, so their error messages are mixed: both sides are sorted before `diff`, and the log shows them. An argument `=tokens` runs a Seq of Tokens made by hand instead of a file.
 
@@ -322,6 +323,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case4 | syntax errors at the top level: no `(`, an unknown keyword, no Symbol after `(`, `(` alone, an Includer without a String |
 | case5 | syntax errors in a Definition: no `,`, a String as a parameter (its `repr` has `\'`), a String as Operator, the end of input |
 | case6 | `recover`: the value of `onError` is the value of `__Parser_main__`, also for an error deep in the recursion, and the program goes on after it |
+| case7 | a String that is only `"` at the end of a line (`quote_eol.se`; the AST differs as described above), at the end of the file (`quote_eof.se`) and in an `SInfo` (`quote_sinfo.se`); a message with a full-width space (`err_space.se`) |
 
 `test/selfhost6` tests the includer. `test.se` takes a source file and include directories, and writes each `Program` on one line; an error is written to standard error and ends the program with exit code 1. `test.sh` runs it and `bin/includer --include <dir>... <source>` and prints the exit codes, the result of `selfhost_compare.py ast` when both succeed, the files in the order the ConMa includer processed them, and the standard error of both sides, sorted, with the test directory written as `<dir>`. Before the cases it makes `link.se`, a symbolic link to `a.se`, and `work/abs.se` and `work/abs_missing.se`, which include files by absolute paths; it removes them at the end. The whole test takes about 25 seconds.
 
@@ -340,7 +342,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | Case | What it checks |
 |---|---|
 | case1 | `scope.se`: de Bruijn indexes with several parameters in a `Head`, nested functions, shadowing, the same name twice in a `Head`, an LCont and a FuncExp; a free variable; `variadic.se`: variadic Heads |
-| case2 | `globals.se`: a name defined twice, a reference before its definition, `__NULL__` as a global and as a parameter, an `SInfo` without Strings, an empty Body |
+| case2 | `globals.se`: a name defined twice, a reference before its definition, `__NULL__` as a global, as a parameter and as the name of a Definition, an `SInfo` without Strings, an empty Body |
 | case3 | `empty.se`: a `Module` with only `F` |
 | case4 | several files: the includes of `selfhost6/main.se` (it makes `selfhost6/link.se` as `selfhost6/test.sh` does) |
 | case5 | `test/step14/test.se` with the standard library |

@@ -155,3 +155,35 @@
   __Seq_print__ (,(sink) sink "x" "y") ,()
   __println__ ,()
   println "own println")
+
+;; ── __Seq_get__ と、Seq の中で LCont を付けて呼ばれた関数 ──
+
+;; "a" "b" を1つずつ渡す Seq
+(define seqAB ,(sink)
+  sink "a" ,(sink)
+  sink "b")
+
+;; seqAB に渡したあとで "c" を渡す Seq。sink が "a" や "b" を受け取ったとき、
+;; ,(sink) sink "c" はまだ CChain の中（sink の適用の LCont の下）にある
+(define seqABC ,(sink)
+  seqAB sink ,(sink)
+  sink "c")
+
+;; seqABC をさらに LCont を付けて呼び、"d" "e" をまとめて渡す Seq
+(define seqABCDE ,(sink)
+  seqABC sink ,(sink)
+  sink "d" "e")
+
+;; case10: Seq の中の関数の LCont に残りの要素がある Seq からも、すべての要素を取り出せる。
+;; rest は何度でも使え、そのたびに同じ要素を渡す
+(define case10 ,()
+  getFour "nested: " seqABC ,()
+  __Seq_print__ seqABCDE ,()
+  __println__ ,()
+  __Seq_get__ __nop__ seqABCDE ,(a rest)
+  __Seq_get__ __nop__ rest ,(b rest)
+  __Seq_print__ rest ,()
+  __println__ " again: " ,()
+  __Seq_print__ rest ,()
+  __println__ ,()
+  __println__ a b)

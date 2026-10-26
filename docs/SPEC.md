@@ -365,15 +365,21 @@ Example:
 
 (define __Seq_get__ ,(onEmpty Seq)
   __Cont_get__ ,(return)
-  __Ref_new__ __FALSE__ ,(got)
+  __CChain_get__ ,(outer)
+  __LList_length__ outer ,(outerLen)
   Seq (,(first)
-        __Ref_set__ got __TRUE__ ,()
-        __CChain_pop_LCont__ ,(rest)
-        return first rest) ,(sink)
-  __Ref_get__ got ,(gotOne)
-  __if_then_else__ (,() __NULL__ gotOne)
-    (,() __NULL__ sink)
-    onEmpty)
+        __CChain_get__ ,(inner)
+        __LList_length__ inner ,(innerLen)
+        __Number_subtract__ innerLen outerLen ,(n)
+        __Number_fromString__ __print_exit_error__ "1" ,(one)
+        __Number_subtract__ n one ,(n)
+        __Seq_take_CFrames__ n inner __NULL__ ,(frames)
+        return first (,(sink)
+          __CChain_get__ ,(chain)
+          __Seq_push_CFrames__ frames chain ,(chain)
+          __CChain_set__ chain ,()
+          __NULL__ sink)) ,(sink)
+  onEmpty)
 
 (define __Seq_get_all__ ,(Seq)
   __CChain_pop_LCont__ ,(lc)
@@ -392,12 +398,12 @@ Example:
 ```
 
 `__Seq_get__ onEmpty Seq ,(first rest)` returns the first element of `Seq` and a `Seq` of the rest. If `Seq` is empty, it applies `onEmpty` instead, with the continuation of `__Seq_get__`.
-When the `Sink` gets the first element, the rest of the `Seq` is on the top of the CChain: either as the Seq Closure of the surplus operands, if the `Seq` passes several elements in one application, or as the LCont of the application of the `Sink`, if it passes them one at a time. `__CChain_pop_LCont__` takes it as `rest`.
-After the last element, nothing is pushed, and `__CChain_pop_LCont__` takes the LCont of the application of `Seq`, `,(sink) ...`. Applied to a `Sink` later as `rest`, it returns the `Sink` (`got` is `__TRUE__`), so it is an empty `Seq`. When `Seq` is empty, the `Sink` is not applied and `Seq` returns it to the same LCont with `got` still `__FALSE__`, so `onEmpty` is applied.
+When the `Sink` gets the first element, the rest of the `Seq` is in the CFrames above the LCont of the application of `Seq`, `,(sink) ...`: the Seq Closure of the surplus operands, if the `Seq` passes several elements in one application; the LCont of the application of the `Sink`, if it passes them one at a time; and below them, the LConts of functions that the `Seq` called with an LCont, if it is made of other `Seq`s. `__Seq_take_CFrames__` takes these CFrames, counted from the lengths of the CChain before applying `Seq` and inside the `Sink` (`__LList_length__`). `rest` puts them back on top of the CChain of its caller (`__Seq_push_CFrames__`) and returns its `Sink` to them, so the `Seq` goes on with the new `Sink` and finally returns to the caller of `rest`. `rest` can be applied more than once.
+After the last element there are no such CFrames, so `rest` returns its `Sink` at once: it is an empty `Seq`. When `Seq` is empty, the `Sink` is not applied and `Seq` returns it to `,(sink) ...`, which applies `onEmpty`.
 
 `__Seq_print__ Seq` writes the elements of `Seq` with `__OS_print__`, one after another. `__println__` is variadic: it writes all its arguments and then a newline.
 
-`__Seq_get__`, `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
+`__Seq_get__` (with `__Seq_take_CFrames__`, `__Seq_push_CFrames__` and `__LList_length__`), `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
 ---
 
 ### `Stream`

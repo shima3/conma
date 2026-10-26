@@ -1,0 +1,124 @@
+;; Step19: 文字コード（__String_toCode__、__String_fromCode__）と、それを使う __String_repr__（include/util.se）
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; エラーメッセージを標準出力に書き、代わりの値 "-" を LCont に返す
+(define recover ,(msg)
+  println msg ,()
+  __NULL__ "-")
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; ch の文字コードを出力する
+(define printCode ,(ch)
+  __String_toCode__ recover ch ,(code)
+  __Number_toString__ code ,(str)
+  println str)
+
+;; 10進数の文字列 codeStr の文字を作り、その repr を出力する
+(define printReprOf ,(codeStr)
+  num codeStr ,(code)
+  __String_fromCode__ recover code ,(ch)
+  __String_repr__ ch ,(r)
+  __println__ codeStr " " r)
+
+;; case1: __String_toCode__: ASCII、エスケープした文字、日本語、BMP の外の文字
+(define case1 ,()
+  printCode "A" ,()
+  printCode "\n" ,()
+  printCode "\\" ,()
+  printCode "\"" ,()
+  printCode "あ" ,()
+  printCode "😀")
+
+;; case2: __String_fromCode__ は __String_toCode__ の逆。作った文字は String リテラルと等しい
+(define case2 ,()
+  num "65" ,(n)
+  __String_fromCode__ recover n ,(a)
+  println a ,()
+  num "12354" ,(n)
+  __String_fromCode__ recover n ,(a)
+  __String_equal__ a "あ" ,(eq)
+  __if_then_else__ eq (,() println "equal") (,() println "not equal") ,()
+  num "10" ,(n)
+  __String_fromCode__ recover n ,(nl)
+  __String_equal__ nl "\n" ,(eq)
+  __if_then_else__ eq (,() println "newline") (,() println "not newline") ,()
+  num "0" ,(n)
+  __String_fromCode__ recover n ,(nul)
+  __String_length__ nul ,(len)
+  __Number_toString__ len ,(s)
+  println s)
+
+;; case3: onError: 1文字でない String、整数でない数、範囲外の数、サロゲート
+(define case3 ,()
+  __String_toCode__ recover "" ,(c)
+  __String_toCode__ recover "ab" ,(c)
+  num "1.5" ,(n)
+  __String_fromCode__ recover n ,(s)
+  num "-1" ,(n)
+  __String_fromCode__ recover n ,(s)
+  num "1114112" ,(n)
+  __String_fromCode__ recover n ,(s)
+  num "55296" ,(n)
+  __String_fromCode__ recover n ,(s)
+  num "57343" ,(n)
+  __String_fromCode__ recover n ,(s)
+  num "1114111" ,(n)
+  __String_fromCode__ recover n ,(s)
+  println "1114111 ok")
+
+;; case4: String でない引数と Number でない引数は VProc をエラーで終える
+(define case4 ,()
+  num "65" ,(n)
+  __String_toCode__ recover n)
+
+(define case5 ,()
+  __String_fromCode__ recover "65")
+
+;; case6: __String_repr__ の引用符: ' を含み " を含まなければ "..."、それ以外は '...'。
+;; \、囲む引用符、改行、タブ、復帰のエスケープ
+(define case6 ,()
+  __String_repr__ "" ,(r)
+  println r ,()
+  __String_repr__ "abc" ,(r)
+  println r ,()
+  __String_repr__ "'" ,(r)
+  println r ,()
+  __String_repr__ "\"" ,(r)
+  println r ,()
+  __String_repr__ "a'b\"c" ,(r)
+  println r ,()
+  __String_repr__ "x\\y\n\t\r" ,(r)
+  println r ,()
+  __String_repr__ "日本語 ~" ,(r)
+  println r)
+
+;; case7: 表示できない文字は \xNN、\uNNNN、\UNNNNNNNN。各範囲の端と、その外側の文字。
+;; 最後の 1114110（U+10FFFE）は割り当てのない文字なので、Python と違ってそのまま出力する
+(define case7 ,()
+  printReprOf "0" ,()
+  printReprOf "31" ,()
+  printReprOf "32" ,()
+  printReprOf "126" ,()
+  printReprOf "127" ,()
+  printReprOf "160" ,()
+  printReprOf "161" ,()
+  printReprOf "173" ,()
+  printReprOf "8192" ,()
+  printReprOf "8208" ,()
+  printReprOf "8232" ,()
+  printReprOf "12288" ,()
+  printReprOf "57344" ,()
+  printReprOf "65279" ,()
+  printReprOf "65532" ,()
+  printReprOf "119155" ,()
+  printReprOf "128512" ,()
+  printReprOf "917631" ,()
+  printReprOf "1114109" ,()
+  printReprOf "1114110")

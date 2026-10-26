@@ -1483,6 +1483,37 @@ def prim_String_substring(vp, gvenv):
         return
     _prim_return(vp, [string_value(s[i:j])])
 
+def prim_String_toCode(vp, gvenv):
+    """__String_toCode__ onError String ,(Number)
+    The code point of a String of one character, or onError."""
+    name  = "__String_toCode__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    (s,) = _string_args(vp, name, 1)
+    if len(s) != 1:
+        _prim_error(vp, on_error, f"{name}: expected one character, got length {len(s)}")
+        return
+    _prim_return(vp, [Number(float(ord(s)))])
+
+def prim_String_fromCode(vp, gvenv):
+    """__String_fromCode__ onError Number ,(String)
+    The String of one character with the code point Number. A Number that is
+    not an integer in 0..0x10FFFF, or is a surrogate (0xD800..0xDFFF), goes to
+    onError."""
+    name  = "__String_fromCode__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    code = olist.pop(0)
+    _check_number(name, code)
+    x = code.value
+    if not (math.isfinite(x) and x == int(x)
+            and 0 <= x <= 0x10FFFF and not 0xD800 <= x <= 0xDFFF):
+        _prim_error(vp, on_error, f"{name}: not a code point: {number_to_str(x)}")
+        return
+    _prim_return(vp, [string_value(chr(int(x)))])
+
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
@@ -1859,6 +1890,8 @@ PRIMITIVES = {
     "__String_length__":       prim_String_length,
     "__String_substring__":    prim_String_substring,
     "__String_concat__":       prim_String_concat,
+    "__String_toCode__":       prim_String_toCode,
+    "__String_fromCode__":     prim_String_fromCode,
     "__String_equal__":        prim_String_equal,
     "__VProc_current__":       prim_VProc_current,
     "__VProc_suspend__":       prim_VProc_suspend,

@@ -1,0 +1,32 @@
+== quote_eol.se
+file: exit python 0, conma 0
+error: python output /tmp/selfhost5.py.txt: offset 286: cannot read: ' "))\n        (LCont '
+compare: 2
+0a1
+> Error: Unterminated string at line 1, column 17
+nofile: exit python 0, conma 0
+error: python output /tmp/selfhost5.py.txt: offset 239: cannot read: ' "))\n        (LCont '
+compare: 2
+0a1
+> Error: Unterminated string at line 1, column 17
+== quote_eof.se
+file: exit python 1, conma 1
+SyntaxError: Unexpected end of input; expected 'RPAREN'
+nofile: exit python 1, conma 1
+SyntaxError: Unexpected end of input; expected 'RPAREN'
+== quote_sinfo.se
+file: exit python 0, conma 0
+error: python output /tmp/selfhost5.py.txt: offset 214: cannot read: '"))\n        (OList ('
+compare: 2
+0a1
+> Error: Unterminated string at line 1, column 26
+nofile: exit python 0, conma 0
+error: python output /tmp/selfhost5.py.txt: offset 214: cannot read: '"))\n        (OList ('
+compare: 2
+0a1
+> Error: Unterminated string at line 1, column 26
+== err_space.se
+file: exit python 1, conma 1
+SyntaxError: 1:15: expected Operator, got 'STRING' '"\u3000"'
+nofile: exit python 1, conma 1
+SyntaxError: 1:15: expected Operator, got 'STRING' '"\u3000"'

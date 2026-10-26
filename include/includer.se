@@ -20,7 +20,7 @@
   __Includer_dirs__ fail includeDirs ,(dirs)
   __OS_realpath__
     (,(e)
-      __Parser_repr__ sourceName ,(name)
+      __String_repr__ sourceName ,(name)
       __String_concat__ "Error: source file not found: " name ,(msg)
       fail msg)
     sourceName ,(sourceAbs)
@@ -37,7 +37,7 @@
       __LList_uncons__ __print_exit_error__ dirs ,(dir rest)
       __OS_realpath__
         (,(e)
-          __Parser_repr__ dir ,(name)
+          __String_repr__ dir ,(name)
           __String_concat__ "Error: --include directory not found: " name ,(msg)
           fail msg)
         dir ,(real)
@@ -93,8 +93,8 @@
   __Dict_lookup_or__ seen path (,(key) __NULL__ __FALSE__) ,(found)
   __if_then_else__ (,() __NULL__ found)
     (,()
-      __Parser_repr__ path ,(pathRepr)
-      __Parser_repr__ file ,(fileRepr)
+      __String_repr__ path ,(pathRepr)
+      __String_repr__ file ,(fileRepr)
       __Parser_concat__ "Warning: circular include ignored: " pathRepr " (from " fileRepr ")\n" ,(msg)
       __OS_print_error__ msg ,()
       __NULL__ queue)
@@ -124,8 +124,8 @@
       __OS_realpath__ (,(e) __Includer_search__ fail rest file name) candidate))
 
 (define __Includer_not_found__ ,(fail file name)
-  __Parser_repr__ name ,(nameRepr)
-  __Parser_repr__ file ,(fileRepr)
+  __String_repr__ name ,(nameRepr)
+  __String_repr__ file ,(fileRepr)
   __Parser_concat__ "Error: included file not found: " nameRepr " (from " fileRepr ")" ,(msg)
   fail msg)
 

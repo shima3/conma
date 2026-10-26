@@ -2,16 +2,16 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step18`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step19`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-25).
+Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-26).
 
 ## Tests
 
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -373,7 +373,8 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 * VM (`test/vproc_step.py`): a Closure has a `variadic` flag, set from a Head with `Rest`. Applying a variadic Closure pushes the LCont, binds a SeqClosure of the OList to the parameter, and runs the Body. Traces write the Head with `Rest` and read it back.
 * `__Cont_get__` gives a variadic `return`: it sets the CChain back to that of the caller, pops the caller's LCont and applies the Seq of its arguments to it, so the LCont gets all the values (none without arguments). If there is no caller (the CChain is empty), `return` empties the CChain and the VProc finishes, as before (for example `exit` in `__main__`).
 * Library definitions in `include/util.se` that use it:
-  * `__Seq_get__ onEmpty Seq ,(first rest)` (from SPEC.md). The definition in SPEC.md took as `rest`, after the last element, the LCont that calls `onEmpty`, so a later `__Seq_get__` on that `rest` applied the first `onEmpty`, not its own. Now that LCont acts as an empty Seq once the Sink has got an element (a Ref records it), and applies `onEmpty` only for an empty Seq.
+  * `__Seq_get__ onEmpty Seq ,(first rest)` (from SPEC.md). The definition in SPEC.md took as `rest`, after the last element, the LCont that calls `onEmpty`, so a later `__Seq_get__` on that `rest` applied the first `onEmpty`, not its own. Now that LCont applies `onEmpty` only for an empty Seq.
+  * `rest` is not only the top CFrame of the CChain. When the Sink gets an element, the rest of the Seq is every CFrame above the LCont of the application of the Seq: the Seq Closure of surplus operands, the LCont of the application of the Sink, and the LConts of functions that the Seq called with an LCont (a Seq made of other Seqs, such as `seqABC` in case10). The first version took only the top CFrame, so `return` dropped the others and the elements they would pass were lost. `rest` now keeps those CFrames (counted with `__LList_length__` of the CChain before and inside the Sink) and, when applied to a Sink, puts them back on top of the CChain of its caller and returns the Sink to them. After the last element there are no such CFrames, so `rest` returns the Sink at once and is an empty Seq. `rest` can be applied more than once, and passes the same elements each time.
   * `__Seq_print__ Seq` writes the elements with `__OS_print__`, and `__println__ , args` writes all its arguments and a newline. They have reserved names, so that they do not clash with the `println` that many tests define for themselves.
 * `test/step4` case9 and case10 check that the `return` of `__Cont_get__` passes values and returns without them.
 * Tests (`test/step18`):
@@ -389,3 +390,25 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | case7 | `return` in the first function of a VProc (no caller) finishes the VProc |
 | case8 | `__Seq_get__` four times on a Seq that passes its elements together, one by one, with one element, with none, and on a variadic Seq; the rest after the last element is empty, and each call applies its own `onEmpty` |
 | case9 | `__println__` with no, one and three arguments, and `__Seq_print__`; a file that defines its own `println` and `printSeq` does not affect them |
+| case10 | `__Seq_get__` and `__Seq_print__` on Seqs that call another Seq with an LCont and pass more elements afterwards; a `rest` applied twice |
+
+## Step 19: Character codes
+
+| Primitive | Status |
+|---|---|
+| `__String_toCode__` | implemented |
+| `__String_fromCode__` | implemented |
+
+* Goal: Let a program look at the code point of a character, so that it can classify characters by range and write characters that a String literal cannot (a String literal has only the escapes `\"`, `\\`, `\n`, `\t`, `\r`). The first use is `__String_repr__` in `include/util.se`, which the ConMa front end uses to write values in error messages as Python's `repr` does (see [SELFHOST.md](SELFHOST.html)). A lexer for a shell can also use it.
+* `__String_toCode__ onError String ,(Number)` returns the code point of a String of one character; a String of another length goes to `onError`. `__String_fromCode__ onError Number ,(String)` returns the String of one character; a Number that is not an integer from 0 to 0x10FFFF, or is a surrogate (0xD800 to 0xDFFF), goes to `onError`. As for the other String primitives, a non-String or non-Number argument stops the VProc with an error.
+* `__String_repr__ String ,(String)` quotes the String as Python's `repr` does: in single quotes, or in double quotes if it has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped, and characters that Python does not print are written as `\xNN`, `\uNNNN` or `\UNNNNNNNN`. A character is not printed if it is in the categories Cc, Cf, Zs, Zl, Zp or Co (except the space), as `str.isprintable` of Python decides; the ranges of these characters are written in `util.se` for Unicode 15.1 (Python 3.13). Unassigned characters (category Cn, such as U+FFFF) are written as they are, whereas Python escapes them.
+* Tests (`test/step19`):
+
+| Case | What it checks |
+|---|---|
+| case1 | `__String_toCode__`: ASCII, escape sequences, Japanese text, a character outside the BMP |
+| case2 | `__String_fromCode__`: the inverse of `__String_toCode__`; the result equals a String literal; U+0000 is a String of length 1 |
+| case3 | `onError` for a String of length 0 and 2, a non-integer, a negative Number, 0x110000 and the two ends of the surrogates; 0x10FFFF is accepted |
+| case4, case5 | a non-String and a non-Number argument stop the VProc with an error |
+| case6 | `__String_repr__`: the choice of quotes; escapes of `\`, the quote, newline, tab and carriage return; Japanese text is not escaped |
+| case7 | `__String_repr__` of the characters at the ends of the ranges that are not printed, and next to them; an unassigned character is not escaped |

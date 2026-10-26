@@ -61,7 +61,7 @@
 
 ;; 先頭の Token が kind（value が null でなければ、その値も）であることを確かめて読む
 (define __Parser_expect__ ,(fail toks kind value)
-  __Parser_repr__ kind ,(kindRepr)
+  __String_repr__ kind ,(kindRepr)
   __if_then_else__ (,() __is_null__ toks)
     (,()
       __String_concat__ "Unexpected end of input; expected " kindRepr ,(msg)
@@ -79,13 +79,13 @@
               __if_then_else__ (,() __String_equal__ v value)
                 (,() __NULL__ tok rest)
                 (,()
-                  __Parser_repr__ value ,(valueRepr)
-                  __Parser_repr__ v ,(vRepr)
+                  __String_repr__ value ,(valueRepr)
+                  __String_repr__ v ,(vRepr)
                   __Parser_concat__ where "expected " valueRepr ", got " vRepr ,(msg)
                   fail msg)))
         (,()
-          __Parser_repr__ k ,(kRepr)
-          __Parser_repr__ v ,(vRepr)
+          __String_repr__ k ,(kRepr)
+          __String_repr__ v ,(vRepr)
           __Parser_concat__ where "expected " kindRepr ", got " kRepr ,(msg)
           __Parser_concat__ msg " " vRepr "" "" ,(msg)
           fail msg)))
@@ -141,7 +141,10 @@
   __String_length__ value ,(len)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ len one ,(end)
-  __String_substring__ __print_exit_error__ value one end)
+  ;; 閉じていない String が " だけのとき（長さ 1）は空の String にする
+  __if_then_else__ (,() __Number_is_zero__ end)
+    (,() __NULL__ "")
+    (,() __String_substring__ __print_exit_error__ value one end))
 
 ;; ── 文法 ──
 
@@ -207,7 +210,7 @@
     (,() __Parser_definition__ fail fileName toks)
     (,()
       __Parser_where__ kw ,(where)
-      __Parser_repr__ keyword ,(keywordRepr)
+      __String_repr__ keyword ,(keywordRepr)
       __Parser_concat__ where "expected 'include' or 'define', got " keywordRepr "" "" ,(msg)
       fail msg)))
 
@@ -417,8 +420,8 @@
     (,()
       __Parser_where__ tok ,(where)
       __Token_get_value__ tok ,(value)
-      __Parser_repr__ kind ,(kindRepr)
-      __Parser_repr__ value ,(valueRepr)
+      __String_repr__ kind ,(kindRepr)
+      __String_repr__ value ,(valueRepr)
       __Parser_concat__ where "expected Operator, got " kindRepr " " valueRepr ,(msg)
       fail msg)))
 
@@ -475,58 +478,3 @@
   __Parser_list1__ func ,(children)
   __Parser_node__ "FuncExp" lparen children ,(node)
   __NULL__ node toks rparen)
-
-;; ── エラーメッセージ ──
-
-;; Python の repr と同じく、str を引用符で囲む。
-;; ' を含み " を含まなければ "..."、それ以外は '...'。\ と囲む引用符、改行、タブ、復帰はエスケープする
-(define __Parser_repr__ ,(str)
-  __Parser_contains__ str "'" ,(hasSingle)
-  __Parser_contains__ str "\"" ,(hasDouble)
-  __not__ hasDouble ,(noDouble)
-  __if_then_else__ (,() __and__ hasSingle noDouble)
-    (,() __NULL__ "\"")
-    (,() __NULL__ "'") ,(quote)
-  __String_length__ str ,(len)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __Parser_repr_loop__ str len zero quote quote ,(s)
-  __String_concat__ s quote)
-
-(define __Parser_repr_loop__ ,(str len i quote acc)
-  __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
-    (,() __NULL__ acc)
-    (,()
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ i one ,(next)
-      __String_substring__ __print_exit_error__ str i next ,(ch)
-      __Parser_repr_char__ ch quote ,(ch)
-      __String_concat__ acc ch ,(acc)
-      __Parser_repr_loop__ str len next quote acc))
-
-;; repr の中の1文字
-(define __Parser_repr_char__ ,(ch quote)
-  __if_then_else__ (,() __String_equal__ ch "\\") (,() __NULL__ "\\\\") (,()
-  __if_then_else__ (,() __String_equal__ ch quote) (,() __String_concat__ "\\" ch) (,()
-  __if_then_else__ (,() __String_equal__ ch "\n") (,() __NULL__ "\\n") (,()
-  __if_then_else__ (,() __String_equal__ ch "\t") (,() __NULL__ "\\t") (,()
-  __if_then_else__ (,() __String_equal__ ch "\r") (,() __NULL__ "\\r") (,()
-  __NULL__ ch))))))
-
-;; str が ch（1文字）を含めば __TRUE__
-(define __Parser_contains__ ,(str ch)
-  __String_length__ str ,(len)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __Parser_contains_loop__ str len zero ch)
-
-(define __Parser_contains_loop__ ,(str len i ch)
-  __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
-    (,() __NULL__ __FALSE__)
-    (,()
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ i one ,(next)
-      __String_substring__ __print_exit_error__ str i next ,(c)
-      __if_then_else__ (,() __String_equal__ c ch)
-        (,() __NULL__ __TRUE__)
-        (,() __Parser_contains_loop__ str len next ch)))
