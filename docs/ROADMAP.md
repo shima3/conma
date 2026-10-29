@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step20`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step21`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-29).
 
@@ -11,11 +11,11 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
-* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`).
+* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`; `test/step21` gives each case its own input).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
 * Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
 
@@ -447,3 +447,20 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | case15 | writing to the `Sink` after `close` stops the VProc with an error |
 | case16 | a child VProc walks the `LazyList` of a pipe while the parent writes to it slowly; it waits for each value and gets all of them |
 | case17 | a child VProc makes a pipe, writes one value and finishes without `close`; the VProc waiting for the tail gets `onError` |
+
+## Step 21: Standard input as a LazyList
+
+No new primitive.
+
+* Goal: Make the input of a program a `LazyList` of lines instead of a `Seq`, so that a program (and ConSh) can take lines from the front with no `__Seq_get__`, and a part of the input can be given to a child VProc without reading standard input again.
+* `include/util.se`: `__LazyList_lines__ Stream` reads the Stream directly into a `LazyList` of lines; `__start__` passes it to `__main__` as `in`.
+* Read position: `__main__` puts a `Ref` whose value is the `LazyList` of the lines not yet read in `PDict` under `"__STD_IN__"`, and goes on in `__main_run__`, which does not take `in`. If `PDict` or a continuation kept the first cell, all the lines read so far would stay in memory, which a `Seq` did not do. `stdin` returns the `LazyList` at the read position without moving it; `__stdin_read__` returns the next line and moves it.
+* `test/step13/args.se` reads standard input with `__stdin_read__` (its output is unchanged).
+* Tests (`test/step21`, programs started with `--main`):
+
+| Case | What it checks |
+|---|---|
+| case1 | `__stdin_read__` reads lines in order, the last one without a newline, then applies `onEmpty`; `stdin` shows the lines not yet read, twice, without moving the read position |
+| case2 | empty standard input |
+| case3 | a child started with `"__main__"` and the parent's `stdin` as its inputSeq reads the rest of the lines; the parent then reads the same lines |
+| case4 | an endless standard input (`yes`): reading three lines reads only what it needs, and the program ends |

@@ -272,7 +272,7 @@ Initiates the creation and execution of a new Virtual Process (VProc) through th
 4. **Entry Point Execution**: The new VProc applies the global function named by the String `entryPoint` to the following arguments. A program normally uses `"__main__"`, which calls the program's `main` (see "Main" in SPEC.md).
 * `errorSink`: For handling standard error output.
 * `argumentSeq`: For program startup arguments.
-* `inputSeq`: Representing the standard input stream.
+* `inputSeq`: Representing the standard input stream. `__main__` takes a `LazyList` of lines (see "Main" in SPEC.md), but the primitive passes any value.
 * `outputSink`: For standard output.
 
 The new VProc is placed at the end of the ready queue, and the `VProc` is passed to the LCont.

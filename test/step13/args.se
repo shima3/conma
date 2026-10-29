@@ -14,10 +14,19 @@
   __Number_add__ n one ,(n)
   __NULL__ (,(line) numberSink n line))
 
+;; 標準入力の残りの行に、n から番号を付けて出力する
+(define numberLines ,(n)
+  __Cont_get__ ,(return)
+  __stdin_read__ return ,(line)
+  numberSink n line ,(sink)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  numberLines n)
+
 (define main ,(args)
   args printArgSink ,(sink)
   stderr "to stderr\n" ,(err)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
-  stdin (,(line) numberSink one line) ,(sink)
+  numberLines one ,()
   __print__ "bye" ,()
   )

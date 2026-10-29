@@ -11,8 +11,19 @@
   __PDict_lookup_or_error__ "__EXIT__" ,(exit)
   exit String)
 
+;; 標準入力の、まだ読んでいない行の LazyList。読み出し位置は進めない
 (define stdin ,()
-  __PDict_lookup_or_error__ "__STD_IN__")
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position)
+
+;; 標準入力の次の行を返し、読み出し位置を進める。読んだ行は、ほかから参照されていなければ回収される。
+;; 残りがなければ onEmpty を呼ぶ（__LazyList_uncons__ と同じく、__stdin_read__ の中の継続で）
+(define __stdin_read__ ,(onEmpty)
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position ,(lazyList)
+  __LazyList_uncons__ onEmpty lazyList ,(line rest)
+  __Ref_set__ position rest ,()
+  __NULL__ line)
 
 (define stdout ,()
   __PDict_lookup_or_error__ "__STD_OUT__")
@@ -58,11 +69,18 @@
         args lc)))
 
 ;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
-;; err, in, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。
+;; in は標準入力の行の LazyList。PDict には、その読み出し位置の Ref を置く。
+;; __main__ の継続が in を参照し続けると、読み終えた行が回収されないので、
+;; Ref を作ったら、in を受け取らない __main_run__ に移る
 (define __main__ ,(err args in out)
+  __Ref_new__ in ,(position)
+  __main_run__ err args position out)
+
+;; err, 標準入力の読み出し位置, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。
+(define __main_run__ ,(err args position out)
   __Cont_get__ ,(exit)
   __PDict_put__ "__EXIT__" exit ,()
-  __PDict_put__ "__STD_IN__" in ,()
+  __PDict_put__ "__STD_IN__" position ,()
   __PDict_put__ "__STD_OUT__" out ,()
   __PDict_put__ "__STD_ERR__" err ,()
   main args ,()
@@ -121,16 +139,69 @@
           __Stream_lines_scan__ stream buf len next next sink)
         (,() __Stream_lines_scan__ stream buf len lineStart next sink)))
 
+;; input Stream の行（改行を含む）の LazyList。最後の行に改行がなければ、改行なしの要素にする。
+;; Stream は、LazyList をたどったときに必要な分だけ読む。
+;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
+(define __LazyList_lines__ ,(stream)
+  __LazyList_lines_from__ stream "")
+
+;; buf は、読んだがまだ要素にしていない文字列
+(define __LazyList_lines_from__ ,(stream buf)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __LazyList_new__ (,() __LazyList_lines_scan__ stream buf zero))
+
+;; buf の i 文字目から改行を探す（i 文字目より前に改行はない）。
+;; 見つかれば、そこまでを最初の要素にし、残りを tail の buf にする。見つからなければ読み足す
+(define __LazyList_lines_scan__ ,(stream buf i)
+  __String_length__ buf ,(len)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __LazyList_lines_read__ stream buf)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ buf i next ,(ch)
+      __if_then_else__ (,() __String_equal__ ch "\n")
+        (,()
+          __Number_fromString__ __print_exit_error__ "0" ,(zero)
+          __String_substring__ __print_exit_error__ buf zero next ,(line)
+          __String_substring__ __print_exit_error__ buf next len ,(buf)
+          __LazyList_lines_from__ stream buf ,(tail)
+          __LazyList_cons__ line tail)
+        (,() __LazyList_lines_scan__ stream buf next)))
+
+;; Stream から読み足して buf の続きを探す。EOF なら、buf が空でなければ最後の要素にする
+(define __LazyList_lines_read__ ,(stream buf)
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,()
+      __LazyList_empty__ ,(empty)
+      __String_length__ buf ,(len)
+      __if_then_else__ (,() __Number_is_zero__ len)
+        (,() __NULL__ empty)
+        (,() __LazyList_cons__ buf empty))
+    (,()
+      __String_length__ data ,(dataLen)
+      __if_then_else__ (,() __Number_is_zero__ dataLen)
+        (,()
+          __OS_wait_readable__ __print_exit_error__ stream ,()
+          __LazyList_lines_read__ stream buf)
+        (,()
+          __String_length__ buf ,(start)
+          __String_concat__ buf data ,(buf)
+          __LazyList_lines_scan__ stream buf start)))
+
 ;; インタプリタが最初の VProc を起動する入口（vproc_run.py --main）。
-;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ
+;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ。in は標準入力の行の LazyList
 (define __start__ ,(args)
   __OS_get_stderr__ ,(errStream)
   __OS_get_stdin__ ,(inStream)
   __OS_get_stdout__ ,(outStream)
+  __LazyList_lines__ inStream ,(in)
   __main__
     (,(value) __Stream_sink__ errStream value)
     args
-    (,(sink) __Stream_lines__ inStream sink)
+    in
     (,(value) __Stream_sink__ outStream value))
 
 ;; ── Seq ──

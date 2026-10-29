@@ -481,6 +481,6 @@ The interpreter exits:
 * with code 2 on deadlock.
 
 Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
-Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__Stream_lines__` then waits with `__OS_wait_readable__`, so other VProcs keep running.
+Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__LazyList_lines__` (and `__Stream_lines__`) then waits with `__OS_wait_readable__`, so other VProcs keep running.
 OS processes started by `__OS_spawn__` that are still running when the interpreter exits are left running.
 
