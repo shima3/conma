@@ -86,7 +86,7 @@ __Parser_main__ onError fileName tokens ,(Program)
 
 ### includer
 
-Follows [INCLUDER.md](INCLUDER.html) and gives the same `Program`s, warnings and most error messages as `bin/includer` (`include/includer.se`).
+Follows [INCLUDER.md](INCLUDER.html) and gives the same `Program`s and most error messages as `bin/includer` (`include/includer.se`).
 
 ```
 __Includer_main__ onError sourceName includeDirs ,(Programs)
@@ -99,7 +99,7 @@ __Includer_main__ onError sourceName includeDirs ,(Programs)
 3. Include statements are processed breadth first. For each include statement in the new `Program`:
    * An absolute path is normalized if it exists. Otherwise it is an error.
    * A relative path is searched for in the directory of the file that contains the include statement, then in each include directory in order. The first file found is normalized to an absolute path. If none is found, it is an error.
-   * The normalized path is looked up in the file list. If it is already there (processed or not), a warning is written and the file is skipped. Otherwise it is added to the end of the file list.
+   * The normalized path is looked up in the file list. If it is already there (processed or not), the file is skipped without a warning. Otherwise it is added to the end of the file list.
 4. It returns the `Program`s as an LList, in the order they were made.
 
 The order matters: `resolver` numbers the global variables in the order of the `Program`s, so a different order would give a different module.
@@ -109,7 +109,7 @@ If a directory with the name given in an include statement exists in a directory
 * Each file is passed to `__Lexer_main__` and `__Parser_main__` by its normalized absolute path, as `bin/includer` passes it to `lexer` and `parser --file`. The value of each `Includer`'s `String` node is used as the file name as it is, without processing escape sequences.
 * The file list is a queue of paths, with a Dict of the paths in it for the duplicate check. A relative name is joined to each directory in turn (`__Includer_join__`), and the next directory is tried in the `onError` of `__OS_realpath__`.
 * The include directories are normalized with `__OS_realpath__` first; one that does not exist is an error. The directory of a file is the part of its path before the last `/` (`__Includer_dirname__`).
-* Errors go to `onError` in the same way as in the parser: the CChain is set back to that of the call. The messages are those of `bin/includer`: `Error: source file not found: ...`, `Error: --include directory not found: ...` and `Error: included file not found: ... (from ...)`. The warning for a duplicate is written to standard error with the same text as `bin/includer` (`Warning: circular include ignored: ...`).
+* Errors go to `onError` in the same way as in the parser: the CChain is set back to that of the call. The messages are those of `bin/includer`: `Error: source file not found: ...`, `Error: --include directory not found: ...` and `Error: included file not found: ... (from ...)`.
 * Messages show paths as Python's `repr` does, with `__String_repr__` of `util.se`. The includer also uses `__Parser_concat__` and `__Parser_reverse__` of `parser.se`.
 * Differences from `bin/includer`:
   * A syntax error in a file goes to `onError` as `SyntaxError: <message>`. `bin/includer` writes the message of `parser` and then `Error: parser exited with code 1`.
@@ -278,8 +278,6 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case4 | `__AST_toSexp__`: a `String` node is not escaped again; a `Variable` with `(L 0)`; `SInfo`; a node with no children; nested nodes |
 | case5 | the three-element position of a `Program`; `Module`, `F` and `G` with no position; `Undefined` |
 | case6 | a child that is not a String, Number or node stops the program with an error |
-
-`bin/includer` prints a warning (`circular include ignored`) for `util.se`, because both `token.se` and `ast.se` include it. The warning is expected and does not change the result.
 
 `test/selfhost2` tests `selfhost_compare.py`. `test.sh` runs the Python tools on `sample.se` (which includes `inc.se`); `conma/*.txt` holds the same outputs in the ConMa format. Absolute paths in the outputs of `bin/includer` and `bin/resolver` are written as `<dir>`. The differences are made by changing a copy of `conma/*.txt` with `sed`.
 
