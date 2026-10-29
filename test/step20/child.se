@@ -36,3 +36,11 @@
     __LazyList_claim__ (,(msg) out msg ,(sink) return) lazyList ,(thunk cell)
     __type_name__ cell ,(type)
     out type))
+
+;; パイプを作り、その LazyList を out に渡す。"x" を書き、しばらく動いてから close せずに終わる
+(define childPipe ,(err args in out)
+  __LazyList_pipe__ ,(lazyList sink close)
+  out lazyList ,(outSink)
+  sink "x" ,(sink)
+  __Number_fromString__ __print_exit_error__ "30" ,(n)
+  delay n)

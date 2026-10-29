@@ -319,3 +319,64 @@
   __LazyList_claim__ __print_exit_error__ lazyList ,(thunk cell)
   __LazyList_publish__ lazyList "abc" ,()
   println "not reached")
+
+;; ── パイプ ──
+
+;; case14: __LazyList_pipe__ の sink に書いた値が、書いた順に要素になり、close で終わる。
+;; 値をまとめて書いてもよい。close する前に、書いた分だけたどれる。何度たどっても同じ要素
+(define case14 ,()
+  __LazyList_pipe__ ,(lazyList sink close)
+  println "created" ,()
+  sink "a" ,(sink)
+  sink "b" "c" ,(sink)
+  num "3" ,(three)
+  printFirst three lazyList ,()
+  close ,()
+  printAll lazyList ,()
+  printAll lazyList)
+
+;; case15: close した後に sink に書くと、VProc をエラーで終える
+(define case15 ,()
+  __LazyList_pipe__ ,(lazyList sink close)
+  close ,()
+  printAll lazyList ,()
+  sink "x" ,(sink)
+  println "not reached")
+
+;; しばらく動いてから value を sink に書く
+(define writeSlowly ,(sink value)
+  num "30" ,(n)
+  delay n ,()
+  __println__ "write " value ,()
+  sink value)
+
+;; case16: 子 VProc がパイプの LazyList をたどる。値がまだ書かれていなければ、書かれるまで待つ
+(define case16 ,()
+  __LazyList_pipe__ ,(lazyList sink close)
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childWalk" lazyList ref ,(child)
+  writeSlowly sink "a" ,(sink)
+  writeSlowly sink "b" ,(sink)
+  writeSlowly sink "c" ,(sink)
+  close ,()
+  __VProc_wait__ __print_exit_error__ child ,()
+  printRef ref)
+
+;; ref の値が null でなくなるまで待ち、その値を返す
+(define waitRef ,(ref)
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,()
+      num "1" ,(one)
+      delay one ,()
+      waitRef ref)
+    (,() __NULL__ value))
+
+;; case17: パイプを作った子 VProc が close せずに終わると、末尾を待っていた VProc には onError
+(define case17 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childPipe" __NULL__ ref ,(child)
+  waitRef ref ,(lazyList)
+  __LazyList_uncons__ __nop__ lazyList ,(head tail)
+  println head ,()
+  tryClaim tail)

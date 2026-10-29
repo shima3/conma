@@ -277,6 +277,39 @@
   sink head ,(sink)
   __LazyList_toSeq_loop__ tail sink)
 
+;; Sink に書いた値が、書いた順に要素として届く LazyList（パイプ）。
+;; lazyList と、値を書く sink と、終わりを書く close を返す。
+;; 値のまだない末尾は、この VProc が __LazyList_claim__ で印を置いておき、
+;; 値を書くたびに (値 . 新しい末尾) を __LazyList_publish__ する。close は末尾に null を書く。
+;; ほかの VProc が末尾を評価しようとすると、値が書かれるまで __LazyList_claim__ で待つ。
+;; このため、sink と close は __LazyList_pipe__ を呼んだ VProc で使う（ほかの VProc では publish がエラーになる）。
+;; close せずにこの VProc が終わると、末尾を評価しようとした VProc はエラーになる
+(define __LazyList_pipe__ ,()
+  __LazyList_pipe_tail__ ,(lazyList)
+  __Ref_new__ lazyList ,(tailRef)
+  __LazyList_pipe_sink__ tailRef ,(sink)
+  __NULL__ lazyList sink (,() __LazyList_pipe_close__ tailRef))
+
+;; 値のまだない、この VProc が印を置いた LazyList。サンクは適用されない
+(define __LazyList_pipe_tail__ ,()
+  __LazyList_new__ __LazyList_empty__ ,(tail)
+  __LazyList_claim__ __LazyList_error__ tail ,(thunk cell)
+  __NULL__ tail)
+
+;; 値を受け取るたびに、tailRef の末尾に値を書き、新しい末尾を tailRef に入れる Sink
+(define __LazyList_pipe_sink__ ,(tailRef)
+  __NULL__ (,(value)
+    __Ref_get__ tailRef ,(tail)
+    __LazyList_pipe_tail__ ,(next)
+    __Ref_set__ tailRef next ,()
+    __LList_cons__ value next ,(cell)
+    __LazyList_publish__ tail cell ,()
+    __LazyList_pipe_sink__ tailRef))
+
+(define __LazyList_pipe_close__ ,(tailRef)
+  __Ref_get__ tailRef ,(tail)
+  __LazyList_publish__ tail __NULL__)
+
 ;; ── String ──
 
 ;; Python の repr と同じく、str を引用符で囲む。
