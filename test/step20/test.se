@@ -1,0 +1,321 @@
+;; Step20: LazyList（include/util.se）
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+(define printBoolean ,(b)
+  __if_then_else__ b (,() println "true") (,() println "false"))
+
+;; LazyList の要素をすべて1行ずつ出力し、最後に (end) を出力する
+(define printAll ,(lazyList)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() println "(end)" ,() return) lazyList ,(head tail)
+  println head ,()
+  printAll tail)
+
+;; LazyList の最初の count 個の要素を1行ずつ出力する
+(define printFirst ,(count lazyList)
+  __Cont_get__ ,(return)
+  __if_then_else__ (,() __Number_is_zero__ count) return (,()
+    __LazyList_uncons__ (,() println "(end)" ,() return) lazyList ,(head tail)
+    println head ,()
+    num "1" ,(one)
+    __Number_subtract__ count one ,(count)
+    printFirst count tail))
+
+;; n から1ずつ増える数の無限の LazyList。要素を評価するたびに eval n を出力する
+(define from ,(n)
+  __LazyList_new__ (,()
+    __Number_toString__ n ,(str)
+    __println__ "eval " str ,()
+    num "1" ,(one)
+    __Number_add__ n one ,(next)
+    from next ,(rest)
+    __LazyList_cons__ str rest))
+
+;; xs の後に ys を続けた LazyList。xs が空になったら、サンクは ys をそのまま返す
+(define append ,(xs ys)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __LazyList_uncons__ (,() return ys) xs ,(head tail)
+    append tail ys ,(rest)
+    __LazyList_cons__ head rest))
+
+(define makeFromArgs , args
+  __LazyList_fromSeq__ args)
+
+;; case1: __LazyList_empty__、__LazyList_cons__、__LazyList_is_empty__、__LazyList_uncons__。
+;; 空なら onEmpty が __LazyList_uncons__ の継続で呼ばれる。2回たどっても同じ要素
+(define case1 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_is_empty__ empty ,(b)
+  printBoolean b ,()
+  __LazyList_cons__ "b" empty ,(lb)
+  __LazyList_cons__ "a" lb ,(lab)
+  __LazyList_is_empty__ lab ,(b)
+  printBoolean b ,()
+  __LazyList_uncons__ (,() __NULL__ "none" "-") empty ,(head tail)
+  println head ,()
+  __LazyList_uncons__ (,() __NULL__ "none" "-") lab ,(head tail)
+  println head ,()
+  printAll lab ,()
+  printAll lab ,()
+  __type_name__ lab ,(type)
+  println type)
+
+;; case2: サンクは最初に評価されるときに1度だけ実行される（メモ化）
+(define case2 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_new__ (,()
+    println "eval c" ,()
+    __LazyList_cons__ "c" empty) ,(lc)
+  __LazyList_new__ (,()
+    println "eval b" ,()
+    __LazyList_cons__ "b" lc) ,(lbc)
+  println "created" ,()
+  __LazyList_uncons__ __nop__ lbc ,(head tail)
+  println head ,()
+  printAll lbc ,()
+  printAll lbc ,()
+  __LazyList_is_empty__ tail ,(b)
+  printBoolean b)
+
+;; case3: 無限の LazyList は、たどった分だけ評価される。自分自身を tail に持つ循環した LazyList
+(define case3 ,()
+  num "1" ,(one)
+  from one ,(nums)
+  println "created" ,()
+  num "3" ,(three)
+  printFirst three nums ,()
+  num "5" ,(five)
+  printFirst five nums ,()
+  __Ref_new__ __NULL__ ,(box)
+  __LazyList_new__ (,()
+    println "eval ones" ,()
+    __Ref_get__ box ,(self)
+    __LazyList_cons__ "1" self) ,(ones)
+  __Ref_set__ box ones ,()
+  printFirst three ones)
+
+;; case4: サンクが評価されていない LazyList を返すと、それも評価する。
+;; append で、空になった xs の後に ys の LazyList をそのまま続ける
+(define case4 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_new__ (,()
+    println "eval outer" ,()
+    __LazyList_new__ (,()
+      println "eval inner" ,()
+      __LazyList_cons__ "x" empty)) ,(nested)
+  printAll nested ,()
+  printAll nested ,()
+  __LazyList_cons__ "y" empty ,(ly)
+  __LazyList_cons__ "1" ly ,(xs)
+  __LazyList_new__ (,()
+    println "eval ys" ,()
+    __LazyList_cons__ "2" empty) ,(ys)
+  append xs ys ,(xys)
+  printAll xys ,()
+  printAll xys ,()
+  num "1" ,(one)
+  from one ,(nums)
+  append nums empty ,(numsAgain)
+  num "2" ,(two)
+  printFirst two numsAgain)
+
+;; case5: __LazyList_fromSeq__ は、たどったときに Seq の要素を1つずつ取り出す。
+;; 要素をまとめて渡す Seq、1つずつ渡す Seq、空の Seq、可変長引数の Seq。
+;; __LazyList_toSeq__ の Seq は何度でも適用できる
+(define case5 ,()
+  __LazyList_fromSeq__ (,(sink)
+    println "gen 1" ,()
+    sink "1" ,(sink)
+    println "gen 2" ,()
+    sink "2" "3") ,(l123)
+  println "created" ,()
+  __LazyList_uncons__ __nop__ l123 ,(head tail)
+  println head ,()
+  printAll l123 ,()
+  printAll l123 ,()
+  __LazyList_fromSeq__ (,(sink) __NULL__ sink) ,(none)
+  printAll none ,()
+  makeFromArgs "p" "q" ,(pq)
+  printAll pq ,()
+  __LazyList_toSeq__ l123 ,(seq)
+  __Seq_print__ seq ,()
+  println "" ,()
+  __Seq_print__ seq ,()
+  println "" ,()
+  __LazyList_toSeq__ none ,(seq)
+  __Seq_print__ seq ,()
+  println "|")
+
+;; case6: 標準入力の行の LazyList。2回たどっても、標準入力は1度しか読まない
+(define case6 ,()
+  __OS_get_stdin__ ,(stream)
+  __LazyList_fromSeq__ (,(sink) __Stream_lines__ stream sink) ,(lines)
+  __LazyList_uncons__ __nop__ lines ,(first rest)
+  __OS_print__ first ,()
+  println "--" ,()
+  __LazyList_toSeq__ lines ,(seq)
+  __Seq_print__ seq ,()
+  println "" ,()
+  println "--" ,()
+  __Seq_print__ seq ,()
+  println "")
+
+;; case7: 評価中の自分自身を評価しようとする LazyList はエラーで終える
+(define case7 ,()
+  __Ref_new__ __NULL__ ,(box)
+  __LazyList_new__ (,()
+    __Ref_get__ box ,(self)
+    __LazyList_uncons__ __nop__ self ,(head tail)
+    __LazyList_cons__ "x" tail) ,(bad)
+  __Ref_set__ box bad ,()
+  println "force" ,()
+  __LazyList_is_empty__ bad ,(b)
+  println "not reached")
+
+;; ── 複数の VProc ──
+;; 子 VProc は child.se から起動する。親は子を待ってから出力するので、
+;; 出力は VProc の切り替えの順序によらない。サンクの出力は、評価する VProc によらず1度だけ
+
+(define errSink ,(str)
+  __OS_print_error__ str ,()
+  errSink)
+
+;; 子が out に渡した値を ref に入れる Sink
+(define refSink ,(ref)
+  __NULL__ (,(value)
+    __Ref_set__ ref value ,()
+    refSink ref))
+
+;; entry を child.se から起動し、args に lazyList を渡す。子が out に渡した値は ref に入る
+(define spawnChild ,(entry lazyList ref)
+  refSink ref ,(out)
+  __VProc_spawn__ __print_exit_error__ entry "child.se" errSink (,(sink) sink lazyList) __NULL__ out)
+
+;; ref の値を出力する。null なら "(null)"
+(define printRef ,(ref)
+  __Ref_get__ ref ,(value)
+  __if_then_else__ (,() __is_null__ value)
+    (,() println "(null)")
+    (,() println value))
+
+;; n 回繰り返してから戻る
+(define delay ,(n)
+  __Number_is_zero__ n ,(zero)
+  __unless__ zero
+  (,()
+    num "1" ,(one)
+    __Number_subtract__ n one ,(m)
+    delay m))
+
+;; 評価に時間のかかるセルの LazyList。評価すると eval head を出力する
+(define slowCons ,(head tail)
+  __LazyList_new__ (,()
+    num "30" ,(n)
+    delay n ,()
+    __println__ "eval " head ,()
+    __LazyList_cons__ head tail))
+
+;; __LazyList_claim__ の結果（thunk と cell の型）か、onError のメッセージを出力する
+(define tryClaim ,(lazyList)
+  __Cont_get__ ,(return)
+  __LazyList_claim__ (,(msg) println msg ,() return) lazyList ,(thunk cell)
+  __type_name__ thunk ,(thunkType)
+  __type_name__ cell ,(cellType)
+  __println__ thunkType " " cellType)
+
+;; case8: 2つの VProc が同じ LazyList をたどる。後から評価しようとした VProc は、
+;; 先の VProc が評価し終えるまで待つ。サンクはそれぞれ1度しか実行されない
+(define case8 ,()
+  __LazyList_empty__ ,(empty)
+  slowCons "c" empty ,(lc)
+  slowCons "b" lc ,(lbc)
+  slowCons "a" lbc ,(labc)
+  __Ref_new__ __NULL__ ,(ref1)
+  __Ref_new__ __NULL__ ,(ref2)
+  spawnChild "childWalk" labc ref1 ,(child1)
+  spawnChild "childWalk" labc ref2 ,(child2)
+  __VProc_wait__ __print_exit_error__ child1 ,()
+  __VProc_wait__ __print_exit_error__ child2 ,()
+  printRef ref1 ,()
+  printRef ref2)
+
+;; case9: __LazyList_claim__ はサンクを返して印を置く。同じ VProc がもう1度 claim すると onError。
+;; __LazyList_publish__ の後はセルを返す。LazyList でない値は onError
+(define case9 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_new__ (,() __LazyList_cons__ "x" empty) ,(lx)
+  tryClaim lx ,()
+  tryClaim lx ,()
+  __LazyList_cons__ "x" empty ,(cellOwner)
+  __Ref_get__ cellOwner ,(cell)
+  __LazyList_publish__ lx cell ,()
+  tryClaim lx ,()
+  tryClaim empty ,()
+  tryClaim "abc" ,()
+  __Ref_new__ "abc" ,(ref)
+  tryClaim ref)
+
+;; case10: 評価中の VProc が評価せずに実行時エラーで終わると、待っていた VProc にも、
+;; 後から評価する VProc にも onError
+(define case10 ,()
+  __LazyList_new__ (,()
+    num "30" ,(n)
+    delay n ,()
+    undefinedFunction) ,(bad)
+  __Ref_new__ __NULL__ ,(ref1)
+  __Ref_new__ __NULL__ ,(ref2)
+  spawnChild "childWalk" bad ref1 ,(child1)
+  spawnChild "childClaim" bad ref2 ,(child2)
+  __VProc_wait__ __print_exit_error__ child1 ,()
+  __VProc_wait__ __print_exit_error__ child2 ,()
+  printRef ref1 ,()
+  printRef ref2 ,()
+  tryClaim bad)
+
+;; case11: 2つの VProc が、互いに相手の LazyList に依存する LazyList を評価すると、デッドロック（exit code 2）
+(define case11 ,()
+  __Ref_new__ __NULL__ ,(box1)
+  __Ref_new__ __NULL__ ,(box2)
+  __LazyList_new__ (,()
+    num "30" ,(n)
+    delay n ,()
+    __Ref_get__ box2 ,(other)
+    __LazyList_is_empty__ other ,(b)
+    __LazyList_empty__) ,(l1)
+  __LazyList_new__ (,()
+    num "30" ,(n)
+    delay n ,()
+    __Ref_get__ box1 ,(other)
+    __LazyList_is_empty__ other ,(b)
+    __LazyList_empty__) ,(l2)
+  __Ref_set__ box1 l1 ,()
+  __Ref_set__ box2 l2 ,()
+  __Ref_new__ __NULL__ ,(ref1)
+  __Ref_new__ __NULL__ ,(ref2)
+  spawnChild "childWalk" l1 ref1 ,(child1)
+  spawnChild "childWalk" l2 ref2 ,(child2)
+  __VProc_wait__ __print_exit_error__ child1 ,()
+  println "not reached")
+
+;; case12: claim していない LazyList の __LazyList_publish__ は VProc をエラーで終える
+(define case12 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_publish__ empty __NULL__ ,()
+  println "not reached")
+
+;; case13: null でも LList でもないセルの __LazyList_publish__ は VProc をエラーで終える
+(define case13 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_new__ (,() __NULL__ empty) ,(lazyList)
+  __LazyList_claim__ __print_exit_error__ lazyList ,(thunk cell)
+  __LazyList_publish__ lazyList "abc" ,()
+  println "not reached")

@@ -246,7 +246,7 @@ Invoking LCont is considered part of the following Operator application.
 Internal primitives are executed as one Operator application.
 
 At that point, the scheduler may switch execution to another VProc.
-If the executing VProc becomes blocked (for example, __VProc_suspend__), waits for the OS (__OS_wait__, __OS_wait_readable__) or waits for another VProc to finish (__VProc_wait__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
+If the executing VProc becomes blocked (for example, __VProc_suspend__), waits for the OS (__OS_wait__, __OS_wait_readable__) waits for another VProc to finish (__VProc_wait__) or waits for another VProc to evaluate a LazyList (__LazyList_claim__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
 
 Termination:
 * A VProc finishes when its Operator is null, its LCont is absent, and its CChain is empty.
@@ -404,6 +404,46 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 `__Seq_print__ Seq` writes the elements of `Seq` with `__OS_print__`, one after another. `__println__` is variadic: it writes all its arguments and then a newline.
 
 `__Seq_get__` (with `__Seq_take_CFrames__`, `__Seq_push_CFrames__` and `__LList_length__`), `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
+---
+
+### `LazyList`
+```
+(define __LazyList_new__ ,(thunk)
+  __Ref_new__ thunk)
+
+(define __LazyList_empty__ ,()
+  __Ref_new__ __NULL__)
+
+(define __LazyList_cons__ ,(head tail)
+  __LList_cons__ head tail ,(cell)
+  __Ref_new__ cell)
+
+(define __LazyList_uncons__ ,(onEmpty lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __if_then_else__ (,() __is_null__ cell)
+    onEmpty
+    (,() __LList_uncons__ __print_exit_error__ cell))
+```
+
+A `LazyList` is a list whose elements are computed when they are first needed, and only once. Where a `Seq` pushes its elements to a `Sink`, a `LazyList` is taken apart from the front, so getting the first element and the rest needs no CFrames of the CChain, and the list can be walked any number of times without running its computation again.
+
+A `LazyList` is a `Ref`. Its value is one of:
+* a Closure: a thunk not yet evaluated. Applied to no values, it returns a `LazyList`.
+* null: an evaluated empty list.
+* an `LList`: an evaluated cell. Its head is the first element and its tail is the rest, a `LazyList`.
+* a `VProc`: a mark that this VProc is evaluating the thunk.
+
+* `__LazyList_new__ thunk ,(LazyList)` makes a `LazyList` of a thunk. The thunk is applied when the `LazyList` is first evaluated, and never again.
+* `__LazyList_empty__ ,(LazyList)` and `__LazyList_cons__ head tail ,(LazyList)` make evaluated `LazyList`s. `tail` is a `LazyList`.
+* `__LazyList_force__ LazyList ,(cell)` evaluates the `LazyList` and returns its cell, null or an `LList`. It gets the thunk with the primitive `__LazyList_claim__`, which puts the current VProc as the mark, applies the thunk, evaluates the `LazyList` that the thunk returns, and sets the cell of that as the value with the primitive `__LazyList_publish__` (memoization). A thunk may return a `LazyList` not yet evaluated, such as `ys` in `append xs ys` when `xs` is empty. If another VProc is evaluating the `LazyList`, `__LazyList_claim__` waits until it has finished, and the cell that it set is returned. A `LazyList` that depends on itself (the current VProc is the mark) and one whose evaluating VProc finished without setting the cell stop the interpreter with an error. A `LazyList` may still have itself as its tail, because the tail is not evaluated while the cell is made.
+* `__LazyList_uncons__ onEmpty LazyList ,(head tail)` returns the first element and the rest. If the `LazyList` is empty, it applies `onEmpty` instead, with the continuation of `__LazyList_uncons__`, as `__Seq_get__` does.
+* `__LazyList_is_empty__ LazyList ,(Boolean)` returns `__TRUE__` if the `LazyList` is empty.
+* `__LazyList_fromSeq__ Seq ,(LazyList)` makes a `LazyList` of the elements of a `Seq`. It gets the elements with `__Seq_get__` one at a time, when the `LazyList` is walked. For a `Seq` of the lines of a Stream, the lines are read once, however many times the `LazyList` is walked.
+* `__LazyList_toSeq__ LazyList ,(Seq)` makes a `Seq` that passes the elements of the `LazyList` to its `Sink`.
+
+These are defined in `include/util.se`, on top of the primitives `__LazyList_claim__` and `__LazyList_publish__` (see PRIMITIVES.md).
+Each of the two primitives reads and sets the value of the `Ref` in one Operator application, so the scheduler cannot switch VProcs between the test and the setting of the mark, and the same `LazyList` may be evaluated by several VProcs: the thunk runs once, in the VProc that claimed it first, and the others wait for its cell.
+If a thunk leaves `__LazyList_force__` without returning (for example, by the `return` of a `__Cont_get__` outside it), the mark stays: a later evaluation in the same VProc reports that the `LazyList` depends on itself, and one in another VProc waits until that VProc has finished and then reports an error.
 ---
 
 ### `Stream`

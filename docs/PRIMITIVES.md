@@ -520,3 +520,20 @@ __if_then_else__ isString ...
     * A Boolean, a Seq and a Sink are Closures, so they give `"Closure"`.
     * A non-empty CChain is an LList of CFrames, so it gives `"LList"`.
 * **Error**: None. Every value has a type, so there is no `onError`.
+
+## 14. LazyList Primitives
+
+A `LazyList` (see "LazyList" in SPEC.md) is a `Ref` whose value is a thunk (a Closure), null (an evaluated empty list), an `LList` cell (head, and a `LazyList` as tail), or the `VProc` that is evaluating the thunk. These two primitives read and set that value, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. The other `LazyList` functions are defined in `include/util.se`.
+
+### **`__LazyList_claim__ onError LazyList ,(thunk cell)`**
+* **Description**: Starts the evaluation of a `LazyList`, or gets its cell.
+* **Behavior**:
+    * If the value is a thunk, sets the current VProc as the value and returns the thunk and null. The caller applies the thunk and sets the cell with `__LazyList_publish__`.
+    * If the value is null or an `LList`, returns null and the value.
+    * If the value is another VProc that has not finished, the current VProc waits (it is not in the ready queue) until the value is no longer such a VProc, and then runs `__LazyList_claim__` again.
+* **Error**: The interpreter invokes `onError` with an error message String if `LazyList` is not a `Ref`, or is a `Ref` of another kind of value, if the value is the current VProc (the `LazyList` depends on itself), or if the value is a VProc that has finished without setting the cell.
+
+### **`__LazyList_publish__ LazyList cell ,()`**
+* **Description**: Sets the cell of a `LazyList` that the current VProc has claimed.
+* **Behavior**: Sets `cell` as the value. The VProcs waiting for the `LazyList` in `__LazyList_claim__` wake up at the next scheduling step.
+* **Error**: Stops the VProc with an error if `LazyList` is not a `Ref`, if its value is not the current VProc, or if `cell` is neither null nor an `LList`.

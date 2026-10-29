@@ -1,0 +1,38 @@
+;; Step20: test.se から子 VProc として起動するプログラム。
+;; 各関数は __VProc_spawn__ の entryPoint で、err args in out を受け取る
+(include "util.se")
+
+;; n 回繰り返してから戻る
+(define delay ,(n)
+  __Number_is_zero__ n ,(zero)
+  __unless__ zero
+  (,()
+    __Number_fromString__ __print_exit_error__ "1" ,(one)
+    __Number_subtract__ n one ,(m)
+    delay m))
+
+;; args の LazyList をたどり、要素を連結した String を out に渡す
+(define childWalk ,(err args in out)
+  args (,(lazyList)
+    __LazyList_toSeq__ lazyList ,(seq)
+    __Ref_new__ "" ,(acc)
+    seq (,(value) concatSink acc value) ,(sink)
+    __Ref_get__ acc ,(str)
+    out str))
+
+(define concatSink ,(acc value)
+  __Ref_get__ acc ,(str)
+  __String_concat__ str value ,(str)
+  __Ref_set__ acc str ,()
+  __NULL__ (,(value) concatSink acc value))
+
+;; しばらく動いてから、args の LazyList を __LazyList_claim__ で評価しようとし、
+;; onError のメッセージか、得たセルの種類を out に渡す
+(define childClaim ,(err args in out)
+  args (,(lazyList)
+    __Cont_get__ ,(return)
+    __Number_fromString__ __print_exit_error__ "10" ,(n)
+    delay n ,()
+    __LazyList_claim__ (,(msg) out msg ,(sink) return) lazyList ,(thunk cell)
+    __type_name__ cell ,(type)
+    out type))

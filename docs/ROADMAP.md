@@ -2,20 +2,20 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step19`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step20`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-26).
+Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-29).
 
 ## Tests
 
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
-* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file).
+* Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
 * Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
 
@@ -412,3 +412,33 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | case4, case5 | a non-String and a non-Number argument stop the VProc with an error |
 | case6 | `__String_repr__`: the choice of quotes; escapes of `\`, the quote, newline, tab and carriage return; Japanese text is not escaped |
 | case7 | `__String_repr__` of the characters at the ends of the ranges that are not printed, and next to them; an unassigned character is not escaped |
+
+## Step 20: LazyList
+
+| Primitive | Status |
+|---|---|
+| `__LazyList_claim__` | implemented |
+| `__LazyList_publish__` | implemented |
+
+* Goal: Give a list that can be taken apart from the front cheaply and walked more than once. A shell on ConMa (ConSh) passes standard input, arguments and outputs of commands as lists that are split as `(a b . rest)` and kept in variables. With a `Seq`, each element needs `__Seq_get__`, which counts and moves CFrames of the CChain, and a `rest` applied again runs the rest of the `Seq` again, so a `Seq` of the lines of standard input would read it again. A `LazyList` evaluates each element once and keeps it.
+* The `LList` itself is not made lazy: the CChain is an `LList`, `__LList_uncons__` is a primitive that cannot apply a thunk, and the library uses `LList` as a strict list. A `LazyList` is a `Ref` whose value is a thunk, null (empty) or an `LList` cell whose tail is a `LazyList`, so an evaluated cell is an ordinary `LList` cell. See "LazyList" in SPEC.md.
+* Functions: `__LazyList_new__`, `__LazyList_empty__`, `__LazyList_cons__`, `__LazyList_force__`, `__LazyList_uncons__`, `__LazyList_is_empty__`, `__LazyList_fromSeq__`, `__LazyList_toSeq__`.
+* Primitives: the mark that a thunk is being evaluated is read and set by `__LazyList_claim__` and `__LazyList_publish__`, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. With `__Ref_get__` and `__Ref_set__`, the scheduler could switch VProcs between reading the value and setting the mark, and the thunk could run twice. A general compare-and-set of a `Ref` would prevent that, but a VProc that finds the mark could then only wait by polling: adding itself to a list of waiters and `__VProc_suspend__` are two applications, and a `__VProc_resume__` between them would be lost. `__LazyList_claim__` makes the VProc wait in the scheduler (as `__VProc_wait__` does) and runs again when the mark is gone or its VProc has finished.
+* The mark is the evaluating VProc, so `__LazyList_claim__` tells a `LazyList` that depends on itself (the mark is the current VProc) from one that another VProc is evaluating, and gives `onError` when the evaluating VProc has finished without setting the cell (for example, after a runtime error in the thunk).
+* VM (`test/vproc_step.py`): `Scheduler.wait_lazy` puts a VProc in `lazy` without returning from the primitive, so that it runs `__LazyList_claim__` again when it wakes; `check_lazy` wakes it at the next scheduling step after the value of the `Ref` is no longer a VProc that has not finished. A VProc waiting for a `LazyList` is counted as blocked for deadlock detection.
+* Tests (`test/step20`):
+
+| Case | What it checks |
+|---|---|
+| case1 | `__LazyList_empty__`, `__LazyList_cons__`, `__LazyList_is_empty__` and `__LazyList_uncons__`; `onEmpty` gets the continuation of `__LazyList_uncons__`; walking twice gives the same elements; `__type_name__` is `"Ref"` |
+| case2 | a thunk runs only when its `LazyList` is first evaluated, and only once |
+| case3 | an infinite `LazyList` is evaluated only as far as it is walked; a `LazyList` whose tail is itself |
+| case4 | a thunk that returns a `LazyList` not yet evaluated; `append` returns `ys` itself when `xs` is empty |
+| case5 | `__LazyList_fromSeq__` gets the elements of a `Seq` one at a time, for a `Seq` that passes elements together, one by one, none, and a variadic `Seq`; the `Seq` of `__LazyList_toSeq__` can be applied twice |
+| case6 | a `LazyList` of the lines of standard input, walked twice, reads standard input once |
+| case7 | a `LazyList` that evaluates itself while it is evaluated stops the interpreter with an error, exit code 1 |
+| case8 | two VProcs (from `child.se`) walk the same `LazyList`; the one that comes second waits for the first; each thunk runs once, and both get all the elements |
+| case9 | `__LazyList_claim__` returns the thunk and sets the mark; a second claim in the same VProc gives `onError`; after `__LazyList_publish__` it returns the cell; an empty `LazyList`; a non-Ref and a Ref of a String give `onError` |
+| case10 | the evaluating VProc finishes with a runtime error in the thunk; the VProc waiting for it and a later claim get `onError` |
+| case11 | two VProcs evaluate `LazyList`s that depend on each other: deadlock, exit code 2 |
+| case12, case13 | `__LazyList_publish__` of a `LazyList` that the VProc has not claimed, and of a cell that is not null or an `LList`, stop the VProc with an error |

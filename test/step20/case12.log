@@ -1,0 +1,2 @@
+Error in VProc 1 at step 6: __LazyList_publish__: the LazyList is not being evaluated by this VProc
+exit: 0

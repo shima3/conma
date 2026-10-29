@@ -203,6 +203,80 @@
   __OS_print__ str ,()
   __Seq_print__ rest)
 
+;; ── LazyList ──
+
+;; LazyList は、要素を必要になったときに1度だけ計算するリスト。Ref で表し、中身は次のどれか。
+;;   ・Closure: まだ評価していないサンク。引数なしで適用すると LazyList を返す
+;;   ・null: 評価済みの空リスト
+;;   ・LList: 評価済みのセル。head が要素、tail が残りの LazyList
+;;   ・VProc: その VProc が評価中であることの印
+;; 評価した結果を Ref に書き戻す（メモ化）ので、何度たどってもサンクは1度しか実行されない。
+;; 印の読み書きはプリミティブ __LazyList_claim__ と __LazyList_publish__ が1ステップで行うので、
+;; 同じ LazyList を複数の VProc から評価してもよい。ほかの VProc が評価中なら、それが終わるまで待つ
+
+;; サンク thunk の LazyList。thunk は最初に評価されるときに1度だけ適用される
+(define __LazyList_new__ ,(thunk)
+  __Ref_new__ thunk)
+
+;; 評価済みの空の LazyList
+(define __LazyList_empty__ ,()
+  __Ref_new__ __NULL__)
+
+;; 評価済みのセル。head が最初の要素、tail（LazyList）が残り
+(define __LazyList_cons__ ,(head tail)
+  __LList_cons__ head tail ,(cell)
+  __Ref_new__ cell)
+
+;; LazyList を評価し、セル（空なら null、そうでなければ LList）を返す。
+;; __LazyList_claim__ がサンクを返したら、それを適用し、サンクが返した LazyList も評価して、
+;; そのセルを __LazyList_publish__ で書き戻す。
+;; 自分自身に依存する LazyList や、評価中の VProc が評価せずに終わった LazyList は、エラーで終える
+(define __LazyList_force__ ,(lazyList)
+  __LazyList_claim__ __LazyList_error__ lazyList ,(thunk cell)
+  __if_then_else__ (,() __is_null__ thunk)
+    (,() __NULL__ cell)
+    (,()
+      thunk ,(result)
+      __LazyList_force__ result ,(cell)
+      __LazyList_publish__ lazyList cell ,()
+      __NULL__ cell))
+
+(define __LazyList_error__ ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+;; LazyList の最初の要素 head と、残りの LazyList tail を返す。
+;; 空なら onEmpty を呼ぶ（__Seq_get__ と同じく、__LazyList_uncons__ の継続で）
+(define __LazyList_uncons__ ,(onEmpty lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __if_then_else__ (,() __is_null__ cell)
+    onEmpty
+    (,() __LList_uncons__ __print_exit_error__ cell))
+
+;; LazyList が空なら __TRUE__
+(define __LazyList_is_empty__ ,(lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __is_null__ cell)
+
+;; Seq の要素の LazyList。Seq の要素は、LazyList をたどったときに1つずつ取り出す
+(define __LazyList_fromSeq__ ,(seq)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __Seq_get__ (,() __LazyList_empty__ ,(empty) return empty) seq ,(first rest)
+    __LazyList_fromSeq__ rest ,(tail)
+    __LazyList_cons__ first tail))
+
+;; LazyList の要素を順に Sink に渡す Seq
+(define __LazyList_toSeq__ ,(lazyList)
+  __NULL__ (,(sink) __LazyList_toSeq_loop__ lazyList sink))
+
+(define __LazyList_toSeq_loop__ ,(lazyList sink)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return sink) lazyList ,(head tail)
+  sink head ,(sink)
+  __LazyList_toSeq_loop__ tail sink)
+
 ;; ── String ──
 
 ;; Python の repr と同じく、str を引用符で囲む。
