@@ -52,6 +52,18 @@
   __VProc_wait__ __print_exit_error__ child ,()
   readAll "parent")
 
+;; drain: 何も出力せずに、標準入力をすべて読む（memcheck.py で、読み終えた行が回収されるかを調べる）
+(define drain ,()
+  __Cont_get__ ,(return)
+  __stdin_read__ return ,(line)
+  drain)
+
+;; drainKeep: 最初の stdin を PDict に残したまま、すべて読む（読み終えた行が回収されない対照）
+(define modeDrainKeep ,()
+  stdin ,(lazyList)
+  __PDict_put__ "keep" lazyList ,()
+  drain)
+
 ;; first3: 3行だけ読んで終える。終わらない標準入力でも、必要な分しか読まない
 (define modeFirst3 ,()
   readLine "first3" ,()
@@ -65,4 +77,6 @@
   __if_then_else__ (,() __String_equal__ mode "child") modeChild (,()
   __if_then_else__ (,() __String_equal__ mode "readAll") (,() readAll "child") (,()
   __if_then_else__ (,() __String_equal__ mode "first3") modeFirst3 (,()
-  __print__ "unknown mode")))))
+  __if_then_else__ (,() __String_equal__ mode "drain") drain (,()
+  __if_then_else__ (,() __String_equal__ mode "drainKeep") modeDrainKeep (,()
+  __print__ "unknown mode")))))))

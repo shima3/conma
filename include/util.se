@@ -191,18 +191,22 @@
           __String_concat__ buf data ,(buf)
           __LazyList_lines_scan__ stream buf start)))
 
+;; output Stream に書き込む Sink。Closure は stream だけを参照する
+(define __Stream_newSink__ ,(stream)
+  __NULL__ (,(value) __Stream_sink__ stream value))
+
 ;; インタプリタが最初の VProc を起動する入口（vproc_run.py --main）。
-;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ。in は標準入力の行の LazyList
+;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ。in は標準入力の行の LazyList。
+;; err と out の Sink は __Stream_newSink__ で作る。ここで Closure を作ると、その LVEnv が in を参照し、
+;; PDict に置いた Sink を通して、読み終えた行が回収されなくなる
 (define __start__ ,(args)
   __OS_get_stderr__ ,(errStream)
   __OS_get_stdin__ ,(inStream)
   __OS_get_stdout__ ,(outStream)
+  __Stream_newSink__ errStream ,(err)
+  __Stream_newSink__ outStream ,(out)
   __LazyList_lines__ inStream ,(in)
-  __main__
-    (,(value) __Stream_sink__ errStream value)
-    args
-    in
-    (,(value) __Stream_sink__ outStream value))
+  __main__ err args in out)
 
 ;; ── Seq ──
 

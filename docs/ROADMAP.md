@@ -454,7 +454,7 @@ No new primitive.
 
 * Goal: Make the input of a program a `LazyList` of lines instead of a `Seq`, so that a program (and ConSh) can take lines from the front with no `__Seq_get__`, and a part of the input can be given to a child VProc without reading standard input again.
 * `include/util.se`: `__LazyList_lines__ Stream` reads the Stream directly into a `LazyList` of lines; `__start__` passes it to `__main__` as `in`.
-* Read position: `__main__` puts a `Ref` whose value is the `LazyList` of the lines not yet read in `PDict` under `"__STD_IN__"`, and goes on in `__main_run__`, which does not take `in`. If `PDict` or a continuation kept the first cell, all the lines read so far would stay in memory, which a `Seq` did not do. `stdin` returns the `LazyList` at the read position without moving it; `__stdin_read__` returns the next line and moves it.
+* Read position: `__main__` puts a `Ref` whose value is the `LazyList` of the lines not yet read in `PDict` under `"__STD_IN__"`, and goes on in `__main_run__`, which does not take `in`. If `PDict` or a continuation kept the first cell, all the lines read so far would stay in memory, which a `Seq` did not do. A Closure keeps every variable bound where it is made (its LVEnv), so `__start__` makes the err and out Sinks with `__Stream_newSink__` instead of `(,(value) ...)` after `in` is bound: these Sinks are kept in `PDict` and would keep the first cell through their LVEnv. `stdin` returns the `LazyList` at the read position without moving it; `__stdin_read__` returns the next line and moves it.
 * `test/step13/args.se` reads standard input with `__stdin_read__` (its output is unchanged).
 * Tests (`test/step21`, programs started with `--main`):
 
@@ -464,3 +464,5 @@ No new primitive.
 | case2 | empty standard input |
 | case3 | a child started with `"__main__"` and the parent's `stdin` as its inputSeq reads the rest of the lines; the parent then reads the same lines |
 | case4 | an endless standard input (`yes`): reading three lines reads only what it needs, and the program ends |
+| case5 | `test/step21/memcheck.py` runs the program and counts, every 2000 steps after a garbage collection, the interpreter's `LList` cells that hold a line; reading 200 lines with `__stdin_read__` keeps at most 1 alive |
+| case6 | the same, with the first `stdin` kept in `PDict`: almost all 200 stay alive, which shows that `memcheck.py` finds them |

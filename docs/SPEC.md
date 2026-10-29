@@ -669,7 +669,7 @@ A ConMa program must define a `main` function.
 A program is started by spawning a virtual process (`__VProc_spawn__`) with the entry point `"__main__"`, which applies `__main__` (defined in `include/util.se`) to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
 The interpreter starts the first VProc with `__start__` (also in `include/util.se`), which builds these arguments from the OS standard streams and calls `__main__`:
 
-* err and out: Sinks that write each value to standard error and standard output (`__Stream_sink__`).
+* err and out: Sinks that write each value to standard error and standard output (`__Stream_newSink__`, which uses `__Stream_sink__`).
 * in: a LazyList of the lines of standard input, each including its newline (`__LazyList_lines__`). A last line without a newline is an element as it is. Standard input is read only as far as the `LazyList` is walked, and only once.
 * args: a Seq of the program arguments given on the command line, as Strings.
 
