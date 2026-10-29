@@ -1,0 +1,11 @@
+read: 'first line\n'
+rest: 'second line\n'
+rest: 'last line without newline'
+rest: (rest end)
+rest: 'second line\n'
+rest: 'last line without newline'
+rest: (rest end)
+read: 'second line\n'
+read: 'last line without newline'
+read: (end)
+exit: 0

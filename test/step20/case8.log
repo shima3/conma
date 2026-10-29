@@ -1,0 +1,6 @@
+eval a
+eval b
+eval c
+abc
+abc
+exit: 0

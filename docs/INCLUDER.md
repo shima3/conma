@@ -43,7 +43,7 @@ The program maintains a **file list** of absolute, `realpath`-normalised paths a
 4. For each referenced filename:
    a. Resolve it to an absolute, `realpath`-normalised path (see **Includer File Resolution** below). If resolution fails, write an error to standard error and exit with code 1.
    b. Search the current file list for a path that is equal to this normalised path (string equality after `realpath` normalisation on both sides).
-   c. If a match is found, write a warning to standard error and do not add the path to the file list.
+   c. If a match is found, do not add the path to the file list (no warning is written; see "Duplicate Include Handling").
    d. If no match is found, append the path to the end of the file list.
 5. Write the AST text to standard output.
 6. Increment `file_index` by 1.
@@ -128,10 +128,4 @@ No separator is inserted between consecutive AST outputs.
 
 # Duplicate Include Handling
 
-If an included file resolves to a path that already exists in the file list (after `realpath` normalisation), the include is ignored and the program writes a warning to standard error. This happens for any file that is included again, not only for a circular include: for example, when two files both include `util.se`, the second include is ignored with this warning, although the message says "circular":
-
-```
-Warning: circular include ignored: '<path>' (from '<file>')
-```
-
-The file is not added again to the file list.
+If an included file resolves to a path that already exists in the file list (after `realpath` normalisation), the include is ignored silently: the file is not added again to the file list, so its AST is output once. This covers a file included by two files (for example, `util.se` included by both `token.se` and `ast.se`) and a circular include alike; neither is an error, and no warning is written.

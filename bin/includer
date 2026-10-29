@@ -227,11 +227,9 @@ def main():
                           f" (from {file_abs!r})", file=sys.stderr)
                     sys.exit(1)
 
-            # Check for duplicate (circular include).
-            if inc_abs in file_list:
-                print(f"Warning: circular include ignored: {inc_abs!r}"
-                      f" (from {file_abs!r})", file=sys.stderr)
-            else:
+            # A file already in the list (included twice, or circularly) is
+            # skipped silently: its AST is output once.
+            if inc_abs not in file_list:
                 file_list.append(inc_abs)
 
         # Output this file's AST.

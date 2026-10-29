@@ -1,0 +1,12 @@
+created
+eval b
+b
+b
+eval c
+c
+(end)
+b
+c
+(end)
+false
+exit: 0

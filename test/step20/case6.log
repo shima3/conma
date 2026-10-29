@@ -1,0 +1,10 @@
+first line
+--
+first line
+second line
+last line without newline
+--
+first line
+second line
+last line without newline
+exit: 0

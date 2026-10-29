@@ -11,8 +11,19 @@
   __PDict_lookup_or_error__ "__EXIT__" ,(exit)
   exit String)
 
+;; 標準入力の、まだ読んでいない行の LazyList。読み出し位置は進めない
 (define stdin ,()
-  __PDict_lookup_or_error__ "__STD_IN__")
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position)
+
+;; 標準入力の次の行を返し、読み出し位置を進める。読んだ行は、ほかから参照されていなければ回収される。
+;; 残りがなければ onEmpty を呼ぶ（__LazyList_uncons__ と同じく、__stdin_read__ の中の継続で）
+(define __stdin_read__ ,(onEmpty)
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position ,(lazyList)
+  __LazyList_uncons__ onEmpty lazyList ,(line rest)
+  __Ref_set__ position rest ,()
+  __NULL__ line)
 
 (define stdout ,()
   __PDict_lookup_or_error__ "__STD_OUT__")
@@ -58,11 +69,18 @@
         args lc)))
 
 ;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
-;; err, in, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。
+;; in は標準入力の行の LazyList。PDict には、その読み出し位置の Ref を置く。
+;; __main__ の継続が in を参照し続けると、読み終えた行が回収されないので、
+;; Ref を作ったら、in を受け取らない __main_run__ に移る
 (define __main__ ,(err args in out)
+  __Ref_new__ in ,(position)
+  __main_run__ err args position out)
+
+;; err, 標準入力の読み出し位置, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。
+(define __main_run__ ,(err args position out)
   __Cont_get__ ,(exit)
   __PDict_put__ "__EXIT__" exit ,()
-  __PDict_put__ "__STD_IN__" in ,()
+  __PDict_put__ "__STD_IN__" position ,()
   __PDict_put__ "__STD_OUT__" out ,()
   __PDict_put__ "__STD_ERR__" err ,()
   main args ,()
@@ -121,17 +139,74 @@
           __Stream_lines_scan__ stream buf len next next sink)
         (,() __Stream_lines_scan__ stream buf len lineStart next sink)))
 
+;; input Stream の行（改行を含む）の LazyList。最後の行に改行がなければ、改行なしの要素にする。
+;; Stream は、LazyList をたどったときに必要な分だけ読む。
+;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
+(define __LazyList_lines__ ,(stream)
+  __LazyList_lines_from__ stream "")
+
+;; buf は、読んだがまだ要素にしていない文字列
+(define __LazyList_lines_from__ ,(stream buf)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __LazyList_new__ (,() __LazyList_lines_scan__ stream buf zero))
+
+;; buf の i 文字目から改行を探す（i 文字目より前に改行はない）。
+;; 見つかれば、そこまでを最初の要素にし、残りを tail の buf にする。見つからなければ読み足す
+(define __LazyList_lines_scan__ ,(stream buf i)
+  __String_length__ buf ,(len)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __LazyList_lines_read__ stream buf)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ buf i next ,(ch)
+      __if_then_else__ (,() __String_equal__ ch "\n")
+        (,()
+          __Number_fromString__ __print_exit_error__ "0" ,(zero)
+          __String_substring__ __print_exit_error__ buf zero next ,(line)
+          __String_substring__ __print_exit_error__ buf next len ,(buf)
+          __LazyList_lines_from__ stream buf ,(tail)
+          __LazyList_cons__ line tail)
+        (,() __LazyList_lines_scan__ stream buf next)))
+
+;; Stream から読み足して buf の続きを探す。EOF なら、buf が空でなければ最後の要素にする
+(define __LazyList_lines_read__ ,(stream buf)
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,()
+      __LazyList_empty__ ,(empty)
+      __String_length__ buf ,(len)
+      __if_then_else__ (,() __Number_is_zero__ len)
+        (,() __NULL__ empty)
+        (,() __LazyList_cons__ buf empty))
+    (,()
+      __String_length__ data ,(dataLen)
+      __if_then_else__ (,() __Number_is_zero__ dataLen)
+        (,()
+          __OS_wait_readable__ __print_exit_error__ stream ,()
+          __LazyList_lines_read__ stream buf)
+        (,()
+          __String_length__ buf ,(start)
+          __String_concat__ buf data ,(buf)
+          __LazyList_lines_scan__ stream buf start)))
+
+;; output Stream に書き込む Sink。Closure は stream だけを参照する
+(define __Stream_newSink__ ,(stream)
+  __NULL__ (,(value) __Stream_sink__ stream value))
+
 ;; インタプリタが最初の VProc を起動する入口（vproc_run.py --main）。
-;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ
+;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ。in は標準入力の行の LazyList。
+;; err と out の Sink は __Stream_newSink__ で作る。ここで Closure を作ると、その LVEnv が in を参照し、
+;; PDict に置いた Sink を通して、読み終えた行が回収されなくなる
 (define __start__ ,(args)
   __OS_get_stderr__ ,(errStream)
   __OS_get_stdin__ ,(inStream)
   __OS_get_stdout__ ,(outStream)
-  __main__
-    (,(value) __Stream_sink__ errStream value)
-    args
-    (,(sink) __Stream_lines__ inStream sink)
-    (,(value) __Stream_sink__ outStream value))
+  __Stream_newSink__ errStream ,(err)
+  __Stream_newSink__ outStream ,(out)
+  __LazyList_lines__ inStream ,(in)
+  __main__ err args in out)
 
 ;; ── Seq ──
 
@@ -202,6 +277,113 @@
   __Seq_get__ return seq ,(str rest)
   __OS_print__ str ,()
   __Seq_print__ rest)
+
+;; ── LazyList ──
+
+;; LazyList は、要素を必要になったときに1度だけ計算するリスト。Ref で表し、中身は次のどれか。
+;;   ・Closure: まだ評価していないサンク。引数なしで適用すると LazyList を返す
+;;   ・null: 評価済みの空リスト
+;;   ・LList: 評価済みのセル。head が要素、tail が残りの LazyList
+;;   ・VProc: その VProc が評価中であることの印
+;; 評価した結果を Ref に書き戻す（メモ化）ので、何度たどってもサンクは1度しか実行されない。
+;; 印の読み書きはプリミティブ __LazyList_claim__ と __LazyList_publish__ が1ステップで行うので、
+;; 同じ LazyList を複数の VProc から評価してもよい。ほかの VProc が評価中なら、それが終わるまで待つ
+
+;; サンク thunk の LazyList。thunk は最初に評価されるときに1度だけ適用される
+(define __LazyList_new__ ,(thunk)
+  __Ref_new__ thunk)
+
+;; 評価済みの空の LazyList
+(define __LazyList_empty__ ,()
+  __Ref_new__ __NULL__)
+
+;; 評価済みのセル。head が最初の要素、tail（LazyList）が残り
+(define __LazyList_cons__ ,(head tail)
+  __LList_cons__ head tail ,(cell)
+  __Ref_new__ cell)
+
+;; LazyList を評価し、セル（空なら null、そうでなければ LList）を返す。
+;; __LazyList_claim__ がサンクを返したら、それを適用し、サンクが返した LazyList も評価して、
+;; そのセルを __LazyList_publish__ で書き戻す。
+;; 自分自身に依存する LazyList や、評価中の VProc が評価せずに終わった LazyList は、エラーで終える
+(define __LazyList_force__ ,(lazyList)
+  __LazyList_claim__ __LazyList_error__ lazyList ,(thunk cell)
+  __if_then_else__ (,() __is_null__ thunk)
+    (,() __NULL__ cell)
+    (,()
+      thunk ,(result)
+      __LazyList_force__ result ,(cell)
+      __LazyList_publish__ lazyList cell ,()
+      __NULL__ cell))
+
+(define __LazyList_error__ ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+;; LazyList の最初の要素 head と、残りの LazyList tail を返す。
+;; 空なら onEmpty を呼ぶ（__Seq_get__ と同じく、__LazyList_uncons__ の継続で）
+(define __LazyList_uncons__ ,(onEmpty lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __if_then_else__ (,() __is_null__ cell)
+    onEmpty
+    (,() __LList_uncons__ __print_exit_error__ cell))
+
+;; LazyList が空なら __TRUE__
+(define __LazyList_is_empty__ ,(lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __is_null__ cell)
+
+;; Seq の要素の LazyList。Seq の要素は、LazyList をたどったときに1つずつ取り出す
+(define __LazyList_fromSeq__ ,(seq)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __Seq_get__ (,() __LazyList_empty__ ,(empty) return empty) seq ,(first rest)
+    __LazyList_fromSeq__ rest ,(tail)
+    __LazyList_cons__ first tail))
+
+;; LazyList の要素を順に Sink に渡す Seq
+(define __LazyList_toSeq__ ,(lazyList)
+  __NULL__ (,(sink) __LazyList_toSeq_loop__ lazyList sink))
+
+(define __LazyList_toSeq_loop__ ,(lazyList sink)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return sink) lazyList ,(head tail)
+  sink head ,(sink)
+  __LazyList_toSeq_loop__ tail sink)
+
+;; Sink に書いた値が、書いた順に要素として届く LazyList（パイプ）。
+;; lazyList と、値を書く sink と、終わりを書く close を返す。
+;; 値のまだない末尾は、この VProc が __LazyList_claim__ で印を置いておき、
+;; 値を書くたびに (値 . 新しい末尾) を __LazyList_publish__ する。close は末尾に null を書く。
+;; ほかの VProc が末尾を評価しようとすると、値が書かれるまで __LazyList_claim__ で待つ。
+;; このため、sink と close は __LazyList_pipe__ を呼んだ VProc で使う（ほかの VProc では publish がエラーになる）。
+;; close せずにこの VProc が終わると、末尾を評価しようとした VProc はエラーになる
+(define __LazyList_pipe__ ,()
+  __LazyList_pipe_tail__ ,(lazyList)
+  __Ref_new__ lazyList ,(tailRef)
+  __LazyList_pipe_sink__ tailRef ,(sink)
+  __NULL__ lazyList sink (,() __LazyList_pipe_close__ tailRef))
+
+;; 値のまだない、この VProc が印を置いた LazyList。サンクは適用されない
+(define __LazyList_pipe_tail__ ,()
+  __LazyList_new__ __LazyList_empty__ ,(tail)
+  __LazyList_claim__ __LazyList_error__ tail ,(thunk cell)
+  __NULL__ tail)
+
+;; 値を受け取るたびに、tailRef の末尾に値を書き、新しい末尾を tailRef に入れる Sink
+(define __LazyList_pipe_sink__ ,(tailRef)
+  __NULL__ (,(value)
+    __Ref_get__ tailRef ,(tail)
+    __LazyList_pipe_tail__ ,(next)
+    __Ref_set__ tailRef next ,()
+    __LList_cons__ value next ,(cell)
+    __LazyList_publish__ tail cell ,()
+    __LazyList_pipe_sink__ tailRef))
+
+(define __LazyList_pipe_close__ ,(tailRef)
+  __Ref_get__ tailRef ,(tail)
+  __LazyList_publish__ tail __NULL__)
 
 ;; ── String ──
 

@@ -1,0 +1,20 @@
+eval outer
+eval inner
+x
+(end)
+x
+(end)
+1
+y
+eval ys
+2
+(end)
+1
+y
+2
+(end)
+eval 1
+1
+eval 2
+2
+exit: 0

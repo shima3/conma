@@ -1,0 +1,82 @@
+;; Step21: vproc_run.py --main で起動するプログラム。
+;; 最初の引数で、標準入力の行の LazyList の読み方を選ぶ
+(include "util.se")
+
+;; label と、行を repr にしたものを出力する
+(define printLine ,(label line)
+  __String_repr__ line ,(r)
+  stdout label ": " r "\n" ,(out))
+
+;; 受け取った行を printLine で出力する Sink
+(define printSink ,(label)
+  __NULL__ (,(line)
+    printLine label line ,()
+    printSink label))
+
+;; 標準入力を1行読んで出力する。残りがなければ (end) を出力する
+(define readLine ,(label)
+  __Cont_get__ ,(return)
+  __stdin_read__ (,() stdout label ": (end)\n" ,(out) return) ,(line)
+  printLine label line)
+
+;; 標準入力の残りの行をすべて読んで出力する
+(define readAll ,(label)
+  __Cont_get__ ,(return)
+  __stdin_read__ (,() stdout label ": (end)\n" ,(out) return) ,(line)
+  printLine label line ,()
+  readAll label)
+
+;; stdin の LazyList の要素をすべて出力する。読み出し位置は進まない
+(define showRest ,(label)
+  stdin ,(lazyList)
+  __LazyList_toSeq__ lazyList ,(seq)
+  printSink label ,(sink)
+  seq sink ,(sink)
+  stdout label ": (rest end)\n" ,(out))
+
+;; read: 1行読み、残りを stdin で2回見てから、すべて読む
+(define modeRead ,()
+  readLine "read" ,()
+  showRest "rest" ,()
+  showRest "rest" ,()
+  readAll "read")
+
+;; child: 1行読んでから、残りの stdin を inputSeq にして子 VProc を __main__ で起動する。
+;; 子が読んでも親の読み出し位置は進まず、親も同じ行を読む
+(define modeChild ,()
+  readLine "parent" ,()
+  stdin ,(lazyList)
+  __PDict_lookup_or_error__ "__STD_OUT__" ,(out)
+  __PDict_lookup_or_error__ "__STD_ERR__" ,(err)
+  __VProc_spawn__ __print_exit_error__ "__main__" "main.se" err (,(sink) sink "readAll") lazyList out ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  readAll "parent")
+
+;; drain: 何も出力せずに、標準入力をすべて読む（memcheck.py で、読み終えた行が回収されるかを調べる）
+(define drain ,()
+  __Cont_get__ ,(return)
+  __stdin_read__ return ,(line)
+  drain)
+
+;; drainKeep: 最初の stdin を PDict に残したまま、すべて読む（読み終えた行が回収されない対照）
+(define modeDrainKeep ,()
+  stdin ,(lazyList)
+  __PDict_put__ "keep" lazyList ,()
+  drain)
+
+;; first3: 3行だけ読んで終える。終わらない標準入力でも、必要な分しか読まない
+(define modeFirst3 ,()
+  readLine "first3" ,()
+  readLine "first3" ,()
+  readLine "first3")
+
+(define main ,(args)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() __print__ "no mode" ,() return) args ,(mode rest)
+  __if_then_else__ (,() __String_equal__ mode "read") modeRead (,()
+  __if_then_else__ (,() __String_equal__ mode "child") modeChild (,()
+  __if_then_else__ (,() __String_equal__ mode "readAll") (,() readAll "child") (,()
+  __if_then_else__ (,() __String_equal__ mode "first3") modeFirst3 (,()
+  __if_then_else__ (,() __String_equal__ mode "drain") drain (,()
+  __if_then_else__ (,() __String_equal__ mode "drainKeep") modeDrainKeep (,()
+  __print__ "unknown mode")))))))

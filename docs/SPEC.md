@@ -246,7 +246,7 @@ Invoking LCont is considered part of the following Operator application.
 Internal primitives are executed as one Operator application.
 
 At that point, the scheduler may switch execution to another VProc.
-If the executing VProc becomes blocked (for example, __VProc_suspend__), waits for the OS (__OS_wait__, __OS_wait_readable__) or waits for another VProc to finish (__VProc_wait__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
+If the executing VProc becomes blocked (for example, __VProc_suspend__), waits for the OS (__OS_wait__, __OS_wait_readable__) waits for another VProc to finish (__VProc_wait__) or waits for another VProc to evaluate a LazyList (__LazyList_claim__), it is removed from the ready queue until it becomes runnable again. While no VProc is ready, the interpreter sleeps until a VProc that waits for the OS can continue.
 
 Termination:
 * A VProc finishes when its Operator is null, its LCont is absent, and its CChain is empty.
@@ -274,7 +274,7 @@ In debug mode:
 An **output sink** and an **error sink** are of type `Sink`.
 A `Sink` is a function that accepts an argument and returns a `Sink`.
 
-An **argument sequence** and an **input sequence** are of type `Seq`.
+An **argument sequence** is of type `Seq`. The **input sequence** that `__main__` takes is a `LazyList` of lines (see "Main"); the name inputSeq is kept for the parameter of `__VProc_spawn__`.
 A `Seq` is a function that accepts one `Sink`.
 It applies that `Sink` to zero or more elements and returns the final `Sink` produced by those applications.
 
@@ -406,6 +406,48 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 `__Seq_get__` (with `__Seq_take_CFrames__`, `__Seq_push_CFrames__` and `__LList_length__`), `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
 ---
 
+### `LazyList`
+```
+(define __LazyList_new__ ,(thunk)
+  __Ref_new__ thunk)
+
+(define __LazyList_empty__ ,()
+  __Ref_new__ __NULL__)
+
+(define __LazyList_cons__ ,(head tail)
+  __LList_cons__ head tail ,(cell)
+  __Ref_new__ cell)
+
+(define __LazyList_uncons__ ,(onEmpty lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __if_then_else__ (,() __is_null__ cell)
+    onEmpty
+    (,() __LList_uncons__ __print_exit_error__ cell))
+```
+
+A `LazyList` is a list whose elements are computed when they are first needed, and only once. Where a `Seq` pushes its elements to a `Sink`, a `LazyList` is taken apart from the front, so getting the first element and the rest needs no CFrames of the CChain, and the list can be walked any number of times without running its computation again.
+
+A `LazyList` is a `Ref`. Its value is one of:
+* a Closure: a thunk not yet evaluated. Applied to no values, it returns a `LazyList`.
+* null: an evaluated empty list.
+* an `LList`: an evaluated cell. Its head is the first element and its tail is the rest, a `LazyList`.
+* a `VProc`: a mark that this VProc is evaluating the thunk.
+
+* `__LazyList_new__ thunk ,(LazyList)` makes a `LazyList` of a thunk. The thunk is applied when the `LazyList` is first evaluated, and never again.
+* `__LazyList_empty__ ,(LazyList)` and `__LazyList_cons__ head tail ,(LazyList)` make evaluated `LazyList`s. `tail` is a `LazyList`.
+* `__LazyList_force__ LazyList ,(cell)` evaluates the `LazyList` and returns its cell, null or an `LList`. It gets the thunk with the primitive `__LazyList_claim__`, which puts the current VProc as the mark, applies the thunk, evaluates the `LazyList` that the thunk returns, and sets the cell of that as the value with the primitive `__LazyList_publish__` (memoization). A thunk may return a `LazyList` not yet evaluated, such as `ys` in `append xs ys` when `xs` is empty. If another VProc is evaluating the `LazyList`, `__LazyList_claim__` waits until it has finished, and the cell that it set is returned. A `LazyList` that depends on itself (the current VProc is the mark) and one whose evaluating VProc finished without setting the cell stop the interpreter with an error. A `LazyList` may still have itself as its tail, because the tail is not evaluated while the cell is made.
+* `__LazyList_uncons__ onEmpty LazyList ,(head tail)` returns the first element and the rest. If the `LazyList` is empty, it applies `onEmpty` instead, with the continuation of `__LazyList_uncons__`, as `__Seq_get__` does.
+* `__LazyList_is_empty__ LazyList ,(Boolean)` returns `__TRUE__` if the `LazyList` is empty.
+* `__LazyList_fromSeq__ Seq ,(LazyList)` makes a `LazyList` of the elements of a `Seq`. It gets the elements with `__Seq_get__` one at a time, when the `LazyList` is walked. For a `Seq` of the lines of a Stream, the lines are read once, however many times the `LazyList` is walked.
+* `__LazyList_toSeq__ LazyList ,(Seq)` makes a `Seq` that passes the elements of the `LazyList` to its `Sink`.
+* `__LazyList_lines__ Stream ,(LazyList)` makes a `LazyList` of the lines of an input Stream, each including its newline; a last line without a newline is an element as it is. It reads the Stream directly (not through a `Seq`), only when the `LazyList` is walked, and waits with `__OS_wait_readable__` when no data has come yet.
+* `__LazyList_pipe__ ,(LazyList Sink close)` makes a pipe: the values written to `Sink`, in the order they are written, become the elements of `LazyList`, and `close ,()` ends it. The tail that has no value yet is claimed by the current VProc, and each value publishes a cell whose tail is a new claimed tail, so a VProc that walks the `LazyList` waits in `__LazyList_claim__` until the next value or `close`. `Sink` and `close` must be used in the VProc that called `__LazyList_pipe__`; in another VProc, or after `close`, `__LazyList_publish__` stops the VProc with an error. If that VProc finishes without `close`, a VProc that evaluates the tail gets an error.
+
+These are defined in `include/util.se`, on top of the primitives `__LazyList_claim__` and `__LazyList_publish__` (see PRIMITIVES.md).
+Each of the two primitives reads and sets the value of the `Ref` in one Operator application, so the scheduler cannot switch VProcs between the test and the setting of the mark, and the same `LazyList` may be evaluated by several VProcs: the thunk runs once, in the VProc that claimed it first, and the others wait for its cell.
+If a thunk leaves `__LazyList_force__` without returning (for example, by the `return` of a `__Cont_get__` outside it), the mark stays: a later evaluation in the same VProc reports that the `LazyList` depends on itself, and one in another VProc waits until that VProc has finished and then reports an error.
+---
+
 ### `Stream`
 ```
 (define __Seq_stream__ ,(onEmpty Seq)
@@ -502,9 +544,13 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 
 ```
 (define __main__ ,(err args in out)
+  __Ref_new__ in ,(position)
+  __main_run__ err args position out)
+
+(define __main_run__ ,(err args position out)
   __Cont_get__ ,(exit)
   __PDict_put__ "__EXIT__" exit ,()
-  __PDict_put__ "__STD_IN__" in ,()
+  __PDict_put__ "__STD_IN__" position ,()
   __PDict_put__ "__STD_OUT__" out ,()
   __PDict_put__ "__STD_ERR__" err ,()
   main args ,()
@@ -513,7 +559,10 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 
 * err: a Sink used to send values to the standard error stream.
 * args: a Sequence of strings provided to the program at startup.
-* in: a Sequence representing the standard input stream.
+* in: a LazyList of the lines of the standard input stream. `__main__` puts a `Ref` of the read position, whose value is the `LazyList` of the lines not yet read, in `PDict`, and goes on in `__main_run__`, which does not take `in`, so that no continuation keeps the first cell and the lines already read can be collected.
+
+* `stdin ,(LazyList)` returns the `LazyList` of the lines not yet read. It does not move the read position.
+* `__stdin_read__ onEmpty ,(line)` returns the next line and moves the read position past it. If no line is left, it applies `onEmpty`, with a continuation inside `__stdin_read__`, as `__LazyList_uncons__` does.
 * out: a Sink used to send values to the standard output stream.
 
 ---
@@ -537,7 +586,15 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 
 ```
 (define stdin ,()
-  __PDict_lookup_or_error__ "__STD_IN__")
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position)
+
+(define __stdin_read__ ,(onEmpty)
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position ,(lazyList)
+  __LazyList_uncons__ onEmpty lazyList ,(line rest)
+  __Ref_set__ position rest ,()
+  __NULL__ line)
 
 (define stdout ,()
   __PDict_lookup_or_error__ "__STD_OUT__")
@@ -612,14 +669,15 @@ A ConMa program must define a `main` function.
 A program is started by spawning a virtual process (`__VProc_spawn__`) with the entry point `"__main__"`, which applies `__main__` (defined in `include/util.se`) to the following arguments: an errorSink, an argumentSeq, inputSeq, and an outputSink.
 The interpreter starts the first VProc with `__start__` (also in `include/util.se`), which builds these arguments from the OS standard streams and calls `__main__`:
 
-* err and out: Sinks that write each value to standard error and standard output (`__Stream_sink__`).
-* in: a Seq that reads standard input to EOF and passes each line, including its newline, to the Sink (`__Stream_lines__`). A last line without a newline is passed as it is.
+* err and out: Sinks that write each value to standard error and standard output (`__Stream_newSink__`, which uses `__Stream_sink__`).
+* in: a LazyList of the lines of standard input, each including its newline (`__LazyList_lines__`). A last line without a newline is an element as it is. Standard input is read only as far as the `LazyList` is walked, and only once.
 * args: a Seq of the program arguments given on the command line, as Strings.
 
 The test runner does this with `test/vproc_run.py --main <module_file> [<arg> ...]`; without `--main`, it applies a named function to no arguments.
 
 `__main__` calls the user-defined `main` function with the argumentSeq.
-The inputSeq, the outputSink, and the errorSink are passed via `PDict`.
+The read position of the inputSeq, the outputSink, and the errorSink are passed via `PDict`.
+A child started with `"__main__"` may be given `stdin` of its parent as its inputSeq: it reads the same lines, from the parent's read position, and the parent's read position does not move.
 
 Example:
 

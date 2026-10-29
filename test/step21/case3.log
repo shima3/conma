@@ -1,0 +1,8 @@
+parent: 'first line\n'
+child: 'second line\n'
+child: 'last line without newline'
+child: (end)
+parent: 'second line\n'
+parent: 'last line without newline'
+parent: (end)
+exit: 0

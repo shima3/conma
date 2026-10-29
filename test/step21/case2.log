@@ -1,0 +1,5 @@
+read: (end)
+rest: (rest end)
+rest: (rest end)
+read: (end)
+exit: 0

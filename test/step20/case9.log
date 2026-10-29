@@ -1,0 +1,7 @@
+Closure null
+__LazyList_claim__: the LazyList depends on itself
+null LList
+null null
+__LazyList_claim__: expected LazyList, got String
+__LazyList_claim__: expected LazyList, got a Ref of String
+exit: 0

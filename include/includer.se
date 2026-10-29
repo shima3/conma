@@ -83,7 +83,8 @@
         (,() __NULL__ queue) ,(queue)
       __Includer_statements__ fail dirs seen file baseDir rest queue))
 
-;; Includer の String の値（ファイル名）を解決し、一覧になければ queue の末尾に加える
+;; Includer の String の値（ファイル名）を解決し、一覧になければ queue の末尾に加える。
+;; 一覧にあれば（2度目の include や循環した include）、何も出力せずに読み飛ばす
 (define __Includer_add__ ,(fail dirs seen file baseDir includer queue)
   __AST_get_children__ includer ,(children)
   __LList_uncons__ __print_exit_error__ children ,(str rest)
@@ -92,12 +93,7 @@
   __Includer_resolve__ fail dirs file baseDir name ,(path)
   __Dict_lookup_or__ seen path (,(key) __NULL__ __FALSE__) ,(found)
   __if_then_else__ (,() __NULL__ found)
-    (,()
-      __String_repr__ path ,(pathRepr)
-      __String_repr__ file ,(fileRepr)
-      __Parser_concat__ "Warning: circular include ignored: " pathRepr " (from " fileRepr ")\n" ,(msg)
-      __OS_print_error__ msg ,()
-      __NULL__ queue)
+    (,() __NULL__ queue)
     (,()
       __Dict_put__ seen path __TRUE__ ,()
       __LList_cons__ path __NULL__ ,(last)
