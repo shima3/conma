@@ -449,13 +449,13 @@ Each VProc is in one of these states:
 | ready | in the ready queue, waiting for its next step |
 | running | running the current step |
 | blocked | suspended; not in the ready queue |
-| waiting | waiting for the OS (`__OS_wait__`, `__OS_wait_readable__`), for another VProc to finish (`__VProc_wait__`) or for another VProc to evaluate a LazyList (`__LazyList_claim__`); not in the ready queue |
+| waiting | waiting for the OS (`__OS_wait__`, `__OS_wait_readable__`), for another VProc to finish (`__VProc_wait__`), for another VProc to evaluate a LazyList (`__LazyList_claim__`) or for a Ref to change (`__Ref_wait_change__`); not in the ready queue |
 | finished | finished normally or with an error |
 
 A scheduling step:
 
 1. Remove finished VProcs from the front of the ready queue. A VProc is finished when its Operator is null, its LCont is absent, and its CChain is empty.
-2. Wake the VProcs that wait for a VProc that has finished, and those that wait for a LazyList that is no longer being evaluated by a VProc that has not finished, and put them at the end of the ready queue. If some VProcs are waiting for the OS, wake those whose process has exited or whose Stream is readable (or closed), and put them at the end of the ready queue. If the ready queue is empty, first sleep in `select` until one of them can wake. Then go back to step 1.
+2. Wake the VProcs that wait for a VProc that has finished, those that wait for a LazyList that is no longer being evaluated by a VProc that has not finished and has not left the evaluation, and those that wait for a Ref whose value has changed, and put them at the end of the ready queue. If some VProcs are waiting for the OS, wake those whose process has exited or whose Stream is readable (or closed), and put them at the end of the ready queue. If the ready queue is empty, first sleep in `select` until one of them can wake. Then go back to step 1.
 3. If the ready queue is empty (so no VProc waits for the OS): exit normally if no VProc is blocked or waiting for a VProc; otherwise report a deadlock, listing the blocked VProcs and those waiting for a VProc (`Deadlock: no VProc is ready; blocked VProc(s): 1, 2`) and exit with code 2.
 4. Take the first VProc, mark it running, and run one step.
 5. If the step raised an error, write `Error in VProc N at step S: message` to standard error and mark the VProc finished. `S` is the number of steps completed before the error, counted over all VProcs. Other VProcs are not affected.
@@ -470,9 +470,10 @@ State changes made by primitives:
 | `__VProc_spawn__` | the new VProc is added at the end of the queue | | | |
 | `__OS_wait__`, `__OS_wait_readable__` | | waiting after this step, unless the OS event has already happened | | |
 | `__VProc_wait__` | | waiting after this step, unless the VProc has already finished | | |
-| `__LazyList_claim__` | | waiting after this step, if another VProc that has not finished is evaluating the LazyList; it runs the primitive again when it wakes | | |
+| `__LazyList_claim__` | | waiting after this step, if another VProc that has not finished is evaluating the LazyList and has not left the evaluation; it runs the primitive again when it wakes | | |
+| `__Ref_wait_change__` | | waiting after this step, unless the value of the Ref is already another one | | |
 
-`__VProc_suspend__` and `__VProc_resume__` do not change a waiting VProc. A VProc waiting for the OS is not counted as blocked, so VProcs that are blocked while another one waits for the OS are not a deadlock. A VProc waiting for another VProc can only wake up when that one finishes (or, for a LazyList, sets its cell), so it is counted as blocked.
+`__VProc_suspend__` and `__VProc_resume__` do not change a waiting VProc. A VProc waiting for the OS is not counted as blocked, so VProcs that are blocked while another one waits for the OS are not a deadlock. A VProc waiting for another VProc can only wake up when that one finishes (or, for a LazyList, sets its cell or leaves the evaluation), so it is counted as blocked. A VProc waiting for a Ref to change is counted as blocked too.
 
 The interpreter exits:
 

@@ -371,6 +371,11 @@ Behavior:
 Sets the `value` for the `Ref`.
 Invokes the current LCont with no argument
 
+### `__Ref_wait_change__ Ref value ,()`
+* **Description**: Waits until the value of a `Ref` is another value.
+* **Behavior**: If the value of `Ref` is `value` (the same object), the current VProc waits (it is not in the ready queue) until another VProc sets another value, and then returns. Otherwise it returns at once. A VProc that reads the value, tests it, and then waits for it to change does not miss a change made in between, because it passes the value it read. A waiting VProc is counted as blocked for deadlock detection.
+* **Error**: Stops the VProc with an error if `Ref` is not a `Ref`.
+
 ---
 
 ## 9. Null Primitives
@@ -523,17 +528,25 @@ __if_then_else__ isString ...
 
 ## 14. LazyList Primitives
 
-A `LazyList` (see "LazyList" in SPEC.md) is a `Ref` whose value is a thunk (a Closure), null (an evaluated empty list), an `LList` cell (head, and a `LazyList` as tail), or the `VProc` that is evaluating the thunk. These two primitives read and set that value, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. The other `LazyList` functions are defined in `include/util.se`.
+A `LazyList` (see "LazyList" in SPEC.md) is a `Ref` whose value is a thunk (a Closure), null (an evaluated empty list), an `LList` cell (head, and a `LazyList` as tail), or the `VProc` that is evaluating the thunk or holds the `LazyList`. These primitives read and set that value, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. The other `LazyList` functions are defined in `include/util.se`.
+
+With the mark, the interpreter keeps the CChain of the VProc at the claim (not a ConMa value). The VProc has **left the evaluation** when that CChain is no longer the bottom of its current CChain: a continuation has taken it out of the thunk. A `LazyList` made by `__LazyList_hold__` is never left.
 
 ### **`__LazyList_claim__ onError LazyList ,(thunk cell)`**
 * **Description**: Starts the evaluation of a `LazyList`, or gets its cell.
 * **Behavior**:
     * If the value is a thunk, sets the current VProc as the value and returns the thunk and null. The caller applies the thunk and sets the cell with `__LazyList_publish__`.
     * If the value is null or an `LList`, returns null and the value.
-    * If the value is another VProc that has not finished, the current VProc waits (it is not in the ready queue) until the value is no longer such a VProc, and then runs `__LazyList_claim__` again.
-* **Error**: The interpreter invokes `onError` with an error message String if `LazyList` is not a `Ref`, or is a `Ref` of another kind of value, if the value is the current VProc (the `LazyList` depends on itself), or if the value is a VProc that has finished without setting the cell.
+    * If the value is a VProc that has not finished but has left the evaluation, claims the `LazyList` again as if its value were the thunk: sets the current VProc as the value and returns the thunk and null.
+    * If the value is another VProc that has not finished and has not left the evaluation, the current VProc waits (it is not in the ready queue) until the value is no longer such a VProc, and then runs `__LazyList_claim__` again.
+* **Error**: The interpreter invokes `onError` with an error message String if `LazyList` is not a `Ref`, or is a `Ref` of another kind of value, if the value is the current VProc and it has not left the evaluation (the `LazyList` depends on itself, or this VProc holds it and has not published it yet), or if the value is a VProc that has finished without setting the cell.
+
+### **`__LazyList_hold__ ,(LazyList)`**
+* **Description**: Makes a `LazyList` that has no value yet and is held by the current VProc.
+* **Behavior**: Returns a new `LazyList` whose value is the current VProc. Unlike a claimed `LazyList`, it is held wherever the VProc goes, until the VProc sets its cell with `__LazyList_publish__`. Another VProc that claims it waits; if the holding VProc finishes first, it gets `onError`. `__LazyList_pipe__` uses it for the tail that has no value yet.
+* **Error**: None.
 
 ### **`__LazyList_publish__ LazyList cell ,()`**
-* **Description**: Sets the cell of a `LazyList` that the current VProc has claimed.
+* **Description**: Sets the cell of a `LazyList` that the current VProc has claimed or holds.
 * **Behavior**: Sets `cell` as the value. The VProcs waiting for the `LazyList` in `__LazyList_claim__` wake up at the next scheduling step.
 * **Error**: Stops the VProc with an error if `LazyList` is not a `Ref`, if its value is not the current VProc, or if `cell` is neither null nor an `LList`.

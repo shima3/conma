@@ -4,7 +4,7 @@ This document gives an order for implementing (or re-implementing) the built-in 
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
 The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step21`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-29).
+Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
 ## Tests
 
@@ -418,15 +418,21 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | Primitive | Status |
 |---|---|
 | `__LazyList_claim__` | implemented |
+| `__LazyList_hold__` | implemented |
 | `__LazyList_publish__` | implemented |
+| `__Ref_wait_change__` | implemented |
 
 * Goal: Give a list that can be taken apart from the front cheaply and walked more than once. A shell on ConMa (ConSh) passes standard input, arguments and outputs of commands as lists that are split as `(a b . rest)` and kept in variables. With a `Seq`, each element needs `__Seq_get__`, which counts and moves CFrames of the CChain, and a `rest` applied again runs the rest of the `Seq` again, so a `Seq` of the lines of standard input would read it again. A `LazyList` evaluates each element once and keeps it.
 * The `LList` itself is not made lazy: the CChain is an `LList`, `__LList_uncons__` is a primitive that cannot apply a thunk, and the library uses `LList` as a strict list. A `LazyList` is a `Ref` whose value is a thunk, null (empty) or an `LList` cell whose tail is a `LazyList`, so an evaluated cell is an ordinary `LList` cell. See "LazyList" in SPEC.md.
 * Functions: `__LazyList_new__`, `__LazyList_empty__`, `__LazyList_cons__`, `__LazyList_force__`, `__LazyList_uncons__`, `__LazyList_is_empty__`, `__LazyList_fromSeq__`, `__LazyList_toSeq__`, `__LazyList_pipe__`.
-* Pipe: `__LazyList_pipe__` returns a `LazyList`, a `Sink` and `close`, so that the values written to the `Sink` in one VProc reach another VProc as the elements of a `LazyList` (for `f | g` in ConSh). It needs no other primitive: the writing VProc claims the tail that has no value yet, publishes `(value . new tail)` for each value and null at `close`, and a VProc that evaluates the tail waits in `__LazyList_claim__` until it is published. If the writing VProc finishes without `close`, the reader gets `onError`. Unlike a rendezvous of two VProcs with `__VProc_suspend__` and `__VProc_resume__`, no wakeup can be lost, and the writer does not wait for the reader.
+* Pipe: `__LazyList_pipe__ capacity onClosed` returns a `LazyList`, a `Sink`, `close` and `cancel`, so that the values written to the `Sink` in one VProc reach another VProc as the elements of a `LazyList` (for `f | g` in ConSh). The writing VProc holds the tail that has no value yet (`__LazyList_hold__`), publishes `(value . next)` for each value and null at `close`, and a VProc that evaluates the tail waits in `__LazyList_claim__` until it is published. If the writing VProc finishes without `close`, the reader gets `onError`. Unlike a rendezvous of two VProcs with `__VProc_suspend__` and `__VProc_resume__`, no wakeup can be lost.
+* Pipe capacity: the writer may be at most `capacity` elements ahead of the readers, so a writer that never stops (`yes | head -1`) does not fill the memory. Each element is behind a `LazyList` with a thunk that, when a reader evaluates it, sets a state `Ref` to a new value and returns the held tail. The writer keeps a queue of these `LazyList`s not yet evaluated, and waits with `__Ref_wait_change__` on the state `Ref` while the queue is longer than `capacity`. It reads the state before testing the queue, so a reader that asks in between makes `__Ref_wait_change__` return at once. A counter of the elements asked for would need a read and a set by each reader, and two readers could make it go back.
+* Pipe cancel: a reader applies `cancel` when it needs no more elements; the writer's next (or waiting) `Sink` application ends the `LazyList` and applies `onClosed` instead (SIGPIPE). The writer cannot tell that a reader has finished without `cancel`.
+* `__Ref_wait_change__ Ref value` waits until the value of the `Ref` is not `value`. Polling with `__VProc_suspend__` and `__VProc_resume__` could lose a wakeup between testing the value and suspending; passing the value read before the test closes that gap.
 * Primitives: the mark that a thunk is being evaluated is read and set by `__LazyList_claim__` and `__LazyList_publish__`, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. With `__Ref_get__` and `__Ref_set__`, the scheduler could switch VProcs between reading the value and setting the mark, and the thunk could run twice. A general compare-and-set of a `Ref` would prevent that, but a VProc that finds the mark could then only wait by polling: adding itself to a list of waiters and `__VProc_suspend__` are two applications, and a `__VProc_resume__` between them would be lost. `__LazyList_claim__` makes the VProc wait in the scheduler (as `__VProc_wait__` does) and runs again when the mark is gone or its VProc has finished.
 * The mark is the evaluating VProc, so `__LazyList_claim__` tells a `LazyList` that depends on itself (the mark is the current VProc) from one that another VProc is evaluating, and gives `onError` when the evaluating VProc has finished without setting the cell (for example, after a runtime error in the thunk).
-* VM (`test/vproc_step.py`): `Scheduler.wait_lazy` puts a VProc in `lazy` without returning from the primitive, so that it runs `__LazyList_claim__` again when it wakes; `check_lazy` wakes it at the next scheduling step after the value of the `Ref` is no longer a VProc that has not finished. A VProc waiting for a `LazyList` is counted as blocked for deadlock detection.
+* Leaving the evaluation: a thunk may leave `__LazyList_force__` by a continuation (an `onError`, or the `return` of a function outside it). Then the mark would stay: the same VProc would be told that the `LazyList` depends on itself, and another VProc would wait until the first one finished, which a long-running VProc (a shell) never does. So `__LazyList_claim__` also keeps the CChain at the claim. While the thunk runs, that CChain is the bottom of the VProc's CChain (identical `LList` cells, since a CChain is only consed onto); when it is not, the VProc has left the evaluation, and the `LazyList` is claimed again with its thunk. `__LazyList_force__` claims inside `__LazyList_force_claim__`, called with an LCont, so that the CChain at the claim is not empty (an empty CChain is the bottom of every CChain). A held `LazyList` (`__LazyList_hold__`) has no thunk and is never left; it waits for its VProc to publish it.
+* VM (`test/vproc_step.py`): `Scheduler.wait_lazy` puts a VProc in `lazy` without returning from the primitive, so that it runs `__LazyList_claim__` again when it wakes; `check_lazy` wakes it at the next scheduling step after the value of the `Ref` is no longer a VProc that has not finished and has not left the evaluation (`lazy_abandoned` walks the CChain of that VProc down to the CChain at the claim). The `Ref` keeps the CChain and the thunk in `lazy_chain` and `lazy_thunk` (`HELD` for `__LazyList_hold__`). `wait_change` and `check_changes` do the same for `__Ref_wait_change__`, which returns before waiting. A VProc waiting for a `LazyList` or a `Ref` is counted as blocked for deadlock detection.
 * Tests (`test/step20`):
 
 | Case | What it checks |
@@ -439,14 +445,20 @@ No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
 | case6 | a `LazyList` of the lines of standard input, walked twice, reads standard input once |
 | case7 | a `LazyList` that evaluates itself while it is evaluated stops the interpreter with an error, exit code 1 |
 | case8 | two VProcs (from `child.se`) walk the same `LazyList`; the one that comes second waits for the first; each thunk runs once, and both get all the elements |
-| case9 | `__LazyList_claim__` returns the thunk and sets the mark; a second claim in the same VProc gives `onError`; after `__LazyList_publish__` it returns the cell; an empty `LazyList`; a non-Ref and a Ref of a String give `onError` |
+| case9 | `__LazyList_claim__` returns the thunk and sets the mark; a second claim after the first `tryClaim` has returned (the evaluation was left) returns the thunk again; after `__LazyList_publish__` it returns the cell; an empty `LazyList`; a non-Ref and a Ref of a String give `onError` |
 | case10 | the evaluating VProc finishes with a runtime error in the thunk; the VProc waiting for it and a later claim get `onError` |
 | case11 | two VProcs evaluate `LazyList`s that depend on each other: deadlock, exit code 2 |
 | case12, case13 | `__LazyList_publish__` of a `LazyList` that the VProc has not claimed, and of a cell that is not null or an `LList`, stop the VProc with an error |
-| case14 | `__LazyList_pipe__`: the values written to the `Sink`, one or several at a time, become the elements in order; the elements written so far can be walked before `close`; walking twice gives the same elements |
-| case15 | writing to the `Sink` after `close` stops the VProc with an error |
+| case14 | `__LazyList_pipe__` (capacity 3): the values written to the `Sink`, one or several at a time, become the elements in order; the elements written so far can be walked before `close`; walking twice gives the same elements |
+| case15 | writing to the `Sink` after `close` stops the VProc with an error (`__LazyList_publish__` of the null tail) |
 | case16 | a child VProc walks the `LazyList` of a pipe while the parent writes to it slowly; it waits for each value and gets all of them |
-| case17 | a child VProc makes a pipe, writes one value and finishes without `close`; the VProc waiting for the tail gets `onError` |
+| case17 | a child VProc makes a pipe, writes one value and finishes without `close`; the VProc waiting for the tail (the held `LazyList` that the thunk of the next element returns) gets `onError` |
+| case18 | a thunk that leaves the evaluation by an outer continuation the first time: the same VProc evaluates the `LazyList` again and the thunk runs again (no "depends on itself"); after that it is memoized |
+| case19 | the same, while a child VProc waits for the `LazyList`: the child wakes up when the parent leaves, runs the thunk and gets the element |
+| case20 | a pipe of capacity 1 read slowly by a child VProc: `wrote n` comes only after `read n-2` |
+| case21 | a child VProc reads two elements and applies `cancel`: the writer's next `Sink` ends the `LazyList` and applies `onClosed`; the `LazyList` keeps the elements written before |
+| case22 | writing past the capacity with no reader: the writer waits in `__Ref_wait_change__`, which is a deadlock (exit code 2) |
+| case23 | `__Ref_wait_change__` returns at once when the value is already another one, and otherwise waits until a child VProc sets the `Ref` |
 
 ## Step 21: Standard input as a LazyList
 
