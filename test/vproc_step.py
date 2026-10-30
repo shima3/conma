@@ -1528,6 +1528,7 @@ class Scheduler:
         self.waiting = []        # (VProc, OSProc or Stream) waiting for the OS
         self.joining = []        # (VProc, VProc) waiting for another VProc to finish
         self.lazy    = []        # (VProc, Ref) waiting for another VProc to evaluate a LazyList
+        self.changes = []        # (VProc, Ref, value) waiting for the value of a Ref to change
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
 
     def _install_sigchld(self):
@@ -1578,16 +1579,35 @@ class Scheduler:
 
     def check_lazy(self):
         """Wake the VProcs whose LazyList has been evaluated, or whose
-        evaluating VProc has finished without evaluating it."""
+        evaluating VProc has finished or left the evaluation without
+        evaluating it."""
         still = []
         for vp, ref in self.lazy:
             owner = ref.value
-            if isinstance(owner, VProc) and owner.state != "finished":
+            if isinstance(owner, VProc) and owner.state != "finished" and not lazy_abandoned(ref):
                 still.append((vp, ref))
             else:
                 vp.state = "ready"
                 self.ready.append(vp)
         self.lazy = still
+
+    def wait_change(self, vp, ref, value):
+        """Make vp wait until the value of ref is no longer value. vp has
+        already returned to its LCont."""
+        if vp.state == "ready": self.ready.remove(vp)
+        vp.state = "waiting"
+        self.changes.append((vp, ref, value))
+
+    def check_changes(self):
+        """Wake the VProcs whose Ref has changed."""
+        still = []
+        for vp, ref, value in self.changes:
+            if ref.value is value:
+                still.append((vp, ref, value))
+            else:
+                vp.state = "ready"
+                self.ready.append(vp)
+        self.changes = still
 
     def check_waiting(self, block):
         """Wake the VProcs whose OSProc has exited or whose Stream is
@@ -1647,13 +1667,15 @@ class Scheduler:
                 self.check_joining()
             if self.lazy:
                 self.check_lazy()
+            if self.changes:
+                self.check_changes()
             if self.waiting:
                 # Without a ready VProc, sleep in the OS instead of busy waiting.
                 self.check_waiting(block=not self.ready)
                 if not self.ready: continue
             if not self.ready:
                 # A VProc waiting for another VProc cannot wake up either.
-                joining = [vp for vp, _ in self.joining + self.lazy]
+                joining = [vp for vp, _ in self.joining + self.lazy] + [vp for vp, _, _ in self.changes]
                 blocked = [vp for vp in self.vprocs if vp.state == "blocked" or vp in joining]
                 if not blocked:
                     return
@@ -1779,6 +1801,24 @@ def prim_VProc_wait(vp, gvenv):
 
 # ── LazyList Primitives ───────────────────────────────────────────────────────
 
+# A LazyList that a VProc is evaluating holds that VProc as its value. The
+# Ref also keeps lazy_chain, the CChain of the VProc when it claimed the
+# LazyList (HELD for __LazyList_hold__), and lazy_thunk, the thunk.
+HELD = object()
+
+def lazy_abandoned(ref):
+    """True if the VProc that claimed the LazyList ref has left its
+    evaluation: the CChain at the claim is no longer the bottom of its
+    CChain, because a continuation took it out of the thunk. A LazyList
+    made by __LazyList_hold__ is never abandoned."""
+    chain = ref.lazy_chain
+    if chain is HELD: return False
+    node = ref.value["cchain"]
+    while node is not chain:
+        if is_null_value(node): return True
+        node = node.tail
+    return False
+
 def prim_LazyList_claim(vp, gvenv):
     """__LazyList_claim__ onError LazyList ,(thunk cell)
     A LazyList is a Ref whose value is a thunk (a Closure), null, an LList
@@ -1786,7 +1826,9 @@ def prim_LazyList_claim(vp, gvenv):
     replaced with the current VProc and returned with a null cell; an
     evaluated LazyList returns a null thunk and its cell; a LazyList that
     another VProc is evaluating makes the current VProc wait and run this
-    primitive again when that VProc has set the cell or finished."""
+    primitive again when that VProc has set the cell, finished, or left
+    the evaluation. A LazyList whose evaluating VProc has left the
+    evaluation is claimed again, and its thunk is returned again."""
     name  = "__LazyList_claim__"
     olist = vp["olist"]
     if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
@@ -1797,28 +1839,47 @@ def prim_LazyList_claim(vp, gvenv):
         return
     value = lazy.value
     if isinstance(value, VProc):
-        if value is vp:
-            del olist[:2]
-            _prim_error(vp, on_error, f"{name}: the LazyList depends on itself")
-        elif value.state == "finished":
+        if value.state == "finished":
             del olist[:2]
             _prim_error(vp, on_error, f"{name}: VProc {value.serial} finished without evaluating the LazyList")
-        else:
-            SCHEDULER.wait_lazy(vp, lazy)   # the Operator and OList stay for the retry
-        return
+            return
+        if not lazy_abandoned(lazy):
+            if value is vp:
+                del olist[:2]
+                if lazy.lazy_chain is HELD:
+                    _prim_error(vp, on_error, f"{name}: the LazyList has no value yet and is held by this VProc")
+                else:
+                    _prim_error(vp, on_error, f"{name}: the LazyList depends on itself")
+            else:
+                SCHEDULER.wait_lazy(vp, lazy)   # the Operator and OList stay for the retry
+            return
+        value = lazy.lazy_thunk
     del olist[:2]
     if value_type_name(value) == "Closure":
-        lazy.value = vp
+        lazy.value      = vp
+        lazy.lazy_chain = vp["cchain"]
+        lazy.lazy_thunk = value
         _prim_return(vp, [value, NULL])
     elif is_null_value(value) or isinstance(value, LList):
         _prim_return(vp, [NULL, value])
     else:
         _prim_error(vp, on_error, f"{name}: expected LazyList, got a Ref of {value_type_name(value)}")
 
+def prim_LazyList_hold(vp, gvenv):
+    """__LazyList_hold__ ,(LazyList)
+    Returns a new LazyList that has no value yet and is held by the current
+    VProc until it sets the cell with __LazyList_publish__. Unlike a claimed
+    LazyList, it stays held wherever the VProc goes; other VProcs that
+    evaluate it wait, and get onError if the VProc finishes first."""
+    lazy = Ref(vp)
+    lazy.lazy_chain = HELD
+    lazy.lazy_thunk = NULL
+    _prim_return(vp, [lazy])
+
 def prim_LazyList_publish(vp, gvenv):
     """__LazyList_publish__ LazyList cell ,()
     Sets the cell (null or an LList) of a LazyList that the current VProc
-    has claimed. The VProcs waiting for it wake up at the next step."""
+    has claimed or holds. The VProcs waiting for it wake up at the next step."""
     name  = "__LazyList_publish__"
     olist = vp["olist"]
     if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
@@ -1831,7 +1892,23 @@ def prim_LazyList_publish(vp, gvenv):
     if not (is_null_value(cell) or isinstance(cell, LList)):
         raise VProcError(f"{name}: expected null or LList, got {value_type_name(cell)}")
     lazy.value = cell
+    del lazy.lazy_chain, lazy.lazy_thunk
     _prim_return(vp, [])
+
+def prim_Ref_wait_change(vp, gvenv):
+    """__Ref_wait_change__ Ref value ,()
+    The current VProc waits until the value of Ref is not value (the same
+    object). It returns at once if the value is already another one."""
+    name  = "__Ref_wait_change__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    ref   = olist.pop(0)
+    value = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"{name}: expected Ref, got {value_type_name(ref)}")
+    _prim_return(vp, [])
+    if ref.value is value:
+        SCHEDULER.wait_change(vp, ref, value)
 
 def prim_VProc_spawn(vp, gvenv):
     """__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)
@@ -1979,7 +2056,9 @@ PRIMITIVES = {
     "__VProc_wait__":          prim_VProc_wait,
     "__VProc_spawn__":         prim_VProc_spawn,
     "__LazyList_claim__":      prim_LazyList_claim,
+    "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,
+    "__Ref_wait_change__":     prim_Ref_wait_change,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -1,0 +1,12 @@
+wrote 1
+wrote 2
+read 1
+wrote 3
+read 2
+wrote 4
+read 3
+wrote 5
+read 4
+read 5
+12345
+exit: 0

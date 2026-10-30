@@ -284,10 +284,11 @@
 ;;   ・Closure: まだ評価していないサンク。引数なしで適用すると LazyList を返す
 ;;   ・null: 評価済みの空リスト
 ;;   ・LList: 評価済みのセル。head が要素、tail が残りの LazyList
-;;   ・VProc: その VProc が評価中であることの印
+;;   ・VProc: その VProc が評価中であること（または値をまだ持たないこと）の印
 ;; 評価した結果を Ref に書き戻す（メモ化）ので、何度たどってもサンクは1度しか実行されない。
 ;; 印の読み書きはプリミティブ __LazyList_claim__ と __LazyList_publish__ が1ステップで行うので、
-;; 同じ LazyList を複数の VProc から評価してもよい。ほかの VProc が評価中なら、それが終わるまで待つ
+;; 同じ LazyList を複数の VProc から評価してもよい。ほかの VProc が評価中なら、それが終わるまで待つ。
+;; サンクの途中で継続によって評価を抜けた LazyList は、次に評価するときにサンクをもう一度実行する
 
 ;; サンク thunk の LazyList。thunk は最初に評価されるときに1度だけ適用される
 (define __LazyList_new__ ,(thunk)
@@ -305,8 +306,14 @@
 ;; LazyList を評価し、セル（空なら null、そうでなければ LList）を返す。
 ;; __LazyList_claim__ がサンクを返したら、それを適用し、サンクが返した LazyList も評価して、
 ;; そのセルを __LazyList_publish__ で書き戻す。
-;; 自分自身に依存する LazyList や、評価中の VProc が評価せずに終わった LazyList は、エラーで終える
+;; 自分自身に依存する LazyList や、評価中の VProc が評価せずに終わった LazyList は、エラーで終える。
+;; claim は __LazyList_force_claim__ の中で行い、その LCont が CChain に残っている間を評価中とする
+;; （CChain が空のときに claim しても、評価を抜けたことがわかるように）
 (define __LazyList_force__ ,(lazyList)
+  __LazyList_force_claim__ lazyList ,(cell)
+  __NULL__ cell)
+
+(define __LazyList_force_claim__ ,(lazyList)
   __LazyList_claim__ __LazyList_error__ lazyList ,(thunk cell)
   __if_then_else__ (,() __is_null__ thunk)
     (,() __NULL__ cell)
@@ -353,37 +360,130 @@
   __LazyList_toSeq_loop__ tail sink)
 
 ;; Sink に書いた値が、書いた順に要素として届く LazyList（パイプ）。
-;; lazyList と、値を書く sink と、終わりを書く close を返す。
-;; 値のまだない末尾は、この VProc が __LazyList_claim__ で印を置いておき、
-;; 値を書くたびに (値 . 新しい末尾) を __LazyList_publish__ する。close は末尾に null を書く。
-;; ほかの VProc が末尾を評価しようとすると、値が書かれるまで __LazyList_claim__ で待つ。
+;; lazyList と、値を書く sink と、終わりを書く close と、読み手が使う cancel を返す。
+;;
+;; 書き手は、読み手がまだ求めていない要素を capacity 個まで先に書ける。
+;; それより先に書こうとすると、読み手が次の要素を求めるか cancel するまで sink の中で待つ。
+;; cancel した後に sink に書くと、LazyList をそこで終わらせ（close と同じ）、
+;; sink の継続で onClosed を呼ぶ（SIGPIPE に当たる）。
+;;
+;; 要素 k の位置の LazyList（outer）はサンクを持ち、読み手がそれを評価すると、
+;; 求められたことを書き手に知らせてから、書き手が __LazyList_hold__ で作った inner を返す。
+;; 書き手は値を書くたびに、inner に (値 . 次の outer) を __LazyList_publish__ する。close は inner に null を書く。
 ;; このため、sink と close は __LazyList_pipe__ を呼んだ VProc で使う（ほかの VProc では publish がエラーになる）。
-;; close せずにこの VProc が終わると、末尾を評価しようとした VProc はエラーになる
-(define __LazyList_pipe__ ,()
-  __LazyList_pipe_tail__ ,(lazyList)
-  __Ref_new__ lazyList ,(tailRef)
-  __LazyList_pipe_sink__ tailRef ,(sink)
-  __NULL__ lazyList sink (,() __LazyList_pipe_close__ tailRef))
+;; close せずにこの VProc が終わると、末尾を評価しようとした VProc はエラーになる。
+;;
+;; 書き手の状態:
+;;   stateRef     読み手が要素を求めたり cancel したりするたびに、新しい値に変わる（書き手はこれを待つ）
+;;   cancelledRef cancel されたら __TRUE__
+;;   tailRef      次に publish する inner（close の後は null）
+;;   queueRef     まだ評価されていない outer の待ち行列の先頭のレコード（空なら null）
+;;   lastRef      待ち行列の末尾のレコード
+;;   countRef     待ち行列の outer の数
+;; レコードは LList で、head が outer、tail が次のレコードを入れる Ref
+(define __LazyList_pipe__ ,(capacity onClosed)
+  __Ref_new__ __NULL__ ,(stateRef)
+  __Ref_new__ __FALSE__ ,(cancelledRef)
+  __LazyList_hold__ ,(inner)
+  __Ref_new__ inner ,(tailRef)
+  __Ref_new__ __NULL__ ,(queueRef)
+  __Ref_new__ __NULL__ ,(lastRef)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(countRef)
+  __LazyList_pipe_outer__ stateRef inner queueRef lastRef countRef ,(lazyList)
+  __LazyList_pipe_sink__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef ,(sink)
+  __LazyList_pipe_closer__ tailRef ,(close)
+  __LazyList_pipe_canceller__ stateRef cancelledRef ,(cancel)
+  __NULL__ lazyList sink close cancel)
 
-;; 値のまだない、この VProc が印を置いた LazyList。サンクは適用されない
-(define __LazyList_pipe_tail__ ,()
-  __LazyList_new__ __LazyList_empty__ ,(tail)
-  __LazyList_claim__ __LazyList_error__ tail ,(thunk cell)
-  __NULL__ tail)
+;; inner の前の outer を作り、待ち行列の末尾に加える。
+;; サンクは、stateRef を新しい値にして書き手を起こしてから inner を返す
+(define __LazyList_pipe_outer__ ,(stateRef inner queueRef lastRef countRef)
+  __LazyList_new__ (,()
+    __Ref_new__ __NULL__ ,(token)
+    __Ref_set__ stateRef token ,()
+    __NULL__ inner) ,(outer)
+  __Ref_new__ __NULL__ ,(nextRef)
+  __LList_cons__ outer nextRef ,(record)
+  __Ref_get__ queueRef ,(first)
+  __if_then_else__ (,() __is_null__ first)
+    (,() __Ref_set__ queueRef record)
+    (,()
+      __Ref_get__ lastRef ,(last)
+      __LList_uncons__ __print_exit_error__ last ,(lastOuter lastNextRef)
+      __Ref_set__ lastNextRef record) ,()
+  __Ref_set__ lastRef record ,()
+  __Ref_get__ countRef ,(count)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ count one ,(count)
+  __Ref_set__ countRef count ,()
+  __NULL__ outer)
 
-;; 値を受け取るたびに、tailRef の末尾に値を書き、新しい末尾を tailRef に入れる Sink
-(define __LazyList_pipe_sink__ ,(tailRef)
+;; Closure は、それぞれ必要な Ref だけを参照する（lazyList を参照すると、読んだ要素が回収されない）
+(define __LazyList_pipe_sink__ ,(capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef)
   __NULL__ (,(value)
-    __Ref_get__ tailRef ,(tail)
-    __LazyList_pipe_tail__ ,(next)
-    __Ref_set__ tailRef next ,()
-    __LList_cons__ value next ,(cell)
-    __LazyList_publish__ tail cell ,()
-    __LazyList_pipe_sink__ tailRef))
+    __LazyList_pipe_write__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef value))
 
+(define __LazyList_pipe_closer__ ,(tailRef)
+  __NULL__ (,() __LazyList_pipe_close__ tailRef))
+
+(define __LazyList_pipe_canceller__ ,(stateRef cancelledRef)
+  __NULL__ (,()
+    __Ref_set__ cancelledRef __TRUE__ ,()
+    __Ref_new__ __NULL__ ,(token)
+    __Ref_set__ stateRef token))
+
+;; 書けるようになるまで待ってから value を書き、次の Sink を返す。cancel されていれば onClosed
+(define __LazyList_pipe_write__ ,(capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef value)
+  __LazyList_pipe_wait__ capacity stateRef cancelledRef queueRef countRef ,(cancelled)
+  __if_then_else__ (,() __NULL__ cancelled)
+    (,()
+      __LazyList_pipe_close__ tailRef ,()
+      onClosed)
+    (,()
+      __Ref_get__ tailRef ,(tail)
+      __LazyList_hold__ ,(inner)
+      __Ref_set__ tailRef inner ,()
+      __LazyList_pipe_outer__ stateRef inner queueRef lastRef countRef ,(outer)
+      __LList_cons__ value outer ,(cell)
+      __LazyList_publish__ tail cell ,()
+      __LazyList_pipe_sink__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef))
+
+;; 待ち行列の outer が capacity 個以下になるまで待つ。評価され始めた outer は先頭から取り除く。
+;; cancel されていれば __TRUE__、書けるようになったら __FALSE__ を返す。
+;; stateRef を先に読むので、読んだ後に要素が求められても、__Ref_wait_change__ はすぐに戻る
+(define __LazyList_pipe_wait__ ,(capacity stateRef cancelledRef queueRef countRef)
+  __Ref_get__ stateRef ,(state)
+  __Ref_get__ cancelledRef ,(cancelled)
+  __Ref_get__ countRef ,(count)
+  __Number_subtract__ capacity count ,(room)
+  __Number_is_negative__ room ,(full)
+  __if_then_else__ (,() __NULL__ cancelled)
+    (,() __NULL__ __TRUE__) (,()
+  __if_then_else__ (,() __NULL__ full)
+    (,()
+      __Ref_get__ queueRef ,(record)
+      __LList_uncons__ __print_exit_error__ record ,(outer nextRef)
+      __Ref_get__ outer ,(content)
+      __type_name__ content ,(type)
+      __if_then_else__ (,() __String_equal__ type "Closure")
+        (,() __Ref_wait_change__ stateRef state)
+        (,()
+          __Ref_get__ nextRef ,(next)
+          __Ref_set__ queueRef next ,()
+          __Number_fromString__ __print_exit_error__ "1" ,(one)
+          __Number_subtract__ count one ,(count)
+          __Ref_set__ countRef count) ,()
+      __LazyList_pipe_wait__ capacity stateRef cancelledRef queueRef countRef)
+    (,() __NULL__ __FALSE__)))
+
+;; LazyList を終わらせる。close した後や cancel で終わった後は何もしない
 (define __LazyList_pipe_close__ ,(tailRef)
   __Ref_get__ tailRef ,(tail)
-  __LazyList_publish__ tail __NULL__)
+  __unless__ (,() __is_null__ tail)
+    (,()
+      __Ref_set__ tailRef __NULL__ ,()
+      __LazyList_publish__ tail __NULL__))
 
 ;; ── String ──
 

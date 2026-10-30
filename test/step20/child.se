@@ -39,8 +39,47 @@
 
 ;; パイプを作り、その LazyList を out に渡す。"x" を書き、しばらく動いてから close せずに終わる
 (define childPipe ,(err args in out)
-  __LazyList_pipe__ ,(lazyList sink close)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __LazyList_pipe__ one __nop__ ,(lazyList sink close cancel)
   out lazyList ,(outSink)
   sink "x" ,(sink)
   __Number_fromString__ __print_exit_error__ "30" ,(n)
   delay n)
+
+;; args の LazyList の要素を、1つずつしばらく動いてから read v と出力し、要素を連結した String を out に渡す
+(define childSlowRead ,(err args in out)
+  args (,(lazyList)
+    slowRead lazyList "" ,(str)
+    out str))
+
+(define slowRead ,(lazyList acc)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return acc) lazyList ,(head tail)
+  __Number_fromString__ __print_exit_error__ "60" ,(n)
+  delay n ,()
+  __String_concat__ "read " head ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print__ line ,()
+  __String_concat__ acc head ,(acc)
+  slowRead tail acc)
+
+;; args の LazyList の要素を 2 つ読んでから cancel し、2 つを連結した String を out に渡す
+(define childCancel ,(err args in out)
+  args (,(lazyList cancel)
+    __LazyList_uncons__ __print_exit_error__ lazyList ,(first rest)
+    __LazyList_uncons__ __print_exit_error__ rest ,(second rest)
+    __String_concat__ "read " first ,(line)
+    __String_concat__ line second ,(line)
+    __String_concat__ line "\n" ,(line)
+    __OS_print__ line ,()
+    cancel ,()
+    __String_concat__ first second ,(str)
+    out str))
+
+;; しばらく動いてから、args の Ref の値を "changed" にし、"done" を out に渡す
+(define childSet ,(err args in out)
+  args (,(ref)
+    __Number_fromString__ __print_exit_error__ "30" ,(n)
+    delay n ,()
+    __Ref_set__ ref "changed" ,()
+    out "done"))

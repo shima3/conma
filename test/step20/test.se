@@ -248,8 +248,8 @@
   printRef ref1 ,()
   printRef ref2)
 
-;; case9: __LazyList_claim__ はサンクを返して印を置く。同じ VProc がもう1度 claim すると onError。
-;; __LazyList_publish__ の後はセルを返す。LazyList でない値は onError
+;; case9: __LazyList_claim__ はサンクを返して印を置く。claim した tryClaim から戻ると評価を抜けたことになるので、
+;; もう1度 claim するとサンクをまた返す。__LazyList_publish__ の後はセルを返す。LazyList でない値は onError
 (define case9 ,()
   __LazyList_empty__ ,(empty)
   __LazyList_new__ (,() __LazyList_cons__ "x" empty) ,(lx)
@@ -325,11 +325,11 @@
 ;; case14: __LazyList_pipe__ の sink に書いた値が、書いた順に要素になり、close で終わる。
 ;; 値をまとめて書いてもよい。close する前に、書いた分だけたどれる。何度たどっても同じ要素
 (define case14 ,()
-  __LazyList_pipe__ ,(lazyList sink close)
+  num "3" ,(three)
+  __LazyList_pipe__ three __nop__ ,(lazyList sink close cancel)
   println "created" ,()
   sink "a" ,(sink)
   sink "b" "c" ,(sink)
-  num "3" ,(three)
   printFirst three lazyList ,()
   close ,()
   printAll lazyList ,()
@@ -337,7 +337,8 @@
 
 ;; case15: close した後に sink に書くと、VProc をエラーで終える
 (define case15 ,()
-  __LazyList_pipe__ ,(lazyList sink close)
+  num "1" ,(one)
+  __LazyList_pipe__ one __nop__ ,(lazyList sink close cancel)
   close ,()
   printAll lazyList ,()
   sink "x" ,(sink)
@@ -352,7 +353,8 @@
 
 ;; case16: 子 VProc がパイプの LazyList をたどる。値がまだ書かれていなければ、書かれるまで待つ
 (define case16 ,()
-  __LazyList_pipe__ ,(lazyList sink close)
+  num "1" ,(one)
+  __LazyList_pipe__ one __nop__ ,(lazyList sink close cancel)
   __Ref_new__ __NULL__ ,(ref)
   spawnChild "childWalk" lazyList ref ,(child)
   writeSlowly sink "a" ,(sink)
@@ -372,11 +374,158 @@
       waitRef ref)
     (,() __NULL__ value))
 
-;; case17: パイプを作った子 VProc が close せずに終わると、末尾を待っていた VProc には onError
+;; case17: パイプを作った子 VProc が close せずに終わると、末尾を待っていた VProc には onError。
+;; 末尾の LazyList のサンクは、子 VProc がまだ値を書いていない LazyList を返す
 (define case17 ,()
   __Ref_new__ __NULL__ ,(ref)
   spawnChild "childPipe" __NULL__ ref ,(child)
   waitRef ref ,(lazyList)
   __LazyList_uncons__ __nop__ lazyList ,(head tail)
   println head ,()
-  tryClaim tail)
+  __LazyList_claim__ __print_exit_error__ tail ,(thunk cell)
+  thunk ,(inner)
+  tryClaim inner)
+
+;; ── 評価を抜けたサンク ──
+
+;; kref に自分の継続を入れてから xs を評価し、最初の要素を返す。サンクが継続で抜けると、その値を返す
+(define forceOrEscape ,(kref xs)
+  __Cont_get__ ,(k)
+  __Ref_set__ kref k ,()
+  __LazyList_uncons__ __nop__ xs ,(head tail)
+  __NULL__ head)
+
+;; 最初に実行されたときだけ、kref の継続で "escaped" を返して評価を抜けるサンクの LazyList。
+;; delay は、抜ける前と、"x" のセルを返す前に繰り返す回数
+(define escapeOnce ,(kref delayCount)
+  __Ref_new__ __TRUE__ ,(once)
+  __LazyList_empty__ ,(empty)
+  __LazyList_new__ (,()
+    println "eval" ,()
+    num delayCount ,(n)
+    delay n ,()
+    __Ref_get__ once ,(first)
+    __Ref_set__ once __FALSE__ ,()
+    __if_then_else__ first
+      (,()
+        __Ref_get__ kref ,(k)
+        k "escaped")
+      (,() __LazyList_cons__ "x" empty)))
+
+;; case18: サンクの途中で継続によって評価を抜けた LazyList は、同じ VProc が次に評価すると、
+;; サンクをもう一度実行する（自分自身に依存するとはみなさない）。その後はメモ化される
+(define case18 ,()
+  __Ref_new__ __NULL__ ,(kref)
+  escapeOnce kref "0" ,(xs)
+  forceOrEscape kref xs ,(r)
+  println r ,()
+  forceOrEscape kref xs ,(r)
+  println r ,()
+  forceOrEscape kref xs ,(r)
+  println r)
+
+;; case19: 評価中の VProc がサンクを継続で抜けると、待っていた子 VProc が起きて、サンクをもう一度実行する
+(define case19 ,()
+  __Ref_new__ __NULL__ ,(kref)
+  escapeOnce kref "30" ,(xs)
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childWalk" xs ref ,(child)
+  forceOrEscape kref xs ,(r)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println r ,()
+  printRef ref)
+
+;; ── パイプの容量と cancel ──
+
+;; entry を child.se から起動し、args に lazyList と cancel を渡す。子が out に渡した値は ref に入る
+(define spawnChild2 ,(entry lazyList cancel ref)
+  refSink ref ,(out)
+  __VProc_spawn__ __print_exit_error__ entry "child.se" errSink (,(sink) sink lazyList cancel) __NULL__ out)
+
+;; 1行を1回の __OS_print__ で出力する（ほかの VProc の出力と行の途中で混ざらないように）
+(define printLine ,(prefix str)
+  __String_concat__ prefix str ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print__ line)
+
+;; n から始まる数を sink に書き続ける。書けたら wrote n を出力する
+(define writeFrom ,(sink n)
+  __Number_toString__ n ,(str)
+  sink str ,(sink)
+  printLine "wrote " str ,()
+  num "1" ,(one)
+  __Number_add__ n one ,(n)
+  writeFrom sink n)
+
+;; 1 から 5 を sink に書き、close する。書けたら wrote n を出力する
+(define writeFive ,(sink close)
+  num "1" ,(one)
+  num "6" ,(six)
+  writeRange sink one six ,()
+  close)
+
+(define writeRange ,(sink n end)
+  __Number_subtract__ end n ,(left)
+  __Number_is_zero__ left ,(done)
+  __unless__ done (,()
+    __Number_toString__ n ,(str)
+    sink str ,(sink)
+    printLine "wrote " str ,()
+    num "1" ,(one)
+    __Number_add__ n one ,(n)
+    writeRange sink n end))
+
+;; case20: capacity 1 のパイプ。書き手は、子 VProc がまだ求めていない要素を 1 つまでしか先に書かない
+;; （wrote n は、read n-2 より後に出力される）
+(define case20 ,()
+  num "1" ,(one)
+  __LazyList_pipe__ one __nop__ ,(lazyList sink close cancel)
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childSlowRead" lazyList ref ,(child)
+  writeFive sink close ,()
+  __VProc_wait__ __print_exit_error__ child ,()
+  printRef ref)
+
+;; case21: 子 VProc が 2 つ読んでから cancel すると、書き手の次の sink が LazyList を終わらせて onClosed を呼ぶ。
+;; LazyList には、それまでに書いた要素が残り、そこで終わる
+(define case21 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __Ref_new__ __NULL__ ,(listRef)
+  writeUntilClosed ref listRef ,(child)
+  println "closed" ,()
+  __VProc_wait__ __print_exit_error__ child ,()
+  printRef ref ,()
+  __Ref_get__ listRef ,(lazyList)
+  printAll lazyList)
+
+;; パイプを作って子 VProc に読ませ、cancel されるまで書き続ける。onClosed で子 VProc を返す
+(define writeUntilClosed ,(ref listRef)
+  __Cont_get__ ,(return)
+  __Ref_new__ __NULL__ ,(childRef)
+  num "1" ,(one)
+  __LazyList_pipe__ one (,() __Ref_get__ childRef ,(child) return child) ,(lazyList sink close cancel)
+  __Ref_set__ listRef lazyList ,()
+  spawnChild2 "childCancel" lazyList cancel ref ,(child)
+  __Ref_set__ childRef child ,()
+  writeFrom sink one)
+
+;; case22: 読み手のいないパイプに capacity を超えて書くと、書き手は待ち続ける（デッドロック、exit code 2）
+(define case22 ,()
+  num "1" ,(one)
+  __LazyList_pipe__ one __nop__ ,(lazyList sink close cancel)
+  writeFrom sink one ,()
+  println "not reached")
+
+;; case23: __Ref_wait_change__ は、値が既に違えばすぐに戻り、同じなら、子 VProc が値を変えるまで待つ
+(define case23 ,()
+  __Ref_new__ "a" ,(r)
+  __Ref_wait_change__ r "b" ,()
+  println "returned at once" ,()
+  __Ref_get__ r ,(value)
+  __Ref_new__ __NULL__ ,(ref)
+  spawnChild "childSet" r ref ,(child)
+  __Ref_wait_change__ r value ,()
+  __Ref_get__ r ,(value)
+  println value ,()
+  __VProc_wait__ __print_exit_error__ child ,()
+  printRef ref)
