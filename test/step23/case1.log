@@ -1,0 +1,9 @@
+parent start: <dir>
+parent after chdir work: <dir>/work
+child start: <dir>/work
+child after chdir a: <dir>/work/a
+parent after child: <dir>/work
+child start: <dir>/work
+child after chdir a: <dir>/work/a
+parent end: <dir>/work
+exit: 0

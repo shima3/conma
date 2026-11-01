@@ -1,0 +1,72 @@
+;; Step23: VProc ごとのカレントディレクトリ
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; エラーメッセージを標準出力に書いて続ける
+(define recover ,(msg)
+  println msg)
+
+(define printCwd ,(label)
+  __OS_getcwd__ ,(cwd)
+  __println__ label ": " cwd)
+
+;; 子の VProc の入口。sink 4 つ（err args in out）を受け取るが使わない。
+;; 親の Ref を受け取れないので、親とは Ref ではなく、時間で順序を取る:
+;; 子は、起動したときのカレントディレクトリを書き、"a" に移って、また書く
+(define child ,(err args in out)
+  printCwd "child start" ,()
+  __OS_chdir__ __print_exit_error__ "a" ,()
+  printCwd "child after chdir a")
+
+;; 子の VProc が終わるのを待つ
+(define spawnChild ,()
+  __VProc_spawn__ __print_exit_error__ "child" "../test.se" __NULL__ __NULL__ __NULL__ __NULL__ ,(proc)
+  __VProc_wait__ __print_exit_error__ proc)
+
+;; case1: 子の VProc は、起動した VProc のカレントディレクトリから始まる。
+;; 子の __OS_chdir__ は、親のカレントディレクトリを変えない
+(define case1 ,()
+  printCwd "parent start" ,()
+  __OS_chdir__ __print_exit_error__ "work" ,()
+  printCwd "parent after chdir work" ,()
+  spawnChild ,()
+  printCwd "parent after child" ,()
+  spawnChild ,()
+  printCwd "parent end")
+
+;; case2: 相対パスの __OS_open__、__OS_realpath__、__OS_spawn__ の作業ディレクトリは、その VProc のカレントディレクトリ
+(define case2 ,()
+  __OS_chdir__ __print_exit_error__ "work/a" ,()
+  __OS_open__ __print_exit_error__ "file.txt" "w" ,(out)
+  __OS_write__ __print_exit_error__ out "written in work/a\n" ,()
+  __OS_close__ __print_exit_error__ out ,()
+  __OS_realpath__ __print_exit_error__ "file.txt" ,(real)
+  __println__ "realpath: " real ,()
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "/bin/sh" ,()
+  __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+  __MSeq_append__ __print_exit_error__ cmd "pwd; cat file.txt" ,()
+  __Dict_new__ ,(env)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(status)
+  __OS_chdir__ __print_exit_error__ "../.." ,()
+  printCwd "back" ,()
+  __OS_open__ __print_exit_error__ "work/a/file.txt" "r" ,(in)
+  __OS_read__ __print_exit_error__ in ,(data)
+  __OS_print__ data)
+
+;; case3: __OS_chdir__ のエラー。カレントディレクトリは変わらない
+(define case3 ,()
+  __OS_chdir__ recover "none" ,()
+  __OS_chdir__ recover "test.se" ,()
+  __OS_chdir__ recover "" ,()
+  printCwd "unchanged")
+
+;; case4: シンボリックリンクを通った場合、カレントディレクトリはリンクを解決した実際のパス
+(define case4 ,()
+  __OS_chdir__ __print_exit_error__ "work/link" ,()
+  printCwd "through link")

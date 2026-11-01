@@ -277,7 +277,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 * Goal: Make redirection (`<`, `>`, `>>`) and the `cd` and `pwd` built-ins of a shell possible. Both only extend the Streams of Step 9 and the processes of Step 11.
 * `__OS_open__ onError path mode ,(Stream)`: `"r"` gives an input Stream; `"w"` (create or empty) and `"a"` (create or append) give an output Stream. A file Stream works like a pipe end, so it can be the standard input or output of `__OS_spawn__`.
 * Every error of `__OS_open__` and `__OS_chdir__` goes to `onError`, also a non-String argument, as in the other OS primitives: a missing file or directory, a directory opened as a file, permission denied, an invalid mode. `__OS_getcwd__` takes no `onError`.
-* The current directory belongs to the interpreter, so `__OS_chdir__` changes it for every VProc. It is used for relative paths in `__OS_open__`, `__OS_chdir__` and `__VProc_spawn__`, and as the working directory of `__OS_spawn__`.
+* The current directory belonged to the interpreter, so `__OS_chdir__` changed it for every VProc (each VProc has its own since Step 23). It is used for relative paths in `__OS_open__`, `__OS_chdir__` and `__VProc_spawn__`, and as the working directory of `__OS_spawn__`.
 * Tests (`test/step14`): `test.sh` gives every case a new empty `work/` directory to write in, and removes it at the end. The current directory is printed as `<dir>`, so that the logs do not depend on where the repository is.
 
 | Case | What it checks |
@@ -496,4 +496,21 @@ No new primitive.
 | case3 | exit code 255 |
 | case4 | `onError` for 256, -1 and 1.5, which do not exit |
 | case5 | a non-Number argument stops the VProc with an error |
+
+## Step 23: A current directory for each VProc
+
+No new primitive.
+
+* Goal: Let each VProc have its own current directory, so that a VProc that changes its directory does not move the others. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc, and `cd` there must not change the directory of the shell (see `consh/PLAN-ja.md`).
+* Each VProc keeps its current directory as an absolute path. The first VProc starts in the directory where the interpreter was started, and a VProc made by `__VProc_spawn__` starts in the current directory of the VProc that made it. `__OS_chdir__` changes only the current VProc's, to the real path of the directory (symbolic links resolved), as the OS gives after `chdir`. The interpreter itself never changes its own directory.
+* The current directory of the current VProc is used for relative paths in `__OS_open__`, `__OS_chdir__`, `__OS_realpath__` and the `sourceFileName` of `__VProc_spawn__`, and as the working directory of `__OS_spawn__`; `__OS_getcwd__` returns it. The empty path is not joined to it, so that it stays an error.
+* `test/vproc_step.py` keeps the directory outside the S-expression of a VProc, so a VProc read from an S-expression (`vproc_step.sh`) starts in the interpreter's directory.
+* Tests (`test/step23`): `test.sh` gives every case a new `work/` directory with a subdirectory `a` and a symbolic link `link` to it. The current directory is printed as `<dir>`.
+
+| Case | What it checks |
+|---|---|
+| case1 | a child VProc starts in the directory of the VProc that spawned it (`../test.se` is found from there); its `__OS_chdir__` does not move the parent |
+| case2 | after `__OS_chdir__`, a relative path in `__OS_open__` and `__OS_realpath__`, and the working directory of a child process (`/bin/sh -c pwd`), are those of the VProc |
+| case3 | `onError` for a missing directory, a file and the empty path; the directory does not change |
+| case4 | through a symbolic link, the current directory is the real path |
 

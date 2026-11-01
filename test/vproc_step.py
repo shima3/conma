@@ -385,13 +385,18 @@ class VProc(dict):
     Besides the fields of the S-expression format it has
       serial  — number shown in traces and error messages
       state   — "ready", "running", "blocked", "waiting" or "finished"
-      gvenv   — GVEnv of the program the VProc was started with"""
+      gvenv   — GVEnv of the program the VProc was started with
+      cwd     — the current directory of the VProc, an absolute path. A new
+                VProc starts in the directory of the VProc that spawned it
+                (the first one, in the interpreter's), and __OS_chdir__
+                changes only the current VProc's."""
     _count = 0
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         VProc._count += 1
         self.serial = VProc._count
         self.state  = "ready"
+        self.cwd    = os.getcwd()
     def value_to_sexp(self):
         return ["__VProcRef__", quoted(str(self.serial))]
     def __repr__(self):
@@ -399,12 +404,20 @@ class VProc(dict):
     __hash__ = object.__hash__
     __eq__   = object.__eq__
 
-def make_vproc(operator, olist, source_file, gvenv):
-    """Create a VProc that applies operator to olist."""
+def make_vproc(operator, olist, source_file, gvenv, cwd=None):
+    """Create a VProc that applies operator to olist, in the current
+    directory cwd (the interpreter's if None)."""
     vp = VProc(sinfo=None, operator=operator, olist=list(olist), lcont=None,
                lvenv=[], gvenv_files=[source_file], cchain=NULL, pdict=[])
     vp["gvenv"] = gvenv
+    if cwd is not None:
+        vp.cwd = cwd
     return vp
+
+def _vproc_path(vp, path):
+    """path relative to the current directory of vp (an absolute path is kept).
+    The empty path stays empty, so that the OS rejects it."""
+    return os.path.join(vp.cwd, path) if path else path
 
 def is_terminal(vp):
     """True when the VProc has reached a normal halting state."""
@@ -821,7 +834,8 @@ def prim_OS_spawn(vp, gvenv):
     sys.stdout.flush()
     sys.stderr.flush()
     try:
-        popen = subprocess.Popen(args, stdin=fds[0], stdout=fds[1], stderr=fds[2], env=env)
+        popen = subprocess.Popen(args, stdin=fds[0], stdout=fds[1], stderr=fds[2], env=env,
+                                 cwd=vp.cwd)
     except OSError as e:
         _prim_error(vp, on_error, f"{name}: {e.strerror}: {args[0]}")
         return
@@ -1016,7 +1030,7 @@ _OPEN_MODES = {
 
 def prim_OS_open(vp, gvenv):
     """__OS_open__ onError path mode ,(Stream)
-    Open the file path (relative to the current directory). mode "r" gives
+    Open the file path (relative to the current VProc's directory). mode "r" gives
     an input Stream; "w" (create or truncate) and "a" (create or append)
     give an output Stream."""
     name  = "__OS_open__"
@@ -1033,7 +1047,7 @@ def prim_OS_open(vp, gvenv):
         return
     flags, stream_mode = _OPEN_MODES[mode]
     try:
-        fd = os.open(path, flags, 0o666)
+        fd = os.open(_vproc_path(vp, path), flags, 0o666)
         if stat.S_ISDIR(os.fstat(fd).st_mode):
             os.close(fd)
             raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR))
@@ -1044,7 +1058,8 @@ def prim_OS_open(vp, gvenv):
 
 def prim_OS_chdir(vp, gvenv):
     """__OS_chdir__ onError path ,()
-    Change the interpreter's current directory, which every VProc shares."""
+    Change the current directory of the current VProc. The interpreter's own
+    current directory and other VProcs' do not change."""
     name  = "__OS_chdir__"
     olist = vp["olist"]
     if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
@@ -1055,23 +1070,26 @@ def prim_OS_chdir(vp, gvenv):
         return
     path = _value_to_display(path)
     try:
-        os.chdir(path)
+        target = _vproc_path(vp, path)
+        st = os.stat(target)
+        if not stat.S_ISDIR(st.st_mode):
+            raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR))
+        if not os.access(target, os.X_OK):
+            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
     except OSError as e:
         _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
         return
+    # The real path, as os.getcwd() would give after os.chdir()
+    vp.cwd = os.path.realpath(target)
     _prim_return(vp, [])
 
 def prim_OS_getcwd(vp, gvenv):
-    """__OS_getcwd__ ,(String) — the absolute path of the current directory."""
-    try:
-        cwd = os.getcwd()
-    except OSError as e:
-        raise VProcError(f"__OS_getcwd__: {e.strerror}")
-    _prim_return(vp, [string_value(cwd)])
+    """__OS_getcwd__ ,(String) — the absolute path of the current VProc's directory."""
+    _prim_return(vp, [string_value(vp.cwd)])
 
 def prim_OS_realpath(vp, gvenv):
     """__OS_realpath__ onError path ,(String)
-    The absolute path of path (relative to the current directory) with
+    The absolute path of path (relative to the current VProc's directory) with
     "..", "." and symbolic links resolved. A missing path goes to onError."""
     name  = "__OS_realpath__"
     olist = vp["olist"]
@@ -1084,8 +1102,9 @@ def prim_OS_realpath(vp, gvenv):
     path = _value_to_display(path)
     try:
         # realpath() has no strict mode before Python 3.10: check the path first
-        os.stat(path)
-        real = os.path.realpath(path)
+        target = _vproc_path(vp, path)
+        os.stat(target)
+        real = os.path.realpath(target)
     except OSError as e:
         _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
         return
@@ -1739,15 +1758,16 @@ def build_name_index(module_sexp):
         if name: index[name] = int(item[1])
     return index
 
-def load_program(source_file):
+def load_program(source_file, cwd=None):
     """Run bin/includer and bin/resolver on source_file (relative to the
-    current directory) and load the result. Returns (module_sexp, gvenv).
+    directory cwd, the interpreter's if None) and load the result.
+    Returns (module_sexp, gvenv).
     Raises LoadError if the file is missing or a tool fails."""
-    if not os.path.isfile(source_file):
+    if not os.path.isfile(os.path.join(cwd or os.getcwd(), source_file)):
         raise LoadError(f"file not found: {source_file}")
     try:
         inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR), source_file],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, cwd=cwd)
     except OSError as e:
         raise LoadError(f"cannot run includer: {e}")
     if inc.returncode != 0:
@@ -1943,7 +1963,7 @@ def prim_VProc_spawn(vp, gvenv):
             return
     entry, source = _value_to_display(entry), _value_to_display(source)
     try:
-        module_sexp, child_gvenv = load_program(source)
+        module_sexp, child_gvenv = load_program(source, vp.cwd)
     except LoadError as e:
         _prim_error(vp, on_error, f"__VProc_spawn__: {e}")
         return
@@ -1952,7 +1972,7 @@ def prim_VProc_spawn(vp, gvenv):
     if func is None or is_null_value(func):
         _prim_error(vp, on_error, f"__VProc_spawn__: entry point not defined: {entry}")
         return
-    child = make_vproc(func, sink_args, source, child_gvenv)
+    child = make_vproc(func, sink_args, source, child_gvenv, vp.cwd)
     SCHEDULER.add(child)
     _prim_return(vp, [child])
 

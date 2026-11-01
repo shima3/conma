@@ -1,0 +1,6 @@
+realpath: <dir>/work/a/file.txt
+<dir>/work/a
+written in work/a
+back: <dir>
+written in work/a
+exit: 0

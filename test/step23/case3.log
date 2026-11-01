@@ -1,0 +1,5 @@
+__OS_chdir__: No such file or directory: none
+__OS_chdir__: Not a directory: test.se
+__OS_chdir__: No such file or directory: 
+unchanged: <dir>
+exit: 0
