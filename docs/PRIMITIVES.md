@@ -51,6 +51,11 @@ Terminates the current OS Process (that is, the interpreter) with an exit code o
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 1.
 
+### **`__OS_exit__ onError Number ,()`**
+* **Description**: Terminates the current OS Process (that is, the interpreter) with the exit code `Number`, even if other VProcs are still running.
+* **Behavior**: As with `__OS_exit_normal__` and `__OS_exit_error__`, the output already written is flushed. A shell uses it to exit with the status of its last command.
+* **Error**: If `Number` is not an integer from 0 to 255, invokes `onError` with an error message string. A non-Number argument stops the VProc with an error.
+
 ### `__OS_get_String__ ,(String)`
 Behavior:
 Gets a `String` from standard input and passes it to the LCont.

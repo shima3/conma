@@ -670,6 +670,22 @@ def prim_OS_exit_error(vp, gvenv):
     """__OS_exit_error__ ,() — terminate interpreter with exit code 1."""
     sys.exit(1)
 
+
+def prim_OS_exit(vp, gvenv):
+    """__OS_exit__ onError Number ,() — terminate interpreter with the exit
+    code Number. A Number that is not an integer in 0..255 goes to onError."""
+    name  = "__OS_exit__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    code = olist.pop(0)
+    _check_number(name, code)
+    x = code.value
+    if not (math.isfinite(x) and x == int(x) and 0 <= x <= 255):
+        _prim_error(vp, on_error, f"{name}: not an exit code: {number_to_str(x)}")
+        return
+    sys.exit(int(x))
+
 # Boolean closures: ,(t f) t  and  ,(t f) f
 # Head: [t, f], Body returns t (or f)
 # Built as Closure objects with synthetic AST bodies.
@@ -1991,6 +2007,7 @@ PRIMITIVES = {
     "__type_name__":           prim_type_name,
     "__OS_exit_normal__":      prim_OS_exit_normal,
     "__OS_exit_error__":       prim_OS_exit_error,
+    "__OS_exit__":             prim_OS_exit,
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,

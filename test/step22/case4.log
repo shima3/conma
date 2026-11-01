@@ -1,0 +1,5 @@
+__OS_exit__: not an exit code: 256
+__OS_exit__: not an exit code: -1
+__OS_exit__: not an exit code: 1.5
+still running
+exit: 0

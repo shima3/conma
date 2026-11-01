@@ -478,3 +478,22 @@ No new primitive.
 | case4 | an endless standard input (`yes`): reading three lines reads only what it needs, and the program ends |
 | case5 | `test/step21/memcheck.py` runs the program and counts, every 2000 steps after a garbage collection, the interpreter's `LList` cells that hold a line; reading 200 lines with `__stdin_read__` keeps at most 1 alive |
 | case6 | the same, with the first `stdin` kept in `PDict`: almost all 200 stay alive, which shows that `memcheck.py` finds them |
+
+## Step 22: Exit code
+
+| Primitive | Status |
+|---|---|
+| `__OS_exit__` | implemented |
+
+* Goal: Let a program exit with any exit code, not only 0 (`__OS_exit_normal__`) and 1 (`__OS_exit_error__`). ConSh exits with the status of its last command (`$?`), as a shell does.
+* `__OS_exit__ onError Number ,()` exits the interpreter with the exit code `Number`, even if other VProcs are still running. A Number that is not an integer from 0 to 255 goes to `onError`; a non-Number argument stops the VProc with an error.
+* Tests (`test/step22`):
+
+| Case | What it checks |
+|---|---|
+| case1 | exit code 0; the output written before is not lost |
+| case2 | exit code 3, while another VProc is still running |
+| case3 | exit code 255 |
+| case4 | `onError` for 256, -1 and 1.5, which do not exit |
+| case5 | a non-Number argument stops the VProc with an error |
+

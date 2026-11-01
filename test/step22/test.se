@@ -1,0 +1,51 @@
+;; Step22: 終了コードを指定してインタプリタを終える（__OS_exit__）
+(include "util.se")
+
+(define println ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  )
+
+;; エラーメッセージを標準出力に書いて続ける
+(define recover ,(msg)
+  println msg)
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; case1: 終了コード 0。その前に書いた出力は失われない
+(define case1 ,()
+  println "before exit" ,()
+  num "0" ,(code)
+  __OS_exit__ recover code ,()
+  println "not reached")
+
+;; case2: 終了コード 3。ほかの VProc が動いていても終わる
+(define spin ,()
+  spin)
+
+(define case2 ,()
+  __OS_get_stderr__ ,(errStream)
+  __Stream_newSink__ errStream ,(err)
+  __VProc_spawn__ __print_exit_error__ "spin" "test.se" err __NULL__ __NULL__ err ,(proc)
+  num "3" ,(code)
+  __OS_exit__ recover code)
+
+;; case3: 終了コード 255
+(define case3 ,()
+  num "255" ,(code)
+  __OS_exit__ recover code)
+
+;; case4: 256、-1、1.5 は onError に行き、終わらない
+(define case4 ,()
+  num "256" ,(code)
+  __OS_exit__ recover code ,()
+  num "-1" ,(code)
+  __OS_exit__ recover code ,()
+  num "1.5" ,(code)
+  __OS_exit__ recover code ,()
+  println "still running")
+
+;; case5: Number でない引数は VProc をエラーで止める
+(define case5 ,()
+  __OS_exit__ recover "3")

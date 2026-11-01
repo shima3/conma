@@ -252,7 +252,7 @@ Termination:
 * A VProc finishes when its Operator is null, its LCont is absent, and its CChain is empty.
 * If an error occurs while a VProc runs (for example, an unbound variable or a primitive applied to a value of the wrong type), only that VProc finishes. An error message with the VProc's number is written to standard error, and the other VProcs keep running.
 * The interpreter exits when every VProc has finished. Its exit code is 0, whether or not some VProcs finished with an error.
-* `__OS_exit_normal__` and `__OS_exit_error__` exit the whole interpreter at once, with exit code 0 and 1 respectively, even if other VProcs are still running.
+* `__OS_exit_normal__` and `__OS_exit_error__` exit the whole interpreter at once, with exit code 0 and 1 respectively, even if other VProcs are still running. `__OS_exit__` does the same with a given exit code from 0 to 255.
 * If no VProc is ready or waiting for the OS but some are blocked or waiting for another VProc, the interpreter reports a deadlock and exits with exit code 2.
 
 The function designated as the `Operator` in `Body` is applied to `OList`.
