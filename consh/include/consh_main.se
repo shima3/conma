@@ -1,0 +1,8 @@
+;; ConSh の入口。vproc_run.py --main で起動し、引数は ConSh のスクリプトに渡す
+(include "util.se")
+(include "consh_parser.se")
+(include "consh_eval.se")
+
+(define main ,(args)
+  stderr "consh: not implemented yet\n" ,(err)
+  )

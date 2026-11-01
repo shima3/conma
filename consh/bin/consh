@@ -1,0 +1,13 @@
+#!/bin/bash
+# ConSh の ConMa 版を起動する。引数は ConSh に渡す
+consh="$(cd ${0%/*}/..; pwd)"
+root="${consh%/*}"
+module=/tmp/consh.module.se
+if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$consh/include/consh_main.se" \
+    | sed -e 's/"\/.*\/conma/"conma/' > /tmp/consh.ast.se
+then exit 1
+fi
+if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
+then exit 1
+fi
+exec python3 "$root/test/vproc_run.py" --main "$module" "$@"
