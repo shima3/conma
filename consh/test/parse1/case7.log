@@ -1,0 +1,4 @@
+(line (assign (def "x" (word (subst (script (line (cmd (words (word (lit "echo")) (word (lit "a")))) (cmd (words (word (lit "echo")) (word (lit "b")))))))))))
+(line (cmd (words (word (lit "echo")) (word (dq (subst (script (line (cmd (words (word (lit "echo")) (word (dq (lit ")")))))))))) (word (subst (script (line (pipe (cmd (words (word (lit "f")))) (cmd (words (word (lit "g"))))))))) (word (subst (script (line (cmd (words (word (lit "echo")) (word (subst (script (line (cmd (words (word (lit "echo")) (word (lit "nested")))))))))))))))))
+(line (cmd (words (word (lit "echo")) (word (subst (script (line (cmd (words (word (lit "echo")) (word (lit "multi")))))))))))
+exit: 0

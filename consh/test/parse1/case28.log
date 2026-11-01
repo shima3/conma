@@ -1,0 +1,2 @@
+(line (pipe (cmd (words (word (lit "f")))) (cmd (words (word (lit "g"))))))
+exit: 0

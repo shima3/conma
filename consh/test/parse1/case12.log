@@ -1,0 +1,2 @@
+consh_parse: case12.sh:1:13: a word after a redirection
+exit: 1

@@ -1,0 +1,2 @@
+consh_parse: case18.sh:2:1: expected ')', but found end of input
+exit: 1

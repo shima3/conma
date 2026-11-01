@@ -1,0 +1,2 @@
+consh_parse: case30.sh:2:1: expected a command, but found end of input
+exit: 1

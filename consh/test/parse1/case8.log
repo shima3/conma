@@ -1,0 +1,4 @@
+(line (cmd (words (word (lit "echo")) (word (lit "a")) (word (lit "b")) (word (dq (lit "cd"))) (word (sq "e\\\nf")))))
+(line (function "f" (params ()) (script (line (cmd (words (word (lit "echo")) (word (var "x"))))))))
+(line (cmd (words (word (lit "echo")) (word (lit "not")) (word (lit "continued")))))
+exit: 0

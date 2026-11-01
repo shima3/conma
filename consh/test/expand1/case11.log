@@ -1,0 +1,2 @@
+consh_parse: case11.sh:1:8: export of an undefined local variable: undefined
+exit: 1

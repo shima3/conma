@@ -1,0 +1,5 @@
+(cmd (words "echo" "case3.sh" "A" "B C" "B C" "2" "2"))
+(cmd (words "echo" "preAsuf" "preB Csuf" "preAsuf" "preB Csuf" "A" "B C" "A" "B C"))
+(assign ("x" (list "A" "B C")) ("y" (list "A" "B C")) ("z" "AB C"))
+(cmd (words "echo" "0" "1"))
+exit: 0

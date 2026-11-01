@@ -1,0 +1,5 @@
+(line (assign (def "x" (word (lit "1"))) (def "y") (def "z" (word (dq))) (def "w" (word (lit "a=b")))))
+(line (assign (def "x" (word (lit "1")))) (assign (def "y" (word (lit "2")))))
+(line (cmd (env (def "FOO" (word (lit "bar"))) (def "BAZ")) (words (word (lit "cmd")) (word (lit "arg")))))
+(line (export (name "A") (def "B" (word (lit "2"))) (def "C")))
+exit: 0

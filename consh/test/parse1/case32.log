@@ -1,0 +1,3 @@
+(line (list (bg (cmd (words (word (lit "f")))))))
+(line (list (bg (cmd (words (word (lit "g"))))) (bg (cmd (words (word (lit "h")))))))
+exit: 0

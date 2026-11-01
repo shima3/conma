@@ -1,0 +1,4 @@
+(line (function "f" (params ("a" "b") "rest") (script (line (cmd (words (word (lit "echo")) (word (var "a")))) (return (word (lit "0")))))))
+(line (function "g" (params ()) (script (line (cmd (words (word (lit "echo")) (word (lit "1"))))) (line (cmd (words (word (lit "echo")) (word (lit "2"))))))))
+(line (function "h" (params () "args") (script (line (function "inner" (params ()) (script (line (cmd (words (word (lit "echo")) (word (var "x")))))))) (line (cmd (words (word (lit "inner"))))))))
+exit: 0

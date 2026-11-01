@@ -1,0 +1,5 @@
+(cmd (words "echo" "test.sh" "test.sh" "test.s?" "test.sh" "nomatch*"))
+(assign ("x" "test.s?"))
+(cmd (words "echo" "test.sh" "test.s?"))
+(cmd (words "echo") (redirs (">" "test.sh")))
+exit: 0

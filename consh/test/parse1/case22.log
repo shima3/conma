@@ -1,0 +1,2 @@
+consh_parse: case22.sh:1:7: expected a word after return
+exit: 1

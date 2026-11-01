@@ -18,7 +18,7 @@ consh/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数
     ├── parse1/          文法のテスト：caseN.sh を consh_parse に渡し、caseN.log と比べる
-    ├── expand1/         語の展開のテスト：parse1 と同じ形
+    ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
     └── stepN/           ConMa 版の実行のテスト：test.sh, caseN.log
 ```
 
@@ -30,6 +30,13 @@ consh/
 
 ```
 bin/consh [引数 ...]
+```
+
+構文木と展開の結果を見るには、Python の参照実装を使う。出力の形式は `bin/consh_parse` の先頭に書いてある。
+
+```
+bin/consh_parse スクリプト
+bin/consh_parse --expand スクリプト [引数 ...]
 ```
 
 ## テスト

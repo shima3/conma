@@ -1,0 +1,2 @@
+consh_parse: case21.sh:1:7: export followed by a newline
+exit: 1

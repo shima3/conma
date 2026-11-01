@@ -1,0 +1,12 @@
+(assign ("HOGE" "a"))
+(export ("HOGE" "b"))
+(cmd (words "echo" "a"))
+(export ("NEW" "1"))
+(cmd (words "echo" "1"))
+(assign ("l" (list "a" "b")))
+(export ("l" "a\nb"))
+(cmd (words "echo" "a" "b" "a\nb"))
+(assign ("l" "c"))
+(cmd (words "echo" "c"))
+(cmd (env ("P" "x") ("Q" "")) (words "cmd"))
+exit: 0

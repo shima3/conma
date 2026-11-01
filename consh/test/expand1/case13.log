@@ -1,0 +1,2 @@
+consh_parse: case13.sh:1:5: only echo can run in $( ) of the expand mode: ls
+exit: 1

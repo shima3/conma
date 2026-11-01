@@ -1,0 +1,2 @@
+consh_parse: case24.sh:1:5: expected a command, but found '|'
+exit: 1

@@ -1,0 +1,3 @@
+(cmd (words "echo" "[0]"))
+(assign ("x" (list)) ("y" (list)))
+exit: 0

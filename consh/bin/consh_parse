@@ -3,23 +3,903 @@
 consh_parse -- ConSh の構文解析と語の展開の参照実装
 
 ConMa 版の結果と比べるために、構文木と展開の結果をテキストで出力する。
-文法は PLAN-ja.md の 1.1 に従う。
+文法は PLAN-ja.md の 1.1、展開は 1.2 と 1.3 のうち語の展開に関わる項目に従う。
 
 Usage:
     consh_parse <script_file>
+    consh_parse --expand <script_file> [<arg> ...]
+
+構文解析（第1の形式）
+    コマンド行ごとに、1行の S 式を出力する。文のないコマンド行は出力しない。
+    コメントは出力しない。行継続は字句解析の段階で取り除く。
+
+        (line 文 ...)
+        文     = (return 語) | (export 項目 ...) | (function "名前" 変数リスト スクリプト)
+               | (assign 定義 ...) | コマンド列
+        項目   = (name "名前") | 定義
+        定義   = (def "名前" [語])
+        コマンド列 = (list 要素 ...) | 要素     ; 要素が1つで & がなければ list を省く
+        要素   = (bg パイプライン) | パイプライン
+        パイプライン = (pipe 単純文 ...) | 単純文 ; 単純文が1つなら pipe を省く
+        単純文 = (cmd [(env 定義 ...)] (words 語 ...) [(redirs リダイレクト ...)])
+        リダイレクト = (redir "<" 語|変数リスト) | (redir ">" ...) | (redir "2>" ...)
+               | (redir ">>" 語) | (redir "1>&2") | (redir "2>&1")
+        変数リスト = (params ("名前" ...) ["残りの名前"])
+        スクリプト = (script (line 文 ...) ...)
+        語     = (word 語要素 ...)
+        語要素 = (lit "裸文字") | (esc "文字") | (sq "文字列") | (dq 二重引用要素 ...)
+               | (var "名前") | (subst スクリプト)
+        二重引用要素 = (lit "文字列") | (var "名前") | (subst スクリプト)
+
+展開（第2の形式、--expand）
+    トップレベルの文を順に実行する。ただし、コマンドは起動せず、展開した結果を1行の S 式で出力する。
+    <arg> はスクリプトの引数（$@, $1, $# など）になる。
+
+        (assign ("名前" 値) ...)     値 = "文字列" | (list "要素" ...)
+        (export ("名前" "文字列") ...)
+        (function "名前")
+        (cmd [(env ("名前" "文字列") ...)] (words "語" ...) [(redirs (">" "語") (">" (params ...)) ("2>&1") ...)])
+        (pipe ...), (list ...), (bg ...) は構文解析と同じ形
+
+    * 変数定義、export は実行し、その後の展開に反映する。関数は定義しても呼び出さない。
+    * コマンド置換 $( ) の中は、局所変数と環境変数をコピーして実行する。
+      中で使えるコマンドは echo だけで、引数を空白で連結し、末尾に改行を付けて出力する。
+      出力を行に区切った LazyList が値になる。パイプ、&、リダイレクトはエラーとする。
+    * 環境変数は空から始める（実際の環境変数は取り込まない）。
+    * $? は "0"、$! は ""、$$ は "1" とする。$0 はスクリプトのファイル名とする。
+    * glob はカレントディレクトリで適用し、一致した名前を文字コード順に並べる。
+      一致しなければ、語をそのまま残す（Bash の既定と同じ）。
+      リダイレクト先の語にも適用し、2つ以上の語になればエラーとする。
+
+エラー
+    標準エラー出力に「consh_parse: ファイル:行:桁: メッセージ」を出力し、終了ステータス 1 で終わる。
 """
 
+import glob
+import re
 import sys
 
 
+class ConShError(Exception):
+    def __init__(self, msg, pos):
+        super().__init__(msg)
+        self.msg = msg
+        self.pos = pos
+
+
+# ----------------------------------------------------------------------
+# 構文解析
+# ----------------------------------------------------------------------
+
+SPACES = (' ', '\t')
+SPECIALS = (';', "'", '(', ')', '{', '}', '|', '&', '>', '<', '"', '$', '\\')
+KEYWORDS = ('function', 'export', 'return')
+
+
+def is_ident_start(c):
+    return c == '_' or ('a' <= c <= 'z') or ('A' <= c <= 'Z')
+
+
+def is_digit(c):
+    return '0' <= c <= '9' and c != ''
+
+
+def is_ident_char(c):
+    return is_ident_start(c) or is_digit(c)
+
+
+class Parser:
+    """文字単位の再帰下降で構文木を作る。
+
+    行継続（\\ と改行）は、引用符 '...' とコメントの中を除き、読む前に読み飛ばす。
+    sep_end は、行頭、空白、;、|、& の直後の位置で、ここにある # はコメントの開始になる。
+    """
+
+    def __init__(self, text):
+        self.text = text
+        self.pos = 0
+        self.sep_end = 0
+
+    def error(self, msg, pos=None):
+        raise ConShError(msg, self.pos if pos is None else pos)
+
+    # -- 文字の読み出し --
+
+    def _cont_len(self, i):
+        t = self.text
+        if i < len(t) and t[i] == '\\':
+            if t.startswith('\n', i + 1):
+                return 2
+            if t.startswith('\r\n', i + 1):
+                return 3
+        return 0
+
+    def _skip(self):
+        while True:
+            n = self._cont_len(self.pos)
+            if n == 0:
+                return
+            self.pos += n
+
+    def _index(self, k):
+        # 行継続を除いて k 文字先の位置
+        i = self.pos
+        while True:
+            while True:
+                n = self._cont_len(i)
+                if n == 0:
+                    break
+                i += n
+            if k == 0 or i >= len(self.text):
+                return i
+            i += 1
+            k -= 1
+
+    def peek(self, k=0):
+        i = self._index(k)
+        return self.text[i] if i < len(self.text) else ''
+
+    def peek_str(self, n):
+        return ''.join(self.peek(k) for k in range(n))
+
+    def advance(self, n=1):
+        for _ in range(n):
+            self._skip()
+            self.pos += 1
+
+    def at_newline(self, k=0):
+        c = self.peek(k)
+        return c == '\n' or (c == '\r' and self.peek(k + 1) == '\n')
+
+    def consume_newline(self):
+        self.advance(2 if self.peek() == '\r' else 1)
+        self._mark_sep()
+
+    def _mark_sep(self):
+        self._skip()
+        self.sep_end = self.pos
+
+    def skip_spaces(self):
+        n = 0
+        while self.peek() in SPACES and self.peek() != '':
+            self.advance()
+            n += 1
+        if n:
+            self._mark_sep()
+        return n
+
+    def at_comment(self):
+        self._skip()
+        return self.peek() == '#' and self.pos == self.sep_end
+
+    def skip_comment(self):
+        # コメントの中では行継続を取り除かない
+        t = self.text
+        while self.pos < len(t) and t[self.pos] != '\n' and not t.startswith('\r\n', self.pos):
+            self.pos += 1
+
+    def is_word_start(self):
+        c = self.peek()
+        return not (c == '' or c in SPACES or self.at_newline()
+                    or (c in SPECIALS and c not in ('"', "'", '$', '\\')))
+
+    def is_bare(self):
+        return self.is_word_start() and self.peek() not in ('"', "'", '$', '\\')
+
+    def at_stmt_end(self, term):
+        c = self.peek()
+        return c == '' or self.at_newline() or c == ';' or c == term or self.at_comment()
+
+    def describe(self):
+        c = self.peek()
+        if c == '':
+            return 'end of input'
+        if self.at_newline():
+            return 'newline'
+        return repr(c)
+
+    def expect(self, c):
+        if self.peek() != c:
+            self.error(f'expected {c!r}, but found {self.describe()}')
+        self.advance()
+
+    # -- スクリプトとコマンド行 --
+
+    def parse_program(self):
+        self._mark_sep()
+        script = self.parse_script(None)
+        if self.peek() != '':
+            self.error(f'unexpected {self.describe()}')
+        return script
+
+    def parse_script(self, term):
+        lines = []
+        while True:
+            stmts = self.parse_command_line(term)
+            if stmts:
+                lines.append(stmts)
+            if not self.at_newline():
+                break
+            self.consume_newline()
+        if term is not None and self.peek() != term:
+            self.error(f'expected {term!r}, but found {self.describe()}')
+        return lines
+
+    def parse_command_line(self, term):
+        stmts = []
+        while True:
+            self.skip_spaces()
+            if self.at_comment():
+                self.skip_comment()
+                break
+            c = self.peek()
+            if c == '' or self.at_newline() or c == term:
+                break
+            stmts.append(self.parse_statement(term))
+            self.skip_spaces()
+            if self.peek() == ';':
+                self.advance()
+                self._mark_sep()
+                continue
+            if self.at_comment():
+                self.skip_comment()
+                break
+            c = self.peek()
+            if c == '' or self.at_newline() or c == term:
+                break
+            self.error(f'unexpected {self.describe()}')
+        return stmts
+
+    # -- 文 --
+
+    def keyword(self):
+        for kw in KEYWORDS:
+            n = len(kw)
+            if self.peek_str(n) == kw:
+                c = self.peek(n)
+                if c == '' or c in SPACES or self.at_newline(n):
+                    return kw
+        return None
+
+    def parse_statement(self, term):
+        pos = self._index(0)
+        kw = self.keyword()
+        if kw == 'return':
+            self.advance(len(kw))
+            if self.skip_spaces() == 0 or not self.is_word_start() or self.at_comment():
+                self.error('expected a word after return')
+            return ('return', self.parse_word(), pos)
+        if kw == 'export':
+            self.advance(len(kw))
+            if self.peek() == '' or self.at_newline():
+                self.error('export followed by a newline')
+            items = []
+            while self.skip_spaces() and is_ident_start(self.peek()):
+                ipos = self._index(0)
+                name = self.parse_ident()
+                if self.peek() == '=':
+                    self.advance()
+                    items.append(('def', name, self.parse_word() if self.is_word_start() else None))
+                else:
+                    items.append(('name', name, ipos))
+            return ('export', items)
+        if kw == 'function':
+            self.advance(len(kw))
+            if self.peek() == '' or self.at_newline():
+                self.error('function followed by a newline')
+            self.skip_spaces()
+            if not is_ident_start(self.peek()):
+                self.error(f'expected a function name, but found {self.describe()}')
+            name = self.parse_ident()
+            self.skip_spaces()
+            if self.peek() != '(':
+                self.error(f"expected '(', but found {self.describe()}")
+            params = self.parse_params()
+            self.skip_spaces()
+            self.expect('{')
+            body = self.parse_script('}')
+            self.advance()
+            return ('function', name, params, body)
+
+        defs = []
+        while self.at_def():
+            defs.append(self.parse_def())
+            if self.skip_spaces() == 0 or not self.at_def():
+                break
+        if defs and self.at_stmt_end(term):
+            return ('assign', defs)
+        return self.parse_command_list(defs)
+
+    def at_def(self):
+        if not is_ident_start(self.peek()):
+            return False
+        k = 1
+        while is_ident_char(self.peek(k)):
+            k += 1
+        return self.peek(k) == '='
+
+    def parse_def(self):
+        name = self.parse_ident()
+        self.advance()  # =
+        return ('def', name, self.parse_word() if self.is_word_start() else None)
+
+    def parse_ident(self):
+        name = ''
+        while is_ident_char(self.peek()):
+            name += self.peek()
+            self.advance()
+        return name
+
+    def parse_params(self):
+        self.advance()  # (
+        self.skip_spaces()
+        names = []
+        rest = None
+        if is_ident_start(self.peek()):
+            names.append(self.parse_ident())
+            while self.skip_spaces() and is_ident_start(self.peek()):
+                names.append(self.parse_ident())
+        if self.peek() == '.':
+            self.advance()
+            self.skip_spaces()
+            if not is_ident_start(self.peek()):
+                self.error(f'expected a variable name after ., but found {self.describe()}')
+            rest = self.parse_ident()
+            self.skip_spaces()
+        self.expect(')')
+        return ('params', names, rest)
+
+    # -- コマンド列、パイプライン、単純文 --
+
+    def parse_command_list(self, defs):
+        items = []
+        while True:
+            p = self.parse_pipeline(defs)
+            defs = None
+            self.skip_spaces()
+            if self.peek() != '&':
+                items.append(p)
+                break
+            self.advance()
+            self._mark_sep()
+            items.append(('bg', p))
+            self.skip_spaces()
+            if not self.is_word_start() or self.at_comment():
+                break
+        if len(items) == 1 and items[0][0] != 'bg':
+            return items[0]
+        return ('list', items)
+
+    def parse_pipeline(self, defs):
+        cmds = [self.parse_simple(defs)]
+        while True:
+            self.skip_spaces()
+            if self.peek() != '|':
+                break
+            self.advance()
+            self._mark_sep()
+            # | の後には、空白と改行を混ぜて置ける。改行の前には行コメントを置ける
+            while True:
+                if self.at_comment():
+                    self.skip_comment()
+                if self.at_newline():
+                    self.consume_newline()
+                elif self.skip_spaces() == 0:
+                    break
+            cmds.append(self.parse_simple(None))
+        return cmds[0] if len(cmds) == 1 else ('pipe', cmds)
+
+    def parse_simple(self, defs):
+        pos = self._index(0)
+        if defs is None:
+            defs = []
+            while self.at_def():
+                defs.append(self.parse_def())
+                if self.skip_spaces() == 0:
+                    break
+        if not self.is_word_start() or self.at_redirect() or self.at_comment():
+            self.error(f'expected a command, but found {self.describe()}')
+        words = [self.parse_word()]
+        redirs = []
+        while True:
+            if self.skip_spaces() == 0 or self.at_comment():
+                return ('cmd', defs, words, redirs, pos)
+            if self.at_redirect():
+                break
+            if not self.is_word_start():
+                return ('cmd', defs, words, redirs, pos)
+            words.append(self.parse_word())
+        while True:
+            redirs.append(self.parse_redirect())
+            if self.skip_spaces() == 0 or self.at_comment():
+                break
+            if self.at_redirect():
+                continue
+            if self.is_word_start():
+                self.error('a word after a redirection')
+            break
+        return ('cmd', defs, words, redirs, pos)
+
+    def at_redirect(self):
+        s = self.peek_str(4)
+        return s[:1] in ('<', '>') or s.startswith('2>') or s == '1>&2'
+
+    def parse_redirect(self):
+        s = self.peek_str(4)
+        if s in ('1>&2', '2>&1'):
+            self.advance(4)
+            return ('redir', s, None)
+        if s.startswith('>>'):
+            op = '>>'
+        elif s.startswith('2>'):
+            op = '2>'
+        else:
+            op = s[0]
+        self.advance(len(op))
+        self.skip_spaces()
+        if op != '>>' and self.peek() == '(':
+            return ('redir', op, self.parse_params())
+        if not self.is_word_start() or self.at_comment():
+            self.error(f'expected a redirection target, but found {self.describe()}')
+        return ('redir', op, self.parse_word())
+
+    # -- 語 --
+
+    def parse_word(self):
+        pos = self._index(0)
+        elems = []
+        while True:
+            self._skip()
+            c = self.peek()
+            if c == "'":
+                start = self.pos
+                end = self.text.find("'", self.pos + 1)
+                if end < 0:
+                    self.error("unterminated '", start)
+                elems.append(('sq', self.text[self.pos + 1:end]))
+                self.pos = end + 1
+            elif c == '"':
+                elems.append(self.parse_dq())
+            elif c == '$':
+                e = self.parse_dollar()
+                if e is None:
+                    add_lit(elems, '$')
+                    self.advance()
+                else:
+                    elems.append(e)
+            elif c == '\\':
+                self.advance()
+                if self.pos >= len(self.text):
+                    self.error('\\ at the end of input')
+                elems.append(('esc', self.text[self.pos]))
+                self.pos += 1
+            elif self.is_bare():
+                add_lit(elems, c)
+                self.advance()
+            else:
+                break
+        return ('word', elems, pos)
+
+    def parse_dq(self):
+        start = self.pos
+        self.advance()  # "
+        elems = []
+        while True:
+            self._skip()
+            if self.pos >= len(self.text):
+                self.error('unterminated "', start)
+            c = self.peek()
+            if c == '"':
+                self.advance()
+                return ('dq', elems)
+            if c == '$':
+                e = self.parse_dollar()
+                if e is None:
+                    add_lit(elems, '$')
+                    self.advance()
+                else:
+                    elems.append(e)
+            elif c == '\\':
+                self.advance()
+                if self.pos >= len(self.text):
+                    self.error('unterminated "', start)
+                ch = self.text[self.pos]
+                self.pos += 1
+                add_lit(elems, ch if ch in ('"', '$', '\\') else '\\' + ch)
+            else:
+                add_lit(elems, c)
+                self.advance()
+
+    def parse_dollar(self):
+        # 変数参照かコマンド置換を作れなければ None を返し、$ は読まない
+        c = self.peek(1)
+        if c == '(':
+            self.advance(2)
+            script = self.parse_script(')')
+            self.advance()
+            return ('subst', script)
+        if c == '{':
+            k = 2
+            if is_ident_start(self.peek(k)):
+                while is_ident_char(self.peek(k)):
+                    k += 1
+            elif is_digit(self.peek(k)):
+                while is_digit(self.peek(k)):
+                    k += 1
+            if k == 2 or self.peek(k) != '}':
+                return None
+            name = ''.join(self.peek(i) for i in range(2, k))
+            self.advance(k + 1)
+            return ('var', name)
+        if is_ident_start(c):
+            self.advance()
+            return ('var', self.parse_ident())
+        if is_digit(c) or (c != '' and c in '@#?!$'):
+            self.advance(2)
+            return ('var', c)
+        return None
+
+
+def add_lit(elems, s):
+    if elems and elems[-1][0] == 'lit':
+        elems[-1] = ('lit', elems[-1][1] + s)
+    else:
+        elems.append(('lit', s))
+
+
+# ----------------------------------------------------------------------
+# 構文木の出力
+# ----------------------------------------------------------------------
+
+def q(s):
+    s = (s.replace('\\', '\\\\').replace('"', '\\"')
+         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t'))
+    return f'"{s}"'
+
+
+def sx_line(stmts):
+    return '(line ' + ' '.join(sx_stmt(s) for s in stmts) + ')'
+
+
+def sx_script(lines):
+    return '(script' + ''.join(' ' + sx_line(l) for l in lines) + ')'
+
+
+def sx_stmt(s):
+    kind = s[0]
+    if kind == 'return':
+        return f'(return {sx_word(s[1])})'
+    if kind == 'export':
+        return '(export' + ''.join(' ' + sx_item(i) for i in s[1]) + ')'
+    if kind == 'function':
+        return f'(function {q(s[1])} {sx_params(s[2])} {sx_script(s[3])})'
+    if kind == 'assign':
+        return '(assign' + ''.join(' ' + sx_item(d) for d in s[1]) + ')'
+    if kind in ('list', 'pipe'):
+        return f'({kind} ' + ' '.join(sx_stmt(x) for x in s[1]) + ')'
+    if kind == 'bg':
+        return f'(bg {sx_stmt(s[1])})'
+    if kind == 'cmd':
+        _, defs, words, redirs, _ = s
+        parts = []
+        if defs:
+            parts.append('(env ' + ' '.join(sx_item(d) for d in defs) + ')')
+        parts.append('(words ' + ' '.join(sx_word(w) for w in words) + ')')
+        if redirs:
+            parts.append('(redirs ' + ' '.join(sx_redir(r) for r in redirs) + ')')
+        return '(cmd ' + ' '.join(parts) + ')'
+    raise ValueError(kind)
+
+
+def sx_item(i):
+    if i[0] == 'name':
+        return f'(name {q(i[1])})'
+    if i[2] is None:
+        return f'(def {q(i[1])})'
+    return f'(def {q(i[1])} {sx_word(i[2])})'
+
+
+def sx_params(p):
+    _, names, rest = p
+    s = '(params (' + ' '.join(q(n) for n in names) + ')'
+    if rest is not None:
+        s += ' ' + q(rest)
+    return s + ')'
+
+
+def sx_redir(r):
+    _, op, target = r
+    if target is None:
+        return f'(redir {q(op)})'
+    if target[0] == 'params':
+        return f'(redir {q(op)} {sx_params(target)})'
+    return f'(redir {q(op)} {sx_word(target)})'
+
+
+def sx_word(w):
+    return '(word ' + ' '.join(sx_elem(e) for e in w[1]) + ')'
+
+
+def sx_elem(e):
+    kind = e[0]
+    if kind in ('lit', 'esc', 'sq', 'var'):
+        return f'({kind} {q(e[1])})'
+    if kind == 'dq':
+        return '(dq' + ''.join(' ' + sx_elem(x) for x in e[1]) + ')'
+    if kind == 'subst':
+        return f'(subst {sx_script(e[1])})'
+    raise ValueError(kind)
+
+
+# ----------------------------------------------------------------------
+# 展開
+# ----------------------------------------------------------------------
+
+class LazyList(list):
+    """局所変数の LazyList の値。文字列と区別するために list と別の型にする"""
+
+
+GLOB_META = re.compile(r'[*?[]')
+
+
+class Context:
+    def __init__(self, local, env):
+        self.local = local
+        self.env = env
+
+    def copy(self):
+        return Context(dict(self.local), dict(self.env))
+
+
+def stringify(v):
+    # LazyList を語や環境変数にするときは、改行で区切って連結し、末尾には付けない
+    return '\n'.join(v) if isinstance(v, LazyList) else v
+
+
+def split_lines(out):
+    # $( ) の出力を行に区切る。\r\n は1つの改行、最後の行に改行がなくても1つの要素
+    lines = re.split(r'\r?\n', out)
+    if lines[-1] == '':
+        lines.pop()
+    return LazyList(lines)
+
+
+def sx_value(v):
+    if isinstance(v, LazyList):
+        return '(list' + ''.join(' ' + q(e) for e in v) + ')'
+    return q(v)
+
+
+class Expander:
+    def __init__(self, script_name, args):
+        self.script_name = script_name
+        self.args = args
+
+    def run(self, lines):
+        ctx = Context({}, {})
+        for stmts in lines:
+            for s in stmts:
+                print(self.exec_stmt(s, ctx, None))
+
+    def exec_stmt(self, s, ctx, out):
+        """文を実行する。out が None ならトップレベルで、展開した結果の S 式を返す。
+        out がリストなら $( ) の中で、echo の出力を out に加える。"""
+        kind = s[0]
+        if kind == 'return':
+            raise ConShError('return outside a function', s[2])
+        if kind == 'export':
+            result = []
+            for item in s[1]:
+                if item[0] == 'name':
+                    name = item[1]
+                    if name not in ctx.local:
+                        raise ConShError(f'export of an undefined local variable: {name}', item[2])
+                    value = stringify(ctx.local[name])
+                else:
+                    name = item[1]
+                    value = '' if item[2] is None else stringify(self.value(item[2], ctx))
+                ctx.env[name] = value
+                result.append(f'({q(name)} {q(value)})')
+            return '(export' + ''.join(' ' + r for r in result) + ')'
+        if kind == 'function':
+            return f'(function {q(s[1])})'
+        if kind == 'assign':
+            result = []
+            for _, name, word in s[1]:
+                value = LazyList() if word is None else self.value(word, ctx)
+                ctx.local[name] = value
+                result.append(f'({q(name)} {sx_value(value)})')
+            return '(assign' + ''.join(' ' + r for r in result) + ')'
+        if kind in ('list', 'pipe', 'bg'):
+            if out is not None:
+                raise ConShError('pipes and & are not supported in $( ) of the expand mode', stmt_pos(s))
+            if kind == 'bg':
+                return f'(bg {self.exec_stmt(s[1], ctx, None)})'
+            return f'({kind} ' + ' '.join(self.exec_stmt(x, ctx, None) for x in s[1]) + ')'
+        if kind == 'cmd':
+            return self.exec_cmd(s, ctx, out)
+        raise ValueError(kind)
+
+    def exec_cmd(self, s, ctx, out):
+        _, defs, words, redirs, pos = s
+        # 前置の変数定義は、同じ文の語の展開に影響しない
+        env = [(name, '' if w is None else stringify(self.value(w, ctx))) for _, name, w in defs]
+        fields = []
+        for w in words:
+            fields.extend(self.fields(w, ctx))
+        rs = [self.redir(r, ctx) for r in redirs]
+        if out is not None:
+            if rs:
+                raise ConShError('redirections are not supported in $( ) of the expand mode', pos)
+            if not fields:
+                return None
+            if fields[0] != 'echo':
+                raise ConShError(f'only echo can run in $( ) of the expand mode: {fields[0]}', pos)
+            out.append(' '.join(fields[1:]) + '\n')
+            return None
+        parts = []
+        if env:
+            parts.append('(env ' + ' '.join(f'({q(n)} {q(v)})' for n, v in env) + ')')
+        parts.append('(words' + ''.join(' ' + q(f) for f in fields) + ')')
+        if rs:
+            parts.append('(redirs ' + ' '.join(rs) + ')')
+        return '(cmd ' + ' '.join(parts) + ')'
+
+    def redir(self, r, ctx):
+        _, op, target = r
+        if target is None:
+            return f'({q(op)})'
+        if target[0] == 'params':
+            return f'({q(op)} {sx_params(target)})'
+        fields = self.fields(target, ctx)
+        if len(fields) != 1:
+            raise ConShError(f'ambiguous redirect: {len(fields)} words', target[2])
+        return f'({q(op)} {q(fields[0])})'
+
+    # -- 変数参照 --
+
+    def lookup(self, name, ctx):
+        if name == '@':
+            return LazyList(self.args)
+        if is_digit(name[0]):
+            n = int(name)
+            if n == 0:
+                return self.script_name
+            return self.args[n - 1] if n <= len(self.args) else ''
+        if name == '#':
+            return str(len(self.args))
+        if name == '?':
+            return '0'
+        if name == '!':
+            return ''
+        if name == '$':
+            return '1'
+        if name in ctx.local:
+            return ctx.local[name]
+        return ctx.env.get(name, '')
+
+    def subst(self, lines, ctx):
+        sub = ctx.copy()
+        out = []
+        for stmts in lines:
+            for s in stmts:
+                self.exec_stmt(s, sub, out)
+        return split_lines(''.join(out))
+
+    # -- 語の展開 --
+
+    def expand(self, word, ctx):
+        """語を展開する。返す値は (alts, quoted, is_list)。
+        alts は展開した結果の語の並びで、各語は (文字列, glob を適用するか) の並び。
+        LazyList の値は、ほかの語要素との直積になる。"""
+        alts = [[]]
+        quoted = False
+        is_list = False
+
+        def product(options):
+            nonlocal alts
+            alts = [a + [o] for a in alts for o in options]
+
+        for e in word[1]:
+            kind = e[0]
+            if kind == 'lit':
+                product([(e[1], True)])
+            elif kind == 'esc':
+                product([(e[1], False)])
+            elif kind == 'sq':
+                quoted = True
+                product([(e[1], False)])
+            elif kind == 'dq':
+                quoted = True
+                strs, many = self.expand_dq(e[1], ctx)
+                is_list = is_list or many
+                product([(s, False) for s in strs])
+            else:
+                v = self.lookup(e[1], ctx) if kind == 'var' else self.subst(e[1], ctx)
+                if isinstance(v, LazyList):
+                    is_list = True
+                    product([(x, True) for x in v])
+                else:
+                    product([(v, True)])
+        return alts, quoted, is_list
+
+    def expand_dq(self, elems, ctx):
+        # "..." は1つの語になる。ただし $@ は要素ごとに別の語になる
+        strs = ['']
+        many = False
+        for e in elems:
+            kind = e[0]
+            if kind == 'lit':
+                strs = [s + e[1] for s in strs]
+            elif kind == 'var' and e[1] == '@':
+                many = True
+                strs = [s + a for s in strs for a in self.args]
+            else:
+                v = self.lookup(e[1], ctx) if kind == 'var' else self.subst(e[1], ctx)
+                strs = [s + stringify(v) for s in strs]
+        return strs, many
+
+    def fields(self, word, ctx):
+        """コマンドの語として展開する。空になった引用符のない語は消し、glob を適用する"""
+        alts, quoted, _ = self.expand(word, ctx)
+        result = []
+        for alt in alts:
+            text = ''.join(t for t, _ in alt)
+            if text == '' and not quoted:
+                continue
+            if any(active and GLOB_META.search(t) for t, active in alt):
+                pattern = ''.join(t if active else glob.escape(t) for t, active in alt)
+                matches = sorted(glob.glob(pattern))
+                if matches:
+                    result.extend(matches)
+                    continue
+            result.append(text)
+        return result
+
+    def value(self, word, ctx):
+        """変数定義の右辺として展開する。LazyList の値を含めば LazyList、そうでなければ文字列"""
+        alts, _, is_list = self.expand(word, ctx)
+        strs = [''.join(t for t, _ in alt) for alt in alts]
+        return LazyList(strs) if is_list else strs[0]
+
+
+def stmt_pos(s):
+    while s[0] in ('list', 'pipe', 'bg'):
+        s = s[1][0] if s[0] != 'bg' else s[1]
+    return s[4]
+
+
+# ----------------------------------------------------------------------
+
+def line_col(text, pos):
+    line = text.count('\n', 0, pos) + 1
+    return line, pos - (text.rfind('\n', 0, pos) + 1) + 1
+
+
 def main():
-    if len(sys.argv) != 2:
-        print('Usage: consh_parse <script_file>', file=sys.stderr)
+    argv = sys.argv[1:]
+    expand = bool(argv) and argv[0] == '--expand'
+    if expand:
+        argv = argv[1:]
+    if not argv or (not expand and len(argv) != 1):
+        print('Usage: consh_parse <script_file>\n'
+              '       consh_parse --expand <script_file> [<arg> ...]', file=sys.stderr)
         sys.exit(1)
-    with open(sys.argv[1], 'r', encoding='utf-8') as f:
-        f.read()
-    print('consh_parse: not implemented yet', file=sys.stderr)
-    sys.exit(1)
+    filename = argv[0]
+    with open(filename, 'r', encoding='utf-8', newline='') as f:
+        text = f.read()
+    try:
+        lines = Parser(text).parse_program()
+        if expand:
+            Expander(filename, argv[1:]).run(lines)
+        else:
+            for stmts in lines:
+                print(sx_line(stmts))
+    except ConShError as e:
+        sys.stdout.flush()
+        line, col = line_col(text, e.pos)
+        print(f'consh_parse: {filename}:{line}:{col}: {e.msg}', file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

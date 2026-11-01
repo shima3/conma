@@ -1,0 +1,2 @@
+consh_parse: case14.sh:1:5: pipes and & are not supported in $( ) of the expand mode
+exit: 1

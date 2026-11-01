@@ -1,0 +1,2 @@
+consh_parse: case15.sh:1:7: unexpected '{'
+exit: 1

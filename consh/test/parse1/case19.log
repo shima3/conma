@@ -1,0 +1,2 @@
+(line (function "f" (params ("a") "r") (script (line (cmd (words (word (lit "echo"))))))))
+exit: 0

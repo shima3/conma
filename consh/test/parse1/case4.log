@@ -1,0 +1,6 @@
+(line (pipe (cmd (words (word (lit "f")) (word (lit "a")))) (cmd (words (word (lit "g")) (word (lit "b")))) (cmd (words (word (lit "h"))))))
+(line (list (bg (cmd (words (word (lit "f"))))) (bg (cmd (words (word (lit "g")))))))
+(line (list (bg (pipe (cmd (words (word (lit "a")))) (cmd (words (word (lit "b")))))) (pipe (cmd (words (word (lit "c")))) (cmd (words (word (lit "d")))))))
+(line (pipe (cmd (words (word (lit "f")))) (cmd (words (word (lit "g"))))))
+(line (pipe (cmd (words (word (lit "a")))) (cmd (words (word (lit "b")))) (cmd (words (word (lit "c"))))))
+exit: 0

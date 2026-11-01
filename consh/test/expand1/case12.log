@@ -1,0 +1,2 @@
+consh_parse: case12.sh:1:8: ambiguous redirect: 2 words
+exit: 1

@@ -1,0 +1,3 @@
+(list (bg (pipe (cmd (env ("FOO" "v")) (words "f" "a")) (cmd (words "g" "b")))) (cmd (words "h") (redirs (">" (params ("a") "rest")) ("2>&1"))))
+(function "f")
+exit: 0

@@ -1,0 +1,4 @@
+(line (cmd (words (word (lit "echo")) (word (lit "a")))))
+(line (cmd (words (word (lit "echo")) (word (lit "a")))))
+(line (cmd (words (word (lit "echo")) (word (lit "a#b")) (word (var "#")))))
+exit: 0

@@ -1,0 +1,6 @@
+(line (cmd (words (word (lit "cat"))) (redirs (redir "<" (word (lit "in"))) (redir ">" (word (lit "out"))) (redir "2>" (word (lit "err"))))))
+(line (cmd (words (word (lit "cat"))) (redirs (redir ">>" (word (lit "log"))) (redir "1>&2") (redir "2>&1"))))
+(line (cmd (words (word (lit "f"))) (redirs (redir ">" (params ("a" "b") "rest")) (redir "2>" (params ("e"))) (redir "<" (params ("x"))))))
+(line (cmd (words (word (lit "f"))) (redirs (redir ">" (params ())) (redir ">" (params ())) (redir ">" (params () "r")) (redir ">" (params ("a") "r")) (redir ">" (params ("a" "b"))))))
+(line (cmd (words (word (lit "cmd"))) (redirs (redir "2>" (word (lit "x"))) (redir "1>&2"))))
+exit: 0

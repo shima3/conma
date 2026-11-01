@@ -1,0 +1,5 @@
+(line (cmd (words (word (lit "echo")) (word (lit "a")))))
+(line (cmd (words (word (lit "echo")) (word (dq (lit "b\r\nc"))))))
+(line (cmd (words (word (lit "functions")) (word (lit "x")))))
+(line (cmd (env (def "export" (word (lit "1")))) (words (word (lit "returnx")))))
+exit: 0
