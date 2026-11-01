@@ -6,30 +6,12 @@ ConMa 版の結果と比べるために、構文木と展開の結果をテキ�
 文法は PLAN-ja.md の 1.1、展開は 1.2 と 1.3 のうち語の展開に関わる項目に従う。
 
 Usage:
-    consh_parse <script_file>
+    consh_parse [--pos] <script_file>
     consh_parse --expand <script_file> [<arg> ...]
 
 構文解析（第1の形式）
-    コマンド行ごとに、1行の S 式を出力する。文のないコマンド行は出力しない。
-    コメントは出力しない。行継続は字句解析の段階で取り除く。
-
-        (line 文 ...)
-        文     = (return 語) | (export 項目 ...) | (function "名前" 変数リスト スクリプト)
-               | (assign 定義 ...) | コマンド列
-        項目   = (name "名前") | 定義
-        定義   = (def "名前" [語])
-        コマンド列 = (list 要素 ...) | 要素     ; 要素が1つで & がなければ list を省く
-        要素   = (bg パイプライン) | パイプライン
-        パイプライン = (pipe 単純文 ...) | 単純文 ; 単純文が1つなら pipe を省く
-        単純文 = (cmd [(env 定義 ...)] (words 語 ...) [(redirs リダイレクト ...)])
-        リダイレクト = (redir "<" 語|変数リスト) | (redir ">" ...) | (redir "2>" ...)
-               | (redir ">>" 語) | (redir "1>&2") | (redir "2>&1")
-        変数リスト = (params ("名前" ...) ["残りの名前"])
-        スクリプト = (script (line 文 ...) ...)
-        語     = (word 語要素 ...)
-        語要素 = (lit "裸文字") | (esc "文字") | (sq "文字列") | (dq 二重引用要素 ...)
-               | (var "名前") | (subst スクリプト)
-        二重引用要素 = (lit "文字列") | (var "名前") | (subst スクリプト)
+    コマンド行ごとに、1行の S 式で構文木を出力する。形式は AST.md に書いてある。
+    --pos を付けると、各節の種類の後に (行 桁) を入れる。
 
 展開（第2の形式、--expand）
     トップレベルの文を順に実行する。ただし、コマンドは起動せず、展開した結果を1行の S 式で出力する。
@@ -70,6 +52,19 @@ class ConShError(Exception):
 # ----------------------------------------------------------------------
 # 構文解析
 # ----------------------------------------------------------------------
+
+class Node(tuple):
+    """構文木の節。(種類, 子, ...) のタプルで、pos に元の文字列での位置を持つ"""
+
+
+class NodeList(list):
+    """コマンド行（文の並び）とスクリプト（コマンド行の並び）。pos に位置を持つ"""
+
+
+def node(pos, *fields):
+    n = Node(fields)
+    n.pos = pos
+    return n
 
 SPACES = (' ', '\t')
 SPECIALS = (';', "'", '(', ')', '{', '}', '|', '&', '>', '<', '"', '$', '\\')
@@ -213,7 +208,8 @@ class Parser:
         return script
 
     def parse_script(self, term):
-        lines = []
+        lines = NodeList()
+        lines.pos = self._index(0)
         while True:
             stmts = self.parse_command_line(term)
             if stmts:
@@ -226,7 +222,7 @@ class Parser:
         return lines
 
     def parse_command_line(self, term):
-        stmts = []
+        stmts = NodeList()
         while True:
             self.skip_spaces()
             if self.at_comment():
@@ -235,7 +231,10 @@ class Parser:
             c = self.peek()
             if c == '' or self.at_newline() or c == term:
                 break
-            stmts.append(self.parse_statement(term))
+            s = self.parse_statement(term)
+            if not stmts:
+                stmts.pos = s.pos
+            stmts.append(s)
             self.skip_spaces()
             if self.peek() == ';':
                 self.advance()
@@ -268,7 +267,7 @@ class Parser:
             self.advance(len(kw))
             if self.skip_spaces() == 0 or not self.is_word_start() or self.at_comment():
                 self.error('expected a word after return')
-            return ('return', self.parse_word(), pos)
+            return node(pos, 'return', self.parse_word())
         if kw == 'export':
             self.advance(len(kw))
             if self.peek() == '' or self.at_newline():
@@ -279,10 +278,10 @@ class Parser:
                 name = self.parse_ident()
                 if self.peek() == '=':
                     self.advance()
-                    items.append(('def', name, self.parse_word() if self.is_word_start() else None))
+                    items.append(node(ipos, 'def', name, self.parse_word() if self.is_word_start() else None))
                 else:
-                    items.append(('name', name, ipos))
-            return ('export', items)
+                    items.append(node(ipos, 'name', name))
+            return node(pos, 'export', items)
         if kw == 'function':
             self.advance(len(kw))
             if self.peek() == '' or self.at_newline():
@@ -299,7 +298,7 @@ class Parser:
             self.expect('{')
             body = self.parse_script('}')
             self.advance()
-            return ('function', name, params, body)
+            return node(pos, 'function', name, params, body)
 
         defs = []
         while self.at_def():
@@ -307,7 +306,7 @@ class Parser:
             if self.skip_spaces() == 0 or not self.at_def():
                 break
         if defs and self.at_stmt_end(term):
-            return ('assign', defs)
+            return node(defs[0].pos, 'assign', defs)
         return self.parse_command_list(defs)
 
     def at_def(self):
@@ -319,9 +318,10 @@ class Parser:
         return self.peek(k) == '='
 
     def parse_def(self):
+        pos = self._index(0)
         name = self.parse_ident()
         self.advance()  # =
-        return ('def', name, self.parse_word() if self.is_word_start() else None)
+        return node(pos, 'def', name, self.parse_word() if self.is_word_start() else None)
 
     def parse_ident(self):
         name = ''
@@ -331,6 +331,7 @@ class Parser:
         return name
 
     def parse_params(self):
+        pos = self._index(0)
         self.advance()  # (
         self.skip_spaces()
         names = []
@@ -347,7 +348,7 @@ class Parser:
             rest = self.parse_ident()
             self.skip_spaces()
         self.expect(')')
-        return ('params', names, rest)
+        return node(pos, 'params', names, rest)
 
     # -- コマンド列、パイプライン、単純文 --
 
@@ -362,13 +363,13 @@ class Parser:
                 break
             self.advance()
             self._mark_sep()
-            items.append(('bg', p))
+            items.append(node(p.pos, 'bg', p))
             self.skip_spaces()
             if not self.is_word_start() or self.at_comment():
                 break
         if len(items) == 1 and items[0][0] != 'bg':
             return items[0]
-        return ('list', items)
+        return node(items[0].pos, 'list', items)
 
     def parse_pipeline(self, defs):
         cmds = [self.parse_simple(defs)]
@@ -387,10 +388,11 @@ class Parser:
                 elif self.skip_spaces() == 0:
                     break
             cmds.append(self.parse_simple(None))
-        return cmds[0] if len(cmds) == 1 else ('pipe', cmds)
+        return cmds[0] if len(cmds) == 1 else node(cmds[0].pos, 'pipe', cmds)
 
     def parse_simple(self, defs):
-        pos = self._index(0)
+        # 文の先頭で読んだ前置の変数定義があれば、単純文はそこから始まる
+        pos = defs[0].pos if defs else self._index(0)
         if defs is None:
             defs = []
             while self.at_def():
@@ -403,11 +405,11 @@ class Parser:
         redirs = []
         while True:
             if self.skip_spaces() == 0 or self.at_comment():
-                return ('cmd', defs, words, redirs, pos)
+                return node(pos, 'cmd', defs, words, redirs)
             if self.at_redirect():
                 break
             if not self.is_word_start():
-                return ('cmd', defs, words, redirs, pos)
+                return node(pos, 'cmd', defs, words, redirs)
             words.append(self.parse_word())
         while True:
             redirs.append(self.parse_redirect())
@@ -418,17 +420,18 @@ class Parser:
             if self.is_word_start():
                 self.error('a word after a redirection')
             break
-        return ('cmd', defs, words, redirs, pos)
+        return node(pos, 'cmd', defs, words, redirs)
 
     def at_redirect(self):
         s = self.peek_str(4)
         return s[:1] in ('<', '>') or s.startswith('2>') or s == '1>&2'
 
     def parse_redirect(self):
+        pos = self._index(0)
         s = self.peek_str(4)
         if s in ('1>&2', '2>&1'):
             self.advance(4)
-            return ('redir', s, None)
+            return node(pos, 'redir', s, None)
         if s.startswith('>>'):
             op = '>>'
         elif s.startswith('2>'):
@@ -438,10 +441,10 @@ class Parser:
         self.advance(len(op))
         self.skip_spaces()
         if op != '>>' and self.peek() == '(':
-            return ('redir', op, self.parse_params())
+            return node(pos, 'redir', op, self.parse_params())
         if not self.is_word_start() or self.at_comment():
             self.error(f'expected a redirection target, but found {self.describe()}')
-        return ('redir', op, self.parse_word())
+        return node(pos, 'redir', op, self.parse_word())
 
     # -- 語 --
 
@@ -450,20 +453,21 @@ class Parser:
         elems = []
         while True:
             self._skip()
+            epos = self.pos
             c = self.peek()
             if c == "'":
                 start = self.pos
                 end = self.text.find("'", self.pos + 1)
                 if end < 0:
                     self.error("unterminated '", start)
-                elems.append(('sq', self.text[self.pos + 1:end]))
+                elems.append(node(epos, 'sq', self.text[self.pos + 1:end]))
                 self.pos = end + 1
             elif c == '"':
                 elems.append(self.parse_dq())
             elif c == '$':
                 e = self.parse_dollar()
                 if e is None:
-                    add_lit(elems, '$')
+                    add_lit(elems, '$', epos)
                     self.advance()
                 else:
                     elems.append(e)
@@ -471,14 +475,14 @@ class Parser:
                 self.advance()
                 if self.pos >= len(self.text):
                     self.error('\\ at the end of input')
-                elems.append(('esc', self.text[self.pos]))
+                elems.append(node(epos, 'esc', self.text[self.pos]))
                 self.pos += 1
             elif self.is_bare():
-                add_lit(elems, c)
+                add_lit(elems, c, epos)
                 self.advance()
             else:
                 break
-        return ('word', elems, pos)
+        return node(pos, 'word', elems)
 
     def parse_dq(self):
         start = self.pos
@@ -486,16 +490,17 @@ class Parser:
         elems = []
         while True:
             self._skip()
+            epos = self.pos
             if self.pos >= len(self.text):
                 self.error('unterminated "', start)
             c = self.peek()
             if c == '"':
                 self.advance()
-                return ('dq', elems)
+                return node(start, 'dq', elems)
             if c == '$':
                 e = self.parse_dollar()
                 if e is None:
-                    add_lit(elems, '$')
+                    add_lit(elems, '$', epos)
                     self.advance()
                 else:
                     elems.append(e)
@@ -505,19 +510,20 @@ class Parser:
                     self.error('unterminated "', start)
                 ch = self.text[self.pos]
                 self.pos += 1
-                add_lit(elems, ch if ch in ('"', '$', '\\') else '\\' + ch)
+                add_lit(elems, ch if ch in ('"', '$', '\\') else '\\' + ch, epos)
             else:
-                add_lit(elems, c)
+                add_lit(elems, c, epos)
                 self.advance()
 
     def parse_dollar(self):
         # 変数参照かコマンド置換を作れなければ None を返し、$ は読まない
+        pos = self._index(0)
         c = self.peek(1)
         if c == '(':
             self.advance(2)
             script = self.parse_script(')')
             self.advance()
-            return ('subst', script)
+            return node(pos, 'subst', script)
         if c == '{':
             k = 2
             if is_ident_start(self.peek(k)):
@@ -530,21 +536,21 @@ class Parser:
                 return None
             name = ''.join(self.peek(i) for i in range(2, k))
             self.advance(k + 1)
-            return ('var', name)
+            return node(pos, 'var', name)
         if is_ident_start(c):
             self.advance()
-            return ('var', self.parse_ident())
+            return node(pos, 'var', self.parse_ident())
         if is_digit(c) or (c != '' and c in '@#?!$'):
             self.advance(2)
-            return ('var', c)
+            return node(pos, 'var', c)
         return None
 
 
-def add_lit(elems, s):
+def add_lit(elems, s, pos):
     if elems and elems[-1][0] == 'lit':
-        elems[-1] = ('lit', elems[-1][1] + s)
+        elems[-1] = node(elems[-1].pos, 'lit', elems[-1][1] + s)
     else:
-        elems.append(('lit', s))
+        elems.append(node(pos, 'lit', s))
 
 
 # ----------------------------------------------------------------------
@@ -557,77 +563,85 @@ def q(s):
     return f'"{s}"'
 
 
+# --pos のとき、出力する元の文字列。各節の種類の後に (行 桁) を入れる
+POS_TEXT = None
+
+
+def sx(kind, pos, *parts):
+    head = [kind]
+    if POS_TEXT is not None:
+        line, col = line_col(POS_TEXT, pos)
+        head.append(f'({line} {col})')
+    return '(' + ' '.join(head + list(parts)) + ')'
+
+
 def sx_line(stmts):
-    return '(line ' + ' '.join(sx_stmt(s) for s in stmts) + ')'
+    return sx('line', stmts.pos, *(sx_stmt(s) for s in stmts))
 
 
 def sx_script(lines):
-    return '(script' + ''.join(' ' + sx_line(l) for l in lines) + ')'
+    return sx('script', lines.pos, *(sx_line(l) for l in lines))
 
 
 def sx_stmt(s):
     kind = s[0]
     if kind == 'return':
-        return f'(return {sx_word(s[1])})'
-    if kind == 'export':
-        return '(export' + ''.join(' ' + sx_item(i) for i in s[1]) + ')'
+        return sx(kind, s.pos, sx_word(s[1]))
+    if kind in ('export', 'assign'):
+        return sx(kind, s.pos, *(sx_item(i) for i in s[1]))
     if kind == 'function':
-        return f'(function {q(s[1])} {sx_params(s[2])} {sx_script(s[3])})'
-    if kind == 'assign':
-        return '(assign' + ''.join(' ' + sx_item(d) for d in s[1]) + ')'
+        return sx(kind, s.pos, q(s[1]), sx_params(s[2]), sx_script(s[3]))
     if kind in ('list', 'pipe'):
-        return f'({kind} ' + ' '.join(sx_stmt(x) for x in s[1]) + ')'
+        return sx(kind, s.pos, *(sx_stmt(x) for x in s[1]))
     if kind == 'bg':
-        return f'(bg {sx_stmt(s[1])})'
+        return sx(kind, s.pos, sx_stmt(s[1]))
     if kind == 'cmd':
-        _, defs, words, redirs, _ = s
+        _, defs, words, redirs = s
         parts = []
         if defs:
-            parts.append('(env ' + ' '.join(sx_item(d) for d in defs) + ')')
-        parts.append('(words ' + ' '.join(sx_word(w) for w in words) + ')')
+            parts.append(sx('env', defs[0].pos, *(sx_item(d) for d in defs)))
+        parts.append(sx('words', words[0].pos, *(sx_word(w) for w in words)))
         if redirs:
-            parts.append('(redirs ' + ' '.join(sx_redir(r) for r in redirs) + ')')
-        return '(cmd ' + ' '.join(parts) + ')'
+            parts.append(sx('redirs', redirs[0].pos, *(sx_redir(r) for r in redirs)))
+        return sx(kind, s.pos, *parts)
     raise ValueError(kind)
 
 
 def sx_item(i):
-    if i[0] == 'name':
-        return f'(name {q(i[1])})'
-    if i[2] is None:
-        return f'(def {q(i[1])})'
-    return f'(def {q(i[1])} {sx_word(i[2])})'
+    if i[0] == 'name' or i[2] is None:
+        return sx(i[0], i.pos, q(i[1]))
+    return sx(i[0], i.pos, q(i[1]), sx_word(i[2]))
 
 
 def sx_params(p):
     _, names, rest = p
-    s = '(params (' + ' '.join(q(n) for n in names) + ')'
+    parts = ['(' + ' '.join(q(n) for n in names) + ')']
     if rest is not None:
-        s += ' ' + q(rest)
-    return s + ')'
+        parts.append(q(rest))
+    return sx('params', p.pos, *parts)
 
 
 def sx_redir(r):
     _, op, target = r
     if target is None:
-        return f'(redir {q(op)})'
+        return sx('redir', r.pos, q(op))
     if target[0] == 'params':
-        return f'(redir {q(op)} {sx_params(target)})'
-    return f'(redir {q(op)} {sx_word(target)})'
+        return sx('redir', r.pos, q(op), sx_params(target))
+    return sx('redir', r.pos, q(op), sx_word(target))
 
 
 def sx_word(w):
-    return '(word ' + ' '.join(sx_elem(e) for e in w[1]) + ')'
+    return sx('word', w.pos, *(sx_elem(e) for e in w[1]))
 
 
 def sx_elem(e):
     kind = e[0]
     if kind in ('lit', 'esc', 'sq', 'var'):
-        return f'({kind} {q(e[1])})'
+        return sx(kind, e.pos, q(e[1]))
     if kind == 'dq':
-        return '(dq' + ''.join(' ' + sx_elem(x) for x in e[1]) + ')'
+        return sx(kind, e.pos, *(sx_elem(x) for x in e[1]))
     if kind == 'subst':
-        return f'(subst {sx_script(e[1])})'
+        return sx(kind, e.pos, sx_script(e[1]))
     raise ValueError(kind)
 
 
@@ -686,14 +700,14 @@ class Expander:
         out がリストなら $( ) の中で、echo の出力を out に加える。"""
         kind = s[0]
         if kind == 'return':
-            raise ConShError('return outside a function', s[2])
+            raise ConShError('return outside a function', s.pos)
         if kind == 'export':
             result = []
             for item in s[1]:
                 if item[0] == 'name':
                     name = item[1]
                     if name not in ctx.local:
-                        raise ConShError(f'export of an undefined local variable: {name}', item[2])
+                        raise ConShError(f'export of an undefined local variable: {name}', item.pos)
                     value = stringify(ctx.local[name])
                 else:
                     name = item[1]
@@ -712,7 +726,7 @@ class Expander:
             return '(assign' + ''.join(' ' + r for r in result) + ')'
         if kind in ('list', 'pipe', 'bg'):
             if out is not None:
-                raise ConShError('pipes and & are not supported in $( ) of the expand mode', stmt_pos(s))
+                raise ConShError('pipes and & are not supported in $( ) of the expand mode', s.pos)
             if kind == 'bg':
                 return f'(bg {self.exec_stmt(s[1], ctx, None)})'
             return f'({kind} ' + ' '.join(self.exec_stmt(x, ctx, None) for x in s[1]) + ')'
@@ -721,7 +735,8 @@ class Expander:
         raise ValueError(kind)
 
     def exec_cmd(self, s, ctx, out):
-        _, defs, words, redirs, pos = s
+        _, defs, words, redirs = s
+        pos = s.pos
         # 前置の変数定義は、同じ文の語の展開に影響しない
         env = [(name, '' if w is None else stringify(self.value(w, ctx))) for _, name, w in defs]
         fields = []
@@ -753,7 +768,7 @@ class Expander:
             return f'({q(op)} {sx_params(target)})'
         fields = self.fields(target, ctx)
         if len(fields) != 1:
-            raise ConShError(f'ambiguous redirect: {len(fields)} words', target[2])
+            raise ConShError(f'ambiguous redirect: {len(fields)} words', target.pos)
         return f'({q(op)} {q(fields[0])})'
 
     # -- 変数参照 --
@@ -863,12 +878,6 @@ class Expander:
         return LazyList(strs) if is_list else strs[0]
 
 
-def stmt_pos(s):
-    while s[0] in ('list', 'pipe', 'bg'):
-        s = s[1][0] if s[0] != 'bg' else s[1]
-    return s[4]
-
-
 # ----------------------------------------------------------------------
 
 def line_col(text, pos):
@@ -877,12 +886,13 @@ def line_col(text, pos):
 
 
 def main():
+    global POS_TEXT
     argv = sys.argv[1:]
-    expand = bool(argv) and argv[0] == '--expand'
-    if expand:
+    mode = argv[0] if argv and argv[0] in ('--expand', '--pos') else None
+    if mode:
         argv = argv[1:]
-    if not argv or (not expand and len(argv) != 1):
-        print('Usage: consh_parse <script_file>\n'
+    if not argv or (mode != '--expand' and len(argv) != 1):
+        print('Usage: consh_parse [--pos] <script_file>\n'
               '       consh_parse --expand <script_file> [<arg> ...]', file=sys.stderr)
         sys.exit(1)
     filename = argv[0]
@@ -890,9 +900,11 @@ def main():
         text = f.read()
     try:
         lines = Parser(text).parse_program()
-        if expand:
+        if mode == '--expand':
             Expander(filename, argv[1:]).run(lines)
         else:
+            if mode == '--pos':
+                POS_TEXT = text
             for stmts in lines:
                 print(sx_line(stmts))
     except ConShError as e:
