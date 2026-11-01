@@ -1,0 +1,2 @@
+(line (1 1) (cmd (1 1) (words (1 1) (word (1 1) (lit (1 1) "echo")))))
+(line (2 1) (cmd (2 1) (words (2 1) (word (2 1) (lit (2 1) "ab

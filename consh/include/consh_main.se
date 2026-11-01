@@ -1,8 +1,36 @@
-;; ConSh の入口。vproc_run.py --main で起動し、引数は ConSh のスクリプトに渡す
+;; ConSh の入口。bin/consh が、consh_parse --pos で作った構文木のファイルを渡して起動する。
+;;   main の引数: モード 構文木のファイル スクリプト名 スクリプトの引数...
+;;   モード run  : スクリプトを実行する
+;;   モード dump : 構文木を読み、S 式に書き戻して標準出力に出す（読み込みの確認用）
 (include "util.se")
+(include "consh_ast.se")
 (include "consh_parser.se")
 (include "consh_eval.se")
 
 (define main ,(args)
-  stderr "consh: not implemented yet\n" ,(err)
-  )
+  __Seq_get__ (,() main_usage) args ,(mode args)
+  __Seq_get__ (,() main_usage) args ,(astFile args)
+  __Seq_get__ (,() main_usage) args ,(script args)
+  Ast_readFile main_error astFile ,(lines)
+  __if_then_else__ (,() __String_equal__ mode "dump")
+    (,() main_dump lines)
+    (,()
+      stderr "consh: not implemented yet\n" ,(err)
+      __nop__))
+
+(define main_usage ,()
+  main_error "usage: consh_main.se run|dump <ast_file> <script> [<arg> ...]")
+
+(define main_error ,(msg)
+  __String_concat__ "consh: " msg ,(msg)
+  __String_concat__ msg "\n" ,(msg)
+  __print_exit_error__ msg)
+
+;; 構文木のコマンド行を1行ずつ S 式にして出力する
+(define main_dump ,(lines)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ lines) return ,()
+  __LList_uncons__ __print_exit_error__ lines ,(line rest)
+  Sexp_write line ,(s)
+  stdout s "\n" ,(out)
+  main_dump rest)

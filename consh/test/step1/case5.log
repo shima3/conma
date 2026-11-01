@@ -1,0 +1,2 @@
+consh: case5.ast:1: invalid number at column 8: (line (1x 1))
+exit: 1

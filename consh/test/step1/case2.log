@@ -1,0 +1,2 @@
+consh: case2.ast:2: unterminated string at column 63: (line (2 1) (cmd (2 1) (words (2 1) (word (2 1) (lit (2 1) "ab
+exit: 1

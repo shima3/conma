@@ -1,13 +1,33 @@
 #!/bin/bash
-# ConSh の ConMa 版を起動する。引数は ConSh に渡す
+# ConSh を起動する。スクリプトを consh_parse --pos で構文木にし、ConMa 版に渡す。
+#   consh [--dump] <script> [<arg> ...]
+# --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す
+set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
+mode=run
+if [ "$1" = --dump ]; then
+  mode=dump
+  shift
+fi
+if [ $# -lt 1 ]; then
+  echo "usage: consh [--dump] <script> [<arg> ...]" >&2
+  exit 1
+fi
+# ConMa のモジュールは、ソースが変わったときだけ作り直す
 module=/tmp/consh.module.se
-if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$consh/include/consh_main.se" \
-    | sed -e 's/"\/.*\/conma/"conma/' > /tmp/consh.ast.se
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.se' -newer "$module")" ]; then
+  if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$consh/include/consh_main.se" \
+      | sed -e 's/"\/.*\/conma/"conma/' > /tmp/consh.ast.se
+  then rm -f "$module"; exit 1
+  fi
+  if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
+  then rm -f "$module"; exit 1
+  fi
+fi
+ast=$(mktemp /tmp/consh.XXXXXX)
+trap 'rm -f "$ast"' EXIT
+if ! python3 "$consh/bin/consh_parse" --pos "$1" > "$ast"
 then exit 1
 fi
-if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
-then exit 1
-fi
-exec python3 "$root/test/vproc_run.py" --main "$module" "$@"
+python3 "$root/test/vproc_run.py" --main "$module" $mode "$ast" "$@"
