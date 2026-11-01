@@ -1,0 +1,12 @@
+to-file
+to-file
+more
+to-err
+out
+err
+err
+out
+x
+consh: case2.sh:16:5: no-such-file: No such file or directory: no-such-file
+status 1
+exit: 0

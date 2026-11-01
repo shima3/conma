@@ -1,0 +1,2 @@
+consh: case14.sh:2:8: ambiguous redirect
+exit: 1

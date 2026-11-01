@@ -8,6 +8,20 @@
 (include "util.se")
 (include "token.se")
 
+;; ── 節 ──
+
+;; 節を、種類、位置 (行 桁)、子の LList に分ける。位置のある構文木（consh_parse --pos）を読んだ節に使う
+(define Node_split ,(node)
+  __LList_uncons__ __print_exit_error__ node ,(tag rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pos children)
+  __NULL__ tag pos children)
+
+;; 位置 (行 桁) の行と桁
+(define Pos_split ,(pos)
+  __LList_uncons__ __print_exit_error__ pos ,(line rest)
+  __LList_uncons__ __print_exit_error__ rest ,(col rest)
+  __NULL__ line col)
+
 ;; ── 読み込み ──
 
 ;; path のファイルから構文木を読み、コマンド行の節の LList を返す。

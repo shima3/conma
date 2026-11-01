@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# 引数を consh_parse --expand の (words ...) と同じ形で出力する（step2 の展開の比較用）
+import os
+import sys
+
+
+def q(s):
+    s = (s.replace('\\', '\\\\').replace('"', '\\"')
+         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t'))
+    return f'"{s}"'
+
+
+print('(words ' + ' '.join(q(a) for a in [os.path.basename(sys.argv[0])] + sys.argv[1:]) + ')')

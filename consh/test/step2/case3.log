@@ -1,0 +1,10 @@
+env: outer
+local: local
+child: outer
+prefix: prefix
+after prefix: local
+exported: local
+env stays: local
+only env: only-env
+child: only-env
+exit: 0

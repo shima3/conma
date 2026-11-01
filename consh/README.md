@@ -15,14 +15,16 @@ consh/
 │   ├── consh_main.se    main：ConSh の入口
 │   ├── consh_ast.se     consh_parse の構文木の読み込みと書き戻し
 │   ├── consh_parser.se  構文解析（当面は consh_parse を使うので空）
-│   └── consh_eval.se    実行
+│   ├── consh_util.se    LList、LazyList、Dict の補助関数
+│   ├── consh_expand.se  語の展開
+│   └── consh_eval.se    文の実行
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数
     ├── parse1/          文法のテスト：caseN.sh を consh_parse に渡し、caseN.log と比べる
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み
+    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文の実行
 ```
 
 * ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
@@ -38,6 +40,22 @@ bin/consh [--dump] スクリプト [引数 ...]
 ConMa 版は構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを読む（形式は [AST.md](AST.md)）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。
+
+### できること（段階 2）
+
+* 変数定義、`export`、前置の変数定義、語の展開（コマンド置換と glob を除く）
+* 外部コマンドの起動と `$?`。スクリプトは最後の文の `$?` で終わる
+* ファイルへのリダイレクト（`<`、`>`、`>>`、`2>`、`2>&1`、`1>&2`）
+
+関数、パイプ、`&`、コマンド置換、変数リストへのリダイレクト、`$$` は、まだ実行できない（エラーになる）。
+
+仕様にない部分は、次のようにした。
+
+* 変数定義と `export` の文の後、`$?` は 0 になる（Bash と同じ）。
+* 環境変数は、起動時の環境変数から始める。局所変数には取り込まないが、局所変数がなければ参照できる。
+* 仕様で「エラーとする」もの（未定義の局所変数の `export`、リダイレクト元の重複、リダイレクト先が1語にならない、まだないもの）は、メッセージを出して終了ステータス 1 で終わる。
+* コマンドを起動できない場合は `$?` を 127、ファイルを開けない場合は 1 にして続ける。
+* 語がすべて消えた単純文は、リダイレクトだけを行い、`$?` を 0 にする。
 
 構文木と展開の結果を見るには、Python の参照実装を使う。構文木の形式は [AST.md](AST.md)、展開の結果の形式は `bin/consh_parse` の先頭に書いてある。`--pos` を付けると、構文木に行と桁が入る。
 

@@ -1,0 +1,4 @@
+consh: case4.sh:1:1: nosuchcommand: No such file or directory: nosuchcommand
+status 127
+status 143
+exit: 143

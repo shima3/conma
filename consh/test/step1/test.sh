@@ -1,8 +1,6 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
-# case1: 実行はまだできない
-run case1 case1.sh < /dev/null
 # consh_parse --pos の構文木を ConMa 版で読み、書き戻した結果が元と同じになるか。
 # parse1、parse2、expand1 のスクリプトのうち、構文エラーのないものすべてで確かめる。違えば diff を出す
 for f in ../parse1/case*.sh ../parse2/case*.sh ../expand1/case*.sh

@@ -1,0 +1,133 @@
+;; ConSh で使う LList、LazyList、Dict の補助関数
+(include "util.se")
+
+(define num ,(str)
+  __Number_fromString__ __print_exit_error__ str)
+
+;; LList の最初の要素。空なら ""
+(define List_first ,(list)
+  __if_then_else__ (,() __is_null__ list)
+    (,() __NULL__ "")
+    (,() __LList_uncons__ __print_exit_error__ list ,(head tail) __NULL__ head))
+
+;; a の後ろに b をつないだ LList
+(define List_append ,(a b)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ a) (,() return b) ,()
+  __LList_uncons__ __print_exit_error__ a ,(head tail)
+  List_append tail b ,(rest)
+  __LList_cons__ head rest)
+
+(define List_length ,(list)
+  num "0" ,(zero)
+  List_length_from list zero)
+
+(define List_length_from ,(list n)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return n) ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  num "1" ,(one)
+  __Number_add__ n one ,(n)
+  List_length_from tail n)
+
+;; Seq の要素の LList
+(define List_fromSeq ,(seq)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() return __NULL__) seq ,(first rest)
+  List_fromSeq rest ,(tail)
+  __LList_cons__ first tail)
+
+;; LazyList の要素の LList。終わらない LazyList では終わらない
+(define List_fromLazyList ,(lazyList)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return __NULL__) lazyList ,(head tail)
+  List_fromLazyList tail ,(rest)
+  __LList_cons__ head rest)
+
+;; LList の要素の LazyList
+(define LazyList_fromList ,(list)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() __LazyList_empty__ ,(empty) return empty) ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  LazyList_fromList tail ,(rest)
+  __LazyList_cons__ head rest)
+
+;; String の LList を sep で区切って連結する
+(define List_join ,(list sep)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  List_join_rest tail sep head)
+
+(define List_join_rest ,(list sep acc)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  __String_concat__ acc sep ,(acc)
+  __String_concat__ acc head ,(acc)
+  List_join_rest tail sep acc)
+
+;; Dict の写し
+(define Dict_copy ,(src)
+  __Dict_new__ ,(dst)
+  __Dict_keys__ src ,(keys)
+  Dict_copier src dst ,(sink)
+  keys sink ,(sink)
+  __NULL__ dst)
+
+;; キーを受け取るたびに、src の値を dst に写す Sink
+(define Dict_copier ,(src dst)
+  __NULL__ (,(key)
+    __Dict_lookup_or__ src key __print_exit_error__ ,(value)
+    __Dict_put__ dst key value ,()
+    Dict_copier src dst))
+
+;; str が数字だけからなるか（空でない）
+(define String_is_digits ,(str)
+  __String_length__ str ,(len)
+  __if_then_else__ (,() __Number_is_zero__ len)
+    (,() __NULL__ __FALSE__)
+    (,()
+      num "0" ,(zero)
+      String_is_digits_from str len zero))
+
+(define String_is_digits_from ,(str len i)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len i ,(rest)
+  __if__ (,() __Number_is_zero__ rest) (,() return __TRUE__) ,()
+  num "1" ,(one)
+  __Number_add__ i one ,(next)
+  __String_substring__ __print_exit_error__ str i next ,(ch)
+  __if_then_else__ (,() Sexp_is_digit ch)
+    (,() String_is_digits_from str len next)
+    (,() return __FALSE__))
+
+;; プリミティブのエラーメッセージ「__名前__: 内容」から「__名前__: 」を除く
+(define Msg_strip ,(msg)
+  __String_length__ msg ,(len)
+  num "0" ,(zero)
+  num "2" ,(two)
+  __Number_subtract__ len two ,(rest)
+  __if_then_else__ (,() __Number_is_negative__ rest)
+    (,() __NULL__ msg)
+    (,()
+      __String_substring__ __print_exit_error__ msg zero two ,(head)
+      __if_then_else__ (,() __String_equal__ head "__")
+        (,() Msg_strip_from msg len two)
+        (,() __NULL__ msg)))
+
+;; i 文字目から ": " を探し、その後ろを返す。なければ msg のまま
+(define Msg_strip_from ,(msg len i)
+  __Cont_get__ ,(return)
+  num "2" ,(two)
+  __Number_add__ i two ,(end)
+  __Number_subtract__ len end ,(rest)
+  __if__ (,() __Number_is_negative__ rest) (,() return msg) ,()
+  __String_substring__ __print_exit_error__ msg i end ,(sep)
+  __if__ (,() __String_equal__ sep ": ")
+    (,()
+      __String_substring__ __print_exit_error__ msg end len ,(tail)
+      return tail) ,()
+  num "1" ,(one)
+  __Number_add__ i one ,(next)
+  Msg_strip_from msg len next)

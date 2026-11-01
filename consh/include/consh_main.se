@@ -15,8 +15,8 @@
   __if_then_else__ (,() __String_equal__ mode "dump")
     (,() main_dump lines)
     (,()
-      stderr "consh: not implemented yet\n" ,(err)
-      __nop__))
+      List_fromSeq args ,(args)
+      Eval_run script args lines))
 
 (define main_usage ,()
   main_error "usage: consh_main.se run|dump <ast_file> <script> [<arg> ...]")
