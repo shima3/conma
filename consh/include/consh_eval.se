@@ -1,35 +1,72 @@
-;; ConSh の実行（段階 2）。トップレベルの文を順に実行する。
+;; ConSh の実行（段階 3）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
-;; 関数、パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
+;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、builtin、command
+;; パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
 ;;
-;; シェルの状態 sh は Dict で、次のキーを持つ。
-;;   "script" スクリプトのファイル名（$0、エラーメッセージ）
-;;   "args"   スクリプトの引数の LList（$@、$1、$#）
-;;   "local"  局所変数の Dict。値は String か LazyList
-;;   "env"    環境変数の Dict。値は String。起動時の環境変数から始める
-;;   "status" 最後の文の終了ステータスの String（$?）
+;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
+;;   "global"     シェル全体で共有する Dict。"status" に最後の文の終了ステータスの String（$?）
+;;   "script"     スクリプトのファイル名（$0、エラーメッセージ）
+;;   "args"       スクリプトの引数の LList（$@、$1、$#）
+;;   "vars"       局所変数の Dict。値は String か LazyList
+;;   "funcs"      このスコープで定義した関数の Dict（名前 → 関数）
+;;   "parent"     レキシカルに外側の文脈（関数名を探す）。トップレベルでは null
+;;   "inFunction" 関数の中か（__TRUE__ / __FALSE__）
+;;   "return"     return で使う継続。関数の外では null
+;;   "env"        環境変数（Env_new）
+;;   "in"         外部コマンドの標準入力の Stream。null なら親のまま
+;;   "out" "err"  標準出力と標準エラー出力のターゲット（Target_*）
+;;
+;; 変数定義は新しい束縛と見る。関数は、定義した時点の局所変数の写しを持つので、
+;; 後で変数を変えても関数からは見えない。関数名は、スコープごとの Dict を外側へたどって探すので、
+;; 後で定義した関数も呼べる。
 (include "consh_util.se")
 (include "consh_ast.se")
 (include "consh_expand.se")
 
-;; ── シェルの状態 ──
+;; ── 文脈 ──
 
-(define Sh_new ,(script args)
+(define Ctx_top ,(script args)
+  __Dict_new__ ,(global)
+  __Dict_put__ global "status" "0" ,()
+  num "0" ,(zero)
+  __Dict_put__ global "sinks" zero ,()
+  __OS_get_envDict__ ,(base)
+  Env_new base __NULL__ ,(env)
+  __OS_get_stderr__ ,(errStream)
+  Target_stream global errStream ,(err)
+  Target_sink global Top_write ,(out)
+  __Dict_new__ ,(vars)
+  __Dict_new__ ,(funcs)
   __Dict_new__ ,(sh)
-  __Dict_new__ ,(local)
-  __OS_get_envDict__ ,(env)
+  __Dict_put__ sh "global" global ,()
   __Dict_put__ sh "script" script ,()
   __Dict_put__ sh "args" args ,()
-  __Dict_put__ sh "local" local ,()
+  __Dict_put__ sh "vars" vars ,()
+  __Dict_put__ sh "funcs" funcs ,()
+  __Dict_put__ sh "parent" __NULL__ ,()
+  __Dict_put__ sh "inFunction" __FALSE__ ,()
+  __Dict_put__ sh "return" __NULL__ ,()
   __Dict_put__ sh "env" env ,()
-  __Dict_put__ sh "status" "0" ,()
+  __Dict_put__ sh "in" __NULL__ ,()
+  __Dict_put__ sh "out" out ,()
+  __Dict_put__ sh "err" err ,()
   __NULL__ sh)
+
+;; トップレベルの標準出力。要素を1行として書く
+(define Top_write ,(line)
+  stdout line "\n" ,(out)
+  __nop__)
 
 (define Sh_get ,(sh key)
   __Dict_lookup_or__ sh key __print_exit_error__)
 
+(define Sh_status ,(sh)
+  Sh_get sh "global" ,(global)
+  __Dict_lookup_or__ global "status" __print_exit_error__)
+
 (define Sh_set_status ,(sh status)
-  __Dict_put__ sh "status" status)
+  Sh_get sh "global" ,(global)
+  __Dict_put__ global "status" status)
 
 ;; 「consh: スクリプト:行:桁: msg」の1行
 (define Sh_message ,(sh pos msg)
@@ -56,34 +93,41 @@
   Sh_message sh pos msg ,(s)
   __OS_print_error__ s)
 
+;; スクリプトの引数の LList。関数の中では $1、$@、$# は未定義なのでエラー
+(define Sh_args ,(sh pos)
+  Sh_get sh "inFunction" ,(inFunction)
+  __if__ (,() __NULL__ inFunction)
+    (,() Sh_error sh pos "$1, $@ and $# are not defined in a function") ,()
+  Sh_get sh "args")
+
 ;; 変数参照の値。String か LazyList。局所変数がなければ環境変数、それもなければ空文字列
 (define Sh_lookup ,(sh pos name)
   __Cont_get__ ,(return)
   __if__ (,() __String_equal__ name "@")
     (,()
-      Sh_get sh "args" ,(args)
+      Sh_args sh pos ,(args)
       LazyList_fromList args ,(list)
       return list) ,()
   __if__ (,() String_is_digits name)
     (,()
       num name ,(n)
       __if__ (,() __Number_is_zero__ n) (,() Sh_get sh "script" ,(script) return script) ,()
-      Sh_get sh "args" ,(args)
+      Sh_args sh pos ,(args)
       Sh_nth args n ,(arg)
       return arg) ,()
   __if__ (,() __String_equal__ name "#")
     (,()
-      Sh_get sh "args" ,(args)
+      Sh_args sh pos ,(args)
       List_length args ,(n)
       __Number_toString__ n ,(s)
       return s) ,()
-  __if__ (,() __String_equal__ name "?") (,() Sh_get sh "status" ,(status) return status) ,()
+  __if__ (,() __String_equal__ name "?") (,() Sh_status sh ,(status) return status) ,()
   __if__ (,() __String_equal__ name "!") (,() return "") ,()
   __if__ (,() __String_equal__ name "$") (,() Sh_error sh pos "$$ is not implemented yet") ,()
-  Sh_get sh "local" ,(local)
+  Sh_get sh "vars" ,(vars)
   Sh_get sh "env" ,(env)
-  __Dict_lookup_or__ local name (,(key)
-    __Dict_lookup_or__ env key (,(key) __NULL__ "")))
+  __Dict_lookup_or__ vars name (,(key)
+    Env_lookup env key (,(key) __NULL__ "")))
 
 ;; LList の n 番目（1 から）。足りなければ空文字列
 (define Sh_nth ,(list n)
@@ -95,13 +139,159 @@
   __if__ (,() __Number_is_zero__ n) (,() return head) ,()
   Sh_nth tail n)
 
+;; ── 環境変数 ──
+;; シェル全体の環境変数 base と、前置の変数定義の層 layers（内側が先の、Dict の LList）。
+;; 参照は内側の層から順に探し、なければ base を探す
+
+(define Env_new ,(base layers)
+  __Dict_new__ ,(env)
+  __Dict_put__ env "base" base ,()
+  __Dict_put__ env "layers" layers ,()
+  __NULL__ env)
+
+;; layer を一番内側に加えた環境変数
+(define Env_push ,(env layer)
+  Sh_get env "base" ,(base)
+  Sh_get env "layers" ,(layers)
+  __LList_cons__ layer layers ,(layers)
+  Env_new base layers)
+
+(define Env_lookup ,(env name onMissing)
+  Sh_get env "base" ,(base)
+  Sh_get env "layers" ,(layers)
+  Env_lookup_layers layers name (,(key) __Dict_lookup_or__ base key onMissing))
+
+(define Env_lookup_layers ,(layers name onMissing)
+  __if_then_else__ (,() __is_null__ layers)
+    (,() onMissing name)
+    (,()
+      __LList_uncons__ __print_exit_error__ layers ,(layer rest)
+      __Dict_lookup_or__ layer name (,(key) Env_lookup_layers rest key onMissing)))
+
+;; export。シェル全体の環境変数と、name を持つすべての層の値を変える
+(define Env_export ,(env name value)
+  Sh_get env "base" ,(base)
+  Sh_get env "layers" ,(layers)
+  __Dict_put__ base name value ,()
+  Env_export_layers layers name value)
+
+(define Env_export_layers ,(layers name value)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ layers) return ,()
+  __LList_uncons__ __print_exit_error__ layers ,(layer rest)
+  __Dict_lookup_or__ layer name (,(key) __NULL__ __NULL__) ,(found)
+  __unless__ (,() __is_null__ found) (,() __Dict_put__ layer name value) ,()
+  Env_export_layers rest name value)
+
+;; 外部コマンドに渡す Dict。base に、外側の層から順に重ねる
+(define Env_dict ,(env)
+  Sh_get env "base" ,(base)
+  Sh_get env "layers" ,(layers)
+  Dict_copy base ,(dict)
+  List_reverse layers ,(layers)
+  Env_dict_layers dict layers ,()
+  __NULL__ dict)
+
+(define Env_dict_layers ,(dict layers)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ layers) return ,()
+  __LList_uncons__ __print_exit_error__ layers ,(layer rest)
+  Dict_copy_into layer dict ,()
+  Env_dict_layers dict rest)
+
+;; ── 出力のターゲット ──
+;; 標準出力と標準エラー出力の行き先は、次のどちらか。
+;;   (stream id Stream)  バイト列をそのまま書く Stream。要素は、末尾に改行を付けて書く
+;;   (sink id write)     要素を1つずつ受け取る関数 write（,(line) ...）
+;; id はターゲットを見分ける String で、2>&1 や 1>&2 で写したターゲットは同じ id を持つ。
+;; 外部コマンドの出力が sink に行くときは、パイプで受け取って行ごとの要素にする（行の改行は除く）
+
+(define Target_stream ,(global stream)
+  Target_new_id global ,(id)
+  Target_make "stream" id stream)
+
+(define Target_sink ,(global write)
+  Target_new_id global ,(id)
+  Target_make "sink" id write)
+
+(define Target_make ,(kind id value)
+  __LList_cons__ value __NULL__ ,(rest)
+  __LList_cons__ id rest ,(rest)
+  __LList_cons__ kind rest)
+
+(define Target_new_id ,(global)
+  __Dict_lookup_or__ global "sinks" __print_exit_error__ ,(n)
+  num "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Dict_put__ global "sinks" n ,()
+  __Number_toString__ n)
+
+;; ターゲットの種類、id、値（Stream か write）
+(define Target_split ,(target)
+  __LList_uncons__ __print_exit_error__ target ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(id rest)
+  __LList_uncons__ __print_exit_error__ rest ,(value rest)
+  __NULL__ kind id value)
+
+;; stream ターゲットを、同じ id の sink ターゲットにする。要素は、末尾に改行を付けて Stream に書く。
+;; 関数の出力をファイルに向けると、関数の中の外部コマンドの出力も行ごとの要素になる（Func_targets）
+(define Target_as_sink ,(target)
+  Target_split target ,(kind id value)
+  __if_then_else__ (,() __String_equal__ kind "sink")
+    (,() __NULL__ target)
+    (,()
+      Stream_writer value ,(write)
+      Target_make "sink" id write))
+
+(define Stream_writer ,(stream)
+  __NULL__ (,(line)
+    __String_concat__ line "\n" ,(s)
+    __OS_write__ __print_exit_error__ stream s))
+
+;; 要素 line をターゲットに書く
+(define Target_write ,(target line)
+  Target_split target ,(kind id value)
+  __if_then_else__ (,() __String_equal__ kind "stream")
+    (,()
+      __String_concat__ line "\n" ,(s)
+      __OS_write__ __print_exit_error__ value s)
+    (,() value line))
+
+;; input Stream を EOF まで読み、行ごとにターゲットに書く
+(define Target_pump ,(target stream)
+  __LazyList_lines__ stream ,(lines)
+  Target_pump_lines target lines)
+
+(define Target_pump_lines ,(target lines)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return) lines ,(line rest)
+  Line_chomp line ,(line)
+  Target_write target line ,()
+  Target_pump_lines target rest)
+
+;; 行末の改行（\n または \r\n）を除く
+(define Line_chomp ,(line)
+  Ast_chomp line ,(line)
+  __String_length__ line ,(len)
+  num "1" ,(one)
+  __Number_subtract__ len one ,(last)
+  __if_then_else__ (,() __Number_is_negative__ last)
+    (,() __NULL__ line)
+    (,()
+      __String_substring__ __print_exit_error__ line last len ,(ch)
+      __if_then_else__ (,() __String_equal__ ch "\r")
+        (,()
+          num "0" ,(zero)
+          __String_substring__ __print_exit_error__ line zero last)
+        (,() __NULL__ line)))
+
 ;; ── 文 ──
 
 ;; スクリプトを実行し、最後の文の終了ステータスで終わる
 (define Eval_run ,(script args lines)
-  Sh_new script args ,(sh)
+  Ctx_top script args ,(sh)
   Eval_lines sh lines ,()
-  Sh_get sh "status" ,(status)
+  Sh_status sh ,(status)
   num status ,(code)
   __OS_exit__ __print_exit_error__ code)
 
@@ -133,9 +323,11 @@
       Eval_export sh children ,()
       Sh_set_status sh "0") (,()
   __if_then_else__ (,() __String_equal__ tag "function")
-    (,() Sh_error sh pos "functions are not implemented yet") (,()
+    (,()
+      Func_define sh children ,()
+      Sh_set_status sh "0") (,()
   __if_then_else__ (,() __String_equal__ tag "return")
-    (,() Sh_error sh pos "return outside a function") (,()
+    (,() Eval_return sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "pipe")
     (,() Sh_error sh pos "pipelines are not implemented yet")
     (,() Sh_error sh pos "& is not implemented yet")))))))
@@ -152,8 +344,8 @@
     (,()
       __LList_uncons__ __print_exit_error__ words ,(word others)
       Expand_value sh word) ,(value)
-  Sh_get sh "local" ,(local)
-  __Dict_put__ local name value ,()
+  Sh_get sh "vars" ,(vars)
+  __Dict_put__ vars name value ,()
   Eval_assign sh rest)
 
 ;; 文「export 項目 ...」。環境変数に設定し、局所変数は変えない
@@ -165,13 +357,13 @@
   __LList_uncons__ __print_exit_error__ children ,(name words)
   __if_then_else__ (,() __String_equal__ tag "name")
     (,()
-      Sh_get sh "local" ,(local)
+      Sh_get sh "vars" ,(vars)
       __String_concat__ "export of an undefined local variable: " name ,(msg)
-      __Dict_lookup_or__ local name (,(key) Sh_error sh pos msg) ,(value)
+      __Dict_lookup_or__ vars name (,(key) Sh_error sh pos msg) ,(value)
       Value_toString value)
     (,() Eval_env_value sh words) ,(value)
   Sh_get sh "env" ,(env)
-  __Dict_put__ env name value ,()
+  Env_export env name value ,()
   Eval_export sh rest)
 
 ;; 環境変数に設定する値。右辺がなければ空文字列。LazyList は1つの String にする
@@ -182,6 +374,125 @@
       __LList_uncons__ __print_exit_error__ words ,(word others)
       Expand_value sh word ,(value)
       Value_toString value))
+
+;; 文「return 語」。語は 0 から 255 の数。関数の残りを実行せずに戻る
+(define Eval_return ,(sh pos children)
+  Sh_get sh "return" ,(ret)
+  __if__ (,() __is_null__ ret) (,() Sh_error sh pos "return outside a function") ,()
+  __LList_uncons__ __print_exit_error__ children ,(word others)
+  Expand_fields sh word ,(fields)
+  Return_value fields ,(value)
+  __if__ (,() __is_null__ value) (,() Sh_error sh pos "return needs a number from 0 to 255") ,()
+  Sh_set_status sh value ,()
+  ret)
+
+;; 1語の 0 から 255 の数なら、その String。そうでなければ null
+(define Return_value ,(fields)
+  __Cont_get__ ,(return)
+  List_length fields ,(n)
+  num "1" ,(one)
+  __Number_subtract__ n one ,(diff)
+  __unless__ (,() __Number_is_zero__ diff) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ fields ,(word others)
+  __unless__ (,() String_is_digits word) (,() return __NULL__) ,()
+  num word ,(value)
+  num "255" ,(max)
+  __Number_subtract__ max value ,(room)
+  __if__ (,() __Number_is_negative__ room) (,() return __NULL__) ,()
+  __Number_toString__ value)
+
+;; ── 関数 ──
+;; 関数は Dict で、"params"（params の節）、"body"（script の節）、
+;; "scope"（定義した文脈）、"vars"（定義した時点の局所変数の写し）を持つ
+
+;; 文「function 名前 変数リスト { スクリプト }」。このスコープの関数の Dict に置く
+(define Func_define ,(sh children)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(params rest)
+  __LList_uncons__ __print_exit_error__ rest ,(body rest)
+  Sh_get sh "vars" ,(vars)
+  Dict_copy vars ,(vars)
+  __Dict_new__ ,(fn)
+  __Dict_put__ fn "params" params ,()
+  __Dict_put__ fn "body" body ,()
+  __Dict_put__ fn "scope" sh ,()
+  __Dict_put__ fn "vars" vars ,()
+  Sh_get sh "funcs" ,(funcs)
+  __Dict_put__ funcs name fn)
+
+;; name の関数。レキシカルに外側へ向かって、最も近いスコープの関数を探す。なければ null
+(define Func_lookup ,(sh name)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ sh) (,() return __NULL__) ,()
+  Sh_get sh "funcs" ,(funcs)
+  __Dict_lookup_or__ funcs name (,(key) __NULL__ __NULL__) ,(fn)
+  __unless__ (,() __is_null__ fn) (,() return fn) ,()
+  Sh_get sh "parent" ,(parent)
+  Func_lookup parent name)
+
+;; 関数を呼び出す。引数を変数リストに渡し、本体を新しいスコープで実行する。
+;; 前置の変数定義は、この呼び出しの間だけの環境変数の層にする
+(define Func_call ,(sh pos defs fn args in out err)
+  __Cont_get__ ,(return)
+  Sh_get fn "params" ,(params)
+  Sh_get fn "body" ,(body)
+  Sh_get fn "scope" ,(scope)
+  Sh_get fn "vars" ,(vars)
+  Dict_copy vars ,(vars)
+  Node_split params ,(ptag ppos pchildren)
+  __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
+  List_first rest ,(restName)
+  Func_bind vars names restName args ,()
+  Sh_get sh "env" ,(env)
+  __if_then_else__ (,() __is_null__ defs)
+    (,() __NULL__ env)
+    (,()
+      __Dict_new__ ,(layer)
+      Eval_env_defs sh defs layer ,()
+      Env_push env layer) ,(env)
+  __Dict_new__ ,(funcs)
+  Dict_copy sh ,(callee)
+  __Dict_put__ callee "vars" vars ,()
+  __Dict_put__ callee "funcs" funcs ,()
+  __Dict_put__ callee "parent" scope ,()
+  __Dict_put__ callee "inFunction" __TRUE__ ,()
+  __Dict_put__ callee "return" return ,()
+  __Dict_put__ callee "env" env ,()
+  __Dict_put__ callee "in" in ,()
+  __Dict_put__ callee "out" out ,()
+  __Dict_put__ callee "err" err ,()
+  Node_split body ,(btag bpos lines)
+  Sh_set_status sh "0" ,()
+  Eval_lines callee lines)
+
+;; 引数を順に名前に渡す。足りなければ空文字列。残りは LazyList にして restName に渡す（restName が "" なら捨てる）
+(define Func_bind ,(vars names restName args)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ names)
+    (,()
+      __unless__ (,() __String_equal__ restName "")
+        (,()
+          LazyList_fromList args ,(list)
+          __Dict_put__ vars restName list) ,()
+      return) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name others)
+  List_first args ,(arg)
+  __Dict_put__ vars name arg ,()
+  __if_then_else__ (,() __is_null__ args)
+    (,() __NULL__ __NULL__)
+    (,() __LList_uncons__ __print_exit_error__ args ,(head tail) __NULL__ tail) ,(args)
+  Func_bind vars others restName args)
+
+;; 関数に渡す標準出力と標準エラー出力のターゲット。標準出力は sink にする。
+;; 標準エラー出力は、標準出力と同じ行き先（2>&1）なら同じ sink にし、そうでなければそのまま
+(define Func_targets ,(out err)
+  Target_split out ,(outKind outId outValue)
+  Target_split err ,(errKind errId errValue)
+  Target_as_sink out ,(out)
+  __if_then_else__ (,() __String_equal__ outId errId)
+    (,() __NULL__ out)
+    (,() __NULL__ err) ,(err)
+  __NULL__ out err)
 
 ;; ── 単純文 ──
 
@@ -200,11 +511,10 @@
     (,() Cmd_parts_from rest defs items redirs)
     (,() Cmd_parts_from rest defs words items)))
 
-;; 単純文を実行する。外部コマンドを起動し、終わるまで待って、$? を設定する
+;; 単純文を実行する
 (define Eval_cmd ,(sh pos children)
   __Cont_get__ ,(return)
   Cmd_parts children ,(defs words redirs)
-  Eval_env sh defs ,(env)
   Eval_words sh words ,(fields)
   Eval_redirs sh redirs ,(in out err opened ok)
   __unless__ (,() __NULL__ ok)
@@ -217,21 +527,130 @@
       Eval_close opened ,()
       Sh_set_status sh "0" ,()
       return) ,()
-  __LList_uncons__ __print_exit_error__ fields ,(name others)
+  __LList_uncons__ __print_exit_error__ fields ,(name args)
+  Cmd_run sh pos defs name args in out err ,()
+  Eval_close opened)
+
+;; 先頭の語 name で、関数、組み込みコマンド、外部コマンドの順に探して実行する。
+;; builtin name は組み込みコマンドを、command name は外部コマンドを実行する
+(define Cmd_run ,(sh pos defs name args in out err)
+  __Cont_get__ ,(return)
+  __if__ (,() __String_equal__ name "builtin")
+    (,()
+      __if__ (,() __is_null__ args) (,() Sh_error sh pos "builtin: a command name is needed") ,()
+      __LList_uncons__ __print_exit_error__ args ,(name2 args2)
+      Builtin_lookup name2 ,(builtin)
+      __String_concat__ "builtin: not a builtin command: " name2 ,(msg)
+      __if__ (,() __is_null__ builtin) (,() Sh_error sh pos msg) ,()
+      builtin sh pos args2 in out err ,()
+      return) ,()
+  __if__ (,() __String_equal__ name "command")
+    (,()
+      __if__ (,() __is_null__ args) (,() Sh_error sh pos "command: a command name is needed") ,()
+      __LList_uncons__ __print_exit_error__ args ,(name2 args2)
+      External_run sh pos defs name2 args2 in out err ,()
+      return) ,()
+  Func_lookup sh name ,(fn)
+  __unless__ (,() __is_null__ fn)
+    (,()
+      Func_targets out err ,(out err)
+      Func_call sh pos defs fn args in out err ,()
+      return) ,()
+  Builtin_lookup name ,(builtin)
+  __unless__ (,() __is_null__ builtin)
+    (,()
+      builtin sh pos args in out err ,()
+      return) ,()
+  External_run sh pos defs name args in out err)
+
+;; ── 組み込みコマンド ──
+;; どれも ,(sh pos args in out err) を取る
+
+(define Builtin_lookup ,(name)
+  __if_then_else__ (,() __String_equal__ name "echo") (,() __NULL__ Builtin_echo) (,()
+  __if_then_else__ (,() __String_equal__ name "cd") (,() __NULL__ Builtin_cd)
+    (,() __NULL__ __NULL__)))
+
+;; echo 語 ...: 語を空白で区切って連結した1つの要素を、標準出力に出す
+(define Builtin_echo ,(sh pos args in out err)
+  List_join args " " ,(line)
+  Target_write out line ,()
+  Sh_set_status sh "0")
+
+;; cd [ディレクトリ]: カレントディレクトリを変える。省略すると環境変数 HOME
+(define Builtin_cd ,(sh pos args in out err)
+  __Cont_get__ ,(return)
+  __if_then_else__ (,() __is_null__ args)
+    (,()
+      Sh_get sh "env" ,(env)
+      Env_lookup env "HOME" (,(key)
+        Sh_warn sh pos "cd: HOME is not set" ,()
+        Sh_set_status sh "1" ,()
+        return))
+    (,() List_first args) ,(dir)
+  __OS_chdir__ (,(msg)
+    Msg_strip msg ,(msg)
+    __String_concat__ "cd: " msg ,(m)
+    Sh_warn sh pos m ,()
+    Sh_set_status sh "1" ,()
+    return) dir ,()
+  Sh_set_status sh "0")
+
+;; ── 外部コマンド ──
+
+;; 外部コマンドを起動し、終わるまで待って、$? を設定する。
+;; 標準出力か標準エラー出力が sink に行くときは、パイプで受け取って行ごとに書く
+(define External_run ,(sh pos defs name args in out err)
+  __Cont_get__ ,(return)
+  Sh_get sh "env" ,(env)
+  Env_dict env ,(dict)
+  Eval_env_defs sh defs dict ,()
   __MSeq_new__ ,(command)
-  Eval_append command fields ,()
+  __MSeq_append__ __print_exit_error__ command name ,()
+  Eval_append command args ,()
+  External_streams sh pos out err ,(outStream errStream reader writer pumpTarget)
   __OS_spawn__ (,(msg)
+    Eval_close_pipe reader writer ,()
     Msg_strip msg ,(msg)
     __String_concat__ name ": " ,(m)
     __String_concat__ m msg ,(m)
     Sh_warn sh pos m ,()
-    Eval_close opened ,()
     Sh_set_status sh "127" ,()
-    return) command in out err env ,(proc)
+    return) command in outStream errStream dict ,(proc)
+  __unless__ (,() __is_null__ reader)
+    (,()
+      __OS_close__ __print_exit_error__ writer ,()
+      Target_pump pumpTarget reader ,()
+      __OS_close__ __print_exit_error__ reader) ,()
   __OS_wait__ __print_exit_error__ proc ,(code)
-  Eval_close opened ,()
   Eval_status code ,(status)
   Sh_set_status sh status)
+
+;; 外部コマンドに渡す標準出力と標準エラー出力の Stream と、
+;; sink に行く出力を受け取るパイプの両端（なければ null）と、その行き先のターゲットを返す
+(define External_streams ,(sh pos out err)
+  __Cont_get__ ,(return)
+  Target_split out ,(outKind outId outValue)
+  Target_split err ,(errKind errId errValue)
+  __String_equal__ outKind "sink" ,(outIsSink)
+  __String_equal__ errKind "sink" ,(errIsSink)
+  __or__ outIsSink errIsSink ,(anySink)
+  __unless__ (,() __NULL__ anySink)
+    (,() return outValue errValue __NULL__ __NULL__ __NULL__) ,()
+  __OS_pipe__ ,(reader writer)
+  __unless__ (,() __NULL__ outIsSink)
+    (,() return outValue writer reader writer err) ,()
+  __unless__ (,() __NULL__ errIsSink)
+    (,() return writer errValue reader writer out) ,()
+  __unless__ (,() __String_equal__ outId errId)
+    (,() Sh_error sh pos "standard output and standard error to two different places are not implemented yet") ,()
+  return writer writer reader writer out)
+
+(define Eval_close_pipe ,(reader writer)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ reader) return ,()
+  __OS_close__ (,(msg) __nop__) reader ,()
+  __OS_close__ (,(msg) __nop__) writer)
 
 ;; __OS_wait__ の終了コードを $? にする。シグナルで止まった場合（負の数）は、シグナル番号 + 128
 (define Eval_status ,(code)
@@ -242,23 +661,16 @@
     (,() __NULL__ code) ,(code)
   __Number_toString__ code)
 
-;; 前置の変数定義を加えた、コマンドに渡す環境変数の Dict。シェルの環境変数は変えない
-(define Eval_env ,(sh defs)
-  Sh_get sh "env" ,(env)
-  Dict_copy env ,(env)
-  Eval_env_defs sh defs env ,()
-  __NULL__ env)
-
-;; 前置の変数定義は、同じ文の語の展開に影響しないので、どれもシェルの値で展開する
-(define Eval_env_defs ,(sh defs env)
+;; 前置の変数定義を dict に加える。同じ文の語の展開に影響しないので、どれも呼び出し側の値で展開する
+(define Eval_env_defs ,(sh defs dict)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ defs) return ,()
   __LList_uncons__ __print_exit_error__ defs ,(def rest)
   Node_split def ,(tag pos children)
   __LList_uncons__ __print_exit_error__ children ,(name words)
   Eval_env_value sh words ,(value)
-  __Dict_put__ env name value ,()
-  Eval_env_defs sh rest env)
+  __Dict_put__ dict name value ,()
+  Eval_env_defs sh rest dict)
 
 ;; 語を展開した String の LList
 (define Eval_words ,(sh words)
@@ -285,11 +697,14 @@
 
 ;; ── リダイレクト ──
 
-;; リダイレクトを左から順に適用し、標準入力、標準出力、標準エラー出力の Stream（null は親のまま）、
-;; 開いた Stream の LList、成功したかを返す。ファイルを開けなければ、メッセージを出して失敗とする
+;; リダイレクトを左から順に適用し、標準入力の Stream（null は親のまま）、標準出力と標準エラー出力の
+;; ターゲット、開いた Stream の LList、成功したかを返す。ファイルを開けなければ、メッセージを出して失敗とする
 (define Eval_redirs ,(sh redirs)
   __Dict_new__ ,(used)
-  Eval_redirs_from sh redirs used __NULL__ __NULL__ __NULL__ __NULL__)
+  Sh_get sh "in" ,(in)
+  Sh_get sh "out" ,(out)
+  Sh_get sh "err" ,(err)
+  Eval_redirs_from sh redirs used in out err __NULL__)
 
 (define Eval_redirs_from ,(sh redirs used in out err opened)
   __Cont_get__ ,(return)
@@ -303,13 +718,11 @@
   __Dict_put__ used fd __TRUE__ ,()
   __if__ (,() __String_equal__ op "1>&2")
     (,()
-      Redir_or_std err __OS_get_stderr__ ,(err2)
-      Eval_redirs_from sh rest used in err2 err opened ,(in out err opened ok)
+      Eval_redirs_from sh rest used in err err opened ,(in out err opened ok)
       return in out err opened ok) ,()
   __if__ (,() __String_equal__ op "2>&1")
     (,()
-      Redir_or_std out __OS_get_stdout__ ,(out2)
-      Eval_redirs_from sh rest used in out out2 opened ,(in out err opened ok)
+      Eval_redirs_from sh rest used in out out opened ,(in out err opened ok)
       return in out err opened ok) ,()
   __LList_uncons__ __print_exit_error__ targets ,(target others)
   Node_split target ,(targetTag targetPos targetChildren)
@@ -331,9 +744,11 @@
   __LList_cons__ stream opened ,(opened)
   __if_then_else__ (,() __String_equal__ fd "0")
     (,() Eval_redirs_from sh rest used stream out err opened) (,()
+  Sh_get sh "global" ,(global)
+  Target_stream global stream ,(target)
   __if_then_else__ (,() __String_equal__ fd "1")
-    (,() Eval_redirs_from sh rest used in stream err opened)
-    (,() Eval_redirs_from sh rest used in out stream opened)))
+    (,() Eval_redirs_from sh rest used in target err opened)
+    (,() Eval_redirs_from sh rest used in out target opened)))
 
 ;; リダイレクトが変える入出力の番号
 (define Redir_fd ,(op)
@@ -346,9 +761,3 @@
 (define Redir_mode ,(op)
   __if_then_else__ (,() __String_equal__ op "<") (,() __NULL__ "r") (,()
   __if_then_else__ (,() __String_equal__ op ">>") (,() __NULL__ "a") (,() __NULL__ "w")))
-
-;; stream が null（親のまま）なら、getStd で得た親の Stream
-(define Redir_or_std ,(stream getStd)
-  __if_then_else__ (,() __is_null__ stream)
-    getStd
-    (,() __NULL__ stream))

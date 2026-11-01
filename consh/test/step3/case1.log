@@ -1,0 +1,14 @@
+a=1 b=2
+rest: 3 4 5
+rest quoted: [3
+4 5]
+status 3
+a=only b=
+rest:
+rest quoted: []
+no params
+all: x y
+last: 1
+empty: 0
+assign last: 0
+exit: 0

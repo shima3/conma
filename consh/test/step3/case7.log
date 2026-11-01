@@ -1,0 +1,2 @@
+consh: case7.sh:1:17: return needs a number from 0 to 255
+exit: 1

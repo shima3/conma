@@ -1,0 +1,13 @@
+x=1
+top x=2
+in: inside
+out: outside
+defined later
+nested
+consh: case2.sh:13:1: nested: No such file or directory: nested
+first
+second
+a 1
+a 2
+end
+exit: 0

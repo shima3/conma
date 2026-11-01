@@ -1,0 +1,9 @@
+local view: prefix
+child: prefix
+after prefix: []
+W=inside
+in: layer
+after export: changed
+outside: changed
+x=5
+exit: 0

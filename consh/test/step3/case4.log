@@ -1,0 +1,18 @@
+one
+two
+three
+no newline
+crlf
+one
+two
+three
+no newline
+crlf
+to-err
+to-out
+to-out
+err file:
+to-err
+x
+y
+exit: 0

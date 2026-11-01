@@ -1,0 +1,8 @@
+plain echo
+/
+consh: case5.sh:4:1: cd: No such file or directory: /no/such/dir
+status 1
+my echo: hi
+builtin
+external
+exit: 0

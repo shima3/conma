@@ -30,6 +30,17 @@
   __Number_add__ n one ,(n)
   List_length_from tail n)
 
+;; 逆順の LList
+(define List_reverse ,(list)
+  List_reverse_onto list __NULL__)
+
+(define List_reverse_onto ,(list acc)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  __LList_cons__ head acc ,(acc)
+  List_reverse_onto tail acc)
+
 ;; Seq の要素の LList
 (define List_fromSeq ,(seq)
   __Cont_get__ ,(return)
@@ -70,10 +81,15 @@
 ;; Dict の写し
 (define Dict_copy ,(src)
   __Dict_new__ ,(dst)
+  Dict_copy_into src dst ,()
+  __NULL__ dst)
+
+;; src のすべてのキーと値を dst に置く
+(define Dict_copy_into ,(src dst)
   __Dict_keys__ src ,(keys)
   Dict_copier src dst ,(sink)
   keys sink ,(sink)
-  __NULL__ dst)
+  __nop__)
 
 ;; キーを受け取るたびに、src の値を dst に写す Sink
 (define Dict_copier ,(src dst)

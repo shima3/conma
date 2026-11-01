@@ -95,7 +95,7 @@
     (,()
       __if_then_else__ (,() __String_equal__ value "@")
         (,()
-          Sh_get sh "args" ,(args)
+          Sh_args sh pos ,(args)
           __NULL__ args __TRUE__)
         (,()
           Sh_lookup sh pos value ,(v)
