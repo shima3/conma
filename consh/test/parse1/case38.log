@@ -1,0 +1,2 @@
+consh_parse: case38.sh:1:18: unexpected 'x'
+exit: 1

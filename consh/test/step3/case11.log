@@ -1,0 +1,10 @@
+x=1
+h 1
+f 1
+f 5
+in
+then
+g 3
+first
+err
+exit: 0

@@ -57,10 +57,10 @@ In the formats below, `[...]` is optional and `...` is a repetition of the eleme
 | Node | Format | Location |
 | --- | --- | --- |
 | `line` | `(line Statement ...)` (one or more statements) | the first statement |
-| `script` | `(script line ...)` (zero or more lines) | the character right after `$(` or `{` |
+| `script` | `(script line ...)` (zero or more lines) | the character right after `$(`, `{` or the keyword (`if`, `then`, `elif`, `else`) |
 
 The top level of the output is a sequence of `line` nodes without an enclosing `script`.
-A `script` appears as the body of a `function` and in a `subst`.
+A `script` appears as the body of a `function`, in a `subst`, and in the parts of an `if`.
 
 ### Statements
 
@@ -72,14 +72,15 @@ A `script` appears as the body of a `function` and in a `subst`.
 | `assign` | `(assign def ...)` (one or more) | 変数定義 {空白+ 変数定義} | the first `def` |
 | `list` | `(list Element ...)` | コマンド列 | the first element |
 | `bg` | `(bg Pipeline)` | a パイプライン followed by `&` | the pipeline |
-| `pipe` | `(pipe cmd ...)` (two or more) | パイプライン | the first `cmd` |
-| `cmd` | `(cmd [env] words [redirs])` | 単純文 | the first `def` of `env`, or else the first word |
+| `pipe` | `(pipe Simple ...)` (two or more) | パイプライン | the first element |
+| `cmd` | `(cmd [env] words [redirs])` | 単純文 with a コマンド | the first `def` of `env`, or else the first word |
+| `if` | `(if clause ... [else] [redirs])` (one or more clauses) | 単純文 with an if文 | `if` |
 
 A Statement is one of `return`, `export`, `function`, `assign`, or a command list, which is written in the shortest form:
 
 * A command list (コマンド列) is `(list Element ...)`, where an Element is `(bg Pipeline)` for a pipeline followed by `&`, or a Pipeline otherwise.
   If the command list has only one pipeline and no `&`, the `list` is left out and the Pipeline is written alone.
-* A Pipeline (パイプライン) is `(pipe cmd ...)`. If it has only one simple statement, the `pipe` is left out and the `cmd` is written alone.
+* A Pipeline (パイプライン) is `(pipe Simple ...)`, where a Simple is a `cmd` or an `if`. If it has only one simple statement, the `pipe` is left out and the Simple is written alone.
 
 Examples:
 
@@ -89,6 +90,7 @@ Examples:
 | `f \| g` | `(pipe (cmd ...) (cmd ...))` |
 | `f &` | `(list (bg (cmd ...)))` |
 | `f & g \| h` | `(list (bg (cmd ...)) (pipe (cmd ...) (cmd ...)))` |
+| `if f; then g; fi \| h` | `(pipe (if ...) (cmd ...))` |
 
 ### Parts of Statements
 
@@ -101,6 +103,8 @@ Examples:
 | `redirs` | `(redirs redir ...)` (one or more) | the first `redir` |
 | `redir` | `(redir "op" [Target])` | the first character of the operator |
 | `params` | `(params ("name" ...) ["rest"])` | `(` |
+| `clause` | `(clause script script)` | `if` or `elif` |
+| `else` | `(else script)` | `else` |
 
 * `def` is a variable definition (`name=word`). The word is left out when the right side is empty (`x=`).
 * An Item of `export` is `(name "x")` for `export x`, or a `def` for `export x=word`.
@@ -110,6 +114,10 @@ Examples:
     * `op` is one of `"<"`, `">"`, `"2>"`, `">>"`, `"1>&2"`, `"2>&1"`.
     * The Target of `<`, `>` and `2>` is a `word` or a `params`. The Target of `>>` is a `word`. `1>&2` and `2>&1` have no Target.
 * `params` is a variable list (変数リスト) `(a b . rest)`. The list of names may be empty, `()`. The rest name is left out when there is no `.`.
+* `clause` is a part `if Script then Script` or `elif Script then Script` of an `if`: the first `script` is the condition, the second the body. The clauses are in the order of the source.
+* `else` holds the script after `else`. It is left out when there is no `else`.
+* Any of these scripts may be empty, `(script)`.
+* The `redirs` of an `if` holds the redirections after `fi`.
 
 ### Words
 

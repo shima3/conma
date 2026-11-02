@@ -1,0 +1,2 @@
+(line (if (clause (script (line (cmd (words (word (lit "a")))))) (script (line (cmd (words (word (lit "b")))))))))
+exit: 0

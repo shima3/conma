@@ -1,6 +1,6 @@
 ;; ConSh の実行（段階 3）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
-;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、builtin、command
+;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、builtin、command、if 文
 ;; パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
@@ -314,6 +314,8 @@
   Node_split stmt ,(tag pos children)
   __if_then_else__ (,() __String_equal__ tag "cmd")
     (,() Eval_cmd sh pos children) (,()
+  __if_then_else__ (,() __String_equal__ tag "if")
+    (,() Eval_if sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "assign")
     (,()
       Eval_assign sh children ,()
@@ -330,7 +332,7 @@
     (,() Eval_return sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "pipe")
     (,() Sh_error sh pos "pipelines are not implemented yet")
-    (,() Sh_error sh pos "& is not implemented yet")))))))
+    (,() Sh_error sh pos "& is not implemented yet"))))))))
 
 ;; 文「変数定義 {空白+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空の LazyList
 (define Eval_assign ,(sh defs)
@@ -562,6 +564,79 @@
       builtin sh pos args in out err ,()
       return) ,()
   External_run sh pos defs name args in out err)
+
+;; ── if 文 ──
+
+;; if 文を実行する。リダイレクトがあれば、入出力を変えた文脈で実行する。
+;; 中の変数定義と関数定義は外に反映するので、局所変数と関数の Dict は同じものを使う
+(define Eval_if ,(sh pos children)
+  __Cont_get__ ,(return)
+  If_parts children ,(clauses elseBody redirs)
+  __if__ (,() __is_null__ redirs)
+    (,()
+      If_clauses sh clauses elseBody ,()
+      return) ,()
+  Eval_redirs sh redirs ,(in out err opened ok)
+  __unless__ (,() __NULL__ ok)
+    (,()
+      Eval_close opened ,()
+      Sh_set_status sh "1" ,()
+      return) ,()
+  Dict_copy sh ,(inner)
+  __Dict_put__ inner "in" in ,()
+  __Dict_put__ inner "out" out ,()
+  __Dict_put__ inner "err" err ,()
+  ;; 中の return で関数から戻るときも、開いた Stream を閉じる
+  Sh_get sh "return" ,(ret)
+  __unless__ (,() __is_null__ ret)
+    (,() __Dict_put__ inner "return" (,() Eval_close opened ,() ret)) ,()
+  If_clauses inner clauses elseBody ,()
+  Eval_close opened)
+
+;; (if clause ... [else] [redirs]) の子を、clause の LList、else のスクリプト（なければ null）、
+;; リダイレクトの LList に分ける
+(define If_parts ,(children)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ children) (,() return __NULL__ __NULL__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ children ,(child rest)
+  If_parts rest ,(clauses elseBody redirs)
+  Node_split child ,(tag pos items)
+  __if_then_else__ (,() __String_equal__ tag "clause")
+    (,()
+      __LList_cons__ child clauses ,(clauses)
+      __NULL__ clauses elseBody redirs) (,()
+  __if_then_else__ (,() __String_equal__ tag "else")
+    (,()
+      List_first items ,(body)
+      __NULL__ clauses body redirs)
+    (,() __NULL__ clauses elseBody items)))
+
+;; 条件を順に実行し、最初に $? が 0 になった clause の本体を実行する。どれも 0 でなければ else を実行する。
+;; else がなく、どの条件も成り立たなければ $? は 0
+(define If_clauses ,(sh clauses elseBody)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ clauses)
+    (,()
+      __if_then_else__ (,() __is_null__ elseBody)
+        (,() Sh_set_status sh "0")
+        (,() If_script sh elseBody) ,()
+      return) ,()
+  __LList_uncons__ __print_exit_error__ clauses ,(clause rest)
+  Node_split clause ,(tag pos scripts)
+  __LList_uncons__ __print_exit_error__ scripts ,(cond others)
+  List_first others ,(body)
+  If_script sh cond ,()
+  Sh_status sh ,(status)
+  __if_then_else__ (,() __String_equal__ status "0")
+    (,() If_script sh body)
+    (,() If_clauses sh rest elseBody))
+
+;; if 文の中のスクリプトを実行する。空のスクリプトの $? は 0
+(define If_script ,(sh script)
+  __Cont_get__ ,(return)
+  Node_split script ,(tag pos lines)
+  __if__ (,() __is_null__ lines) (,() Sh_set_status sh "0" ,() return) ,()
+  Eval_lines sh lines)
 
 ;; ── 組み込みコマンド ──
 ;; どれも ,(sh pos args in out err) を取る

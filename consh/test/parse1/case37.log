@@ -1,0 +1,2 @@
+consh_parse: case37.sh:1:5: unexpected fi
+exit: 1

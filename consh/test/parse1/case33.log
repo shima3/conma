@@ -1,0 +1,7 @@
+(line (if (clause (script (line (cmd (words (word (lit "f")))))) (script (line (cmd (words (word (lit "echo")) (word (lit "a"))))))) (else (script (line (cmd (words (word (lit "echo")) (word (lit "b")))))))))
+(line (list (bg (pipe (if (clause (script (line (cmd (words (word (lit "f")))))) (script (line (cmd (words (word (lit "echo")) (word (lit "a"))))))) (clause (script (line (pipe (cmd (words (word (lit "g")))) (cmd (words (word (lit "h"))))))) (script (line (assign (def "x" (word (lit "1"))))))) (clause (script (line (cmd (words (word (lit "k")))))) (script)) (else (script)) (redirs (redir ">" (word (lit "out"))) (redir "2>&1"))) (cmd (words (word (lit "cat"))))))))
+(line (if (clause (script) (script))) (cmd (words (word (lit "echo")) (word (lit "fi")) (word (lit "then")))))
+(line (cmd (env (def "x" (word (lit "1")))) (words (word (lit "if")))))
+(line (pipe (if (clause (script (line (cmd (words (word (lit "a")))))) (script (line (cmd (words (word (lit "b")))))))) (cmd (words (word (lit "c"))))))
+(line (function "f" (params ()) (script (line (if (clause (script (line (cmd (words (word (lit "a")))))) (script (line (return (word (lit "1")))))))))))
+exit: 0

@@ -1,0 +1,2 @@
+consh_parse: case36.sh:1:14: expected then, but found fi
+exit: 1

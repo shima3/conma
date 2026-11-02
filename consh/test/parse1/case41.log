@@ -1,0 +1,2 @@
+consh_parse: case41.sh:1:17: unexpected ')'
+exit: 1

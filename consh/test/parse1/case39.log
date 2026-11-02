@@ -1,0 +1,2 @@
+consh_parse: case39.sh:1:5: unexpected return
+exit: 1

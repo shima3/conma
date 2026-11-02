@@ -1,0 +1,2 @@
+consh_parse: case40.sh:1:23: expected fi, but found elif
+exit: 1

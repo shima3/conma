@@ -1,0 +1,3 @@
+(cmd (words "echo" "a"))
+consh_parse: case15.sh:2:1: if is not supported in the expand mode
+exit: 1

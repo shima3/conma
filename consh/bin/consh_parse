@@ -24,6 +24,7 @@ Usage:
         (pipe ...), (list ...), (bg ...) は構文解析と同じ形
 
     * 変数定義、export は実行し、その後の展開に反映する。関数は定義しても呼び出さない。
+    * if 文はエラーとする（$? がないので、どちらを実行するか決められない）。
     * コマンド置換 $( ) の中は、局所変数と環境変数をコピーして実行する。
       中で使えるコマンドは echo だけで、引数を空白で連結し、末尾に改行を付けて出力する。
       出力を行に区切った LazyList が値になる。パイプ、&、リダイレクトはエラーとする。
@@ -68,7 +69,9 @@ def node(pos, *fields):
 
 SPACES = (' ', '\t')
 SPECIALS = (';', "'", '(', ')', '{', '}', '|', '&', '>', '<', '"', '$', '\\')
-KEYWORDS = ('function', 'export', 'return')
+# 文の先頭でスクリプトを終えるキーワード
+TERMINATORS = ('then', 'elif', 'else', 'fi')
+KEYWORDS = ('function', 'export', 'return', 'if') + TERMINATORS
 
 
 def is_ident_start(c):
@@ -189,6 +192,8 @@ class Parser:
         c = self.peek()
         if c == '':
             return 'end of input'
+        if self.at_terminator():
+            return self.keyword()
         if self.at_newline():
             return 'newline'
         return repr(c)
@@ -229,7 +234,7 @@ class Parser:
                 self.skip_comment()
                 break
             c = self.peek()
-            if c == '' or self.at_newline() or c == term:
+            if c == '' or self.at_newline() or c == term or self.at_terminator():
                 break
             s = self.parse_statement(term)
             if not stmts:
@@ -244,7 +249,7 @@ class Parser:
                 self.skip_comment()
                 break
             c = self.peek()
-            if c == '' or self.at_newline() or c == term:
+            if c == '' or self.at_newline() or c == term or self.at_terminator():
                 break
             self.error(f'unexpected {self.describe()}')
         return stmts
@@ -252,13 +257,24 @@ class Parser:
     # -- 文 --
 
     def keyword(self):
+        # 直後が空白、改行、;、|、&、入力の終わりのときだけキーワードになる
         for kw in KEYWORDS:
             n = len(kw)
             if self.peek_str(n) == kw:
                 c = self.peek(n)
-                if c == '' or c in SPACES or self.at_newline(n):
+                if c == '' or c in SPACES or c in (';', '|', '&') or self.at_newline(n):
                     return kw
         return None
+
+    def at_terminator(self):
+        return self.keyword() in TERMINATORS
+
+    def expect_keyword(self, kw):
+        if self.keyword() != kw:
+            self.error(f'expected {kw}, but found {self.describe()}')
+        pos = self._index(0)
+        self.advance(len(kw))
+        return pos
 
     def parse_statement(self, term):
         pos = self._index(0)
@@ -365,7 +381,7 @@ class Parser:
             self._mark_sep()
             items.append(node(p.pos, 'bg', p))
             self.skip_spaces()
-            if not self.is_word_start() or self.at_comment():
+            if not self.is_word_start() or self.at_comment() or self.at_terminator():
                 break
         if len(items) == 1 and items[0][0] != 'bg':
             return items[0]
@@ -399,6 +415,16 @@ class Parser:
                 defs.append(self.parse_def())
                 if self.skip_spaces() == 0:
                     break
+        # 単純文の先頭のキーワード。前置の変数定義の後ではキーワードにならない
+        kw = None if defs else self.keyword()
+        if kw == 'if':
+            clauses, else_body = self.parse_if()
+            redirs = []
+            if self.skip_spaces() and not self.at_comment() and self.at_redirect():
+                self.parse_redirects(redirs)
+            return node(pos, 'if', clauses, else_body, redirs)
+        if kw is not None:
+            self.error(f'unexpected {kw}')
         if not self.is_word_start() or self.at_redirect() or self.at_comment():
             self.error(f'expected a command, but found {self.describe()}')
         words = [self.parse_word()]
@@ -411,6 +437,10 @@ class Parser:
             if not self.is_word_start():
                 return node(pos, 'cmd', defs, words, redirs)
             words.append(self.parse_word())
+        self.parse_redirects(redirs)
+        return node(pos, 'cmd', defs, words, redirs)
+
+    def parse_redirects(self, redirs):
         while True:
             redirs.append(self.parse_redirect())
             if self.skip_spaces() == 0 or self.at_comment():
@@ -420,7 +450,24 @@ class Parser:
             if self.is_word_start():
                 self.error('a word after a redirection')
             break
-        return node(pos, 'cmd', defs, words, redirs)
+
+    def parse_if(self):
+        # if、elif ごとに条件と本体のスクリプトを読む。スクリプトはキーワードの直後から始まる
+        clauses = []
+        kw = 'if'
+        while kw in ('if', 'elif'):
+            pos = self.expect_keyword(kw)
+            cond = self.parse_script(None)
+            self.expect_keyword('then')
+            body = self.parse_script(None)
+            clauses.append(node(pos, 'clause', cond, body))
+            kw = self.keyword()
+        else_body = None
+        if kw == 'else':
+            pos = self.expect_keyword('else')
+            else_body = node(pos, 'else', self.parse_script(None))
+        self.expect_keyword('fi')
+        return clauses, else_body
 
     def at_redirect(self):
         s = self.peek_str(4)
@@ -595,6 +642,14 @@ def sx_stmt(s):
         return sx(kind, s.pos, *(sx_stmt(x) for x in s[1]))
     if kind == 'bg':
         return sx(kind, s.pos, sx_stmt(s[1]))
+    if kind == 'if':
+        _, clauses, else_body, redirs = s
+        parts = [sx('clause', c.pos, sx_script(c[1]), sx_script(c[2])) for c in clauses]
+        if else_body is not None:
+            parts.append(sx('else', else_body.pos, sx_script(else_body[1])))
+        if redirs:
+            parts.append(sx('redirs', redirs[0].pos, *(sx_redir(r) for r in redirs)))
+        return sx(kind, s.pos, *parts)
     if kind == 'cmd':
         _, defs, words, redirs = s
         parts = []
@@ -732,6 +787,8 @@ class Expander:
             return f'({kind} ' + ' '.join(self.exec_stmt(x, ctx, None) for x in s[1]) + ')'
         if kind == 'cmd':
             return self.exec_cmd(s, ctx, out)
+        if kind == 'if':
+            raise ConShError('if is not supported in the expand mode', s.pos)
         raise ValueError(kind)
 
     def exec_cmd(self, s, ctx, out):
