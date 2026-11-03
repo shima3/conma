@@ -1,0 +1,2 @@
+consh_parse: case45.sh:1:11: expected '}', but found ' '
+exit: 1

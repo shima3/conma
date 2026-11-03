@@ -1,0 +1,4 @@
+(line (cmd (words (word (lit "echo")) (word (var "x")) (word (bvar "x")) (word (bvar "@")) (word (bvar "10")) (word (var "1") (lit "0")) (word (bvar "x" (default))) (word (bvar "x" (default (word (lit "a") (var "y"))))) (word (bvar "x" (default (array (word (lit "a")) (word (dq (lit "b c"))) (word (bvar "l")))))) (word (bvar "x" (default (array)))))))
+(line (cmd (words (word (lit "echo")) (word (dq (bvar "x"))) (word (dq (bvar "x" (default (word (dq (lit "a b"))))) (lit "z"))) (word (dq (bvar "@"))) (word (dq (bvar "x" (default (array (word (lit "1")) (word (lit "2"))))))))))
+(line (cmd (words (word (lit "echo")) (word (bvar "x" (default (word (bvar "y" (default (word (lit "z")))))))))))
+exit: 0

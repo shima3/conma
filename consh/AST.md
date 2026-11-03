@@ -66,10 +66,10 @@ A `script` appears as the body of a `function`, in a `subst`, and in the parts o
 
 | Node | Format | Grammar | Location |
 | --- | --- | --- | --- |
-| `return` | `(return word)` | `"return" 空白+ 語` | `return` |
+| `return` | `(return word)` | `"return" スペース+ 語` | `return` |
 | `export` | `(export Item ...)` (zero or more items) | 環境変数定義 | `export` |
 | `function` | `(function "name" params script)` | 関数定義 | `function` |
-| `assign` | `(assign def ...)` (one or more) | 変数定義 {空白+ 変数定義} | the first `def` |
+| `assign` | `(assign def ...)` (one or more) | 変数定義 {スペース+ 変数定義} | the first `def` |
 | `list` | `(list Element ...)` | コマンド列 | the first element |
 | `bg` | `(bg Pipeline)` | a パイプライン followed by `&` | the pipeline |
 | `pipe` | `(pipe Simple ...)` (two or more) | パイプライン | the first element |
@@ -96,7 +96,8 @@ Examples:
 
 | Node | Format | Location |
 | --- | --- | --- |
-| `def` | `(def "name" [word])` | the variable name |
+| `def` | `(def "name" [Value])` | the variable name |
+| `array` | `(array word ...)` (zero or more) | `(` |
 | `name` | `(name "name")` | the variable name |
 | `env` | `(env def ...)` (one or more) | the first `def` |
 | `words` | `(words word ...)` (one or more) | the first word |
@@ -106,8 +107,8 @@ Examples:
 | `clause` | `(clause script script)` | `if` or `elif` |
 | `else` | `(else script)` | `else` |
 
-* `def` is a variable definition (`name=word`). The word is left out when the right side is empty (`x=`).
-* An Item of `export` is `(name "x")` for `export x`, or a `def` for `export x=word`.
+* `def` is a variable definition (`name=値`). A Value (値) is a `word`, or an `array` for `(word ...)`. The Value is left out when the right side is empty (`x=`).
+* An Item of `export` is `(name "x")` for `export x`, or a `def` for `export x=値`.
 * `env` holds the variable definitions before the command (`x=1 cmd`). It is left out when there are none.
 * `redirs` holds the redirections after the words. It is left out when there are none.
 * `redir`:
@@ -129,6 +130,8 @@ Examples:
 | `sq` | `(sq "text")` | `'` |
 | `dq` | `(dq DqElement ...)` (zero or more) | `"` |
 | `var` | `(var "name")` | `$` |
+| `bvar` | `(bvar "name" [default])` | `$` |
+| `default` | `(default [Value])` | `-` |
 | `subst` | `(subst script)` | `$` |
 
 A WordElement (語要素) is one of the following:
@@ -136,11 +139,15 @@ A WordElement (語要素) is one of the following:
 * `lit`: a run of bare characters (裸文字). A `$` that does not start a variable reference or a command substitution is a bare character too. Adjacent bare characters are always in one `lit`, also across a removed line continuation.
 * `esc`: `\` and the character after it outside quotes. The value is that character alone.
 * `sq`: a string in single quotes, without the quotes. Nothing in it is processed.
+  An ANSI-C quote `$'...'` is an `sq` too, with its escapes already turned into characters: `\n`, `\t`, `\r`, `\\`, `\'`, `\"`, `\xHH` (a byte; a run of them is read as UTF-8) and `\uHHHH`. A `\` before any other character is kept with that character.
 * `dq`: a string in double quotes.
-* `var`: a variable reference. The name is a variable name, the digits of `$1` or `${10}`, or one of `@`, `#`, `?`, `!`, `$`. `$x` and `${x}` give the same node.
+* `var`: a variable reference without braces, `$x`. The name is a variable name, one digit (`$1`), or one of `@`, `#`, `?`, `!`, `$`.
+* `bvar`: a variable reference in braces, `${x}`. The name is a variable name, the digits of `${10}`, or `@`.
+  `default` holds the default value of `${x-値}`; its Value is left out for `${x-}`. The `default` is left out when there is no `-`.
+  The Value is read as a word also inside double quotes, so `"${x-"a b"}"` has a `dq` inside a `dq`.
 * `subst`: a command substitution `$( ... )`.
 
-A DqElement (二重引用要素) is `lit`, `var` or `subst`:
+A DqElement (二重引用要素) is `lit`, `var`, `bvar` or `subst`:
 
 * `lit` holds the text between the variable references and command substitutions, after `\` is processed: `\"`, `\$` and `\\` become `"`, `$` and `\`; a `\` before any other character is kept with that character (`\a` stays `\a`).
 * Adjacent texts are in one `lit`.

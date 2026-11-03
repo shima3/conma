@@ -1,0 +1,3 @@
+(line (cmd (words (word (lit "echo")) (word (sq "a\tb")) (word (sq "\n\r\\")) (word (sq "it's")) (word (sq "\"")) (word (sq "AB")) (word (sq "あ")) (word (sq "あ")) (word (sq "\\q")) (word (sq "")) (word (lit "x") (sq "y") (lit "z")))))
+(line (cmd (words (word (lit "echo")) (word (dq (lit "$'x'"))))))
+exit: 0

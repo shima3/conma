@@ -294,7 +294,7 @@ class Parser:
                 name = self.parse_ident()
                 if self.peek() == '=':
                     self.advance()
-                    items.append(node(ipos, 'def', name, self.parse_word() if self.is_word_start() else None))
+                    items.append(node(ipos, 'def', name, self.parse_value()))
                 else:
                     items.append(node(ipos, 'name', name))
             return node(pos, 'export', items)
@@ -337,7 +337,26 @@ class Parser:
         pos = self._index(0)
         name = self.parse_ident()
         self.advance()  # =
-        return node(pos, 'def', name, self.parse_word() if self.is_word_start() else None)
+        return node(pos, 'def', name, self.parse_value())
+
+    def parse_value(self):
+        # 値 = [語] | "(" {スペース} [語 {スペース+ 語}] {スペース} ")"。空なら None
+        if self.peek() == '(':
+            pos = self._index(0)
+            self.advance()
+            self.skip_spaces()
+            words = []
+            while self.peek() != ')':
+                if not self.is_word_start():
+                    self.error(f"expected a word or ')', but found {self.describe()}")
+                words.append(self.parse_word())
+                if self.skip_spaces() == 0 and self.peek() != ')':
+                    self.error(f"expected ')', but found {self.describe()}")
+            self.advance()
+            if self.is_word_start():
+                self.error(f"unexpected {self.describe()} after ')'")
+            return node(pos, 'array', words)
+        return self.parse_word() if self.is_word_start() else None
 
     def parse_ident(self):
         name = ''
@@ -511,6 +530,8 @@ class Parser:
                 self.pos = end + 1
             elif c == '"':
                 elems.append(self.parse_dq())
+            elif c == '$' and self.peek(1) == "'":
+                elems.append(self.parse_ansi_c())
             elif c == '$':
                 e = self.parse_dollar()
                 if e is None:
@@ -530,6 +551,52 @@ class Parser:
             else:
                 break
         return node(pos, 'word', elems)
+
+    def parse_ansi_c(self):
+        # $'...' を読み、エスケープを文字にした sq の節を返す。中では行継続を取り除かない
+        start = self.pos
+        t = self.text
+        i = start + 2
+        out = []
+        raw = bytearray()  # \xHH の続き。まとめて UTF-8 として読む
+
+        def flush():
+            if raw:
+                out.append(raw.decode('utf-8', 'replace'))
+                raw.clear()
+
+        while True:
+            if i >= len(t):
+                self.error("unterminated $'", start)
+            c = t[i]
+            if c == "'":
+                break
+            if c != '\\' or i + 1 >= len(t):
+                flush()
+                out.append(c)
+                i += 1
+                continue
+            d = t[i + 1]
+            if d in 'xu':
+                n = 2 if d == 'x' else 4
+                j = i + 2
+                while j < len(t) and j < i + 2 + n and t[j] in '0123456789abcdefABCDEF':
+                    j += 1
+                if j > i + 2:
+                    code = int(t[i + 2:j], 16)
+                    if d == 'x':
+                        raw.append(code)
+                    else:
+                        flush()
+                        out.append(chr(code))
+                    i = j
+                    continue
+            flush()
+            out.append(ANSI_C_ESCAPES.get(d, '\\' + d))
+            i += 2
+        flush()
+        self.pos = i + 1
+        return node(start, 'sq', ''.join(out))
 
     def parse_dq(self):
         start = self.pos
@@ -579,11 +646,22 @@ class Parser:
             elif is_digit(self.peek(k)):
                 while is_digit(self.peek(k)):
                     k += 1
-            if k == 2 or self.peek(k) != '}':
+            elif self.peek(k) == '@':
+                k += 1
+            if k == 2 or self.peek(k) not in ('}', '-'):
                 return None
             name = ''.join(self.peek(i) for i in range(2, k))
-            self.advance(k + 1)
-            return node(pos, 'var', name)
+            self.advance(k)
+            default = None
+            if self.peek() == '-':
+                # 既定値。二重引用符の中でも語として読む
+                dpos = self._index(0)
+                self.advance()
+                default = node(dpos, 'default', self.parse_value())
+                if self.peek() != '}':
+                    self.error(f"expected '}}', but found {self.describe()}")
+            self.advance()
+            return node(pos, 'bvar', name, default)
         if is_ident_start(c):
             self.advance()
             return node(pos, 'var', self.parse_ident())
@@ -591,6 +669,9 @@ class Parser:
             self.advance(2)
             return node(pos, 'var', c)
         return None
+
+
+ANSI_C_ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', "'": "'", '"': '"'}
 
 
 def add_lit(elems, s, pos):
@@ -665,7 +746,14 @@ def sx_stmt(s):
 def sx_item(i):
     if i[0] == 'name' or i[2] is None:
         return sx(i[0], i.pos, q(i[1]))
-    return sx(i[0], i.pos, q(i[1]), sx_word(i[2]))
+    return sx(i[0], i.pos, q(i[1]), sx_def_value(i[2]))
+
+
+def sx_def_value(v):
+    # 値。語か (array 語 ...)
+    if v[0] == 'array':
+        return sx('array', v.pos, *(sx_word(w) for w in v[1]))
+    return sx_word(v)
 
 
 def sx_params(p):
@@ -693,6 +781,13 @@ def sx_elem(e):
     kind = e[0]
     if kind in ('lit', 'esc', 'sq', 'var'):
         return sx(kind, e.pos, q(e[1]))
+    if kind == 'bvar':
+        _, name, default = e
+        if default is None:
+            return sx(kind, e.pos, q(name))
+        if default[1] is None:
+            return sx(kind, e.pos, q(name), sx('default', default.pos))
+        return sx(kind, e.pos, q(name), sx('default', default.pos, sx_def_value(default[1])))
     if kind == 'dq':
         return sx(kind, e.pos, *(sx_elem(x) for x in e[1]))
     if kind == 'subst':
@@ -887,13 +982,21 @@ class Expander:
                 is_list = is_list or many
                 product([(s, False) for s in strs])
             else:
-                v = self.lookup(e[1], ctx) if kind == 'var' else self.subst(e[1], ctx)
+                v = self.ref(e, ctx)
                 if isinstance(v, LazyList):
                     is_list = True
                     product([(x, True) for x in v])
                 else:
                     product([(v, True)])
         return alts, quoted, is_list
+
+    def ref(self, e, ctx):
+        # 変数参照かコマンド置換の値。${x} は、当面 $x と同じに扱う
+        if e[0] == 'subst':
+            return self.subst(e[1], ctx)
+        if e[0] == 'bvar' and e[2] is not None:
+            raise ConShError('default values are not supported in the expand mode yet', e.pos)
+        return self.lookup(e[1], ctx)
 
     def expand_dq(self, elems, ctx):
         # "..." は1つの語になる。ただし $@ は要素ごとに別の語になる
@@ -903,11 +1006,11 @@ class Expander:
             kind = e[0]
             if kind == 'lit':
                 strs = [s + e[1] for s in strs]
-            elif kind == 'var' and e[1] == '@':
+            elif kind in ('var', 'bvar') and e[1] == '@':
                 many = True
                 strs = [s + a for s in strs for a in self.args]
             else:
-                v = self.lookup(e[1], ctx) if kind == 'var' else self.subst(e[1], ctx)
+                v = self.ref(e, ctx)
                 strs = [s + stringify(v) for s in strs]
         return strs, many
 
@@ -930,6 +1033,8 @@ class Expander:
 
     def value(self, word, ctx):
         """変数定義の右辺として展開する。LazyList の値を含めば LazyList、そうでなければ文字列"""
+        if word[0] == 'array':
+            raise ConShError('(...) values are not supported in the expand mode yet', word.pos)
         alts, _, is_list = self.expand(word, ctx)
         strs = [''.join(t for t, _ in alt) for alt in alts]
         return LazyList(strs) if is_list else strs[0]

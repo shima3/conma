@@ -1,4 +1,4 @@
-(line (cmd (words (word (lit "echo")) (word (lit "a")) (word (sq "b c")) (word (dq (lit "d ") (var "x") (lit " e"))) (word (esc "$") (lit "y")) (word (var "HOME") (lit "x")))))
-(line (cmd (words (word (lit "echo")) (word (dq (lit "$ \" \\ \\a"))) (word (lit "$")) (word (lit "$.")) (word (var "1") (lit "0")) (word (var "1") (lit "0")) (word (var "@")) (word (var "#")) (word (var "?")) (word (var "!")) (word (var "$")))))
+(line (cmd (words (word (lit "echo")) (word (lit "a")) (word (sq "b c")) (word (dq (lit "d ") (var "x") (lit " e"))) (word (esc "$") (lit "y")) (word (bvar "HOME") (lit "x")))))
+(line (cmd (words (word (lit "echo")) (word (dq (lit "$ \" \\ \\a"))) (word (lit "$")) (word (lit "$.")) (word (bvar "1") (lit "0")) (word (var "1") (lit "0")) (word (var "@")) (word (var "#")) (word (var "?")) (word (var "!")) (word (var "$")))))
 (line (cmd (words (word (lit "echo")) (word (sq "it") (sq "s")) (word (dq (lit "a")) (sq "b") (lit "c") (esc " ") (lit "d")))))
 exit: 0

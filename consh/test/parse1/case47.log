@@ -1,0 +1,2 @@
+consh_parse: case47.sh:1:7: expected ')', but found newline
+exit: 1

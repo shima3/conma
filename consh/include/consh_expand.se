@@ -25,6 +25,9 @@
 
 ;; 変数定義の右辺として展開した値。LazyList の値を含めば LazyList、そうでなければ String
 (define Expand_value ,(sh word)
+  Node_split word ,(tag pos children)
+  __if__ (,() __String_equal__ tag "array")
+    (,() Sh_error sh pos "(...) values are not implemented yet") ,()
   Expand_word sh word ,(alts quoted isList)
   __if_then_else__ (,() __NULL__ isList)
     (,() LazyList_fromList alts)
@@ -44,7 +47,7 @@
   List_first children ,(value)
   __String_equal__ kind "sq" ,(isSq)
   __String_equal__ kind "dq" ,(isDq)
-  __String_equal__ kind "var" ,(isVar)
+  Expand_is_var sh pos kind children ,(isVar)
   __String_equal__ kind "subst" ,(isSubst)
   __or__ isSq isDq ,(isQuote)
   __or__ quoted isQuote ,(quoted)
@@ -64,6 +67,15 @@
   __or__ isList many ,(isList)
   Product alts opts ,(alts)
   Expand_elems sh rest alts quoted isList)
+
+;; 変数参照の節か。${x} は、当面 $x と同じに扱う。既定値はまだない
+(define Expand_is_var ,(sh pos kind children)
+  __Cont_get__ ,(return)
+  __if__ (,() __String_equal__ kind "var") (,() return __TRUE__) ,()
+  __unless__ (,() __String_equal__ kind "bvar") (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __unless__ (,() __is_null__ rest) (,() Sh_error sh pos "default values are not implemented yet") ,()
+  __NULL__ __TRUE__)
 
 ;; 変数の値を、直積の選択肢の LList にする。LazyList なら、その要素
 (define Value_options ,(v)
@@ -87,7 +99,7 @@
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
   Node_split elem ,(kind pos children)
   List_first children ,(value)
-  __String_equal__ kind "var" ,(isVar)
+  Expand_is_var sh pos kind children ,(isVar)
   __String_equal__ kind "subst" ,(isSubst)
   __if_then_else__ (,() __NULL__ isSubst)
     (,() Sh_error sh pos "command substitution is not implemented yet") (,()

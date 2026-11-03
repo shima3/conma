@@ -1,0 +1,4 @@
+(line (assign (def "y" (array (word (lit "a")) (word (lit "b")))) (def "z" (array)) (def "w" (array (word (lit "a")) (word (dq (lit "b c"))))) (def "v")))
+(line (export (def "p" (array (word (lit "1")) (word (lit "2")))) (name "q")))
+(line (cmd (env (def "x" (array (word (lit "a"))))) (words (word (lit "f")))))
+exit: 0
