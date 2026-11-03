@@ -1,0 +1,2 @@
+consh: case16.sh:2:3: 2 words in a variable definition
+exit: 1

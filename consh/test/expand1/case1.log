@@ -1,4 +1,4 @@
 (assign ("list" (list "a" "b")) ("list2" (list "1" "2")))
-(cmd (words "echo" "aa" "ab" "a.txt" "b.txt" "a\nb.txt" "a1" "a2" "b1" "b2"))
-(cmd (words "echo" "a\nb"))
+(cmd (words "echo" "aa" "ab" "a.txt" "b.txt" "a b.txt" "a1" "a2" "b1" "b2"))
+(cmd (words "echo" "a b"))
 exit: 0

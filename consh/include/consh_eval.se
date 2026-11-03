@@ -100,7 +100,8 @@
     (,() Sh_error sh pos "$1, $@ and $# are not defined in a function") ,()
   Sh_get sh "args")
 
-;; 変数参照の値。String か LazyList。局所変数がなければ環境変数、それもなければ空文字列
+;; 変数参照の値。String か LazyList。局所変数がなければ環境変数を探す。
+;; 未定義の変数と、足りない位置パラメータはエラーとする
 (define Sh_lookup ,(sh pos name)
   __Cont_get__ ,(return)
   __if__ (,() __String_equal__ name "@")
@@ -113,7 +114,9 @@
       num name ,(n)
       __if__ (,() __Number_is_zero__ n) (,() Sh_get sh "script" ,(script) return script) ,()
       Sh_args sh pos ,(args)
-      Sh_nth args n ,(arg)
+      Sh_nth args n (,()
+        __String_concat__ "missing positional parameter: $" name ,(msg)
+        Sh_error sh pos msg) ,(arg)
       return arg) ,()
   __if__ (,() __String_equal__ name "#")
     (,()
@@ -127,17 +130,58 @@
   Sh_get sh "vars" ,(vars)
   Sh_get sh "env" ,(env)
   __Dict_lookup_or__ vars name (,(key)
-    Env_lookup env key (,(key) __NULL__ "")))
+    Env_lookup env key (,(key)
+      __String_concat__ "undefined variable: " key ,(msg)
+      Sh_error sh pos msg)))
 
-;; LList の n 番目（1 から）。足りなければ空文字列
-(define Sh_nth ,(list n)
+;; 変数が定義済みか。位置パラメータは引数の数で決まる。特殊な変数は常に定義済み
+(define Sh_defined ,(sh pos name)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ list) (,() return "") ,()
+  __if__ (,() String_is_digits name)
+    (,()
+      num name ,(n)
+      __if__ (,() __Number_is_zero__ n) (,() return __TRUE__) ,()
+      Sh_args sh pos ,(args)
+      List_length args ,(len)
+      __Number_subtract__ len n ,(room)
+      __if__ (,() __Number_is_negative__ room) (,() return __FALSE__) ,()
+      return __TRUE__) ,()
+  __String_equal__ name "@" ,(s1)
+  __String_equal__ name "#" ,(s2)
+  __String_equal__ name "?" ,(s3)
+  __String_equal__ name "!" ,(s4)
+  __String_equal__ name "$" ,(s5)
+  __or__ s1 s2 ,(s)
+  __or__ s s3 ,(s)
+  __or__ s s4 ,(s)
+  __or__ s s5 ,(s)
+  __if__ (,() __NULL__ s) (,() return __TRUE__) ,()
+  Sh_get sh "vars" ,(vars)
+  Sh_get sh "env" ,(env)
+  __Dict_lookup_or__ vars name (,(key)
+    Env_lookup env key (,(key) return __FALSE__)) ,(value)
+  __NULL__ __TRUE__)
+
+;; LList の n 番目（1 から）。足りなければ onMissing を呼ぶ
+(define Sh_nth ,(list n onMissing)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) onMissing ,()
   __LList_uncons__ __print_exit_error__ list ,(head tail)
   num "1" ,(one)
   __Number_subtract__ n one ,(n)
   __if__ (,() __Number_is_zero__ n) (,() return head) ,()
-  Sh_nth tail n)
+  Sh_nth tail n onMissing)
+
+;; 文字列化の区切り。局所変数、環境変数の順に OFS を探し、どちらにもなければスペース
+(define Sh_ofs ,(sh pos)
+  __Cont_get__ ,(return)
+  Sh_get sh "vars" ,(vars)
+  Sh_get sh "env" ,(env)
+  __Dict_lookup_or__ vars "OFS" (,(key)
+    Env_lookup env key (,(key) return " ")) ,(ofs)
+  __type_name__ ofs ,(type)
+  __unless__ (,() __String_equal__ type "String") (,() Sh_error sh pos "OFS is a LazyList") ,()
+  __NULL__ ofs)
 
 ;; ── 環境変数 ──
 ;; シェル全体の環境変数 base と、前置の変数定義の層 layers（内側が先の、Dict の LList）。
@@ -334,18 +378,14 @@
     (,() Sh_error sh pos "pipelines are not implemented yet")
     (,() Sh_error sh pos "& is not implemented yet"))))))))
 
-;; 文「変数定義 {空白+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空の LazyList
+;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列
 (define Eval_assign ,(sh defs)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ defs) return ,()
   __LList_uncons__ __print_exit_error__ defs ,(def rest)
   Node_split def ,(tag pos children)
-  __LList_uncons__ __print_exit_error__ children ,(name words)
-  __if_then_else__ (,() __is_null__ words)
-    __LazyList_empty__
-    (,()
-      __LList_uncons__ __print_exit_error__ words ,(word others)
-      Expand_value sh word) ,(value)
+  __LList_uncons__ __print_exit_error__ children ,(name values)
+  Expand_def_value sh values ,(value)
   Sh_get sh "vars" ,(vars)
   __Dict_put__ vars name value ,()
   Eval_assign sh rest)
@@ -362,20 +402,16 @@
       Sh_get sh "vars" ,(vars)
       __String_concat__ "export of an undefined local variable: " name ,(msg)
       __Dict_lookup_or__ vars name (,(key) Sh_error sh pos msg) ,(value)
-      Value_toString value)
-    (,() Eval_env_value sh words) ,(value)
+      Value_toString sh pos value)
+    (,() Eval_env_value sh pos words) ,(value)
   Sh_get sh "env" ,(env)
   Env_export env name value ,()
   Eval_export sh rest)
 
 ;; 環境変数に設定する値。右辺がなければ空文字列。LazyList は1つの String にする
-(define Eval_env_value ,(sh words)
-  __if_then_else__ (,() __is_null__ words)
-    (,() __NULL__ "")
-    (,()
-      __LList_uncons__ __print_exit_error__ words ,(word others)
-      Expand_value sh word ,(value)
-      Value_toString value))
+(define Eval_env_value ,(sh pos values)
+  Expand_def_value sh values ,(value)
+  Value_toString sh pos value)
 
 ;; 文「return 語」。語は 0 から 255 の数。関数の残りを実行せずに戻る
 (define Eval_return ,(sh pos children)
@@ -742,8 +778,8 @@
   __if__ (,() __is_null__ defs) return ,()
   __LList_uncons__ __print_exit_error__ defs ,(def rest)
   Node_split def ,(tag pos children)
-  __LList_uncons__ __print_exit_error__ children ,(name words)
-  Eval_env_value sh words ,(value)
+  __LList_uncons__ __print_exit_error__ children ,(name values)
+  Eval_env_value sh pos values ,(value)
   __Dict_put__ dict name value ,()
   Eval_env_defs sh rest dict)
 

@@ -30,6 +30,8 @@ Usage:
       出力を行に区切った LazyList が値になる。パイプ、&、リダイレクトはエラーとする。
     * 環境変数は空から始める（実際の環境変数は取り込まない）。
     * $? は "0"、$! は ""、$$ は "1" とする。$0 はスクリプトのファイル名とする。
+    * 未定義の変数と、足りない位置パラメータの参照はエラーとする。
+    * コマンドの語は、当面すべて外部コマンドの語として展開する（関数と組み込みコマンドを区別しない）。
     * glob はカレントディレクトリで適用し、一致した名前を文字コード順に並べる。
       一致しなければ、語をそのまま残す（Bash の既定と同じ）。
       リダイレクト先の語にも適用し、2つ以上の語になればエラーとする。
@@ -815,9 +817,18 @@ class Context:
         return Context(dict(self.local), dict(self.env))
 
 
-def stringify(v):
-    # LazyList を語や環境変数にするときは、改行で区切って連結し、末尾には付けない
-    return '\n'.join(v) if isinstance(v, LazyList) else v
+def leaves(v):
+    # 入れ子の LazyList を再帰的にたどった文字列の並び
+    if isinstance(v, LazyList):
+        return [x for e in v for x in leaves(e)]
+    return [v]
+
+
+def map_leaves(v, f):
+    # 入れ子の形を保ったまま、葉の文字列に f を適用する
+    if isinstance(v, LazyList):
+        return LazyList(map_leaves(e, f) for e in v)
+    return f(v)
 
 
 def split_lines(out):
@@ -830,7 +841,7 @@ def split_lines(out):
 
 def sx_value(v):
     if isinstance(v, LazyList):
-        return '(list' + ''.join(' ' + q(e) for e in v) + ')'
+        return '(list' + ''.join(' ' + sx_value(e) for e in v) + ')'
     return q(v)
 
 
@@ -858,10 +869,10 @@ class Expander:
                     name = item[1]
                     if name not in ctx.local:
                         raise ConShError(f'export of an undefined local variable: {name}', item.pos)
-                    value = stringify(ctx.local[name])
+                    value = self.to_string(ctx.local[name], ctx, item.pos)
                 else:
                     name = item[1]
-                    value = '' if item[2] is None else stringify(self.value(item[2], ctx))
+                    value = self.to_string(self.def_value(item[2], ctx), ctx, item.pos)
                 ctx.env[name] = value
                 result.append(f'({q(name)} {q(value)})')
             return '(export' + ''.join(' ' + r for r in result) + ')'
@@ -869,8 +880,8 @@ class Expander:
             return f'(function {q(s[1])})'
         if kind == 'assign':
             result = []
-            for _, name, word in s[1]:
-                value = LazyList() if word is None else self.value(word, ctx)
+            for _, name, v in s[1]:
+                value = self.def_value(v, ctx)
                 ctx.local[name] = value
                 result.append(f'({q(name)} {sx_value(value)})')
             return '(assign' + ''.join(' ' + r for r in result) + ')'
@@ -890,7 +901,7 @@ class Expander:
         _, defs, words, redirs = s
         pos = s.pos
         # 前置の変数定義は、同じ文の語の展開に影響しない
-        env = [(name, '' if w is None else stringify(self.value(w, ctx))) for _, name, w in defs]
+        env = [(name, self.to_string(self.def_value(v, ctx), ctx, d.pos)) for d in defs for _, name, v in [d]]
         fields = []
         for w in words:
             fields.extend(self.fields(w, ctx))
@@ -925,14 +936,16 @@ class Expander:
 
     # -- 変数参照 --
 
-    def lookup(self, name, ctx):
+    def lookup(self, name, ctx, pos):
+        if not self.defined(name, ctx):
+            if is_digit(name[0]):
+                raise ConShError(f'missing positional parameter: ${name}', pos)
+            raise ConShError(f'undefined variable: {name}', pos)
         if name == '@':
             return LazyList(self.args)
         if is_digit(name[0]):
             n = int(name)
-            if n == 0:
-                return self.script_name
-            return self.args[n - 1] if n <= len(self.args) else ''
+            return self.script_name if n == 0 else self.args[n - 1]
         if name == '#':
             return str(len(self.args))
         if name == '?':
@@ -943,7 +956,23 @@ class Expander:
             return '1'
         if name in ctx.local:
             return ctx.local[name]
-        return ctx.env.get(name, '')
+        return ctx.env[name]
+
+    def defined(self, name, ctx):
+        if is_digit(name[0]):
+            return int(name) <= len(self.args)
+        if name in ('@', '#', '?', '!', '$'):
+            return True
+        return name in ctx.local or name in ctx.env
+
+    def to_string(self, v, ctx, pos):
+        """値を文字列化する。LazyList は葉を OFS で区切って連結する"""
+        if not isinstance(v, LazyList):
+            return v
+        ofs = ctx.local.get('OFS', ctx.env.get('OFS', ' '))
+        if isinstance(ofs, LazyList):
+            raise ConShError('OFS is a LazyList', pos)
+        return ofs.join(leaves(v))
 
     def subst(self, lines, ctx):
         sub = ctx.copy()
@@ -954,73 +983,66 @@ class Expander:
         return split_lines(''.join(out))
 
     # -- 語の展開 --
+    #
+    # 語は語要素ごとの部分に分けてから展開する。部分は (種類, 値) で、種類は次のどれか。
+    #   'plain'  引用符のない文字列（glob を適用する）
+    #   'quoted' 引用符の中の文字列
+    #   'leaves' $x の LazyList の値。葉ごとの語になる
+    #   'list'   ${x} とコマンド置換の LazyList の値。外部コマンド以外には値のまま渡す（段階 3）
 
-    def expand(self, word, ctx):
-        """語を展開する。返す値は (alts, quoted, is_list)。
-        alts は展開した結果の語の並びで、各語は (文字列, glob を適用するか) の並び。
-        LazyList の値は、ほかの語要素との直積になる。"""
-        alts = [[]]
-        quoted = False
-        is_list = False
-
-        def product(options):
-            nonlocal alts
-            alts = [a + [o] for a in alts for o in options]
-
+    def parts(self, word, ctx):
+        result = []
         for e in word[1]:
             kind = e[0]
-            if kind == 'lit':
-                product([(e[1], True)])
-            elif kind == 'esc':
-                product([(e[1], False)])
+            if kind in ('lit', 'esc'):
+                result.append(('plain' if kind == 'lit' else 'quoted', e[1]))
             elif kind == 'sq':
-                quoted = True
-                product([(e[1], False)])
+                result.append(('quoted', e[1]))
             elif kind == 'dq':
-                quoted = True
-                strs, many = self.expand_dq(e[1], ctx)
-                is_list = is_list or many
-                product([(s, False) for s in strs])
+                result.append(('quoted', self.expand_dq(e[1], ctx)))
             else:
                 v = self.ref(e, ctx)
                 if isinstance(v, LazyList):
-                    is_list = True
-                    product([(x, True) for x in v])
+                    result.append(('leaves' if kind == 'var' else 'list', v))
                 else:
-                    product([(v, True)])
-        return alts, quoted, is_list
+                    result.append(('plain', v))
+        return result
 
     def ref(self, e, ctx):
-        # 変数参照かコマンド置換の値。${x} は、当面 $x と同じに扱う
+        # 変数参照かコマンド置換の値。${x-値} は、x が未定義のときだけ値を作る
         if e[0] == 'subst':
             return self.subst(e[1], ctx)
-        if e[0] == 'bvar' and e[2] is not None:
-            raise ConShError('default values are not supported in the expand mode yet', e.pos)
-        return self.lookup(e[1], ctx)
+        if e[0] == 'bvar' and e[2] is not None and not self.defined(e[1], ctx):
+            return self.def_value(e[2][1], ctx)
+        return self.lookup(e[1], ctx, e.pos)
 
     def expand_dq(self, elems, ctx):
-        # "..." は1つの語になる。ただし $@ は要素ごとに別の語になる
-        strs = ['']
-        many = False
+        # "..." は1つの文字列になる。LazyList は文字列化する
+        out = ''
         for e in elems:
-            kind = e[0]
-            if kind == 'lit':
-                strs = [s + e[1] for s in strs]
-            elif kind in ('var', 'bvar') and e[1] == '@':
-                many = True
-                strs = [s + a for s in strs for a in self.args]
-            else:
-                v = self.ref(e, ctx)
-                strs = [s + stringify(v) for s in strs]
-        return strs, many
+            out += e[1] if e[0] == 'lit' else self.to_string(self.ref(e, ctx), ctx, e.pos)
+        return out
 
     def fields(self, word, ctx):
-        """コマンドの語として展開する。空になった引用符のない語は消し、glob を適用する"""
-        alts, quoted, _ = self.expand(word, ctx)
+        """外部コマンドの語として展開する。
+        LazyList を含まない引用符のない語が空になれば消す。LazyList の葉は、空文字列でも語として残す"""
+        alts = [[]]
+        quoted = False
+        has_list = False
+        for kind, v in self.parts(word, ctx):
+            if kind in ('leaves', 'list'):
+                has_list = True
+                options = [(x, True) for x in leaves(v)]
+            elif kind == 'quoted':
+                quoted = True
+                options = [(v, False)]
+            else:
+                options = [(v, True)]
+            alts = [a + [o] for a in alts for o in options]
         result = []
         for alt in alts:
             text = ''.join(t for t, _ in alt)
-            if text == '' and not quoted:
+            if text == '' and not quoted and not has_list:
                 continue
             if any(active and GLOB_META.search(t) for t, active in alt):
                 pattern = ''.join(t if active else glob.escape(t) for t, active in alt)
@@ -1031,13 +1053,41 @@ class Expander:
             result.append(text)
         return result
 
+    def def_value(self, v, ctx):
+        """変数定義の右辺の値。v は None（空）、語、または (array 語 ...)"""
+        if v is None:
+            return ''
+        if v[0] == 'array':
+            return LazyList(f for w in v[1] for f in self.fields(w, ctx))
+        return self.value(v, ctx)
+
     def value(self, word, ctx):
-        """変数定義の右辺として展開する。LazyList の値を含めば LazyList、そうでなければ文字列"""
-        if word[0] == 'array':
-            raise ConShError('(...) values are not supported in the expand mode yet', word.pos)
-        alts, _, is_list = self.expand(word, ctx)
-        strs = [''.join(t for t, _ in alt) for alt in alts]
-        return LazyList(strs) if is_list else strs[0]
+        """変数定義の右辺の語の値。
+        $x の LazyList を含めば、葉の語が1つならその文字列、なければ空文字列、2つ以上ならエラー。
+        そうでなく ${x} かコマンド置換の LazyList を含めば LazyList。どちらでもなければ文字列"""
+        parts = self.parts(word, ctx)
+        kinds = [k for k, _ in parts]
+        if 'leaves' in kinds:
+            alts = ['']
+            for kind, v in parts:
+                options = leaves(v) if kind in ('leaves', 'list') else [v]
+                alts = [a + o for a in alts for o in options]
+            if len(alts) > 1:
+                raise ConShError(f'{len(alts)} words in a variable definition', word.pos)
+            return alts[0] if alts else ''
+        if kinds.count('list') == 1:
+            # 前後の文字列を、入れ子の形を保ったまま葉に付ける
+            i = kinds.index('list')
+            left = ''.join(v for _, v in parts[:i])
+            right = ''.join(v for _, v in parts[i + 1:])
+            return map_leaves(parts[i][1], lambda x: left + x + right)
+        if 'list' in kinds:
+            alts = ['']
+            for kind, v in parts:
+                options = leaves(v) if kind == 'list' else [v]
+                alts = [a + o for a in alts for o in options]
+            return LazyList(alts)
+        return ''.join(v for _, v in parts)
 
 
 # ----------------------------------------------------------------------

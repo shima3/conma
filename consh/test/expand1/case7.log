@@ -1,5 +1,5 @@
 (assign ("x" "1"))
 (cmd (words "echo" "2" "1"))
-(cmd (words "echo" "a b" "a\nb"))
+(cmd (words "echo" "a b" "" "a b"))
 (cmd (words "echo" "inner"))
 exit: 0

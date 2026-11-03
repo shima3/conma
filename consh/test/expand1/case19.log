@@ -1,0 +1,2 @@
+consh_parse: case19.sh:1:6: missing positional parameter: $1
+exit: 1

@@ -1,18 +1,42 @@
 ;; ConSh の語の展開（PLAN-ja.md の 1.2 と 1.3）。consh_parse --expand と同じ規則に従う。
 ;;
-;; 語を展開した結果は、語の候補の LList（alts）になる。LazyList の値は、ほかの語要素との直積になる。
-;;   quoted : 引用符を含む語か。引用符のない語が空になれば消す
-;;   isList : LazyList の値を含むか。変数定義の右辺なら、値を LazyList にする
-;; コマンド置換と glob はまだない。
+;; 語は、語要素ごとの部分（Part）の LList に分けてから展開する。部分は (種類 値) の LList で、種類は次のどれか。
+;;   "plain"  引用符のない String
+;;   "quoted" 引用符の中の String
+;;   "leaves" $x の LazyList の値。葉ごとの語になる
+;;   "list"   ${x} の LazyList の値。外部コマンド以外には値のまま渡す（段階 3）
+;; 値は String か LazyList で、LazyList の要素も String か LazyList（入れ子）。
+;; 葉は、入れ子の LazyList を再帰的にたどったときの String の要素である。
+;; コマンド置換と glob はまだない。コマンドの語は、当面すべて外部コマンドの語として展開する。
 (include "consh_util.se")
 (include "consh_ast.se")
 
-;; コマンドの語として展開した String の LList。引用符のない空の語は消す
+;; ── 外部コマンドの語 ──
+
+;; 外部コマンドの語として展開した String の LList。
+;; LazyList を含まない引用符のない語が空になれば消す。LazyList の葉は、空文字列でも語として残す
 (define Expand_fields ,(sh word)
-  Expand_word sh word ,(alts quoted isList)
-  __if_then_else__ (,() __NULL__ quoted)
-    (,() __NULL__ alts)
-    (,() Expand_drop_empty alts))
+  Expand_parts sh word ,(parts)
+  __LList_cons__ "" __NULL__ ,(alts)
+  Expand_fields_from parts alts __FALSE__ __FALSE__)
+
+(define Expand_fields_from ,(parts alts quoted hasList)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ parts)
+    (,()
+      __or__ quoted hasList ,(keep)
+      __if__ (,() __NULL__ keep) (,() return alts) ,()
+      Expand_drop_empty alts ,(alts)
+      return alts) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  Part_split part ,(kind value)
+  __String_equal__ kind "quoted" ,(isQuoted)
+  Part_is_list kind ,(isList)
+  __or__ quoted isQuoted ,(quoted)
+  __or__ hasList isList ,(hasList)
+  Part_options part ,(opts)
+  Product alts opts ,(alts)
+  Expand_fields_from rest alts quoted hasList)
 
 (define Expand_drop_empty ,(alts)
   __Cont_get__ ,(return)
@@ -23,103 +47,206 @@
     (,() __NULL__ rest)
     (,() __LList_cons__ head rest))
 
-;; 変数定義の右辺として展開した値。LazyList の値を含めば LazyList、そうでなければ String
-(define Expand_value ,(sh word)
-  Node_split word ,(tag pos children)
+;; ── 変数定義の右辺 ──
+
+;; 変数定義の右辺の値。values は値の節（語か array）の LList で、空なら空文字列
+(define Expand_def_value ,(sh values)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ values) (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ values ,(v others)
+  Node_split v ,(tag pos children)
   __if__ (,() __String_equal__ tag "array")
-    (,() Sh_error sh pos "(...) values are not implemented yet") ,()
-  Expand_word sh word ,(alts quoted isList)
-  __if_then_else__ (,() __NULL__ isList)
-    (,() LazyList_fromList alts)
-    (,() __LList_uncons__ __print_exit_error__ alts ,(head tail) __NULL__ head))
+    (,()
+      Expand_array sh children ,(fields)
+      LazyList_fromList fields ,(list)
+      return list) ,()
+  Expand_value sh v)
 
-;; 語の節を展開し、alts quoted isList を返す
-(define Expand_word ,(sh word)
+;; (語 ...) の各語を外部コマンドの語として展開した String の LList
+(define Expand_array ,(sh words)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ words) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Expand_fields sh word ,(fields)
+  Expand_array sh rest ,(more)
+  List_append fields more)
+
+;; 変数定義の右辺の語の値。
+;; $x の LazyList を含めば、葉の語が1つならその String、なければ空文字列、2つ以上ならエラー。
+;; そうでなく ${x} の LazyList を含めば LazyList。どちらでもなければ String
+(define Expand_value ,(sh word)
+  __Cont_get__ ,(return)
   Node_split word ,(tag pos elems)
+  Expand_parts sh word ,(parts)
+  Parts_count parts "leaves" ,(nLeaves)
+  Parts_count parts "list" ,(nList)
+  __unless__ (,() __Number_is_zero__ nLeaves)
+    (,()
+      __LList_cons__ "" __NULL__ ,(alts)
+      Parts_product parts alts ,(alts)
+      __if__ (,() __is_null__ alts) (,() return "") ,()
+      __LList_uncons__ __print_exit_error__ alts ,(first others)
+      __unless__ (,() __is_null__ others)
+        (,()
+          List_length alts ,(n)
+          __Number_toString__ n ,(s)
+          __String_concat__ s " words in a variable definition" ,(msg)
+          Sh_error sh pos msg) ,()
+      return first) ,()
+  __if__ (,() __Number_is_zero__ nList)
+    (,()
+      Parts_concat parts ,(s)
+      return s) ,()
+  num "1" ,(one)
+  __Number_subtract__ nList one ,(more)
+  __if__ (,() __Number_is_zero__ more)
+    (,()
+      Parts_affix parts "" ,(value)
+      return value) ,()
   __LList_cons__ "" __NULL__ ,(alts)
-  Expand_elems sh elems alts __FALSE__ __FALSE__)
+  Parts_product parts alts ,(alts)
+  LazyList_fromList alts)
 
-(define Expand_elems ,(sh elems alts quoted isList)
+;; ── 語の部分 ──
+
+(define Part_make ,(kind value)
+  __LList_cons__ value __NULL__ ,(tail)
+  __LList_cons__ kind tail)
+
+(define Part_split ,(part)
+  __LList_uncons__ __print_exit_error__ part ,(kind rest)
+  List_first rest ,(value)
+  __NULL__ kind value)
+
+(define Part_is_list ,(kind)
+  __String_equal__ kind "leaves" ,(isLeaves)
+  __String_equal__ kind "list" ,(isList)
+  __or__ isLeaves isList)
+
+;; 部分が語にもたらす String の選択肢の LList。LazyList なら葉
+(define Part_options ,(part)
+  Part_split part ,(kind value)
+  Part_is_list kind ,(isList)
+  __if_then_else__ (,() __NULL__ isList)
+    (,() Value_leaves value)
+    (,() __LList_cons__ value __NULL__))
+
+;; 語の節を部分の LList にする
+(define Expand_parts ,(sh word)
+  Node_split word ,(tag pos elems)
+  Expand_parts_from sh elems)
+
+(define Expand_parts_from ,(sh elems)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ elems) (,() return alts quoted isList) ,()
+  __if__ (,() __is_null__ elems) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
+  Expand_part sh elem ,(part)
+  Expand_parts_from sh rest ,(parts)
+  __LList_cons__ part parts)
+
+(define Expand_part ,(sh elem)
+  __Cont_get__ ,(return)
   Node_split elem ,(kind pos children)
-  List_first children ,(value)
+  List_first children ,(text)
+  __if__ (,() __String_equal__ kind "lit") (,() Part_make "plain" text ,(part) return part) ,()
+  __String_equal__ kind "esc" ,(isEsc)
   __String_equal__ kind "sq" ,(isSq)
-  __String_equal__ kind "dq" ,(isDq)
-  Expand_is_var sh pos kind children ,(isVar)
-  __String_equal__ kind "subst" ,(isSubst)
-  __or__ isSq isDq ,(isQuote)
-  __or__ quoted isQuote ,(quoted)
-  __if_then_else__ (,() __NULL__ isDq)
+  __or__ isEsc isSq ,(isQuoted)
+  __if__ (,() __NULL__ isQuoted) (,() Part_make "quoted" text ,(part) return part) ,()
+  __if__ (,() __String_equal__ kind "dq")
     (,()
-      Expand_dq sh children ,(strs many)
-      __NULL__ strs many) (,()
-  __if_then_else__ (,() __NULL__ isVar)
-    (,()
-      Sh_lookup sh pos value ,(v)
-      Value_options v) (,()
-  __if_then_else__ (,() __NULL__ isSubst)
-    (,() Sh_error sh pos "command substitution is not implemented yet")
-    (,()
-      __LList_cons__ value __NULL__ ,(opts)
-      __NULL__ opts __FALSE__))) ,(opts many)
-  __or__ isList many ,(isList)
-  Product alts opts ,(alts)
-  Expand_elems sh rest alts quoted isList)
+      Expand_dq sh children ,(s)
+      Part_make "quoted" s ,(part)
+      return part) ,()
+  Expand_ref sh elem ,(value)
+  __type_name__ value ,(type)
+  __if__ (,() __String_equal__ type "String") (,() Part_make "plain" value ,(part) return part) ,()
+  __if_then_else__ (,() __String_equal__ kind "var")
+    (,() Part_make "leaves" value)
+    (,() Part_make "list" value))
 
-;; 変数参照の節か。${x} は、当面 $x と同じに扱う。既定値はまだない
-(define Expand_is_var ,(sh pos kind children)
+;; 変数参照かコマンド置換の値。${x-値} は、x が未定義のときだけ値を作る
+(define Expand_ref ,(sh elem)
   __Cont_get__ ,(return)
-  __if__ (,() __String_equal__ kind "var") (,() return __TRUE__) ,()
-  __unless__ (,() __String_equal__ kind "bvar") (,() return __FALSE__) ,()
+  Node_split elem ,(kind pos children)
+  __if__ (,() __String_equal__ kind "subst")
+    (,() Sh_error sh pos "command substitution is not implemented yet") ,()
   __LList_uncons__ __print_exit_error__ children ,(name rest)
-  __unless__ (,() __is_null__ rest) (,() Sh_error sh pos "default values are not implemented yet") ,()
-  __NULL__ __TRUE__)
+  __if__ (,() __is_null__ rest) (,() Sh_lookup sh pos name ,(value) return value) ,()
+  Sh_defined sh pos name ,(defined)
+  __if__ (,() __NULL__ defined) (,() Sh_lookup sh pos name ,(value) return value) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(default others)
+  Node_split default ,(dtag dpos values)
+  Expand_def_value sh values)
 
-;; 変数の値を、直積の選択肢の LList にする。LazyList なら、その要素
-(define Value_options ,(v)
-  __type_name__ v ,(type)
-  __if_then_else__ (,() __String_equal__ type "String")
-    (,()
-      __LList_cons__ v __NULL__ ,(opts)
-      __NULL__ opts __FALSE__)
-    (,()
-      List_fromLazyList v ,(opts)
-      __NULL__ opts __TRUE__))
-
-;; "..." の中身を展開し、String の LList と、$@ を含むかを返す。$@ だけは要素ごとに別の語になる
+;; "..." の中身を1つの String にする。LazyList の値は文字列化する
 (define Expand_dq ,(sh elems)
-  __LList_cons__ "" __NULL__ ,(strs)
-  Expand_dq_elems sh elems strs __FALSE__)
+  Expand_dq_from sh elems "")
 
-(define Expand_dq_elems ,(sh elems strs many)
+(define Expand_dq_from ,(sh elems acc)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ elems) (,() return strs many) ,()
+  __if__ (,() __is_null__ elems) (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
   Node_split elem ,(kind pos children)
-  List_first children ,(value)
-  Expand_is_var sh pos kind children ,(isVar)
-  __String_equal__ kind "subst" ,(isSubst)
-  __if_then_else__ (,() __NULL__ isSubst)
-    (,() Sh_error sh pos "command substitution is not implemented yet") (,()
-  __if_then_else__ (,() __NULL__ isVar)
+  __if_then_else__ (,() __String_equal__ kind "lit")
+    (,() List_first children)
     (,()
-      __if_then_else__ (,() __String_equal__ value "@")
-        (,()
-          Sh_args sh pos ,(args)
-          __NULL__ args __TRUE__)
-        (,()
-          Sh_lookup sh pos value ,(v)
-          Value_toString v ,(s)
-          __LList_cons__ s __NULL__ ,(opts)
-          __NULL__ opts __FALSE__))
+      Expand_ref sh elem ,(value)
+      Value_toString sh pos value) ,(s)
+  __String_concat__ acc s ,(acc)
+  Expand_dq_from sh rest acc)
+
+;; ── 部分の LList の操作 ──
+
+;; 種類が kind の部分の数
+(define Parts_count ,(parts kind)
+  num "0" ,(zero)
+  Parts_count_from parts kind zero)
+
+(define Parts_count_from ,(parts kind n)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ parts) (,() return n) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  Part_split part ,(k v)
+  __if_then_else__ (,() __String_equal__ k kind)
     (,()
-      __LList_cons__ value __NULL__ ,(opts)
-      __NULL__ opts __FALSE__)) ,(opts isAt)
-  __or__ many isAt ,(many)
-  Product strs opts ,(strs)
-  Expand_dq_elems sh rest strs many)
+      num "1" ,(one)
+      __Number_add__ n one)
+    (,() __NULL__ n) ,(n)
+  Parts_count_from rest kind n)
+
+;; alts の各候補の後ろに、部分の選択肢を順に直積でつないだ String の LList
+(define Parts_product ,(parts alts)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ parts) (,() return alts) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  Part_options part ,(opts)
+  Product alts opts ,(alts)
+  Parts_product rest alts)
+
+;; String だけの部分を連結した String
+(define Parts_concat ,(parts)
+  Parts_concat_from parts "")
+
+(define Parts_concat_from ,(parts acc)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ parts) (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  Part_split part ,(k v)
+  __String_concat__ acc v ,(acc)
+  Parts_concat_from rest acc)
+
+;; LazyList の部分が1つだけのとき、その前後の String を、入れ子の形を保ったまま葉に付けた値
+(define Parts_affix ,(parts left)
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  Part_split part ,(k v)
+  __if_then_else__ (,() __String_equal__ k "list")
+    (,()
+      Parts_concat rest ,(right)
+      Value_affix v left right)
+    (,()
+      __String_concat__ left v ,(left)
+      Parts_affix rest left))
 
 ;; alts の各候補の後ろに opts の各選択肢をつないだ LList。候補ごとに、選択肢の順に並べる
 (define Product ,(alts opts)
@@ -138,11 +265,50 @@
   Product_prefix alt rest ,(tail)
   __LList_cons__ s tail)
 
-;; 値を1つの String にする。LazyList は、要素を改行で区切って連結し、末尾には付けない
-(define Value_toString ,(v)
+;; ── 値 ──
+
+;; 値の葉の LList
+(define Value_leaves ,(v)
   __type_name__ v ,(type)
   __if_then_else__ (,() __String_equal__ type "String")
-    (,() __NULL__ v)
+    (,() __LList_cons__ v __NULL__)
     (,()
-      List_fromLazyList v ,(list)
-      List_join list "\n"))
+      List_fromLazyList v ,(items)
+      Value_leaves_list items))
+
+(define Value_leaves_list ,(items)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ items) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  Value_leaves item ,(front)
+  Value_leaves_list rest ,(back)
+  List_append front back)
+
+;; 値の各葉の前に left、後ろに right を付けた値。入れ子の形は保つ
+(define Value_affix ,(v left right)
+  __type_name__ v ,(type)
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,()
+      __String_concat__ left v ,(s)
+      __String_concat__ s right)
+    (,()
+      List_fromLazyList v ,(items)
+      Value_affix_list items left right ,(items)
+      LazyList_fromList items))
+
+(define Value_affix_list ,(items left right)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ items) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  Value_affix item left right ,(item)
+  Value_affix_list rest left right ,(rest)
+  __LList_cons__ item rest)
+
+;; 値を1つの String にする。LazyList は、葉を OFS で区切って連結し、末尾には付けない
+(define Value_toString ,(sh pos v)
+  __Cont_get__ ,(return)
+  __type_name__ v ,(type)
+  __if__ (,() __String_equal__ type "String") (,() return v) ,()
+  Sh_ofs sh pos ,(ofs)
+  Value_leaves v ,(leaves)
+  List_join leaves ofs)

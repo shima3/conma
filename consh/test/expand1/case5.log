@@ -1,5 +1,6 @@
 (assign ("x" "5") ("y" "5") ("z" "a5"))
 (assign ("l" (list "p q" "r")) ("v" (list "ap q" "ar")) ("w" (list "p qp q" "p qr" "rp q" "rr")))
+(assign ("one" (list "z")) ("u" "azb") ("n" (list)) ("m" ""))
 (cmd (env ("x" "1")) (words "echo" "5"))
 (cmd (env ("x" "2") ("y" "5")) (words "echo" "5"))
 exit: 0

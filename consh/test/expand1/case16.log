@@ -1,0 +1,11 @@
+(assign ("l" (list "a" "" "b")) ("e" (list)))
+(cmd (words "echo" "a" "" "b" "a" "" "b" "a  b" "xay" "xy" "xby" "a  b" ""))
+(assign ("y" (list "a" "" "b")) ("z" (list "xay" "xy" "xby")) ("w" "") ("v" (list)) ("u" "a  b"))
+(cmd (words "echo" "d" "a b" "1" "2" "a" "" "b" "none"))
+(assign ("d" (list "p" "q")) ("c" (list "a" "" "b")))
+(export ("OFS" ","))
+(cmd (words "echo" "a,,b" "1,2"))
+(assign ("OFS" "-") ("s" "a--b"))
+(export ("t" "a--b"))
+(cmd (words "echo" "tab\there" "a--b"))
+exit: 0

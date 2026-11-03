@@ -1,0 +1,3 @@
+none
+consh: case17.sh:2:6: missing positional parameter: $1
+exit: 1

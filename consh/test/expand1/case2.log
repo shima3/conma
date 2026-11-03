@@ -1,6 +1,6 @@
-(assign ("empty" (list)) ("e" (list)) ("s" ""))
-(cmd (words "echo" ""))
+(assign ("empty" (list)) ("e" "") ("s" ""))
 (cmd (words "echo" ""))
 (cmd (words "echo" "a" ""))
-(cmd (words "echo" "" "" "a"))
+(cmd (words "echo" "a" ""))
+(cmd (words "echo" "" "" "ad"))
 exit: 0

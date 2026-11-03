@@ -1,0 +1,2 @@
+consh_parse: case18.sh:1:6: undefined variable: undefined
+exit: 1
