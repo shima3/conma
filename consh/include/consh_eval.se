@@ -1,6 +1,7 @@
 ;; ConSh の実行（段階 3）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
-;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、builtin、command、if 文
+;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文
+;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
 ;; パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
@@ -34,7 +35,6 @@
   Env_new base __NULL__ ,(env)
   __OS_get_stderr__ ,(errStream)
   Target_stream global errStream ,(err)
-  Target_sink global Top_write ,(out)
   __Dict_new__ ,(vars)
   __Dict_new__ ,(funcs)
   __Dict_new__ ,(sh)
@@ -48,12 +48,14 @@
   __Dict_put__ sh "return" __NULL__ ,()
   __Dict_put__ sh "env" env ,()
   __Dict_put__ sh "in" __NULL__ ,()
+  Target_sink global (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
   __Dict_put__ sh "err" err ,()
   __NULL__ sh)
 
-;; トップレベルの標準出力。要素を1行として書く
-(define Top_write ,(line)
+;; トップレベルの標準出力。要素を1行として書く。LazyList の要素は、トップレベルの OFS で文字列化する
+(define Top_write ,(sh line)
+  Line_toString sh __NULL__ line ,(line)
   stdout line "\n" ,(out)
   __nop__)
 
@@ -68,9 +70,17 @@
   Sh_get sh "global" ,(global)
   __Dict_put__ global "status" status)
 
-;; 「consh: スクリプト:行:桁: msg」の1行
+;; 「consh: スクリプト:行:桁: msg」の1行。pos が null なら「consh: スクリプト: msg」
 (define Sh_message ,(sh pos msg)
+  __Cont_get__ ,(return)
   Sh_get sh "script" ,(script)
+  __if__ (,() __is_null__ pos)
+    (,()
+      __String_concat__ "consh: " script ,(s)
+      __String_concat__ s ": " ,(s)
+      __String_concat__ s msg ,(s)
+      __String_concat__ s "\n" ,(s)
+      return s) ,()
   Pos_split pos ,(line col)
   __Number_toString__ line ,(line)
   __Number_toString__ col ,(col)
@@ -278,28 +288,38 @@
   __NULL__ kind id value)
 
 ;; stream ターゲットを、同じ id の sink ターゲットにする。要素は、末尾に改行を付けて Stream に書く。
-;; 関数の出力をファイルに向けると、関数の中の外部コマンドの出力も行ごとの要素になる（Func_targets）
-(define Target_as_sink ,(target)
+;; 関数の出力をファイルに向けると、関数の中の外部コマンドの出力も行ごとの要素になる（Func_targets）。
+;; LazyList の要素は、リダイレクトを書いた文の文脈 sh の OFS で文字列化する
+(define Target_as_sink ,(sh pos target)
   Target_split target ,(kind id value)
   __if_then_else__ (,() __String_equal__ kind "sink")
     (,() __NULL__ target)
     (,()
-      Stream_writer value ,(write)
+      Stream_writer sh pos value ,(write)
       Target_make "sink" id write))
 
-(define Stream_writer ,(stream)
+(define Stream_writer ,(sh pos stream)
   __NULL__ (,(line)
+    Line_toString sh pos line ,(line)
     __String_concat__ line "\n" ,(s)
     __OS_write__ __print_exit_error__ stream s))
 
-;; 要素 line をターゲットに書く
-(define Target_write ,(target line)
+;; 要素 line をターゲットに書く。stream に書くとき、LazyList の要素は sh の OFS で文字列化する
+(define Target_write ,(sh pos target line)
   Target_split target ,(kind id value)
   __if_then_else__ (,() __String_equal__ kind "stream")
     (,()
+      Line_toString sh pos line ,(line)
       __String_concat__ line "\n" ,(s)
       __OS_write__ __print_exit_error__ value s)
     (,() value line))
+
+;; 出力の要素を1行の String にする。LazyList は OFS で文字列化する
+(define Line_toString ,(sh pos line)
+  __type_name__ line ,(type)
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,() __NULL__ line)
+    (,() Value_toString sh pos line))
 
 ;; input Stream を EOF まで読み、行ごとにターゲットに書く
 (define Target_pump ,(target stream)
@@ -310,7 +330,7 @@
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return) lines ,(line rest)
   Line_chomp line ,(line)
-  Target_write target line ,()
+  Target_write __NULL__ __NULL__ target line ,()
   Target_pump_lines target rest)
 
 ;; 行末の改行（\n または \r\n）を除く
@@ -468,9 +488,9 @@
   Sh_get sh "parent" ,(parent)
   Func_lookup parent name)
 
-;; 関数を呼び出す。引数を変数リストに渡し、本体を新しいスコープで実行する。
-;; 前置の変数定義は、この呼び出しの間だけの環境変数の層にする
-(define Func_call ,(sh pos defs fn args in out err)
+;; 関数を呼び出す。引数（String か LazyList）を変数リストに渡し、本体を新しいスコープで実行する。
+;; 前置の変数定義の層は、sh の環境変数に積んである（Cmd_scope）
+(define Func_call ,(sh pos fn args in out err)
   __Cont_get__ ,(return)
   Sh_get fn "params" ,(params)
   Sh_get fn "body" ,(body)
@@ -482,12 +502,6 @@
   List_first rest ,(restName)
   Func_bind vars names restName args ,()
   Sh_get sh "env" ,(env)
-  __if_then_else__ (,() __is_null__ defs)
-    (,() __NULL__ env)
-    (,()
-      __Dict_new__ ,(layer)
-      Eval_env_defs sh defs layer ,()
-      Env_push env layer) ,(env)
   __Dict_new__ ,(funcs)
   Dict_copy sh ,(callee)
   __Dict_put__ callee "vars" vars ,()
@@ -523,10 +537,10 @@
 
 ;; 関数に渡す標準出力と標準エラー出力のターゲット。標準出力は sink にする。
 ;; 標準エラー出力は、標準出力と同じ行き先（2>&1）なら同じ sink にし、そうでなければそのまま
-(define Func_targets ,(out err)
+(define Func_targets ,(sh pos out err)
   Target_split out ,(outKind outId outValue)
   Target_split err ,(errKind errId errValue)
-  Target_as_sink out ,(out)
+  Target_as_sink sh pos out ,(out)
   __if_then_else__ (,() __String_equal__ outId errId)
     (,() __NULL__ out)
     (,() __NULL__ err) ,(err)
@@ -549,34 +563,119 @@
     (,() Cmd_parts_from rest defs items redirs)
     (,() Cmd_parts_from rest defs words items)))
 
-;; 単純文を実行する
+;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
+;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
+;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する
 (define Eval_cmd ,(sh pos children)
   __Cont_get__ ,(return)
   Cmd_parts children ,(defs words redirs)
-  Eval_words sh words ,(fields)
+  Cmd_scope sh defs ,(sh)
+  Cmd_head sh words ,(name more rest)
+  __if_then_else__ (,() __is_null__ name)
+    (,() __NULL__ __TRUE__)
+    (,() Cmd_is_external sh name) ,(isExternal)
+  Eval_args sh rest isExternal ,(args)
+  __if_then_else__ (,() __NULL__ isExternal)
+    (,() Values_leaves more)
+    (,() __NULL__ more) ,(more)
+  List_append more args ,(args)
   Eval_redirs sh redirs ,(in out err opened ok)
   __unless__ (,() __NULL__ ok)
     (,()
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
-  __if__ (,() __is_null__ fields)
+  __if__ (,() __is_null__ name)
     (,()
       Eval_close opened ,()
       Sh_set_status sh "0" ,()
       return) ,()
-  __LList_uncons__ __print_exit_error__ fields ,(name args)
-  Cmd_run sh pos defs name args in out err ,()
+  Cmd_run sh pos name args in out err ,()
   Eval_close opened)
 
-;; 先頭の語 name で、関数、組み込みコマンド、外部コマンドの順に探して実行する。
-;; builtin name は組み込みコマンドを、command name は外部コマンドを実行する
-(define Cmd_run ,(sh pos defs name args in out err)
+;; 前置の変数定義があれば、その層を環境変数に積んだ文脈を返す。
+;; 前置の変数定義どうしは影響しないので、どれも sh で展開する
+(define Cmd_scope ,(sh defs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ defs) (,() return sh) ,()
+  __Dict_new__ ,(layer)
+  Eval_env_defs sh defs layer ,()
+  Sh_get sh "env" ,(env)
+  Env_push env layer ,(env)
+  Dict_copy sh ,(inner)
+  __Dict_put__ inner "env" env ,()
+  __NULL__ inner)
+
+;; 先頭の語を展開して、コマンドの名前と、先頭の語から出た残りの値の LList と、残りの語を返す。
+;; ${x} と $(cmd) の LazyList なら、要素を順に値にする。先頭の要素だけは再帰的に展開して名前を取る（Value_head）。
+;; そうでなければ、外部コマンドの語として展開し、最初の語が名前になる。
+;; LazyList を含む語が空になればエラー。LazyList を含まない語が消えれば、次の語を見る。
+;; 語がすべて消えたら、名前は null
+(define Cmd_head ,(sh words)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ words) (,() return __NULL__ __NULL__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Node_split word ,(tag pos elems)
+  Expand_parts sh word ,(parts)
+  Parts_count parts "leaves" ,(nLeaves)
+  Parts_count parts "list" ,(nList)
+  __Number_is_zero__ nLeaves ,(noLeaves)
+  __Number_is_zero__ nList ,(noList)
+  __not__ noList ,(hasList)
+  __and__ noLeaves hasList ,(isList)
+  __if__ (,() __NULL__ isList)
+    (,()
+      Parts_list_value parts nList ,(value)
+      Value_head sh pos value ,(name more)
+      return name more rest) ,()
+  Parts_fields parts ,(fields)
+  __if__ (,() __is_null__ fields)
+    (,()
+      __and__ noLeaves noList ,(noLazyList)
+      __unless__ (,() __NULL__ noLazyList) (,() Sh_error sh pos "the command name is an empty LazyList") ,()
+      Cmd_head sh rest ,(name more rest)
+      return name more rest) ,()
+  __LList_uncons__ __print_exit_error__ fields ,(name more)
+  __NULL__ name more rest)
+
+;; name が外部コマンドか。関数、組み込みコマンド、builtin、command でなければ外部コマンド
+(define Cmd_is_external ,(sh name)
+  __Cont_get__ ,(return)
+  __String_equal__ name "builtin" ,(isBuiltin)
+  __String_equal__ name "command" ,(isCommand)
+  __or__ isBuiltin isCommand ,(special)
+  __if__ (,() __NULL__ special) (,() return __FALSE__) ,()
+  Func_lookup sh name ,(fn)
+  __unless__ (,() __is_null__ fn) (,() return __FALSE__) ,()
+  Builtin_lookup name ,(builtin)
+  __unless__ (,() __is_null__ builtin) (,() return __FALSE__) ,()
+  __NULL__ __TRUE__)
+
+;; (cmd [env] words [redirs]) の子を、前置の変数定義、語、リダイレクトの LList に分ける
+(define Cmd_parts ,(children)
+  Cmd_parts_from children __NULL__ __NULL__ __NULL__)
+
+(define Cmd_parts_from ,(children defs words redirs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ children) (,() return defs words redirs) ,()
+  __LList_uncons__ __print_exit_error__ children ,(child rest)
+  Node_split child ,(tag pos items)
+  __if_then_else__ (,() __String_equal__ tag "env")
+    (,() Cmd_parts_from rest items words redirs) (,()
+  __if_then_else__ (,() __String_equal__ tag "words")
+    (,() Cmd_parts_from rest defs items redirs)
+    (,() Cmd_parts_from rest defs words items)))
+
+;; 名前 name で、関数、組み込みコマンド、外部コマンドの順に探して実行する。
+;; builtin name は組み込みコマンドを、command name は外部コマンドを実行する。
+;; args は、外部コマンドなら String、それ以外なら値（String か LazyList）の LList
+(define Cmd_run ,(sh pos name args in out err)
   __Cont_get__ ,(return)
   __if__ (,() __String_equal__ name "builtin")
     (,()
       __if__ (,() __is_null__ args) (,() Sh_error sh pos "builtin: a command name is needed") ,()
       __LList_uncons__ __print_exit_error__ args ,(name2 args2)
+      Arg_string sh pos "builtin" name2 ,(name2)
       Builtin_lookup name2 ,(builtin)
       __String_concat__ "builtin: not a builtin command: " name2 ,(msg)
       __if__ (,() __is_null__ builtin) (,() Sh_error sh pos msg) ,()
@@ -584,22 +683,30 @@
       return) ,()
   __if__ (,() __String_equal__ name "command")
     (,()
+      Values_leaves args ,(args)
       __if__ (,() __is_null__ args) (,() Sh_error sh pos "command: a command name is needed") ,()
       __LList_uncons__ __print_exit_error__ args ,(name2 args2)
-      External_run sh pos defs name2 args2 in out err ,()
+      External_run sh pos name2 args2 in out err ,()
       return) ,()
   Func_lookup sh name ,(fn)
   __unless__ (,() __is_null__ fn)
     (,()
-      Func_targets out err ,(out err)
-      Func_call sh pos defs fn args in out err ,()
+      Func_targets sh pos out err ,(out err)
+      Func_call sh pos fn args in out err ,()
       return) ,()
   Builtin_lookup name ,(builtin)
   __unless__ (,() __is_null__ builtin)
     (,()
       builtin sh pos args in out err ,()
       return) ,()
-  External_run sh pos defs name args in out err)
+  External_run sh pos name args in out err)
+
+;; 組み込みコマンドの引数 v が String なら、そのまま返す。LazyList ならエラー
+(define Arg_string ,(sh pos command v)
+  __type_name__ v ,(type)
+  __String_concat__ command ": a LazyList is not allowed as an argument" ,(msg)
+  __unless__ (,() __String_equal__ type "String") (,() Sh_error sh pos msg) ,()
+  __NULL__ v)
 
 ;; ── if 文 ──
 
@@ -618,6 +725,8 @@
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
+  ;; 関数と同じく、中の外部コマンドの出力は行ごとの要素にしてから書く
+  Func_targets sh pos out err ,(out err)
   Dict_copy sh ,(inner)
   __Dict_put__ inner "in" in ,()
   __Dict_put__ inner "out" out ,()
@@ -679,14 +788,25 @@
 
 (define Builtin_lookup ,(name)
   __if_then_else__ (,() __String_equal__ name "echo") (,() __NULL__ Builtin_echo) (,()
-  __if_then_else__ (,() __String_equal__ name "cd") (,() __NULL__ Builtin_cd)
-    (,() __NULL__ __NULL__)))
+  __if_then_else__ (,() __String_equal__ name "cd") (,() __NULL__ Builtin_cd) (,()
+  __if_then_else__ (,() __String_equal__ name "defined") (,() __NULL__ Builtin_defined)
+    (,() __NULL__ __NULL__))))
 
-;; echo 語 ...: 語を空白で区切って連結した1つの要素を、標準出力に出す
+;; echo 値 ...: 標準出力に1つの要素を出す。
+;; 引数が1つなら、その値（LazyList でも）をそのまま出す。引数がなければ空文字列を出す。
+;; 2つ以上なら、各値を文字列化し、スペースで区切って連結する
 (define Builtin_echo ,(sh pos args in out err)
-  List_join args " " ,(line)
-  Target_write out line ,()
+  Echo_line sh pos args ,(line)
+  Target_write sh pos out line ,()
   Sh_set_status sh "0")
+
+(define Echo_line ,(sh pos args)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ args) (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ args ,(first rest)
+  __if__ (,() __is_null__ rest) (,() return first) ,()
+  Values_strings sh pos args ,(strs)
+  List_join strs " ")
 
 ;; cd [ディレクトリ]: カレントディレクトリを変える。省略すると環境変数 HOME
 (define Builtin_cd ,(sh pos args in out err)
@@ -698,7 +818,9 @@
         Sh_warn sh pos "cd: HOME is not set" ,()
         Sh_set_status sh "1" ,()
         return))
-    (,() List_first args) ,(dir)
+    (,()
+      List_first args ,(dir)
+      Arg_string sh pos "cd" dir) ,(dir)
   __OS_chdir__ (,(msg)
     Msg_strip msg ,(msg)
     __String_concat__ "cd: " msg ,(m)
@@ -707,15 +829,39 @@
     return) dir ,()
   Sh_set_status sh "0")
 
+;; defined [-l] 変数名: 変数が定義済みなら $? を 0、未定義なら 1 にする。-l なら局所変数だけを調べる
+(define Builtin_defined ,(sh pos args in out err)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ args) (,() Sh_error sh pos "defined: a variable name is needed") ,()
+  __LList_uncons__ __print_exit_error__ args ,(first rest)
+  Arg_string sh pos "defined" first ,(first)
+  __String_equal__ first "-l" ,(localOnly)
+  __if_then_else__ (,() __NULL__ localOnly)
+    (,() __NULL__ rest)
+    (,() __NULL__ args) ,(names)
+  __if__ (,() __is_null__ names) (,() Sh_error sh pos "defined: a variable name is needed") ,()
+  __LList_uncons__ __print_exit_error__ names ,(name others)
+  __unless__ (,() __is_null__ others) (,() Sh_error sh pos "defined: too many arguments") ,()
+  Arg_string sh pos "defined" name ,(name)
+  __if__ (,() __NULL__ localOnly)
+    (,()
+      Sh_get sh "vars" ,(vars)
+      __Dict_lookup_or__ vars name (,(key) Sh_set_status sh "1" ,() return) ,(value)
+      Sh_set_status sh "0" ,()
+      return) ,()
+  Sh_defined sh pos name ,(found)
+  __if_then_else__ (,() __NULL__ found)
+    (,() Sh_set_status sh "0")
+    (,() Sh_set_status sh "1"))
+
 ;; ── 外部コマンド ──
 
 ;; 外部コマンドを起動し、終わるまで待って、$? を設定する。
 ;; 標準出力か標準エラー出力が sink に行くときは、パイプで受け取って行ごとに書く
-(define External_run ,(sh pos defs name args in out err)
+(define External_run ,(sh pos name args in out err)
   __Cont_get__ ,(return)
   Sh_get sh "env" ,(env)
   Env_dict env ,(dict)
-  Eval_env_defs sh defs dict ,()
   __MSeq_new__ ,(command)
   __MSeq_append__ __print_exit_error__ command name ,()
   Eval_append command args ,()
@@ -783,14 +929,16 @@
   __Dict_put__ dict name value ,()
   Eval_env_defs sh rest dict)
 
-;; 語を展開した String の LList
-(define Eval_words ,(sh words)
+;; 語を展開した値の LList。外部コマンドなら葉ごとの String、それ以外なら外部コマンド以外の語の規則で展開する
+(define Eval_args ,(sh words isExternal)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ words) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
-  Expand_fields sh word ,(fields)
-  Eval_words sh rest ,(more)
-  List_append fields more)
+  __if_then_else__ (,() __NULL__ isExternal)
+    (,() Expand_fields sh word)
+    (,() Expand_args sh word) ,(values)
+  Eval_args sh rest isExternal ,(more)
+  List_append values more)
 
 (define Eval_append ,(mseq list)
   __Cont_get__ ,(return)

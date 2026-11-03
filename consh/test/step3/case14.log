@@ -1,0 +1,2 @@
+consh: case14.sh:2:1: the command name is an empty LazyList
+exit: 1

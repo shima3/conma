@@ -3,11 +3,13 @@
 ;; 語は、語要素ごとの部分（Part）の LList に分けてから展開する。部分は (種類 値) の LList で、種類は次のどれか。
 ;;   "plain"  引用符のない String
 ;;   "quoted" 引用符の中の String
+;;   "braced" ${x} の String の値。外部コマンド以外には、空文字列でも1つの語として渡す
 ;;   "leaves" $x の LazyList の値。葉ごとの語になる
 ;;   "list"   ${x} の LazyList の値。外部コマンド以外には値のまま渡す（段階 3）
 ;; 値は String か LazyList で、LazyList の要素も String か LazyList（入れ子）。
 ;; 葉は、入れ子の LazyList を再帰的にたどったときの String の要素である。
-;; コマンド置換と glob はまだない。コマンドの語は、当面すべて外部コマンドの語として展開する。
+;; コマンドの語は、外部コマンドの語（Expand_fields）か、外部コマンド以外の語（Expand_args）として展開する。
+;; コマンド置換と glob はまだない。
 (include "consh_util.se")
 (include "consh_ast.se")
 
@@ -17,6 +19,9 @@
 ;; LazyList を含まない引用符のない語が空になれば消す。LazyList の葉は、空文字列でも語として残す
 (define Expand_fields ,(sh word)
   Expand_parts sh word ,(parts)
+  Parts_fields parts)
+
+(define Parts_fields ,(parts)
   __LList_cons__ "" __NULL__ ,(alts)
   Expand_fields_from parts alts __FALSE__ __FALSE__)
 
@@ -46,6 +51,29 @@
   __if_then_else__ (,() __String_equal__ head "")
     (,() __NULL__ rest)
     (,() __LList_cons__ head rest))
+
+;; ── 外部コマンド以外の語 ──
+
+;; 外部コマンド以外（関数と組み込みコマンド）の語として展開した値の LList。
+;; $x の LazyList を含めば、葉ごとの String。そうでなく ${x} の LazyList を含めば、1つの LazyList。
+;; どちらも含まなければ、引用符か ${x} を含む語は1つの String。それ以外は、空になれば消える
+(define Expand_args ,(sh word)
+  __Cont_get__ ,(return)
+  Expand_parts sh word ,(parts)
+  Parts_count parts "leaves" ,(nLeaves)
+  __unless__ (,() __Number_is_zero__ nLeaves) (,() Parts_fields parts ,(fields) return fields) ,()
+  Parts_count parts "list" ,(nList)
+  __unless__ (,() __Number_is_zero__ nList)
+    (,()
+      Parts_list_value parts nList ,(value)
+      __LList_cons__ value __NULL__ ,(values)
+      return values) ,()
+  Parts_count parts "quoted" ,(nQuoted)
+  Parts_count parts "braced" ,(nBraced)
+  __Number_add__ nQuoted nBraced ,(n)
+  __if__ (,() __Number_is_zero__ n) (,() Parts_fields parts ,(fields) return fields) ,()
+  Parts_concat parts ,(s)
+  __LList_cons__ s __NULL__)
 
 ;; ── 変数定義の右辺 ──
 
@@ -97,6 +125,12 @@
     (,()
       Parts_concat parts ,(s)
       return s) ,()
+  Parts_list_value parts nList)
+
+;; ${x} の LazyList を nList 個含む部分の値。1つなら、前後の String を葉に付けた LazyList。
+;; 2つ以上なら、葉の直積の LazyList
+(define Parts_list_value ,(parts nList)
+  __Cont_get__ ,(return)
   num "1" ,(one)
   __Number_subtract__ nList one ,(more)
   __if__ (,() __Number_is_zero__ more)
@@ -160,8 +194,14 @@
       return part) ,()
   Expand_ref sh elem ,(value)
   __type_name__ value ,(type)
-  __if__ (,() __String_equal__ type "String") (,() Part_make "plain" value ,(part) return part) ,()
-  __if_then_else__ (,() __String_equal__ kind "var")
+  __String_equal__ kind "var" ,(isVar)
+  __if__ (,() __String_equal__ type "String")
+    (,()
+      __if_then_else__ (,() __NULL__ isVar)
+        (,() Part_make "plain" value)
+        (,() Part_make "braced" value) ,(part)
+      return part) ,()
+  __if_then_else__ (,() __NULL__ isVar)
     (,() Part_make "leaves" value)
     (,() Part_make "list" value))
 
@@ -303,6 +343,38 @@
   Value_affix item left right ,(item)
   Value_affix_list rest left right ,(rest)
   __LList_cons__ item rest)
+
+;; 値の LList の葉を、順につないだ LList
+(define Values_leaves ,(values)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ values) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ values ,(v rest)
+  Value_leaves v ,(front)
+  Values_leaves rest ,(back)
+  List_append front back)
+
+;; 値の LList の各値を String にした LList
+(define Values_strings ,(sh pos values)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ values) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ values ,(v rest)
+  Value_toString sh pos v ,(s)
+  Values_strings sh pos rest ,(more)
+  __LList_cons__ s more)
+
+;; 先頭の語の LazyList から、コマンドの名前と、残りの値の LList を取り出す。
+;; 先頭の要素だけを再帰的に展開し、残りの要素は LazyList でも1つの値にする。
+;; 例えば ((a (b c)) d) なら、名前は a、残りの値は (b c) と d。空の LazyList があればエラー
+(define Value_head ,(sh pos v)
+  __LazyList_uncons__ (,() Sh_error sh pos "the command name is an empty LazyList") v ,(head tail)
+  List_fromLazyList tail ,(rest)
+  __type_name__ head ,(type)
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,() __NULL__ head rest)
+    (,()
+      Value_head sh pos head ,(name inner)
+      List_append inner rest ,(more)
+      __NULL__ name more))
 
 ;; 値を1つの String にする。LazyList は、葉を OFS で区切って連結し、末尾には付けない
 (define Value_toString ,(sh pos v)

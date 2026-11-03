@@ -1,0 +1,27 @@
+a=[x  y] rest=[x  y]
+x  y
+a=[] rest=[z]
+a=[] rest=[w]
+a=[xxy xy xyy] rest=[]
+x  y
+a x  y
+x::y
+x  y
+x++y
+child x=1
+child V=v
+prefix v
+b=none
+x 0
+nope 1
+-l HOME 1
+HOME 0
+hello world
+hello world
+x||y|
+
+x++y
+inner
+ext
+ext2
+exit: 0
