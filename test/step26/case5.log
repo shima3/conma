@@ -1,0 +1,6 @@
+pid: positive
+exit code: -15
+__OS_kill__: expected a signal number from 1 to 64
+__OS_kill__: expected OSProc, got String
+end
+exit: 0

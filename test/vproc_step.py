@@ -915,6 +915,34 @@ def prim_OS_wait_writable(vp, gvenv):
         SCHEDULER.wait(vp, stream)
 
 
+def prim_OS_getpid(vp, gvenv):
+    """__OS_getpid__ ,(Number) — the process ID of the interpreter."""
+    _prim_return(vp, [Number(os.getpid())])
+
+
+def prim_OS_kill(vp, gvenv):
+    """__OS_kill__ onError OSProc signal ,()
+    Sends the signal (a Number, such as 15 for SIGTERM) to the process.
+    Nothing happens if the process has already been waited for."""
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError("__OS_kill__: missing argument(s)")
+    on_error = olist.pop(0)
+    proc     = olist.pop(0)
+    sig      = olist.pop(0)
+    if not isinstance(proc, OSProc):
+        _prim_error(vp, on_error, f"__OS_kill__: expected OSProc, got {value_type_name(proc)}")
+        return
+    if value_type_name(sig) != "Number" or sig.value != int(sig.value) or not 1 <= int(sig.value) <= 64:
+        _prim_error(vp, on_error, f"__OS_kill__: expected a signal number from 1 to 64")
+        return
+    try:
+        proc.popen.send_signal(int(sig.value))
+    except (OSError, ValueError) as e:
+        _prim_error(vp, on_error, f"__OS_kill__: {e}")
+        return
+    _prim_return(vp, [])
+
+
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
     r_fd, w_fd = os.pipe()
@@ -1699,6 +1727,19 @@ class Scheduler:
         self.vprocs.append(vp)
         self.ready.append(vp)
 
+    def kill(self, vp):
+        """Finish vp at once, wherever it is: remove it from the ready queue
+        and from every list of waiting VProcs. A finished VProc is left as
+        it is. The VProcs that wait for vp, or for a LazyList that vp is
+        evaluating or holds, wake up as if vp had finished by itself."""
+        if vp.state == "finished": return
+        if vp.state == "ready": self.ready.remove(vp)
+        self.waiting = [(v, t) for v, t in self.waiting if v is not vp]
+        self.joining = [(v, t) for v, t in self.joining if v is not vp]
+        self.lazy    = [(v, r) for v, r in self.lazy if v is not vp]
+        self.changes = [(v, r, x) for v, r, x in self.changes if v is not vp]
+        vp.state = "finished"
+
     def suspend(self, vp):
         """Block vp. A blocked or finished VProc is left as it is."""
         if vp.state == "ready":
@@ -1857,6 +1898,29 @@ def prim_VProc_wait(vp, gvenv):
     _prim_return(vp, [])
     if target.state != "finished":
         SCHEDULER.join(vp, target)
+
+def prim_VProc_id(vp, gvenv):
+    """__VProc_id__ VProc ,(Number)
+    The number of the VProc: 1 for the first VProc, then 2, 3, ... in the
+    order they are made. It is the number in traces and error messages."""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__VProc_id__: missing argument")
+    target = olist.pop(0)
+    if not isinstance(target, VProc):
+        raise VProcError(f"__VProc_id__: expected VProc, got {value_type_name(target)}")
+    _prim_return(vp, [Number(target.serial)])
+
+def prim_VProc_kill(vp, gvenv):
+    """__VProc_kill__ VProc ,()
+    Finishes VProc at once. If it is the current VProc, it stops after this
+    primitive."""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__VProc_kill__: missing argument")
+    target = olist.pop(0)
+    if not isinstance(target, VProc):
+        raise VProcError(f"__VProc_kill__: expected VProc, got {value_type_name(target)}")
+    _prim_return(vp, [])
+    SCHEDULER.kill(target)
 
 # ── LazyList Primitives ───────────────────────────────────────────────────────
 
@@ -2134,6 +2198,10 @@ PRIMITIVES = {
     "__VProc_wait__":          prim_VProc_wait,
     "__VProc_spawn__":         prim_VProc_spawn,
     "__VProc_start__":         prim_VProc_start,
+    "__VProc_id__":            prim_VProc_id,
+    "__VProc_kill__":          prim_VProc_kill,
+    "__OS_getpid__":           prim_OS_getpid,
+    "__OS_kill__":             prim_OS_kill,
     "__LazyList_claim__":      prim_LazyList_claim,
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,

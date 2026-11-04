@@ -469,6 +469,7 @@ State changes made by primitives:
 | `__VProc_resume__` | no change | no change | ready, at the end of the queue | no change |
 | `__VProc_spawn__` | the new VProc is added at the end of the queue | | | |
 | `__VProc_start__` | the new VProc is added at the end of the queue | | | |
+| `__VProc_kill__` | removed from the queue, finished | finished after this step | finished | no change |
 | `__OS_wait__`, `__OS_wait_readable__`, `__OS_wait_writable__` | | waiting after this step, unless the OS event has already happened | | |
 | `__VProc_wait__` | | waiting after this step, unless the VProc has already finished | | |
 | `__LazyList_claim__` | | waiting after this step, if another VProc that has not finished is evaluating the LazyList and has not left the evaluation; it runs the primitive again when it wakes | | |

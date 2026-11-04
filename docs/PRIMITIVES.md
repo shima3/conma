@@ -49,6 +49,14 @@ These primitives manage external processes and stream-based I/O.
 * **Behavior**: If the Stream is already writable, it returns at once. Otherwise the current VProc waits, as with `__OS_wait__`, and other VProcs keep running. It also returns when the reader of a pipe has closed it (the next `__OS_write__` then goes to `onError`), and when another VProc closes the Stream.
 * **Usage**: `__OS_write__` blocks the whole interpreter while the OS cannot take the data. A VProc that writes to a pipe read by a process whose output another VProc reads should write in pieces of at most 512 bytes, each after `__OS_wait_writable__`.
 * **Error**: If `outputStream` is not an output Stream or is closed, invokes `onError` with an error message string.
+### `__OS_kill__ onError OSProc signal ,()`
+* **Description**: Sends the signal `signal` (a Number from 1 to 64, such as 15 for SIGTERM) to the process.
+* **Behavior**: Nothing happens if the process has already been waited for with `__OS_wait__` or `__OS_poll__`.
+* **Error**: Invokes `onError` with an error message string if `OSProc` is not an OSProc, `signal` is not an integer from 1 to 64, or the OS cannot send the signal.
+
+### `__OS_getpid__ ,(Number)`
+* **Description**: Passes the process ID of the interpreter to the LCont. Every VProc gets the same number.
+
 ### `__OS_exit_normal__ ,()`
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 0.
@@ -300,6 +308,20 @@ To get a result, the closure puts it into a Ref that the caller reads after `__V
 
 * **Usage**: To run part of a program concurrently, for example each element of a shell pipeline, without the cost of loading a program file for each VProc.
 * **Error**: Stops the current VProc with an error if `Closure` is not a Closure. An error that occurs while the new VProc runs finishes only the new VProc.
+
+### `__VProc_id__ VProc ,(Number)`
+Behavior:
+Passes the number of `VProc` to the LCont: 1 for the first VProc, then 2, 3, ... in the order VProcs are made. It is the number that traces and error messages show.
+
+* **Error**: Stops the current VProc with an error if `VProc` is not a VProc.
+
+### `__VProc_kill__ VProc ,()`
+Behavior:
+Finishes `VProc` at once, wherever it is: it is removed from the ready queue and stops waiting (for the OS, another VProc, a LazyList or a Ref). If it is the current VProc, it stops after this primitive. A VProc that has already finished is left as it is.
+The VProcs that wait for `VProc` with `__VProc_wait__` wake up. A `LazyList` that `VProc` is evaluating or holds is left without a cell, so a VProc that claims it gets `onError` (see `__LazyList_claim__`).
+OS processes that `VProc` started keep running; send them a signal with `__OS_kill__`.
+
+* **Error**: Stops the current VProc with an error if `VProc` is not a VProc.
 
 ### `__VProc_current__ ,(VProc)`
 Behavior:
