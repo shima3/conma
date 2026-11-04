@@ -1,0 +1,2 @@
+consh: case6.sh:2:14: the pipe has no reader
+exit: 1

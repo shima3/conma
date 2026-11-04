@@ -328,7 +328,13 @@
   List_append front back)
 
 ;; 値の各葉の前に left、後ろに right を付けた値。入れ子の形は保つ
+;; 前後に付ける文字列がなければ、LazyList を取り出さずにそのまま返す（遅延のまま）
 (define Value_affix ,(v left right)
+  __Cont_get__ ,(return)
+  __String_equal__ left "" ,(noLeft)
+  __String_equal__ right "" ,(noRight)
+  __and__ noLeft noRight ,(none)
+  __if__ (,() __NULL__ none) (,() return v) ,()
   __type_name__ v ,(type)
   __if_then_else__ (,() __String_equal__ type "String")
     (,()

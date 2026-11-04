@@ -1,0 +1,5 @@
+unset unset
+same-dir
+in pipe 1
+a,b
+exit: 0

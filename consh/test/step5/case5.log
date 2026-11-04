@@ -1,0 +1,2 @@
+consh: case5.sh:2:1: the pipe has no writer
+exit: 1

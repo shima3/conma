@@ -1,0 +1,2 @@
+consh: case8.sh:2:31: return in a pipeline
+exit: 1

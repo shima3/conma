@@ -1,2 +1,2 @@
-consh: case6.sh:1:1: pipelines are not implemented yet
-exit: 1
+a
+exit: 0
