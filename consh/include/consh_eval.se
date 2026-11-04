@@ -73,6 +73,8 @@
   __Dict_put__ sh "owned" __NULL__ ,()
   __Dict_put__ sh "exitTo" __NULL__ ,()
   __Dict_put__ sh "recover" __NULL__ ,()
+  __Ref_new__ __NULL__ ,(openRef)
+  __Dict_put__ sh "openRef" openRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
   Target_new_id global ,(outId)
@@ -702,14 +704,15 @@
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
+  Open_track sh opened ,(mark)
   __if__ (,() __is_null__ name)
     (,()
-      Eval_close opened ,()
+      Open_release sh mark ,()
       Capture_assign sh group ,()
       Sh_set_status sh "0" ,()
       return) ,()
   Capture_run sh group (,(s) Cmd_run s pos name args in out err) ,()
-  Eval_close opened)
+  Open_release sh mark)
 
 ;; 前置の変数定義があれば、その層を環境変数に積んだ文脈を返す。
 ;; 前置の変数定義どうしは影響しないので、どれも sh で展開する
@@ -850,6 +853,7 @@
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
+  Open_track sh opened ,(mark)
   Func_targets sh pos out err ,(out err)
   Dict_copy sh ,(inner)
   __Dict_put__ inner "bgCaptures" __NULL__ ,()
@@ -863,7 +867,7 @@
   Loops_closing sh loops opened group ,(loops)
   __Dict_put__ inner "loops" loops ,()
   Capture_run inner group run ,()
-  Eval_close opened)
+  Open_release sh mark)
 
 ;; ループの LList の各 break と continue の継続を、先に opened を閉じ、変数リストに値を割り当てるものにした LList
 (define Loops_closing ,(sh loops opened group)
@@ -956,6 +960,8 @@
   __Dict_put__ child "owned" __NULL__ ,()
   __Dict_put__ child "exitTo" __NULL__ ,()
   __Dict_put__ child "recover" __NULL__ ,()
+  __Ref_new__ __NULL__ ,(openRef)
+  __Dict_put__ child "openRef" openRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
@@ -1002,8 +1008,10 @@
   Subst_finish child ,()
   Sh_release child)
 
-;; 出力の書き手を閉じ、標準入力のチャネルを cancel し、$( ) の状態を "done" にする（kill でも使う）
+;; リダイレクトで開いたまま残っている Stream を閉じ、出力の書き手を閉じ、標準入力のチャネルを cancel し、
+;; $( ) の状態を "done" にする（kill でも使う）
 (define Sh_release ,(child)
+  Open_release_all child ,()
   Sh_get child "out" ,(out)
   Sh_get child "err" ,(err)
   Target_close out ,()
@@ -2467,6 +2475,43 @@
   __LList_uncons__ __print_exit_error__ streams ,(stream rest)
   __OS_close__ (,(msg) __nop__) stream ,()
   Eval_close rest)
+
+;; ── 開いた Stream の表 ──
+;; リダイレクトで開いた Stream は、文が普通に終われば、その文が閉じる。中断（読み手のいなくなったパイプへの書き込み、
+;; 変数リストが一杯）、exit、kill、対話モードのエラーと Ctrl-C で文の残りを捨てると、閉じる処理も飛ばされる。
+;; そのため、VProc ごとに、開いていてまだ閉じていない Stream の LList を文脈の "openRef" の Ref に入れておき（新しいものが先頭）、
+;; 文の終わりと、VProc の終わり（Sh_release）と、対話モードのコマンドの終わりに、残っているものを閉じる。
+;; 文脈の写し（関数呼び出し、前置の変数定義など）は同じ Ref を共有し、子の VProc は新しい Ref を持つ（Sh_child）。
+;; ConMa では Stream が同じかを比べられないので、文の始めの LList の長さ（mark）を覚えておき、それより上を閉じる。
+;; 中で return、break、continue したときは、それぞれの継続が先に閉じるので、表には閉じた Stream が残るが、
+;; 外側の文が取り除く（2回目の __OS_close__ のエラーは無視する）
+
+;; opened を表に加え、加える前の長さを返す
+(define Open_track ,(sh opened)
+  Sh_get sh "openRef" ,(ref)
+  __Ref_get__ ref ,(list)
+  List_length list ,(mark)
+  List_append opened list ,(list)
+  __Ref_set__ ref list ,()
+  __NULL__ mark)
+
+;; 表の長さが mark になるまで、新しいものから閉じて取り除く
+(define Open_release ,(sh mark)
+  __Cont_get__ ,(return)
+  Sh_get sh "openRef" ,(ref)
+  __Ref_get__ ref ,(list)
+  List_length list ,(n)
+  __Number_subtract__ n mark ,(over)
+  __unless__ (,() __Number_is_positive__ over) return ,()
+  __LList_uncons__ __print_exit_error__ list ,(stream rest)
+  __Ref_set__ ref rest ,()
+  __OS_close__ (,(msg) __nop__) stream ,()
+  Open_release sh mark)
+
+;; 表に残っているものをすべて閉じる
+(define Open_release_all ,(sh)
+  num "0" ,(zero)
+  Open_release sh zero)
 
 ;; ── リダイレクト ──
 

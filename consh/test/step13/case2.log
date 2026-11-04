@@ -1,0 +1,6 @@
+$ $ $ consh: stdin:3:21: undefined variable: undef
+$ error-err open: 0
+$ $ 
+$ interrupted 130
+$ interrupt-out open: 0
+$ $ exit: 0

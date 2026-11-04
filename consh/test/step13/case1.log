@@ -1,0 +1,10 @@
+y
+abort-err open: 0
+a=y
+capture-err open: 0
+killed 143
+killed open: 0
+exit 3
+exit-err open: 0
+normal open: 0
+exit: 0

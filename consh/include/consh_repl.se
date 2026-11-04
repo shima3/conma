@@ -150,6 +150,8 @@
   __Ref_set__ running vproc ,()
   __VProc_wait__ __print_exit_error__ vproc ,()
   __Ref_set__ running __NULL__ ,()
+  ;; 止めたかエラーで戻ったコマンドが、リダイレクトで開いたまま残した Stream を閉じる
+  Open_release_all sh ,()
   __Ref_get__ killed ,(wasKilled)
   __if__ (,() __NULL__ wasKilled)
     (,()

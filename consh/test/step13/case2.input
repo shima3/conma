@@ -1,0 +1,9 @@
+d=$(mktemp -d /tmp/consh.step13.XXXXXX)
+function opened (name) { n=$(lsof -p $$ 2> /dev/null | grep -c "$name"); echo "$name open: $n"; }
+for x in a; do echo $undef; done 2> $d/error-err
+opened error-err
+sh -c 'sleep 1; kill -INT $PPID' &
+for i in $(yes); do x=$i; done > $d/interrupt-out
+echo "interrupted $?"
+opened interrupt-out
+rm -rf $d
