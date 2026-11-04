@@ -413,6 +413,8 @@ class VProc(dict):
         self.serial = VProc._count
         self.state  = "ready"
         self.cwd    = os.getcwd()
+        self.claims = []         # LazyLists this VProc has claimed and may be evaluating
+        self.kill_pending = False  # __VProc_kill__ waits until it has evaluated them
     def value_to_sexp(self):
         return ["__VProcRef__", quoted(str(self.serial))]
     def __repr__(self):
@@ -988,6 +990,7 @@ def prim_OS_trap_interrupt(vp, gvenv):
     if not isinstance(ref, Ref):
         raise VProcError(f"__OS_trap_interrupt__: expected Ref, got {value_type_name(ref)}")
     SCHEDULER._install_sigchld()        # signals wake select() through the wakeup pipe
+    SCHEDULER.trapped = True
     count = [0]
     def on_interrupt(signum, frame):
         count[0] += 1
@@ -1008,7 +1011,8 @@ def prim_OS_kill(vp, gvenv):
     if not isinstance(proc, OSProc):
         _prim_error(vp, on_error, f"__OS_kill__: expected OSProc, got {value_type_name(proc)}")
         return
-    if value_type_name(sig) != "Number" or sig.value != int(sig.value) or not 1 <= int(sig.value) <= 64:
+    if (value_type_name(sig) != "Number" or not math.isfinite(sig.value)
+            or sig.value != int(sig.value) or not 1 <= int(sig.value) <= 64):
         _prim_error(vp, on_error, f"__OS_kill__: expected a signal number from 1 to 64")
         return
     try:
@@ -1018,6 +1022,23 @@ def prim_OS_kill(vp, gvenv):
         return
     _prim_return(vp, [])
 
+
+def prim_OS_dup(vp, gvenv):
+    """__OS_dup__ onError Stream ,(Stream)
+    A new Stream on a duplicate of the file descriptor of Stream (dup), with
+    the same mode. Closing either does not close the other, so a program can
+    give each user of an open file its own Stream to close."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__OS_dup__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not _check_stream(vp, on_error, "__OS_dup__", stream): return
+    try:
+        fd = os.dup(stream.fd)
+    except OSError as e:
+        _prim_error(vp, on_error, f"__OS_dup__: {e.strerror}")
+        return
+    _prim_return(vp, [Stream(fd, stream.mode)])
 
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
@@ -1706,27 +1727,9 @@ def _sexp_skip(text, i):
         i += 1
     return i
 
-def _sexp_value(text, i):
-    """Read one value at i; return the value and the next position."""
-    i = _sexp_skip(text, i)
+def _sexp_atom(text, i):
+    """Read a string or a symbol at i (not a list); return it and the next position."""
     ch = _sexp_char(text, i)
-    if ch == '(':
-        items = []
-        i += 1
-        while True:
-            i = _sexp_skip(text, i)
-            ch = _sexp_char(text, i)
-            if ch == ')':
-                i += 1
-                break
-            if ch == '':
-                raise _SexpError("unterminated list", i)
-            value, i = _sexp_value(text, i)
-            items.append(value)
-        result = NULL
-        for item in reversed(items):
-            result = LList(item, result)
-        return result, i
     if ch == '"':
         out = []
         i += 1
@@ -1738,6 +1741,8 @@ def _sexp_value(text, i):
                 return string_value(''.join(out)), i + 1
             if ch == '\\':
                 e = _sexp_char(text, i + 1)
+                if e == '':
+                    raise _SexpError("unterminated string", i + 1)
                 out.append(_SEXP_ESCAPES.get(e, e))
                 i += 2
             else:
@@ -1754,6 +1759,32 @@ def _sexp_value(text, i):
             raise _SexpError("invalid number", start)
         return Number(float(symbol)), i
     return string_value(symbol), i
+
+def _sexp_value(text, i):
+    """Read one value at i; return the value and the next position. Lists are
+    read with an explicit stack, so deep nesting does not hit Python's
+    recursion limit."""
+    stack = []                  # the items of the lists being read, outermost first
+    while True:
+        i = _sexp_skip(text, i)
+        ch = _sexp_char(text, i)
+        if ch == '(':
+            stack.append([])
+            i += 1
+            continue
+        if stack and ch == ')':
+            items = stack.pop()
+            i += 1
+            value = NULL
+            for item in reversed(items):
+                value = LList(item, value)
+        elif stack and ch == '':
+            raise _SexpError("unterminated list", i)
+        else:
+            value, i = _sexp_atom(text, i)
+        if not stack:
+            return value, i
+        stack[-1].append(value)
 
 def prim_Sexp_read(vp, gvenv):
     """__Sexp_read__ onError String ,(value)
@@ -1827,6 +1858,7 @@ class Scheduler:
         self.changes = []        # (VProc, Ref, value) waiting for the value of a Ref to change
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
+        self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
 
     def _install_sigchld(self):
         """Make SIGCHLD write a byte to a pipe, so that select() wakes up
@@ -1944,10 +1976,20 @@ class Scheduler:
         self.ready.append(vp)
 
     def kill(self, vp):
-        """Finish vp at once, wherever it is: remove it from the ready queue
-        and from every list of waiting VProcs. A finished VProc is left as
-        it is. The VProcs that wait for vp, or for a LazyList that vp is
-        evaluating or holds, wake up as if vp had finished by itself."""
+        """Finish vp, wherever it is. If vp is evaluating a LazyList that it
+        claimed, it finishes when it has evaluated all of them (kill_pending),
+        so that the LazyLists stay readable; otherwise at once."""
+        if vp.state == "finished": return
+        if evaluating_lazy(vp):
+            vp.kill_pending = True
+            return
+        self.kill_now(vp)
+
+    def kill_now(self, vp):
+        """Finish vp at once: remove it from the ready queue and from every
+        list of waiting VProcs. A finished VProc is left as it is. The VProcs
+        that wait for vp, or for a LazyList that vp holds, wake up as if vp
+        had finished by itself."""
         if vp.state == "finished": return
         if vp.state == "ready": self.ready.remove(vp)
         self.waiting = [(v, t) for v, t in self.waiting if v is not vp]
@@ -1998,6 +2040,11 @@ class Scheduler:
                     self.check_waiting(block=False)
                 else:
                     self.unpolled += 1
+            if not self.ready and self.trapped and self.changes:
+                # A VProc may wait for the Ref of __OS_trap_interrupt__:
+                # sleep until a signal arrives instead of reporting a deadlock.
+                self.check_waiting(block=True)
+                continue
             if not self.ready:
                 # A VProc waiting for another VProc cannot wake up either.
                 joining = [vp for vp, _ in self.joining + self.lazy] + [vp for vp, _, _ in self.changes]
@@ -2021,6 +2068,8 @@ class Scheduler:
                 vp.state = "finished"
             finally:
                 self.current = None
+            if vp.kill_pending and vp.state != "finished" and not evaluating_lazy(vp):
+                self.kill_now(vp)       # it left its LazyLists by a continuation
             if vp.state == "running":
                 if is_terminal(vp):
                     vp.state = "finished"
@@ -2168,6 +2217,15 @@ def lazy_abandoned(ref):
         node = node.tail
     return False
 
+def evaluating_lazy(vp):
+    """True if vp is evaluating a LazyList that it claimed and has not left
+    (a LazyList made by __LazyList_hold__ does not count). Forgets the
+    LazyLists that vp no longer evaluates."""
+    vp.claims = [r for r in vp.claims
+                 if r.value is vp and getattr(r, "lazy_chain", HELD) is not HELD
+                 and not lazy_abandoned(r)]
+    return bool(vp.claims)
+
 def prim_LazyList_claim(vp, gvenv):
     """__LazyList_claim__ onError LazyList ,(thunk cell)
     A LazyList is a Ref whose value is a thunk (a Closure), null, an LList
@@ -2208,6 +2266,10 @@ def prim_LazyList_claim(vp, gvenv):
         lazy.value      = vp
         lazy.lazy_chain = vp["cchain"]
         lazy.lazy_thunk = value
+        # Keep only the LazyLists vp still evaluates, so that claims does not
+        # keep evaluated LazyLists (and the lines in them) alive.
+        vp.claims = [r for r in vp.claims if r.value is vp]
+        vp.claims.append(lazy)
         _prim_return(vp, [value, NULL])
     elif is_null_value(value) or isinstance(value, LList):
         _prim_return(vp, [NULL, value])
@@ -2242,7 +2304,10 @@ def prim_LazyList_publish(vp, gvenv):
         raise VProcError(f"{name}: expected null or LList, got {value_type_name(cell)}")
     lazy.value = cell
     del lazy.lazy_chain, lazy.lazy_thunk
+    vp.claims = [r for r in vp.claims if r is not lazy]
     _prim_return(vp, [])
+    if vp.kill_pending and not evaluating_lazy(vp):
+        SCHEDULER.kill_now(vp)      # a delayed __VProc_kill__
 
 def prim_Ref_wait_change(vp, gvenv):
     """__Ref_wait_change__ Ref value ,()
@@ -2361,6 +2426,7 @@ PRIMITIVES = {
     "__OS_print__":            prim_OS_print,
     "__OS_print_error__":      prim_OS_print_error,
     "__OS_pipe__":             prim_OS_pipe,
+    "__OS_dup__":              prim_OS_dup,
     "__OS_get_stdin__":        prim_OS_get_stdin,
     "__OS_get_stdout__":       prim_OS_get_stdout,
     "__OS_get_stderr__":       prim_OS_get_stderr,

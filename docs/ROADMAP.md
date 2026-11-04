@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step32`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step33`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32 step33; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -662,4 +662,27 @@ No new primitive.
 | Case | What it checks |
 |---|---|
 | case1 | a child of `__OS_spawn__` is in the process group of the interpreter, and a child of `__OS_spawn_detached__` is in another one |
+
+## Step 33: Fixes from the review of ConSh
+
+| Primitive | Status |
+|---|---|
+| `__VProc_kill__` | changed: waits until the VProc has evaluated the LazyLists it claimed |
+| `__OS_dup__` | implemented |
+| `__OS_kill__` | fixed: an infinite number or NaN goes to `onError` |
+| `__Sexp_read__` | fixed: no recursion limit; a string ending in `\` is reported at the end of the input |
+
+* Goal: Fix what the review of ConSh (`consh/REVIEW-ja.md`, 2026-11-05) found in ConMa.
+  * Stopping a VProc while it evaluated a LazyList (a channel element, a line of standard input) left the LazyList without a cell, so every later reader got an error; in the interactive mode of ConSh, Ctrl-C during `stdin` broke the shell's standard input. `__VProc_kill__` now marks such a VProc (`kill_pending`) and stops it when it has evaluated all the LazyLists it claimed with `__LazyList_claim__` (`evaluating_lazy`). LazyLists made by `__LazyList_hold__` do not delay it.
+  * ConSh closes the file of a redirection at the end of the statement, but `&` jobs and `$( )` started in it may still write to it. `__OS_dup__ onError Stream ,(Stream)` duplicates the file descriptor, so that each child VProc gets its own Stream and closes it when it ends.
+  * `__OS_kill__` with an infinite signal number and `__Sexp_read__` with about 1000 levels of nesting raised Python exceptions and ended the interpreter.
+  * A VProc that waited only for the Ref of `__OS_trap_interrupt__` was reported as a deadlock; the scheduler now sleeps in `select` for the signal.
+* Tests (`test/step33`):
+
+| Case | What it checks |
+|---|---|
+| case1 | a VProc stopped while it evaluates a LazyList finishes the evaluation, and the value stays readable; the code after the evaluation does not run |
+| case2 | a Stream from `__OS_dup__` can be written after the original is closed; `onError` for a closed Stream and a non-Stream |
+| case3 | `__OS_kill__` with an infinite number and NaN, `__Sexp_read__` with 5000 levels and with a string ending in `\` |
+| case4 | a VProc waiting only for the Ref of `__OS_trap_interrupt__` wakes up on SIGINT instead of a deadlock |
 

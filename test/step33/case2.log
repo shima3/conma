@@ -1,0 +1,4 @@
+written through the dup
+__OS_dup__: closed output Stream
+__OS_dup__: expected Stream, got String
+exit: 0

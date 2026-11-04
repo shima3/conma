@@ -57,8 +57,13 @@ These primitives manage external processes and stream-based I/O.
 ### `__OS_kill__ onError OSProc signal ,()`
 * **Description**: Sends the signal `signal` (a Number from 1 to 64, such as 15 for SIGTERM) to the process.
 * **Behavior**: Nothing happens if the process has already been waited for with `__OS_wait__` or `__OS_poll__`.
-* **Error**: Invokes `onError` with an error message string if `OSProc` is not an OSProc, `signal` is not an integer from 1 to 64, or the OS cannot send the signal.
+* **Error**: Invokes `onError` with an error message string if `OSProc` is not an OSProc, `signal` is not an integer from 1 to 64 (also for an infinite number or NaN), or the OS cannot send the signal.
 
+
+### `__OS_dup__ onError Stream ,(Stream)`
+* **Description**: Passes a new Stream on a duplicate of the file descriptor of `Stream` (`dup`), with the same mode, to the LCont.
+* **Behavior**: Closing either Stream does not close the other; the open file stays open until both are closed. A program can give each user of an open file its own Stream to close, as the OS does for child processes.
+* **Error**: Invokes `onError` with an error message string if `Stream` is not a Stream, is closed, or the OS cannot duplicate it.
 ### `__OS_getpid__ ,(Number)`
 * **Description**: Passes the process ID of the interpreter to the LCont. Every VProc gets the same number.
 
@@ -336,8 +341,9 @@ Passes the number of `VProc` to the LCont: 1 for the first VProc, then 2, 3, ...
 
 ### `__VProc_kill__ VProc ,()`
 Behavior:
-Finishes `VProc` at once, wherever it is: it is removed from the ready queue and stops waiting (for the OS, another VProc, a LazyList or a Ref). If it is the current VProc, it stops after this primitive. A VProc that has already finished is left as it is.
-The VProcs that wait for `VProc` with `__VProc_wait__` wake up. A `LazyList` that `VProc` is evaluating or holds is left without a cell, so a VProc that claims it gets `onError` (see `__LazyList_claim__`).
+Finishes `VProc`, wherever it is: it is removed from the ready queue and stops waiting (for the OS, another VProc, a LazyList or a Ref). If it is the current VProc, it stops after this primitive. A VProc that has already finished is left as it is.
+If `VProc` is evaluating a `LazyList` that it claimed with `__LazyList_claim__`, it is not stopped at once: it keeps running until it has evaluated every such LazyList (published its cell, or left the evaluation with a continuation), and stops then (Step 33). So the LazyList stays readable by other VProcs. A VProc waiting inside such an evaluation (for input, for another VProc) therefore stops only after that wait ends.
+The VProcs that wait for `VProc` with `__VProc_wait__` wake up when it stops. A `LazyList` made by `__LazyList_hold__` that `VProc` holds is left without a cell, so a VProc that claims it gets `onError` (see `__LazyList_claim__`).
 OS processes that `VProc` started keep running; send them a signal with `__OS_kill__`.
 
 * **Error**: Stops the current VProc with an error if `VProc` is not a VProc.
@@ -556,6 +562,7 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 * **Description**: Reads the `String` as one S-expression and passes the value to the LCont.
 * **Returns**: A list becomes an `LList` (the empty list `()` becomes null). A string in double quotes becomes a String; in it, `\n`, `\t` and `\r` stand for a newline, a tab and a carriage return, and `\` before any other character stands for that character (`\"`, `\\`). A symbol that starts with a digit becomes a Number; any other symbol becomes a String. Spaces, tabs and newlines may surround the S-expression and separate its items.
 * **Usage**: ConSh reads the syntax tree that `consh_parse --pos` writes, one S-expression per line, with it. Reading the same text in ConMa one character at a time took seconds for a script of a few hundred characters.
+* **Behavior**: Lists are read with an explicit stack, so any depth of nesting can be read.
 * **Error**: If the String is not one well-formed S-expression, invokes `onError` with `"<message> at column <n>"`, where the message is `unterminated list`, `unterminated string`, `expected a value`, `invalid number` (a symbol that starts with a digit but is not a number) or `unexpected characters after an S-expression`, and `<n>` counts from 1. A non-String argument stops the VProc with an error.
 
 ### **`__String_concat__ aString bString ,(String)`**

@@ -1,0 +1,5 @@
+__OS_kill__: expected a signal number from 1 to 64
+__OS_kill__: expected a signal number from 1 to 64
+read 5000 levels
+unterminated string at column 6
+exit: 0

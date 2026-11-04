@@ -93,47 +93,53 @@
   __OS_write__ __print_exit_error__ stream value ,()
   __NULL__ (,(value) __Stream_sink__ stream value))
 
+;; 行の読み込み（__Stream_lines__ と __LazyList_lines__）。
+;; buf は読んだがまだ行にしていない文字列で、その前には改行がない。改行が来ていない行の途中は、
+;; 読んだ塊ごとの断片の逆順の LList（pieces）に持ち、改行が来たときに1回だけつなぐ（__Lines_join__）。
+;; ConMa の String は、__String_find__ なども長さに比例する時間がかかるので、改行は新しく読んだ塊の中だけで探す。
+;; 塊を読むたびに行の途中全体をつないで探すと、長い1行で長さの2乗の時間がかかる
+
 ;; input Stream を EOF まで読み、1行ずつ（改行を含めて）sink に渡す Seq。
 ;; 最後の行に改行がなければ、改行なしで渡す。最後の Sink を返す。
 ;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
 (define __Stream_lines__ ,(stream sink)
-  __Stream_lines_read__ stream "" sink)
+  __Stream_lines_read__ stream __NULL__ sink)
 
-;; buf は、まだ改行が来ていない行の途中
-(define __Stream_lines_read__ ,(stream buf sink)
+;; 塊を読み、行に分ける。pieces は、改行が来ていない行の途中の断片
+(define __Stream_lines_read__ ,(stream pieces sink)
   __OS_read__ __print_exit_error__ stream ,(data)
   __if_then_else__ (,() __is_null__ data)
     (,()
-      __String_length__ buf ,(len)
-      __if_then_else__ (,() __Number_is_zero__ len)
+      __if_then_else__ (,() __is_null__ pieces)
         (,() __NULL__ sink)
-        (,() sink buf))
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          sink line))
     (,()
       __String_length__ data ,(dataLen)
       __if_then_else__ (,() __Number_is_zero__ dataLen)
         (,()
           __OS_wait_readable__ __print_exit_error__ stream ,()
-          __Stream_lines_read__ stream buf sink)
-        (,()
-          __String_length__ buf ,(start)
-          __String_concat__ buf data ,(buf)
-          __String_length__ buf ,(len)
-          __Number_fromString__ __print_exit_error__ "0" ,(zero)
-          __Stream_lines_scan__ stream buf len zero start sink)))
+          __Stream_lines_read__ stream pieces sink)
+        (,() __Stream_lines_scan__ stream data pieces sink)))
 
-;; buf の i 文字目から改行を探す（__String_find__）。lineStart から改行までを1行として sink に渡す
-(define __Stream_lines_scan__ ,(stream buf len lineStart i sink)
-  __String_find__ __print_exit_error__ buf "\n" i ,(pos)
+;; buf から改行を探し、見つかれば行を sink に渡して続きを探す。なければ buf を断片に加えて読み足す
+(define __Stream_lines_scan__ ,(stream buf pieces sink)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ buf "\n" zero ,(pos)
   __if_then_else__ (,() __is_null__ pos)
     (,()
-      __String_substring__ __print_exit_error__ buf lineStart len ,(buf)
-      __Stream_lines_read__ stream buf sink)
+      __Lines_add_piece__ pieces buf ,(pieces)
+      __Stream_lines_read__ stream pieces sink)
     (,()
+      __String_length__ buf ,(len)
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __Number_add__ pos one ,(next)
-      __String_substring__ __print_exit_error__ buf lineStart next ,(line)
+      __String_substring__ __print_exit_error__ buf zero next ,(head)
+      __String_substring__ __print_exit_error__ buf next len ,(rest)
+      __Lines_join__ pieces head ,(line)
       sink line ,(sink)
-      __Stream_lines_scan__ stream buf len next next sink))
+      __Stream_lines_scan__ stream rest __NULL__ sink))
 
 ;; input Stream の行（改行を含む）の LazyList。最後の行に改行がなければ、改行なしの要素にする。
 ;; Stream は、LazyList をたどったときに必要な分だけ読む。
@@ -143,45 +149,92 @@
 
 ;; buf は、読んだがまだ要素にしていない文字列
 (define __LazyList_lines_from__ ,(stream buf)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __LazyList_new__ (,() __LazyList_lines_scan__ stream buf zero))
+  __LazyList_new__ (,() __LazyList_lines_scan__ stream buf __NULL__))
 
-;; buf の i 文字目から改行を探す（i 文字目より前に改行はない。__String_find__）。
-;; 見つかれば、そこまでを最初の要素にし、残りを tail の buf にする。見つからなければ読み足す
-(define __LazyList_lines_scan__ ,(stream buf i)
-  __String_find__ __print_exit_error__ buf "\n" i ,(pos)
+;; buf から改行を探す。見つかれば、断片とそこまでを最初の要素にし、残りを tail の buf にする。
+;; 見つからなければ、buf を断片に加えて読み足す
+(define __LazyList_lines_scan__ ,(stream buf pieces)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ buf "\n" zero ,(pos)
   __if_then_else__ (,() __is_null__ pos)
-    (,() __LazyList_lines_read__ stream buf)
+    (,()
+      __Lines_add_piece__ pieces buf ,(pieces)
+      __LazyList_lines_read__ stream pieces)
     (,()
       __String_length__ buf ,(len)
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __Number_add__ pos one ,(next)
-      __Number_fromString__ __print_exit_error__ "0" ,(zero)
-      __String_substring__ __print_exit_error__ buf zero next ,(line)
-      __String_substring__ __print_exit_error__ buf next len ,(buf)
-      __LazyList_lines_from__ stream buf ,(tail)
+      __String_substring__ __print_exit_error__ buf zero next ,(head)
+      __String_substring__ __print_exit_error__ buf next len ,(rest)
+      __Lines_join__ pieces head ,(line)
+      __LazyList_lines_from__ stream rest ,(tail)
       __LazyList_cons__ line tail))
 
-;; Stream から読み足して buf の続きを探す。EOF なら、buf が空でなければ最後の要素にする
-(define __LazyList_lines_read__ ,(stream buf)
+;; Stream から塊を読み足して続きを探す。EOF なら、行の途中があれば最後の要素にする
+(define __LazyList_lines_read__ ,(stream pieces)
   __OS_read__ __print_exit_error__ stream ,(data)
   __if_then_else__ (,() __is_null__ data)
     (,()
       __LazyList_empty__ ,(empty)
-      __String_length__ buf ,(len)
-      __if_then_else__ (,() __Number_is_zero__ len)
+      __if_then_else__ (,() __is_null__ pieces)
         (,() __NULL__ empty)
-        (,() __LazyList_cons__ buf empty))
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          __LazyList_cons__ line empty))
     (,()
       __String_length__ data ,(dataLen)
       __if_then_else__ (,() __Number_is_zero__ dataLen)
         (,()
           __OS_wait_readable__ __print_exit_error__ stream ,()
-          __LazyList_lines_read__ stream buf)
+          __LazyList_lines_read__ stream pieces)
+        (,() __LazyList_lines_scan__ stream data pieces)))
+
+;; 空でない断片を、逆順の LList の先頭に加える
+(define __Lines_add_piece__ ,(pieces piece)
+  __String_length__ piece ,(len)
+  __if_then_else__ (,() __Number_is_zero__ len)
+    (,() __NULL__ pieces)
+    (,() __LList_cons__ piece pieces))
+
+;; 逆順の断片 pieces の後ろに last をつないだ String。断片がなければ last のまま。
+;; 半分ずつつなぐので、つなぐ手間は全体の長さ × log(断片の数) になる
+(define __Lines_join__ ,(pieces last)
+  __if_then_else__ (,() __is_null__ pieces)
+    (,() __NULL__ last)
+    (,()
+      __LList_cons__ last pieces ,(all)
+      __Lines_reverse__ all __NULL__ ,(ordered)
+      __Lines_concat__ ordered))
+
+(define __Lines_reverse__ ,(list acc)
+  __if_then_else__ (,() __is_null__ list)
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(head tail)
+      __LList_cons__ head acc ,(acc)
+      __Lines_reverse__ tail acc))
+
+;; String の LList をつなぐ。2つずつつなぐことを、1つになるまで繰り返す
+(define __Lines_concat__ ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  __if_then_else__ (,() __is_null__ tail)
+    (,() __NULL__ head)
+    (,()
+      __Lines_pairs__ list ,(paired)
+      __Lines_concat__ paired))
+
+(define __Lines_pairs__ ,(list)
+  __if_then_else__ (,() __is_null__ list)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(a rest)
+      __if_then_else__ (,() __is_null__ rest)
+        (,() __LList_cons__ a __NULL__)
         (,()
-          __String_length__ buf ,(start)
-          __String_concat__ buf data ,(buf)
-          __LazyList_lines_scan__ stream buf start)))
+          __LList_uncons__ __print_exit_error__ rest ,(b more)
+          __String_concat__ a b ,(ab)
+          __Lines_pairs__ more ,(paired)
+          __LList_cons__ ab paired)))
 
 ;; output Stream に書き込む Sink。Closure は stream だけを参照する
 (define __Stream_newSink__ ,(stream)
