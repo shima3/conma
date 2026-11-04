@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step28`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step29`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -602,4 +602,20 @@ No new primitive.
 | case1 | the first position at or after `start`; null when there is none; an empty pattern is found at `start` |
 | case2 | positions count characters, not bytes; a newline can be found |
 | case3 | `onError` for a `start` out of range and for a non-integer `start` |
+
+## Step 29: Directory listings
+
+| Primitive | Status |
+|---|---|
+| `__OS_listdir__` | implemented |
+
+* Goal: Let ConSh expand glob patterns such as `*.txt` (see `consh/PLAN-ja.md`).
+* `__OS_listdir__ onError path ,(names)` gives the names in a directory, without `"."` and `".."`, sorted by code point, relative to the current directory of the VProc.
+* Tests (`test/step29`, with the directory `test/step29/dir`):
+
+| Case | What it checks |
+|---|---|
+| case1 | the names in code point order, with a name that starts with `.` and without `.` and `..` |
+| case2 | a relative path is relative to the current directory of the VProc |
+| case3 | `onError` for a missing path and for a path that is not a directory |
 

@@ -1201,6 +1201,31 @@ def prim_OS_realpath(vp, gvenv):
     _prim_return(vp, [string_value(real)])
 
 
+def prim_OS_listdir(vp, gvenv):
+    """__OS_listdir__ onError path ,(names)
+    The names in the directory path (relative to the current VProc's
+    directory), without "." and "..", as an LList of Strings in code point
+    order. A path that is missing or not a directory goes to onError."""
+    name  = "__OS_listdir__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    path     = olist.pop(0)
+    if value_type_name(path) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String path, got {value_type_name(path)}")
+        return
+    path = _value_to_display(path)
+    try:
+        names = sorted(os.listdir(_vproc_path(vp, path)))
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
+        return
+    result = NULL
+    for n in reversed(names):
+        result = LList(string_value(n), result)
+    _prim_return(vp, [result])
+
+
 # ── Number Primitives ─────────────────────────────────────────────────────────
 
 # Optional sign, digits with an optional fraction, optional exponent (ASCII only)
@@ -2286,6 +2311,7 @@ PRIMITIVES = {
     "__OS_getpid__":           prim_OS_getpid,
     "__OS_kill__":             prim_OS_kill,
     "__OS_sysconf__":          prim_OS_sysconf,
+    "__OS_listdir__":          prim_OS_listdir,
     "__LazyList_claim__":      prim_LazyList_claim,
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,

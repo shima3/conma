@@ -1,0 +1,3 @@
+__OS_listdir__: No such file or directory: no-such-dir
+__OS_listdir__: Not a directory: dir/a
+exit: 0

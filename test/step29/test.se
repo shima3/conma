@@ -1,0 +1,37 @@
+;; Step29: ディレクトリの中の名前を返す __OS_listdir__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 名前の LList を1行ずつ出す
+(define printNames ,(names)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ names) return ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  println name ,()
+  printNames rest)
+
+;; case1: "." と ".." を除き、文字コード順に並べる（. で始まる名前も含む）
+(define case1 ,()
+  __OS_listdir__ __print_exit_error__ "dir" ,(names)
+  printNames names)
+
+;; case2: 相対パスは VProc のカレントディレクトリから
+(define case2 ,()
+  __OS_chdir__ __print_exit_error__ "dir" ,()
+  __OS_listdir__ __print_exit_error__ "sub" ,(names)
+  printNames names ,()
+  __OS_listdir__ __print_exit_error__ "." ,(names)
+  printNames names)
+
+;; case3: ないパス、ディレクトリでないパスは onError
+(define case3 ,()
+  listError "no-such-dir" ,()
+  listError "dir/a")
+
+(define listError ,(path)
+  __Cont_get__ ,(return)
+  __OS_listdir__ (,(msg) println msg ,() return) path ,(names)
+  println "not reached")
