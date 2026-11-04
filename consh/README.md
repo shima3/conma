@@ -13,7 +13,7 @@ consh/
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
 ├── include/
 │   ├── consh_main.se    main：ConSh の入口
-│   ├── consh_ast.se     consh_parse の構文木の読み込みと書き戻し
+│   ├── consh_ast.se     consh_parse の構文木の読み込み（__Sexp_read__ と、ConMa で読む Sexp_read）と書き戻し
 │   ├── consh_parser.se  構文解析（consh --conma-parser で使う。consh_parse と同じ構文木を作る）
 │   ├── consh_glob.se    glob
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
@@ -39,7 +39,7 @@ consh/
 bin/consh [--conma-parser] [--dump] スクリプト [引数 ...]
 ```
 
-ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを読む（形式は [AST.md](AST.md)）。
+ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)）。
 `--conma-parser` を付けると、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読み、Python を使わずに動く。
 構文木は `consh_parse --pos` と同じで、構文エラーのメッセージは `consh_parse:` の代わりに `consh:` で始まる。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。

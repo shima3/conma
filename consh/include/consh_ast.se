@@ -25,21 +25,33 @@
 ;; ── 読み込み ──
 
 ;; path のファイルから構文木を読み、コマンド行の節の LList を返す。
-;; 読めなければ onError に「path:行: メッセージ」を渡す
+;; 読めなければ onError に「path:行: メッセージ」を渡す。
+;; 各行の S 式は ConMa の __Sexp_read__（Step 30）で読む。ConMa で1文字ずつ読む Sexp_read より、ずっと速い
 (define Ast_readFile ,(onError path)
+  Ast_readFile_with onError path Sexp_read_fast)
+
+;; reader（,(onError text) ...）で各行を読む。Sexp_read を渡せば ConMa で読む（consh_main.se の dump-sexp）
+(define Ast_readFile_with ,(onError path reader)
   __OS_open__ onError path "r" ,(stream)
   __LazyList_lines__ stream ,(lines)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
-  Ast_readLines onError path one lines ,(nodes)
+  Ast_readLines onError path one lines reader ,(nodes)
   __OS_close__ onError stream ,()
   __NULL__ nodes)
 
+;; __Sexp_read__ で読む。エラーのメッセージは Sexp_read と同じく「<メッセージ> at column <桁>: <text>」にする
+(define Sexp_read_fast ,(onError text)
+  __Sexp_read__ (,(msg)
+    __String_concat__ msg ": " ,(msg)
+    __String_concat__ msg text ,(msg)
+    onError msg) text)
+
 ;; LazyList の各行（n 行目から）を S 式として読み、その LList を返す
-(define Ast_readLines ,(onError path n lines)
+(define Ast_readLines ,(onError path n lines reader)
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return __NULL__) lines ,(line rest)
   Ast_chomp line ,(line)
-  Sexp_read (,(msg)
+  reader (,(msg)
     __Number_toString__ n ,(lineNo)
     __String_concat__ path ":" ,(s)
     __String_concat__ s lineNo ,(s)
@@ -48,7 +60,7 @@
     onError s) line ,(node)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_add__ n one ,(n)
-  Ast_readLines onError path n rest ,(nodes)
+  Ast_readLines onError path n rest reader ,(nodes)
   __LList_cons__ node nodes)
 
 ;; 行末の改行を除く
@@ -220,6 +232,9 @@
   __String_concat__ msg ": " ,(msg)
   __String_concat__ msg text ,(msg)
   onError msg)
+
+;; ── ConMa で読む ──
+;; __Sexp_read__ と同じ結果になる、ConMa で1文字ずつ読む版。consh_main.se の dump-sexp と、step1 のテストで使う
 
 ;; ── 書き戻し ──
 

@@ -3,6 +3,7 @@
 ;;   モード run  : スクリプトを実行する
 ;;   モード dump : 構文木を読み、S 式に書き戻して標準出力に出す（読み込みの確認用）
 ;;   モード run-src、dump-src : 構文木のファイルの代わりにスクリプトのファイルを受け取り、consh_parser.se で解析する
+;;   モード dump-sexp : dump と同じだが、構文木の S 式を __Sexp_read__ でなく ConMa の Sexp_read で読む
 (include "util.se")
 (include "consh_ast.se")
 (include "consh_parser.se")
@@ -16,11 +17,16 @@
   __String_equal__ mode "run-src" ,(runSrc)
   __String_equal__ mode "dump-src" ,(dumpSrc)
   __or__ runSrc dumpSrc ,(fromSrc)
+  __String_equal__ mode "dump-sexp" ,(dumpSexp)
   __if_then_else__ (,() __NULL__ fromSrc)
     (,() Parse_file astFile script)
-    (,() Ast_readFile main_error astFile) ,(lines)
+    (,()
+      __if_then_else__ (,() __NULL__ dumpSexp)
+        (,() Ast_readFile_with main_error astFile Sexp_read)
+        (,() Ast_readFile main_error astFile)) ,(lines)
   __String_equal__ mode "dump" ,(dump)
   __or__ dump dumpSrc ,(dump)
+  __or__ dump dumpSexp ,(dump)
   __if_then_else__ (,() __NULL__ dump)
     (,() main_dump lines)
     (,()
@@ -28,7 +34,7 @@
       Eval_run script args lines))
 
 (define main_usage ,()
-  main_error "usage: consh_main.se run|dump|run-src|dump-src <file> <script> [<arg> ...]")
+  main_error "usage: consh_main.se run|dump|dump-sexp|run-src|dump-src <file> <script> [<arg> ...]")
 
 (define main_error ,(msg)
   __String_concat__ "consh: " msg ,(msg)

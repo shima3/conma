@@ -12,10 +12,24 @@ do
     diff /tmp/consh.ref /tmp/consh.dump
   fi
 done
-# case2 から case5: 壊れた構文木はエラーになる（consh_main.se に構文木のファイルを直接渡す）
-for c in case2 case3 case4 case5
+# ConMa で1文字ずつ読む Sexp_read（consh_main.se の dump-sexp）でも、同じ構文木になるか。parse1 で確かめる
+for f in ../parse1/case*.sh
 do
-  PYTHONUNBUFFERED=1 python3 "$root/test/vproc_run.py" --main /tmp/consh.module.se dump $c.ast $c.ast > /tmp/consh.$c.log 2>&1
-  echo "exit: $?" >> /tmp/consh.$c.log
-  diff $c.log /tmp/consh.$c.log
+  python3 "$consh/bin/consh_parse" --pos $f > /tmp/consh.ref 2> /dev/null || continue
+  PYTHONUNBUFFERED=1 python3 "$root/test/vproc_run.py" --main /tmp/consh.module.se dump-sexp /tmp/consh.ref $f > /tmp/consh.dump 2>&1
+  if ! diff -q /tmp/consh.ref /tmp/consh.dump > /dev/null; then
+    echo "== $f (dump-sexp)"
+    diff /tmp/consh.ref /tmp/consh.dump
+  fi
+done
+# case2 から case5: 壊れた構文木はエラーになる（consh_main.se に構文木のファイルを直接渡す）。
+# __Sexp_read__（dump）と Sexp_read（dump-sexp）で、同じメッセージになる
+for mode in dump dump-sexp
+do
+  for c in case2 case3 case4 case5
+  do
+    PYTHONUNBUFFERED=1 python3 "$root/test/vproc_run.py" --main /tmp/consh.module.se $mode $c.ast $c.ast > /tmp/consh.$c.log 2>&1
+    echo "exit: $?" >> /tmp/consh.$c.log
+    diff $c.log /tmp/consh.$c.log
+  done
 done
