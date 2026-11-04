@@ -68,21 +68,28 @@
   Sh_get writer "chan" ,(chan)
   Chan_wake chan)
 
+;; consumed を cancelled より先に読む。cancelled を先に読むと、その後で読み手が cancel して consumed を
+;; 書き換えたとき、書き換えた後の consumed が変わるのを待ってしまい、二度と起きない。
+;; consumed を先に読めば、その後の cancel は consumed を変えるので、__Ref_wait_change__ は待たずに戻る。
+;; チャネルに "state"（$( ) の状態の Ref）があれば、待つ間は "blocked" にする（Subst_settle）
 (define Chan_wait_room ,(writer onCancelled)
   __Cont_get__ ,(return)
   Sh_get writer "chan" ,(chan)
-  Sh_get chan "cancelled" ,(cancelledRef)
-  __Ref_get__ cancelledRef ,(cancelled)
-  __if__ (,() __NULL__ cancelled) onCancelled ,()
   Sh_get writer "chain" ,(chain)
   Sh_get chain "consumed" ,(consumedRef)
   __Ref_get__ consumedRef ,(consumed)
+  Sh_get chan "cancelled" ,(cancelledRef)
+  __Ref_get__ cancelledRef ,(cancelled)
+  __if__ (,() __NULL__ cancelled) onCancelled ,()
   Sh_get writer "produced" ,(produced)
   Sh_get chan "cap" ,(cap)
   __Number_subtract__ produced consumed ,(ahead)
   __Number_subtract__ ahead cap ,(over)
   __if__ (,() __Number_is_negative__ over) return ,()
+  __Dict_lookup_or__ chan "state" (,(key) __NULL__ __NULL__) ,(state)
+  __unless__ (,() __is_null__ state) (,() __Ref_set__ state "blocked") ,()
   __Ref_wait_change__ consumedRef consumed ,()
+  __unless__ (,() __is_null__ state) (,() __Ref_set__ state "running") ,()
   Chan_wait_room writer onCancelled)
 
 ;; 書き手を閉じる。2回目は何もしない
@@ -114,6 +121,7 @@
   __MSeq_uncons__ __print_exit_error__ chains ,(chain rest)
   Sh_get chain "consumed" ,(consumedRef)
   __Ref_get__ consumedRef ,(consumed)
+  ;; __Ref_wait_change__ は値の同一性で比べるので、同じ数の別のオブジェクトを置いて、待っている書き手を起こす
   num "0" ,(zero)
   __Number_add__ consumed zero ,(same)
   __Ref_set__ consumedRef same ,()

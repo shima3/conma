@@ -8,7 +8,8 @@
 ;; & は、まだない（実行するとエラー）。
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
-;;   "global"     シェル全体で共有する Dict。"status" に最後の文の終了ステータスの String（$?）
+;;   "global"     VProc ごとの Dict。"status" に最後の文の終了ステータスの String（$?）、
+;;                "substs" にこの VProc で起動して、まだ終わっていない $( ) の記録の LList（Subst_settle）
 ;;   "script"     スクリプトのファイル名（$0、エラーメッセージ）
 ;;   "args"       スクリプトの引数の LList（$@、$1、$#）
 ;;   "vars"       局所変数の Dict。値は String か LazyList
@@ -39,6 +40,7 @@
 (define Ctx_top ,(script args)
   __Dict_new__ ,(global)
   __Dict_put__ global "status" "0" ,()
+  __Dict_put__ global "substs" __NULL__ ,()
   num "0" ,(zero)
   __Dict_put__ global "sinks" zero ,()
   __OS_get_envDict__ ,(base)
@@ -405,6 +407,7 @@
 (define Eval_run ,(script args lines)
   Ctx_top script args ,(sh)
   Eval_lines sh lines ,()
+  Subst_finish sh ,()
   Sh_status sh ,(status)
   num status ,(code)
   __OS_exit__ __print_exit_error__ code)
@@ -425,6 +428,10 @@
   Eval_stmts sh rest)
 
 (define Eval_stmt ,(sh stmt)
+  Eval_stmt_run sh stmt ,()
+  Subst_settle sh)
+
+(define Eval_stmt_run ,(sh stmt)
   Node_split stmt ,(tag pos children)
   __if_then_else__ (,() __String_equal__ tag "cmd")
     (,() Eval_cmd sh pos children) (,()
@@ -872,6 +879,7 @@
 (define Sh_child ,(sh in out err noReturn)
   Sh_get sh "global" ,(global)
   Dict_copy global ,(global)
+  __Dict_put__ global "substs" __NULL__ ,()
   Sh_get sh "vars" ,(vars)
   Dict_copy vars ,(vars)
   Sh_get sh "env" ,(env)
@@ -928,13 +936,17 @@
   body child ,()
   __nop__)
 
+;; 終わるときに、この VProc で起動した $( ) を終わらせてから、出力の書き手を閉じる
 (define Sh_finish ,(child)
+  Subst_finish child ,()
   Sh_get child "out" ,(out)
   Sh_get child "err" ,(err)
   Target_close out ,()
   Target_close err ,()
   Sh_get child "cancelIn" ,(chan)
-  __unless__ (,() __is_null__ chan) (,() Chan_cancel chan))
+  __unless__ (,() __is_null__ chan) (,() Chan_cancel chan) ,()
+  __Dict_lookup_or__ child "substState" (,(key) __NULL__ __NULL__) ,(state)
+  __unless__ (,() __is_null__ state) (,() __Ref_set__ state "done"))
 
 ;; この VProc を終える（Sh_start の body の残りを捨てる）
 (define Sh_abort ,(sh)
@@ -1215,11 +1227,15 @@
 ;; ── コマンド置換 ──
 
 ;; $( スクリプト ) を別の VProc で実行し、標準出力の要素を並べた LazyList を返す。外部コマンドの出力は行ごとの要素になる。
-;; 終わるのを待たずに返すので、要素は読み進めるのと並行に作られる
+;; 終わるのを待たずに返すので、要素は読み進めるのと並行に作られる。
+;; 文の終わりには、子が終わるか、チャネルが一杯で書き手が待つまで待つ（Subst_settle）。
+;; そのため、出力の少ない $( ) の副作用は、次の文より前に終わる
 (define Eval_subst ,(sh pos script)
   Node_split script ,(tag spos lines)
   Pipe_cap ,(cap)
   Chan_new cap ,(chan)
+  __Ref_new__ "running" ,(state)
+  __Dict_put__ chan "state" state ,()
   Chan_writer chan ,(writer)
   Sh_get sh "global" ,(global)
   Target_new_id global ,(id)
@@ -1228,8 +1244,63 @@
   Child_target err ,(err)
   Sh_get sh "in" ,(in)
   Sh_child sh in out err "return in a command substitution" ,(child)
+  __Dict_put__ child "substState" state ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
+  __Dict_new__ ,(record)
+  __Dict_put__ record "vproc" vproc ,()
+  __Dict_put__ record "chan" chan ,()
+  __Dict_put__ record "state" state ,()
+  Sh_get sh "global" ,(global)
+  Sh_get global "substs" ,(substs)
+  __LList_cons__ record substs ,(substs)
+  __Dict_put__ global "substs" substs ,()
   Chan_list chan)
+
+;; 文の終わりに、この VProc で起動した $( ) を、それぞれ終わるか、チャネルが一杯で書き手が待つまで待つ。
+;; 終わったものは記録から除き、待っているもの（値がまだ読まれていない）は残す
+(define Subst_settle ,(sh)
+  __Cont_get__ ,(return)
+  Sh_get sh "global" ,(global)
+  Sh_get global "substs" ,(substs)
+  __if__ (,() __is_null__ substs) return ,()
+  Subst_settle_list substs ,(kept)
+  __Dict_put__ global "substs" kept)
+
+(define Subst_settle_list ,(substs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ substs) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ substs ,(record rest)
+  Subst_settle_one record ,(state)
+  Subst_settle_list rest ,(kept)
+  __if__ (,() __String_equal__ state "done") (,() return kept) ,()
+  __LList_cons__ record kept)
+
+;; 状態が "running" でなくなるまで待ち、その状態（"blocked" か "done"）を返す
+(define Subst_settle_one ,(record)
+  __Cont_get__ ,(return)
+  Sh_get record "state" ,(stateRef)
+  __Ref_get__ stateRef ,(state)
+  __unless__ (,() __String_equal__ state "running") (,() return state) ,()
+  __Ref_wait_change__ stateRef state ,()
+  Subst_settle_one record)
+
+;; スクリプトや VProc の終わりに、まだ終わっていない $( ) のチャネルを cancel し、終わるのを待つ。
+;; 出力のないもの（x=$(mkdir d)）は最後まで動き、書き手が待っているもの（x=$(yes)）は次に書いたときに止まる
+(define Subst_finish ,(sh)
+  Sh_get sh "global" ,(global)
+  Sh_get global "substs" ,(substs)
+  __Dict_put__ global "substs" __NULL__ ,()
+  Subst_finish_list substs)
+
+(define Subst_finish_list ,(substs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ substs) return ,()
+  __LList_uncons__ __print_exit_error__ substs ,(record rest)
+  Sh_get record "chan" ,(chan)
+  Chan_cancel chan ,()
+  Sh_get record "vproc" ,(vproc)
+  __VProc_wait__ __print_exit_error__ vproc ,()
+  Subst_finish_list rest)
 
 ;; ── パイプライン ──
 
