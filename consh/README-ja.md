@@ -1,6 +1,7 @@
 # ConSh
 
 ConSh は ConMa 言語で動作するシェルである。仕様と設計は [PLAN-ja.md](PLAN-ja.md) にある。
+Bash を使う人向けの使い方の説明は [FOR-BASH-USERS.md](FOR-BASH-USERS.md)（英語）にある。
 
 ## 構成
 
@@ -8,6 +9,7 @@ ConSh は ConMa 言語で動作するシェルである。仕様と設計は [PL
 consh/
 ├── PLAN-ja.md           仕様と設計
 ├── AST.md               consh_parse が出力する構文木の形式（英語）
+├── FOR-BASH-USERS.md    Bash を使う人向けの使い方の説明（英語）
 ├── bin/
 │   ├── consh            ConSh を起動する（consh_parse --pos か consh_parser.se で構文木を作り、ConMa 版に渡す）
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
