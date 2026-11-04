@@ -49,6 +49,8 @@
   num "0" ,(zero)
   __Dict_put__ global "sinks" zero ,()
   __OS_get_envDict__ ,(base)
+  ;; bin/consh が rlwrap を通したときの印。シェルの中で起動するコマンドには渡さない
+  __Dict_remove__ base "CONSH_RLWRAPPED" ,()
   Env_new base __NULL__ ,(env)
   __OS_get_stderr__ ,(errStream)
   Target_stream global errStream ,(err)
@@ -335,7 +337,7 @@
 ;;   (sink id write)     要素を1つずつ受け取る関数 write（,(line) ...）。どの VProc から呼んでもよい
 ;;   (top id write)      トップレベルの標準出力（Ctx_top）。要素は sink と同じく write で書くが、
 ;;                       外部コマンドには OS の標準出力の Stream をそのまま渡す（端末なら端末のまま）
-;;   (file id dict)      関数、if 文、for 文に渡したファイルの Stream（Target_for_body）。dict は "stream" と "write" を持つ。
+;;   (file id dict)      関数、if 文、for 文に渡したファイルの Stream（Target_for_body）。dict は "stream"、"sh"、"pos" を持つ。
 ;;                       要素は write で、リダイレクトを書いた文の OFS で書き、外部コマンドには Stream をそのまま渡す
 ;;   (chan id writer)    チャネルの書き手（consh_chan.se）。それを作った VProc だけが使う。
 ;;                       別の VProc に渡すときは、同じチャネルの新しい書き手を作る（Child_target）
@@ -377,10 +379,10 @@
   Target_split target ,(kind id value)
   __if_then_else__ (,() __String_equal__ kind "stream")
     (,()
-      Stream_writer sh pos value ,(write)
       __Dict_new__ ,(dict)
       __Dict_put__ dict "stream" value ,()
-      __Dict_put__ dict "write" write ,()
+      __Dict_put__ dict "sh" sh ,()
+      __Dict_put__ dict "pos" pos ,()
       Target_make "file" id dict)
     (,() __NULL__ target))
 
@@ -405,16 +407,25 @@
     (,() Capture_put sh value line) (,()
   __if_then_else__ (,() __String_equal__ kind "file")
     (,()
-      Sh_get value "write" ,(write)
+      Sh_get value "stream" ,(stream)
+      Sh_get value "sh" ,(fsh)
+      Sh_get value "pos" ,(fpos)
+      Stream_writer fsh fpos stream ,(write)
       write line)
     (,() value line)))))
 
-;; chan ターゲットなら書き手を閉じる
+;; 子のターゲット（Child_target）を閉じる。chan なら書き手を閉じ、stream と file なら、子のために複製した Stream を閉じる
 (define Target_close ,(target)
+  __Cont_get__ ,(return)
   Target_split target ,(kind id value)
-  __if_then_else__ (,() __String_equal__ kind "chan")
-    (,() Chan_close value)
-    (,() __nop__))
+  __if__ (,() __String_equal__ kind "chan") (,() Chan_close value ,() return) ,()
+  __if__ (,() __String_equal__ kind "stream") (,() __OS_close__ (,(msg) __nop__) value ,() return) ,()
+  __if__ (,() __String_equal__ kind "file")
+    (,()
+      Sh_get value "stream" ,(stream)
+      __OS_close__ (,(msg) __nop__) stream ,()
+      return) ,()
+  __nop__)
 
 ;; 出力の要素を1行の String にする。LazyList は OFS で文字列化する
 (define Line_toString ,(sh pos line)
@@ -864,23 +875,24 @@
   __Dict_put__ inner "err" err ,()
   Sh_get sh "return" ,(ret)
   __unless__ (,() __is_null__ ret)
-    (,() __Dict_put__ inner "return" (,() Eval_close opened ,() Capture_assign sh group ,() ret)) ,()
+    (,() __Dict_put__ inner "return" (,() Open_release sh mark ,() Capture_assign sh group ,() ret)) ,()
   Sh_get sh "loops" ,(loops)
-  Loops_closing sh loops opened group ,(loops)
+  Loops_closing sh loops mark group ,(loops)
   __Dict_put__ inner "loops" loops ,()
   Capture_run inner group run ,()
   Open_release sh mark)
 
-;; ループの LList の各 break と continue の継続を、先に opened を閉じ、変数リストに値を割り当てるものにした LList
-(define Loops_closing ,(sh loops opened group)
+;; ループの LList の各 break と continue の継続を、先に開いた Stream の表を mark まで閉じ（この文と、中で捨てた文が
+;; 開いたもの。表に閉じた Stream を残さないので、ループの中で繰り返しても表は伸びない）、変数リストに値を割り当てるものにした LList
+(define Loops_closing ,(sh loops mark group)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ loops) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ loops ,(loop rest)
   Loop_split loop ,(name brk cont)
   Loop_make name
-    (,() Eval_close opened ,() Capture_assign sh group ,() brk)
-    (,() Eval_close opened ,() Capture_assign sh group ,() cont) ,(loop)
-  Loops_closing sh rest opened group ,(rest)
+    (,() Open_release sh mark ,() Capture_assign sh group ,() brk)
+    (,() Open_release sh mark ,() Capture_assign sh group ,() cont) ,(loop)
+  Loops_closing sh rest mark group ,(rest)
   __LList_cons__ loop rest)
 
 ;; (if clause ... [else] [redirs]) の子を、clause の LList、else のスクリプト（なければ null）、
@@ -966,19 +978,38 @@
   __Dict_put__ child "openRef" openRef ,()
   __Ref_new__ __NULL__ ,(pipeRef)
   __Dict_put__ child "pipeRef" pipeRef ,()
+  __Ref_new__ __FALSE__ ,(finished)
+  __Dict_put__ child "finished" finished ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
 
-;; 子の VProc に渡すターゲット。chan なら、同じチャネルの新しい書き手にする（id は同じ）
+;; 子の VProc に渡すターゲット（id は同じ）。chan なら、同じチャネルの新しい書き手にする。
+;; stream と file なら、Stream を複製する（ConMa の __OS_dup__）。子は終わるときに、それを閉じる（Sh_release の Target_close）。
+;; そのため、文の終わりにリダイレクトのファイルを閉じても、文より長く生きる & のジョブや $( ) は書き続けられる
 (define Child_target ,(target)
+  __Cont_get__ ,(return)
   Target_split target ,(kind id value)
-  __if_then_else__ (,() __String_equal__ kind "chan")
+  __if__ (,() __String_equal__ kind "chan")
     (,()
       Chan_of value ,(chan)
       Chan_writer chan ,(writer)
-      Target_make "chan" id writer)
-    (,() __NULL__ target))
+      Target_make "chan" id writer ,(t)
+      return t) ,()
+  __if__ (,() __String_equal__ kind "stream")
+    (,()
+      __OS_dup__ (,(msg) return target) value ,(copy)
+      Target_make "stream" id copy ,(t)
+      return t) ,()
+  __if__ (,() __String_equal__ kind "file")
+    (,()
+      Sh_get value "stream" ,(stream)
+      __OS_dup__ (,(msg) return target) stream ,(copy)
+      Dict_copy value ,(dict)
+      __Dict_put__ dict "stream" copy ,()
+      Target_make "file" id dict ,(t)
+      return t) ,()
+  __NULL__ target)
 
 ;; 標準出力と標準エラー出力を子に渡す。同じ行き先（2>&1）なら同じ書き手にする
 (define Child_targets ,(out err)
@@ -1010,12 +1041,16 @@
 ;; 終わるときに、この VProc で起動した $( ) を終わらせてから、出力の書き手を閉じる
 (define Sh_finish ,(child)
   Subst_finish child ,()
-  Sh_release child)
+  Sh_release child ,()
+  Sh_get child "finished" ,(finished)
+  __Ref_set__ finished __TRUE__)
 
 ;; リダイレクトで開いたまま残っている Stream を閉じ、出力の書き手を閉じ、標準入力のチャネルを cancel し、
 ;; $( ) の状態を "done" にする（kill でも使う）
 (define Sh_release ,(child)
   Open_release_all child ,()
+  __Dict_lookup_or__ child "owned" (,(key) __NULL__ __NULL__) ,(owned)
+  Eval_close owned ,()
   Sh_get child "out" ,(out)
   Sh_get child "err" ,(err)
   Target_close out ,()
@@ -1476,7 +1511,8 @@
   __NULL__ vproc child)
 
 ;; パイプラインの要素 elem が、先頭の語がクォートか裸文字だけの単純文で、その名前が外部コマンドか。
-;; そうなら、要素は外部コマンドを1つだけ起動し、標準入力と標準出力の Stream をそのまま渡せる
+;; そうなら、要素は外部コマンドを1つだけ起動し、標準入力と標準出力の Stream をそのまま渡せる。
+;; 裸文字が glob の記号（* ? [）を含めば、展開すると関数の名前になりうるので、外部コマンドとみなさない
 (define Pipe_is_external ,(sh elem)
   __Cont_get__ ,(return)
   Node_split elem ,(tag pos children)
@@ -1495,6 +1531,7 @@
   __or__ isLit isSq ,(plain)
   __unless__ (,() __NULL__ plain) (,() return __FALSE__) ,()
   List_first texts ,(name)
+  __if__ (,() __NULL__ isLit) (,() Glob_has_meta name ,(meta) __if__ (,() __NULL__ meta) (,() return __FALSE__) ,()) ,()
   Cmd_is_external sh name)
 
 (define Pipe_wait ,(vprocs)
@@ -1769,15 +1806,35 @@
   __LList_cons__ job rest)
 
 ;; ジョブが終わるのを待ち、その終了ステータスを返す。kill したジョブは 143
+;; パイプラインのジョブは、すべての要素を待つ（Pipe_wait と同じ）。$? は最後の要素の終了ステータス
 (define Job_wait ,(job)
   __Cont_get__ ,(return)
-  Sh_get job "vproc" ,(vproc)
-  __VProc_wait__ __print_exit_error__ vproc ,()
+  Sh_get job "members" ,(members)
+  Members_wait members ,()
   Sh_get job "killed" ,(killed)
   __if__ (,() __NULL__ killed) (,() return "143") ,()
   Sh_get job "child" ,(child)
   Sh_get child "global" ,(global)
   __Dict_lookup_or__ global "status" __print_exit_error__)
+
+(define Members_finished ,(members)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ members) (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  __LList_uncons__ __print_exit_error__ m ,(vproc more)
+  List_first more ,(ctx)
+  Sh_get ctx "finished" ,(finishedRef)
+  __Ref_get__ finishedRef ,(finished)
+  __unless__ (,() __NULL__ finished) (,() return __FALSE__) ,()
+  Members_finished rest)
+
+(define Members_wait ,(members)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ members) return ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  __LList_uncons__ __print_exit_error__ m ,(vproc more)
+  __VProc_wait__ __print_exit_error__ vproc ,()
+  Members_wait rest)
 
 ;; スクリプトの終わりに、& で起動したジョブがすべて終わるのを待つ
 (define Jobs_wait_all ,(sh)
@@ -1792,9 +1849,14 @@
 
 ;; ジョブを止める。VProc を止め、実行中の外部コマンドに SIGTERM を送り、出力の書き手を閉じ、
 ;; 標準入力のチャネルを cancel し、まだできていない遅延の値を空にする
+;; すでに終わったジョブ（パイプラインならすべての要素が終わった）は止めず、"killed" にもしない
+;; （wait は実際の終了ステータスを返す。Bash と同じ）
 (define Job_kill ,(job)
-  __Dict_put__ job "killed" __TRUE__ ,()
+  __Cont_get__ ,(return)
   Sh_get job "members" ,(members)
+  Members_finished members ,(finished)
+  __if__ (,() __NULL__ finished) return ,()
+  __Dict_put__ job "killed" __TRUE__ ,()
   Members_kill members ,()
   Sh_get job "child" ,(child)
   __Dict_lookup_or__ child "bgSpecs" (,(key) __NULL__ __NULL__) ,(specs)
@@ -1827,9 +1889,15 @@
   __unless__ (,() __is_null__ proc)
     (,()
       num "15" ,(sigterm)
-      __OS_kill__ (,(msg) __nop__) proc sigterm) ,()
+      __OS_kill__ (,(msg) __nop__) proc sigterm ,()
+      Proc_reap proc) ,()
   Sh_release ctx ,()
   Kill_tree ctx __NULL__)
+
+;; 止めた VProc は外部コマンドの終わりを待たないので、別の VProc で待つ（ゾンビとして残らないように）
+(define Proc_reap ,(proc)
+  __VProc_start__ (,() __OS_wait__ (,(msg) __nop__) proc ,(code) __nop__) ,(reaper)
+  __nop__)
 
 ;; ctx の VProc が起動して、まだ終わっていないパイプラインの要素と $( ) を止める。
 ;; cmdNo が null でなければ、$( ) は、対話モードのその番号のコマンドが起動したものだけにする
@@ -2229,9 +2297,12 @@
     __String_concat__ m msg ,(m)
     Sh_warn sh pos m ,()
     Eval_close owned ,()
-    Sh_set_status sh "127" ,()
+    Spawn_status msg ,(status)
+    Sh_set_status sh status ,()
     return) command inStream outStream errStream dict ,(proc)
+  ;; パイプの端は、外部コマンドが持ったので閉じる。同じ文脈で次に起動する外部コマンドが閉じた端を使わないように外す
   Eval_close owned ,()
+  __Dict_put__ sh "owned" __NULL__ ,()
   Sh_get sh "procRef" ,(procRef)
   __Ref_set__ procRef proc ,()
   Feed_start feed ,()
@@ -2239,14 +2310,27 @@
   __unless__ (,() __is_null__ reader)
     (,()
       __OS_close__ __print_exit_error__ writer ,()
+      ;; 出力を読むパイプを、開いた Stream の表に入れる。kill でこの VProc を止めても、Sh_release が閉じる
+      L1 reader ,(readers)
+      Open_track sh readers ,(mark)
       External_guard sh reader proc feed (,() Target_pump sh pumpTarget reader) ,()
-      __OS_close__ __print_exit_error__ reader) ,()
+      Open_release sh mark) ,()
   __unless__ (,() __is_null__ pumper) (,() __VProc_wait__ __print_exit_error__ pumper) ,()
   __OS_wait__ __print_exit_error__ proc ,(code)
   __Ref_set__ procRef __NULL__ ,()
   Feed_stop feed ,()
   Eval_status code ,(status)
   Sh_set_status sh status)
+
+;; 起動できなかったときの $?。実行できない（権限がない、引数が長すぎる）なら 126、見つからないなら 127（Bash と同じ）
+(define Spawn_status ,(msg)
+  __Cont_get__ ,(return)
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ msg "Permission denied" zero ,(denied)
+  __unless__ (,() __is_null__ denied) (,() return "126") ,()
+  __String_find__ __print_exit_error__ msg "Argument list too long" zero ,(tooLong)
+  __unless__ (,() __is_null__ tooLong) (,() return "126") ,()
+  __NULL__ "127")
 
 ;; 出力を読みながら body を実行する。その間にチャネルの読み手がいなくなって、この VProc を終えるときは、
 ;; 先に出力のパイプを閉じ（外部コマンドは次に書いたとき SIGPIPE で止まる）、終わるのを待つ
@@ -2566,8 +2650,7 @@
 ;; 文の終わりと、VProc の終わり（Sh_release）と、対話モードのコマンドの終わりに、残っているものを閉じる。
 ;; 文脈の写し（関数呼び出し、前置の変数定義など）は同じ Ref を共有し、子の VProc は新しい Ref を持つ（Sh_child）。
 ;; ConMa では Stream が同じかを比べられないので、文の始めの LList の長さ（mark）を覚えておき、それより上を閉じる。
-;; 中で return、break、continue したときは、それぞれの継続が先に閉じるので、表には閉じた Stream が残るが、
-;; 外側の文が取り除く（2回目の __OS_close__ のエラーは無視する）
+;; 中で return、break、continue したときは、それぞれの継続が、表をその文の mark まで閉じる（Loops_closing）
 
 ;; opened を表に加え、加える前の長さを返す
 (define Open_track ,(sh opened)

@@ -1,0 +1,6 @@
+- a c
+- a c
+a
+- ] b c
+sub/. sub/..
+exit: 0

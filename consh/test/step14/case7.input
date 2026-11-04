@@ -1,0 +1,10 @@
+d=$(mktemp -d /tmp/consh.step14.XXXXXX)
+touch $d/d1 $d/d2
+ARG_MAX=3 /bin/echo hi | cat
+echo "back $?"
+/bin/cat < $d/d* | cat
+echo "back again $?"
+sh -c 'sleep 1; kill -INT $PPID' &
+/bin/sleep 30
+echo "interrupted $?"
+rm -rf $d

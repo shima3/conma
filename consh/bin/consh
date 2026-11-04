@@ -37,9 +37,10 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.
   then rm -f "$module"; exit 1
   fi
 fi
-if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
-  # rlwrap が起動する consh は、もう一度 rlwrap を通さない
-  CONSH_NO_RLWRAP=1 exec rlwrap -C consh "$0"
+if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
+  # rlwrap が起動する consh は、もう一度 rlwrap を通さない。CONSH_RLWRAPPED は、ConSh が起動時に環境変数から除くので、
+  # 中で起動するコマンドには渡らない（中で対話モードの consh を起動すれば、それも rlwrap を使う）
+  CONSH_RLWRAPPED=1 exec rlwrap -C consh "$0"
 fi
 if [ -n "$interactive" ]; then
   exec python3 "$root/test/vproc_run.py" --main "$module" interactive - stdin

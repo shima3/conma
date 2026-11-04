@@ -1,6 +1,6 @@
 ;; ConSh の glob（PLAN-ja.md 1.2 の「glob の適用は Bash と同様とする」）。consh_parse の glob.glob と同じ結果にする。
 ;;
-;; パターンは String で、\c は文字 c そのものを表す。引用符の中の文字と ${-語} の葉は、*、?、[、\ に \ を付けて入れ
+;; パターンは String で、\c は文字 c そのものを表す。引用符の中の文字と ${-語} の葉は、*、?、[、]、-、!、\ に \ を付けて入れ
 ;; （Glob_escape）、引用符の外の文字は \ だけに \ を付けて入れる（Glob_escape_active）。それ以外の *、?、[...] が記号である。
 ;;   *      0 文字以上の任意の文字列
 ;;   ?      任意の1文字
@@ -12,7 +12,7 @@
 
 ;; s の、chars のどれかの文字の前に \ を付けた String
 (define Glob_escape ,(s)
-  Glob_escape_chars s "*?[\\")
+  Glob_escape_chars s "*?[]-!\\")
 
 (define Glob_escape_active ,(s)
   Glob_escape_chars s "\\")
@@ -184,8 +184,12 @@
   __if_then_else__ (,() __NULL__ last)
     (,()
       Glob_dir prefix ,(dir)
-      Glob_listdir dir ,(names)
-      List_contains names name)
+      __OS_listdir__ (,(msg) return tail) dir ,(names)
+      ;; . と .. は __OS_listdir__ が返さないが、ディレクトリがあればある
+      __String_equal__ name "." ,(dot)
+      __String_equal__ name ".." ,(dotdot)
+      __or__ dot dotdot ,(special)
+      __if_then_else__ (,() __NULL__ special) (,() __NULL__ __TRUE__) (,() List_contains names name))
     (,() __NULL__ __TRUE__) ,(exists)
   __unless__ (,() __NULL__ exists) (,() return tail) ,()
   Glob_join prefix name ,(path)

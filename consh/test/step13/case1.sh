@@ -4,8 +4,8 @@ function opened (name) { n=$(lsof -p $$ 2> /dev/null | grep -c "$name"); echo "$
 # パイプの読み手が先に終わり、書き手の for 文を中断する
 for i in $(yes); do echo $i; done 2> $d/abort-err | head -1
 opened abort-err
-# 変数リストが一杯になり、コマンドを止める
-for i in $(yes); do echo $i; done 2> $d/capture-err > (a)
+# 変数リストが一杯になり、コマンドを止める（$( ) を使うと、まだ動いている $( ) が自分の複製を持ち続けるので、外部コマンドにする）
+yes 2> $d/capture-err > (a)
 echo "a=$a"
 opened capture-err
 # kill でジョブを止める

@@ -263,3 +263,25 @@ cat f10                # ない。スクリプトが終わると、slow も打�
 * ConMa 版の構文解析：
     * 200 以上のテストスクリプトと、約 30 の難しい入力（行の継続、CRLF、入れ子の `$( )`、`$( )` の中のコメント、`$'...'`、`${-}`）で、`--dump` の出力が Python 版と一致する。
     * エラーの位置も同じで、違うのは接頭辞（`consh:` と `consh_parse:`）だけである。
+
+### 対応
+
+テストは、ConMa の step33（`__VProc_kill__`、`__OS_dup__`、5、6）と、ConSh の step14（1〜4、7〜10）に加えた。直す前のコードで同じテストを実行して、指摘のとおりに失敗することを確かめたものもある（8 は fd が 3 → 6、ゾンビが 3。10 の Ctrl-C は 30 秒待つ）。
+
+* 1：ご指示どおり、評価を終えるまで延ばすことにした。`__VProc_kill__` は、VProc が `__LazyList_claim__` で claim した LazyList を評価している途中なら、すべての評価を終えた（publish した、または継続で抜けた）ときに止める（`kill_pending`、`evaluating_lazy`）。`__LazyList_hold__` の LazyList では延ばさない。評価の中で待っていれば（標準入力の行、チャネルの書き手）、その待ちが終わるまで止まらないので、PLAN-ja.md 2.3 に書いた。
+* 2：ご指示どおり、fd を dup することにした（ConMa の `__OS_dup__`）。`Child_target` が、stream と file のターゲットの Stream を複製して子に渡し、子は終わるときに閉じる（`Sh_release` の `Target_close`）。file のターゲットは、書く関数ではなく Stream と文脈を持ち、書くときに Stream を取り出すようにした（複製に書けるように）。そのため、読まれずに止まった `$( )` も複製を持ち続け、VProc の終わりまでファイルが開いたままになる（2.3 に書いた。step13 の case1 の変数リストの例は、`$( )` を使わないように変えた）。
+* 3 と 8：`Sh_release` で `"owned"` を閉じる。`External_run` が出力を読むパイプを `Open_track` する。`VProc_stop` で SIGTERM を送った外部コマンドを、別の VProc で `__OS_wait__` する（`Proc_reap`）。
+* 4：`Pipe_is_external` で、裸文字が `*?[` を含む語を除いた。`External_run` は、`owned` を閉じた後、文脈から外す。
+* 5：`__OS_kill__` は、`math.isfinite` を先に調べる。`__Sexp_read__` は、明示的なスタックで読む（5000 段を確かめた）。
+* 6：`__OS_trap_interrupt__` を呼んでいて、Ref を待つ VProc しかなければ、Deadlock とせず `select()` で眠る。
+* 7：引用符の中の文字は、`*?[\` に加えて `]-!` もエスケープする（ConMa の `Glob_escape`）。consh_parse は、Python の `glob.glob` では表せないので、ConMa 版と同じ手順の照合（`glob_expand`、`glob_match`）に書き換えた。表の3つのパターンが Bash と同じになることを確かめた。
+* 9：`Job_wait` は、`"members"` のすべての VProc を待つ。
+* 10：
+    * 終わったジョブ（すべての要素の文脈の `"finished"` が真）を `kill` しても、"killed" にしない。
+    * 行の読み込みは、新しく読んだ塊の中だけで改行を探し、行の途中は断片の LList に持って、改行が来たら半分ずつつなぐ。512 KB の1行は約 0.4 秒になった。
+    * 対話モード：Ctrl-C で止めたコマンドの `"procRef"` の外部コマンドに SIGTERM を送る。コマンドが終わるたびに `"recover"` を消す。`break`、`continue`、`return` の継続は、表をその文の mark まで閉じる（`Open_release`）。rlwrap の印は `CONSH_RLWRAPPED` にし、ConSh が起動時に環境変数から除く。
+    * `__Sexp_read__` と `Sexp_read` は、最後が `\` の文字列を、入力の終わりの列で `unterminated string` にする。
+    * `*/.` と `*/..`：`Glob_add_literal` は、`.` と `..` を、ディレクトリがあればあるとする。
+    * チャネルの読み手は、開いた鎖がなくなったら、もう一度 `Chan_register` してから終える。
+    * 別々の鎖に書かれた行の順序は、85cea09 の前からのものなので、2.3 の制限に書いた。
+    * ARG_MAX は環境変数を数えないまま（2.1 に書いてある）。起動が E2BIG（と権限がない）で失敗したときの `$?` を 126 にした。

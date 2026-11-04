@@ -132,6 +132,8 @@
   __if_then_else__ (,() __String_equal__ ch "\\")
     (,()
       Sexp_char text len next ,(e)
+      ;; 最後の \ の後ろには文字がないので、入力の終わり（next）で閉じていない文字列とする
+      __if__ (,() __String_equal__ e "") (,() Sexp_error onError "unterminated string" text next) ,()
       Sexp_unescape e ,(e)
       __String_concat__ acc e ,(acc)
       __Number_add__ next one ,(next)

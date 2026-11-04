@@ -50,7 +50,7 @@ Usage:
     標準エラー出力に「consh_parse: ファイル:行:桁: メッセージ」を出力し、終了ステータス 1 で終わる。
 """
 
-import glob
+import os
 import re
 import sys
 
@@ -900,6 +900,145 @@ class GlobList(LazyList):
 GLOB_META = re.compile(r'[*?[]')
 
 
+# glob。ConMa 版（consh_glob.se）と同じ手順で照合する。パターンでは \c が文字 c そのものを表す。
+# 引用符の中の文字（と ${-語} の葉）は * ? [ ] - ! \ に \ を付け、引用符の外の文字は \ だけに \ を付ける。
+# そのため、[a"-"c] の - は範囲にならない（Python の glob.glob ではブラケットの中のクォートを表せない）
+
+def glob_escape(text, active):
+    specials = '\\' if active else '*?[]-!\\'
+    return ''.join('\\' + c if c in specials else c for c in text)
+
+
+def glob_is_magic(comp):
+    i = 0
+    while i < len(comp):
+        if comp[i] == '\\' and i + 1 < len(comp):
+            i += 2
+            continue
+        if comp[i] in '*?[':
+            return True
+        i += 1
+    return False
+
+
+def glob_unescape(comp):
+    out, i = [], 0
+    while i < len(comp):
+        if comp[i] == '\\' and i + 1 < len(comp):
+            out.append(comp[i + 1])
+            i += 2
+        else:
+            out.append(comp[i])
+            i += 1
+    return ''.join(out)
+
+
+def glob_class(p, i, ch):
+    """[ の後ろ（i 文字目から）の文字の集まりに ch が入るか、] の後ろの位置、閉じているか"""
+    negate = i < len(p) and p[i] == '!'
+    start = i + 1 if negate else i
+    j, found = start, False
+    while j < len(p):
+        c = p[j]
+        if c == ']' and j != start:
+            return found != negate, j + 1, True
+        if c == '\\' and j + 1 < len(p):
+            c = p[j + 1]
+            j += 2
+        else:
+            j += 1
+        high = c
+        if j + 1 < len(p) and p[j] == '-' and p[j + 1] != ']':
+            high = p[j + 1]
+            j += 2
+        if c <= ch <= high:
+            found = True
+    return False, i, False
+
+
+def glob_match(p, n, pi=0, ni=0):
+    while True:
+        if pi == len(p):
+            return ni == len(n)
+        c = p[pi]
+        if c == '*':
+            return any(glob_match(p, n, pi + 1, k) for k in range(ni, len(n) + 1))
+        if ni == len(n):
+            return False
+        ch = n[ni]
+        if c == '?':
+            pi, ni = pi + 1, ni + 1
+            continue
+        if c == '[':
+            ok, after, closed = glob_class(p, pi + 1, ch)
+            if closed:
+                if not ok:
+                    return False
+                pi, ni = after, ni + 1
+                continue
+        if c == '\\' and pi + 1 < len(p):
+            c, pi = p[pi + 1], pi + 2
+        else:
+            pi += 1
+        if c != ch:
+            return False
+        ni += 1
+
+
+def glob_join(prefix, name):
+    if prefix == '':
+        return name
+    return prefix + name if prefix.endswith('/') else prefix + '/' + name
+
+
+def glob_listdir(prefix):
+    try:
+        return sorted(os.listdir(prefix or '.'))
+    except OSError:
+        return None
+
+
+def glob_expand(pattern):
+    """パターンに一致したパスを文字コード順に並べる"""
+    comps = pattern.split('/')
+    if pattern.startswith('/'):
+        prefixes, comps = ['/'], comps[1:]
+    else:
+        prefixes = ['']
+    multi = False
+    for k, comp in enumerate(comps):
+        last = k == len(comps) - 1
+        if not prefixes:
+            break
+        if comp == '':
+            if last:
+                prefixes = [glob_join(p, '') for p in prefixes if glob_listdir(p) is not None]
+            continue
+        if glob_is_magic(comp):
+            multi = multi or len(prefixes) > 1
+            dotted = comp.startswith('.')
+            found = []
+            for p in prefixes:
+                for name in glob_listdir(p) or []:
+                    if name.startswith('.') and not dotted:
+                        continue
+                    if glob_match(comp, name):
+                        found.append(glob_join(p, name))
+            prefixes = found
+        else:
+            name = glob_unescape(comp)
+            if last:
+                kept = []
+                for p in prefixes:
+                    names = glob_listdir(p)
+                    if names is not None and (name in ('.', '..') or name in names):
+                        kept.append(glob_join(p, name))
+                prefixes = kept
+            else:
+                prefixes = [glob_join(p, name) for p in prefixes]
+    return sorted(prefixes) if multi else prefixes
+
+
 BUILTINS = ('echo', 'cd', 'defined', 'builtin', 'command')
 
 
@@ -1211,8 +1350,8 @@ class Expander:
             if text == '' and not quoted and not has_list:
                 continue
             if any(active and GLOB_META.search(t) for t, active in alt):
-                pattern = ''.join(t if active else glob.escape(t) for t, active in alt)
-                matches = sorted(glob.glob(pattern))
+                pattern = ''.join(glob_escape(t, active) for t, active in alt)
+                matches = glob_expand(pattern)
                 if matches or null_glob:
                     result.extend(matches)
                     continue

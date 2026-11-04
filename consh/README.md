@@ -27,7 +27,7 @@ consh/
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── parse3/          ConMa 版の構文解析のテスト：parse1 と parse2 の各スクリプトで、consh_parse --pos と同じ構文木とエラーになるか
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）
+    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は REVIEW-ja.md の 2026-11-05 の指摘への対応
 ```
 
 * ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。

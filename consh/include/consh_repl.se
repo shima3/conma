@@ -155,12 +155,23 @@
   __Ref_set__ running vproc ,()
   __VProc_wait__ __print_exit_error__ vproc ,()
   __Ref_set__ running __NULL__ ,()
+  ;; 止めたコマンドの継続が残らないように消す（次のコマンドまでの間の Sh_error がそこに飛ばないように）
+  __Dict_put__ sh "recover" __NULL__ ,()
   ;; 止めたかエラーで戻ったコマンドが、リダイレクトで開いたまま残した Stream を閉じる
   Open_release_all sh ,()
   __Ref_get__ killed ,(wasKilled)
   __if__ (,() __NULL__ wasKilled)
     (,()
-      ;; Ctrl-C で止めたコマンドが起動した、パイプラインの要素と $( ) も止める
+      ;; Ctrl-C で止めたコマンドが実行していた外部コマンドに SIGTERM を送る（端末なら SIGINT も届いている。
+      ;; 標準入力が端末でないときは、SIGINT はインタプリタにだけ届く）。起動した、パイプラインの要素と $( ) も止める
+      Sh_get sh "procRef" ,(procRef)
+      __Ref_get__ procRef ,(proc)
+      __Ref_set__ procRef __NULL__ ,()
+      __unless__ (,() __is_null__ proc)
+        (,()
+          num "15" ,(sigterm)
+          __OS_kill__ (,(msg) __nop__) proc sigterm ,()
+          Proc_reap proc) ,()
       Kill_tree sh cmdNo ,()
       Sh_set_status sh "130" ,()
       __OS_get_stderr__ ,(err)
