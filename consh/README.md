@@ -41,7 +41,7 @@ bin/consh [--conma-parser] [--dump] スクリプト [引数 ...]
 bin/consh
 ```
 
-引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止める（`$?` は 130）。入力が終われば（Ctrl-D）終わる。
+引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）が使える。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
 ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)）。
@@ -119,7 +119,7 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
 * if 文の条件、本体、`else` のスクリプトを実行する前の `$?` は、そのときの値のまま。たとえば `else` の中の `$?` は最後の条件の値になる（Bash と同じ）。
 * キーワードの直後に `)` は置けない（PLAN-ja.md の文法どおり）。そのため `$(if a; then b; fi)` は構文エラーになる。
 * `cd` は、それを実行した VProc のカレントディレクトリを変える（ConMa の Step 23）。パイプラインの要素と `$( )` の中の `cd` は、シェルのカレントディレクトリを変えない。
-* パイプラインと `$( )` は、ConMa の `__VProc_start__`（Step 24）と `__OS_wait_writable__`（Step 25）を使う。`&`、`kill`、`$!`、`$$` は Step 26 の `__VProc_kill__`、`__OS_kill__`、`__VProc_id__`、`__OS_getpid__` を使う。`ARG_MAX` がないときは Step 27 の `__OS_sysconf__` で OS の値を得る。glob は Step 29 の `__OS_listdir__` を使う。対話モードの Ctrl-C は Step 31 の `__OS_trap_interrupt__` を使う。
+* パイプラインと `$( )` は、ConMa の `__VProc_start__`（Step 24）と `__OS_wait_writable__`（Step 25）を使う。`&`、`kill`、`$!`、`$$` は Step 26 の `__VProc_kill__`、`__OS_kill__`、`__VProc_id__`、`__OS_getpid__` を使う。`ARG_MAX` がないときは Step 27 の `__OS_sysconf__` で OS の値を得る。glob は Step 29 の `__OS_listdir__` を使う。対話モードの Ctrl-C は Step 31 の `__OS_trap_interrupt__` を、`&` のジョブの外部コマンドの起動は Step 32 の `__OS_spawn_detached__` を使う。
 
 構文木と展開の結果を見るには、Python の参照実装を使う。構文木の形式は [AST.md](AST.md)、展開の結果の形式は `bin/consh_parse` の先頭に書いてある。`--pos` を付けると、構文木に行と桁が入る。
 

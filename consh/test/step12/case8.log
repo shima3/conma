@@ -1,0 +1,9 @@
+$ sh -c 'sleep 6; echo bg-done' &
+$ sleep 10
+^C
+$ echo status $?
+status 130
+$ wait
+bg-done
+$ exit
+exit: 0

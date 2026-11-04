@@ -1688,7 +1688,14 @@
 ;; パイプライン & 。別の VProc で起動して、終わるのを待たない。$! はその VProc（パイプラインなら最後の要素）の番号。
 ;; 単純文の変数リストへのリダイレクト（f > (a b . rest) &）は、a、b に、値ができるまで待つ遅延の値を、
 ;; rest に、要素が届くたびに伸びる LazyList を、呼び出し側の局所変数に入れる（Bg_captures）
+;; 対話モードでは、ジョブの文脈に "detached" を付ける。子の文脈は写しなので受け継ぎ、ジョブの中の外部コマンドは
+;; 端末の前景のプロセスグループの外で起動する（External_run、ConMa の __OS_spawn_detached__）。
+;; そのため、端末で Ctrl-C を押しても、& で起動した外部コマンドには届かない（Bash と同じ）
 (define Eval_bg ,(sh pos pipeline)
+  Sh_get sh "global" ,(global)
+  __Dict_lookup_or__ global "interactive" (,(key) __NULL__ __FALSE__) ,(interactive)
+  Dict_copy sh ,(sh)
+  __Dict_put__ sh "detached" interactive ,()
   Node_split pipeline ,(ptag ppos pchildren)
   Sh_get sh "in" ,(in)
   __if_then_else__ (,() __String_equal__ ptag "pipe")
@@ -2210,7 +2217,10 @@
   External_streams sh pos out err ,(outStream errStream reader writer pumpTarget reader2 writer2 pumpTarget2)
   External_input in ,(inStream feed)
   Sh_get sh "owned" ,(owned)
-  __OS_spawn__ (,(msg)
+  ;; 対話モードの & のジョブの外部コマンドは、端末の前景のプロセスグループの外で起動する（Ctrl-C が届かない）
+  __Dict_lookup_or__ sh "detached" (,(key) __NULL__ __FALSE__) ,(detached)
+  __if_then_else__ (,() __NULL__ detached) (,() __NULL__ __OS_spawn_detached__) (,() __NULL__ __OS_spawn__) ,(spawn)
+  spawn (,(msg)
     Eval_close_pipe reader writer ,()
     Eval_close_pipe reader2 writer2 ,()
     Feed_cancel feed ,()
