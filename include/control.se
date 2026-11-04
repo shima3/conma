@@ -1,0 +1,20 @@
+;; VM の組み込みと同じ働きをする、ConMa 版の制御の関数。
+;; このファイルを include すると、ここで定義した関数が、同じ名前の組み込みの代わりに使われる
+;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。
+;; ステップを ConMa の関数として追いたいときや、組み込みと結果を比べるときに使う
+(include "util.se")
+
+;; 呼び出し元に戻る継続 return を LCont に渡す。
+;; return は可変長引数の関数で、受け取った引数をそのまま呼び出し元の LCont に渡す。
+;; 引数がなければ、引数なしで呼び出し元に戻る。
+;; 呼び出し元がない（CChain が空になる）ときは、CChain を空にして VProc を終える
+(define __Cont_get__ ,()
+  __CChain_pop_LCont__ ,(lc)
+  __CChain_get__ ,(cc)
+  lc (, args
+    __if_then_else__ (,() __is_null__ cc)
+      (,() __CChain_set__ cc)
+      (,()
+        __CChain_set__ cc ,()
+        __CChain_pop_LCont__ ,(lc)
+        args lc)))

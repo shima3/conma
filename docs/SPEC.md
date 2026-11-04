@@ -327,6 +327,7 @@ It is defined as follow:
 ---
 
 ### `Continuation`
+`__Cont_get__` is a primitive of the VM (see PRIMITIVES.md). It behaves as the following ConMa definition, which `include/control.se` provides; a program that includes `control.se` uses this definition instead of the primitive.
 ```
 (define __Cont_get__ ,()
   __CChain_pop_LCont__ ,(lc)

@@ -284,6 +284,24 @@ Finally, `lc lc2` invokes `lc` with `lc2` as its argument, binding the caller's 
 
 In short, two pops are required because the call to `__CChain_pop_LCont__` itself introduces one CFrame onto the chain, so the LCont written at the call site occupies the top of the chain, and the caller's original continuation sits one level beneath it.
 
+### `__Cont_get__ ,(return)`
+Behavior:
+Passes `return`, the escape continuation of the function that calls `__Cont_get__`, to the LCont (see "Continuation" in [SPEC.md](SPEC.html)).
+Without an LCont, the top CFrame of the CChain is popped and its Closure is the LCont; if the CChain is empty too, the VProc stops with an error.
+`return` keeps the CChain as it is after the LCont is taken, whose top CFrame is the LCont of the caller of the function.
+Applying `return` to any number of operands, in one step:
+1. sets the CChain to the kept one,
+2. pops its top CFrame and applies the Closure of the CFrame to all the operands (to none without operands).
+If the kept CChain is empty, `return` empties the CChain instead, so the VProc finishes, and the operands are dropped.
+The LCont of the application of `return` is never used.
+`return` can be applied any number of times, also after the function has returned.
+
+`__type_name__` gives `Closure` for `return`; in traces it is written `(__Cont__ "n")`, where `n` numbers the continuations made so far, as a Ref is written (the kept CChain may contain `return` itself).
+
+**ConMa version:** `include/control.se` defines `__Cont_get__` in ConMa with the same behavior, on top of `__CChain_pop_LCont__`, `__CChain_get__` and `__CChain_set__`.
+A program that includes `control.se` uses that definition instead of the built-in one, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
+The two versions differ only in what can be seen of the steps: the ConMa version takes more than 30 steps for `__Cont_get__` and its `return` together, where the primitive takes 2 (one each), and its `return` is a variadic Closure with the CFrames of `control.se` in traces and in the CChain while it runs.
+
 ---
 
 ## 5. CFrame Primitives

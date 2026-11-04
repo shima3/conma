@@ -53,20 +53,8 @@
   __OS_print_error__ msg ,()
   __OS_exit_error__)
 
-;; 呼び出し元に戻る継続 return を LCont に渡す。
-;; return は可変長引数の関数で、受け取った引数をそのまま呼び出し元の LCont に渡す。
-;; 引数がなければ、引数なしで呼び出し元に戻る。
-;; 呼び出し元がない（CChain が空になる）ときは、CChain を空にして VProc を終える
-(define __Cont_get__ ,()
-  __CChain_pop_LCont__ ,(lc)
-  __CChain_get__ ,(cc)
-  lc (, args
-    __if_then_else__ (,() __is_null__ cc)
-      (,() __CChain_set__ cc)
-      (,()
-        __CChain_set__ cc ,()
-        __CChain_pop_LCont__ ,(lc)
-        args lc)))
+;; __Cont_get__ は VM の組み込み（PRIMITIVES.md）。同じ働きの ConMa 版は control.se にあり、
+;; control.se を include すると、組み込みの代わりにそれが使われる
 
 ;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
 ;; in は標準入力の行の LazyList。PDict には、その読み出し位置の Ref を置く。

@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step33`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step34`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32 step33; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32 step33 step34; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -50,7 +50,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 | `__LList_uncons__` | implemented |
 
 * `__LList_uncons__` is the first primitive that takes `onError`, so it tests the convention from Step 2.
-* This must come before Step 4, because a CChain is traversed as an LList of CFrames (`CChain_print` in `test/step4`, `__Cont_get__` in `include/util.se`).
+* This must come before Step 4, because a CChain is traversed as an LList of CFrames (`CChain_print` in `test/step4`, the ConMa version of `__Cont_get__` in `include/control.se`).
 
 ## Step 4: CFrame & CChain
 
@@ -66,7 +66,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 
 * Implement in the order above: first read the CChain, then replace it, then pop and push individual CFrames.
 * `__CFrame_new__` takes its SInfo as a colon-separated String, the same form `__CFrame_get_SInfo__` returns (for example `"file.se:12:5"`), or null for no SInfo.
-* Library definitions that become available: `__Cont_get__` (escape continuation), `__CChain_pop_LCont__`, `__noop__`.
+* Library definitions that become available: `__Cont_get__` (escape continuation; since Step 34 a primitive, with the ConMa version in `include/control.se`), `__CChain_pop_LCont__`, `__noop__`.
 
 ## Step 5: Number
 
@@ -365,7 +365,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 
 ## Step 18: Variadic functions and `__Cont_get__`
 
-No new primitive; the language and `__Cont_get__` (in `include/util.se`) change.
+No new primitive; the language and `__Cont_get__` (then in `include/util.se`, since Step 34 in `include/control.se`) change.
 
 * Goal: Let the `return` of `__Cont_get__` pass values to the caller, as the example in SPEC.md (`return "12" "34"`) intends. Before this Step, `return` was a closure with an empty Head, so its arguments were surplus operands: they were pushed onto the CChain as a Seq Closure and lost when `return` set the CChain back. The definition in SPEC.md and the one in `util.se` differed, and neither passed values. A new kind of continuation value would also fix this, but variadic functions are simpler as a concept and useful elsewhere.
 * Syntax: `Head = "(", { Parameter }, ")" | Parameter`. A Function `, args Body` is variadic: an application binds a Seq of all its operands to `args` (an empty Seq without operands). It is always executed, even without operands, and takes the operands of one application only, so there are never surplus operands. See "Variadic Functions" in SPEC.md.
@@ -685,4 +685,26 @@ No new primitive.
 | case2 | a Stream from `__OS_dup__` can be written after the original is closed; `onError` for a closed Stream and a non-Stream |
 | case3 | `__OS_kill__` with an infinite number and NaN, `__Sexp_read__` with 5000 levels and with a string ending in `\` |
 | case4 | a VProc waiting only for the Ref of `__OS_trap_interrupt__` wakes up on SIGINT instead of a deadlock |
+
+## Step 34: `__Cont_get__` as a primitive
+
+| Primitive | Status |
+|---|---|
+| `__Cont_get__` | implemented (was a ConMa definition in `include/util.se`) |
+
+* Goal: Make the early `return` of ConMa functions cheap. A `__Cont_get__` and its `return` took more than 30 steps; in ConSh, an `echo` in a `for` loop took about 4,360 steps, about 39% of them in `__Cont_get__` (about 51 calls per `echo`).
+* `__Cont_get__ ,(return)` is a primitive: it takes the LCont (or, without one, pops the top CFrame), and passes a `return` that keeps the CChain. Applying `return` sets the CChain back, pops its top CFrame and applies the Closure to the operands, in one step. See PRIMITIVES.md.
+* The ConMa definition moved from `include/util.se` to `include/control.se`. A program that includes `control.se` uses it instead of the primitive, because only global variables without a definition (`Undefined`) are looked up among the primitives. It is meant for following the steps as ConMa functions and for comparing the two versions.
+* Every test gives the same output with either version, except the step numbers in the error messages of `test/step20` (case10, case15) and the largest number of live line cells in `test/step21` (case5, case6), which `memcheck.py` samples every 2000 steps. These logs were updated. With `(include "control.se")` added to `util.se`, all tests pass with their logs before this Step, `step1` traces included.
+* ConSh: a `for` loop of 1000 `echo` commands takes 2,601,741 steps instead of 4,360,473 (about 2,600 steps per `echo` instead of 4,360), and runs in 4.6 seconds instead of 7.4 (without starting the interpreter).
+* Tests (`test/step34`): each case runs both with the primitive (`test.se`) and with the ConMa version (`conma.se`, which includes `control.se` and `test.se`), and both must give `caseN.log`.
+
+| Case | What it checks |
+|---|---|
+| case1 | `return` passes its values to the caller's LCont, and returns without values when it has none |
+| case2 | a `return` applied in another function (the function given to `each`) returns from the function that called `__Cont_get__` |
+| case3 | `__Cont_get__` without an LCont takes the top CFrame as its LCont |
+| case4 | the LCont of an application of `return` is not used; `__type_name__` of `return` is `Closure` |
+| case5 | `return` applied again after its function has returned goes back to the same LCont again |
+| case6 | `return` in the first function of a VProc finishes the VProc, even with values |
 

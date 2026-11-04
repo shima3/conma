@@ -361,7 +361,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, (Ref, MSeq, Dict, VProc, OSProc)): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict, VProc, OSProc, ContReturn)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -1506,6 +1506,52 @@ def prim_CChain_pop_CFrame(vp, gvenv):
         _prim_return(vp, [cf])
 
 
+class ContReturn:
+    """The escape continuation that __Cont_get__ passes. It keeps the CChain
+    of the caller of the function that called __Cont_get__. Applying it to
+    any number of operands sets the CChain to that one, pops its top CFrame
+    and applies the Closure of the CFrame to the operands; with an empty
+    CChain it leaves the CChain empty, so the VProc finishes. Its own LCont
+    is dropped. It is shown by a serial number, like a Ref, because the
+    CChain may contain the continuation itself."""
+    _count = 0
+    def __init__(self, cchain):
+        ContReturn._count += 1
+        self.serial = ContReturn._count
+        self.cchain = cchain
+    def __call__(self, vp, gvenv):
+        args = vp["olist"]
+        vp["lcont"] = None
+        if cchain_is_empty(self.cchain):
+            vp["cchain"]   = self.cchain
+            vp["operator"] = NULL
+            vp["olist"]    = []
+            return
+        cf, vp["cchain"] = cchain_pop(self.cchain)
+        vp["operator"] = cf.closure
+        vp["olist"]    = list(args)
+        vp["sinfo"]    = cf.sinfo
+    def value_to_sexp(self):
+        return ["__Cont__", quoted(str(self.serial))]
+    def __repr__(self):
+        return f"ContReturn({self.serial})"
+
+
+def prim_Cont_get(vp, gvenv):
+    """__Cont_get__ ,(return) — pass the escape continuation of the calling
+    function to the LCont. Without an LCont, the top CFrame is the LCont."""
+    lc = vp["lcont"]
+    if lc is None:
+        if cchain_is_empty(vp["cchain"]):
+            raise VProcError(format_error("__Cont_get__: no LCont and CChain empty", vp.get("sinfo")))
+        cf, vp["cchain"] = cchain_pop(vp["cchain"])
+        lc = cf.closure
+        vp["sinfo"] = cf.sinfo
+    vp["operator"] = lc
+    vp["olist"]    = [ContReturn(vp["cchain"])]
+    vp["lcont"]    = None
+
+
 # ── LList Primitives ──────────────────────────────────────────────────────────
 
 def prim_LList_cons(vp, gvenv):
@@ -2560,6 +2606,7 @@ PRIMITIVES = {
     "__CChain_set__":          prim_CChain_set,
     "__CChain_push_CFrame__":  prim_CChain_push_CFrame,
     "__CChain_pop_CFrame__":   prim_CChain_pop_CFrame,
+    "__Cont_get__":            prim_Cont_get,
     "__LList_cons__":          prim_LList_cons,
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,

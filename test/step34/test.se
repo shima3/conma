@@ -1,0 +1,99 @@
+;; Step34: __Cont_get__ の組み込み
+;; test.sh は、組み込みを使う test.se と、ConMa 版（control.se）を使う conma.se の両方で
+;; 各 case を実行し、同じログになることを確かめる
+(include "util.se")
+
+(define print ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; case1: return に渡した値は、呼び出し元の LCont に渡される。値がなければ値なしで戻る
+(define pair ,()
+  __Cont_get__ ,(return)
+  return "1" "2" ,()
+  print "not reached")
+
+(define nothing ,()
+  __Cont_get__ ,(return)
+  return)
+
+(define case1 ,()
+  pair ,(a b)
+  print a ,()
+  print b ,()
+  nothing ,()
+  print "back")
+
+;; case2: return を受け取った別の関数が呼んでも、__Cont_get__ を呼んだ関数の呼び出し元に戻る
+(define each ,(list f)
+  __unless__ (,() __LList_is_empty__ list) (,()
+    __LList_uncons__ __print_exit_error__ list ,(head tail)
+    f head ,()
+    each tail f))
+
+(define find ,(list x)
+  __Cont_get__ ,(return)
+  each list (,(e)
+    __if__ (,() __String_equal__ e x) (,() return "found " e)) ,()
+  __NULL__ "none")
+
+(define case2 ,()
+  __LList_cons__ "c" __NULL__ ,(list)
+  __LList_cons__ "b" list ,(list)
+  __LList_cons__ "a" list ,(list)
+  find list "b" ,(r s)
+  print r ,()
+  print s ,()
+  find list "z" ,(r)
+  print r)
+
+;; case3: LCont なしに __Cont_get__ を呼ぶと、CChain の先頭の CFrame がその LCont になる
+(define tailGet ,()
+  __Cont_get__)
+
+(define useTail ,()
+  tailGet ,(return)
+  print "in useTail" ,()
+  return "from useTail" ,()
+  print "not reached")
+
+(define case3 ,()
+  useTail ,(r)
+  print r)
+
+;; case4: return の LCont は使われない。return の値は Closure
+(define case4sub ,()
+  __Cont_get__ ,(return)
+  __type_name__ return ,(t)
+  print t ,()
+  return "x" ,(y)
+  print "not reached")
+
+(define case4 ,()
+  case4sub ,(r)
+  print r)
+
+;; case5: 呼び出し元が戻ったあとでも、return を呼べば、もう一度同じ呼び出し元の LCont に戻る
+(define keep ,(ref)
+  __Cont_get__ ,(return)
+  __Ref_set__ ref return ,()
+  __NULL__ "first")
+
+(define case5 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __Ref_new__ __NULL__ ,(done)
+  keep ref ,(v)
+  print v ,()
+  __Ref_get__ done ,(d)
+  __if__ (,() __is_null__ d) (,()
+    __Ref_set__ done "yes" ,()
+    __Ref_get__ ref ,(return)
+    return "second") ,()
+  print "end")
+
+;; case6: VProc の最初の関数で return を呼ぶと、値があっても VProc を終える
+(define case6 ,()
+  __Cont_get__ ,(return)
+  print "before" ,()
+  return "ignored" ,()
+  print "not reached")
