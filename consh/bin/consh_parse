@@ -20,18 +20,22 @@ Usage:
         (assign ("名前" 値) ...)     値 = "文字列" | (list "要素" ...)
         (export ("名前" "文字列") ...)
         (function "名前")
-        (cmd [(env ("名前" "文字列") ...)] (words "語" ...) [(redirs (">" "語") (">" (params ...)) ("2>&1") ...)])
+        (cmd [(env ("名前" "文字列") ...)] (words 値 ...) [(redirs (">" "語") (">" (params ...)) ("2>&1") ...)])
         (pipe ...), (list ...), (bg ...) は構文解析と同じ形
 
     * 変数定義、export は実行し、その後の展開に反映する。関数は定義しても呼び出さない。
     * if 文はエラーとする（$? がないので、どちらを実行するか決められない）。
-    * コマンド置換 $( ) の中は、局所変数と環境変数をコピーして実行する。
-      中で使えるコマンドは echo だけで、引数を空白で連結し、末尾に改行を付けて出力する。
-      出力を行に区切った LazyList が値になる。パイプ、&、リダイレクトはエラーとする。
+    * 先頭の語を先に展開してコマンドの名前を決め、残りの語を、外部コマンドなら葉ごとの文字列に、
+      関数（それまでに定義した名前）と組み込みコマンド（echo、cd、defined、builtin、command）なら
+      値のまま展開する。値は "文字列" か (list 値 ...) で書く。
+    * 前置の変数定義は、同じ文の語の展開に反映する。前置の変数定義どうしは影響しない。
+    * コマンド置換 $( ) の中は、局所変数、環境変数、関数の名前をコピーして実行する。
+      中で使えるコマンドは echo だけで、echo の出力の要素を並べた LazyList が値になる。
+      echo は、引数が1つならその値、2つ以上なら文字列化してスペースで連結した文字列、なければ空文字列を出す。
+      パイプ、&、リダイレクトはエラーとする。
     * 環境変数は空から始める（実際の環境変数は取り込まない）。
     * $? は "0"、$! は ""、$$ は "1" とする。$0 はスクリプトのファイル名とする。
     * 未定義の変数と、足りない位置パラメータの参照はエラーとする。
-    * コマンドの語は、当面すべて外部コマンドの語として展開する（関数と組み込みコマンドを区別しない）。
     * glob はカレントディレクトリで適用し、一致した名前を文字コード順に並べる。
       一致しなければ、語をそのまま残す（Bash の既定と同じ）。
       リダイレクト先の語にも適用し、2つ以上の語になればエラーとする。
@@ -808,13 +812,17 @@ class LazyList(list):
 GLOB_META = re.compile(r'[*?[]')
 
 
+BUILTINS = ('echo', 'cd', 'defined', 'builtin', 'command')
+
+
 class Context:
-    def __init__(self, local, env):
+    def __init__(self, local, env, funcs):
         self.local = local
         self.env = env
+        self.funcs = funcs  # それまでに定義した関数の名前
 
     def copy(self):
-        return Context(dict(self.local), dict(self.env))
+        return Context(dict(self.local), dict(self.env), set(self.funcs))
 
 
 def leaves(v):
@@ -831,14 +839,6 @@ def map_leaves(v, f):
     return f(v)
 
 
-def split_lines(out):
-    # $( ) の出力を行に区切る。\r\n は1つの改行、最後の行に改行がなくても1つの要素
-    lines = re.split(r'\r?\n', out)
-    if lines[-1] == '':
-        lines.pop()
-    return LazyList(lines)
-
-
 def sx_value(v):
     if isinstance(v, LazyList):
         return '(list' + ''.join(' ' + sx_value(e) for e in v) + ')'
@@ -851,7 +851,7 @@ class Expander:
         self.args = args
 
     def run(self, lines):
-        ctx = Context({}, {})
+        ctx = Context({}, {}, set())
         for stmts in lines:
             for s in stmts:
                 print(self.exec_stmt(s, ctx, None))
@@ -877,6 +877,7 @@ class Expander:
                 result.append(f'({q(name)} {q(value)})')
             return '(export' + ''.join(' ' + r for r in result) + ')'
         if kind == 'function':
+            ctx.funcs.add(s[1])
             return f'(function {q(s[1])})'
         if kind == 'assign':
             result = []
@@ -900,25 +901,35 @@ class Expander:
     def exec_cmd(self, s, ctx, out):
         _, defs, words, redirs = s
         pos = s.pos
-        # 前置の変数定義は、同じ文の語の展開に影響しない
+        # 前置の変数定義は、どれも呼び出し側の値で展開し、同じ文の語の展開に反映する
         env = [(name, self.to_string(self.def_value(v, ctx), ctx, d.pos)) for d in defs for _, name, v in [d]]
-        fields = []
-        for w in words:
-            fields.extend(self.fields(w, ctx))
+        if env:
+            ctx = Context(ctx.local, dict(ctx.env), ctx.funcs)
+            ctx.env.update(env)
+        name, more, rest = self.head(words, ctx)
+        external = name is not None and name not in ctx.funcs and name not in BUILTINS
+        values = [] if name is None else [name]
+        values += [x for v in more for x in leaves(v)] if external else more
+        for w in rest:
+            values.extend(self.fields(w, ctx) if external else self.arg_values(w, ctx))
         rs = [self.redir(r, ctx) for r in redirs]
         if out is not None:
             if rs:
                 raise ConShError('redirections are not supported in $( ) of the expand mode', pos)
-            if not fields:
+            if name is None:
                 return None
-            if fields[0] != 'echo':
-                raise ConShError(f'only echo can run in $( ) of the expand mode: {fields[0]}', pos)
-            out.append(' '.join(fields[1:]) + '\n')
+            if name != 'echo':
+                raise ConShError(f'only echo can run in $( ) of the expand mode: {name}', pos)
+            args = values[1:]
+            if len(args) == 1:
+                out.append(args[0])
+            else:
+                out.append(' '.join(self.to_string(a, ctx, pos) for a in args))
             return None
         parts = []
         if env:
             parts.append('(env ' + ' '.join(f'({q(n)} {q(v)})' for n, v in env) + ')')
-        parts.append('(words' + ''.join(' ' + q(f) for f in fields) + ')')
+        parts.append('(words' + ''.join(' ' + sx_value(v) for v in values) + ')')
         if rs:
             parts.append('(redirs ' + ' '.join(rs) + ')')
         return '(cmd ' + ' '.join(parts) + ')'
@@ -980,15 +991,16 @@ class Expander:
         for stmts in lines:
             for s in stmts:
                 self.exec_stmt(s, sub, out)
-        return split_lines(''.join(out))
+        return LazyList(out)
 
     # -- 語の展開 --
     #
     # 語は語要素ごとの部分に分けてから展開する。部分は (種類, 値) で、種類は次のどれか。
     #   'plain'  引用符のない文字列（glob を適用する）
     #   'quoted' 引用符の中の文字列
+    #   'braced' ${x} の文字列の値。外部コマンド以外には、空文字列でも1つの語として渡す
     #   'leaves' $x の LazyList の値。葉ごとの語になる
-    #   'list'   ${x} とコマンド置換の LazyList の値。外部コマンド以外には値のまま渡す（段階 3）
+    #   'list'   ${x} とコマンド置換の LazyList の値。外部コマンド以外には値のまま渡す
 
     def parts(self, word, ctx):
         result = []
@@ -1005,7 +1017,7 @@ class Expander:
                 if isinstance(v, LazyList):
                     result.append(('leaves' if kind == 'var' else 'list', v))
                 else:
-                    result.append(('plain', v))
+                    result.append(('plain' if kind == 'var' else 'braced', v))
         return result
 
     def ref(self, e, ctx):
@@ -1052,6 +1064,58 @@ class Expander:
                     continue
             result.append(text)
         return result
+
+    def arg_values(self, word, ctx):
+        """外部コマンド以外（関数と組み込みコマンド）の語として展開した値の並び。
+        $x の LazyList を含めば葉ごとの文字列。そうでなく ${x} の LazyList を含めば、1つの LazyList。
+        どちらも含まなければ外部コマンドの語と同じ。ただし ${x} を含む語は、空文字列でも消さない"""
+        parts = self.parts(word, ctx)
+        kinds = [k for k, _ in parts]
+        if 'leaves' in kinds:
+            return self.fields(word, ctx)
+        if 'list' in kinds:
+            return [self.list_value(parts)]
+        if 'braced' in kinds and ''.join(v for _, v in parts) == '':
+            return ['']
+        return self.fields(word, ctx)
+
+    def list_value(self, parts):
+        # ${x} の LazyList を含む部分の値。1つなら前後の文字列を葉に付け、2つ以上なら葉の直積
+        kinds = [k for k, _ in parts]
+        if kinds.count('list') == 1:
+            i = kinds.index('list')
+            left = ''.join(v for _, v in parts[:i])
+            right = ''.join(v for _, v in parts[i + 1:])
+            return map_leaves(parts[i][1], lambda x: left + x + right)
+        alts = ['']
+        for kind, v in parts:
+            options = leaves(v) if kind == 'list' else [v]
+            alts = [a + o for a in alts for o in options]
+        return LazyList(alts)
+
+    def head(self, words, ctx):
+        """先頭の語を展開して、コマンドの名前、先頭の語から出た残りの値、残りの語を返す。
+        ${x} とコマンド置換の LazyList なら、要素を順に値にし、先頭の要素だけを再帰的に展開して名前を取る。
+        そうでなければ外部コマンドの語として展開する。LazyList を含む語が空になればエラー。
+        LazyList を含まない語が消えれば、次の語を見る。語がすべて消えたら、名前は None"""
+        for i, word in enumerate(words):
+            parts = self.parts(word, ctx)
+            kinds = [k for k, _ in parts]
+            if 'leaves' not in kinds and 'list' in kinds:
+                v = self.list_value(parts)
+                more = []
+                while isinstance(v, LazyList):
+                    if not v:
+                        raise ConShError('the command name is an empty LazyList', word.pos)
+                    more[0:0] = v[1:]
+                    v = v[0]
+                return v, more, words[i + 1:]
+            fields = self.fields(word, ctx)
+            if fields:
+                return fields[0], fields[1:], words[i + 1:]
+            if 'leaves' in kinds or 'list' in kinds:
+                raise ConShError('the command name is an empty LazyList', word.pos)
+        return None, [], []
 
     def def_value(self, v, ctx):
         """変数定義の右辺の値。v は None（空）、語、または (array 語 ...)"""

@@ -2,5 +2,5 @@
 (cmd (words "echo" ""))
 (cmd (words "echo" "a" ""))
 (cmd (words "echo" "a" ""))
-(cmd (words "echo" "" "" "ad"))
+(cmd (words "echo" "" "" "" "ad"))
 exit: 0

@@ -1,0 +1,13 @@
+(function "f")
+(assign ("l" (list "f" "b" "" "c")) ("m" (list "cmd" "b" "c")) ("s" ""))
+(cmd (words "f" "b" "" "c" "z"))
+(cmd (words "f" "b" "" "c" "z"))
+(cmd (words "cmd" "b" "c" "z"))
+(cmd (words "cmd" "z"))
+(assign ("n" (list "b" (list "f" "b" "" "c"))))
+(assign ("k" (list (list "f" "b" "" "c") (list "cmd" "b" "c") "z")))
+(cmd (words "f" "b" "" "c" (list "cmd" "b" "c") "z" "y"))
+(cmd (words "xf" "xb" "x" "xc" "z"))
+(assign ("e" (list)))
+consh_parse: case21.sh:13:1: the command name is an empty LazyList
+exit: 1
