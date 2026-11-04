@@ -40,22 +40,32 @@
   __String_concat__ acc ch ,(acc)
   Glob_escape_from s next len chars acc)
 
-;; s が chars のどれかの文字を含むか
+;; s が chars のどれかの文字を含むか。chars の文字ごとに __String_find__ で探す
 (define Glob_has_any ,(s chars)
-  __Cont_get__ ,(return)
-  __String_length__ chars ,(n)
-  __if__ (,() __Number_is_zero__ n) (,() return __FALSE__) ,()
   num "0" ,(zero)
+  Glob_has_any_from s chars zero)
+
+(define Glob_has_any_from ,(s chars i)
+  __Cont_get__ ,(return)
   num "1" ,(one)
-  __String_substring__ __print_exit_error__ chars zero one ,(ch)
+  __Number_add__ i one ,(next)
+  __String_substring__ (,(msg) return __FALSE__) chars i next ,(ch)
+  num "0" ,(zero)
   __String_find__ __print_exit_error__ s ch zero ,(pos)
   __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
-  __String_substring__ __print_exit_error__ chars one n ,(rest)
-  Glob_has_any s rest)
+  Glob_has_any_from s chars next)
 
-;; 引用符の外の文字列 s が glob の記号を含むか
+;; 引用符の外の文字列 s が glob の記号を含むか。語の展開のたびに呼ぶので、記号ごとに直接探す
 (define Glob_has_meta ,(s)
-  Glob_has_any s "*?[")
+  __Cont_get__ ,(return)
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ s "*" zero ,(pos)
+  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  __String_find__ __print_exit_error__ s "?" zero ,(pos)
+  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  __String_find__ __print_exit_error__ s "[" zero ,(pos)
+  __is_null__ pos ,(none)
+  __not__ none)
 
 ;; ── 展開する ──
 

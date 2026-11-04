@@ -9,7 +9,7 @@ function out () {
 out
 out > $d/file
 cat $d/file
-# パイプや $( ) では、外部コマンドの出力は行ごとの要素になる（最後の行に改行が付き、\r\n は改行になる）
+# 外部コマンドに渡すパイプは OS のパイプなので、中の外部コマンドはバイト列をそのまま書く（段階 15。以前は行ごとの要素にしていた）
 out | cat
 function errs () { sh -c 'echo to-err >&2'; echo to-out }
 errs 2>&1

@@ -23,9 +23,12 @@
 ;;                最初の VProc では null
 ;;   "cancelIn"   この VProc が終わったときに cancel する、標準入力のチャネル。なければ null
 ;;   "procRef"    この VProc で実行中の外部コマンドの OSProc を入れる Ref（kill で SIGTERM を送る）
+;;   "owned"      パイプラインの外部コマンドの要素が、起動したら閉じる OS のパイプの端の LList（Pipe_element）
+;;   "pipeEnds"   パイプラインの外部コマンドでない要素が、終わるまで持つ OS のパイプの端の LList（Pipe_element）
 ;;   "bgCaptures" & の文の変数リストへのリダイレクトで、外に渡す遅延の値の LList（Bg_captures）。なければ null
 ;;   "loops"      実行中の for 文の LList（内側が先）。各要素は (ループ変数の名前 break の継続 continue の継続)。
 ;;                関数の中では、関数の外のループは見えない
+;;   "outerLoops" for 文の本体の文脈（For_run）だけが持つ、そのループの外側の "loops"
 ;;   "env"        環境変数（Env_new）
 ;;   "in"         標準入力。Input_new または Input_stream の Dict（読み出し位置を共有する）
 ;;   "out" "err"  標準出力と標準エラー出力のターゲット（Target_*）
@@ -73,6 +76,7 @@
   __Dict_put__ sh "cancelIn" __NULL__ ,()
   __Dict_put__ sh "bgCaptures" __NULL__ ,()
   __Dict_put__ sh "owned" __NULL__ ,()
+  __Dict_put__ sh "pipeEnds" __NULL__ ,()
   __Dict_put__ sh "exitTo" __NULL__ ,()
   __Dict_put__ sh "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(openRef)
@@ -164,7 +168,15 @@
 
 ;; 変数参照の値。String か LazyList。局所変数がなければ環境変数を探す。
 ;; 未定義の変数と、足りない位置パラメータはエラーとする
+;; 局所変数を先に探す（特別な名前 @、数字、#、?、!、$ は局所変数にならない）
 (define Sh_lookup ,(sh pos name)
+  __Cont_get__ ,(return)
+  Sh_get sh "vars" ,(vars)
+  __Dict_lookup_or__ vars name (,(key) Sh_lookup_other sh pos name ,(value) return value) ,(value)
+  Value_force value)
+
+;; 局所変数にない名前。特別な名前か、環境変数
+(define Sh_lookup_other ,(sh pos name)
   __Cont_get__ ,(return)
   __if__ (,() __String_equal__ name "@")
     (,()
@@ -197,12 +209,10 @@
       __OS_getpid__ ,(pid)
       __Number_toString__ pid ,(s)
       return s) ,()
-  Sh_get sh "vars" ,(vars)
   Sh_get sh "env" ,(env)
-  __Dict_lookup_or__ vars name (,(key)
-    Env_lookup env key (,(key)
-      __String_concat__ "undefined variable: " key ,(msg)
-      Sh_error sh pos msg)) ,(value)
+  Env_lookup env name (,(key)
+    __String_concat__ "undefined variable: " key ,(msg)
+    Sh_error sh pos msg) ,(value)
   Value_force value)
 
 ;; 変数が定義済みか。位置パラメータは引数の数で決まる。特殊な変数は常に定義済み
@@ -338,7 +348,9 @@
 ;;   (top id write)      トップレベルの標準出力（Ctx_top）。要素は sink と同じく write で書くが、
 ;;                       外部コマンドには OS の標準出力の Stream をそのまま渡す（端末なら端末のまま）
 ;;   (file id dict)      関数、if 文、for 文に渡したファイルの Stream（Target_for_body）。dict は "stream"、"sh"、"pos" を持つ。
-;;                       要素は write で、リダイレクトを書いた文の OFS で書き、外部コマンドには Stream をそのまま渡す
+;;                       要素は write で、リダイレクトを書いた文の OFS で書き、外部コマンドには Stream をそのまま渡す。
+;;                       パイプの OS のパイプ（Pipe_start）なら、dict の "pipe" が __TRUE__ で、"sh" はパイプラインの文脈。
+;;                       書けるようになるのを待って書き（ほかの VProc を止めない）、読み手が閉じていれば、書いた VProc を終える（Sh_abort）
 ;;   (chan id writer)    チャネルの書き手（consh_chan.se）。それを作った VProc だけが使う。
 ;;                       別の VProc に渡すときは、同じチャネルの新しい書き手を作る（Child_target）
 ;;   (capture id record) 変数リストへのリダイレクト（Capture_new）。要素を受け取った順に変数に割り当てる。どの VProc から書いてもよい
@@ -410,8 +422,15 @@
       Sh_get value "stream" ,(stream)
       Sh_get value "sh" ,(fsh)
       Sh_get value "pos" ,(fpos)
-      Stream_writer fsh fpos stream ,(write)
-      write line)
+      __Dict_lookup_or__ value "pipe" (,(key) __NULL__ __FALSE__) ,(isPipe)
+      __if_then_else__ (,() __NULL__ isPipe)
+        (,()
+          Line_toString fsh fpos line ,(line)
+          __String_concat__ line "\n" ,(s)
+          Write_pieces stream s (,() Sh_abort sh))
+        (,()
+          Stream_writer fsh fpos stream ,(write)
+          write line))
     (,() value line)))))
 
 ;; 子のターゲット（Child_target）を閉じる。chan なら書き手を閉じ、stream と file なら、子のために複製した Stream を閉じる
@@ -703,9 +722,7 @@
   Cmd_scope sh defs ,(sh)
   Arg_limit_new sh pos ,(limit)
   Cmd_head sh words limit ,(name more rest)
-  __if_then_else__ (,() __is_null__ name)
-    (,() __NULL__ __TRUE__)
-    (,() Cmd_is_external sh name) ,(isExternal)
+  Cmd_resolve sh name ,(fn builtin isExternal)
   Eval_args sh rest isExternal limit ,(args)
   __if_then_else__ (,() __NULL__ isExternal)
     (,() Values_leaves_in more limit)
@@ -717,14 +734,19 @@
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
-  Open_track sh opened ,(mark)
   __if__ (,() __is_null__ name)
     (,()
-      Open_release sh mark ,()
+      Eval_close opened ,()
       Capture_assign sh group ,()
       Sh_set_status sh "0" ,()
       return) ,()
-  Capture_run sh group (,(s) Cmd_run s pos name args in out err) ,()
+  ;; リダイレクトで開いた Stream がなければ、開いた Stream の表に触れない（中の文が開いたものは、中の文が閉じる）
+  __if__ (,() __is_null__ opened)
+    (,()
+      Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
+      return) ,()
+  Open_track sh opened ,(mark)
+  Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
   Open_release sh mark)
 
 ;; 前置の変数定義があれば、その層を環境変数に積んだ文脈を返す。
@@ -751,7 +773,16 @@
   __if__ (,() __is_null__ words) (,() return __NULL__ __NULL__ __NULL__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
   Node_split word ,(tag pos elems)
-  Expand_parts sh word ,(parts)
+  Expand_parts_from sh elems ,(parts)
+  ;; LazyList でない部分が1つだけなら（よくある語）、数えずに外部コマンドの語として展開する
+  Parts_single parts ,(kind value)
+  __unless__ (,() __is_null__ kind)
+    (,()
+      Single_fields kind value ,(fields done)
+      __if_then_else__ (,() __NULL__ done) (,() __NULL__ fields) (,() Parts_fields_in parts limit) ,(fields)
+      __if__ (,() __is_null__ fields) (,() Cmd_head sh rest limit ,(name more rest) return name more rest) ,()
+      __LList_uncons__ __print_exit_error__ fields ,(name more)
+      return name more rest) ,()
   Parts_count parts "leaves" ,(nLeaves)
   Parts_count parts "list" ,(nList)
   __Number_is_zero__ nLeaves ,(noLeaves)
@@ -772,6 +803,21 @@
       return name more rest) ,()
   __LList_uncons__ __print_exit_error__ fields ,(name more)
   __NULL__ name more rest)
+
+;; コマンドの名前 name（null なら名前がない）の関数と組み込みコマンド（なければ null）と、外部コマンドか。
+;; 名前がなければ、外部コマンドとして扱う
+(define Cmd_resolve ,(sh name)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ name) (,() return __NULL__ __NULL__ __TRUE__) ,()
+  __String_equal__ name "builtin" ,(isBuiltin)
+  __String_equal__ name "command" ,(isCommand)
+  __or__ isBuiltin isCommand ,(special)
+  __if__ (,() __NULL__ special) (,() return __NULL__ __NULL__ __FALSE__) ,()
+  Func_lookup sh name ,(fn)
+  __unless__ (,() __is_null__ fn) (,() return fn __NULL__ __FALSE__) ,()
+  Builtin_lookup name ,(builtin)
+  __unless__ (,() __is_null__ builtin) (,() return __NULL__ builtin __FALSE__) ,()
+  __NULL__ __NULL__ __NULL__ __TRUE__)
 
 ;; name が外部コマンドか。関数、組み込みコマンド、builtin、command でなければ外部コマンド
 (define Cmd_is_external ,(sh name)
@@ -825,12 +871,19 @@
       External_run sh pos name2 args2 in out err ,()
       return) ,()
   Func_lookup sh name ,(fn)
+  Builtin_lookup name ,(builtin)
+  Cmd_run_resolved sh pos name args in out err fn builtin)
+
+;; Cmd_run で、関数 fn と組み込みコマンド builtin（Cmd_resolve）が分かっているとき
+(define Cmd_run_resolved ,(sh pos name args in out err fn builtin)
+  __Cont_get__ ,(return)
+  __if__ (,() __String_equal__ name "builtin") (,() Cmd_run sh pos name args in out err ,() return) ,()
+  __if__ (,() __String_equal__ name "command") (,() Cmd_run sh pos name args in out err ,() return) ,()
   __unless__ (,() __is_null__ fn)
     (,()
       Func_targets sh pos out err ,(out err)
       Func_call sh pos fn args in out err ,()
       return) ,()
-  Builtin_lookup name ,(builtin)
   __unless__ (,() __is_null__ builtin)
     (,()
       builtin sh pos args in out err ,()
@@ -972,6 +1025,7 @@
   __Dict_put__ child "cancelIn" __NULL__ ,()
   __Dict_put__ child "bgCaptures" __NULL__ ,()
   __Dict_put__ child "owned" __NULL__ ,()
+  __Dict_put__ child "pipeEnds" __NULL__ ,()
   __Dict_put__ child "exitTo" __NULL__ ,()
   __Dict_put__ child "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(openRef)
@@ -1042,6 +1096,7 @@
 (define Sh_finish ,(child)
   Subst_finish child ,()
   Sh_release child ,()
+  Pipe_ends_close child ,()
   Sh_get child "finished" ,(finished)
   __Ref_set__ finished __TRUE__)
 
@@ -1452,7 +1507,12 @@
 ;; 要素を順に起動する。in はこの要素の標準入力、cancelIn はそのチャネル（最初の要素は null）、
 ;; owned はこの要素が閉じる Stream の LList（前の要素との OS のパイプの読む側）。
 ;; 起動した VProc の LList と、最後の要素の文脈と、要素の (VProc 文脈) の組の LList（members）を返す。
-;; この要素と次の要素がどちらも外部コマンドなら（Pipe_is_external）、チャネルではなく OS のパイプで直接つなぐ
+;; この要素と次の要素のどちらかが外部コマンドなら（Pipe_is_external）、チャネルではなく OS のパイプでつなぐ。
+;;   - 書き手が外部コマンドなら、OS のパイプをそのまま標準出力にする。そうでなければ、"pipe" の印を付けた file の
+;;     ターゲットにする（要素は、パイプラインの文脈 sh の OFS で文字列化して1行ずつ書く。中の外部コマンドには Stream を渡す）
+;;   - 次の要素の標準入力は、OS のパイプから作る（Input_stream）。外部コマンドには Stream をそのまま渡し、
+;;     stdin などで読めば、改行を除いた行が要素になる
+;; どちらも外部コマンドでなければ、値をそのまま渡すチャネルでつなぐ
 (define Pipe_start ,(sh elems in cancelIn owned vprocs members)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
@@ -1469,12 +1529,14 @@
   Pipe_is_external sh elem ,(writes)
   List_first rest ,(next)
   Pipe_is_external sh next ,(reads)
-  __and__ writes reads ,(direct)
+  __or__ writes reads ,(direct)
   __if__ (,() __NULL__ direct)
     (,()
       __OS_pipe__ ,(reader writer)
       Sh_get sh "global" ,(global)
-      Target_stream global writer ,(out)
+      __if_then_else__ (,() __NULL__ writes)
+        (,() Target_stream global writer)
+        (,() Pipe_os_target sh global writer) ,(out)
       Child_target err ,(err)
       __LList_cons__ writer owned ,(mine)
       Pipe_element sh elem in out err cancelIn mine ,(vproc child)
@@ -1500,11 +1562,26 @@
   Input_new sh list ,(next)
   Pipe_start sh rest next chan __NULL__ vprocs members)
 
-;; owned の Stream は、要素の外部コマンドを起動したら閉じる（External_run）。起動しなかったときのため、要素の終わりにも閉じる
+;; 外部コマンドでない書き手が OS のパイプに書くターゲット
+(define Pipe_os_target ,(sh global writer)
+  Target_new_id global ,(id)
+  __Dict_new__ ,(dict)
+  __Dict_put__ dict "stream" writer ,()
+  __Dict_put__ dict "sh" sh ,()
+  __Dict_put__ dict "pos" __NULL__ ,()
+  __Dict_put__ dict "pipe" __TRUE__ ,()
+  Target_make "file" id dict)
+
+;; owned は、この要素が持つ OS のパイプの端の LList。要素が外部コマンドなら（Pipe_is_external）、それを起動したら閉じる
+;; （External_run）。そうでなければ、中でいくつものコマンドが使うので、要素の終わりまで持つ（"pipeEnds"。Sh_finish と、kill では VProc_stop が閉じる）。
+;; どちらも、要素の終わりに閉じる
 (define Pipe_element ,(sh elem in out err cancelIn owned)
   Sh_child sh in out err "return in a pipeline" ,(child)
   __Dict_put__ child "cancelIn" cancelIn ,()
-  __Dict_put__ child "owned" owned ,()
+  Pipe_is_external sh elem ,(isExternal)
+  __if_then_else__ (,() __NULL__ isExternal)
+    (,() __Dict_put__ child "owned" owned)
+    (,() __Dict_put__ child "pipeEnds" owned) ,()
   Sh_start child (,(c)
     Eval_stmt c elem ,()
     Eval_close owned) ,(vproc)
@@ -1635,10 +1712,14 @@
   For_values sh rest ,(more)
   List_append values more)
 
-;; break はこの関数から抜ける
+;; break はこの関数から抜ける。本体は、ループの文脈の写し inner で実行する。写すのはループごとに1回で、
+;; 繰り返しごとには、inner の "loops" をその回の continue の継続に置き換える（ループ変数と局所変数の Dict は sh と同じ）
 (define For_run ,(sh name values lines)
   __Cont_get__ ,(break)
-  For_each sh name values lines break)
+  Sh_get sh "loops" ,(outer)
+  Dict_copy sh ,(inner)
+  __Dict_put__ inner "outerLoops" outer ,()
+  For_each inner name values lines break)
 
 (define For_each ,(sh name values lines break)
   __Cont_get__ ,(return)
@@ -1657,17 +1738,17 @@
   For_item sh name item lines break ,()
   For_lazy sh name rest lines break)
 
-;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける
+;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける。
+;; sh は For_run が作ったループの文脈で、"outerLoops" は外側のループの LList
 (define For_item ,(sh name item lines break)
   __Cont_get__ ,(continue)
   Sh_get sh "vars" ,(vars)
   __Dict_put__ vars name item ,()
   Loop_make name break continue ,(loop)
-  Sh_get sh "loops" ,(loops)
+  Sh_get sh "outerLoops" ,(loops)
   __LList_cons__ loop loops ,(loops)
-  Dict_copy sh ,(inner)
-  __Dict_put__ inner "loops" loops ,()
-  Eval_lines inner lines)
+  __Dict_put__ sh "loops" loops ,()
+  Eval_lines sh lines)
 
 (define Loop_make ,(name brk cont)
   __LList_cons__ cont __NULL__ ,(rest)
@@ -1892,7 +1973,16 @@
       __OS_kill__ (,(msg) __nop__) proc sigterm ,()
       Proc_reap proc) ,()
   Sh_release ctx ,()
+  ;; 止めた VProc が OS のパイプを読んでいる途中なら（LazyList の評価の中）、止まるのは読み終えてからなので、
+  ;; パイプの端は、止まってから閉じる（読んでいる Stream を先に閉じると、読み込みがエラーになる）
+  __VProc_start__ (,() __VProc_wait__ (,(msg) __nop__) vproc ,() Pipe_ends_close ctx) ,(closer)
   Kill_tree ctx __NULL__)
+
+;; パイプラインの外部コマンドでない要素が持つ OS のパイプの端を閉じる
+(define Pipe_ends_close ,(ctx)
+  __Dict_lookup_or__ ctx "pipeEnds" (,(key) __NULL__ __NULL__) ,(ends)
+  __Dict_put__ ctx "pipeEnds" __NULL__ ,()
+  Eval_close ends)
 
 ;; 止めた VProc は外部コマンドの終わりを待たないので、別の VProc で待つ（ゾンビとして残らないように）
 (define Proc_reap ,(proc)

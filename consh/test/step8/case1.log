@@ -5,7 +5,6 @@ after
 not-pipe
 x
 pipe
-x
-[y]
+x[y]
 o=out
 exit: 0

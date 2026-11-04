@@ -9,8 +9,7 @@ no newlinecrlf
 one
 two
 three
-no newline
-crlf
+no newlinecrlf
 to-err
 to-out
 to-out

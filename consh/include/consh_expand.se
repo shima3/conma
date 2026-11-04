@@ -38,11 +38,29 @@
   Parts_glob_fields parts limit __FALSE__)
 
 ;; 語の部分を外部コマンドの語として展開し、glob を適用した String の LList。
-;; 一致しなければ、nullGlob が偽なら語をそのまま残し、真なら消す（${-語}）
+;; 一致しなければ、nullGlob が偽なら語をそのまま残し、真なら消す（${-語}）。
+;; 部分が LazyList でない1つだけで、記号を含まなければ（よくある語）、候補を作らずに決める
 (define Parts_glob_fields ,(parts limit nullGlob)
+  __Cont_get__ ,(return)
+  Parts_single parts ,(kind value)
+  __unless__ (,() __is_null__ kind)
+    (,()
+      Single_fields kind value ,(fields done)
+      __if__ (,() __NULL__ done) (,() return fields) ,()) ,()
   Alt_make "" "" __FALSE__ ,(alt)
   __LList_cons__ alt __NULL__ ,(alts)
   Expand_fields_from parts alts __FALSE__ __FALSE__ limit nullGlob)
+
+;; LazyList でない1つだけの部分（種類 kind、値 value）を外部コマンドの語にする。
+;; 語の LList と、決まったかを返す。記号を含めば glob を適用するので、決めずに偽を返す
+(define Single_fields ,(kind value)
+  __Cont_get__ ,(return)
+  __if__ (,() __String_equal__ kind "quoted") (,() __LList_cons__ value __NULL__ ,(fields) return fields __TRUE__) ,()
+  __if__ (,() __String_equal__ value "") (,() return __NULL__ __TRUE__) ,()
+  Glob_has_meta value ,(magic)
+  __if__ (,() __NULL__ magic) (,() return __NULL__ __FALSE__) ,()
+  __LList_cons__ value __NULL__ ,(fields)
+  __NULL__ fields __TRUE__)
 
 ;; alts は候補の LList。候補は、語の String、glob のパターン（引用符の中の文字には \ を付ける）、
 ;; パターンが記号を含むかの組
@@ -148,6 +166,17 @@
 (define Expand_args ,(sh word)
   __Cont_get__ ,(return)
   Expand_parts sh word ,(parts)
+  Parts_single parts ,(kind value)
+  __unless__ (,() __is_null__ kind)
+    (,()
+      __String_equal__ kind "braced" ,(isBraced)
+      __String_equal__ value "" ,(empty)
+      __and__ isBraced empty ,(emptyBraced)
+      __if__ (,() __NULL__ emptyBraced) (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+      Single_fields kind value ,(fields done)
+      __if__ (,() __NULL__ done) (,() return fields) ,()
+      Parts_fields parts ,(fields)
+      return fields) ,()
   Parts_count parts "leaves" ,(nLeaves)
   __unless__ (,() __Number_is_zero__ nLeaves) (,() Parts_fields parts ,(fields) return fields) ,()
   Parts_count parts "list" ,(nList)
@@ -196,7 +225,9 @@
 (define Expand_value ,(sh word)
   __Cont_get__ ,(return)
   Node_split word ,(tag pos elems)
-  Expand_parts sh word ,(parts)
+  Expand_parts_from sh elems ,(parts)
+  Parts_single parts ,(kind value)
+  __unless__ (,() __is_null__ kind) (,() return value) ,()
   Parts_count parts "leaves" ,(nLeaves)
   Parts_count parts "list" ,(nList)
   __unless__ (,() __Number_is_zero__ nLeaves)
@@ -354,6 +385,17 @@
   Expand_dq_from sh rest acc)
 
 ;; ── 部分の LList の操作 ──
+
+;; 部分が1つだけで LazyList でなければ、その種類と値。そうでなければ null と null
+(define Parts_single ,(parts)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ parts) (,() return __NULL__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(part rest)
+  __unless__ (,() __is_null__ rest) (,() return __NULL__ __NULL__) ,()
+  Part_split part ,(kind value)
+  Part_is_list kind ,(isList)
+  __if__ (,() __NULL__ isList) (,() return __NULL__ __NULL__) ,()
+  __NULL__ kind value)
 
 ;; 種類が kind の部分の数
 (define Parts_count ,(parts kind)

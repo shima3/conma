@@ -9,7 +9,7 @@ echo after
 function f () { sh -c '[ -p /dev/fd/1 ] && echo pipe || echo not-pipe'; printf 'x'; }
 f
 echo
-# パイプに渡すときは、今までどおり行ごとの要素になる
+# 外部コマンドに渡すパイプは OS のパイプなので、そのまま書く（段階 15）
 f | cat
 # $( ) と変数リストへのリダイレクトも、今までどおり
 x=$(printf 'y')
