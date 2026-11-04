@@ -1,0 +1,2 @@
+consh: case23.sh:2:22: $1, $@ and $# are not defined in a function
+exit: 1
