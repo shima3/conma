@@ -964,6 +964,26 @@ def prim_OS_sysconf(vp, gvenv):
     _prim_return(vp, [Number(value)])
 
 
+def prim_OS_trap_interrupt(vp, gvenv):
+    """__OS_trap_interrupt__ Ref ,()
+    From now on, SIGINT (Ctrl-C) does not stop the interpreter. Instead, each
+    SIGINT sets the value of Ref to a new Number (the number of SIGINTs so
+    far), which wakes the VProcs waiting for Ref with __Ref_wait_change__,
+    also while the interpreter sleeps in select()."""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__OS_trap_interrupt__: missing argument")
+    ref = olist.pop(0)
+    if not isinstance(ref, Ref):
+        raise VProcError(f"__OS_trap_interrupt__: expected Ref, got {value_type_name(ref)}")
+    SCHEDULER._install_sigchld()        # signals wake select() through the wakeup pipe
+    count = [0]
+    def on_interrupt(signum, frame):
+        count[0] += 1
+        ref.value = Number(float(count[0]))
+    signal.signal(signal.SIGINT, on_interrupt)
+    _prim_return(vp, [])
+
+
 def prim_OS_kill(vp, gvenv):
     """__OS_kill__ onError OSProc signal ,()
     Sends the signal (a Number, such as 15 for SIGTERM) to the process.
@@ -2400,6 +2420,7 @@ PRIMITIVES = {
     "__OS_kill__":             prim_OS_kill,
     "__OS_sysconf__":          prim_OS_sysconf,
     "__OS_listdir__":          prim_OS_listdir,
+    "__OS_trap_interrupt__":   prim_OS_trap_interrupt,
     "__LazyList_claim__":      prim_LazyList_claim,
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,

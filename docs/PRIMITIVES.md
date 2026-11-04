@@ -62,6 +62,11 @@ These primitives manage external processes and stream-based I/O.
 * **Behavior**: A relative `path` is relative to the current directory of the current VProc. The names have no directory part.
 * **Error**: Invokes `onError` with an error message string if `path` is not a String, does not exist, or is not a directory.
 
+### `__OS_trap_interrupt__ Ref ,()`
+* **Description**: From now on, SIGINT (Ctrl-C) does not stop the interpreter. Instead, each SIGINT sets the value of `Ref` to a new Number, the number of SIGINTs received since this call.
+* **Behavior**: The VProcs waiting for `Ref` with `__Ref_wait_change__` wake up, also while the interpreter sleeps in `select` waiting for the OS. Processes started with `__OS_spawn__` keep the default action of SIGINT, so a Ctrl-C at a terminal stops the external commands in its foreground process group as usual.
+* **Usage**: The interactive mode of ConSh stops only the running command on Ctrl-C.
+
 ### `__OS_sysconf__ onError name ,(Number)`
 * **Description**: Passes the value of the system configuration variable `name` to the LCont. `name` is a String with one of the names of `sysconf(3)`, such as `"SC_ARG_MAX"` (the maximum bytes of the arguments and environment of a new process) or `"SC_OPEN_MAX"`.
 * **Error**: Invokes `onError` with an error message string if `name` is not a String, is not a known name, or the OS has no value for it.

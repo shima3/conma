@@ -1,0 +1,37 @@
+;; Step31: SIGINT でインタプリタを止めず、Ref を変える __OS_trap_interrupt__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 自分（インタプリタ）に SIGINT を送る外部コマンドを起動し、終わるのを待つ
+(define interruptSelf ,()
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "sh" ,()
+  __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+  __MSeq_append__ __print_exit_error__ cmd "kill -INT $PPID" ,()
+  __OS_get_envDict__ ,(env)
+  __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(code)
+  __nop__)
+
+;; case1: SIGINT ごとに Ref の値が 1、2 と変わり、待っている VProc が起きる。インタプリタは止まらない
+(define case1 ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(ref)
+  __OS_trap_interrupt__ ref ,()
+  __VProc_start__ (,()
+    __Ref_wait_change__ ref zero ,()
+    __Ref_get__ ref ,(n)
+    __Number_toString__ n ,(s)
+    __String_concat__ "woke up: " s ,(line)
+    println line) ,(waiter)
+  interruptSelf ,()
+  __VProc_wait__ __print_exit_error__ waiter ,()
+  interruptSelf ,()
+  __Ref_get__ ref ,(n)
+  __Number_toString__ n ,(s)
+  __String_concat__ "after the second: " s ,(line)
+  println line ,()
+  println "still running")

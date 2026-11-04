@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step30`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step31`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -634,4 +634,18 @@ No new primitive.
 | case1 | lists, the empty list, symbols that start with a digit (Numbers) and other symbols and strings (Strings) |
 | case2 | the escapes in strings |
 | case3 | `onError` with the message and column for an unterminated string and list, characters after the S-expression, an invalid number, and a missing value |
+
+## Step 31: Trapping Ctrl-C
+
+| Primitive | Status |
+|---|---|
+| `__OS_trap_interrupt__` | implemented |
+
+* Goal: Let the interactive mode of ConSh stop only the running command on Ctrl-C. Without it, SIGINT raised Python's `KeyboardInterrupt` and ended the interpreter with a traceback.
+* `__OS_trap_interrupt__ Ref ,()` installs a SIGINT handler that sets the value of `Ref` to a new Number. Signals already wake `select()` in the scheduler through the wakeup pipe of SIGCHLD (`signal.set_wakeup_fd`), so a VProc waiting for the Ref wakes up even when every other VProc waits for the OS.
+* Tests (`test/step31`):
+
+| Case | What it checks |
+|---|---|
+| case1 | an external command sends SIGINT to the interpreter twice; a VProc waiting for the Ref wakes up with 1, the value is 2 after the second, and the interpreter keeps running |
 
