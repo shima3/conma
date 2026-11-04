@@ -920,6 +920,34 @@ def prim_OS_getpid(vp, gvenv):
     _prim_return(vp, [Number(os.getpid())])
 
 
+def prim_OS_sysconf(vp, gvenv):
+    """__OS_sysconf__ onError name ,(Number)
+    The value of the system configuration variable name (a String such as
+    "SC_ARG_MAX", one of the names of sysconf(3)). An unknown name, or a
+    variable that the OS does not define, goes to onError."""
+    name  = "__OS_sysconf__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    var      = olist.pop(0)
+    if value_type_name(var) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String name, got {value_type_name(var)}")
+        return
+    var = _value_to_display(var)
+    if var not in os.sysconf_names:
+        _prim_error(vp, on_error, f"{name}: unknown name: {var}")
+        return
+    try:
+        value = os.sysconf(var)
+    except OSError as e:
+        _prim_error(vp, on_error, f"{name}: {e.strerror}: {var}")
+        return
+    if value == -1:                     # the OS has no value (no limit)
+        _prim_error(vp, on_error, f"{name}: no value: {var}")
+        return
+    _prim_return(vp, [Number(value)])
+
+
 def prim_OS_kill(vp, gvenv):
     """__OS_kill__ onError OSProc signal ,()
     Sends the signal (a Number, such as 15 for SIGTERM) to the process.
@@ -2202,6 +2230,7 @@ PRIMITIVES = {
     "__VProc_kill__":          prim_VProc_kill,
     "__OS_getpid__":           prim_OS_getpid,
     "__OS_kill__":             prim_OS_kill,
+    "__OS_sysconf__":          prim_OS_sysconf,
     "__LazyList_claim__":      prim_LazyList_claim,
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,

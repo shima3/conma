@@ -1,0 +1,3 @@
+SC_ARG_MAX: positive
+SC_OPEN_MAX: positive
+exit: 0

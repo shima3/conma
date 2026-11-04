@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step26`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step27`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -570,3 +570,19 @@ No new primitive.
 | case3 | a VProc that holds a LazyList is stopped; the VProc that claims the LazyList gets `onError` |
 | case4 | a VProc stops itself |
 | case5 | the process ID is positive; SIGTERM stops `sleep` (exit code -15); `onError` for signal 0 and a non-OSProc |
+
+## Step 27: System configuration values
+
+| Primitive | Status |
+|---|---|
+| `__OS_sysconf__` | implemented |
+
+* Goal: Let ConSh limit the bytes of the arguments of an external command by the OS value of `ARG_MAX` when the environment variable `ARG_MAX` is not set, so that expanding an infinite LazyList into arguments stops with an error; see `consh/PLAN-ja.md`.
+* `__OS_sysconf__ onError name ,(Number)` gives the value of the system configuration variable `name` (a String with one of the names of `sysconf(3)`, such as `"SC_ARG_MAX"`), from Python's `os.sysconf`.
+* Tests (`test/step27`):
+
+| Case | What it checks |
+|---|---|
+| case1 | `SC_ARG_MAX` and `SC_OPEN_MAX` are positive |
+| case2 | `onError` for an unknown name |
+| case3 | `onError` for a name that is not a String |

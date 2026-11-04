@@ -57,6 +57,10 @@ These primitives manage external processes and stream-based I/O.
 ### `__OS_getpid__ ,(Number)`
 * **Description**: Passes the process ID of the interpreter to the LCont. Every VProc gets the same number.
 
+### `__OS_sysconf__ onError name ,(Number)`
+* **Description**: Passes the value of the system configuration variable `name` to the LCont. `name` is a String with one of the names of `sysconf(3)`, such as `"SC_ARG_MAX"` (the maximum bytes of the arguments and environment of a new process) or `"SC_OPEN_MAX"`.
+* **Error**: Invokes `onError` with an error message string if `name` is not a String, is not a known name, or the OS has no value for it.
+
 ### `__OS_exit_normal__ ,()`
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 0.

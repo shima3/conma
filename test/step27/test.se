@@ -1,0 +1,34 @@
+;; Step27: システムの設定値を得る __OS_sysconf__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; case1: SC_ARG_MAX と SC_OPEN_MAX は正の数
+(define case1 ,()
+  __OS_sysconf__ __print_exit_error__ "SC_ARG_MAX" ,(argMax)
+  printPositive "SC_ARG_MAX: " argMax ,()
+  __OS_sysconf__ __print_exit_error__ "SC_OPEN_MAX" ,(openMax)
+  printPositive "SC_OPEN_MAX: " openMax)
+
+(define printPositive ,(label n)
+  __Number_is_negative__ n ,(negative)
+  __Number_is_zero__ n ,(zero)
+  __or__ negative zero ,(bad)
+  __if_then_else__ (,() __NULL__ bad) (,() __NULL__ "bad") (,() __NULL__ "positive") ,(s)
+  __String_concat__ label s ,(line)
+  println line)
+
+;; case2: 知らない名前は onError
+(define case2 ,()
+  __Cont_get__ ,(return)
+  __OS_sysconf__ (,(msg) println msg ,() return) "SC_NO_SUCH_NAME" ,(v)
+  println "not reached")
+
+;; case3: String でない名前は onError
+(define case3 ,()
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __OS_sysconf__ (,(msg) println msg ,() return) one ,(v)
+  println "not reached")
