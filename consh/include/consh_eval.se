@@ -1,4 +1,4 @@
-;; ConSh の実行（段階 3〜9）。
+;; ConSh の実行（段階 3〜10）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
@@ -317,6 +317,8 @@
 ;;   (sink id write)     要素を1つずつ受け取る関数 write（,(line) ...）。どの VProc から呼んでもよい
 ;;   (top id write)      トップレベルの標準出力（Ctx_top）。要素は sink と同じく write で書くが、
 ;;                       外部コマンドには OS の標準出力の Stream をそのまま渡す（端末なら端末のまま）
+;;   (file id dict)      関数、if 文、for 文に渡したファイルの Stream（Target_for_body）。dict は "stream" と "write" を持つ。
+;;                       要素は write で、リダイレクトを書いた文の OFS で書き、外部コマンドには Stream をそのまま渡す
 ;;   (chan id writer)    チャネルの書き手（consh_chan.se）。それを作った VProc だけが使う。
 ;;                       別の VProc に渡すときは、同じチャネルの新しい書き手を作る（Child_target）
 ;;   (capture id record) 変数リストへのリダイレクト（Capture_new）。要素を受け取った順に変数に割り当てる。どの VProc から書いてもよい
@@ -350,17 +352,18 @@
   __LList_uncons__ __print_exit_error__ rest ,(value rest)
   __NULL__ kind id value)
 
-;; stream と top のターゲットを、同じ id の sink ターゲットにする（sink と chan はそのまま）。要素は、末尾に改行を付けて Stream に書く。
-;; 関数の出力をファイルや端末に向けても、関数の中の外部コマンドの出力は行ごとの要素になる（Func_targets）。
-;; LazyList の要素は、リダイレクトを書いた文の文脈 sh の OFS で文字列化する
-(define Target_as_sink ,(sh pos target)
-  __Cont_get__ ,(return)
+;; 関数、if 文、for 文の本体に渡すターゲット。stream を、同じ id の file ターゲットにする（ほかはそのまま）。
+;; 本体の中の要素は、末尾に改行を付けて Stream に書き、LazyList の要素は、リダイレクトを書いた文の文脈 sh の OFS で文字列化する。
+;; 本体の中の外部コマンドには、file と top の Stream をそのまま渡すので、端末やファイルに直接書く（External_os_stream）
+(define Target_for_body ,(sh pos target)
   Target_split target ,(kind id value)
-  __if__ (,() __String_equal__ kind "top") (,() Target_make "sink" id value ,(t) return t) ,()
   __if_then_else__ (,() __String_equal__ kind "stream")
     (,()
       Stream_writer sh pos value ,(write)
-      Target_make "sink" id write)
+      __Dict_new__ ,(dict)
+      __Dict_put__ dict "stream" value ,()
+      __Dict_put__ dict "write" write ,()
+      Target_make "file" id dict)
     (,() __NULL__ target))
 
 (define Stream_writer ,(sh pos stream)
@@ -381,8 +384,12 @@
   __if_then_else__ (,() __String_equal__ kind "chan")
     (,() Chan_put value line (,() Sh_abort sh)) (,()
   __if_then_else__ (,() __String_equal__ kind "capture")
-    (,() Capture_put sh value line)
-    (,() value line))))
+    (,() Capture_put sh value line) (,()
+  __if_then_else__ (,() __String_equal__ kind "file")
+    (,()
+      Sh_get value "write" ,(write)
+      write line)
+    (,() value line)))))
 
 ;; chan ターゲットなら書き手を閉じる
 (define Target_close ,(target)
@@ -630,12 +637,12 @@
     (,() __LList_uncons__ __print_exit_error__ args ,(head tail) __NULL__ tail) ,(args)
   Func_bind vars others restName args)
 
-;; 関数に渡す標準出力と標準エラー出力のターゲット。標準出力は sink にする。
-;; 標準エラー出力は、標準出力と同じ行き先（2>&1）なら同じ sink にし、そうでなければそのまま
+;; 関数に渡す標準出力と標準エラー出力のターゲット。標準出力の stream は file にする（Target_for_body）。
+;; 標準エラー出力は、標準出力と同じ行き先（2>&1）なら同じターゲットにし、そうでなければそのまま
 (define Func_targets ,(sh pos out err)
   Target_split out ,(outKind outId outValue)
   Target_split err ,(errKind errId errValue)
-  Target_as_sink sh pos out ,(out)
+  Target_for_body sh pos out ,(out)
   __if_then_else__ (,() __String_equal__ outId errId)
     (,() __NULL__ out)
     (,() __NULL__ err) ,(err)
@@ -2226,13 +2233,15 @@
   __OS_pipe__ ,(reader2 writer2)
   return writer writer2 reader writer out reader2 writer2 err)
 
-;; ターゲットが外部コマンドにそのまま渡せる Stream なら、その Stream。stream ならその値、top なら OS の標準出力。
+;; ターゲットが外部コマンドにそのまま渡せる Stream なら、その Stream。stream ならその値、top なら OS の標準出力、
+;; file ならその "stream"。
 ;; そうでなければ null
 (define External_os_stream ,(target)
   __Cont_get__ ,(return)
   Target_split target ,(kind id value)
   __if__ (,() __String_equal__ kind "stream") (,() return value) ,()
   __if__ (,() __String_equal__ kind "top") (,() __OS_get_stdout__ ,(stream) return stream) ,()
+  __if__ (,() __String_equal__ kind "file") (,() Sh_get value "stream" ,(stream) return stream) ,()
   __NULL__ __NULL__)
 
 ;; 2組目のパイプ（標準エラー出力）を別の VProc で読み、ターゲットに書く。なければ null を返す。

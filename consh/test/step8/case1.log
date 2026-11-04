@@ -2,6 +2,8 @@ not-pipe
 no-newline
 a
 after
+not-pipe
+x
 pipe
 x
 [y]
