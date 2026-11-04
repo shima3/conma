@@ -6,7 +6,9 @@
 ;; \ \r 改行は 3）、そうでなければ 0。位置は節に入れる (行 桁)、番号は先頭からの文字の番号。
 ;; 最後に、文字が "" の番兵のセルを置く（入力の終わり。位置は consh_parse と同じく、最後の文字の後ろ）。
 ;;
-;; 解析の状態は Dict で、"cur"（今のセルからの LList）、"sep"（コメントを始められる位置の番号）、"file"（エラーに出す名前）。
+;; 解析の状態は Dict で、"cur"（今のセルからの LList）、"skipped"（"cur" から行継続を読み飛ばした LList）、
+;; "sep"（コメントを始められる位置の番号）、"file"（エラーに出す名前）。
+;; "cur" を変えるときは Ps_set で "skipped" も作り直す。今の文字を見るたびに行継続を調べ直さずに済むので速い
 ;; 行継続（\ と改行）は、引用符 '...'、$'...'、コメントの中を除き、読む前に読み飛ばす（Cur_skip）。
 ;; 構文エラーは「consh: ファイル:行:桁: メッセージ」を出して、終了ステータス 1 で終わる
 
@@ -20,7 +22,7 @@
   Cells_from_lines lines ,(cells)
   __OS_close__ __print_exit_error__ stream ,()
   __Dict_new__ ,(p)
-  __Dict_put__ p "cur" cells ,()
+  Ps_set p cells ,()
   num "0" ,(zero)
   __Dict_put__ p "sep" zero ,()
   __Dict_put__ p "file" file ,()
@@ -40,7 +42,7 @@
   LazyList_fromList lines ,(lines)
   Cells_from_lines_at lines startLine ,(cells)
   __Dict_new__ ,(p)
-  __Dict_put__ p "cur" cells ,()
+  Ps_set p cells ,()
   num "0" ,(zero)
   __Dict_put__ p "sep" zero ,()
   __Dict_put__ p "file" file ,()
@@ -213,26 +215,31 @@
 (define Ps_get ,(p key)
   __Dict_lookup_or__ p key __print_exit_error__)
 
+;; 今の位置（"cur"）を raw にし、行継続を読み飛ばした位置（"skipped"）も作る
+(define Ps_set ,(p raw)
+  __Dict_put__ p "cur" raw ,()
+  Cur_skip raw ,(skipped)
+  __Dict_put__ p "skipped" skipped)
+
 ;; k 文字先の文字（k は数字の String）。入力の終わりは ""
 (define Ps_peek ,(p k)
-  Ps_get p "cur" ,(cur)
+  Ps_get p "skipped" ,(cur)
   num k ,(n)
   Cur_index cur n ,(cur)
   Cur_char cur)
 
 (define Ps_c ,(p)
-  Ps_get p "cur" ,(cur)
-  Cur_skip cur ,(cur)
+  Ps_get p "skipped" ,(cur)
   Cur_char cur)
 
 (define Ps_peek_n ,(p n)
-  Ps_get p "cur" ,(cur)
+  Ps_get p "skipped" ,(cur)
   Cur_index cur n ,(cur)
   Cur_char cur)
 
 ;; 行継続を除いた n 文字の String
 (define Ps_peek_str ,(p n)
-  Ps_get p "cur" ,(cur)
+  Ps_get p "skipped" ,(cur)
   Cur_str cur n "")
 
 (define Cur_str ,(cur n acc)
@@ -248,8 +255,7 @@
 
 ;; 節の位置（行継続を除いた今の文字の位置）
 (define Ps_pos ,(p)
-  Ps_get p "cur" ,(cur)
-  Cur_skip cur ,(cur)
+  Ps_get p "skipped" ,(cur)
   Cur_pos cur)
 
 ;; エラーの位置（行継続を読み飛ばす前の位置）
@@ -258,18 +264,16 @@
   Cur_pos cur)
 
 (define Ps_skip ,(p)
-  Ps_get p "cur" ,(cur)
-  Cur_skip cur ,(cur)
+  Ps_get p "skipped" ,(cur)
   __Dict_put__ p "cur" cur)
 
 ;; n 文字進む（n は Number）
 (define Ps_advance_n ,(p n)
   __Cont_get__ ,(return)
   __if__ (,() __Number_is_zero__ n) return ,()
-  Ps_get p "cur" ,(cur)
-  Cur_skip cur ,(cur)
+  Ps_get p "skipped" ,(cur)
   Cur_next cur ,(cur)
-  __Dict_put__ p "cur" cur ,()
+  Ps_set p cur ,()
   num "1" ,(one)
   __Number_subtract__ n one ,(n)
   Ps_advance_n p n)
@@ -282,7 +286,7 @@
 (define Ps_raw_next ,(p)
   Ps_get p "cur" ,(cur)
   Cur_next cur ,(cur)
-  __Dict_put__ p "cur" cur)
+  Ps_set p cur)
 
 (define Ps_raw_char ,(p)
   Ps_get p "cur" ,(cur)
@@ -381,7 +385,12 @@
   __String_equal__ d "\n")
 
 (define Ps_newline ,(p)
-  Ps_at_newline p "0")
+  __Cont_get__ ,(return)
+  Ps_c p ,(c)
+  __if__ (,() __String_equal__ c "\n") (,() return __TRUE__) ,()
+  __unless__ (,() __String_equal__ c "\r") (,() return __FALSE__) ,()
+  Ps_peek p "1" ,(d)
+  __String_equal__ d "\n")
 
 (define Ps_consume_newline ,(p)
   Ps_c p ,(c)
@@ -515,11 +524,23 @@
 ;; ── キーワード ──
 
 ;; 直後が空白、改行、;、|、&、入力の終わりのときだけキーワードになる。キーワードでなければ null
-;; 小文字の並び（9文字まで）を読み、キーワードと同じで、直後が区切りならキーワードとする
-;; （consh_parse の、各キーワードについて peek_str と直後の文字を調べるのと同じ結果になる）
+;; 今の位置のキーワード。同じ位置では何度も調べるので、位置の番号とともに "kwIdx"、"kw" に覚えておく
 (define Ps_keyword ,(p)
   __Cont_get__ ,(return)
-  Ps_get p "cur" ,(cur)
+  Ps_get p "skipped" ,(cur)
+  Cur_idx cur ,(idx)
+  __Dict_lookup_or__ p "kwIdx" (,(key) num "-1") ,(kwIdx)
+  __Number_subtract__ idx kwIdx ,(d)
+  __if__ (,() __Number_is_zero__ d) (,() Ps_get p "kw" ,(kw) return kw) ,()
+  Ps_keyword_at p cur ,(kw)
+  __Dict_put__ p "kwIdx" idx ,()
+  __Dict_put__ p "kw" kw ,()
+  __NULL__ kw)
+
+;; 小文字の並び（9文字まで）を読み、キーワードと同じで、直後が区切りならキーワードとする
+;; （consh_parse の、各キーワードについて peek_str と直後の文字を調べるのと同じ結果になる）
+(define Ps_keyword_at ,(p cur)
+  __Cont_get__ ,(return)
   num "9" ,(nine)
   Cur_lower cur nine "" ,(word after)
   __String_length__ word ,(n)
@@ -1361,9 +1382,26 @@
       return acc) ,()
   Ps_is_bare p ,(bare)
   __unless__ (,() __NULL__ bare) (,() return acc) ,()
-  Lit_add acc c epos ,(acc)
-  Ps_advance p "1" ,()
+  ;; 裸文字の並びをまとめて読み、1回で lit に加える（1文字ずつより速い。結果は同じ）
+  Ps_bare_run p "" ,(run)
+  Lit_add acc run epos ,(acc)
   Ps_word_elems p acc)
+
+;; 今の文字から、裸文字の並びを読む（行継続は読み飛ばす）。今の文字は裸文字である
+(define Ps_bare_run ,(p acc)
+  __Cont_get__ ,(return)
+  Ps_c p ,(c)
+  __if__ (,() __String_equal__ c "") (,() return acc) ,()
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ " \t\n;'(){}|&><\"$\\" c zero ,(stop)
+  __unless__ (,() __is_null__ stop) (,() return acc) ,()
+  __if__ (,() __String_equal__ c "\r")
+    (,()
+      Ps_peek p "1" ,(d)
+      __if__ (,() __String_equal__ d "\n") (,() return acc) ,()) ,()
+  __String_concat__ acc c ,(acc)
+  Ps_advance p "1" ,()
+  Ps_bare_run p acc)
 
 ;; 逆順の語要素 acc に文字列 s を加える。先頭が lit ならつなげる
 (define Lit_add ,(acc s pos)
@@ -1441,9 +1479,22 @@
       Lit_add acc s epos ,(acc)
       Ps_dq_elems p start acc ,(acc)
       return acc) ,()
-  Lit_add acc c epos ,(acc)
-  Ps_advance p "1" ,()
+  ;; ", $, \ のどれでもない文字の並びをまとめて読む
+  Ps_dq_run p "" ,(run)
+  Lit_add acc run epos ,(acc)
   Ps_dq_elems p start acc)
+
+;; 二重引用符の中で、", $, \ と入力の終わりの前までの文字を読む（行継続は読み飛ばす）
+(define Ps_dq_run ,(p acc)
+  __Cont_get__ ,(return)
+  Ps_c p ,(c)
+  __if__ (,() __String_equal__ c "") (,() return acc) ,()
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ "\"$\\" c zero ,(stop)
+  __unless__ (,() __is_null__ stop) (,() return acc) ,()
+  __String_concat__ acc c ,(acc)
+  Ps_advance p "1" ,()
+  Ps_dq_run p acc)
 
 ;; 変数参照かコマンド置換の語要素。作れなければ null を返し、$ は読まない
 (define Ps_dollar ,(p)
@@ -1585,7 +1636,7 @@
       Hex_read digits n ,(count code rest)
       __unless__ (,() __Number_is_zero__ count)
         (,()
-          __Dict_put__ p "cur" rest ,()
+          Ps_set p rest ,()
           __if_then_else__ (,() __NULL__ isX)
             (,()
               __LList_cons__ code bytes ,(bytes)
