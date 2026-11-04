@@ -27,6 +27,11 @@ These primitives manage external processes and stream-based I/O.
 * **Returns**: An `OSProc` object representing the spawned process.
 * **Error**: It invokes the continuation specified by `onError` with an error message string if `commandMSeq` is not a non-empty MSeq of Strings, a Stream is of the wrong direction or closed, `envDict` is not a Dict of Strings, or the process cannot be started (for example, the executable is not found or not executable).
 
+
+### `__OS_spawn_detached__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)`
+* **Description**: Like `__OS_spawn__`, but the process starts in a new session (`setsid`).
+* **Behavior**: The process is not in the process group of the terminal, so a Ctrl-C (SIGINT) or Ctrl-Z typed at the terminal does not reach it, and it has no controlling terminal: reading the terminal does not stop it with SIGTTIN, and closing the terminal does not send it SIGHUP. Waiting, polling and signals work as for `__OS_spawn__`.
+* **Usage**: The interactive mode of ConSh starts the external commands of `&` jobs with it, so that Ctrl-C stops only the foreground command.
 ### **`__OS_poll__ onError OSProc ,(status)`**
 * **Description**: Checks whether the process has terminated (non-blocking).
 * **Returns**: If the process has terminated, returns its exit code Number; otherwise, returns `null`. If a signal terminated the process, the exit code is the negative signal number (for example, `-9`). Once the process has terminated, every later call returns the same exit code.

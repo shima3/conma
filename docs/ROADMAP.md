@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step31`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step32`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -648,4 +648,18 @@ No new primitive.
 | Case | What it checks |
 |---|---|
 | case1 | an external command sends SIGINT to the interpreter twice; a VProc waiting for the Ref wakes up with 1, the value is 2 after the second, and the interpreter keeps running |
+
+## Step 32: Starting processes outside the terminal's process group
+
+| Primitive | Status |
+|---|---|
+| `__OS_spawn_detached__` | implemented |
+
+* Goal: Let the interactive mode of ConSh keep the external commands of `&` jobs running when Ctrl-C stops the foreground command. All processes started with `__OS_spawn__` are in the process group of the interpreter, which is the foreground process group of the terminal, so a Ctrl-C at the terminal sends SIGINT to them all.
+* `__OS_spawn_detached__` takes the same arguments as `__OS_spawn__` and starts the process in a new session (`start_new_session` of Python's `subprocess`). Moving the foreground process group of the terminal with `tcsetpgrp` is not needed: foreground commands stay in the group of the interpreter.
+* Tests (`test/step32`):
+
+| Case | What it checks |
+|---|---|
+| case1 | a child of `__OS_spawn__` is in the process group of the interpreter, and a child of `__OS_spawn_detached__` is in another one |
 

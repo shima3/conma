@@ -808,13 +808,25 @@ def prim_OS_get_envDict(vp, gvenv):
 
 def prim_OS_spawn(vp, gvenv):
     """__OS_spawn__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)
+    Starts a process in the process group of the interpreter (see _spawn)."""
+    _spawn(vp, "__OS_spawn__", False)
+
+def prim_OS_spawn_detached(vp, gvenv):
+    """__OS_spawn_detached__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)
+    Like __OS_spawn__, but the process starts in a new session (setsid): it
+    is not in the process group of the terminal, so a Ctrl-C (SIGINT) or
+    Ctrl-Z typed at the terminal does not reach it, and it has no
+    controlling terminal."""
+    _spawn(vp, "__OS_spawn_detached__", True)
+
+def _spawn(vp, name, detached):
+    """__OS_spawn__ onError commandMSeq inputStream outputStream errorStream envDict ,(OSProc)
 
     inputStream must be an input Stream (the child reads it) and
     outputStream/errorStream output Streams; null means the child inherits
     the interpreter's own stream. The executable is looked up like execvpe:
     a name without "/" is searched in the PATH of envDict, which is exactly
     the child's environment. The Streams are not closed."""
-    name  = "__OS_spawn__"
     olist = vp["olist"]
     if len(olist) < 6: raise VProcError(f"{name}: missing argument(s)")
     on_error, command, stdin, stdout, stderr, env_dict = [olist.pop(0) for _ in range(6)]
@@ -851,7 +863,7 @@ def prim_OS_spawn(vp, gvenv):
     sys.stderr.flush()
     try:
         popen = subprocess.Popen(args, stdin=fds[0], stdout=fds[1], stderr=fds[2], env=env,
-                                 cwd=vp.cwd)
+                                 cwd=vp.cwd, start_new_session=detached)
     except OSError as e:
         _prim_error(vp, on_error, f"{name}: {e.strerror}: {args[0]}")
         return
@@ -2355,6 +2367,7 @@ PRIMITIVES = {
     "__OS_get_String__":       prim_OS_get_String,
     "__OS_get_envDict__":      prim_OS_get_envDict,
     "__OS_spawn__":            prim_OS_spawn,
+    "__OS_spawn_detached__":   prim_OS_spawn_detached,
     "__OS_poll__":             prim_OS_poll,
     "__OS_wait__":             prim_OS_wait,
     "__OS_wait_writable__":    prim_OS_wait_writable,

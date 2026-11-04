@@ -1,0 +1,18 @@
+;; Step32: 端末の前景のプロセスグループの外で外部コマンドを起動する __OS_spawn_detached__
+(include "util.se")
+
+;; 子のプロセスグループが、親（インタプリタ）と同じかを出す
+(define checkGroup ,(spawn)
+  __MSeq_new__ ,(cmd)
+  __MSeq_append__ __print_exit_error__ cmd "sh" ,()
+  __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+  __MSeq_append__ __print_exit_error__ cmd "if [ \"$(ps -o pgid= -p $$)\" = \"$(ps -o pgid= -p $PPID)\" ]; then echo same group; else echo another group; fi" ,()
+  __OS_get_envDict__ ,(env)
+  spawn __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+  __OS_wait__ __print_exit_error__ proc ,(code)
+  __nop__)
+
+;; case1: __OS_spawn__ の子はインタプリタと同じプロセスグループ、__OS_spawn_detached__ の子は別のプロセスグループ
+(define case1 ,()
+  checkGroup __OS_spawn__ ,()
+  checkGroup __OS_spawn_detached__)
