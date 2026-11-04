@@ -1,0 +1,183 @@
+;; ConSh の対話モード（bin/consh を引数なしで起動したとき）。
+;; 標準入力から1行ずつ読み、コマンドが完結するまで（if の fi、閉じていない引用符、行末の | や \ など）続きを読んで、
+;; consh_parser.se で解析して実行する。
+;;   - プロンプトは変数 PS1（局所変数、なければ環境変数、なければ "$ "）の値で、続きを読むときは PS2（"> "）。
+;;     標準エラー出力に、エスケープなどの処理をせずにそのまま出す。
+;;   - エラー（構文エラー、未定義の変数など、仕様でエラーとするもの）では終わらず、メッセージを出して $? を 1 にし、
+;;     次のプロンプトに戻る（consh_eval.se の Sh_error）。変数、関数、カレントディレクトリ、ジョブはそのまま残る。
+;;   - 入力が終われば（端末なら Ctrl-D）、終わっていない $( ) を終わらせてから、最後の $? で終わる。& のジョブは待たない。
+;;     コマンドの途中で入力が終われば、構文エラーを出して、終了ステータス 1 で終わる。
+;;   - エラーメッセージのスクリプト名と $0 は "stdin" で、行番号は対話モードを始めてからの行の番号
+;;   - Ctrl-C（SIGINT）ではシェルは終わらない（ConMa の __OS_trap_interrupt__、Step 31）。
+;;     コマンドの実行中なら、そのコマンドの VProc を止めて $? を 130 にし、次のプロンプトに戻る（前景の外部コマンドには、
+;;     端末が SIGINT を送る）。プロンプトで押せば、読みかけのコマンドを捨てて、新しいプロンプトを出す。
+;;
+;; コマンドは、コマンドごとに別の VProc で実行する（Ctrl-C で止められるように）。文脈の Dict は同じものを使うので、
+;; 変数、関数、ジョブは次のコマンドに残る。カレントディレクトリは VProc ごとなので、コマンドが終わったら、
+;; その VProc のカレントディレクトリにシェルの VProc も移る。
+;; 対話モードの状態は Dict で、"interrupt"（SIGINT で変わる Ref）、"running"（実行中のコマンドの VProc の Ref）、
+;; "killed"（Ctrl-C で止めたか）、"discard"（プロンプトで Ctrl-C を押したか）の Ref を持つ
+
+(define Repl_run ,(args)
+  Ctx_top "stdin" args ,(sh)
+  Sh_get sh "global" ,(global)
+  __Dict_put__ global "interactive" __TRUE__ ,()
+  __Dict_new__ ,(r)
+  num "0" ,(zero)
+  __Ref_new__ zero ,(interrupt)
+  __Dict_put__ r "interrupt" interrupt ,()
+  __Ref_new__ __NULL__ ,(running)
+  __Dict_put__ r "running" running ,()
+  __Ref_new__ __FALSE__ ,(killed)
+  __Dict_put__ r "killed" killed ,()
+  __Ref_new__ __FALSE__ ,(discard)
+  __Dict_put__ r "discard" discard ,()
+  __OS_trap_interrupt__ interrupt ,()
+  __VProc_start__ (,() Repl_watch sh r) ,(watcher)
+  num "1" ,(one)
+  Repl_loop sh r one)
+
+;; lineNo は、次に読む行の番号
+(define Repl_loop ,(sh r lineNo)
+  Repl_command sh r lineNo "" lineNo ,(lines lineNo)
+  Repl_eval sh r lines ,()
+  Repl_loop sh r lineNo)
+
+;; Ctrl-C を待つ VProc。コマンドの実行中ならその VProc を止め、プロンプトで待っているなら読みかけのコマンドを捨てる
+(define Repl_watch ,(sh r)
+  Sh_get r "interrupt" ,(interrupt)
+  __Ref_get__ interrupt ,(token)
+  __Ref_wait_change__ interrupt token ,()
+  Sh_get r "running" ,(running)
+  __Ref_get__ running ,(vproc)
+  __if_then_else__ (,() __is_null__ vproc)
+    (,()
+      Sh_get r "discard" ,(discard)
+      __Ref_set__ discard __TRUE__ ,()
+      Sh_set_status sh "130" ,()
+      __OS_get_stderr__ ,(err)
+      __OS_write__ __print_exit_error__ err "\n" ,()
+      Repl_prompt sh "PS1" "$ ")
+    (,()
+      Sh_get r "killed" ,(killed)
+      __Ref_set__ killed __TRUE__ ,()
+      __VProc_kill__ vproc) ,()
+  Repl_watch sh r)
+
+;; コマンドが完結するまで行を読み、構文木のコマンド行の LList と、次の行の番号を返す。
+;; text は読んだ行（改行付き）、start はその最初の行の番号。構文エラーなら、メッセージを出して $? を 1 にし、空の LList を返す
+(define Repl_command ,(sh r lineNo text start)
+  __Cont_get__ ,(return)
+  __String_equal__ text "" ,(first)
+  __if_then_else__ (,() __NULL__ first) (,() __NULL__ "PS1") (,() __NULL__ "PS2") ,(name)
+  __if_then_else__ (,() __NULL__ first) (,() __NULL__ "$ ") (,() __NULL__ "> ") ,(fallback)
+  Repl_prompt sh name fallback ,()
+  Repl_read_line sh ,(line)
+  ;; プロンプトで Ctrl-C を押したなら、読みかけのコマンドを捨てて、この行から始める
+  Sh_get r "discard" ,(discard)
+  __Ref_get__ discard ,(discarded)
+  __if_then_else__ (,() __NULL__ discarded)
+    (,()
+      __Ref_set__ discard __FALSE__ ,()
+      __NULL__ "" lineNo)
+    (,() __NULL__ text start) ,(text start)
+  __if__ (,() __is_null__ line) (,() Repl_end sh text start) ,()
+  __String_concat__ text line ,(text)
+  __String_concat__ text "\n" ,(text)
+  num "1" ,(one)
+  __Number_add__ lineNo one ,(lineNo)
+  ;; 行末の \ は行継続なので、続きを読む
+  Str_ends text "\\\n" ,(continued)
+  __if__ (,() __NULL__ continued) (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
+  Parse_text text "stdin" start ,(lines full msg)
+  __if__ (,() __is_null__ full) (,() return lines lineNo) ,()
+  Parse_incomplete msg ,(incomplete)
+  __if__ (,() __NULL__ incomplete) (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
+  __String_concat__ "consh: " full ,(s)
+  __String_concat__ s "\n" ,(s)
+  __OS_print_error__ s ,()
+  Sh_set_status sh "1" ,()
+  __NULL__ __NULL__ lineNo)
+
+;; 入力が終わったとき。読みかけのコマンドがあれば構文エラーで終わり、なければ $? で終わる
+(define Repl_end ,(sh text start)
+  __Cont_get__ ,(return)
+  __unless__ (,() __String_equal__ text "")
+    (,()
+      Parse_text text "stdin" start ,(lines full msg)
+      __unless__ (,() __is_null__ full)
+        (,()
+          __String_concat__ "consh: " full ,(s)
+          __String_concat__ s "\n" ,(s)
+          __print_exit_error__ s) ,()) ,()
+  Subst_finish sh ,()
+  Sh_status sh ,(status)
+  num status ,(code)
+  __OS_exit__ __print_exit_error__ code)
+
+;; プロンプトの変数 name の値（なければ fallback）を、標準エラー出力に出す
+(define Repl_prompt ,(sh name fallback)
+  Sh_defined sh __NULL__ name ,(defined)
+  __if_then_else__ (,() __NULL__ defined)
+    (,()
+      Sh_lookup sh __NULL__ name ,(value)
+      Value_toString sh __NULL__ value)
+    (,() __NULL__ fallback) ,(prompt)
+  __OS_get_stderr__ ,(err)
+  __OS_write__ __print_exit_error__ err prompt)
+
+;; シェルの標準入力から1行（改行を除く）を読む。入力が終われば null。
+;; 標準入力の読み出し位置（"in" の "list"）を進めるが、"touched" は変えないので、外部コマンドには Stream をそのまま渡す
+(define Repl_read_line ,(sh)
+  __Cont_get__ ,(return)
+  Sh_get sh "in" ,(in)
+  Sh_get in "list" ,(listRef)
+  __Ref_get__ listRef ,(list)
+  __LazyList_uncons__ (,() return __NULL__) list ,(line rest)
+  __Ref_set__ listRef rest ,()
+  __NULL__ line)
+
+;; コマンド行を別の VProc で実行し、終わるのを待つ。Ctrl-C で止めたなら $? を 130 にする。
+;; 終わったら、その VProc のカレントディレクトリに移る（止めたときは移らない）
+(define Repl_eval ,(sh r lines)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ lines) return ,()
+  Sh_get r "killed" ,(killed)
+  __Ref_set__ killed __FALSE__ ,()
+  __Ref_new__ __NULL__ ,(cwdRef)
+  __VProc_start__ (,() Repl_body sh lines cwdRef) ,(vproc)
+  Sh_get r "running" ,(running)
+  __Ref_set__ running vproc ,()
+  __VProc_wait__ __print_exit_error__ vproc ,()
+  __Ref_set__ running __NULL__ ,()
+  __Ref_get__ killed ,(wasKilled)
+  __if__ (,() __NULL__ wasKilled)
+    (,()
+      Sh_set_status sh "130" ,()
+      __OS_get_stderr__ ,(err)
+      __OS_write__ __print_exit_error__ err "\n" ,()
+      return) ,()
+  __Ref_get__ cwdRef ,(cwd)
+  __unless__ (,() __is_null__ cwd) (,() __OS_chdir__ __print_exit_error__ cwd) ,()
+  __nop__)
+
+;; コマンドの VProc。エラー（Sh_error）では、残りを捨てて Repl_guard から戻る
+(define Repl_body ,(sh lines cwdRef)
+  Repl_guard sh lines ,()
+  __OS_getcwd__ ,(cwd)
+  __Ref_set__ cwdRef cwd)
+
+(define Repl_guard ,(sh lines)
+  __Cont_get__ ,(done)
+  __Dict_put__ sh "recover" done ,()
+  Eval_lines sh lines ,()
+  __Dict_put__ sh "recover" __NULL__)
+
+(define Str_ends ,(s suffix)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __String_length__ suffix ,(n)
+  __Number_subtract__ len n ,(start)
+  __if__ (,() __Number_is_negative__ start) (,() return __FALSE__) ,()
+  __String_substring__ __print_exit_error__ s start len ,(tail)
+  __String_equal__ tail suffix)

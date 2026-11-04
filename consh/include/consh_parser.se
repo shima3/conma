@@ -31,6 +31,46 @@
   __String_concat__ msg "\n" ,(msg)
   __print_exit_error__ msg)
 
+;; text（改行で終わる行の並び）を解析する。行番号は startLine から数える（対話モードで、入力全体の行番号にする）。
+;; 構文木のコマンド行の LList と、エラーなら「file:行:桁: メッセージ」と、メッセージだけを返す（エラーでなければ null）。
+;; エラーでは終わらない
+(define Parse_text ,(text file startLine)
+  __Cont_get__ ,(return)
+  Text_lines text ,(lines)
+  LazyList_fromList lines ,(lines)
+  Cells_from_lines_at lines startLine ,(cells)
+  __Dict_new__ ,(p)
+  __Dict_put__ p "cur" cells ,()
+  num "0" ,(zero)
+  __Dict_put__ p "sep" zero ,()
+  __Dict_put__ p "file" file ,()
+  __Dict_put__ p "onError" (,(full msg) return __NULL__ full msg) ,()
+  Ps_program p ,(lines)
+  __NULL__ lines __NULL__ __NULL__)
+
+;; 構文エラー msg が、入力が足りないため（続きを読めば正しくなりうる）か
+(define Parse_incomplete ,(msg)
+  __Cont_get__ ,(return)
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ msg "end of input" zero ,(pos)
+  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  Str_starts msg "unterminated")
+
+;; text を改行の後ろで区切った String の LList（最後の行に改行がなくても、その行を含める）
+(define Text_lines ,(text)
+  __Cont_get__ ,(return)
+  __String_length__ text ,(len)
+  __if__ (,() __Number_is_zero__ len) (,() return __NULL__) ,()
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ text "\n" zero ,(pos)
+  __if__ (,() __is_null__ pos) (,() L1 text ,(l) return l) ,()
+  num "1" ,(one)
+  __Number_add__ pos one ,(next)
+  __String_substring__ __print_exit_error__ text zero next ,(line)
+  __String_substring__ __print_exit_error__ text next len ,(rest)
+  Text_lines rest ,(more)
+  __LList_cons__ line more)
+
 ;; ── 文字のセル ──
 
 (define Cell_make ,(ch cont pos idx)
@@ -46,9 +86,13 @@
 ;; 行の LazyList（改行を含む）から、セルの LList を作る
 (define Cells_from_lines ,(lines)
   num "1" ,(one)
+  Cells_from_lines_at lines one)
+
+(define Cells_from_lines_at ,(lines startLine)
+  num "1" ,(one)
   num "0" ,(zero)
-  Pos_make one one ,(endPos)
-  Cells_lines lines one zero endPos __NULL__)
+  Pos_make startLine one ,(endPos)
+  Cells_lines lines startLine zero endPos __NULL__)
 
 ;; acc は逆順のセル。endPos は、ここで入力が終わったときの番兵の位置
 (define Cells_lines ,(lines lineNo idx endPos acc)
@@ -259,6 +303,8 @@
   __String_concat__ s c ,(s)
   __String_concat__ s ": " ,(s)
   __String_concat__ s msg ,(s)
+  __Dict_lookup_or__ p "onError" (,(key) __NULL__ __NULL__) ,(onError)
+  __unless__ (,() __is_null__ onError) (,() onError s msg) ,()
   Parse_fail s)
 
 ;; ── 文字の種類 ──

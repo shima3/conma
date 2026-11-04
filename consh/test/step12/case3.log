@@ -1,0 +1,6 @@
+$ start
+$ $ exit in a pipeline 7
+$ consh: stdin:4:1: exit: a number from 0 to 255 is needed
+$ after bad exit 1
+$ consh: stdin:6:1: exit: too many arguments
+$ $ exit: 1

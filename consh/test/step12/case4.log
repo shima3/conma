@@ -1,0 +1,3 @@
+$ start
+$ > > consh: stdin:4:1: expected fi, but found end of input
+exit: 1

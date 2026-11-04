@@ -1,0 +1,4 @@
+sh -c 'sleep 1; kill -INT $PPID' &
+for i in $(yes); do x=$i; done
+echo "after the interrupt $? x=$x"
+echo still here

@@ -1,0 +1,11 @@
+echo a; )
+echo "after syntax error $?"
+echo $undef
+echo "after undefined variable $?"
+function g () { echo $undef2; }
+g | cat
+echo "pipe $?"
+y=$(echo $undef3)
+echo "y=[$y] $?"
+z=kept
+echo "still $z"

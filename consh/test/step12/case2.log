@@ -1,0 +1,10 @@
+$ consh: stdin:1:9: expected a command, but found ')'
+$ after syntax error 1
+$ consh: stdin:3:6: undefined variable: undef
+$ after undefined variable 1
+$ $ consh: stdin:5:22: undefined variable: undef2
+$ pipe 0
+$ consh: stdin:8:10: undefined variable: undef3
+$ y=[] 0
+$ $ still kept
+$ exit: 0

@@ -1,0 +1,7 @@
+echo start
+echo 1 | exit 7
+echo "exit in a pipeline $?"
+exit abc
+echo "after bad exit $?"
+exit 1 2
+false

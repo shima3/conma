@@ -1,4 +1,4 @@
-;; ConSh の実行（段階 3〜12）。
+;; ConSh の実行（段階 3〜13）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
@@ -71,6 +71,8 @@
   __Dict_put__ sh "cancelIn" __NULL__ ,()
   __Dict_put__ sh "bgCaptures" __NULL__ ,()
   __Dict_put__ sh "owned" __NULL__ ,()
+  __Dict_put__ sh "exitTo" __NULL__ ,()
+  __Dict_put__ sh "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
   Target_new_id global ,(outId)
@@ -125,10 +127,22 @@
   __String_concat__ s msg ,(s)
   __String_concat__ s "\n")
 
-;; 仕様でエラーとするもの。メッセージを出して、終了ステータス 1 で終わる
+;; 仕様でエラーとするもの。メッセージを出して、終了ステータス 1 で終わる。
+;; 対話モード（global の "interactive"）では、終わらずに $? を 1 にし、子の VProc ならその VProc を終え（"exitTo"）、
+;; シェルの VProc なら、そのコマンドの残りを捨ててプロンプトに戻る（"recover"、consh_repl.se）
 (define Sh_error ,(sh pos msg)
+  __Cont_get__ ,(return)
   Sh_message sh pos msg ,(s)
-  __print_exit_error__ s)
+  Sh_get sh "global" ,(global)
+  __Dict_lookup_or__ global "interactive" (,(key) __NULL__ __FALSE__) ,(interactive)
+  __unless__ (,() __NULL__ interactive) (,() __print_exit_error__ s) ,()
+  __OS_print_error__ s ,()
+  Sh_set_status sh "1" ,()
+  __Dict_lookup_or__ sh "exitTo" (,(key) __NULL__ __NULL__) ,(exitTo)
+  __unless__ (,() __is_null__ exitTo) exitTo ,()
+  __Dict_lookup_or__ sh "recover" (,(key) __NULL__ __NULL__) ,(recover)
+  __unless__ (,() __is_null__ recover) recover ,()
+  __OS_exit_error__)
 
 ;; 続けられるエラー（ファイルを開けない、コマンドを起動できない）。メッセージを出して続ける
 (define Sh_warn ,(sh pos msg)
@@ -940,6 +954,8 @@
   __Dict_put__ child "cancelIn" __NULL__ ,()
   __Dict_put__ child "bgCaptures" __NULL__ ,()
   __Dict_put__ child "owned" __NULL__ ,()
+  __Dict_put__ child "exitTo" __NULL__ ,()
+  __Dict_put__ child "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
@@ -972,10 +988,12 @@
     Sh_guarded child body ,()
     Sh_finish child))
 
+;; "exitTo" は、exit と対話モードのエラーで、この VProc を終える継続（Builtin_exit、Sh_error）
 (define Sh_guarded ,(child body)
   __Cont_get__ ,(done)
   __Ref_new__ done ,(abortRef)
   __Dict_put__ child "abort" abortRef ,()
+  __Dict_put__ child "exitTo" done ,()
   body child ,()
   __nop__)
 
@@ -1978,8 +1996,39 @@
   __if_then_else__ (,() __String_equal__ name "defined") (,() __NULL__ Builtin_defined) (,()
   __if_then_else__ (,() __String_equal__ name "stdin") (,() __NULL__ Builtin_stdin) (,()
   __if_then_else__ (,() __String_equal__ name "wait") (,() __NULL__ Builtin_wait) (,()
-  __if_then_else__ (,() __String_equal__ name "kill") (,() __NULL__ Builtin_kill)
-    (,() __NULL__ __NULL__)))))))
+  __if_then_else__ (,() __String_equal__ name "kill") (,() __NULL__ Builtin_kill) (,()
+  __if_then_else__ (,() __String_equal__ name "exit") (,() __NULL__ Builtin_exit)
+    (,() __NULL__ __NULL__))))))))
+
+;; exit [n]：シェルを終了ステータス n（省略すれば $?）で終える。0 から 255 の整数でなければエラー。
+;; パイプラインの要素、$( )、& の中では、その VProc だけを終える（$? が n になる）。
+;; シェルの VProc では、終わっていない $( ) を終わらせてから終わる（& のジョブは待たない。Bash と同じ）
+(define Builtin_exit ,(sh pos args in out err)
+  __Cont_get__ ,(return)
+  List_length args ,(n)
+  num "1" ,(one)
+  __Number_subtract__ n one ,(over)
+  __if__ (,() __Number_is_positive__ over) (,() Sh_error sh pos "exit: too many arguments") ,()
+  __if_then_else__ (,() __is_null__ args)
+    (,() Sh_status sh)
+    (,()
+      List_first args ,(arg)
+      Arg_string sh pos "exit" arg) ,(status)
+  String_is_digits status ,(digits)
+  __String_equal__ status "" ,(empty)
+  __not__ empty ,(nonEmpty)
+  __and__ digits nonEmpty ,(ok)
+  __unless__ (,() __NULL__ ok) (,() Sh_error sh pos "exit: a number from 0 to 255 is needed") ,()
+  num status ,(code)
+  num "255" ,(max)
+  __Number_subtract__ max code ,(room)
+  __if__ (,() __Number_is_negative__ room) (,() Sh_error sh pos "exit: a number from 0 to 255 is needed") ,()
+  __Number_toString__ code ,(status)
+  Sh_set_status sh status ,()
+  Sh_get sh "exitTo" ,(exitTo)
+  __unless__ (,() __is_null__ exitTo) exitTo ,()
+  Subst_finish sh ,()
+  __OS_exit__ __print_exit_error__ code)
 
 ;; echo 値 ...: 標準出力に1つの要素を出す。
 ;; 引数が1つなら、その値（LazyList でも）をそのまま出す。引数がなければ空文字列を出す。

@@ -4,16 +4,19 @@
 ;;   モード dump : 構文木を読み、S 式に書き戻して標準出力に出す（読み込みの確認用）
 ;;   モード run-src、dump-src : 構文木のファイルの代わりにスクリプトのファイルを受け取り、consh_parser.se で解析する
 ;;   モード dump-sexp : dump と同じだが、構文木の S 式を __Sexp_read__ でなく ConMa の Sexp_read で読む
+;;   モード interactive : 対話モード（consh_repl.se）。構文木のファイルとスクリプト名の引数は使わない
 (include "util.se")
 (include "consh_ast.se")
 (include "consh_parser.se")
 (include "consh_glob.se")
 (include "consh_eval.se")
+(include "consh_repl.se")
 
 (define main ,(args)
   __Seq_get__ (,() main_usage) args ,(mode args)
   __Seq_get__ (,() main_usage) args ,(astFile args)
   __Seq_get__ (,() main_usage) args ,(script args)
+  __if__ (,() __String_equal__ mode "interactive") (,() List_fromSeq args ,(args) Repl_run args) ,()
   __String_equal__ mode "run-src" ,(runSrc)
   __String_equal__ mode "dump-src" ,(dumpSrc)
   __or__ runSrc dumpSrc ,(fromSrc)
@@ -34,7 +37,7 @@
       Eval_run script args lines))
 
 (define main_usage ,()
-  main_error "usage: consh_main.se run|dump|dump-sexp|run-src|dump-src <file> <script> [<arg> ...]")
+  main_error "usage: consh_main.se run|dump|dump-sexp|run-src|dump-src|interactive <file> <script> [<arg> ...]")
 
 (define main_error ,(msg)
   __String_concat__ "consh: " msg ,(msg)
