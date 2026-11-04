@@ -1,17 +1,23 @@
 #!/bin/bash
 # ConSh を起動する。スクリプトを consh_parse --pos で構文木にし、ConMa 版に渡す。
-#   consh [--dump] <script> [<arg> ...]
-# --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す
+#   consh [--conma-parser] [--dump] <script> [<arg> ...]
+# --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
+# --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
 set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
 mode=run
+src=
+if [ "$1" = --conma-parser ]; then
+  src=-src
+  shift
+fi
 if [ "$1" = --dump ]; then
   mode=dump
   shift
 fi
 if [ $# -lt 1 ]; then
-  echo "usage: consh [--dump] <script> [<arg> ...]" >&2
+  echo "usage: consh [--conma-parser] [--dump] <script> [<arg> ...]" >&2
   exit 1
 fi
 # ConMa のモジュールは、ソースが変わったときだけ作り直す
@@ -24,6 +30,9 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.
   if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
   then rm -f "$module"; exit 1
   fi
+fi
+if [ -n "$src" ]; then
+  exec python3 "$root/test/vproc_run.py" --main "$module" $mode$src "$1" "$@"
 fi
 ast=$(mktemp /tmp/consh.XXXXXX)
 trap 'rm -f "$ast"' EXIT

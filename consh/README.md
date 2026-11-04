@@ -9,12 +9,13 @@ consh/
 ├── PLAN-ja.md           仕様と設計
 ├── AST.md               consh_parse が出力する構文木の形式（英語）
 ├── bin/
-│   ├── consh            ConSh を起動する（consh_parse --pos で構文木を作り、ConMa 版に渡す）
+│   ├── consh            ConSh を起動する（consh_parse --pos か consh_parser.se で構文木を作り、ConMa 版に渡す）
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
 ├── include/
 │   ├── consh_main.se    main：ConSh の入口
 │   ├── consh_ast.se     consh_parse の構文木の読み込みと書き戻し
-│   ├── consh_parser.se  構文解析（当面は consh_parse を使うので空）
+│   ├── consh_parser.se  構文解析（consh --conma-parser で使う。consh_parse と同じ構文木を作る）
+│   ├── consh_glob.se    glob
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
 │   └── consh_eval.se    文の実行
@@ -23,6 +24,7 @@ consh/
     ├── common.sh        各 test.sh が共通に使うパスと関数
     ├── parse1/          文法のテスト：caseN.sh を consh_parse に渡し、caseN.log と比べる
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
+    ├── parse3/          ConMa 版の構文解析のテスト：parse1 と parse2 の各スクリプトで、consh_parse --pos と同じ構文木とエラーになるか
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
     └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob
 ```
@@ -34,14 +36,16 @@ consh/
 ## 実行
 
 ```
-bin/consh [--dump] スクリプト [引数 ...]
+bin/consh [--conma-parser] [--dump] スクリプト [引数 ...]
 ```
 
-ConMa 版は構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを読む（形式は [AST.md](AST.md)）。
+ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを読む（形式は [AST.md](AST.md)）。
+`--conma-parser` を付けると、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読み、Python を使わずに動く。
+構文木は `consh_parse --pos` と同じで、構文エラーのメッセージは `consh_parse:` の代わりに `consh:` で始まる。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。
 
-### できること（段階 3〜11）
+### できること（段階 3〜12）
 
 * 変数定義、`export`、前置の変数定義、語の展開
     * `$x`、`${x}`、`"$x"` の区別、入れ子の LazyList の葉、OFS による文字列化、既定値 `${x-値}`、値 `(語 ...)`、ANSI-C クォート `$'...'`

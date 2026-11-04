@@ -2,6 +2,7 @@
 ;;   main の引数: モード 構文木のファイル スクリプト名 スクリプトの引数...
 ;;   モード run  : スクリプトを実行する
 ;;   モード dump : 構文木を読み、S 式に書き戻して標準出力に出す（読み込みの確認用）
+;;   モード run-src、dump-src : 構文木のファイルの代わりにスクリプトのファイルを受け取り、consh_parser.se で解析する
 (include "util.se")
 (include "consh_ast.se")
 (include "consh_parser.se")
@@ -12,15 +13,22 @@
   __Seq_get__ (,() main_usage) args ,(mode args)
   __Seq_get__ (,() main_usage) args ,(astFile args)
   __Seq_get__ (,() main_usage) args ,(script args)
-  Ast_readFile main_error astFile ,(lines)
-  __if_then_else__ (,() __String_equal__ mode "dump")
+  __String_equal__ mode "run-src" ,(runSrc)
+  __String_equal__ mode "dump-src" ,(dumpSrc)
+  __or__ runSrc dumpSrc ,(fromSrc)
+  __if_then_else__ (,() __NULL__ fromSrc)
+    (,() Parse_file astFile script)
+    (,() Ast_readFile main_error astFile) ,(lines)
+  __String_equal__ mode "dump" ,(dump)
+  __or__ dump dumpSrc ,(dump)
+  __if_then_else__ (,() __NULL__ dump)
     (,() main_dump lines)
     (,()
       List_fromSeq args ,(args)
       Eval_run script args lines))
 
 (define main_usage ,()
-  main_error "usage: consh_main.se run|dump <ast_file> <script> [<arg> ...]")
+  main_error "usage: consh_main.se run|dump|run-src|dump-src <file> <script> [<arg> ...]")
 
 (define main_error ,(msg)
   __String_concat__ "consh: " msg ,(msg)
