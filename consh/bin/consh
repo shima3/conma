@@ -2,6 +2,8 @@
 # ConSh を起動する。スクリプトを consh_parse --pos で構文木にし、ConMa 版に渡す。
 #   consh [--conma-parser] [--dump] <script> [<arg> ...]
 #   consh                 対話モード（標準入力から1行ずつ読んで実行する。consh_repl.se）
+# 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
+# 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
 # --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 # --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
 set -o pipefail
@@ -34,6 +36,10 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.
   if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
   then rm -f "$module"; exit 1
   fi
+fi
+if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
+  # rlwrap が起動する consh は、もう一度 rlwrap を通さない
+  CONSH_NO_RLWRAP=1 exec rlwrap -C consh "$0"
 fi
 if [ -n "$interactive" ]; then
   exec python3 "$root/test/vproc_run.py" --main "$module" interactive - stdin

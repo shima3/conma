@@ -42,6 +42,7 @@ bin/consh
 ```
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止める（`$?` は 130）。入力が終われば（Ctrl-D）終わる。
+標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）が使える。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
 ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)）。
 `--conma-parser` を付けると、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読み、Python を使わずに動く。
