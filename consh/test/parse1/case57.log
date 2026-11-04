@@ -1,0 +1,2 @@
+(line (cmd (words (word (lit "f")) (word (glob (word (lit "*.txt")))) (word (lit "x") (glob (word (var "d") (lit "/*.se"))) (lit "y")) (word (dq (glob (word (sq "a b") (lit "*"))))) (word (glob (word (bvar "x" (default (word (lit "*"))))))))))
+exit: 0

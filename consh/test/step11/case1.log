@@ -1,0 +1,9 @@
+g/Z.txt g/a.txt g/b.txt g/x1.txt g/x[1].txt
+g/Z.txt g/a.txt g/b.txt g/ab g/d1
+g/a.txt g/b.txt g/a.txt g/ab g/b.txt g/c.se g/Z.txt g/x1.txt
+g/.h.txt g/*.h*
+g/*.none g/*.txt g/*.txt g/x[1].txt
+g/d-2/x g/d1/x
+g/d-2/ g/d1/
+PWD/g/c.se
+exit: 0

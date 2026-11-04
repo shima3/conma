@@ -139,6 +139,7 @@ Examples:
 | `bvar` | `(bvar "name" [default])` | `$` |
 | `default` | `(default [Value])` | `-` |
 | `subst` | `(subst script)` | `$` |
+| `glob` | `(glob word)` | `$` |
 
 A WordElement (語要素) is one of the following:
 
@@ -152,8 +153,9 @@ A WordElement (語要素) is one of the following:
   `default` holds the default value of `${x-値}`; its Value is left out for `${x-}`. The `default` is left out when there is no `-`.
   The Value is read as a word also inside double quotes, so `"${x-"a b"}"` has a `dq` inside a `dq`.
 * `subst`: a command substitution `$( ... )`.
+* `glob`: `${-語}`, the LazyList of the names that the glob pattern `語` matches. The word is read as in the default value of `${x-値}`, also inside double quotes, and must not be empty.
 
-A DqElement (二重引用要素) is `lit`, `var`, `bvar` or `subst`:
+A DqElement (二重引用要素) is `lit`, `var`, `bvar`, `subst` or `glob`:
 
 * `lit` holds the text between the variable references and command substitutions, after `\` is processed: `\"`, `\$` and `\\` become `"`, `$` and `\`; a `\` before any other character is kept with that character (`\a` stays `\a`).
 * Adjacent texts are in one `lit`.

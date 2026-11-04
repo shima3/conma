@@ -9,7 +9,8 @@
 ;; 値は String か LazyList で、LazyList の要素も String か LazyList（入れ子）。
 ;; 葉は、入れ子の LazyList を再帰的にたどったときの String の要素である。
 ;; コマンドの語は、外部コマンドの語（Expand_fields）か、外部コマンド以外の語（Expand_args）として展開する。
-;; glob はまだない。
+;; 外部コマンドの語には glob を適用する（consh_glob.se）。関数と組み込みコマンドの引数も、LazyList の ${x} を含まなければ
+;; 外部コマンドの語と同じく展開するので、glob を適用する。引用符の中と、${-語} の葉（"list" の部分に "inactive" の印）には適用しない。
 ;;
 ;; 外部コマンドの語を展開するときは、引数のバイト数の上限（limit、consh_eval.se の Arg_limit_new）を渡す。
 ;; 葉を1つ作るたびに、その文字数 + 1 を limit から引き、足りなくなれば展開の途中でエラーにする。
@@ -34,35 +35,110 @@
   Parts_fields_in parts __NULL__)
 
 (define Parts_fields_in ,(parts limit)
-  __LList_cons__ "" __NULL__ ,(alts)
-  Expand_fields_from parts alts __FALSE__ __FALSE__ limit)
+  Parts_glob_fields parts limit __FALSE__)
 
-(define Expand_fields_from ,(parts alts quoted hasList limit)
+;; 語の部分を外部コマンドの語として展開し、glob を適用した String の LList。
+;; 一致しなければ、nullGlob が偽なら語をそのまま残し、真なら消す（${-語}）
+(define Parts_glob_fields ,(parts limit nullGlob)
+  Alt_make "" "" __FALSE__ ,(alt)
+  __LList_cons__ alt __NULL__ ,(alts)
+  Expand_fields_from parts alts __FALSE__ __FALSE__ limit nullGlob)
+
+;; alts は候補の LList。候補は、語の String、glob のパターン（引用符の中の文字には \ を付ける）、
+;; パターンが記号を含むかの組
+(define Expand_fields_from ,(parts alts quoted hasList limit nullGlob)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ parts)
     (,()
       __or__ quoted hasList ,(keep)
-      __if__ (,() __NULL__ keep) (,() return alts) ,()
-      Expand_drop_empty alts ,(alts)
-      return alts) ,()
+      Fields_finish alts keep nullGlob ,(fields)
+      return fields) ,()
   __LList_uncons__ __print_exit_error__ parts ,(part rest)
   Part_split part ,(kind value)
   __String_equal__ kind "quoted" ,(isQuoted)
   Part_is_list kind ,(isList)
   __or__ quoted isQuoted ,(quoted)
   __or__ hasList isList ,(hasList)
+  __not__ isQuoted ,(unquoted)
+  Part_active part ,(activePart)
+  __and__ unquoted activePart ,(active)
   Part_options_in part limit ,(opts)
-  Product alts opts ,(alts)
-  Expand_fields_from rest alts quoted hasList limit)
+  Fields_opts opts active ,(opts)
+  Fields_product alts opts ,(alts)
+  Expand_fields_from rest alts quoted hasList limit nullGlob)
 
-(define Expand_drop_empty ,(alts)
+(define Alt_make ,(text pattern magic)
+  __LList_cons__ magic __NULL__ ,(tail)
+  __LList_cons__ pattern tail ,(tail)
+  __LList_cons__ text tail)
+
+(define Alt_split ,(alt)
+  __LList_uncons__ __print_exit_error__ alt ,(text rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pattern rest)
+  List_first rest ,(magic)
+  __NULL__ text pattern magic)
+
+;; 選択肢の String を、(String パターンの断片 記号を含むか) の組にする
+(define Fields_opts ,(opts active)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ opts) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ opts ,(opt rest)
+  __if_then_else__ (,() __NULL__ active)
+    (,()
+      Glob_escape_active opt ,(piece)
+      Glob_has_meta opt ,(magic)
+      __NULL__ piece magic)
+    (,()
+      Glob_escape opt ,(piece)
+      __NULL__ piece __FALSE__) ,(piece magic)
+  Alt_make opt piece magic ,(o)
+  Fields_opts rest active ,(more)
+  __LList_cons__ o more)
+
+;; alts の各候補の後ろに opts の各選択肢をつないだ LList
+(define Fields_product ,(alts opts)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ alts) (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ alts ,(head tail)
-  Expand_drop_empty tail ,(rest)
-  __if_then_else__ (,() __String_equal__ head "")
-    (,() __NULL__ rest)
-    (,() __LList_cons__ head rest))
+  __LList_uncons__ __print_exit_error__ alts ,(alt rest)
+  Fields_prefix alt opts ,(front)
+  Fields_product rest opts ,(back)
+  List_append front back)
+
+(define Fields_prefix ,(alt opts)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ opts) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ opts ,(opt rest)
+  Alt_split alt ,(text pattern magic)
+  Alt_split opt ,(t p m)
+  __String_concat__ text t ,(text)
+  __String_concat__ pattern p ,(pattern)
+  __or__ magic m ,(magic)
+  Alt_make text pattern magic ,(a)
+  Fields_prefix alt rest ,(tail)
+  __LList_cons__ a tail)
+
+;; 候補を語にする。keep が偽なら空の語を消す。記号を含む候補には glob を適用する
+(define Fields_finish ,(alts keep nullGlob)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ alts) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ alts ,(alt rest)
+  Fields_finish rest keep nullGlob ,(more)
+  Alt_split alt ,(text pattern magic)
+  __String_equal__ text "" ,(empty)
+  __not__ keep ,(drop)
+  __and__ empty drop ,(skip)
+  __if__ (,() __NULL__ skip) (,() return more) ,()
+  __if__ (,() __NULL__ magic)
+    (,()
+      Glob_expand pattern ,(matches)
+      __is_null__ matches ,(none)
+      __not__ nullGlob ,(keepWord)
+      __and__ none keepWord ,(useWord)
+      __unless__ (,() __NULL__ useWord)
+        (,()
+          List_append matches more ,(fields)
+          return fields) ,()) ,()
+  __LList_cons__ text more)
 
 ;; ── 外部コマンド以外の語 ──
 
@@ -80,12 +156,15 @@
       Parts_list_value parts nList ,(value)
       __LList_cons__ value __NULL__ ,(values)
       return values) ,()
-  Parts_count parts "quoted" ,(nQuoted)
+  ;; ${x} の String が空なら、空文字列の引数を残す。そうでなければ外部コマンドの語と同じ（glob も適用する）
   Parts_count parts "braced" ,(nBraced)
-  __Number_add__ nQuoted nBraced ,(n)
-  __if__ (,() __Number_is_zero__ n) (,() Parts_fields parts ,(fields) return fields) ,()
   Parts_concat parts ,(s)
-  __LList_cons__ s __NULL__)
+  __String_equal__ s "" ,(empty)
+  __Number_is_zero__ nBraced ,(noBraced)
+  __not__ noBraced ,(hasBraced)
+  __and__ empty hasBraced ,(emptyBraced)
+  __if__ (,() __NULL__ emptyBraced) (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+  Parts_fields parts)
 
 ;; ── 変数定義の右辺 ──
 
@@ -159,6 +238,18 @@
   __LList_cons__ value __NULL__ ,(tail)
   __LList_cons__ kind tail)
 
+;; ${-語} の "list" の部分。葉には glob を適用しない
+(define Part_make_inactive ,(value)
+  __LList_cons__ "inactive" __NULL__ ,(tail)
+  __LList_cons__ value tail ,(tail)
+  __LList_cons__ "list" tail)
+
+;; 部分の葉に glob を適用するか
+(define Part_active ,(part)
+  __LList_uncons__ __print_exit_error__ part ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(value rest)
+  __is_null__ rest)
+
 (define Part_split ,(part)
   __LList_uncons__ __print_exit_error__ part ,(kind rest)
   List_first rest ,(value)
@@ -208,6 +299,7 @@
       Part_make "quoted" s ,(part)
       return part) ,()
   Expand_ref sh elem ,(value)
+  __if__ (,() __String_equal__ kind "glob") (,() Part_make_inactive value ,(part) return part) ,()
   __type_name__ value ,(type)
   __String_equal__ kind "var" ,(isVar)
   __if__ (,() __String_equal__ type "String")
@@ -228,6 +320,13 @@
     (,()
       List_first children ,(script)
       Eval_subst sh pos script ,(value)
+      return value) ,()
+  __if__ (,() __String_equal__ kind "glob")
+    (,()
+      List_first children ,(word)
+      Expand_parts sh word ,(parts)
+      Parts_glob_fields parts __NULL__ __TRUE__ ,(names)
+      LazyList_fromList names ,(value)
       return value) ,()
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __if__ (,() __is_null__ rest) (,() Sh_lookup sh pos name ,(value) return value) ,()

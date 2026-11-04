@@ -1,4 +1,4 @@
-;; ConSh の実行（段階 3〜10）。
+;; ConSh の実行（段階 3〜11）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue

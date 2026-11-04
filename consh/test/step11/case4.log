@@ -1,0 +1,3 @@
+hello
+consh: case4.sh:4:10: ambiguous redirect
+exit: 1

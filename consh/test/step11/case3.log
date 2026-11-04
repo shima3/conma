@@ -1,0 +1,9 @@
+[g/a.txt g/b.txt]
+[]
+[g/c.se]
+[g/Z.txt,g/a.txt,g/b.txt,g/x1.txt,g/x[1].txt]
+g/a.txt g/b.txt
+for: g/c.se
+g/x[1].txt
+g/x[1].txt
+exit: 0

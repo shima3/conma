@@ -1,0 +1,12 @@
+(cmd (words "ls" "gdir/a.txt" "gdir/b.txt" "gdir/x[1].txt" "gdir/*.none"))
+(function "f")
+(cmd (words "f" "gdir/a.txt" "gdir/b.txt" "gdir/x[1].txt"))
+(cmd (words "echo" "gdir/c.se" "gdir/*.txt" "gdir/*.txt" "gdir/.h.txt"))
+(for "x" "gdir/sub/s.txt")
+(cmd (words "echo" "gdir/sub/s.txt"))
+(assign ("s" "gdir/*.txt"))
+(assign ("a" (list "gdir/c.se")))
+(cmd (words "echo" "gdir/a.txt" "gdir/b.txt" "gdir/x[1].txt" (list "gdir/c.se")))
+(cmd (words "f" (list "gdir/a.txt" "gdir/b.txt" "gdir/x[1].txt") (list) (list "gdir/c.se") "gdir/c.se"))
+(cmd (words "ls" "gdir/x[1].txt"))
+exit: 0

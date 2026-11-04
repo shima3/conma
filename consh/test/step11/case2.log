@@ -1,0 +1,6 @@
+arg: g/a.txt
+arg: g/b.txt
+for: g/c.se
+g/*.se g/c.se
+g/a.txt g/b.txt
+exit: 0

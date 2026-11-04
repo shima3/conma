@@ -41,6 +41,10 @@ Usage:
     * glob はカレントディレクトリで適用し、一致した名前を文字コード順に並べる。
       一致しなければ、語をそのまま残す（Bash の既定と同じ）。
       リダイレクト先の語にも適用し、2つ以上の語になればエラーとする。
+      関数と組み込みコマンドの引数、for 文の語にも適用する（一致した名前ごとに1つの引数）。変数定義の右辺には適用しない。
+    * ${-語} は、語に glob を適用した結果の LazyList になる。一致しなければ空の LazyList。
+      ${x} の LazyList と同じく、関数と組み込みコマンドには1つの値として渡し、外部コマンドには葉ごとの語にする。
+      その葉には、もう一度 glob を適用しない。
 
 エラー
     標準エラー出力に「consh_parse: ファイル:行:桁: メッセージ」を出力し、終了ステータス 1 で終わる。
@@ -704,6 +708,16 @@ class Parser:
             script = self.parse_script(')')
             self.advance()
             return node(pos, 'subst', script)
+        if c == '{' and self.peek(2) == '-':
+            # ${-語}：語の glob の結果の LazyList。二重引用符の中でも語として読む
+            self.advance(3)
+            if not self.is_word_start():
+                self.error(f"expected a pattern after '${{-', but found {self.describe()}")
+            word = self.parse_word()
+            if self.peek() != '}':
+                self.error(f"expected '}}', but found {self.describe()}")
+            self.advance()
+            return node(pos, 'glob', word)
         if c == '{':
             k = 2
             if is_ident_start(self.peek(k)):
@@ -866,6 +880,8 @@ def sx_elem(e):
         return sx(kind, e.pos, *(sx_elem(x) for x in e[1]))
     if kind == 'subst':
         return sx(kind, e.pos, sx_script(e[1]))
+    if kind == 'glob':
+        return sx(kind, e.pos, sx_word(e[1]))
     raise ValueError(kind)
 
 
@@ -875,6 +891,10 @@ def sx_elem(e):
 
 class LazyList(list):
     """局所変数の LazyList の値。文字列と区別するために list と別の型にする"""
+
+
+class GlobList(LazyList):
+    """${-語} の値。葉は glob の結果のファイル名なので、外部コマンドの語でもう一度 glob を適用しない"""
 
 
 GLOB_META = re.compile(r'[*?[]')
@@ -1140,6 +1160,7 @@ class Expander:
             else:
                 v = self.ref(e, ctx)
                 if isinstance(v, LazyList):
+                    # ${-語} は ${x} と同じく、外部コマンド以外には1つの LazyList として渡す
                     result.append(('leaves' if kind == 'var' else 'list', v))
                 else:
                     result.append(('plain' if kind == 'var' else 'braced', v))
@@ -1149,6 +1170,8 @@ class Expander:
         # 変数参照かコマンド置換の値。${x-値} は、x が未定義のときだけ値を作る
         if e[0] == 'subst':
             return self.subst(e[1], ctx)
+        if e[0] == 'glob':
+            return self.glob_value(e[1], ctx)
         if e[0] == 'bvar' and e[2] is not None and not self.defined(e[1], ctx):
             return self.def_value(e[2][1], ctx)
         return self.lookup(e[1], ctx, e.pos)
@@ -1163,13 +1186,19 @@ class Expander:
     def fields(self, word, ctx):
         """外部コマンドの語として展開する。
         LazyList を含まない引用符のない語が空になれば消す。LazyList の葉は、空文字列でも語として残す"""
+        return self.glob_fields(word, ctx, False)
+
+    def glob_fields(self, word, ctx, null_glob):
+        """語を外部コマンドの語として展開し、glob を適用する。引用符の中と ${-語} の葉には適用しない。
+        一致しなければ、null_glob が偽なら語をそのまま残し、真なら消す"""
         alts = [[]]
         quoted = False
         has_list = False
         for kind, v in self.parts(word, ctx):
             if kind in ('leaves', 'list'):
                 has_list = True
-                options = [(x, True) for x in leaves(v)]
+                active = not isinstance(v, GlobList)
+                options = [(x, active) for x in leaves(v)]
             elif kind == 'quoted':
                 quoted = True
                 options = [(v, False)]
@@ -1184,11 +1213,16 @@ class Expander:
             if any(active and GLOB_META.search(t) for t, active in alt):
                 pattern = ''.join(t if active else glob.escape(t) for t, active in alt)
                 matches = sorted(glob.glob(pattern))
-                if matches:
+                if matches or null_glob:
                     result.extend(matches)
                     continue
             result.append(text)
         return result
+
+    def glob_value(self, word, ctx):
+        """${-語} の値。語を外部コマンドの語として展開して glob を適用し、一致した名前の LazyList にする。
+        一致しなければ空の LazyList。glob の記号がなければ、展開した語をそのまま要素にする"""
+        return GlobList(self.glob_fields(word, ctx, True))
 
     def arg_values(self, word, ctx):
         """外部コマンド以外（関数と組み込みコマンド）の語として展開した値の並び。

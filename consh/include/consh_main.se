@@ -5,6 +5,7 @@
 (include "util.se")
 (include "consh_ast.se")
 (include "consh_parser.se")
+(include "consh_glob.se")
 (include "consh_eval.se")
 
 (define main ,(args)
