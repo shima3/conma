@@ -129,8 +129,11 @@
 
 ;; ── 読み手 ──
 ;; 読み手の状態は Dict で、"chan"、"seen"（読み手が知っている鎖の数）、
-;; "cursors"（まだ閉じていない鎖の読み位置の LList）を持つ。読み位置は Dict で、"chain" と "node"（次に読む節）。
-;; LazyList の節は順に1つずつ評価されるので、状態を同時に2つの VProc が変えることはない
+;; "cursors"（まだ閉じていない鎖の読み位置の LList）、"untilRegister"（次に新しい鎖を探すまでに取り出す要素の数）を持つ。
+;; 読み位置は Dict で、"chain" と "node"（次に読む節）。
+;; LazyList の節は順に1つずつ評価されるので、状態を同時に2つの VProc が変えることはない。
+;; 新しい鎖を探す（Chan_register）のは、知っている鎖に要素がないときと、Chan_register_every 個ごとだけにする。
+;; 鎖の MSeq をたどるのは手間がかかり、要素ごとに探すと、読み手の時間の大半になっていた
 
 ;; チャネルに書かれた要素を、届いた順に並べた LazyList
 (define Chan_list ,(chan)
@@ -139,30 +142,34 @@
   num "0" ,(zero)
   __Dict_put__ state "seen" zero ,()
   __Dict_put__ state "cursors" __NULL__ ,()
+  __Dict_put__ state "untilRegister" zero ,()
   Chan_list_from state)
+
+;; 知っている鎖に要素があっても、この数の要素を取り出すごとに新しい鎖を探す（後から加わった鎖も読まれるように）
+(define Chan_register_every ,()
+  num "16")
 
 (define Chan_list_from ,(state)
   __LazyList_new__ (,() Chan_next state))
 
-;; 次の要素の LazyList。要素がなければ、書き手が書くか、すべての鎖が閉じるまで待つ
+;; 次の要素の LazyList。要素がなければ、新しい鎖を探し、それでもなければ、書き手が書くか、すべての鎖が閉じるまで待つ。
+;; すべての鎖が閉じたと決めるのは、新しい鎖を探した後だけである
 (define Chan_next ,(state)
   __Cont_get__ ,(return)
   Sh_get state "chan" ,(chan)
   Sh_get chan "wake" ,(wake)
   __Ref_get__ wake ,(token)
+  Sh_get state "untilRegister" ,(until)
+  __if__ (,() __Number_is_zero__ until)
+    (,()
+      Chan_register state ,()
+      Chan_register_every ,(every)
+      __Dict_put__ state "untilRegister" every) ,()
+  Chan_take_from state ,(item found)
+  __if__ (,() __NULL__ found) (,() Chan_found state item ,(list) return list) ,()
   Chan_register state ,()
-  Sh_get state "cursors" ,(cursors)
-  __if__ (,() __is_null__ cursors)
-    (,()
-      __LazyList_empty__ ,(empty)
-      return empty) ,()
-  Chan_take cursors __NULL__ ,(item cursors found)
-  __Dict_put__ state "cursors" cursors ,()
-  __if__ (,() __NULL__ found)
-    (,()
-      Chan_list_from state ,(rest)
-      __LazyList_cons__ item rest ,(list)
-      return list) ,()
+  Chan_take_from state ,(item found)
+  __if__ (,() __NULL__ found) (,() Chan_found state item ,(list) return list) ,()
   Sh_get state "cursors" ,(cursors)
   __if__ (,() __is_null__ cursors)
     (,()
@@ -170,6 +177,22 @@
       return empty) ,()
   __Ref_wait_change__ wake token ,()
   Chan_next state)
+
+;; 知っている鎖から1つ取り出し、読み位置を更新する。要素と、取り出せたかを返す
+(define Chan_take_from ,(state)
+  Sh_get state "cursors" ,(cursors)
+  Chan_take cursors __NULL__ ,(item cursors found)
+  __Dict_put__ state "cursors" cursors ,()
+  __NULL__ item found)
+
+;; 取り出した要素 item を先頭にし、続きを遅延にした LazyList
+(define Chan_found ,(state item)
+  Sh_get state "untilRegister" ,(until)
+  num "1" ,(one)
+  __Number_subtract__ until one ,(until)
+  __Dict_put__ state "untilRegister" until ,()
+  Chan_list_from state ,(rest)
+  __LazyList_cons__ item rest)
 
 ;; まだ知らない鎖の読み位置を cursors の末尾に加える
 (define Chan_register ,(state)
@@ -207,6 +230,7 @@
   __LList_cons__ cursor more)
 
 ;; 要素のある最初の鎖から1つ取り出す。閉じた鎖は除く。取り出した鎖は末尾に回す（ほかの鎖も読まれるように）。
+;; 鎖が1つだけなら回さない。
 ;; 要素、新しい cursors、取り出せたかを返す。passed は、調べた鎖のうち残すものの逆順の LList
 (define Chan_take ,(cursors passed)
   __Cont_get__ ,(return)
@@ -233,6 +257,10 @@
   num "1" ,(one)
   __Number_add__ consumed one ,(consumed)
   __Ref_set__ consumedRef consumed ,()
+  __is_null__ passed ,(noPassed)
+  __is_null__ rest ,(noRest)
+  __and__ noPassed noRest ,(only)
+  __if__ (,() __NULL__ only) (,() return item cursors __TRUE__) ,()
   List_reverse passed ,(front)
   List_append front rest ,(cursors)
   __LList_cons__ cursor __NULL__ ,(last)
