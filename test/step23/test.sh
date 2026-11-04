@@ -11,7 +11,7 @@ do
   rm -rf work
   mkdir -p work/a
   ln -s a work/link
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py /tmp/test.module.se $c < /dev/null 2>&1 | sed -e "s|$dir|<dir>|g" > /tmp/$c.log
+  PYTHONUNBUFFERED=1 ../vm.sh /tmp/test.module.se $c < /dev/null 2>&1 | sed -e "s|$dir|<dir>|g" > /tmp/$c.log
   echo "exit: ${PIPESTATUS[0]}" >> /tmp/$c.log
   diff $c.log /tmp/$c.log
 done

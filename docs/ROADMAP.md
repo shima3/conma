@@ -14,6 +14,7 @@ Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each ca
 for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32 step33 step34; do test/$t/test.sh; done
 ```
 
+* `test.sh` starts the VM through `test/vm.sh`: the Python VM (`test/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`.
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
 * Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`; `test/step21` gives each case its own input).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.

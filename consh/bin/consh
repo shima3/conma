@@ -43,14 +43,14 @@ if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED"
   CONSH_RLWRAPPED=1 exec rlwrap -C consh "$0"
 fi
 if [ -n "$interactive" ]; then
-  exec python3 "$root/test/vproc_run.py" --main "$module" interactive - stdin
+  exec "$root/test/vm.sh" --main "$module" interactive - stdin
 fi
 if [ -n "$src" ]; then
-  exec python3 "$root/test/vproc_run.py" --main "$module" $mode$src "$1" "$@"
+  exec "$root/test/vm.sh" --main "$module" $mode$src "$1" "$@"
 fi
 ast=$(mktemp /tmp/consh.XXXXXX)
 trap 'rm -f "$ast"' EXIT
 if ! python3 "$consh/bin/consh_parse" --pos "$1" > "$ast"
 then exit 1
 fi
-python3 "$root/test/vproc_run.py" --main "$module" $mode "$ast" "$@"
+"$root/test/vm.sh" --main "$module" $mode "$ast" "$@"

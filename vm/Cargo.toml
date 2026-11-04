@@ -1,0 +1,15 @@
+[package]
+name = "conma"
+version = "0.1.0"
+edition = "2021"
+description = "The ConMa VM, compatible step by step with test/vproc_step.py"
+
+[[bin]]
+name = "conma"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+debug = false
