@@ -542,6 +542,12 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 * **Usage**: Searching with one primitive instead of comparing one character at a time is much faster on long Strings; the line readers of `include/util.se` use it to find newlines.
 * **Error**: If `start` is not an integer, or `0 <= start <= length` does not hold, the interpreter invokes `onError` with an error message string. A non-String `String` or `pattern` stops the VProc with an error.
 
+### **`__Sexp_read__ onError String ,(value)`**
+* **Description**: Reads the `String` as one S-expression and passes the value to the LCont.
+* **Returns**: A list becomes an `LList` (the empty list `()` becomes null). A string in double quotes becomes a String; in it, `\n`, `\t` and `\r` stand for a newline, a tab and a carriage return, and `\` before any other character stands for that character (`\"`, `\\`). A symbol that starts with a digit becomes a Number; any other symbol becomes a String. Spaces, tabs and newlines may surround the S-expression and separate its items.
+* **Usage**: ConSh reads the syntax tree that `consh_parse --pos` writes, one S-expression per line, with it. Reading the same text in ConMa one character at a time took seconds for a script of a few hundred characters.
+* **Error**: If the String is not one well-formed S-expression, invokes `onError` with `"<message> at column <n>"`, where the message is `unterminated list`, `unterminated string`, `expected a value`, `invalid number` (a symbol that starts with a digit but is not a number) or `unexpected characters after an S-expression`, and `<n>` counts from 1. A non-String argument stops the VProc with an error.
+
 ### **`__String_concat__ aString bString ,(String)`**
 * **Description**: Returns a new `String` made of `aString` followed by `bString`.
 

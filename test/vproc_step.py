@@ -1658,6 +1658,93 @@ def prim_String_find(vp, gvenv):
     found = s.find(pattern, i)
     _prim_return(vp, [NULL if found < 0 else Number(float(found))])
 
+_SEXP_DELIMITERS = ('', ' ', '\t', '\n', '\r', '(', ')', '"')
+_SEXP_ESCAPES = {'n': '\n', 't': '\t', 'r': '\r'}
+
+class _SexpError(Exception):
+    def __init__(self, msg, i):
+        super().__init__(msg)
+        self.msg, self.i = msg, i
+
+def _sexp_char(text, i):
+    return text[i] if 0 <= i < len(text) else ''
+
+def _sexp_skip(text, i):
+    while _sexp_char(text, i) in (' ', '\t', '\n', '\r') and _sexp_char(text, i) != '':
+        i += 1
+    return i
+
+def _sexp_value(text, i):
+    """Read one value at i; return the value and the next position."""
+    i = _sexp_skip(text, i)
+    ch = _sexp_char(text, i)
+    if ch == '(':
+        items = []
+        i += 1
+        while True:
+            i = _sexp_skip(text, i)
+            ch = _sexp_char(text, i)
+            if ch == ')':
+                i += 1
+                break
+            if ch == '':
+                raise _SexpError("unterminated list", i)
+            value, i = _sexp_value(text, i)
+            items.append(value)
+        result = NULL
+        for item in reversed(items):
+            result = LList(item, result)
+        return result, i
+    if ch == '"':
+        out = []
+        i += 1
+        while True:
+            ch = _sexp_char(text, i)
+            if ch == '':
+                raise _SexpError("unterminated string", i)
+            if ch == '"':
+                return string_value(''.join(out)), i + 1
+            if ch == '\\':
+                e = _sexp_char(text, i + 1)
+                out.append(_SEXP_ESCAPES.get(e, e))
+                i += 2
+            else:
+                out.append(ch)
+                i += 1
+    if ch in _SEXP_DELIMITERS:
+        raise _SexpError("expected a value", i)
+    start = i
+    while _sexp_char(text, i) not in _SEXP_DELIMITERS:
+        i += 1
+    symbol = text[start:i]
+    if '0' <= symbol[0] <= '9':
+        if not _NUMBER_RE.fullmatch(symbol) or math.isinf(float(symbol)):
+            raise _SexpError("invalid number", start)
+        return Number(float(symbol)), i
+    return string_value(symbol), i
+
+def prim_Sexp_read(vp, gvenv):
+    """__Sexp_read__ onError String ,(value)
+    Read the String as one S-expression: a list becomes an LList (the empty
+    list null), a string in double quotes a String (with the escapes \\",
+    \\\\, \\n, \\t and \\r), a symbol that starts with a digit a Number, and
+    any other symbol a String. Spaces and newlines may surround it. A
+    malformed S-expression goes to onError with "<message> at column <n>"."""
+    name  = "__Sexp_read__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    (text,) = _string_args(vp, name, 1)
+    try:
+        value, i = _sexp_value(text, 0)
+        i = _sexp_skip(text, i)
+        if i != len(text):
+            raise _SexpError("unexpected characters after an S-expression", i)
+    except _SexpError as e:
+        _prim_error(vp, on_error, f"{e.msg} at column {e.i + 1}")
+        return
+    _prim_return(vp, [value])
+
 def prim_String_toCode(vp, gvenv):
     """__String_toCode__ onError String ,(Number)
     The code point of a String of one character, or onError."""
@@ -2296,6 +2383,7 @@ PRIMITIVES = {
     "__String_length__":       prim_String_length,
     "__String_substring__":    prim_String_substring,
     "__String_find__":         prim_String_find,
+    "__Sexp_read__":           prim_Sexp_read,
     "__String_concat__":       prim_String_concat,
     "__String_toCode__":       prim_String_toCode,
     "__String_fromCode__":     prim_String_fromCode,

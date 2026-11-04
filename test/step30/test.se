@@ -1,0 +1,60 @@
+;; Step30: S 式を読んで ConMa の値にする __Sexp_read__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 値を見える形にする。LList は ( )、null は ()、Number はそのまま、String は [ ] で囲む
+(define show ,(v)
+  __type_name__ v ,(type)
+  __if_then_else__ (,() __String_equal__ type "LList")
+    (,()
+      __LList_uncons__ __print_exit_error__ v ,(head rest)
+      show head ,(first)
+      showItems rest first ,(body)
+      __String_concat__ "(" body ,(s)
+      __String_concat__ s ")") (,()
+  __if_then_else__ (,() __String_equal__ type "null")
+    (,() __NULL__ "()") (,()
+  __if_then_else__ (,() __String_equal__ type "Number")
+    (,() __Number_toString__ v)
+    (,()
+      __String_concat__ "[" v ,(s)
+      __String_concat__ s "]"))))
+
+(define showItems ,(items acc)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ items) (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  show item ,(s)
+  __String_concat__ acc " " ,(acc)
+  __String_concat__ acc s ,(acc)
+  showItems rest acc)
+
+(define readShow ,(text)
+  __Cont_get__ ,(return)
+  __Sexp_read__ (,(msg) println msg ,() return) text ,(v)
+  show v ,(s)
+  println s)
+
+;; case1: リスト、空のリスト、数で始まる記号は Number、ほかの記号と文字列は String
+(define case1 ,()
+  readShow "(line (1 2) (lit (3 4) \"echo\"))" ,()
+  readShow "  (a () (b) 12 -x)\n" ,()
+  readShow "sym" ,()
+  readShow "42")
+
+;; case2: 文字列のエスケープ \" \\ \n \t \r（ほかの文字はそのもの）
+(define case2 ,()
+  readShow "\"a\\\"b\\\\c\\q\"" ,()
+  readShow "\"x\\ny\\tz\"")
+
+;; case3: 壊れた S 式は onError に「メッセージ at column 桁」
+(define case3 ,()
+  readShow "(a \"bc" ,()
+  readShow "(a (b)" ,()
+  readShow "(a) x" ,()
+  readShow "(1x 2)" ,()
+  readShow ")" ,()
+  readShow "")
