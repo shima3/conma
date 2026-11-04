@@ -1,2 +1,2 @@
-consh: case10.sh:1:8: redirection to a variable list is not implemented yet
-exit: 1
+a
+exit: 0

@@ -1,0 +1,7 @@
+a=one b=two rest=three
+p=x q=y r=[] more=[]
+elem m
+elem n
+iv=in-if f1=for 1 fr=for 2 for 3
+empty=[]
+exit: 0

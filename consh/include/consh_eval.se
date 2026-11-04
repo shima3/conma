@@ -1,10 +1,11 @@
-;; ConSh の実行（段階 3〜5）。
+;; ConSh の実行（段階 3〜6）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
 ;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
 ;;   コマンド置換 $( ) とパイプライン。どちらも別の VProc で動かし、出力はチャネル（consh_chan.se）で受け取る
-;; &、変数リストへのリダイレクトは、まだない（実行するとエラー）。
+;;   変数リストへのリダイレクト（> (a b . rest)、2> (…)、< (…)）と組み込みコマンド stdin（段階 6）
+;; & は、まだない（実行するとエラー）。
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
 ;;   "global"     シェル全体で共有する Dict。"status" に最後の文の終了ステータスの String（$?）
@@ -22,7 +23,7 @@
 ;;   "loops"      実行中の for 文の LList（内側が先）。各要素は (ループ変数の名前 break の継続 continue の継続)。
 ;;                関数の中では、関数の外のループは見えない
 ;;   "env"        環境変数（Env_new）
-;;   "in"         標準入力。null なら親のまま、Stream ならそれを読み、パイプなら Input_new の Dict
+;;   "in"         標準入力。Input_new または Input_stream の Dict（読み出し位置を共有する）
 ;;   "out" "err"  標準出力と標準エラー出力のターゲット（Target_*）
 ;;
 ;; 変数定義は新しい束縛と見る。関数は、定義した時点の局所変数の写しを持つので、
@@ -64,6 +65,9 @@
   Target_sink global (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
   __Dict_put__ sh "err" err ,()
+  __OS_get_stdin__ ,(inStream)
+  Input_stream sh inStream ,(in)
+  __Dict_put__ sh "in" in ,()
   __NULL__ sh)
 
 ;; トップレベルの標準出力。要素を1行として書く。LazyList の要素は、トップレベルの OFS で文字列化する。
@@ -290,6 +294,7 @@
 ;;   (sink id write)     要素を1つずつ受け取る関数 write（,(line) ...）。どの VProc から呼んでもよい
 ;;   (chan id writer)    チャネルの書き手（consh_chan.se）。それを作った VProc だけが使う。
 ;;                       別の VProc に渡すときは、同じチャネルの新しい書き手を作る（Child_target）
+;;   (capture id record) 変数リストへのリダイレクト（Capture_new）。要素を受け取った順に変数に割り当てる。どの VProc から書いてもよい
 ;; id はターゲットを見分ける String で、2>&1 や 1>&2 で写したターゲットは同じ id を持つ。
 ;; 外部コマンドの出力が sink か chan に行くときは、パイプで受け取って行ごとの要素にする（行の改行は除く）
 
@@ -347,8 +352,10 @@
       __String_concat__ line "\n" ,(s)
       __OS_write__ __print_exit_error__ value s) (,()
   __if_then_else__ (,() __String_equal__ kind "chan")
-    (,() Chan_put value line (,() Sh_abort sh))
-    (,() value line)))
+    (,() Chan_put value line (,() Sh_abort sh)) (,()
+  __if_then_else__ (,() __String_equal__ kind "capture")
+    (,() Capture_put sh value line)
+    (,() value line))))
 
 ;; chan ターゲットなら書き手を閉じる
 (define Target_close ,(target)
@@ -633,7 +640,7 @@
     (,() Values_leaves more)
     (,() __NULL__ more) ,(more)
   List_append more args ,(args)
-  Eval_redirs sh redirs ,(in out err opened ok)
+  Eval_redirs sh redirs ,(in out err opened ok group)
   __unless__ (,() __NULL__ ok)
     (,()
       Eval_close opened ,()
@@ -642,9 +649,10 @@
   __if__ (,() __is_null__ name)
     (,()
       Eval_close opened ,()
+      Capture_assign sh group ,()
       Sh_set_status sh "0" ,()
       return) ,()
-  Cmd_run sh pos name args in out err ,()
+  Capture_run sh group (,(s) Cmd_run s pos name args in out err) ,()
   Eval_close opened)
 
 ;; 前置の変数定義があれば、その層を環境変数に積んだ文脈を返す。
@@ -778,7 +786,7 @@
     (,()
       run sh ,()
       return) ,()
-  Eval_redirs sh redirs ,(in out err opened ok)
+  Eval_redirs sh redirs ,(in out err opened ok group)
   __unless__ (,() __NULL__ ok)
     (,()
       Eval_close opened ,()
@@ -791,21 +799,23 @@
   __Dict_put__ inner "err" err ,()
   Sh_get sh "return" ,(ret)
   __unless__ (,() __is_null__ ret)
-    (,() __Dict_put__ inner "return" (,() Eval_close opened ,() ret)) ,()
+    (,() __Dict_put__ inner "return" (,() Eval_close opened ,() Capture_assign sh group ,() ret)) ,()
   Sh_get sh "loops" ,(loops)
-  Loops_closing loops opened ,(loops)
+  Loops_closing sh loops opened group ,(loops)
   __Dict_put__ inner "loops" loops ,()
-  run inner ,()
+  Capture_run inner group run ,()
   Eval_close opened)
 
-;; ループの LList の各 break と continue の継続を、先に opened を閉じるものにした LList
-(define Loops_closing ,(loops opened)
+;; ループの LList の各 break と continue の継続を、先に opened を閉じ、変数リストに値を割り当てるものにした LList
+(define Loops_closing ,(sh loops opened group)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ loops) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ loops ,(loop rest)
   Loop_split loop ,(name brk cont)
-  Loop_make name (,() Eval_close opened ,() brk) (,() Eval_close opened ,() cont) ,(loop)
-  Loops_closing rest opened ,(rest)
+  Loop_make name
+    (,() Eval_close opened ,() Capture_assign sh group ,() brk)
+    (,() Eval_close opened ,() Capture_assign sh group ,() cont) ,(loop)
+  Loops_closing sh rest opened group ,(rest)
   __LList_cons__ loop rest)
 
 ;; (if clause ... [else] [redirs]) の子を、clause の LList、else のスクリプト（なければ null）、
@@ -937,14 +947,270 @@
 (define Pipe_cap ,()
   num "16")
 
-;; パイプの標準入力。"list" は、まだ読んでいない要素の LazyList を入れた Ref で、読んだ分だけ進める。
-;; "sh" は、要素の LazyList を文字列化するときに OFS を探す文脈（パイプを書いた文のスコープ）
+;; 標準入力。Dict で、次のキーを持つ。
+;;   "list"    まだ読んでいない要素の LazyList を入れた Ref。読んだ分だけ進める（読み出し位置の共有）
+;;   "sh"      要素の LazyList を文字列化するときに OFS を探す文脈（パイプやリダイレクトを書いた文のスコープ）
+;;   "stream"  Stream から作った場合はその Stream、そうでなければ null
+;;   "touched" "list" を読んだことがあれば __TRUE__ の Ref。読んでいなければ、外部コマンドに Stream をそのまま渡す
+
+;; 要素の LazyList から作る標準入力（パイプ、< (a b . rest)）
 (define Input_new ,(sh list)
   __Ref_new__ list ,(ref)
+  __Ref_new__ __TRUE__ ,(touched)
   __Dict_new__ ,(input)
   __Dict_put__ input "list" ref ,()
   __Dict_put__ input "sh" sh ,()
+  __Dict_put__ input "stream" __NULL__ ,()
+  __Dict_put__ input "touched" touched ,()
   __NULL__ input)
+
+;; Stream から作る標準入力（シェルの標準入力、< ファイル）。要素は、改行を除いた行
+(define Input_stream ,(sh stream)
+  __LazyList_lines__ stream ,(lines)
+  Lines_chomped lines ,(list)
+  Input_new sh list ,(input)
+  __Dict_put__ input "stream" stream ,()
+  __Ref_new__ __FALSE__ ,(touched)
+  __Dict_put__ input "touched" touched ,()
+  __NULL__ input)
+
+;; 行の LazyList の各行から改行を除いた LazyList（遅延のまま）
+(define Lines_chomped ,(lines)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __LazyList_uncons__ (,() __LazyList_empty__ ,(empty) return empty) lines ,(line rest)
+    Line_chomp line ,(line)
+    Lines_chomped rest ,(rest)
+    __LazyList_cons__ line rest))
+
+;; < (a b . rest) の標準入力。a、b の値を順に要素にし、続けて rest の値の要素を並べる。
+;; rest の値が String なら、1つの要素にする
+(define Input_vars ,(sh pos params)
+  __LList_uncons__ __print_exit_error__ params ,(names restList)
+  List_first restList ,(restName)
+  __if_then_else__ (,() __String_equal__ restName "")
+    (,() __LazyList_empty__)
+    (,()
+      Sh_lookup sh pos restName ,(value)
+      __type_name__ value ,(type)
+      __if_then_else__ (,() __String_equal__ type "String")
+        (,()
+          __LazyList_empty__ ,(empty)
+          __LazyList_cons__ value empty)
+        (,() __NULL__ value)) ,(tail)
+  Input_vars_names sh pos names tail ,(list)
+  Input_new sh list)
+
+(define Input_vars_names ,(sh pos names tail)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ names) (,() return tail) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  Sh_lookup sh pos name ,(value)
+  Input_vars_names sh pos rest tail ,(more)
+  __LazyList_cons__ value more)
+
+;; ── 変数リストへのリダイレクト ──
+;; > (a b . rest) と 2> (a b . rest)。受け取った要素を順に a、b に、残りを rest に割り当てる。
+;; 同じ文の変数リストへのリダイレクトは組（group）にまとめる。組は Dict で、
+;;   "records"     各リダイレクトの記録の LList
+;;   "unsatisfied" rest のない記録のうち、まだ変数の数だけ受け取っていないものの数の Ref
+;;   "hasRest"     rest のある記録があるか
+;;   "stopped"     コマンドを止めたか（Ref）
+;; 記録は Dict で、"names"（変数名の LList）、"need"（その数）、"restName"（なければ ""）、
+;; "items"（受け取った要素の MSeq）、"count"（その数の Ref）、"direct"（stdin が渡した残りの LazyList の Ref）、"group"。
+;; rest のない記録がすべて変数の数だけ受け取り、rest のある記録がなければ、次に書いたときにコマンドを止める
+;; （SIGPIPE に当たる。$? は 0）。それまでは、変数の数を超えた要素は捨てる
+
+;; 新しい記録を組に加え（組が null なら作る）、その capture ターゲットと組を返す
+(define Capture_new ,(sh group params)
+  __Cont_get__ ,(return)
+  __if_then_else__ (,() __is_null__ group)
+    (,()
+      __Dict_new__ ,(g)
+      __Dict_put__ g "records" __NULL__ ,()
+      num "0" ,(zero)
+      __Ref_new__ zero ,(unsatisfied)
+      __Dict_put__ g "unsatisfied" unsatisfied ,()
+      __Dict_put__ g "hasRest" __FALSE__ ,()
+      __Ref_new__ __FALSE__ ,(stopped)
+      __Dict_put__ g "stopped" stopped ,()
+      __NULL__ g)
+    (,() __NULL__ group) ,(group)
+  __LList_uncons__ __print_exit_error__ params ,(names restList)
+  List_first restList ,(restName)
+  List_length names ,(need)
+  __Dict_new__ ,(record)
+  __Dict_put__ record "names" names ,()
+  __Dict_put__ record "need" need ,()
+  __Dict_put__ record "restName" restName ,()
+  __MSeq_new__ ,(items)
+  __Dict_put__ record "items" items ,()
+  num "0" ,(zero)
+  __Ref_new__ zero ,(count)
+  __Dict_put__ record "count" count ,()
+  __Ref_new__ __NULL__ ,(direct)
+  __Dict_put__ record "direct" direct ,()
+  __Dict_put__ record "group" group ,()
+  Sh_get group "records" ,(records)
+  __LList_cons__ record records ,(records)
+  __Dict_put__ group "records" records ,()
+  __if_then_else__ (,() __String_equal__ restName "")
+    (,()
+      __unless__ (,() __Number_is_zero__ need)
+        (,()
+          Sh_get group "unsatisfied" ,(ref)
+          __Ref_get__ ref ,(n)
+          num "1" ,(one)
+          __Number_add__ n one ,(n)
+          __Ref_set__ ref n) ,())
+    (,() __Dict_put__ group "hasRest" __TRUE__) ,()
+  Sh_get sh "global" ,(global)
+  Target_new_id global ,(id)
+  Target_make "capture" id record ,(target)
+  __NULL__ target group)
+
+;; 要素 item を受け取る。変数の数を超えたら、rest があれば残りに加え、なければ捨てるか、コマンドを止める
+(define Capture_put ,(sh record item)
+  __Cont_get__ ,(return)
+  Sh_get record "restName" ,(restName)
+  __String_equal__ restName "" ,(noRest)
+  Sh_get record "need" ,(need)
+  Sh_get record "count" ,(countRef)
+  __Ref_get__ countRef ,(count)
+  __Number_subtract__ count need ,(diff)
+  __Number_is_negative__ diff ,(needed)
+  __not__ noRest ,(hasRest)
+  __or__ needed hasRest ,(keep)
+  __if__ (,() __NULL__ keep)
+    (,()
+      Capture_add record item ,()
+      return) ,()
+  Sh_get record "group" ,(group)
+  Sh_get group "unsatisfied" ,(unsatisfiedRef)
+  __Ref_get__ unsatisfiedRef ,(unsatisfied)
+  Sh_get group "hasRest" ,(groupHasRest)
+  __if__ (,() __NULL__ groupHasRest) return ,()
+  __unless__ (,() __Number_is_zero__ unsatisfied) return ,()
+  Sh_get group "stopped" ,(stopped)
+  __Ref_set__ stopped __TRUE__ ,()
+  Sh_abort sh)
+
+;; 要素を記録に加える。rest のない記録が変数の数だけ受け取ったら、組の unsatisfied を減らす
+(define Capture_add ,(record item)
+  __Cont_get__ ,(return)
+  Sh_get record "items" ,(items)
+  __MSeq_append__ __print_exit_error__ items item ,()
+  Sh_get record "count" ,(countRef)
+  __Ref_get__ countRef ,(count)
+  num "1" ,(one)
+  __Number_add__ count one ,(count)
+  __Ref_set__ countRef count ,()
+  Sh_get record "restName" ,(restName)
+  __unless__ (,() __String_equal__ restName "") return ,()
+  Sh_get record "need" ,(need)
+  __Number_subtract__ count need ,(diff)
+  __unless__ (,() __Number_is_zero__ diff) return ,()
+  Sh_get record "group" ,(group)
+  Sh_get group "unsatisfied" ,(ref)
+  __Ref_get__ ref ,(n)
+  __Number_subtract__ n one ,(n)
+  __Ref_set__ ref n)
+
+;; stdin > (a b . rest)：標準入力の要素を、変数の数だけ読み出し位置を進めながら受け取り、
+;; rest には残りの LazyList をそのまま渡す（読み出し位置は進めない。rest は参照した時点で読む）
+(define Capture_take ,(sh record listRef)
+  __Cont_get__ ,(return)
+  Sh_get record "count" ,(countRef)
+  __Ref_get__ countRef ,(count)
+  Sh_get record "need" ,(need)
+  __Number_subtract__ count need ,(diff)
+  __if__ (,() __Number_is_negative__ diff)
+    (,()
+      __Ref_get__ listRef ,(list)
+      __LazyList_uncons__ (,() return) list ,(item rest)
+      Capture_add record item ,()
+      __Ref_set__ listRef rest ,()
+      Capture_take sh record listRef ,()
+      return) ,()
+  Sh_get record "restName" ,(restName)
+  __if__ (,() __String_equal__ restName "") return ,()
+  __Ref_get__ listRef ,(list)
+  Sh_get record "direct" ,(direct)
+  __Ref_set__ direct list)
+
+;; 組があれば、body をコマンドを止められる文脈で実行し、変数に割り当てる。止めたら $? は 0。
+;; 組がなければ、body をそのまま実行する
+(define Capture_run ,(sh group body)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ group) (,() body sh ,() return) ,()
+  Capture_guarded sh body ,()
+  Sh_get group "stopped" ,(stopped)
+  __Ref_get__ stopped ,(isStopped)
+  __if__ (,() __NULL__ isStopped) (,() Sh_set_status sh "0") ,()
+  Capture_assign sh group)
+
+(define Capture_guarded ,(sh body)
+  __Cont_get__ ,(done)
+  Dict_copy sh ,(inner)
+  __Ref_new__ done ,(abortRef)
+  __Dict_put__ inner "abort" abortRef ,()
+  body inner ,()
+  __nop__)
+
+;; 組の各記録の値を、sh の局所変数に割り当てる。足りない変数は空文字列、rest は残りの LazyList（なければ空）
+(define Capture_assign ,(sh group)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ group) return ,()
+  Sh_get group "records" ,(records)
+  List_reverse records ,(records)
+  Capture_assign_records sh records)
+
+(define Capture_assign_records ,(sh records)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ records) return ,()
+  __LList_uncons__ __print_exit_error__ records ,(record rest)
+  Sh_get record "items" ,(items)
+  List_fromMSeq items ,(items)
+  Sh_get record "names" ,(names)
+  Sh_get sh "vars" ,(vars)
+  Capture_assign_names vars names items ,(items)
+  Sh_get record "restName" ,(restName)
+  __unless__ (,() __String_equal__ restName "")
+    (,()
+      Sh_get record "direct" ,(directRef)
+      __Ref_get__ directRef ,(direct)
+      __if_then_else__ (,() __is_null__ direct) (,() __LazyList_empty__) (,() __NULL__ direct) ,(tail)
+      LazyList_prepend items tail ,(list)
+      __Dict_put__ vars restName list) ,()
+  Capture_assign_records sh rest)
+
+;; names に items を順に割り当て、残りの items を返す
+(define Capture_assign_names ,(vars names items)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ names) (,() return items) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __if_then_else__ (,() __is_null__ items)
+    (,() __NULL__ "" __NULL__)
+    (,() __LList_uncons__ __print_exit_error__ items ,(item more) __NULL__ item more) ,(value more)
+  __Dict_put__ vars name value ,()
+  Capture_assign_names vars rest more)
+
+;; LList items の後に LazyList tail を続けた LazyList
+(define LazyList_prepend ,(items tail)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ items) (,() return tail) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  LazyList_prepend rest tail ,(more)
+  __LazyList_cons__ item more)
+
+;; MSeq の要素の LList
+(define List_fromMSeq ,(mseq)
+  __Cont_get__ ,(return)
+  __MSeq_is_empty__ __print_exit_error__ mseq ,(empty)
+  __if__ (,() __NULL__ empty) (,() return __NULL__) ,()
+  __MSeq_uncons__ __print_exit_error__ mseq ,(item rest)
+  List_fromMSeq rest ,(more)
+  __LList_cons__ item more)
 
 ;; ── コマンド置換 ──
 
@@ -1189,8 +1455,9 @@
 (define Builtin_lookup ,(name)
   __if_then_else__ (,() __String_equal__ name "echo") (,() __NULL__ Builtin_echo) (,()
   __if_then_else__ (,() __String_equal__ name "cd") (,() __NULL__ Builtin_cd) (,()
-  __if_then_else__ (,() __String_equal__ name "defined") (,() __NULL__ Builtin_defined)
-    (,() __NULL__ __NULL__))))
+  __if_then_else__ (,() __String_equal__ name "defined") (,() __NULL__ Builtin_defined) (,()
+  __if_then_else__ (,() __String_equal__ name "stdin") (,() __NULL__ Builtin_stdin)
+    (,() __NULL__ __NULL__)))))
 
 ;; echo 値 ...: 標準出力に1つの要素を出す。
 ;; 引数が1つなら、その値（LazyList でも）をそのまま出す。引数がなければ空文字列を出す。
@@ -1254,6 +1521,27 @@
     (,() Sh_set_status sh "0")
     (,() Sh_set_status sh "1"))
 
+;; stdin: 標準入力の要素を標準出力に出す。読み出し位置（Input の "list"）は、出した要素の分だけ進める。
+;; 標準出力が変数リスト（stdin > (a . rest)）なら、変数の数だけ進め、rest には残りをそのまま渡す
+(define Builtin_stdin ,(sh pos args in out err)
+  __unless__ (,() __is_null__ args) (,() Sh_error sh pos "stdin: no arguments are allowed") ,()
+  Sh_get in "touched" ,(touched)
+  __Ref_set__ touched __TRUE__ ,()
+  Sh_get in "list" ,(listRef)
+  Target_split out ,(kind id value)
+  __if_then_else__ (,() __String_equal__ kind "capture")
+    (,() Capture_take sh value listRef)
+    (,() Stdin_copy sh pos listRef out) ,()
+  Sh_set_status sh "0")
+
+(define Stdin_copy ,(sh pos listRef out)
+  __Cont_get__ ,(return)
+  __Ref_get__ listRef ,(list)
+  __LazyList_uncons__ (,() return) list ,(item rest)
+  Target_write sh pos out item ,()
+  __Ref_set__ listRef rest ,()
+  Stdin_copy sh pos listRef out)
+
 ;; ── 外部コマンド ──
 
 ;; 外部コマンドを起動し、終わるまで待って、$? を設定する。
@@ -1266,10 +1554,11 @@
   __MSeq_new__ ,(command)
   __MSeq_append__ __print_exit_error__ command name ,()
   Eval_append command args ,()
-  External_streams sh pos out err ,(outStream errStream reader writer pumpTarget)
+  External_streams sh pos out err ,(outStream errStream reader writer pumpTarget reader2 writer2 pumpTarget2)
   External_input in ,(inStream feed)
   __OS_spawn__ (,(msg)
     Eval_close_pipe reader writer ,()
+    Eval_close_pipe reader2 writer2 ,()
     Feed_cancel feed ,()
     Msg_strip msg ,(msg)
     __String_concat__ name ": " ,(m)
@@ -1278,11 +1567,13 @@
     Sh_set_status sh "127" ,()
     return) command inStream outStream errStream dict ,(proc)
   Feed_start feed ,()
+  Pump_start sh reader2 writer2 pumpTarget2 ,(pumper)
   __unless__ (,() __is_null__ reader)
     (,()
       __OS_close__ __print_exit_error__ writer ,()
       External_guard sh reader proc feed (,() Target_pump sh pumpTarget reader) ,()
       __OS_close__ __print_exit_error__ reader) ,()
+  __unless__ (,() __is_null__ pumper) (,() __VProc_wait__ __print_exit_error__ pumper) ,()
   __OS_wait__ __print_exit_error__ proc ,(code)
   Feed_stop feed ,()
   Eval_status code ,(status)
@@ -1304,13 +1595,17 @@
   body ,()
   __Ref_set__ abortRef old)
 
-;; 外部コマンドに渡す標準入力の Stream と、パイプの要素を書く準備（なければ null）。
-;; パイプなら、OS のパイプを作り、読む側をコマンドに渡す
+;; 外部コマンドに渡す標準入力の Stream と、要素を書く準備（なければ null）。
+;; Stream から作った標準入力で、まだ LazyList として読んでいなければ、その Stream をそのまま渡す。
+;; そうでなければ、OS のパイプを作り、読む側をコマンドに渡す
 (define External_input ,(in)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ in) (,() return __NULL__ __NULL__) ,()
-  __type_name__ in ,(type)
-  __unless__ (,() __String_equal__ type "Dict") (,() return in __NULL__) ,()
+  Sh_get in "stream" ,(stream)
+  Sh_get in "touched" ,(touchedRef)
+  __Ref_get__ touchedRef ,(touched)
+  __unless__ (,() __is_null__ stream)
+    (,() __unless__ (,() __NULL__ touched) (,() return stream __NULL__)) ,()
   __OS_pipe__ ,(reader writer)
   __Ref_new__ __FALSE__ ,(stop)
   __Dict_new__ ,(feed)
@@ -1386,7 +1681,8 @@
   Write_pieces stream rest onError)
 
 ;; 外部コマンドに渡す標準出力と標準エラー出力の Stream と、
-;; sink か chan に行く出力を受け取るパイプの両端（なければ null）と、その行き先のターゲットを返す
+;; sink か chan に行く出力を受け取るパイプの両端（なければ null）と、その行き先のターゲットを返す。
+;; 標準出力と標準エラー出力が別々の sink に行くときは、標準エラー出力の分を2組目に返す（別の VProc で読む）
 (define External_streams ,(sh pos out err)
   __Cont_get__ ,(return)
   Target_split out ,(outKind outId outValue)
@@ -1397,15 +1693,35 @@
   __not__ errIsStream ,(errIsSink)
   __or__ outIsSink errIsSink ,(anySink)
   __unless__ (,() __NULL__ anySink)
-    (,() return outValue errValue __NULL__ __NULL__ __NULL__) ,()
+    (,() return outValue errValue __NULL__ __NULL__ __NULL__ __NULL__ __NULL__ __NULL__) ,()
   __OS_pipe__ ,(reader writer)
   __unless__ (,() __NULL__ outIsSink)
-    (,() return outValue writer reader writer err) ,()
+    (,() return outValue writer reader writer err __NULL__ __NULL__ __NULL__) ,()
   __unless__ (,() __NULL__ errIsSink)
-    (,() return writer errValue reader writer out) ,()
-  __unless__ (,() __String_equal__ outId errId)
-    (,() Sh_error sh pos "standard output and standard error to two different places are not implemented yet") ,()
-  return writer writer reader writer out)
+    (,() return writer errValue reader writer out __NULL__ __NULL__ __NULL__) ,()
+  __if__ (,() __String_equal__ outId errId)
+    (,() return writer writer reader writer out __NULL__ __NULL__ __NULL__) ,()
+  __OS_pipe__ ,(reader2 writer2)
+  return writer writer2 reader writer out reader2 writer2 err)
+
+;; 2組目のパイプ（標準エラー出力）を別の VProc で読み、ターゲットに書く。なければ null を返す。
+;; chan のターゲットには、その VProc 用の書き手を作る。読み手がいなくなったら、パイプを閉じて終わる
+(define Pump_start ,(sh reader writer target)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ reader) (,() return __NULL__) ,()
+  __OS_close__ __print_exit_error__ writer ,()
+  Child_target target ,(target)
+  __VProc_start__ (,()
+    Pump_guarded sh target reader ,()
+    __OS_close__ (,(msg) __nop__) reader ,()
+    Target_close target))
+
+(define Pump_guarded ,(sh target reader)
+  __Cont_get__ ,(done)
+  Dict_copy sh ,(inner)
+  __Ref_new__ done ,(abortRef)
+  __Dict_put__ inner "abort" abortRef ,()
+  Target_pump inner target reader)
 
 (define Eval_close_pipe ,(reader writer)
   __Cont_get__ ,(return)
@@ -1460,18 +1776,19 @@
 
 ;; ── リダイレクト ──
 
-;; リダイレクトを左から順に適用し、標準入力の Stream（null は親のまま）、標準出力と標準エラー出力の
-;; ターゲット、開いた Stream の LList、成功したかを返す。ファイルを開けなければ、メッセージを出して失敗とする
+;; リダイレクトを左から順に適用し、標準入力、標準出力と標準エラー出力のターゲット、開いた Stream の LList、
+;; 成功したか、変数リストへのリダイレクトの組（Capture_group、なければ null）を返す。
+;; ファイルを開けなければ、メッセージを出して失敗とする
 (define Eval_redirs ,(sh redirs)
   __Dict_new__ ,(used)
   Sh_get sh "in" ,(in)
   Sh_get sh "out" ,(out)
   Sh_get sh "err" ,(err)
-  Eval_redirs_from sh redirs used in out err __NULL__)
+  Eval_redirs_from sh redirs used in out err __NULL__ __NULL__)
 
-(define Eval_redirs_from ,(sh redirs used in out err opened)
+(define Eval_redirs_from ,(sh redirs used in out err opened group)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ redirs) (,() return in out err opened __TRUE__) ,()
+  __if__ (,() __is_null__ redirs) (,() return in out err opened __TRUE__ group) ,()
   __LList_uncons__ __print_exit_error__ redirs ,(redir rest)
   Node_split redir ,(tag pos children)
   __LList_uncons__ __print_exit_error__ children ,(op targets)
@@ -1481,16 +1798,26 @@
   __Dict_put__ used fd __TRUE__ ,()
   __if__ (,() __String_equal__ op "1>&2")
     (,()
-      Eval_redirs_from sh rest used in err err opened ,(in out err opened ok)
-      return in out err opened ok) ,()
+      Eval_redirs_from sh rest used in err err opened group ,(in out err opened ok group)
+      return in out err opened ok group) ,()
   __if__ (,() __String_equal__ op "2>&1")
     (,()
-      Eval_redirs_from sh rest used in out out opened ,(in out err opened ok)
-      return in out err opened ok) ,()
+      Eval_redirs_from sh rest used in out out opened group ,(in out err opened ok group)
+      return in out err opened ok group) ,()
   __LList_uncons__ __print_exit_error__ targets ,(target others)
   Node_split target ,(targetTag targetPos targetChildren)
   __if__ (,() __String_equal__ targetTag "params")
-    (,() Sh_error sh pos "redirection to a variable list is not implemented yet") ,()
+    (,()
+      __if__ (,() __String_equal__ fd "0")
+        (,()
+          Input_vars sh pos targetChildren ,(input)
+          Eval_redirs_from sh rest used input out err opened group ,(in out err opened ok group)
+          return in out err opened ok group) ,()
+      Capture_new sh group targetChildren ,(target group)
+      __if_then_else__ (,() __String_equal__ fd "1")
+        (,() Eval_redirs_from sh rest used in target err opened group)
+        (,() Eval_redirs_from sh rest used in out target opened group) ,(in out err opened ok group)
+      return in out err opened ok group) ,()
   Expand_fields sh target ,(fields)
   List_length fields ,(n)
   num "1" ,(one)
@@ -1503,15 +1830,17 @@
     __String_concat__ path ": " ,(m)
     __String_concat__ m msg ,(m)
     Sh_warn sh pos m ,()
-    return in out err opened __FALSE__) path mode ,(stream)
+    return in out err opened __FALSE__ group) path mode ,(stream)
   __LList_cons__ stream opened ,(opened)
   __if_then_else__ (,() __String_equal__ fd "0")
-    (,() Eval_redirs_from sh rest used stream out err opened) (,()
+    (,()
+      Input_stream sh stream ,(input)
+      Eval_redirs_from sh rest used input out err opened group) (,()
   Sh_get sh "global" ,(global)
   Target_stream global stream ,(target)
   __if_then_else__ (,() __String_equal__ fd "1")
-    (,() Eval_redirs_from sh rest used in target err opened)
-    (,() Eval_redirs_from sh rest used in out target opened)))
+    (,() Eval_redirs_from sh rest used in target err opened group)
+    (,() Eval_redirs_from sh rest used in out target opened group)))
 
 ;; リダイレクトが変える入出力の番号
 (define Redir_fd ,(op)

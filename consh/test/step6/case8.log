@@ -1,0 +1,2 @@
+consh: case8.sh:2:5: undefined variable: undefined_v
+exit: 1

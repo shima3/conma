@@ -1,0 +1,2 @@
+consh: case7.sh:2:14: duplicate redirection
+exit: 1

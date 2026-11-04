@@ -1,0 +1,2 @@
+consh: case10.sh:2:1: stdin: no arguments are allowed
+exit: 1

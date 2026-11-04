@@ -24,7 +24,7 @@ consh/
     ├── parse1/          文法のテスト：caseN.sh を consh_parse に渡し、caseN.log と比べる
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ
+    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin
 ```
 
 * ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
@@ -41,7 +41,7 @@ ConMa 版は構文解析をせず、Python の `consh_parse --pos` が作った�
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。
 
-### できること（段階 3〜5）
+### できること（段階 3〜6）
 
 * 変数定義、`export`、前置の変数定義、語の展開（glob を除く）
     * `$x`、`${x}`、`"$x"` の区別、入れ子の LazyList の葉、OFS による文字列化、既定値 `${x-値}`、値 `(語 ...)`、ANSI-C クォート `$'...'`
@@ -52,7 +52,7 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
     * 関数と組み込みコマンドには、`${list}` を LazyList のまま渡す。外部コマンドには葉ごとの語にして渡す
     * 前置の変数定義は、同じ文の語の展開にも反映する（`OFS=, echo "$list"`）
     * 先頭の語が `${list}` なら、要素を順に引数にする（先頭の要素だけは再帰的に展開してコマンド名を取る）。先頭の語の LazyList が空ならエラー
-* 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`
+* 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`、`stdin`
 * if 文（`elif`、`else`、`fi` の後のリダイレクト）
 * リストfor文、`break [変数名]`、`continue [変数名]`（`done` の後のリダイレクト）
     * 語は関数の引数と同じ規則で展開し、LazyList の値は1階層だけ開いて要素ごとに回す
@@ -65,7 +65,13 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
     * パイプに書き手や読み手がいなくなるリダイレクト（`f > file | g`、`f | g < file`）はエラー
     * 外部コマンドどうしでも要素を1つずつ受け渡すので遅い（PLAN-ja.md の 2.3）
 
-`&`、変数リストへのリダイレクト、`$$` は、まだ実行できない（エラーになる）。
+* 変数リストへのリダイレクト（段階 6）
+    * `> (a b . rest)`、`2> (a b . rest)`：出力の1つ目、2つ目の値を `a`、`b` に、残りの LazyList を `rest` に入れる。変数の数だけ受け取った後に書くとコマンドを止める（`$?` は 0）
+    * `< (a b . rest)`：`a`、`b` の値と `rest` の要素を標準入力にする
+* 組み込みコマンド `stdin`（段階 6）。標準入力の要素を標準出力に出す。関数と呼び出し側で読み出し位置を共有する
+    * `stdin > (a . rest)` は `a` の分だけ位置を進め、`rest` は参照した時点で読む
+
+`&`、`$$` は、まだ実行できない（エラーになる）。
 
 
 標準出力は、要素（行）の並びとして扱う。
