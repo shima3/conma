@@ -89,3 +89,11 @@ ConSh のテスト（expand1、parse1、parse2、step1〜6）は、すべて通�
 * `return`、`break`、`continue` で抜けるときも、`Capture_assign` を通る（`Eval_redirected`、`Loops_closing`）。
 * シェルの標準入力と `< ファイル` は、まだ `stdin` で読んでいなければ Stream をそのまま外部コマンドに渡し、読んだ後は要素を書く VProc を通す。PLAN-ja.md 2.3 の制限と合っている。
 * 外部コマンドの標準エラー出力は別の VProc で読み、`External_run` はその VProc を待ってから `__OS_wait__` に進む。
+
+### 対応
+
+* 1：1つ目の修正案にした。組の `unsatisfied` をなくし、止めるかどうかは、書くたびに組のすべての記録の `count` を見て決める（`Capture_satisfied`）。各記録の `count` を書くのは、その記録に書く VProc だけになる。止まらないコマンドの標準出力と標準エラー出力を別々の変数リストにするテストを、step6 の case11 に加えた。
+    * 1つの記録にいくつもの VProc が同時に書く場合（`{ f & g; } > (a b)`）は、`count` の更新が競合しうる。PLAN-ja.md 2.3 の制限に書いた。
+* 2：`$( )` の VProc ごとに、その終わりを `__VProc_wait__` で待つ VProc を起動し、終わったら `Sh_release` で状態を "done" にして、出力の書き手を閉じるようにした（`Subst_watch`）。
+    * 正常に終わったときは、すでに `Sh_finish` が同じことをしているので、何も変わらない。
+    * `$( )` の本体で実行時エラーを起こすように一時的に書き換えて試した。直す前は Deadlock（終了コード 2）だったが、直した後は次の文に進み、値は空になる。

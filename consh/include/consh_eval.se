@@ -1054,13 +1054,14 @@
 ;; > (a b . rest) と 2> (a b . rest)。受け取った要素を順に a、b に、残りを rest に割り当てる。
 ;; 同じ文の変数リストへのリダイレクトは組（group）にまとめる。組は Dict で、
 ;;   "records"     各リダイレクトの記録の LList
-;;   "unsatisfied" rest のない記録のうち、まだ変数の数だけ受け取っていないものの数の Ref
 ;;   "hasRest"     rest のある記録があるか
 ;;   "stopped"     コマンドを止めたか（Ref）
 ;; 記録は Dict で、"names"（変数名の LList）、"need"（その数）、"restName"（なければ ""）、
 ;; "items"（受け取った要素の MSeq）、"count"（その数の Ref）、"direct"（stdin が渡した残りの LazyList の Ref）、"group"。
 ;; rest のない記録がすべて変数の数だけ受け取り、rest のある記録がなければ、次に書いたときにコマンドを止める
-;; （SIGPIPE に当たる。$? は 0）。それまでは、変数の数を超えた要素は捨てる
+;; （SIGPIPE に当たる。$? は 0）。それまでは、変数の数を超えた要素は捨てる。
+;; 標準出力と標準エラー出力の記録は別々の VProc が書くので、組で共有する数は持たず、
+;; 止めるかどうかは、書くたびに組のすべての記録の "count" を見て決める（Capture_satisfied）
 
 ;; 新しい記録を組に加え（組が null なら作る）、その capture ターゲットと組を返す
 (define Capture_new ,(sh group params)
@@ -1069,9 +1070,6 @@
     (,()
       __Dict_new__ ,(g)
       __Dict_put__ g "records" __NULL__ ,()
-      num "0" ,(zero)
-      __Ref_new__ zero ,(unsatisfied)
-      __Dict_put__ g "unsatisfied" unsatisfied ,()
       __Dict_put__ g "hasRest" __FALSE__ ,()
       __Ref_new__ __FALSE__ ,(stopped)
       __Dict_put__ g "stopped" stopped ,()
@@ -1103,15 +1101,7 @@
   Sh_get group "records" ,(records)
   __LList_cons__ record records ,(records)
   __Dict_put__ group "records" records ,()
-  __if_then_else__ (,() __String_equal__ restName "")
-    (,()
-      __unless__ (,() __Number_is_zero__ need)
-        (,()
-          Sh_get group "unsatisfied" ,(ref)
-          __Ref_get__ ref ,(n)
-          num "1" ,(one)
-          __Number_add__ n one ,(n)
-          __Ref_set__ ref n) ,())
+  __unless__ (,() __String_equal__ restName "")
     (,() __Dict_put__ group "hasRest" __TRUE__) ,()
   Sh_get sh "global" ,(global)
   Target_new_id global ,(id)
@@ -1135,18 +1125,29 @@
       Capture_add record item ,()
       return) ,()
   Sh_get record "group" ,(group)
-  Sh_get group "unsatisfied" ,(unsatisfiedRef)
-  __Ref_get__ unsatisfiedRef ,(unsatisfied)
   Sh_get group "hasRest" ,(groupHasRest)
   __if__ (,() __NULL__ groupHasRest) return ,()
-  __unless__ (,() __Number_is_zero__ unsatisfied) return ,()
+  Sh_get group "records" ,(records)
+  Capture_satisfied records ,(satisfied)
+  __unless__ (,() __NULL__ satisfied) return ,()
   Sh_get group "stopped" ,(stopped)
   __Ref_set__ stopped __TRUE__ ,()
   Sh_abort sh)
 
-;; 要素を記録に加える。rest のない記録が変数の数だけ受け取ったら、組の unsatisfied を減らす
-(define Capture_add ,(record item)
+;; 組のすべての記録（rest はない）が、変数の数だけ受け取ったか
+(define Capture_satisfied ,(records)
   __Cont_get__ ,(return)
+  __if__ (,() __is_null__ records) (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ records ,(record rest)
+  Sh_get record "count" ,(countRef)
+  __Ref_get__ countRef ,(count)
+  Sh_get record "need" ,(need)
+  __Number_subtract__ count need ,(diff)
+  __if__ (,() __Number_is_negative__ diff) (,() return __FALSE__) ,()
+  Capture_satisfied rest)
+
+;; 要素を記録に加える
+(define Capture_add ,(record item)
   Sh_get record "items" ,(items)
   __MSeq_append__ __print_exit_error__ items item ,()
   Sh_get record "count" ,(countRef)
@@ -1154,17 +1155,7 @@
   num "1" ,(one)
   __Number_add__ count one ,(count)
   __Ref_set__ countRef count ,()
-  Bg_spec_add record count item ,()
-  Sh_get record "restName" ,(restName)
-  __unless__ (,() __String_equal__ restName "") return ,()
-  Sh_get record "need" ,(need)
-  __Number_subtract__ count need ,(diff)
-  __unless__ (,() __Number_is_zero__ diff) return ,()
-  Sh_get record "group" ,(group)
-  Sh_get group "unsatisfied" ,(ref)
-  __Ref_get__ ref ,(n)
-  __Number_subtract__ n one ,(n)
-  __Ref_set__ ref n)
+  Bg_spec_add record count item)
 
 ;; stdin > (a b . rest)：標準入力の要素を、変数の数だけ読み出し位置を進めながら受け取り、
 ;; rest には残りの LazyList をそのまま渡す（読み出し位置は進めない。rest は参照した時点で読む）
@@ -1288,6 +1279,7 @@
   Sh_child sh in out err "return in a command substitution" ,(child)
   __Dict_put__ child "substState" state ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
+  Subst_watch vproc child ,()
   __Dict_new__ ,(record)
   __Dict_put__ record "vproc" vproc ,()
   __Dict_put__ record "chan" chan ,()
@@ -1297,6 +1289,16 @@
   __LList_cons__ record substs ,(substs)
   __Dict_put__ global "substs" substs ,()
   Chan_list chan)
+
+;; 子の VProc が ConMa の実行時エラーで止まると、Sh_finish を通らず、状態が "running" のまま、
+;; チャネルも開いたまま残り、文の終わりや値を読む側が待ち続ける。そのため、別の VProc で子の終わりを待ち、
+;; Sh_release で状態を "done" にし、出力の書き手を閉じる。正常に終わったときは、すでに Sh_finish が
+;; 同じことをしているので、何も変わらない（Chan_close は2回目は何もしない）
+(define Subst_watch ,(vproc child)
+  __VProc_start__ (,()
+    __VProc_wait__ __print_exit_error__ vproc ,()
+    Sh_release child) ,(watcher)
+  __nop__)
 
 ;; 文の終わりに、この VProc で起動した $( ) を、それぞれ終わるか、チャネルが一杯で書き手が待つまで待つ。
 ;; 終わったものは記録から除き、待っているもの（値がまだ読まれていない）は残す
