@@ -1,0 +1,2 @@
+consh: case4.sh:2:22: continue outside a loop
+exit: 1

@@ -1,0 +1,22 @@
+[a]
+[b]
+[]
+[c]
+a b
+a
+b
+<one>
+<a b  c>
+<ext>
+consh: case1.sh:11:1: echo hi: No such file or directory: echo hi
+hi there
+x=1 y=2 / E=unset
+pwd kept
+g 1
+ status 1
+nested inner
+{r1}
+{r2}
+to-stderr
+e has 
+exit: 0

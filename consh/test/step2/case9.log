@@ -1,2 +1,2 @@
-consh: case9.sh:1:6: command substitution is not implemented yet
-exit: 1
+a
+exit: 0

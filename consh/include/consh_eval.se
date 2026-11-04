@@ -3,7 +3,8 @@
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
 ;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
-;; パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
+;;   コマンド置換 $( )
+;; パイプ、&、変数リストへのリダイレクトは、まだない（実行するとエラー）。
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
 ;;   "global"     シェル全体で共有する Dict。"status" に最後の文の終了ステータスの String（$?）
@@ -14,6 +15,7 @@
 ;;   "parent"     レキシカルに外側の文脈（関数名を探す）。トップレベルでは null
 ;;   "inFunction" 関数の中か（__TRUE__ / __FALSE__）
 ;;   "return"     return で使う継続。関数の外では null
+;;   "inSubst"    コマンド置換の中か（関数を呼ぶと __FALSE__ に戻る）。なければ __FALSE__ とみなす
 ;;   "loops"      実行中の for 文の LList（内側が先）。各要素は (ループ変数の名前 break の継続 continue の継続)。
 ;;                関数の中では、関数の外のループは見えない
 ;;   "env"        環境変数（Env_new）
@@ -241,6 +243,22 @@
   __unless__ (,() __is_null__ found) (,() __Dict_put__ layer name value) ,()
   Env_export_layers rest name value)
 
+;; 環境変数の写し。export しても元の環境変数は変わらない
+(define Env_copy ,(env)
+  Sh_get env "base" ,(base)
+  Dict_copy base ,(base)
+  Sh_get env "layers" ,(layers)
+  Env_copy_layers layers ,(layers)
+  Env_new base layers)
+
+(define Env_copy_layers ,(layers)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ layers) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ layers ,(layer rest)
+  Dict_copy layer ,(layer)
+  Env_copy_layers rest ,(rest)
+  __LList_cons__ layer rest)
+
 ;; 外部コマンドに渡す Dict。base に、外側の層から順に重ねる
 (define Env_dict ,(env)
   Sh_get env "base" ,(base)
@@ -447,6 +465,8 @@
 ;; 文「return 語」。語は 0 から 255 の数。関数の残りを実行せずに戻る
 (define Eval_return ,(sh pos children)
   Sh_get sh "return" ,(ret)
+  __Dict_lookup_or__ sh "inSubst" (,(key) __NULL__ __FALSE__) ,(inSubst)
+  __if__ (,() __NULL__ inSubst) (,() Sh_error sh pos "return in a command substitution") ,()
   __if__ (,() __is_null__ ret) (,() Sh_error sh pos "return outside a function") ,()
   __LList_uncons__ __print_exit_error__ children ,(word others)
   Expand_fields sh word ,(fields)
@@ -521,6 +541,7 @@
   __Dict_put__ callee "inFunction" __TRUE__ ,()
   __Dict_put__ callee "return" return ,()
   __Dict_put__ callee "loops" __NULL__ ,()
+  __Dict_put__ callee "inSubst" __FALSE__ ,()
   __Dict_put__ callee "env" env ,()
   __Dict_put__ callee "in" in ,()
   __Dict_put__ callee "out" out ,()
@@ -810,6 +831,49 @@
   Node_split script ,(tag pos lines)
   __if__ (,() __is_null__ lines) (,() Sh_set_status sh "0" ,() return) ,()
   Eval_lines sh lines)
+
+;; ── コマンド置換 ──
+
+;; $( スクリプト ) を実行し、標準出力の要素を並べた LazyList を返す。外部コマンドの出力は行ごとの要素になる。
+;; 当面は同じ VProc で最後まで実行してから値にする（PLAN-ja.md の 2.3）。
+;; 中の変数定義、関数定義、export、cd、$? は外に影響しない。中から return や外のループへの break、continue はできない
+(define Eval_subst ,(sh pos script)
+  Node_split script ,(tag spos lines)
+  ;; 出力の要素は、逆順の LList にして Dict の "items" に置く
+  __Dict_new__ ,(box)
+  __Dict_put__ box "items" __NULL__ ,()
+  Sh_get sh "global" ,(global)
+  Target_sink global (,(item)
+    Sh_get box "items" ,(items)
+    __LList_cons__ item items ,(items)
+    __Dict_put__ box "items" items) ,(out)
+  Subst_scope sh out ,(inner)
+  Sh_status sh ,(status)
+  __OS_getcwd__ ,(cwd)
+  Eval_lines inner lines ,()
+  __OS_chdir__ __print_exit_error__ cwd ,()
+  Sh_set_status sh status ,()
+  Sh_get box "items" ,(items)
+  List_reverse items ,(items)
+  LazyList_fromList items)
+
+;; コマンド置換の中の文脈。局所変数と環境変数は写しにし、関数は新しいスコープ（外側は sh）に定義する
+(define Subst_scope ,(sh out)
+  Sh_get sh "vars" ,(vars)
+  Dict_copy vars ,(vars)
+  Sh_get sh "env" ,(env)
+  Env_copy env ,(env)
+  __Dict_new__ ,(funcs)
+  Dict_copy sh ,(inner)
+  __Dict_put__ inner "vars" vars ,()
+  __Dict_put__ inner "env" env ,()
+  __Dict_put__ inner "funcs" funcs ,()
+  __Dict_put__ inner "parent" sh ,()
+  __Dict_put__ inner "out" out ,()
+  __Dict_put__ inner "return" __NULL__ ,()
+  __Dict_put__ inner "inSubst" __TRUE__ ,()
+  __Dict_put__ inner "loops" __NULL__ ,()
+  __NULL__ inner)
 
 ;; ── for 文、break、continue ──
 

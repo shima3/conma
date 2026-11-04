@@ -9,7 +9,7 @@
 ;; 値は String か LazyList で、LazyList の要素も String か LazyList（入れ子）。
 ;; 葉は、入れ子の LazyList を再帰的にたどったときの String の要素である。
 ;; コマンドの語は、外部コマンドの語（Expand_fields）か、外部コマンド以外の語（Expand_args）として展開する。
-;; コマンド置換と glob はまだない。
+;; glob はまだない。
 (include "consh_util.se")
 (include "consh_ast.se")
 
@@ -210,7 +210,10 @@
   __Cont_get__ ,(return)
   Node_split elem ,(kind pos children)
   __if__ (,() __String_equal__ kind "subst")
-    (,() Sh_error sh pos "command substitution is not implemented yet") ,()
+    (,()
+      List_first children ,(script)
+      Eval_subst sh pos script ,(value)
+      return value) ,()
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __if__ (,() __is_null__ rest) (,() Sh_lookup sh pos name ,(value) return value) ,()
   Sh_defined sh pos name ,(defined)
