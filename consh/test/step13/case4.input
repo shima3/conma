@@ -1,0 +1,8 @@
+d=$(mktemp -d /tmp/consh.step13.XXXXXX)
+function grows (name) { a=$(wc -c < $d/$name); sleep 1; b=$(wc -c < $d/$name); if test "$a" = "$b"; then echo "$name: stopped"; else echo "$name: still growing"; fi; }
+function gen (log) { for i in $(yes); do echo $i >> $d/$log; echo $i; done; }
+sh -c 'sleep 1; kill -INT $PPID' &
+gen ctrl-c-log | cat > /dev/null
+echo "interrupted $?"
+grows ctrl-c-log
+rm -rf $d

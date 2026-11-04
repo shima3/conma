@@ -144,6 +144,11 @@
   __if__ (,() __is_null__ lines) return ,()
   Sh_get r "killed" ,(killed)
   __Ref_set__ killed __FALSE__ ,()
+  ;; コマンドの番号。このコマンドが起動した $( ) を、Ctrl-C で止めるときに見分ける（Kill_tree）
+  __Dict_lookup_or__ sh "cmdNo" (,(key) num "0") ,(cmdNo)
+  num "1" ,(one)
+  __Number_add__ cmdNo one ,(cmdNo)
+  __Dict_put__ sh "cmdNo" cmdNo ,()
   __Ref_new__ __NULL__ ,(cwdRef)
   __VProc_start__ (,() Repl_body sh lines cwdRef) ,(vproc)
   Sh_get r "running" ,(running)
@@ -155,6 +160,8 @@
   __Ref_get__ killed ,(wasKilled)
   __if__ (,() __NULL__ wasKilled)
     (,()
+      ;; Ctrl-C で止めたコマンドが起動した、パイプラインの要素と $( ) も止める
+      Kill_tree sh cmdNo ,()
       Sh_set_status sh "130" ,()
       __OS_get_stderr__ ,(err)
       __OS_write__ __print_exit_error__ err "\n" ,()

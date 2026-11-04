@@ -1,0 +1,5 @@
+pipe job 143
+pipe-log: stopped
+subst job 143
+subst-log: stopped
+exit: 0

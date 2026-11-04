@@ -75,6 +75,8 @@
   __Dict_put__ sh "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(openRef)
   __Dict_put__ sh "openRef" openRef ,()
+  __Ref_new__ __NULL__ ,(pipeRef)
+  __Dict_put__ sh "pipeRef" pipeRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
   Target_new_id global ,(outId)
@@ -962,6 +964,8 @@
   __Dict_put__ child "recover" __NULL__ ,()
   __Ref_new__ __NULL__ ,(openRef)
   __Dict_put__ child "openRef" openRef ,()
+  __Ref_new__ __NULL__ ,(pipeRef)
+  __Dict_put__ child "pipeRef" pipeRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
@@ -1326,6 +1330,9 @@
   Subst_watch vproc child ,()
   __Dict_new__ ,(record)
   __Dict_put__ record "vproc" vproc ,()
+  __Dict_put__ record "child" child ,()
+  __Dict_lookup_or__ sh "cmdNo" (,(key) __NULL__ __NULL__) ,(cmdNo)
+  __Dict_put__ record "cmdNo" cmdNo ,()
   __Dict_put__ record "chan" chan ,()
   __Dict_put__ record "state" state ,()
   Sh_get sh "global" ,(global)
@@ -1397,17 +1404,21 @@
 (define Eval_pipe ,(sh pos elems)
   Pipe_check sh elems __TRUE__ ,()
   Sh_get sh "in" ,(in)
-  Pipe_start sh elems in __NULL__ __NULL__ __NULL__ ,(vprocs last)
+  Pipe_start sh elems in __NULL__ __NULL__ __NULL__ __NULL__ ,(vprocs last members)
+  ;; 待っている間の要素を文脈に置く。kill や Ctrl-C でこの VProc を止めると、要素も止める（Kill_tree）
+  Sh_get sh "pipeRef" ,(pipeRef)
+  __Ref_set__ pipeRef members ,()
   Pipe_wait vprocs ,()
+  __Ref_set__ pipeRef __NULL__ ,()
   Sh_get last "global" ,(global)
   __Dict_lookup_or__ global "status" __print_exit_error__ ,(status)
   Sh_set_status sh status)
 
 ;; 要素を順に起動する。in はこの要素の標準入力、cancelIn はそのチャネル（最初の要素は null）、
 ;; owned はこの要素が閉じる Stream の LList（前の要素との OS のパイプの読む側）。
-;; 起動した VProc の LList と、最後の要素の文脈を返す。
+;; 起動した VProc の LList と、最後の要素の文脈と、要素の (VProc 文脈) の組の LList（members）を返す。
 ;; この要素と次の要素がどちらも外部コマンドなら（Pipe_is_external）、チャネルではなく OS のパイプで直接つなぐ
-(define Pipe_start ,(sh elems in cancelIn owned vprocs)
+(define Pipe_start ,(sh elems in cancelIn owned vprocs members)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
   Sh_get sh "err" ,(err)
@@ -1417,7 +1428,9 @@
       Child_targets out err ,(out err)
       Pipe_element sh elem in out err cancelIn owned ,(vproc child)
       __LList_cons__ vproc vprocs ,(vprocs)
-      return vprocs child) ,()
+      Member_make vproc child ,(m)
+      __LList_cons__ m members ,(members)
+      return vprocs child members) ,()
   Pipe_is_external sh elem ,(writes)
   List_first rest ,(next)
   Pipe_is_external sh next ,(reads)
@@ -1431,10 +1444,12 @@
       __LList_cons__ writer owned ,(mine)
       Pipe_element sh elem in out err cancelIn mine ,(vproc child)
       __LList_cons__ vproc vprocs ,(vprocs)
+      Member_make vproc child ,(m)
+      __LList_cons__ m members ,(members)
       Input_stream sh reader ,(next)
       __LList_cons__ reader __NULL__ ,(nextOwned)
-      Pipe_start sh rest next __NULL__ nextOwned vprocs ,(vprocs last)
-      return vprocs last) ,()
+      Pipe_start sh rest next __NULL__ nextOwned vprocs members ,(vprocs last members)
+      return vprocs last members) ,()
   Pipe_cap ,(cap)
   Chan_new cap ,(chan)
   Chan_writer chan ,(writer)
@@ -1444,9 +1459,11 @@
   Child_target err ,(err)
   Pipe_element sh elem in out err cancelIn owned ,(vproc child)
   __LList_cons__ vproc vprocs ,(vprocs)
+  Member_make vproc child ,(m)
+  __LList_cons__ m members ,(members)
   Chan_list chan ,(list)
   Input_new sh list ,(next)
-  Pipe_start sh rest next chan __NULL__ vprocs)
+  Pipe_start sh rest next chan __NULL__ vprocs members)
 
 ;; owned の Stream は、要素の外部コマンドを起動したら閉じる（External_run）。起動しなかったときのため、要素の終わりにも閉じる
 (define Pipe_element ,(sh elem in out err cancelIn owned)
@@ -1677,9 +1694,9 @@
   __if_then_else__ (,() __String_equal__ ptag "pipe")
     (,()
       Pipe_check sh pchildren __TRUE__ ,()
-      Pipe_start sh pchildren in __NULL__ __NULL__ __NULL__ ,(vprocs last)
+      Pipe_start sh pchildren in __NULL__ __NULL__ __NULL__ __NULL__ ,(vprocs last members)
       List_first vprocs ,(vproc)
-      __NULL__ vproc last)
+      __NULL__ vproc last members)
     (,()
       Sh_get sh "out" ,(out)
       Sh_get sh "err" ,(err)
@@ -1690,20 +1707,23 @@
       __Dict_put__ child "bgCaptures" specs ,()
       __Dict_put__ child "bgSpecs" specs ,()
       Sh_start child (,(c) Eval_stmt c pipeline) ,(vproc)
-      __NULL__ vproc child) ,(vproc child)
-  Job_add sh vproc child ,()
+      Member_make vproc child ,(m)
+      L1 m ,(members)
+      __NULL__ vproc child members) ,(vproc child members)
+  Job_add sh vproc child members ,()
   Sh_set_status sh "0")
 
 ;; ── ジョブ ──
 ;; ジョブは Dict で、"id"（$! の String）、"vproc"、"child"（その VProc の文脈）、"killed"（kill したか）を持つ
 
-(define Job_add ,(sh vproc child)
+(define Job_add ,(sh vproc child members)
   __VProc_id__ vproc ,(n)
   __Number_toString__ n ,(id)
   __Dict_new__ ,(job)
   __Dict_put__ job "id" id ,()
   __Dict_put__ job "vproc" vproc ,()
   __Dict_put__ job "child" child ,()
+  __Dict_put__ job "members" members ,()
   __Dict_put__ job "killed" __FALSE__ ,()
   Sh_get sh "global" ,(global)
   Sh_get global "jobs" ,(jobs)
@@ -1767,18 +1787,71 @@
 ;; 標準入力のチャネルを cancel し、まだできていない遅延の値を空にする
 (define Job_kill ,(job)
   __Dict_put__ job "killed" __TRUE__ ,()
-  Sh_get job "vproc" ,(vproc)
-  __VProc_kill__ vproc ,()
+  Sh_get job "members" ,(members)
+  Members_kill members ,()
   Sh_get job "child" ,(child)
-  Sh_get child "procRef" ,(procRef)
+  __Dict_lookup_or__ child "bgSpecs" (,(key) __NULL__ __NULL__) ,(specs)
+  Bg_specs_finish specs)
+
+;; ── VProc の木を止める ──
+;; kill と対話モードの Ctrl-C で VProc を止めるとき、その VProc が起動して、まだ終わっていない VProc も止める。
+;; 対象は、待っているパイプラインの要素（文脈の "pipeRef"、Eval_pipe）と、終わっていない $( )（global の "substs"）で、
+;; それぞれが起動したものもたどる。& で起動したジョブは止めない（Bash と同じ）。
+;; 止める VProc ごとに、実行中の外部コマンドに SIGTERM を送り、Sh_release する（開いたファイル、出力、標準入力のチャネル）
+
+;; パイプラインの要素などの (VProc 文脈) の組
+(define Member_make ,(vproc ctx)
+  L2 vproc ctx)
+
+(define Members_kill ,(members)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ members) return ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  __LList_uncons__ __print_exit_error__ m ,(vproc more)
+  List_first more ,(ctx)
+  VProc_stop vproc ctx ,()
+  Members_kill rest)
+
+;; vproc を止め、その外部コマンドに SIGTERM を送り、後始末をして、起動したものも止める
+(define VProc_stop ,(vproc ctx)
+  __VProc_kill__ vproc ,()
+  Sh_get ctx "procRef" ,(procRef)
   __Ref_get__ procRef ,(proc)
   __unless__ (,() __is_null__ proc)
     (,()
       num "15" ,(sigterm)
       __OS_kill__ (,(msg) __nop__) proc sigterm) ,()
-  Sh_release child ,()
-  __Dict_lookup_or__ child "bgSpecs" (,(key) __NULL__ __NULL__) ,(specs)
-  Bg_specs_finish specs)
+  Sh_release ctx ,()
+  Kill_tree ctx __NULL__)
+
+;; ctx の VProc が起動して、まだ終わっていないパイプラインの要素と $( ) を止める。
+;; cmdNo が null でなければ、$( ) は、対話モードのその番号のコマンドが起動したものだけにする
+(define Kill_tree ,(ctx cmdNo)
+  Sh_get ctx "pipeRef" ,(pipeRef)
+  __Ref_get__ pipeRef ,(members)
+  __Ref_set__ pipeRef __NULL__ ,()
+  Members_kill members ,()
+  Sh_get ctx "global" ,(global)
+  Sh_get global "substs" ,(substs)
+  Substs_kill substs cmdNo)
+
+(define Substs_kill ,(substs cmdNo)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ substs) return ,()
+  __LList_uncons__ __print_exit_error__ substs ,(record rest)
+  Substs_kill rest cmdNo ,()
+  Sh_get record "state" ,(stateRef)
+  __Ref_get__ stateRef ,(state)
+  __if__ (,() __String_equal__ state "done") return ,()
+  __unless__ (,() __is_null__ cmdNo)
+    (,()
+      __Dict_lookup_or__ record "cmdNo" (,(key) __NULL__ __NULL__) ,(n)
+      __if__ (,() __is_null__ n) return ,()
+      __Number_subtract__ n cmdNo ,(d)
+      __unless__ (,() __Number_is_zero__ d) return ,()) ,()
+  Sh_get record "vproc" ,(vproc)
+  Sh_get record "child" ,(child)
+  VProc_stop vproc child)
 
 ;; wait [ID ...]: ID がなければ、この VProc から & で起動したすべてのジョブを待ち、$? を 0 にする。
 ;; ID があれば、順に待ち、$? を最後のジョブの終了ステータスにする。ないジョブ（待った後のものも）は 127
