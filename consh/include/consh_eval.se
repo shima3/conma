@@ -1,4 +1,4 @@
-;; ConSh の実行（段階 3〜7）。
+;; ConSh の実行（段階 3〜8）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
@@ -70,9 +70,11 @@
   __Dict_put__ sh "abort" __NULL__ ,()
   __Dict_put__ sh "cancelIn" __NULL__ ,()
   __Dict_put__ sh "bgCaptures" __NULL__ ,()
+  __Dict_put__ sh "owned" __NULL__ ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
-  Target_sink global (,(line) Top_write sh line) ,(out)
+  Target_new_id global ,(outId)
+  Target_make "top" outId (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
   __Dict_put__ sh "err" err ,()
   __OS_get_stdin__ ,(inStream)
@@ -81,7 +83,8 @@
   __NULL__ sh)
 
 ;; トップレベルの標準出力。要素を1行として書く。LazyList の要素は、トップレベルの OFS で文字列化する。
-;; パイプラインの要素の VProc からも書くので、PDict の stdout ではなく、OS の標準出力の Stream に書く
+;; パイプラインの要素の VProc からも書くので、PDict の stdout ではなく、OS の標準出力の Stream に書く。
+;; 外部コマンドには、OS の標準出力の Stream をそのまま渡す（External_os_stream）
 (define Top_write ,(sh line)
   Line_toString sh __NULL__ line ,(line)
   __String_concat__ line "\n" ,(s)
@@ -312,11 +315,13 @@
 ;; 標準出力と標準エラー出力の行き先は、次のどれか。
 ;;   (stream id Stream)  バイト列をそのまま書く Stream。要素は、末尾に改行を付けて書く
 ;;   (sink id write)     要素を1つずつ受け取る関数 write（,(line) ...）。どの VProc から呼んでもよい
+;;   (top id write)      トップレベルの標準出力（Ctx_top）。要素は sink と同じく write で書くが、
+;;                       外部コマンドには OS の標準出力の Stream をそのまま渡す（端末なら端末のまま）
 ;;   (chan id writer)    チャネルの書き手（consh_chan.se）。それを作った VProc だけが使う。
 ;;                       別の VProc に渡すときは、同じチャネルの新しい書き手を作る（Child_target）
 ;;   (capture id record) 変数リストへのリダイレクト（Capture_new）。要素を受け取った順に変数に割り当てる。どの VProc から書いてもよい
 ;; id はターゲットを見分ける String で、2>&1 や 1>&2 で写したターゲットは同じ id を持つ。
-;; 外部コマンドの出力が sink か chan に行くときは、パイプで受け取って行ごとの要素にする（行の改行は除く）
+;; 外部コマンドの出力が sink、chan、capture に行くときは、パイプで受け取って行ごとの要素にする（行の改行は除く）
 
 (define Target_stream ,(global stream)
   Target_new_id global ,(id)
@@ -345,11 +350,13 @@
   __LList_uncons__ __print_exit_error__ rest ,(value rest)
   __NULL__ kind id value)
 
-;; stream ターゲットを、同じ id の sink ターゲットにする（sink と chan はそのまま）。要素は、末尾に改行を付けて Stream に書く。
-;; 関数の出力をファイルに向けると、関数の中の外部コマンドの出力も行ごとの要素になる（Func_targets）。
+;; stream と top のターゲットを、同じ id の sink ターゲットにする（sink と chan はそのまま）。要素は、末尾に改行を付けて Stream に書く。
+;; 関数の出力をファイルや端末に向けても、関数の中の外部コマンドの出力は行ごとの要素になる（Func_targets）。
 ;; LazyList の要素は、リダイレクトを書いた文の文脈 sh の OFS で文字列化する
 (define Target_as_sink ,(sh pos target)
+  __Cont_get__ ,(return)
   Target_split target ,(kind id value)
+  __if__ (,() __String_equal__ kind "top") (,() Target_make "sink" id value ,(t) return t) ,()
   __if_then_else__ (,() __String_equal__ kind "stream")
     (,()
       Stream_writer sh pos value ,(write)
@@ -922,6 +929,7 @@
   __Dict_put__ child "abort" __NULL__ ,()
   __Dict_put__ child "cancelIn" __NULL__ ,()
   __Dict_put__ child "bgCaptures" __NULL__ ,()
+  __Dict_put__ child "owned" __NULL__ ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
@@ -1353,15 +1361,17 @@
 (define Eval_pipe ,(sh pos elems)
   Pipe_check sh elems __TRUE__ ,()
   Sh_get sh "in" ,(in)
-  Pipe_start sh elems in __NULL__ __NULL__ ,(vprocs last)
+  Pipe_start sh elems in __NULL__ __NULL__ __NULL__ ,(vprocs last)
   Pipe_wait vprocs ,()
   Sh_get last "global" ,(global)
   __Dict_lookup_or__ global "status" __print_exit_error__ ,(status)
   Sh_set_status sh status)
 
-;; 要素を順に起動する。in はこの要素の標準入力、cancelIn はそのチャネル（最初の要素は null）。
-;; 起動した VProc の LList と、最後の要素の文脈を返す
-(define Pipe_start ,(sh elems in cancelIn vprocs)
+;; 要素を順に起動する。in はこの要素の標準入力、cancelIn はそのチャネル（最初の要素は null）、
+;; owned はこの要素が閉じる Stream の LList（前の要素との OS のパイプの読む側）。
+;; 起動した VProc の LList と、最後の要素の文脈を返す。
+;; この要素と次の要素がどちらも外部コマンドなら（Pipe_is_external）、チャネルではなく OS のパイプで直接つなぐ
+(define Pipe_start ,(sh elems in cancelIn owned vprocs)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
   Sh_get sh "err" ,(err)
@@ -1369,9 +1379,26 @@
     (,()
       Sh_get sh "out" ,(out)
       Child_targets out err ,(out err)
-      Pipe_element sh elem in out err cancelIn ,(vproc child)
+      Pipe_element sh elem in out err cancelIn owned ,(vproc child)
       __LList_cons__ vproc vprocs ,(vprocs)
       return vprocs child) ,()
+  Pipe_is_external sh elem ,(writes)
+  List_first rest ,(next)
+  Pipe_is_external sh next ,(reads)
+  __and__ writes reads ,(direct)
+  __if__ (,() __NULL__ direct)
+    (,()
+      __OS_pipe__ ,(reader writer)
+      Sh_get sh "global" ,(global)
+      Target_stream global writer ,(out)
+      Child_target err ,(err)
+      __LList_cons__ writer owned ,(mine)
+      Pipe_element sh elem in out err cancelIn mine ,(vproc child)
+      __LList_cons__ vproc vprocs ,(vprocs)
+      Input_stream sh reader ,(next)
+      __LList_cons__ reader __NULL__ ,(nextOwned)
+      Pipe_start sh rest next __NULL__ nextOwned vprocs ,(vprocs last)
+      return vprocs last) ,()
   Pipe_cap ,(cap)
   Chan_new cap ,(chan)
   Chan_writer chan ,(writer)
@@ -1379,17 +1406,43 @@
   Target_new_id global ,(id)
   Target_make "chan" id writer ,(out)
   Child_target err ,(err)
-  Pipe_element sh elem in out err cancelIn ,(vproc child)
+  Pipe_element sh elem in out err cancelIn owned ,(vproc child)
   __LList_cons__ vproc vprocs ,(vprocs)
   Chan_list chan ,(list)
   Input_new sh list ,(next)
-  Pipe_start sh rest next chan vprocs)
+  Pipe_start sh rest next chan __NULL__ vprocs)
 
-(define Pipe_element ,(sh elem in out err cancelIn)
+;; owned の Stream は、要素の外部コマンドを起動したら閉じる（External_run）。起動しなかったときのため、要素の終わりにも閉じる
+(define Pipe_element ,(sh elem in out err cancelIn owned)
   Sh_child sh in out err "return in a pipeline" ,(child)
   __Dict_put__ child "cancelIn" cancelIn ,()
-  Sh_start child (,(c) Eval_stmt c elem) ,(vproc)
+  __Dict_put__ child "owned" owned ,()
+  Sh_start child (,(c)
+    Eval_stmt c elem ,()
+    Eval_close owned) ,(vproc)
   __NULL__ vproc child)
+
+;; パイプラインの要素 elem が、先頭の語がクォートか裸文字だけの単純文で、その名前が外部コマンドか。
+;; そうなら、要素は外部コマンドを1つだけ起動し、標準入力と標準出力の Stream をそのまま渡せる
+(define Pipe_is_external ,(sh elem)
+  __Cont_get__ ,(return)
+  Node_split elem ,(tag pos children)
+  __unless__ (,() __String_equal__ tag "cmd") (,() return __FALSE__) ,()
+  Cmd_parts children ,(defs words redirs)
+  List_first words ,(word)
+  Node_split word ,(wtag wpos parts)
+  List_length parts ,(n)
+  num "1" ,(one)
+  __Number_subtract__ n one ,(diff)
+  __unless__ (,() __Number_is_zero__ diff) (,() return __FALSE__) ,()
+  List_first parts ,(part)
+  Node_split part ,(ptag ppos texts)
+  __String_equal__ ptag "lit" ,(isLit)
+  __String_equal__ ptag "sq" ,(isSq)
+  __or__ isLit isSq ,(plain)
+  __unless__ (,() __NULL__ plain) (,() return __FALSE__) ,()
+  List_first texts ,(name)
+  Cmd_is_external sh name)
 
 (define Pipe_wait ,(vprocs)
   __Cont_get__ ,(return)
@@ -1588,7 +1641,7 @@
   __if_then_else__ (,() __String_equal__ ptag "pipe")
     (,()
       Pipe_check sh pchildren __TRUE__ ,()
-      Pipe_start sh pchildren in __NULL__ __NULL__ ,(vprocs last)
+      Pipe_start sh pchildren in __NULL__ __NULL__ __NULL__ ,(vprocs last)
       List_first vprocs ,(vproc)
       __NULL__ vproc last)
     (,()
@@ -2015,6 +2068,7 @@
   Eval_append command args ,()
   External_streams sh pos out err ,(outStream errStream reader writer pumpTarget reader2 writer2 pumpTarget2)
   External_input in ,(inStream feed)
+  Sh_get sh "owned" ,(owned)
   __OS_spawn__ (,(msg)
     Eval_close_pipe reader writer ,()
     Eval_close_pipe reader2 writer2 ,()
@@ -2023,8 +2077,10 @@
     __String_concat__ name ": " ,(m)
     __String_concat__ m msg ,(m)
     Sh_warn sh pos m ,()
+    Eval_close owned ,()
     Sh_set_status sh "127" ,()
     return) command inStream outStream errStream dict ,(proc)
+  Eval_close owned ,()
   Sh_get sh "procRef" ,(procRef)
   __Ref_set__ procRef proc ,()
   Feed_start feed ,()
@@ -2149,10 +2205,10 @@
   __Cont_get__ ,(return)
   Target_split out ,(outKind outId outValue)
   Target_split err ,(errKind errId errValue)
-  __String_equal__ outKind "stream" ,(outIsStream)
-  __String_equal__ errKind "stream" ,(errIsStream)
-  __not__ outIsStream ,(outIsSink)
-  __not__ errIsStream ,(errIsSink)
+  External_os_stream out ,(outValue)
+  External_os_stream err ,(errValue)
+  __is_null__ outValue ,(outIsSink)
+  __is_null__ errValue ,(errIsSink)
   __or__ outIsSink errIsSink ,(anySink)
   __unless__ (,() __NULL__ anySink)
     (,() return outValue errValue __NULL__ __NULL__ __NULL__ __NULL__ __NULL__ __NULL__) ,()
@@ -2165,6 +2221,15 @@
     (,() return writer writer reader writer out __NULL__ __NULL__ __NULL__) ,()
   __OS_pipe__ ,(reader2 writer2)
   return writer writer2 reader writer out reader2 writer2 err)
+
+;; ターゲットが外部コマンドにそのまま渡せる Stream なら、その Stream。stream ならその値、top なら OS の標準出力。
+;; そうでなければ null
+(define External_os_stream ,(target)
+  __Cont_get__ ,(return)
+  Target_split target ,(kind id value)
+  __if__ (,() __String_equal__ kind "stream") (,() return value) ,()
+  __if__ (,() __String_equal__ kind "top") (,() __OS_get_stdout__ ,(stream) return stream) ,()
+  __NULL__ __NULL__)
 
 ;; 2組目のパイプ（標準エラー出力）を別の VProc で読み、ターゲットに書く。なければ null を返す。
 ;; chan のターゲットには、その VProc 用の書き手を作る。読み手がいなくなったら、パイプを閉じて終わる

@@ -1,0 +1,9 @@
+not-pipe
+no-newline
+a
+after
+pipe
+x
+[y]
+o=out
+exit: 0
