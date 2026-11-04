@@ -1667,6 +1667,8 @@ def prim_String_fromCode(vp, gvenv):
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
+POLL_INTERVAL = 64   # steps between checks of the OS while some VProc is ready
+
 class Scheduler:
     """Round-robin scheduler. Each scheduling step runs one Operator
     application of the VProc at the front of the ready queue."""
@@ -1680,6 +1682,7 @@ class Scheduler:
         self.lazy    = []        # (VProc, Ref) waiting for another VProc to evaluate a LazyList
         self.changes = []        # (VProc, Ref, value) waiting for the value of a Ref to change
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
+        self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
 
     def _install_sigchld(self):
         """Make SIGCHLD write a byte to a pipe, so that select() wakes up
@@ -1838,9 +1841,19 @@ class Scheduler:
             if self.changes:
                 self.check_changes()
             if self.waiting:
-                # Without a ready VProc, sleep in the OS instead of busy waiting.
-                self.check_waiting(block=not self.ready)
-                if not self.ready: continue
+                if not self.ready:
+                    # Without a ready VProc, sleep in the OS instead of busy waiting.
+                    self.unpolled = 0
+                    self.check_waiting(block=True)
+                    if not self.ready: continue
+                elif self.unpolled >= POLL_INTERVAL:
+                    # While other VProcs are ready, check the OS only every
+                    # POLL_INTERVAL steps: select() and waitpid() on every step
+                    # took about a third of the time of a busy pipe.
+                    self.unpolled = 0
+                    self.check_waiting(block=False)
+                else:
+                    self.unpolled += 1
             if not self.ready:
                 # A VProc waiting for another VProc cannot wake up either.
                 joining = [vp for vp, _ in self.joining + self.lazy] + [vp for vp, _, _ in self.changes]
