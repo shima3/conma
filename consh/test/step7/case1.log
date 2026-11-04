@@ -1,0 +1,7 @@
+before=[]
+bang-set
+wait status 0
+status 3
+again 127
+all 0
+exit: 0

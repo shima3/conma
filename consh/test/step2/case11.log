@@ -1,2 +1,2 @@
-consh: case11.sh:1:6: $$ is not implemented yet
-exit: 1
+positive
+exit: 0

@@ -1,0 +1,5 @@
+a=one
+b=two
+p=x r=y z
+c=only d=[]
+exit: 0

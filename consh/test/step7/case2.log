@@ -1,0 +1,5 @@
+killed 143
+killed function 143
+consh: case2.sh:15:1: kill: no such job: 9999
+no job 1
+exit: 0

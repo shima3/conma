@@ -1,15 +1,16 @@
-;; ConSh の実行（段階 3〜6）。
+;; ConSh の実行（段階 3〜7）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
 ;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
 ;;   コマンド置換 $( ) とパイプライン。どちらも別の VProc で動かし、出力はチャネル（consh_chan.se）で受け取る
 ;;   変数リストへのリダイレクト（> (a b . rest)、2> (…)、< (…)）と組み込みコマンド stdin（段階 6）
-;; & は、まだない（実行するとエラー）。
+;;   & で別の VProc に起動するパイプライン、$!、$$、組み込みコマンド wait、kill（段階 7）
 ;;
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
 ;;   "global"     VProc ごとの Dict。"status" に最後の文の終了ステータスの String（$?）、
-;;                "substs" にこの VProc で起動して、まだ終わっていない $( ) の記録の LList（Subst_settle）
+;;                "substs" にこの VProc で起動して、まだ終わっていない $( ) の記録の LList（Subst_settle）、
+;;                "jobs" にこの VProc から & で起動したジョブの LList（Job_add）、"lastBg" に $! の String
 ;;   "script"     スクリプトのファイル名（$0、エラーメッセージ）
 ;;   "args"       スクリプトの引数の LList（$@、$1、$#）
 ;;   "vars"       局所変数の Dict。値は String か LazyList
@@ -21,6 +22,8 @@
 ;;   "abort"      読み手がいなくなったチャネルに書いたとき、この VProc を終える継続を入れた Ref（Sh_start）。
 ;;                最初の VProc では null
 ;;   "cancelIn"   この VProc が終わったときに cancel する、標準入力のチャネル。なければ null
+;;   "procRef"    この VProc で実行中の外部コマンドの OSProc を入れる Ref（kill で SIGTERM を送る）
+;;   "bgCaptures" & の文の変数リストへのリダイレクトで、外に渡す遅延の値の LList（Bg_captures）。なければ null
 ;;   "loops"      実行中の for 文の LList（内側が先）。各要素は (ループ変数の名前 break の継続 continue の継続)。
 ;;                関数の中では、関数の外のループは見えない
 ;;   "env"        環境変数（Env_new）
@@ -41,6 +44,8 @@
   __Dict_new__ ,(global)
   __Dict_put__ global "status" "0" ,()
   __Dict_put__ global "substs" __NULL__ ,()
+  __Dict_put__ global "jobs" __NULL__ ,()
+  __Dict_put__ global "lastBg" "" ,()
   num "0" ,(zero)
   __Dict_put__ global "sinks" zero ,()
   __OS_get_envDict__ ,(base)
@@ -64,6 +69,9 @@
   __Dict_put__ sh "noReturn" __NULL__ ,()
   __Dict_put__ sh "abort" __NULL__ ,()
   __Dict_put__ sh "cancelIn" __NULL__ ,()
+  __Dict_put__ sh "bgCaptures" __NULL__ ,()
+  __Ref_new__ __NULL__ ,(procRef)
+  __Dict_put__ sh "procRef" procRef ,()
   Target_sink global (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
   __Dict_put__ sh "err" err ,()
@@ -156,14 +164,23 @@
       __Number_toString__ n ,(s)
       return s) ,()
   __if__ (,() __String_equal__ name "?") (,() Sh_status sh ,(status) return status) ,()
-  __if__ (,() __String_equal__ name "!") (,() return "") ,()
-  __if__ (,() __String_equal__ name "$") (,() Sh_error sh pos "$$ is not implemented yet") ,()
+  __if__ (,() __String_equal__ name "!")
+    (,()
+      Sh_get sh "global" ,(global)
+      Sh_get global "lastBg" ,(id)
+      return id) ,()
+  __if__ (,() __String_equal__ name "$")
+    (,()
+      __OS_getpid__ ,(pid)
+      __Number_toString__ pid ,(s)
+      return s) ,()
   Sh_get sh "vars" ,(vars)
   Sh_get sh "env" ,(env)
   __Dict_lookup_or__ vars name (,(key)
     Env_lookup env key (,(key)
       __String_concat__ "undefined variable: " key ,(msg)
-      Sh_error sh pos msg)))
+      Sh_error sh pos msg)) ,(value)
+  Value_force value)
 
 ;; 変数が定義済みか。位置パラメータは引数の数で決まる。特殊な変数は常に定義済み
 (define Sh_defined ,(sh pos name)
@@ -210,6 +227,7 @@
   Sh_get sh "env" ,(env)
   __Dict_lookup_or__ vars "OFS" (,(key)
     Env_lookup env key (,(key) return " ")) ,(ofs)
+  Value_force ofs ,(ofs)
   __type_name__ ofs ,(type)
   __unless__ (,() __String_equal__ type "String") (,() Sh_error sh pos "OFS is a LazyList") ,()
   __NULL__ ofs)
@@ -408,6 +426,7 @@
   Ctx_top script args ,(sh)
   Eval_lines sh lines ,()
   Subst_finish sh ,()
+  Jobs_wait_all sh ,()
   Sh_status sh ,(status)
   num status ,(code)
   __OS_exit__ __print_exit_error__ code)
@@ -460,7 +479,7 @@
     (,() Eval_return sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "pipe")
     (,() Eval_pipe sh pos children)
-    (,() Sh_error sh pos "& is not implemented yet"))))))))))
+    (,() Eval_list sh children))))))))))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列
 (define Eval_assign ,(sh defs)
@@ -486,6 +505,7 @@
       Sh_get sh "vars" ,(vars)
       __String_concat__ "export of an undefined local variable: " name ,(msg)
       __Dict_lookup_or__ vars name (,(key) Sh_error sh pos msg) ,(value)
+      Value_force value ,(value)
       Value_toString sh pos value)
     (,() Eval_env_value sh pos words) ,(value)
   Sh_get sh "env" ,(env)
@@ -801,6 +821,7 @@
       return) ,()
   Func_targets sh pos out err ,(out err)
   Dict_copy sh ,(inner)
+  __Dict_put__ inner "bgCaptures" __NULL__ ,()
   __Dict_put__ inner "in" in ,()
   __Dict_put__ inner "out" out ,()
   __Dict_put__ inner "err" err ,()
@@ -880,6 +901,7 @@
   Sh_get sh "global" ,(global)
   Dict_copy global ,(global)
   __Dict_put__ global "substs" __NULL__ ,()
+  __Dict_put__ global "jobs" __NULL__ ,()
   Sh_get sh "vars" ,(vars)
   Dict_copy vars ,(vars)
   Sh_get sh "env" ,(env)
@@ -899,6 +921,9 @@
   __Dict_put__ child "loops" __NULL__ ,()
   __Dict_put__ child "abort" __NULL__ ,()
   __Dict_put__ child "cancelIn" __NULL__ ,()
+  __Dict_put__ child "bgCaptures" __NULL__ ,()
+  __Ref_new__ __NULL__ ,(procRef)
+  __Dict_put__ child "procRef" procRef ,()
   __NULL__ child)
 
 ;; 子の VProc に渡すターゲット。chan なら、同じチャネルの新しい書き手にする（id は同じ）
@@ -939,6 +964,10 @@
 ;; 終わるときに、この VProc で起動した $( ) を終わらせてから、出力の書き手を閉じる
 (define Sh_finish ,(child)
   Subst_finish child ,()
+  Sh_release child)
+
+;; 出力の書き手を閉じ、標準入力のチャネルを cancel し、$( ) の状態を "done" にする（kill でも使う）
+(define Sh_release ,(child)
   Sh_get child "out" ,(out)
   Sh_get child "err" ,(err)
   Target_close out ,()
@@ -1063,6 +1092,14 @@
   __Ref_new__ __NULL__ ,(direct)
   __Dict_put__ record "direct" direct ,()
   __Dict_put__ record "group" group ,()
+  Sh_get sh "bgCaptures" ,(specs)
+  __if_then_else__ (,() __is_null__ specs)
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ specs ,(spec others)
+      __Dict_put__ sh "bgCaptures" others ,()
+      __NULL__ spec) ,(spec)
+  __Dict_put__ record "spec" spec ,()
   Sh_get group "records" ,(records)
   __LList_cons__ record records ,(records)
   __Dict_put__ group "records" records ,()
@@ -1117,6 +1154,7 @@
   num "1" ,(one)
   __Number_add__ count one ,(count)
   __Ref_set__ countRef count ,()
+  Bg_spec_add record count item ,()
   Sh_get record "restName" ,(restName)
   __unless__ (,() __String_equal__ restName "") return ,()
   Sh_get record "need" ,(need)
@@ -1148,7 +1186,8 @@
   __if__ (,() __String_equal__ restName "") return ,()
   __Ref_get__ listRef ,(list)
   Sh_get record "direct" ,(direct)
-  __Ref_set__ direct list)
+  __Ref_set__ direct list ,()
+  Bg_spec_splice record list)
 
 ;; 組があれば、body をコマンドを止められる文脈で実行し、変数に割り当てる。止めたら $? は 0。
 ;; 組がなければ、body をそのまま実行する
@@ -1166,6 +1205,7 @@
   Dict_copy sh ,(inner)
   __Ref_new__ done ,(abortRef)
   __Dict_put__ inner "abort" abortRef ,()
+  __Dict_put__ inner "bgCaptures" __NULL__ ,()
   body inner ,()
   __nop__)
 
@@ -1181,6 +1221,8 @@
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ records) return ,()
   __LList_uncons__ __print_exit_error__ records ,(record rest)
+  Sh_get record "spec" ,(spec)
+  Bg_spec_finish spec ,()
   Sh_get record "items" ,(items)
   List_fromMSeq items ,(items)
   Sh_get record "names" ,(names)
@@ -1520,6 +1562,348 @@
   __if__ (,() __String_equal__ name loopName) (,() return loop) ,()
   Loops_find rest name)
 
+;; ── & ──
+
+;; コマンド列。(list 要素 ...) の要素は、(bg パイプライン) か、パイプライン
+(define Eval_list ,(sh elems)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ elems) return ,()
+  __LList_uncons__ __print_exit_error__ elems ,(elem rest)
+  Node_split elem ,(tag pos children)
+  __if_then_else__ (,() __String_equal__ tag "bg")
+    (,()
+      List_first children ,(pipeline)
+      Eval_bg sh pos pipeline)
+    (,() Eval_stmt_run sh elem) ,()
+  Eval_list sh rest)
+
+;; パイプライン & 。別の VProc で起動して、終わるのを待たない。$! はその VProc（パイプラインなら最後の要素）の番号。
+;; 単純文の変数リストへのリダイレクト（f > (a b . rest) &）は、a、b に、値ができるまで待つ遅延の値を、
+;; rest に、要素が届くたびに伸びる LazyList を、呼び出し側の局所変数に入れる（Bg_captures）
+(define Eval_bg ,(sh pos pipeline)
+  Node_split pipeline ,(ptag ppos pchildren)
+  Sh_get sh "in" ,(in)
+  __if_then_else__ (,() __String_equal__ ptag "pipe")
+    (,()
+      Pipe_check sh pchildren __TRUE__ ,()
+      Pipe_start sh pchildren in __NULL__ __NULL__ ,(vprocs last)
+      List_first vprocs ,(vproc)
+      __NULL__ vproc last)
+    (,()
+      Sh_get sh "out" ,(out)
+      Sh_get sh "err" ,(err)
+      Child_targets out err ,(out err)
+      Sh_child sh in out err "return in a background job" ,(child)
+      Stmt_redirs ptag pchildren ,(redirs)
+      Bg_captures sh redirs ,(specs)
+      __Dict_put__ child "bgCaptures" specs ,()
+      __Dict_put__ child "bgSpecs" specs ,()
+      Sh_start child (,(c) Eval_stmt c pipeline) ,(vproc)
+      __NULL__ vproc child) ,(vproc child)
+  Job_add sh vproc child ,()
+  Sh_set_status sh "0")
+
+;; ── ジョブ ──
+;; ジョブは Dict で、"id"（$! の String）、"vproc"、"child"（その VProc の文脈）、"killed"（kill したか）を持つ
+
+(define Job_add ,(sh vproc child)
+  __VProc_id__ vproc ,(n)
+  __Number_toString__ n ,(id)
+  __Dict_new__ ,(job)
+  __Dict_put__ job "id" id ,()
+  __Dict_put__ job "vproc" vproc ,()
+  __Dict_put__ job "child" child ,()
+  __Dict_put__ job "killed" __FALSE__ ,()
+  Sh_get sh "global" ,(global)
+  Sh_get global "jobs" ,(jobs)
+  __LList_cons__ job jobs ,(jobs)
+  __Dict_put__ global "jobs" jobs ,()
+  __Dict_put__ global "lastBg" id)
+
+;; id のジョブ。なければ null
+(define Job_find ,(sh id)
+  Sh_get sh "global" ,(global)
+  Sh_get global "jobs" ,(jobs)
+  Job_find_in jobs id)
+
+(define Job_find_in ,(jobs id)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ jobs) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ jobs ,(job rest)
+  Sh_get job "id" ,(jobId)
+  __if__ (,() __String_equal__ jobId id) (,() return job) ,()
+  Job_find_in rest id)
+
+(define Job_remove ,(sh job)
+  Sh_get sh "global" ,(global)
+  Sh_get global "jobs" ,(jobs)
+  Sh_get job "id" ,(id)
+  Job_remove_from jobs id ,(jobs)
+  __Dict_put__ global "jobs" jobs)
+
+(define Job_remove_from ,(jobs id)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ jobs) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ jobs ,(job rest)
+  Job_remove_from rest id ,(rest)
+  Sh_get job "id" ,(jobId)
+  __if__ (,() __String_equal__ jobId id) (,() return rest) ,()
+  __LList_cons__ job rest)
+
+;; ジョブが終わるのを待ち、その終了ステータスを返す。kill したジョブは 143
+(define Job_wait ,(job)
+  __Cont_get__ ,(return)
+  Sh_get job "vproc" ,(vproc)
+  __VProc_wait__ __print_exit_error__ vproc ,()
+  Sh_get job "killed" ,(killed)
+  __if__ (,() __NULL__ killed) (,() return "143") ,()
+  Sh_get job "child" ,(child)
+  Sh_get child "global" ,(global)
+  __Dict_lookup_or__ global "status" __print_exit_error__)
+
+;; スクリプトの終わりに、& で起動したジョブがすべて終わるのを待つ
+(define Jobs_wait_all ,(sh)
+  __Cont_get__ ,(return)
+  Sh_get sh "global" ,(global)
+  Sh_get global "jobs" ,(jobs)
+  __if__ (,() __is_null__ jobs) return ,()
+  __LList_uncons__ __print_exit_error__ jobs ,(job rest)
+  __Dict_put__ global "jobs" rest ,()
+  Job_wait job ,(status)
+  Jobs_wait_all sh)
+
+;; ジョブを止める。VProc を止め、実行中の外部コマンドに SIGTERM を送り、出力の書き手を閉じ、
+;; 標準入力のチャネルを cancel し、まだできていない遅延の値を空にする
+(define Job_kill ,(job)
+  __Dict_put__ job "killed" __TRUE__ ,()
+  Sh_get job "vproc" ,(vproc)
+  __VProc_kill__ vproc ,()
+  Sh_get job "child" ,(child)
+  Sh_get child "procRef" ,(procRef)
+  __Ref_get__ procRef ,(proc)
+  __unless__ (,() __is_null__ proc)
+    (,()
+      num "15" ,(sigterm)
+      __OS_kill__ (,(msg) __nop__) proc sigterm) ,()
+  Sh_release child ,()
+  __Dict_lookup_or__ child "bgSpecs" (,(key) __NULL__ __NULL__) ,(specs)
+  Bg_specs_finish specs)
+
+;; wait [ID ...]: ID がなければ、この VProc から & で起動したすべてのジョブを待ち、$? を 0 にする。
+;; ID があれば、順に待ち、$? を最後のジョブの終了ステータスにする。ないジョブ（待った後のものも）は 127
+(define Builtin_wait ,(sh pos args in out err)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ args)
+    (,()
+      Jobs_wait_all sh ,()
+      Sh_set_status sh "0" ,()
+      return) ,()
+  Wait_ids sh pos args)
+
+(define Wait_ids ,(sh pos ids)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ ids) return ,()
+  __LList_uncons__ __print_exit_error__ ids ,(id rest)
+  Arg_string sh pos "wait" id ,(id)
+  Job_find sh id ,(job)
+  __if_then_else__ (,() __is_null__ job)
+    (,() Sh_set_status sh "127")
+    (,()
+      Job_remove sh job ,()
+      Job_wait job ,(status)
+      Sh_set_status sh status) ,()
+  Wait_ids sh pos rest)
+
+;; kill ID ...: この VProc から & で起動したジョブを止める。ないジョブがあれば、メッセージを出して $? を 1 にする
+(define Builtin_kill ,(sh pos args in out err)
+  __if__ (,() __is_null__ args) (,() Sh_error sh pos "kill: a job ID is needed") ,()
+  Sh_set_status sh "0" ,()
+  Kill_ids sh pos args)
+
+(define Kill_ids ,(sh pos ids)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ ids) return ,()
+  __LList_uncons__ __print_exit_error__ ids ,(id rest)
+  Arg_string sh pos "kill" id ,(id)
+  Job_find sh id ,(job)
+  __if_then_else__ (,() __is_null__ job)
+    (,()
+      __String_concat__ "kill: no such job: " id ,(msg)
+      Sh_warn sh pos msg ,()
+      Sh_set_status sh "1")
+    (,() Job_kill job) ,()
+  Kill_ids sh pos rest)
+
+;; ── 遅延の値 ──
+;; f > (a b . rest) & の a、b に入れる値。Dict で、"ref" に、値ができたら (値) の LList を入れる。
+;; 局所変数から読むとき（Value_force）に、値ができるまで待つ
+
+(define Promise_new ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __Dict_new__ ,(promise)
+  __Dict_put__ promise "ref" ref ,()
+  __NULL__ promise)
+
+;; 値を決める。2回目は何もしない
+(define Promise_resolve ,(promise value)
+  __Cont_get__ ,(return)
+  Sh_get promise "ref" ,(ref)
+  __Ref_get__ ref ,(cell)
+  __unless__ (,() __is_null__ cell) return ,()
+  __LList_cons__ value __NULL__ ,(cell)
+  __Ref_set__ ref cell)
+
+;; 遅延の値なら、値ができるまで待ってその値を返す。そうでなければ、そのまま返す
+(define Value_force ,(value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __unless__ (,() __String_equal__ type "Dict") (,() return value) ,()
+  Sh_get value "ref" ,(ref)
+  Promise_wait ref)
+
+(define Promise_wait ,(ref)
+  __Cont_get__ ,(return)
+  __Ref_get__ ref ,(cell)
+  __unless__ (,() __is_null__ cell)
+    (,()
+      __LList_uncons__ __print_exit_error__ cell ,(value rest)
+      return value) ,()
+  __Ref_wait_change__ ref __NULL__ ,()
+  Promise_wait ref)
+
+;; & の単純文のリダイレクトのうち、> と 2> の変数リストごとに、呼び出し側の局所変数に遅延の値を入れ、
+;; 子に渡す記録（spec）の LList を返す。spec は Dict で、"promises"（変数名の順の遅延の値の LList）と
+;; "rest"（rest の要素を足していく鎖。rest がなければ null）を持つ
+(define Bg_captures ,(sh redirs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ redirs) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ redirs ,(redir rest)
+  Bg_captures sh rest ,(specs)
+  Node_split redir ,(tag pos children)
+  __LList_uncons__ __print_exit_error__ children ,(op targets)
+  __if__ (,() __String_equal__ op "<") (,() return specs) ,()
+  __if__ (,() __is_null__ targets) (,() return specs) ,()
+  List_first targets ,(target)
+  Node_split target ,(ttag tpos params)
+  __unless__ (,() __String_equal__ ttag "params") (,() return specs) ,()
+  __LList_uncons__ __print_exit_error__ params ,(names restList)
+  List_first restList ,(restName)
+  Sh_get sh "vars" ,(vars)
+  Bg_promises vars names ,(promises)
+  __Dict_new__ ,(spec)
+  __Dict_put__ spec "promises" promises ,()
+  __if_then_else__ (,() __String_equal__ restName "")
+    (,() __NULL__ __NULL__)
+    (,()
+      __Ref_new__ __NULL__ ,(node)
+      __Ref_new__ node ,(tail)
+      Grow_list node ,(list)
+      __Dict_put__ vars restName list ,()
+      __NULL__ tail) ,(restTail)
+  __Dict_put__ spec "rest" restTail ,()
+  __LList_cons__ spec specs)
+
+(define Bg_promises ,(vars names)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ names) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  Promise_new ,(promise)
+  __Dict_put__ vars name promise ,()
+  Bg_promises vars rest ,(more)
+  __LList_cons__ promise more)
+
+;; 記録が count 個目の要素 item を受け取ったとき。変数の数までなら、その遅延の値を決め、超えたら rest の鎖に足す
+(define Bg_spec_add ,(record count item)
+  __Cont_get__ ,(return)
+  Sh_get record "spec" ,(spec)
+  __if__ (,() __is_null__ spec) return ,()
+  Sh_get spec "promises" ,(promises)
+  Sh_nth promises count (,()
+    Sh_get spec "rest" ,(tail)
+    __unless__ (,() __is_null__ tail) (,() Grow_append tail item) ,()
+    return) ,(promise)
+  Promise_resolve promise item)
+
+;; stdin > (a . rest) & の rest：残りの LazyList を鎖の続きにする
+(define Bg_spec_splice ,(record list)
+  __Cont_get__ ,(return)
+  Sh_get record "spec" ,(spec)
+  __if__ (,() __is_null__ spec) return ,()
+  Sh_get spec "rest" ,(tail)
+  __if__ (,() __is_null__ tail) return ,()
+  Grow_splice tail list)
+
+;; 文が終わったとき（kill したときも）、まだ決まっていない遅延の値を空文字列にし、rest の鎖を終える
+(define Bg_spec_finish ,(spec)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ spec) return ,()
+  Sh_get spec "promises" ,(promises)
+  Bg_resolve_empty promises ,()
+  Sh_get spec "rest" ,(tail)
+  __unless__ (,() __is_null__ tail) (,() Grow_close tail))
+
+(define Bg_specs_finish ,(specs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ specs) return ,()
+  __LList_uncons__ __print_exit_error__ specs ,(spec rest)
+  Bg_spec_finish spec ,()
+  Bg_specs_finish rest)
+
+(define Bg_resolve_empty ,(promises)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ promises) return ,()
+  __LList_uncons__ __print_exit_error__ promises ,(promise rest)
+  Promise_resolve promise "" ,()
+  Bg_resolve_empty rest)
+
+;; ── 伸びる LazyList ──
+;; 節の Ref の鎖。節の値は、null（まだ）、(要素 . 次の節)、"end"（終わり）、(Dict "list" LazyList)（その LazyList に続く）。
+;; tail は、次に書く節を入れた Ref。書くのは & の VProc だけ
+
+(define Grow_list ,(node)
+  __LazyList_new__ (,() Grow_next node))
+
+(define Grow_next ,(node)
+  __Cont_get__ ,(return)
+  __Ref_get__ node ,(value)
+  __if__ (,() __is_null__ value)
+    (,()
+      __Ref_wait_change__ node __NULL__ ,()
+      Grow_next node ,(list)
+      return list) ,()
+  __type_name__ value ,(type)
+  __if__ (,() __String_equal__ type "String") (,() __LazyList_empty__ ,(empty) return empty) ,()
+  __if__ (,() __String_equal__ type "Dict") (,() Sh_get value "list" ,(list) return list) ,()
+  __LList_uncons__ __print_exit_error__ value ,(item next)
+  Grow_list next ,(rest)
+  __LazyList_cons__ item rest)
+
+(define Grow_append ,(tail item)
+  __Cont_get__ ,(return)
+  __Ref_get__ tail ,(node)
+  __Ref_get__ node ,(value)
+  __unless__ (,() __is_null__ value) return ,()
+  __Ref_new__ __NULL__ ,(next)
+  __LList_cons__ item next ,(cell)
+  __Ref_set__ node cell ,()
+  __Ref_set__ tail next)
+
+(define Grow_close ,(tail)
+  __Cont_get__ ,(return)
+  __Ref_get__ tail ,(node)
+  __Ref_get__ node ,(value)
+  __unless__ (,() __is_null__ value) return ,()
+  __Ref_set__ node "end")
+
+(define Grow_splice ,(tail list)
+  __Cont_get__ ,(return)
+  __Ref_get__ tail ,(node)
+  __Ref_get__ node ,(value)
+  __unless__ (,() __is_null__ value) return ,()
+  __Dict_new__ ,(link)
+  __Dict_put__ link "list" list ,()
+  __Ref_set__ node link)
+
 ;; ── 組み込みコマンド ──
 ;; どれも ,(sh pos args in out err) を取る
 
@@ -1527,8 +1911,10 @@
   __if_then_else__ (,() __String_equal__ name "echo") (,() __NULL__ Builtin_echo) (,()
   __if_then_else__ (,() __String_equal__ name "cd") (,() __NULL__ Builtin_cd) (,()
   __if_then_else__ (,() __String_equal__ name "defined") (,() __NULL__ Builtin_defined) (,()
-  __if_then_else__ (,() __String_equal__ name "stdin") (,() __NULL__ Builtin_stdin)
-    (,() __NULL__ __NULL__)))))
+  __if_then_else__ (,() __String_equal__ name "stdin") (,() __NULL__ Builtin_stdin) (,()
+  __if_then_else__ (,() __String_equal__ name "wait") (,() __NULL__ Builtin_wait) (,()
+  __if_then_else__ (,() __String_equal__ name "kill") (,() __NULL__ Builtin_kill)
+    (,() __NULL__ __NULL__)))))))
 
 ;; echo 値 ...: 標準出力に1つの要素を出す。
 ;; 引数が1つなら、その値（LazyList でも）をそのまま出す。引数がなければ空文字列を出す。
@@ -1637,6 +2023,8 @@
     Sh_warn sh pos m ,()
     Sh_set_status sh "127" ,()
     return) command inStream outStream errStream dict ,(proc)
+  Sh_get sh "procRef" ,(procRef)
+  __Ref_set__ procRef proc ,()
   Feed_start feed ,()
   Pump_start sh reader2 writer2 pumpTarget2 ,(pumper)
   __unless__ (,() __is_null__ reader)
@@ -1646,6 +2034,7 @@
       __OS_close__ __print_exit_error__ reader) ,()
   __unless__ (,() __is_null__ pumper) (,() __VProc_wait__ __print_exit_error__ pumper) ,()
   __OS_wait__ __print_exit_error__ proc ,(code)
+  __Ref_set__ procRef __NULL__ ,()
   Feed_stop feed ,()
   Eval_status code ,(status)
   Sh_set_status sh status)
