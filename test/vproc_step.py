@@ -101,7 +101,8 @@ def string_value(text):
 
 class Closure:
     def __init__(self, params, body, lvenv, gvenv=None, variadic=False):
-        self.params, self.body, self.lvenv = list(params), body, list(lvenv)
+        # lvenv is not copied: an LVEnv list is never changed in place.
+        self.params, self.body, self.lvenv = list(params), body, lvenv
         # GVEnv of the module the closure was defined in. Global variables in
         # the body are looked up here, not in the GVEnv of the running VProc.
         self.gvenv = gvenv
@@ -112,7 +113,7 @@ class Closure:
 
 class SeqClosure:
     def __init__(self, olist, sinfo, lvenv):
-        self.params, self.olist, self.sinfo, self.lvenv = ["__Sink__"], list(olist), sinfo, list(lvenv)
+        self.params, self.olist, self.sinfo, self.lvenv = ["__Sink__"], list(olist), sinfo, lvenv
     def __repr__(self): return f"SeqClosure({self.olist})"
 
 class CFrame:
@@ -183,11 +184,32 @@ class Dict:
         Dict._count += 1
         self.serial  = Dict._count  # identifies the Dict in traces
         self.entries = []           # list of (key, value)
+        # Position in entries of each key that has an index key (dict_key):
+        # finding a key does not compare it with every key. Keys without an
+        # index key (NaN) are found by comparing with values_equal.
+        self.index   = {}
     def find(self, key):
         """Return the index of key, or -1."""
+        k = dict_key(key)
+        if k is not None:
+            return self.index.get(k, -1)
         for i, (k, _) in enumerate(self.entries):
             if values_equal(k, key): return i
         return -1
+    def append(self, key, value):
+        """Add an entry for a key that is not in the Dict."""
+        k = dict_key(key)
+        if k is not None: self.index[k] = len(self.entries)
+        self.entries.append((key, value))
+    def remove(self, i):
+        del self.entries[i]
+        self.reindex()
+    def reindex(self):
+        """Rebuild the index after entries changed other than by append."""
+        self.index = {}
+        for i, (key, _) in enumerate(self.entries):
+            k = dict_key(key)
+            if k is not None: self.index[k] = i
     def value_to_sexp(self):
         # The content is not shown: a Dict may contain itself.
         return ["__Dict__", quoted(str(self.serial))]
@@ -260,15 +282,23 @@ def type_name(v):
 
 # ── Module ────────────────────────────────────────────────────────────────────
 
+# The params, Body and variadic flag of each Function AST, like _BODY_CACHE
+_FUNCTION_CACHE = {}
+
 def closure_from_function(func_ast, lvenv, gvenv):
-    head_node = body_node = None
-    for child in func_ast[2:]:
-        if isinstance(child, list):
-            if child[0] == "Head": head_node = child
-            elif child[0] == "Body": body_node = child
-    params = [unquote(c[2]) for c in (head_node[2:] if head_node else [])
-              if isinstance(c, list) and c[0] == "Variable"]
-    return Closure(params, body_node, lvenv, gvenv, is_variadic_head(head_node))
+    entry = _FUNCTION_CACHE.get(id(func_ast))
+    if entry is None or entry[0] is not func_ast:
+        head_node = body_node = None
+        for child in func_ast[2:]:
+            if isinstance(child, list):
+                if child[0] == "Head": head_node = child
+                elif child[0] == "Body": body_node = child
+        params = [unquote(c[2]) for c in (head_node[2:] if head_node else [])
+                  if isinstance(c, list) and c[0] == "Variable"]
+        entry = (func_ast, params, body_node, is_variadic_head(head_node))
+        _FUNCTION_CACHE[id(func_ast)] = entry
+    _, params, body_node, variadic = entry
+    return Closure(params, body_node, lvenv, gvenv, variadic)
 
 def is_variadic_head(head_node):
     """True for the Head of a variadic Function: (Head pos Rest (Variable ...))."""
@@ -516,28 +546,73 @@ def eval_expr(expr, lvenv, gvenv):
     if kind == "FuncExp": return closure_from_function(expr[2], lvenv, gvenv)
     raise VProcError(f"Unknown expr kind: {kind!r}")
 
-def extract_body(body_node, lvenv, gvenv):
-    sinfo = operator_val = lcont_val = None
-    olist_vals = []
+# The parts of each Body, compiled once (compile_body): evaluating a Body
+# then does not walk its AST again. Keyed by id(); the Body is kept in the
+# entry so that its id is not reused.
+_BODY_CACHE = {}
+
+def compile_expr(expr):
+    """A tuple that eval_compiled evaluates like eval_expr evaluates expr."""
+    if not isinstance(expr, list) or not expr: return ("X", expr)
+    kind = expr[0]
+    if kind == "Variable":
+        b = expr[3] if len(expr) > 3 else None
+        if isinstance(b, list) and b[0] == "L": return ("L", int(b[1]))
+        if isinstance(b, list) and b[0] == "G": return ("G", int(b[1]), expr[2])
+        return ("X", expr)
+    if kind == "String":  return ("C", expr)
+    if kind == "Null":    return ("C", NULL)
+    if kind == "FuncExp": return ("F", expr[2])
+    return ("X", expr)
+
+def eval_compiled(c, lvenv, gvenv):
+    tag = c[0]
+    if tag == "L":
+        idx = c[1]
+        if idx >= len(lvenv): raise VProcError(f"LVEnv[{idx}] out of range")
+        return lvenv[idx][1]
+    if tag == "C": return c[1]
+    if tag == "G":
+        val = gvenv.get(c[1])
+        if val is None: raise VProcError(f"G{c[1]} ({unquote(c[2])!r}) Undefined")
+        return val
+    if tag == "F": return closure_from_function(c[1], lvenv, gvenv)
+    return eval_expr(c[1], lvenv, gvenv)
+
+def compile_body(body_node):
+    sinfo = operator_c = None
+    olist_c = []
+    lcont_c = None      # None, ("F", Function AST) or ("V", __Closure__ S-expression)
     for child in body_node[2:]:
         if not isinstance(child, list): continue
         k = child[0]
         if k == "SInfo":   sinfo = child[2:]
         elif k == "Operator" and len(child) > 2:
-            operator_val = eval_expr(child[2], lvenv, gvenv)
+            operator_c = compile_expr(child[2])
         elif k == "OList":
-            olist_vals = [eval_expr(op, lvenv, gvenv) for op in child[2:]]
+            olist_c = [compile_expr(op) for op in child[2:]]
         elif k == "LCont" and len(child) > 2:
             lc = child[2]
             if isinstance(lc, list) and lc[0] == "Null":
-                lcont_val = None    # absent
+                lcont_c = None
             elif isinstance(lc, list) and lc[0] == "Function":
-                lcont_val = closure_from_function(lc, lvenv, gvenv)
+                lcont_c = ("F", lc)
             elif isinstance(lc, list) and lc[0] == "__Closure__":
-                lcont_val = sexp_to_value(lc, gvenv)
-    return sinfo, operator_val, olist_vals, lcont_val
+                lcont_c = ("V", lc)
+    return (body_node, sinfo, operator_c, olist_c, lcont_c)
 
-# ── Step ──────────────────────────────────────────────────────────────────────
+def extract_body(body_node, lvenv, gvenv):
+    entry = _BODY_CACHE.get(id(body_node))
+    if entry is None or entry[0] is not body_node:
+        entry = compile_body(body_node)
+        _BODY_CACHE[id(body_node)] = entry
+    _, sinfo, operator_c, olist_c, lcont_c = entry
+    operator_val = None if operator_c is None else eval_compiled(operator_c, lvenv, gvenv)
+    olist_vals = [eval_compiled(c, lvenv, gvenv) for c in olist_c]
+    if lcont_c is None: lcont_val = None
+    elif lcont_c[0] == "F": lcont_val = closure_from_function(lcont_c[1], lvenv, gvenv)
+    else: lcont_val = sexp_to_value(lcont_c[1], gvenv)
+    return sinfo, operator_val, olist_vals, lcont_val
 
 def step(vp, gvenv):
     operator = vp["operator"]
@@ -741,6 +816,7 @@ _ESCAPE_MAP = {'"': '"', '\\': '\\', 'n': '\n', 't': '\t', 'r': '\r'}
 
 def unescape(s):
     """Process escape sequences defined in SPEC.md: \" \\ \\n \\t \\r"""
+    if '\\' not in s: return s
     out = []
     it = iter(s)
     for ch in it:
@@ -806,6 +882,7 @@ def prim_OS_get_envDict(vp, gvenv):
     interpreter's environment variables."""
     d = Dict()
     d.entries = [(string_value(k), string_value(v)) for k, v in os.environ.items()]
+    d.reindex()
     _prim_return(vp, [d])
 
 def prim_OS_spawn(vp, gvenv):
@@ -995,6 +1072,7 @@ def prim_OS_trap_interrupt(vp, gvenv):
     def on_interrupt(signum, frame):
         count[0] += 1
         ref.value = Number(float(count[0]))
+        SCHEDULER.ref_changed = True
     signal.signal(signal.SIGINT, on_interrupt)
     _prim_return(vp, [])
 
@@ -1479,10 +1557,21 @@ def prim_Ref_set(vp, gvenv):
     if not isinstance(ref, Ref):
         raise VProcError(f"__Ref_set__: expected Ref, got {value_type_name(ref)}")
     ref.value = value
+    SCHEDULER.ref_changed = True
     _prim_return(vp, [])
 
 
 # ── PDict Primitives ──────────────────────────────────────────────────────────
+
+def dict_key(v):
+    """A hashable key that is equal for two values exactly when values_equal
+    holds, or None for a value that is not equal even to itself (NaN)."""
+    if isinstance(v, Number):
+        return None if v.value != v.value else ("N", v.value)
+    t = value_type_name(v)
+    if t == "null":   return ("null",)
+    if t == "String": return ("S", _value_to_display(v))
+    return ("O", id(v))
 
 def values_equal(a, b):
     """Key equality for PDict and Dict.
@@ -1604,7 +1693,7 @@ def prim_Dict_put(vp, gvenv):
     """__Dict_put__ Dict key value ,()"""
     d, key, value = _dict_args(vp, "__Dict_put__", 3)
     i = d.find(key)
-    if i < 0: d.entries.append((key, value))
+    if i < 0: d.append(key, value)
     else:     d.entries[i] = (d.entries[i][0], value)
     _prim_return(vp, [])
 
@@ -1624,7 +1713,7 @@ def prim_Dict_remove(vp, gvenv):
     """__Dict_remove__ Dict key ,()"""
     d, key = _dict_args(vp, "__Dict_remove__", 2)
     i = d.find(key)
-    if i >= 0: del d.entries[i]
+    if i >= 0: d.remove(i)
     _prim_return(vp, [])
 
 def prim_Dict_keys(vp, gvenv):
@@ -1856,6 +1945,11 @@ class Scheduler:
         self.joining = []        # (VProc, VProc) waiting for another VProc to finish
         self.lazy    = []        # (VProc, Ref) waiting for another VProc to evaluate a LazyList
         self.changes = []        # (VProc, Ref, value) waiting for the value of a Ref to change
+        # Whether a VProc may have finished, or a Ref may have changed, since
+        # joining or changes was last checked: they are checked only then,
+        # instead of on every step.
+        self.finished_any = False
+        self.ref_changed  = False
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
         self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
@@ -1997,6 +2091,7 @@ class Scheduler:
         self.lazy    = [(v, r) for v, r in self.lazy if v is not vp]
         self.changes = [(v, r, x) for v, r, x in self.changes if v is not vp]
         vp.state = "finished"
+        self.finished_any = True
 
     def suspend(self, vp):
         """Block vp. A blocked or finished VProc is left as it is."""
@@ -2020,11 +2115,14 @@ class Scheduler:
         while True:
             while self.ready and is_terminal(self.ready[0]):
                 self.ready.popleft().state = "finished"
-            if self.joining:
+                self.finished_any = True
+            if self.joining and self.finished_any:
+                self.finished_any = False
                 self.check_joining()
             if self.lazy:
                 self.check_lazy()
-            if self.changes:
+            if self.changes and self.ref_changed:
+                self.ref_changed = False
                 self.check_changes()
             if self.waiting:
                 if not self.ready:
@@ -2066,6 +2164,7 @@ class Scheduler:
                 print(f"Error in VProc {vp.serial} at step {self.steps}: {e}", file=sys.stderr)
                 self.steps += 1
                 vp.state = "finished"
+                self.finished_any = True
             finally:
                 self.current = None
             if vp.kill_pending and vp.state != "finished" and not evaluating_lazy(vp):
@@ -2073,6 +2172,7 @@ class Scheduler:
             if vp.state == "running":
                 if is_terminal(vp):
                     vp.state = "finished"
+                    self.finished_any = True
                 else:
                     vp.state = "ready"
                     self.ready.append(vp)
@@ -2303,6 +2403,7 @@ def prim_LazyList_publish(vp, gvenv):
     if not (is_null_value(cell) or isinstance(cell, LList)):
         raise VProcError(f"{name}: expected null or LList, got {value_type_name(cell)}")
     lazy.value = cell
+    SCHEDULER.ref_changed = True
     del lazy.lazy_chain, lazy.lazy_thunk
     vp.claims = [r for r in vp.claims if r is not lazy]
     _prim_return(vp, [])

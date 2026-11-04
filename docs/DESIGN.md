@@ -455,7 +455,7 @@ Each VProc is in one of these states:
 A scheduling step:
 
 1. Remove finished VProcs from the front of the ready queue. A VProc is finished when its Operator is null, its LCont is absent, and its CChain is empty.
-2. Wake the VProcs that wait for a VProc that has finished, those that wait for a LazyList that is no longer being evaluated by a VProc that has not finished and has not left the evaluation, and those that wait for a Ref whose value has changed, and put them at the end of the ready queue. If some VProcs are waiting for the OS, wake those whose process has exited or whose Stream is readable (or closed), and put them at the end of the ready queue. If the ready queue is empty, first sleep in `select` until one of them can wake; then go back to step 1. If the ready queue is not empty, the OS is checked (without sleeping) only once every 64 steps (`POLL_INTERVAL`), because calling `select` and `waitpid` on every step took about a third of the time of a busy pipe; a VProc waiting for the OS may therefore wake up to 64 steps later than its event. If `__OS_trap_interrupt__` has been called and no VProc is ready but some VProc waits for a Ref, the scheduler sleeps in `select` until a signal arrives instead of reporting a deadlock: a SIGINT can change the Ref.
+2. Wake the VProcs that wait for a VProc that has finished, those that wait for a LazyList that is no longer being evaluated by a VProc that has not finished and has not left the evaluation, and those that wait for a Ref whose value has changed, and put them at the end of the ready queue. If some VProcs are waiting for the OS, wake those whose process has exited or whose Stream is readable (or closed), and put them at the end of the ready queue. If the ready queue is empty, first sleep in `select` until one of them can wake; then go back to step 1. If the ready queue is not empty, the OS is checked (without sleeping) only once every 64 steps (`POLL_INTERVAL`), because calling `select` and `waitpid` on every step took about a third of the time of a busy pipe; a VProc waiting for the OS may therefore wake up to 64 steps later than its event. The VProcs waiting for a VProc are checked only after some VProc has finished, and those waiting for a Ref only after some Ref has been set (by `__Ref_set__`, a LazyList cell or a SIGINT), since nothing else can wake them; they still wake before the next step. If `__OS_trap_interrupt__` has been called and no VProc is ready but some VProc waits for a Ref, the scheduler sleeps in `select` until a signal arrives instead of reporting a deadlock: a SIGINT can change the Ref.
 3. If the ready queue is empty (so no VProc waits for the OS): exit normally if no VProc is blocked or waiting for a VProc; otherwise report a deadlock, listing the blocked VProcs and those waiting for a VProc (`Deadlock: no VProc is ready; blocked VProc(s): 1, 2`) and exit with code 2.
 4. Take the first VProc, mark it running, and run one step.
 5. If the step raised an error, write `Error in VProc N at step S: message` to standard error and mark the VProc finished. `S` is the number of steps completed before the error, counted over all VProcs. Other VProcs are not affected.
@@ -486,4 +486,15 @@ The interpreter exits:
 Blocking I/O, such as `__OS_get_String__`, stops every VProc while it waits.
 Reading standard input through its Stream (`__OS_get_stdin__`, used by `__start__`) does not block: `__OS_read__` passes `""` while no data is available, and `__LazyList_lines__` (and `__Stream_lines__`) then waits with `__OS_wait_readable__`, so other VProcs keep running.
 OS processes started by `__OS_spawn__` that are still running when the interpreter exits are left running.
+
+## Interpreter Speed
+
+`test/vproc_step.py` keeps the following to make each step faster. None of them changes the steps, their number or the traces.
+
+* **Compiled Bodies**: the parts of each Body (SInfo, Operator, OList and LCont) are found once and kept with the binding of each Variable already decoded (`compile_body`, `_BODY_CACHE`). The parameters and Body of each Function AST are kept likewise (`_FUNCTION_CACHE`). Both are keyed by the identity of the AST node, which they keep alive.
+* **Shared LVEnv**: a Closure keeps the LVEnv list it is given instead of copying it; an LVEnv list is never changed in place, and a new one is made for each application.
+* **Dict index**: a Dict keeps, besides its entries in insertion order, the position of each key under a hashable form of it (`dict_key`: the text of a String, the value of a Number, null, or the identity of any other value), so a lookup does not compare the key with every key. A NaN key, which is not equal even to itself, is found by comparison.
+* **Strings without escapes**: unescaping a String that contains no backslash returns it as it is.
+
+These made ConSh about 1.4 times faster (a loop of 1000 `echo $i` took 9.3 seconds instead of 13.4).
 
