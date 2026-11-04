@@ -1,0 +1,76 @@
+;; Step25: 出力の Stream が書けるようになるまで待つ __OS_wait_writable__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; エラーメッセージを標準出力に書いて続ける
+(define recover ,(msg)
+  println msg)
+
+;; 512 バイトの String
+(define chunk512 ,()
+  __NULL__ "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ,(s64)
+  __String_concat__ s64 s64 ,(s128)
+  __String_concat__ s128 s128 ,(s256)
+  __String_concat__ s256 s256)
+
+;; n 回、書けるまで待ってから chunk を書き、最後に閉じる
+(define writeChunks ,(stream chunk n)
+  __Cont_get__ ,(return)
+  __if__ (,() __Number_is_zero__ n)
+    (,()
+      __OS_close__ __print_exit_error__ stream ,()
+      return) ,()
+  __OS_wait_writable__ __print_exit_error__ stream ,()
+  __OS_write__ __print_exit_error__ stream chunk ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  writeChunks stream chunk n)
+
+;; EOF まで読み、読んだバイト数（ASCII なので文字数）を Ref に足す
+(define readAll ,(stream countRef)
+  __Cont_get__ ,(return)
+  __OS_wait_readable__ __print_exit_error__ stream ,()
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __if__ (,() __is_null__ data) return ,()
+  __String_length__ data ,(len)
+  __Ref_get__ countRef ,(count)
+  __Number_add__ count len ,(count)
+  __Ref_set__ countRef count ,()
+  readAll stream countRef)
+
+;; case1: 同じインタプリタの中で、パイプのバッファより多く（400 x 512 バイト）書く VProc と読む VProc。
+;; 書き手は書けるまで待つので、インタプリタ全体を止めずに、読み手が読み進められる
+(define case1 ,()
+  __OS_pipe__ ,(reader writer)
+  chunk512 ,(chunk)
+  __Number_fromString__ __print_exit_error__ "400" ,(n)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(countRef)
+  __VProc_start__ (,() writeChunks writer chunk n) ,(w)
+  __VProc_start__ (,() readAll reader countRef) ,(r)
+  __VProc_wait__ __print_exit_error__ w ,()
+  __VProc_wait__ __print_exit_error__ r ,()
+  __Ref_get__ countRef ,(count)
+  __Number_toString__ count ,(s)
+  __println__ "read: " s)
+
+;; case2: 読み手が閉じたパイプでは、待たずに戻り、次の __OS_write__ が onError になる
+(define case2 ,()
+  __OS_pipe__ ,(reader writer)
+  __OS_close__ __print_exit_error__ reader ,()
+  __OS_wait_writable__ __print_exit_error__ writer ,()
+  println "woke up" ,()
+  __OS_write__ (,(msg) println "write failed") writer "x" ,()
+  println "end")
+
+;; case3: 入力の Stream、閉じた Stream、Stream でない値は onError
+(define case3 ,()
+  __OS_pipe__ ,(reader writer)
+  __OS_wait_writable__ recover reader ,()
+  __OS_close__ __print_exit_error__ writer ,()
+  __OS_wait_writable__ recover writer ,()
+  __OS_wait_writable__ recover "not a Stream" ,()
+  println "end")

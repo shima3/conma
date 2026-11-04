@@ -1,0 +1,4 @@
+child start: <dir>/work
+child after chdir a: <dir>/work/a
+parent: <dir>/work
+exit: 0

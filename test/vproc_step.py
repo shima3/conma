@@ -897,6 +897,24 @@ def prim_OS_wait_readable(vp, gvenv):
         SCHEDULER.wait(vp, stream)
 
 
+def prim_OS_wait_writable(vp, gvenv):
+    """__OS_wait_writable__ onError outputStream ,()
+    The VProc waits until outputStream can take at least PIPE_BUF bytes
+    (512 or more) without blocking, so that the next __OS_write__ of that
+    many bytes or fewer does not block the interpreter. It also wakes up if
+    the reader of a pipe has closed it (the next __OS_write__ then fails) or
+    if another VProc closes the Stream."""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__OS_wait_writable__: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not _check_stream(vp, on_error, "__OS_wait_writable__", stream, "w"): return
+    _, writable, _ = select.select([], [stream.fd], [], 0)
+    _prim_return(vp, [])
+    if not writable:
+        SCHEDULER.wait(vp, stream)
+
+
 def prim_OS_pipe(vp, gvenv):
     """__OS_pipe__ ,(inputStream outputStream) — create an OS pipe."""
     r_fd, w_fd = os.pipe()
@@ -1578,8 +1596,8 @@ class Scheduler:
         self.wakeup = r
 
     def wait(self, vp, target):
-        """Make vp wait until the OSProc target exits or the input Stream
-        target is readable. vp has already returned to its LCont; for an
+        """Make vp wait until the OSProc target exits, or the Stream target
+        is readable (an input Stream) or writable (an output Stream). vp has already returned to its LCont; for an
         OSProc the exit code is given to it when it wakes up."""
         if isinstance(target, OSProc): self._install_sigchld()
         if vp.state == "ready": self.ready.remove(vp)
@@ -1646,13 +1664,18 @@ class Scheduler:
 
     def check_waiting(self, block):
         """Wake the VProcs whose OSProc has exited or whose Stream is
-        readable. If block, sleep in select() until one of them can wake."""
-        fds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed]
+        readable (an input Stream) or writable (an output Stream). If block, sleep in select() until one of them can wake."""
+        fds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed and t.mode == "r"]
+        wfds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed and t.mode == "w"]
         if self.wakeup is not None: fds.append(self.wakeup)
         timeout = None if block else 0
         if any(isinstance(t, Stream) and t.closed for _, t in self.waiting):
             timeout = 0                 # a closed Stream wakes its VProc at once
-        readable = set(select.select(fds, [], [], timeout)[0]) if fds or timeout == 0 else set()
+        if fds or wfds or timeout == 0:
+            r, w, _ = select.select(fds, wfds, [], timeout)
+            readable = set(r) | set(w)  # an fd is either read or written here
+        else:
+            readable = set()
         if self.wakeup in readable:
             try:
                 while os.read(self.wakeup, 4096): pass
@@ -1977,6 +2000,23 @@ def prim_VProc_spawn(vp, gvenv):
     _prim_return(vp, [child])
 
 
+def prim_VProc_start(vp, gvenv):
+    """__VProc_start__ Closure ,(VProc)
+
+    Starts a VProc that applies Closure to no arguments, in the program of
+    the closure (its GVEnv) and in the current directory of the current
+    VProc. Unlike __VProc_spawn__, it loads no file."""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__VProc_start__: missing argument")
+    func = olist.pop(0)
+    if not isinstance(func, Closure):
+        raise VProcError(f"__VProc_start__: expected Closure, got {value_type_name(func)}")
+    child = make_vproc(func, [], None, func.gvenv or gvenv, vp.cwd)
+    child["gvenv_files"] = list(vp["gvenv_files"])
+    SCHEDULER.add(child)
+    _prim_return(vp, [child])
+
+
 # ── CFrame Primitives ─────────────────────────────────────────────────────────
 
 def prim_CFrame_get_Closure(vp, gvenv):
@@ -2039,6 +2079,7 @@ PRIMITIVES = {
     "__OS_spawn__":            prim_OS_spawn,
     "__OS_poll__":             prim_OS_poll,
     "__OS_wait__":             prim_OS_wait,
+    "__OS_wait_writable__":    prim_OS_wait_writable,
     "__OS_wait_readable__":    prim_OS_wait_readable,
     "__OS_read__":             prim_OS_read,
     "__OS_write__":            prim_OS_write,
@@ -2092,6 +2133,7 @@ PRIMITIVES = {
     "__VProc_resume__":        prim_VProc_resume,
     "__VProc_wait__":          prim_VProc_wait,
     "__VProc_spawn__":         prim_VProc_spawn,
+    "__VProc_start__":         prim_VProc_start,
     "__LazyList_claim__":      prim_LazyList_claim,
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,

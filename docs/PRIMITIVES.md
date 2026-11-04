@@ -43,6 +43,12 @@ These primitives manage external processes and stream-based I/O.
 * **Behavior**: If the Stream is already readable, it returns at once. Otherwise the current VProc waits, as with `__OS_wait__`. It also wakes up if another VProc closes the Stream; the next `__OS_read__` then goes to `onError`.
 * **Error**: If `inputStream` is not an input Stream or is closed, invokes `onError` with an error message string.
 
+
+### **`__OS_wait_writable__ onError outputStream ,()`**
+* **Description**: Waits until `outputStream` can take at least `PIPE_BUF` bytes (512 or more) without blocking, so that the next `__OS_write__` of that many bytes or fewer does not block the interpreter.
+* **Behavior**: If the Stream is already writable, it returns at once. Otherwise the current VProc waits, as with `__OS_wait__`, and other VProcs keep running. It also returns when the reader of a pipe has closed it (the next `__OS_write__` then goes to `onError`), and when another VProc closes the Stream.
+* **Usage**: `__OS_write__` blocks the whole interpreter while the OS cannot take the data. A VProc that writes to a pipe read by a process whose output another VProc reads should write in pieces of at most 512 bytes, each after `__OS_wait_writable__`.
+* **Error**: If `outputStream` is not an output Stream or is closed, invokes `onError` with an error message string.
 ### `__OS_exit_normal__ ,()`
 Behavior:
 Terminates the current OS Process (that is, the interpreter) with an exit code of 0.
@@ -284,6 +290,16 @@ The new VProc is placed at the end of the ready queue, and the `VProc` is passed
 The arguments are passed as they are: a closure passed from the parent keeps referring to the parent's program (its GVEnv), and the Refs and other values it refers to are shared.
 
 * **Error**: If `sourceFileName` does not exist, loading it fails (for example, a syntax error), or `entryPoint` is not defined in the program, the interpreter invokes `onError` with an error message String, and no VProc is created. An error that occurs while the new VProc runs does not invoke `onError`.
+
+### `__VProc_start__ Closure ,(VProc)`
+Behavior:
+Starts a new Virtual Process (VProc) that applies `Closure` to no arguments, and passes the `VProc` to the LCont.
+Unlike `__VProc_spawn__`, it loads no file: the closure keeps referring to the program it was made in (its GVEnv), and the local variables, Refs and other values it refers to are shared with the VProc that made it.
+The new VProc has its own CChain and Process Dictionary, starts in the current directory of the current VProc (see `__OS_chdir__`), and is placed at the end of the ready queue. It finishes when the closure returns to its empty CChain.
+To get a result, the closure puts it into a Ref that the caller reads after `__VProc_wait__`.
+
+* **Usage**: To run part of a program concurrently, for example each element of a shell pipeline, without the cost of loading a program file for each VProc.
+* **Error**: Stops the current VProc with an error if `Closure` is not a Closure. An error that occurs while the new VProc runs finishes only the new VProc.
 
 ### `__VProc_current__ ,(VProc)`
 Behavior:

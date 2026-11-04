@@ -1,0 +1,61 @@
+;; Step24: クロージャを新しい VProc で動かす __VProc_start__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define printCwd ,(label)
+  __OS_getcwd__ ,(cwd)
+  __println__ label ": " cwd)
+
+;; case1: 子はクロージャの局所変数と Ref を使え、親は __VProc_wait__ で終わりを待てる。
+;; 子は大域の関数も呼べる
+(define case1 ,()
+  __Ref_new__ "none" ,(ref)
+  __NULL__ "from parent" ,(msg)
+  __VProc_start__ (,()
+    println "child runs" ,()
+    __String_concat__ msg ", set by child" ,(s)
+    __Ref_set__ ref s) ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  __Ref_get__ ref ,(value)
+  println value)
+
+;; case2: 子は親のカレントディレクトリから始まり、子の __OS_chdir__ は親を動かさない
+(define case2 ,()
+  __OS_chdir__ __print_exit_error__ "work" ,()
+  __VProc_start__ (,()
+    printCwd "child start" ,()
+    __OS_chdir__ __print_exit_error__ "a" ,()
+    printCwd "child after chdir a") ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  printCwd "parent")
+
+;; case3: 子の実行時エラーは子だけを終わらせる
+(define case3 ,()
+  __VProc_start__ (,()
+    println "child before error" ,()
+    __Ref_get__ "not a Ref" ,(v)
+    println "not reached") ,(child)
+  __VProc_wait__ __print_exit_error__ child ,()
+  println "parent after child")
+
+;; case4: クロージャでない引数は、呼んだ VProc をエラーで止める
+(define case4 ,()
+  println "before" ,()
+  __VProc_start__ "not a Closure" ,(child)
+  println "not reached")
+
+;; case5: いくつも起動できる。それぞれの子が自分の Ref に書き、親は両方を待ってから読む
+(define case5 ,()
+  __Ref_new__ "" ,(r1)
+  __Ref_new__ "" ,(r2)
+  __VProc_start__ (,() __Ref_set__ r1 "child 1") ,(c1)
+  __VProc_start__ (,() __Ref_set__ r2 "child 2") ,(c2)
+  __VProc_wait__ __print_exit_error__ c2 ,()
+  __VProc_wait__ __print_exit_error__ c1 ,()
+  __Ref_get__ r1 ,(v1)
+  __Ref_get__ r2 ,(v2)
+  println v1 ,()
+  println v2)

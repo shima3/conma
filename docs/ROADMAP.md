@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step21`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step25`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -514,3 +514,37 @@ No new primitive.
 | case3 | `onError` for a missing directory, a file and the empty path; the directory does not change |
 | case4 | through a symbolic link, the current directory is the real path |
 
+## Step 24: Starting a closure in a new VProc
+
+| Primitive | Status |
+|---|---|
+| `__VProc_start__` | implemented |
+
+* Goal: Let a program run a closure of its own in a new VProc. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc (see `consh/PLAN-ja.md`); `__VProc_spawn__` runs `bin/includer` and `bin/resolver` on a file each time, which takes about 0.3 seconds even for a small program.
+* `__VProc_start__ Closure ,(VProc)` makes a VProc that applies `Closure` to no arguments, in the current directory of the current VProc, and adds it at the end of the ready queue. The closure keeps the GVEnv of its program, and the values it refers to are shared.
+* Tests (`test/step24`): `test.sh` gives every case a new `work/` directory with a subdirectory `a`. The current directory is printed as `<dir>`.
+
+| Case | What it checks |
+|---|---|
+| case1 | the child uses a local variable and a Ref of the closure and a global function; the parent waits with `__VProc_wait__` and reads the Ref |
+| case2 | the child starts in the directory of the parent; its `__OS_chdir__` does not move the parent |
+| case3 | a runtime error in the child finishes only the child |
+| case4 | a non-Closure argument stops the calling VProc with an error |
+| case5 | two children write their own Refs; the parent waits for both |
+
+## Step 25: Waiting until an output Stream is writable
+
+| Primitive | Status |
+|---|---|
+| `__OS_wait_writable__` | implemented |
+
+* Goal: Let a VProc write to a pipe without blocking the interpreter. ConSh writes the elements of a LazyList to the standard input of an external command in one VProc, while another VProc reads the output of that command (see `consh/PLAN-ja.md`). `__OS_write__` blocks the whole interpreter when the pipe is full, so the command can stop on its full output pipe while nobody reads it.
+* `__OS_wait_writable__ onError outputStream ,()` waits, like `__OS_wait_readable__`, until `select()` reports the Stream writable: for a pipe, until it has room for `PIPE_BUF` bytes, or its reader has closed it. A write of at most 512 bytes after it does not block.
+* The scheduler (`check_waiting`) gives `select()` the input Streams that VProcs wait for as the read list and the output Streams as the write list.
+* Tests (`test/step25`):
+
+| Case | What it checks |
+|---|---|
+| case1 | one VProc writes 400 pieces of 512 bytes to a pipe, waiting before each, while another VProc reads them; more than the pipe buffer passes without blocking the interpreter |
+| case2 | on a pipe whose reader is closed, it returns at once and the next `__OS_write__` gives `onError` |
+| case3 | `onError` for an input Stream, a closed Stream and a non-Stream |
