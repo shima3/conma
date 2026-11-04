@@ -1,0 +1,6 @@
+bc from 0: 1
+bc from 2: 4
+bc from 5: null
+x: null
+empty from 2: 2
+exit: 0

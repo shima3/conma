@@ -121,23 +121,19 @@
           __Number_fromString__ __print_exit_error__ "0" ,(zero)
           __Stream_lines_scan__ stream buf len zero start sink)))
 
-;; buf の i 文字目から改行を探す。lineStart から改行までを1行として sink に渡す
+;; buf の i 文字目から改行を探す（__String_find__）。lineStart から改行までを1行として sink に渡す
 (define __Stream_lines_scan__ ,(stream buf len lineStart i sink)
-  __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __String_find__ __print_exit_error__ buf "\n" i ,(pos)
+  __if_then_else__ (,() __is_null__ pos)
     (,()
       __String_substring__ __print_exit_error__ buf lineStart len ,(buf)
       __Stream_lines_read__ stream buf sink)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ i one ,(next)
-      __String_substring__ __print_exit_error__ buf i next ,(ch)
-      __if_then_else__ (,() __String_equal__ ch "\n")
-        (,()
-          __String_substring__ __print_exit_error__ buf lineStart next ,(line)
-          sink line ,(sink)
-          __Stream_lines_scan__ stream buf len next next sink)
-        (,() __Stream_lines_scan__ stream buf len lineStart next sink)))
+      __Number_add__ pos one ,(next)
+      __String_substring__ __print_exit_error__ buf lineStart next ,(line)
+      sink line ,(sink)
+      __Stream_lines_scan__ stream buf len next next sink))
 
 ;; input Stream の行（改行を含む）の LazyList。最後の行に改行がなければ、改行なしの要素にする。
 ;; Stream は、LazyList をたどったときに必要な分だけ読む。
@@ -150,25 +146,21 @@
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __LazyList_new__ (,() __LazyList_lines_scan__ stream buf zero))
 
-;; buf の i 文字目から改行を探す（i 文字目より前に改行はない）。
+;; buf の i 文字目から改行を探す（i 文字目より前に改行はない。__String_find__）。
 ;; 見つかれば、そこまでを最初の要素にし、残りを tail の buf にする。見つからなければ読み足す
 (define __LazyList_lines_scan__ ,(stream buf i)
-  __String_length__ buf ,(len)
-  __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __String_find__ __print_exit_error__ buf "\n" i ,(pos)
+  __if_then_else__ (,() __is_null__ pos)
     (,() __LazyList_lines_read__ stream buf)
     (,()
+      __String_length__ buf ,(len)
       __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ i one ,(next)
-      __String_substring__ __print_exit_error__ buf i next ,(ch)
-      __if_then_else__ (,() __String_equal__ ch "\n")
-        (,()
-          __Number_fromString__ __print_exit_error__ "0" ,(zero)
-          __String_substring__ __print_exit_error__ buf zero next ,(line)
-          __String_substring__ __print_exit_error__ buf next len ,(buf)
-          __LazyList_lines_from__ stream buf ,(tail)
-          __LazyList_cons__ line tail)
-        (,() __LazyList_lines_scan__ stream buf next)))
+      __Number_add__ pos one ,(next)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __String_substring__ __print_exit_error__ buf zero next ,(line)
+      __String_substring__ __print_exit_error__ buf next len ,(buf)
+      __LazyList_lines_from__ stream buf ,(tail)
+      __LazyList_cons__ line tail))
 
 ;; Stream から読み足して buf の続きを探す。EOF なら、buf が空でなければ最後の要素にする
 (define __LazyList_lines_read__ ,(stream buf)

@@ -2,7 +2,7 @@
 
 This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
-The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step27`.
+The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step28`.
 
 Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
@@ -11,7 +11,7 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27; do test/$t/test.sh; done
+for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28; do test/$t/test.sh; done
 ```
 
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
@@ -586,3 +586,20 @@ No new primitive.
 | case1 | `SC_ARG_MAX` and `SC_OPEN_MAX` are positive |
 | case2 | `onError` for an unknown name |
 | case3 | `onError` for a name that is not a String |
+
+## Step 28: Searching in Strings
+
+| Primitive | Status |
+|---|---|
+| `__String_find__` | implemented |
+
+* Goal: Read long lines fast. `__LazyList_lines__` and `__Stream_lines__` in `include/util.se` looked for a newline one character at a time, and each `__String_length__` and `__String_substring__` call takes time in proportion to the length of the String, so the time grew faster than the length of a line (a line of 40000 characters took about 60 seconds in ConSh).
+* `__String_find__ onError String pattern start ,(index)` gives the first position of `pattern` at or after `start`, or null. The line readers now find each newline with one call. In ConSh, reading a line of 40000 characters with `$( )` now takes no measurable time beyond the start-up.
+* Tests (`test/step28`):
+
+| Case | What it checks |
+|---|---|
+| case1 | the first position at or after `start`; null when there is none; an empty pattern is found at `start` |
+| case2 | positions count characters, not bytes; a newline can be found |
+| case3 | `onError` for a `start` out of range and for a non-integer `start` |
+

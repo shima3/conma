@@ -531,6 +531,12 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 * **Returns**: A new `String`. If `start` equals `end`, the empty String.
 * **Error**: If `start` or `end` is not an integer, or `0 <= start <= end <= length` does not hold, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
 
+### **`__String_find__ onError String pattern start ,(index)`**
+* **Description**: Finds the first occurrence of the String `pattern` in `String` at or after position `start`.
+* **Returns**: The position (a Number, counted in characters like `__String_substring__`) where `pattern` starts, or null if it does not occur. An empty `pattern` is found at `start`.
+* **Usage**: Searching with one primitive instead of comparing one character at a time is much faster on long Strings; the line readers of `include/util.se` use it to find newlines.
+* **Error**: If `start` is not an integer, or `0 <= start <= length` does not hold, the interpreter invokes `onError` with an error message string. A non-String `String` or `pattern` stops the VProc with an error.
+
 ### **`__String_concat__ aString bString ,(String)`**
 * **Description**: Returns a new `String` made of `aString` followed by `bString`.
 

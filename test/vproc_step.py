@@ -1592,6 +1592,31 @@ def prim_String_substring(vp, gvenv):
         return
     _prim_return(vp, [string_value(s[i:j])])
 
+def prim_String_find(vp, gvenv):
+    """__String_find__ onError String pattern start ,(index)
+
+    The position of the first occurrence of pattern in String at or after
+    position start, or null if there is none. An empty pattern is found at
+    start. start must be an integer with 0 <= start <= length, or onError is
+    invoked."""
+    name  = "__String_find__"
+    olist = vp["olist"]
+    if len(olist) < 4: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    (s, pattern) = _string_args(vp, name, 2)
+    start = olist.pop(0)
+    _check_number(name, start)
+    x = start.value
+    if not (math.isfinite(x) and x == int(x)):
+        _prim_error(vp, on_error, f"{name}: not an integer index: {number_to_str(x)}")
+        return
+    i = int(x)
+    if not (0 <= i <= len(s)):
+        _prim_error(vp, on_error, f"{name}: index out of range: {i} (length {len(s)})")
+        return
+    found = s.find(pattern, i)
+    _prim_return(vp, [NULL if found < 0 else Number(float(found))])
+
 def prim_String_toCode(vp, gvenv):
     """__String_toCode__ onError String ,(Number)
     The code point of a String of one character, or onError."""
@@ -2216,6 +2241,7 @@ PRIMITIVES = {
     "__Dict_keys__":           prim_Dict_keys,
     "__String_length__":       prim_String_length,
     "__String_substring__":    prim_String_substring,
+    "__String_find__":         prim_String_find,
     "__String_concat__":       prim_String_concat,
     "__String_toCode__":       prim_String_toCode,
     "__String_fromCode__":     prim_String_fromCode,

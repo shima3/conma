@@ -1,0 +1,53 @@
+;; Step28: 文字列の中の文字列を探す __String_find__
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 見つかった位置、なければ "null"
+(define printFind ,(label pos)
+  __if_then_else__ (,() __is_null__ pos)
+    (,() __NULL__ "null")
+    (,() __Number_toString__ pos) ,(s)
+  __String_concat__ label s ,(line)
+  println line)
+
+;; case1: start 以降の最初の位置。なければ null。空の pattern は start で見つかる
+(define case1 ,()
+  num "0" ,(zero)
+  num "2" ,(two)
+  num "5" ,(five)
+  __String_find__ __print_exit_error__ "abcabc" "bc" zero ,(p)
+  printFind "bc from 0: " p ,()
+  __String_find__ __print_exit_error__ "abcabc" "bc" two ,(p)
+  printFind "bc from 2: " p ,()
+  __String_find__ __print_exit_error__ "abcabc" "bc" five ,(p)
+  printFind "bc from 5: " p ,()
+  __String_find__ __print_exit_error__ "abcabc" "x" zero ,(p)
+  printFind "x: " p ,()
+  __String_find__ __print_exit_error__ "abc" "" two ,(p)
+  printFind "empty from 2: " p)
+
+;; case2: 位置は文字（コードポイント）で数える。改行も探せる
+(define case2 ,()
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ "あいう\nえ" "\n" zero ,(p)
+  printFind "newline: " p ,()
+  __String_find__ __print_exit_error__ "あいうえ" "え" zero ,(p)
+  printFind "e: " p)
+
+;; case3: start が範囲外か整数でなければ onError
+(define case3 ,()
+  num "4" ,(four)
+  findError "abc" "a" four ,()
+  num "0.5" ,(half)
+  findError "abc" "a" half)
+
+(define findError ,(s pattern start)
+  __Cont_get__ ,(return)
+  __String_find__ (,(msg) println msg ,() return) s pattern start ,(p)
+  println "not reached")
+
+(define num ,(s)
+  __Number_fromString__ __print_exit_error__ s)
