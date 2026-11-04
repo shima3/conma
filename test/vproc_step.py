@@ -30,16 +30,32 @@ def tokenize(text):
     return re.findall(r'"(?:[^"\\]|\\.)*"|\(|\)|[^\s()]+', text)
 
 def parse_tokens(tokens):
-    if not tokens: raise VProcError("EOF")
-    tok = tokens.pop(0)
+    """Parse one S-expression from the front of tokens and remove its tokens."""
+    rest = tokens[::-1]
+    sexp = _parse_reversed(rest)
+    tokens[:] = rest[::-1]
+    return sexp
+
+def _parse_reversed(rest):
+    # rest holds the tokens in reverse order, so the next token is rest[-1].
+    # list.pop() from the end takes constant time; pop(0) from the front takes
+    # time in proportion to the length, which made reading a large module slow.
+    if not rest: raise VProcError("EOF")
+    tok = rest.pop()
     if tok == '(':
         lst = []
-        while tokens[0] != ')': lst.append(parse_tokens(tokens))
-        tokens.pop(0); return lst
+        while True:
+            if not rest: raise VProcError("EOF")
+            if rest[-1] == ')': break
+            lst.append(_parse_reversed(rest))
+        rest.pop(); return lst
     if tok == ')': raise VProcError("unexpected )")
     return tok
 
-def parse_sexp(text): return parse_tokens(tokenize(text))
+def parse_sexp(text):
+    rest = tokenize(text)
+    rest.reverse()
+    return _parse_reversed(rest)
 
 def _inline_len(x, limit):
     # Length of x printed on one line, stopping early once it exceeds limit
