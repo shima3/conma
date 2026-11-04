@@ -1,0 +1,2 @@
+consh_parse: case56.sh:1:1: unexpected done
+exit: 1

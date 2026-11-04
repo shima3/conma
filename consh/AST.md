@@ -57,16 +57,18 @@ In the formats below, `[...]` is optional and `...` is a repetition of the eleme
 | Node | Format | Location |
 | --- | --- | --- |
 | `line` | `(line Statement ...)` (one or more statements) | the first statement |
-| `script` | `(script line ...)` (zero or more lines) | the character right after `$(`, `{` or the keyword (`if`, `then`, `elif`, `else`) |
+| `script` | `(script line ...)` (zero or more lines) | the character right after `$(`, `{` or the keyword (`if`, `then`, `elif`, `else`, `do`) |
 
 The top level of the output is a sequence of `line` nodes without an enclosing `script`.
-A `script` appears as the body of a `function`, in a `subst`, and in the parts of an `if`.
+A `script` appears as the body of a `function`, in a `subst`, in the parts of an `if`, and as the body of a `for`.
 
 ### Statements
 
 | Node | Format | Grammar | Location |
 | --- | --- | --- | --- |
 | `return` | `(return word)` | `"return" スペース+ 語` | `return` |
+| `break` | `(break ["name"])` | `"break" [スペース+ 変数名]` | `break` |
+| `continue` | `(continue ["name"])` | `"continue" [スペース+ 変数名]` | `continue` |
 | `export` | `(export Item ...)` (zero or more items) | 環境変数定義 | `export` |
 | `function` | `(function "name" params script)` | 関数定義 | `function` |
 | `assign` | `(assign def ...)` (one or more) | 変数定義 {スペース+ 変数定義} | the first `def` |
@@ -75,12 +77,13 @@ A `script` appears as the body of a `function`, in a `subst`, and in the parts o
 | `pipe` | `(pipe Simple ...)` (two or more) | パイプライン | the first element |
 | `cmd` | `(cmd [env] words [redirs])` | 単純文 with a コマンド | the first `def` of `env`, or else the first word |
 | `if` | `(if clause ... [else] [redirs])` (one or more clauses) | 単純文 with an if文 | `if` |
+| `for` | `(for "name" in script [redirs])` | 単純文 with a リストfor文 | `for` |
 
-A Statement is one of `return`, `export`, `function`, `assign`, or a command list, which is written in the shortest form:
+A Statement is one of `return`, `break`, `continue`, `export`, `function`, `assign`, or a command list, which is written in the shortest form:
 
 * A command list (コマンド列) is `(list Element ...)`, where an Element is `(bg Pipeline)` for a pipeline followed by `&`, or a Pipeline otherwise.
   If the command list has only one pipeline and no `&`, the `list` is left out and the Pipeline is written alone.
-* A Pipeline (パイプライン) is `(pipe Simple ...)`, where a Simple is a `cmd` or an `if`. If it has only one simple statement, the `pipe` is left out and the Simple is written alone.
+* A Pipeline (パイプライン) is `(pipe Simple ...)`, where a Simple is a `cmd`, an `if` or a `for`. If it has only one simple statement, the `pipe` is left out and the Simple is written alone.
 
 Examples:
 
@@ -106,6 +109,7 @@ Examples:
 | `params` | `(params ("name" ...) ["rest"])` | `(` |
 | `clause` | `(clause script script)` | `if` or `elif` |
 | `else` | `(else script)` | `else` |
+| `in` | `(in word ...)` (zero or more) | `in` |
 
 * `def` is a variable definition (`name=値`). A Value (値) is a `word`, or an `array` for `(word ...)`. The Value is left out when the right side is empty (`x=`).
 * An Item of `export` is `(name "x")` for `export x`, or a `def` for `export x=値`.
@@ -119,6 +123,8 @@ Examples:
 * `else` holds the script after `else`. It is left out when there is no `else`.
 * Any of these scripts may be empty, `(script)`.
 * The `redirs` of an `if` holds the redirections after `fi`.
+* `for` holds the name of the loop variable, the words after `in` in an `in`, and the script between `do` and `done`. Its `redirs` holds the redirections after `done`.
+* `break` and `continue` hold the name of a loop variable when one is given.
 
 ### Words
 

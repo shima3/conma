@@ -1,0 +1,5 @@
+(line (for "x" (in (word (lit "a")) (word (var "l")) (word (dq (lit "b c")))) (script (line (cmd (words (word (lit "echo")) (word (var "x"))))))))
+(line (pipe (for "x" (in) (script (line (for "y" (in) (script (line (break "x") (continue)))))) (redirs (redir ">" (word (lit "out"))))) (cmd (words (word (lit "cat"))))))
+(line (for "i" (in (word (lit "a")) (word (lit "b"))) (script (line (break)))))
+(line (cmd (words (word (lit "echo")) (word (lit "for")) (word (lit "in")) (word (lit "do")) (word (lit "done")))))
+exit: 0

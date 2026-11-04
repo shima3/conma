@@ -25,6 +25,8 @@ Usage:
 
     * 変数定義、export は実行し、その後の展開に反映する。関数は定義しても呼び出さない。
     * if 文はエラーとする（$? がないので、どちらを実行するか決められない）。
+    * for 文は実行し、繰り返しごとに (for "変数名" 値) を出力してから、本体の文を出力する。
+      break と continue も実行する。リダイレクト付きの for 文はエラーとする。
     * 先頭の語を先に展開してコマンドの名前を決め、残りの語を、外部コマンドなら葉ごとの文字列に、
       関数（それまでに定義した名前）と組み込みコマンド（echo、cd、defined、builtin、command）なら
       値のまま展開する。値は "文字列" か (list 値 ...) で書く。
@@ -76,8 +78,8 @@ def node(pos, *fields):
 SPACES = (' ', '\t')
 SPECIALS = (';', "'", '(', ')', '{', '}', '|', '&', '>', '<', '"', '$', '\\')
 # 文の先頭でスクリプトを終えるキーワード
-TERMINATORS = ('then', 'elif', 'else', 'fi')
-KEYWORDS = ('function', 'export', 'return', 'if') + TERMINATORS
+TERMINATORS = ('then', 'elif', 'else', 'fi', 'do', 'done')
+KEYWORDS = ('function', 'export', 'return', 'if', 'for', 'break', 'continue') + TERMINATORS
 
 
 def is_ident_start(c):
@@ -290,6 +292,15 @@ class Parser:
             if self.skip_spaces() == 0 or not self.is_word_start() or self.at_comment():
                 self.error('expected a word after return')
             return node(pos, 'return', self.parse_word())
+        if kw in ('break', 'continue'):
+            # break [変数名]、continue [変数名]
+            self.advance(len(kw))
+            name = None
+            if self.skip_spaces() and not self.at_comment() and not self.at_stmt_end(term):
+                if not is_ident_start(self.peek()):
+                    self.error(f'expected a variable name after {kw}, but found {self.describe()}')
+                name = self.parse_ident()
+            return node(pos, kw, name)
         if kw == 'export':
             self.advance(len(kw))
             if self.peek() == '' or self.at_newline():
@@ -448,6 +459,12 @@ class Parser:
             if self.skip_spaces() and not self.at_comment() and self.at_redirect():
                 self.parse_redirects(redirs)
             return node(pos, 'if', clauses, else_body, redirs)
+        if kw == 'for':
+            name, words, body = self.parse_for()
+            redirs = []
+            if self.skip_spaces() and not self.at_comment() and self.at_redirect():
+                self.parse_redirects(redirs)
+            return node(pos, 'for', name, words, body, redirs)
         if kw is not None:
             self.error(f'unexpected {kw}')
         if not self.is_word_start() or self.at_redirect() or self.at_comment():
@@ -475,6 +492,49 @@ class Parser:
             if self.is_word_start():
                 self.error('a word after a redirection')
             break
+
+    def parse_for(self):
+        # "for" スペース+ 変数名 スペース+ "in" {スペース+ 語} {スペース} (";" | 行末) {空白} "do" スクリプト "done"
+        self.advance(3)
+        if self.skip_spaces() == 0 or not is_ident_start(self.peek()):
+            self.error(f'expected a variable name after for, but found {self.describe()}')
+        name = self.parse_ident()
+        spaced = self.skip_spaces() > 0
+        c = self.peek(2)
+        if (not spaced or self.peek_str(2) != 'in'
+                or not (c == '' or c in SPACES or c == ';' or self.at_newline(2))):
+            self.error(f'expected in, but found {self.describe()}')
+        ipos = self._index(0)
+        self.advance(2)
+        words = []
+        while True:
+            n = self.skip_spaces()
+            if self.peek() in ('', ';') or self.at_newline() or self.at_comment():
+                break
+            if n == 0 or not self.is_word_start():
+                self.error(f"expected a word, ';' or a newline, but found {self.describe()}")
+            words.append(self.parse_word())
+        if self.peek() == ';':
+            self.advance()
+            self._mark_sep()
+        else:
+            if self.at_comment():
+                self.skip_comment()
+            if not self.at_newline():
+                self.error(f"expected ';' or a newline, but found {self.describe()}")
+            self.consume_newline()
+        # do の前には、スペース、改行、行コメントを置ける
+        while True:
+            self.skip_spaces()
+            if self.at_comment():
+                self.skip_comment()
+            if not self.at_newline():
+                break
+            self.consume_newline()
+        self.expect_keyword('do')
+        body = self.parse_script(None)
+        self.expect_keyword('done')
+        return name, node(ipos, 'in', words), body
 
     def parse_if(self):
         # if、elif ごとに条件と本体のスクリプトを読む。スクリプトはキーワードの直後から始まる
@@ -721,6 +781,14 @@ def sx_stmt(s):
     kind = s[0]
     if kind == 'return':
         return sx(kind, s.pos, sx_word(s[1]))
+    if kind in ('break', 'continue'):
+        return sx(kind, s.pos) if s[1] is None else sx(kind, s.pos, q(s[1]))
+    if kind == 'for':
+        _, name, words, body, redirs = s
+        parts = [q(name), sx('in', words.pos, *(sx_word(w) for w in words[1])), sx_script(body)]
+        if redirs:
+            parts.append(sx('redirs', redirs[0].pos, *(sx_redir(r) for r in redirs)))
+        return sx(kind, s.pos, *parts)
     if kind in ('export', 'assign'):
         return sx(kind, s.pos, *(sx_item(i) for i in s[1]))
     if kind == 'function':
@@ -845,16 +913,31 @@ def sx_value(v):
     return q(v)
 
 
+class LoopJump(Exception):
+    """break と continue。name はループ変数の名前（省略なら None）"""
+
+    def __init__(self, kind, name):
+        super().__init__(kind)
+        self.kind = kind
+        self.name = name
+
+
 class Expander:
     def __init__(self, script_name, args):
         self.script_name = script_name
         self.args = args
+        self.loops = []  # 実行中の for 文のループ変数の名前。内側が後
 
     def run(self, lines):
         ctx = Context({}, {}, set())
+        self.exec_lines(lines, ctx, None)
+
+    def exec_lines(self, lines, ctx, out):
         for stmts in lines:
             for s in stmts:
-                print(self.exec_stmt(s, ctx, None))
+                r = self.exec_stmt(s, ctx, out)
+                if out is None and r is not None:
+                    print(r)
 
     def exec_stmt(self, s, ctx, out):
         """文を実行する。out が None ならトップレベルで、展開した結果の S 式を返す。
@@ -862,6 +945,15 @@ class Expander:
         kind = s[0]
         if kind == 'return':
             raise ConShError('return outside a function', s.pos)
+        if kind in ('break', 'continue'):
+            name = s[1]
+            if not self.loops:
+                raise ConShError(f'{kind} outside a loop', s.pos)
+            if name is not None and name not in self.loops:
+                raise ConShError(f'{kind}: no loop for {name}', s.pos)
+            raise LoopJump(kind, name)
+        if kind == 'for':
+            return self.exec_for(s, ctx, out)
         if kind == 'export':
             result = []
             for item in s[1]:
@@ -890,13 +982,43 @@ class Expander:
             if out is not None:
                 raise ConShError('pipes and & are not supported in $( ) of the expand mode', s.pos)
             if kind == 'bg':
-                return f'(bg {self.exec_stmt(s[1], ctx, None)})'
-            return f'({kind} ' + ' '.join(self.exec_stmt(x, ctx, None) for x in s[1]) + ')'
+                return f'(bg {self.exec_part(s[1], ctx)})'
+            return f'({kind} ' + ' '.join(self.exec_part(x, ctx) for x in s[1]) + ')'
         if kind == 'cmd':
             return self.exec_cmd(s, ctx, out)
         if kind == 'if':
             raise ConShError('if is not supported in the expand mode', s.pos)
         raise ValueError(kind)
+
+    def exec_part(self, s, ctx):
+        # パイプラインと & の要素。for 文は別の VProc で回すことになるので、展開のモードでは扱わない
+        if s[0] == 'for':
+            raise ConShError('for in a pipeline or with & is not supported in the expand mode', s.pos)
+        return self.exec_stmt(s, ctx, None)
+
+    def exec_for(self, s, ctx, out):
+        """for 文を実行する。語は関数の引数と同じ規則で展開し、LazyList の値は1階層だけ開く"""
+        _, name, words, body, redirs = s
+        if redirs:
+            raise ConShError('redirections of for are not supported in the expand mode', s.pos)
+        values = [v for w in words[1] for v in self.arg_values(w, ctx)]
+        items = [x for v in values for x in (v if isinstance(v, LazyList) else [v])]
+        self.loops.append(name)
+        try:
+            for item in items:
+                ctx.local[name] = item
+                if out is None:
+                    print(f'(for {q(name)} {sx_value(item)})')
+                try:
+                    self.exec_lines(body, ctx, out)
+                except LoopJump as jump:
+                    if jump.name is not None and jump.name != name:
+                        raise
+                    if jump.kind == 'break':
+                        break
+        finally:
+            self.loops.pop()
+        return None
 
     def exec_cmd(self, s, ctx, out):
         _, defs, words, redirs = s
@@ -988,9 +1110,12 @@ class Expander:
     def subst(self, lines, ctx):
         sub = ctx.copy()
         out = []
-        for stmts in lines:
-            for s in stmts:
-                self.exec_stmt(s, sub, out)
+        # $( ) の中から外のループに break や continue はできない
+        loops, self.loops = self.loops, []
+        try:
+            self.exec_lines(lines, sub, out)
+        finally:
+            self.loops = loops
         return LazyList(out)
 
     # -- 語の展開 --

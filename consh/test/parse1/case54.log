@@ -1,0 +1,2 @@
+consh_parse: case54.sh:1:7: expected a variable name after break, but found '2'
+exit: 1

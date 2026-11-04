@@ -1,0 +1,2 @@
+consh_parse: case52.sh:1:13: expected do, but found 'b'
+exit: 1

@@ -1,0 +1,2 @@
+consh_parse: case51.sh:1:7: expected in, but found 'a'
+exit: 1

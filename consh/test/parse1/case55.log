@@ -1,0 +1,2 @@
+consh_parse: case55.sh:1:5: unexpected break
+exit: 1

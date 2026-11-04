@@ -1,0 +1,2 @@
+consh: case20.sh:1:17: break outside a loop
+exit: 1

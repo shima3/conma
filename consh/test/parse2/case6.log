@@ -1,0 +1,5 @@
+(line (2 1) (for (2 1) "x" (in (2 7) (word (2 10) (lit (2 10) "a")) (word (2 12) (var (2 12) "l")) (word (2 15) (dq (2 15) (lit (2 16) "b c")))) (script (2 24) (line (2 25) (cmd (2 25) (words (2 25) (word (2 25) (lit (2 25) "echo")) (word (2 30) (var (2 30) "x"))))))))
+(line (3 1) (pipe (3 1) (for (3 1) "x" (in (3 7)) (script (4 3) (line (5 3) (for (5 3) "y" (in (5 9)) (script (5 15) (line (5 16) (break (5 16) "x") (continue (5 25))))))) (redirs (6 6) (redir (6 6) ">" (word (6 8) (lit (6 8) "out"))))) (cmd (6 14) (words (6 14) (word (6 14) (lit (6 14) "cat"))))))
+(line (7 1) (for (7 1) "i" (in (7 7) (word (7 10) (lit (7 10) "a")) (word (7 12) (lit (7 12) "b"))) (script (10 3) (line (10 4) (break (10 4))))))
+(line (11 1) (cmd (11 1) (words (11 1) (word (11 1) (lit (11 1) "echo")) (word (11 6) (lit (11 6) "for")) (word (11 10) (lit (11 10) "in")) (word (11 13) (lit (11 13) "do")) (word (11 16) (lit (11 16) "done")))))
+exit: 0

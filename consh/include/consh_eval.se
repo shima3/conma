@@ -1,6 +1,7 @@
 ;; ConSh の実行（段階 3）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
-;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文
+;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
+;;   for 文、break、continue
 ;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
 ;; パイプ、&、コマンド置換、変数リストへのリダイレクトは、まだない（実行するとエラー）。
 ;;
@@ -13,6 +14,8 @@
 ;;   "parent"     レキシカルに外側の文脈（関数名を探す）。トップレベルでは null
 ;;   "inFunction" 関数の中か（__TRUE__ / __FALSE__）
 ;;   "return"     return で使う継続。関数の外では null
+;;   "loops"      実行中の for 文の LList（内側が先）。各要素は (ループ変数の名前 break の継続 continue の継続)。
+;;                関数の中では、関数の外のループは見えない
 ;;   "env"        環境変数（Env_new）
 ;;   "in"         外部コマンドの標準入力の Stream。null なら親のまま
 ;;   "out" "err"  標準出力と標準エラー出力のターゲット（Target_*）
@@ -46,6 +49,7 @@
   __Dict_put__ sh "parent" __NULL__ ,()
   __Dict_put__ sh "inFunction" __FALSE__ ,()
   __Dict_put__ sh "return" __NULL__ ,()
+  __Dict_put__ sh "loops" __NULL__ ,()
   __Dict_put__ sh "env" env ,()
   __Dict_put__ sh "in" __NULL__ ,()
   Target_sink global (,(line) Top_write sh line) ,(out)
@@ -380,6 +384,13 @@
     (,() Eval_cmd sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "if")
     (,() Eval_if sh pos children) (,()
+  __if_then_else__ (,() __String_equal__ tag "for")
+    (,() Eval_for sh pos children) (,()
+  __String_equal__ tag "break" ,(isBreak)
+  __String_equal__ tag "continue" ,(isContinue)
+  __or__ isBreak isContinue ,(isJump)
+  __if_then_else__ (,() __NULL__ isJump)
+    (,() Eval_jump sh pos tag children) (,()
   __if_then_else__ (,() __String_equal__ tag "assign")
     (,()
       Eval_assign sh children ,()
@@ -396,7 +407,7 @@
     (,() Eval_return sh pos children) (,()
   __if_then_else__ (,() __String_equal__ tag "pipe")
     (,() Sh_error sh pos "pipelines are not implemented yet")
-    (,() Sh_error sh pos "& is not implemented yet"))))))))
+    (,() Sh_error sh pos "& is not implemented yet"))))))))))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列
 (define Eval_assign ,(sh defs)
@@ -509,6 +520,7 @@
   __Dict_put__ callee "parent" scope ,()
   __Dict_put__ callee "inFunction" __TRUE__ ,()
   __Dict_put__ callee "return" return ,()
+  __Dict_put__ callee "loops" __NULL__ ,()
   __Dict_put__ callee "env" env ,()
   __Dict_put__ callee "in" in ,()
   __Dict_put__ callee "out" out ,()
@@ -710,14 +722,19 @@
 
 ;; ── if 文 ──
 
-;; if 文を実行する。リダイレクトがあれば、入出力を変えた文脈で実行する。
-;; 中の変数定義と関数定義は外に反映するので、局所変数と関数の Dict は同じものを使う
+;; if 文を実行する。中の変数定義と関数定義は外に反映するので、局所変数と関数の Dict は同じものを使う
 (define Eval_if ,(sh pos children)
-  __Cont_get__ ,(return)
   If_parts children ,(clauses elseBody redirs)
+  Eval_redirected sh pos redirs (,(inner) If_clauses inner clauses elseBody))
+
+;; if 文と for 文で、リダイレクトを適用した文脈 inner で run を実行する。リダイレクトがなければ sh のまま。
+;; 関数と同じく、中の外部コマンドの出力は行ごとの要素にしてから書く。
+;; 中の return、break、continue で外へ抜けるときも、開いた Stream を閉じる
+(define Eval_redirected ,(sh pos redirs run)
+  __Cont_get__ ,(return)
   __if__ (,() __is_null__ redirs)
     (,()
-      If_clauses sh clauses elseBody ,()
+      run sh ,()
       return) ,()
   Eval_redirs sh redirs ,(in out err opened ok)
   __unless__ (,() __NULL__ ok)
@@ -725,18 +742,29 @@
       Eval_close opened ,()
       Sh_set_status sh "1" ,()
       return) ,()
-  ;; 関数と同じく、中の外部コマンドの出力は行ごとの要素にしてから書く
   Func_targets sh pos out err ,(out err)
   Dict_copy sh ,(inner)
   __Dict_put__ inner "in" in ,()
   __Dict_put__ inner "out" out ,()
   __Dict_put__ inner "err" err ,()
-  ;; 中の return で関数から戻るときも、開いた Stream を閉じる
   Sh_get sh "return" ,(ret)
   __unless__ (,() __is_null__ ret)
     (,() __Dict_put__ inner "return" (,() Eval_close opened ,() ret)) ,()
-  If_clauses inner clauses elseBody ,()
+  Sh_get sh "loops" ,(loops)
+  Loops_closing loops opened ,(loops)
+  __Dict_put__ inner "loops" loops ,()
+  run inner ,()
   Eval_close opened)
+
+;; ループの LList の各 break と continue の継続を、先に opened を閉じるものにした LList
+(define Loops_closing ,(loops opened)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ loops) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ loops ,(loop rest)
+  Loop_split loop ,(name brk cont)
+  Loop_make name (,() Eval_close opened ,() brk) (,() Eval_close opened ,() cont) ,(loop)
+  Loops_closing rest opened ,(rest)
+  __LList_cons__ loop rest)
 
 ;; (if clause ... [else] [redirs]) の子を、clause の LList、else のスクリプト（なければ null）、
 ;; リダイレクトの LList に分ける
@@ -782,6 +810,109 @@
   Node_split script ,(tag pos lines)
   __if__ (,() __is_null__ lines) (,() Sh_set_status sh "0" ,() return) ,()
   Eval_lines sh lines)
+
+;; ── for 文、break、continue ──
+
+;; for 文を実行する。(for "名前" (in 語 ...) script [redirs])。
+;; 語をすべて関数の引数と同じ規則で展開してから、値ごとに本体を実行する。LazyList の値は1階層だけ開き、
+;; 要素を1つずつ取り出す。ループ変数は局所変数で、中の変数定義と関数定義は外に反映する。終わった後の $? は 0
+(define Eval_for ,(sh pos children)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(in rest)
+  __LList_uncons__ __print_exit_error__ rest ,(body rest)
+  __if_then_else__ (,() __is_null__ rest)
+    (,() __NULL__ __NULL__)
+    (,()
+      List_first rest ,(redirsNode)
+      Node_split redirsNode ,(rtag rpos redirs)
+      __NULL__ redirs) ,(redirs)
+  Node_split in ,(itag ipos words)
+  Node_split body ,(btag bpos lines)
+  Eval_redirected sh pos redirs (,(inner)
+    For_values inner words ,(values)
+    For_run inner name values lines ,()
+    Sh_set_status inner "0"))
+
+;; for 文の語を展開した値の LList
+(define For_values ,(sh words)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ words) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Expand_args sh word ,(values)
+  For_values sh rest ,(more)
+  List_append values more)
+
+;; break はこの関数から抜ける
+(define For_run ,(sh name values lines)
+  __Cont_get__ ,(break)
+  For_each sh name values lines break)
+
+(define For_each ,(sh name values lines break)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ values) return ,()
+  __LList_uncons__ __print_exit_error__ values ,(value rest)
+  __type_name__ value ,(type)
+  __if_then_else__ (,() __String_equal__ type "String")
+    (,() For_item sh name value lines break)
+    (,() For_lazy sh name value lines break) ,()
+  For_each sh name rest lines break)
+
+;; LazyList の要素を1つずつ取り出して回す
+(define For_lazy ,(sh name list lines break)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return) list ,(item rest)
+  For_item sh name item lines break ,()
+  For_lazy sh name rest lines break)
+
+;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける
+(define For_item ,(sh name item lines break)
+  __Cont_get__ ,(continue)
+  Sh_get sh "vars" ,(vars)
+  __Dict_put__ vars name item ,()
+  Loop_make name break continue ,(loop)
+  Sh_get sh "loops" ,(loops)
+  __LList_cons__ loop loops ,(loops)
+  Dict_copy sh ,(inner)
+  __Dict_put__ inner "loops" loops ,()
+  Eval_lines inner lines)
+
+(define Loop_make ,(name brk cont)
+  __LList_cons__ cont __NULL__ ,(rest)
+  __LList_cons__ brk rest ,(rest)
+  __LList_cons__ name rest)
+
+(define Loop_split ,(loop)
+  __LList_uncons__ __print_exit_error__ loop ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(brk rest)
+  __LList_uncons__ __print_exit_error__ rest ,(cont rest)
+  __NULL__ name brk cont)
+
+;; 文「break [名前]」「continue [名前]」。名前があれば、そのループ変数の最も内側のループを、なければ最も内側のループを指す。
+;; $? は 0 にする
+(define Eval_jump ,(sh pos tag children)
+  Sh_get sh "loops" ,(loops)
+  __String_concat__ tag " outside a loop" ,(msg)
+  __if__ (,() __is_null__ loops) (,() Sh_error sh pos msg) ,()
+  List_first children ,(name)
+  Loops_find loops name ,(loop)
+  __String_concat__ tag ": no loop for " ,(msg)
+  __String_concat__ msg name ,(msg)
+  __if__ (,() __is_null__ loop) (,() Sh_error sh pos msg) ,()
+  Loop_split loop ,(loopName brk cont)
+  Sh_set_status sh "0" ,()
+  __if_then_else__ (,() __String_equal__ tag "break")
+    (,() brk)
+    (,() cont))
+
+;; name のループ。name が "" なら最も内側のループ。なければ null
+(define Loops_find ,(loops name)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ loops) (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ loops ,(loop rest)
+  __if__ (,() __String_equal__ name "") (,() return loop) ,()
+  Loop_split loop ,(loopName brk cont)
+  __if__ (,() __String_equal__ name loopName) (,() return loop) ,()
+  Loops_find rest name)
 
 ;; ── 組み込みコマンド ──
 ;; どれも ,(sh pos args in out err) を取る
