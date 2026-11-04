@@ -1,0 +1,3 @@
+before
+consh: case2.sh:5:1: the arguments of an external command exceed ARG_MAX (1000 bytes)
+exit: 1

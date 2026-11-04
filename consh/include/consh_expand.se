@@ -10,6 +10,11 @@
 ;; 葉は、入れ子の LazyList を再帰的にたどったときの String の要素である。
 ;; コマンドの語は、外部コマンドの語（Expand_fields）か、外部コマンド以外の語（Expand_args）として展開する。
 ;; glob はまだない。
+;;
+;; 外部コマンドの語を展開するときは、引数のバイト数の上限（limit、consh_eval.se の Arg_limit_new）を渡す。
+;; 葉を1つ作るたびに、その文字数 + 1 を limit から引き、足りなくなれば展開の途中でエラーにする。
+;; 文字数は UTF-8 のバイト数以下で、葉は語のどれかに含まれるので、引く数は実際のバイト数を超えない。
+;; そのため、無限の LazyList を外部コマンドの引数に展開しても止まる。正確なバイト数は起動の前に調べる（Arg_check）
 (include "consh_util.se")
 (include "consh_ast.se")
 
@@ -18,14 +23,21 @@
 ;; 外部コマンドの語として展開した String の LList。
 ;; LazyList を含まない引用符のない語が空になれば消す。LazyList の葉は、空文字列でも語として残す
 (define Expand_fields ,(sh word)
+  Expand_fields_in sh word __NULL__)
+
+;; 外部コマンドの引数の語として展開する。limit が null でなければ、葉ごとに引数のバイト数の上限から引く
+(define Expand_fields_in ,(sh word limit)
   Expand_parts sh word ,(parts)
-  Parts_fields parts)
+  Parts_fields_in parts limit)
 
 (define Parts_fields ,(parts)
-  __LList_cons__ "" __NULL__ ,(alts)
-  Expand_fields_from parts alts __FALSE__ __FALSE__)
+  Parts_fields_in parts __NULL__)
 
-(define Expand_fields_from ,(parts alts quoted hasList)
+(define Parts_fields_in ,(parts limit)
+  __LList_cons__ "" __NULL__ ,(alts)
+  Expand_fields_from parts alts __FALSE__ __FALSE__ limit)
+
+(define Expand_fields_from ,(parts alts quoted hasList limit)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ parts)
     (,()
@@ -39,9 +51,9 @@
   Part_is_list kind ,(isList)
   __or__ quoted isQuoted ,(quoted)
   __or__ hasList isList ,(hasList)
-  Part_options part ,(opts)
+  Part_options_in part limit ,(opts)
   Product alts opts ,(alts)
-  Expand_fields_from rest alts quoted hasList)
+  Expand_fields_from rest alts quoted hasList limit)
 
 (define Expand_drop_empty ,(alts)
   __Cont_get__ ,(return)
@@ -159,10 +171,13 @@
 
 ;; 部分が語にもたらす String の選択肢の LList。LazyList なら葉
 (define Part_options ,(part)
+  Part_options_in part __NULL__)
+
+(define Part_options_in ,(part limit)
   Part_split part ,(kind value)
   Part_is_list kind ,(isList)
   __if_then_else__ (,() __NULL__ isList)
-    (,() Value_leaves value)
+    (,() Value_leaves_in value limit)
     (,() __LList_cons__ value __NULL__))
 
 ;; 語の節を部分の LList にする
@@ -312,20 +327,41 @@
 
 ;; 値の葉の LList
 (define Value_leaves ,(v)
-  __type_name__ v ,(type)
-  __if_then_else__ (,() __String_equal__ type "String")
-    (,() __LList_cons__ v __NULL__)
-    (,()
-      List_fromLazyList v ,(items)
-      Value_leaves_list items))
+  Value_leaves_in v __NULL__)
 
-(define Value_leaves_list ,(items)
+;; limit が null でなければ、葉を1つ作るたびに引数のバイト数の上限から引く。
+;; LazyList は要素を1つずつ取り出しながらたどるので、無限の LazyList でも上限を超えたところで止まる
+(define Value_leaves_in ,(v limit)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ items) (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ items ,(item rest)
-  Value_leaves item ,(front)
-  Value_leaves_list rest ,(back)
+  __type_name__ v ,(type)
+  __if__ (,() __String_equal__ type "String")
+    (,()
+      Arg_charge limit v ,()
+      __LList_cons__ v __NULL__ ,(leaves)
+      return leaves) ,()
+  Value_leaves_lazy v limit)
+
+(define Value_leaves_lazy ,(list limit)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return __NULL__) list ,(item rest)
+  Value_leaves_in item limit ,(front)
+  Value_leaves_lazy rest limit ,(back)
   List_append front back)
+
+;; 葉 s の文字数 + 1（NUL）を、引数のバイト数の上限 limit の残りから引く。足りなければ limit の "onOver" を呼ぶ
+(define Arg_charge ,(limit s)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ limit) return ,()
+  __String_length__ s ,(n)
+  num "1" ,(one)
+  __Number_add__ n one ,(n)
+  Sh_get limit "left" ,(left)
+  __Number_subtract__ left n ,(left)
+  __if__ (,() __Number_is_negative__ left)
+    (,()
+      Sh_get limit "onOver" ,(onOver)
+      onOver) ,()
+  __Dict_put__ limit "left" left)
 
 ;; 値の各葉の前に left、後ろに right を付けた値。入れ子の形は保つ
 ;; 前後に付ける文字列がなければ、LazyList を取り出さずにそのまま返す（遅延のまま）
@@ -355,11 +391,14 @@
 
 ;; 値の LList の葉を、順につないだ LList
 (define Values_leaves ,(values)
+  Values_leaves_in values __NULL__)
+
+(define Values_leaves_in ,(values limit)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ values) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ values ,(v rest)
-  Value_leaves v ,(front)
-  Values_leaves rest ,(back)
+  Value_leaves_in v limit ,(front)
+  Values_leaves_in rest limit ,(back)
   List_append front back)
 
 ;; 値の LList の各値を String にした LList

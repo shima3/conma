@@ -1,4 +1,4 @@
-;; ConSh の実行（段階 3〜8）。
+;; ConSh の実行（段階 3〜9）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
@@ -665,13 +665,14 @@
   __Cont_get__ ,(return)
   Cmd_parts children ,(defs words redirs)
   Cmd_scope sh defs ,(sh)
-  Cmd_head sh words ,(name more rest)
+  Arg_limit_new sh pos ,(limit)
+  Cmd_head sh words limit ,(name more rest)
   __if_then_else__ (,() __is_null__ name)
     (,() __NULL__ __TRUE__)
     (,() Cmd_is_external sh name) ,(isExternal)
-  Eval_args sh rest isExternal ,(args)
+  Eval_args sh rest isExternal limit ,(args)
   __if_then_else__ (,() __NULL__ isExternal)
-    (,() Values_leaves more)
+    (,() Values_leaves_in more limit)
     (,() __NULL__ more) ,(more)
   List_append more args ,(args)
   Eval_redirs sh redirs ,(in out err opened ok group)
@@ -706,8 +707,9 @@
 ;; ${x} と $(cmd) の LazyList なら、要素を順に値にする。先頭の要素だけは再帰的に展開して名前を取る（Value_head）。
 ;; そうでなければ、外部コマンドの語として展開し、最初の語が名前になる。
 ;; LazyList を含む語が空になればエラー。LazyList を含まない語が消えれば、次の語を見る。
-;; 語がすべて消えたら、名前は null
-(define Cmd_head ,(sh words)
+;; 語がすべて消えたら、名前は null。
+;; 外部コマンドの語として展開するときは、葉ごとに引数のバイト数の上限 limit から引く（外部コマンドでなかったときも）
+(define Cmd_head ,(sh words limit)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ words) (,() return __NULL__ __NULL__ __NULL__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
@@ -724,12 +726,12 @@
       Parts_list_value parts nList ,(value)
       Value_head sh pos value ,(name more)
       return name more rest) ,()
-  Parts_fields parts ,(fields)
+  Parts_fields_in parts limit ,(fields)
   __if__ (,() __is_null__ fields)
     (,()
       __and__ noLeaves noList ,(noLazyList)
       __unless__ (,() __NULL__ noLazyList) (,() Sh_error sh pos "the command name is an empty LazyList") ,()
-      Cmd_head sh rest ,(name more rest)
+      Cmd_head sh rest limit ,(name more rest)
       return name more rest) ,()
   __LList_uncons__ __print_exit_error__ fields ,(name more)
   __NULL__ name more rest)
@@ -779,7 +781,8 @@
       return) ,()
   __if__ (,() __String_equal__ name "command")
     (,()
-      Values_leaves args ,(args)
+      Arg_limit_new sh pos ,(limit)
+      Values_leaves_in args limit ,(args)
       __if__ (,() __is_null__ args) (,() Sh_error sh pos "command: a command name is needed") ,()
       __LList_uncons__ __print_exit_error__ args ,(name2 args2)
       External_run sh pos name2 args2 in out err ,()
@@ -2061,6 +2064,7 @@
 ;; 標準入力がパイプ（Input_new）なら、要素を1行ずつ書く VProc（Feed_loop）を起動し、OS のパイプでつなぐ
 (define External_run ,(sh pos name args in out err)
   __Cont_get__ ,(return)
+  Arg_check sh pos name args ,()
   Sh_get sh "env" ,(env)
   Env_dict env ,(dict)
   __MSeq_new__ ,(command)
@@ -2276,16 +2280,121 @@
   __Dict_put__ dict name value ,()
   Eval_env_defs sh rest dict)
 
-;; 語を展開した値の LList。外部コマンドなら葉ごとの String、それ以外なら外部コマンド以外の語の規則で展開する
-(define Eval_args ,(sh words isExternal)
+;; 語を展開した値の LList。外部コマンドなら葉ごとの String、それ以外なら外部コマンド以外の語の規則で展開する。
+;; 外部コマンドなら、葉ごとに引数のバイト数の上限 limit から引く
+(define Eval_args ,(sh words isExternal limit)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ words) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
   __if_then_else__ (,() __NULL__ isExternal)
-    (,() Expand_fields sh word)
+    (,() Expand_fields_in sh word limit)
     (,() Expand_args sh word) ,(values)
-  Eval_args sh rest isExternal ,(more)
+  Eval_args sh rest isExternal limit ,(more)
   List_append values more)
+
+;; ── 引数のバイト数の上限 ──
+;; 外部コマンドの引数（コマンド名を含む）の UTF-8 のバイト数に、それぞれの終わりの NUL の 1 を足した合計は、
+;; 環境変数 ARG_MAX の値以下でなければならない（局所変数 ARG_MAX は見ない。前置の変数定義の層は見る）。
+;; ARG_MAX がなければ、OS の値（ConMa の __OS_sysconf__ "SC_ARG_MAX"）を使う。環境変数は数えない。
+;; 関数と組み込みコマンドの引数には適用しない。超えたらエラーにする
+
+;; 上限（Number）
+(define Arg_max ,(sh pos)
+  __Cont_get__ ,(return)
+  Sh_get sh "env" ,(env)
+  Env_lookup env "ARG_MAX" (,(key) __NULL__ __NULL__) ,(value)
+  __if__ (,() __is_null__ value)
+    (,()
+      __OS_sysconf__ (,(msg) Sh_error sh pos msg) "SC_ARG_MAX" ,(n)
+      return n) ,()
+  __String_concat__ "ARG_MAX is not a non-negative integer: " value ,(msg)
+  __Number_fromString__ (,(m) Sh_error sh pos msg) value ,(n)
+  __Number_floor__ n ,(whole)
+  __Number_subtract__ n whole ,(frac)
+  __unless__ (,() __Number_is_zero__ frac) (,() Sh_error sh pos msg) ,()
+  __if__ (,() __Number_is_negative__ n) (,() Sh_error sh pos msg) ,()
+  __NULL__ n)
+
+;; 語の展開の途中で引く、上限の残り（Value_leaves_in）。Dict で、"left"（残り）と "onOver"（超えたときのエラー）
+(define Arg_limit_new ,(sh pos)
+  Arg_max sh pos ,(max)
+  __Dict_new__ ,(limit)
+  __Dict_put__ limit "left" max ,()
+  Arg_over_message max ,(msg)
+  __Dict_put__ limit "onOver" (,() Sh_error sh pos msg) ,()
+  __NULL__ limit)
+
+(define Arg_over_message ,(max)
+  __Number_toString__ max ,(s)
+  __String_concat__ "the arguments of an external command exceed ARG_MAX (" s ,(msg)
+  __String_concat__ msg " bytes)")
+
+;; 外部コマンドを起動する前に、コマンド名と引数の正確なバイト数を調べる。
+;; 文字数の 4 倍（UTF-8 の1文字は 4 バイト以下）でも上限以下なら、バイト数は数えない
+(define Arg_check ,(sh pos name args)
+  __Cont_get__ ,(return)
+  Arg_max sh pos ,(max)
+  __LList_cons__ name args ,(all)
+  num "0" ,(zero)
+  Arg_chars all zero ,(chars)
+  num "4" ,(four)
+  __Number_multiply__ chars four ,(upper)
+  __Number_subtract__ max upper ,(room)
+  __unless__ (,() __Number_is_negative__ room) return ,()
+  Arg_bytes all zero ,(bytes)
+  __Number_subtract__ max bytes ,(room)
+  __unless__ (,() __Number_is_negative__ room) return ,()
+  Arg_over_message max ,(msg)
+  Sh_error sh pos msg)
+
+;; 各 String の文字数 + 1 の合計
+(define Arg_chars ,(list total)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return total) ,()
+  __LList_uncons__ __print_exit_error__ list ,(s rest)
+  __String_length__ s ,(n)
+  num "1" ,(one)
+  __Number_add__ total n ,(total)
+  __Number_add__ total one ,(total)
+  Arg_chars rest total)
+
+;; 各 String の UTF-8 のバイト数 + 1 の合計
+(define Arg_bytes ,(list total)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) (,() return total) ,()
+  __LList_uncons__ __print_exit_error__ list ,(s rest)
+  num "0" ,(zero)
+  __String_length__ s ,(len)
+  Utf8_bytes s zero len total ,(total)
+  num "1" ,(one)
+  __Number_add__ total one ,(total)
+  Arg_bytes rest total)
+
+;; s の i 文字目から len 文字目の前までの UTF-8 のバイト数を total に足す
+(define Utf8_bytes ,(s i len total)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len i ,(left)
+  __if__ (,() __Number_is_zero__ left) (,() return total) ,()
+  num "1" ,(one)
+  __Number_add__ i one ,(next)
+  __String_substring__ __print_exit_error__ s i next ,(ch)
+  __String_toCode__ __print_exit_error__ ch ,(code)
+  Utf8_char_bytes code ,(n)
+  __Number_add__ total n ,(total)
+  Utf8_bytes s next len total)
+
+(define Utf8_char_bytes ,(code)
+  __Cont_get__ ,(return)
+  num "128" ,(b1)
+  __Number_subtract__ code b1 ,(d)
+  __if__ (,() __Number_is_negative__ d) (,() num "1" ,(n) return n) ,()
+  num "2048" ,(b2)
+  __Number_subtract__ code b2 ,(d)
+  __if__ (,() __Number_is_negative__ d) (,() num "2" ,(n) return n) ,()
+  num "65536" ,(b3)
+  __Number_subtract__ code b3 ,(d)
+  __if__ (,() __Number_is_negative__ d) (,() num "3" ,(n) return n) ,()
+  num "4")
 
 (define Eval_append ,(mseq list)
   __Cont_get__ ,(return)

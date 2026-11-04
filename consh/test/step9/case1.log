@@ -1,0 +1,4 @@
+abc
+あ
+consh: case1.sh:9:1: the arguments of an external command exceed ARG_MAX (14 bytes)
+exit: 1

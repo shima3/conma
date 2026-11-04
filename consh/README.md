@@ -24,7 +24,7 @@ consh/
     ├── parse1/          文法のテスト：caseN.sh を consh_parse に渡し、caseN.log と比べる
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ
+    └── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX
 ```
 
 * ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
@@ -41,7 +41,7 @@ ConMa 版は構文解析をせず、Python の `consh_parse --pos` が作った�
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。
 
-### できること（段階 3〜8）
+### できること（段階 3〜9）
 
 * 変数定義、`export`、前置の変数定義、語の展開（glob を除く）
     * `$x`、`${x}`、`"$x"` の区別、入れ子の LazyList の葉、OFS による文字列化、既定値 `${x-値}`、値 `(語 ...)`、ANSI-C クォート `$'...'`
@@ -80,6 +80,8 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
 * 外部コマンドの出力を直接つなぐ（段階 8）
     * 外部コマンドの標準出力がトップレベルの標準出力のままなら、シェルの標準出力の Stream をそのまま渡す（端末なら端末のまま。`ls` が複数列になり、`less` や `vi` も動く）
     * 外部コマンドどうしのパイプは、OS のパイプでつなぐ
+* 外部コマンドの引数のバイト数の上限（段階 9）
+    * コマンド名を含む各引数の UTF-8 のバイト数 + 1 の合計が、環境変数 `ARG_MAX`（なければ OS の値）を超えたらエラーにする。無限の LazyList を引数に展開しても止まる
 
 
 標準出力は、要素（行）の並びとして扱う。
@@ -105,7 +107,7 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
 * if 文の条件、本体、`else` のスクリプトを実行する前の `$?` は、そのときの値のまま。たとえば `else` の中の `$?` は最後の条件の値になる（Bash と同じ）。
 * キーワードの直後に `)` は置けない（PLAN-ja.md の文法どおり）。そのため `$(if a; then b; fi)` は構文エラーになる。
 * `cd` は、それを実行した VProc のカレントディレクトリを変える（ConMa の Step 23）。パイプラインの要素と `$( )` の中の `cd` は、シェルのカレントディレクトリを変えない。
-* パイプラインと `$( )` は、ConMa の `__VProc_start__`（Step 24）と `__OS_wait_writable__`（Step 25）を使う。`&`、`kill`、`$!`、`$$` は Step 26 の `__VProc_kill__`、`__OS_kill__`、`__VProc_id__`、`__OS_getpid__` を使う。
+* パイプラインと `$( )` は、ConMa の `__VProc_start__`（Step 24）と `__OS_wait_writable__`（Step 25）を使う。`&`、`kill`、`$!`、`$$` は Step 26 の `__VProc_kill__`、`__OS_kill__`、`__VProc_id__`、`__OS_getpid__` を使う。`ARG_MAX` がないときは Step 27 の `__OS_sysconf__` で OS の値を得る。
 
 構文木と展開の結果を見るには、Python の参照実装を使う。構文木の形式は [AST.md](AST.md)、展開の結果の形式は `bin/consh_parse` の先頭に書いてある。`--pos` を付けると、構文木に行と桁が入る。
 

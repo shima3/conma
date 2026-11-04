@@ -1,0 +1,6 @@
+local-ignored
+child: 100
+f: long-argument
+builtin-echo
+consh: case3.sh:12:1: the arguments of an external command exceed ARG_MAX (5 bytes)
+exit: 1
