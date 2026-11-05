@@ -54,9 +54,18 @@ fn load_body(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) ->
         Some(c) => eval(c, &lvenv, gvenv)?,
         None => return err("Primitive not implemented: None"),
     };
-    let mut olist = Vec::with_capacity(body.olist.len());
+    // Reuse the Vec of the old OList, so that a step does not allocate one.
+    let mut olist = std::mem::take(&mut vp.olist);
+    olist.clear();
     for c in &body.olist {
-        olist.push(eval(c, &lvenv, gvenv)?);
+        match eval(c, &lvenv, gvenv) {
+            Ok(v) => olist.push(v),
+            Err(e) => {
+                olist.clear();
+                vp.olist = olist;
+                return Err(e);
+            }
+        }
     }
     let lcont = match &body.lcont {
         None => None,

@@ -30,25 +30,44 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 | 4. OS: Streams, files, pipes, processes, signals | 9, 11, 13–16, 21–27, 29, 31–33 | done: every step passes |
 | 5. ConSh: every test, and collecting cycles so that ConSh can run for long | `consh/test` | done |
 | 6. Front end and start-up | `selfhost1`–`7`, `module1`, `module2` | done: every test passes without changes to the VM (see Start-up) |
-| 7. Speed (once the steps match) | | |
+| 7. Speed (once the steps match) | every test, and the same traces | first round done (see Speed) |
 
 ## Start-up
 
 Measured on an Apple M4, with the ConSh module already built:
 
 * `consh` runs `echo hi` in 0.06 s, of which `consh_parse` (Python) takes 0.02 s; with `--conma-parser` it takes 0.03 s. Loading the ConSh module (5 MB) takes about 0.02 s and 130 MB.
-* Building the ConSh module, when its sources have changed, takes 1.2 s with `bin/includer` and `bin/resolver`. The ConMa front end (`test/selfhost7/test.se`) gives the same module in 9.9 s with the Rust VM, so it is left to stage 7.
+* Building the ConSh module, when its sources have changed, takes 1.2 s with `bin/includer` and `bin/resolver`. The ConMa front end (`test/selfhost7/test.se`) gives the same module in 3.7 s with the Rust VM (9.9 s before stage 7).
+
+## Speed
+
+Measured with the profiler of macOS (`sample`) on the ConMa front end building the ConSh module, and then on ConSh. Two changes took most of the time away:
+
+* The allocator. A step makes and drops small Rc blocks (LVNodes, Closures, CFrames, LList cells), and the allocator of macOS took about half of the time (it also clears each block it frees). `alloc.rs` keeps blocks of up to 256 bytes in a free list for each multiple of 16 bytes, carved from chunks of 256 KB, so a block is reused by the next one of the same size. Larger blocks go to the system allocator. Small blocks are never given back to the system, so the memory of a process stays at its peak.
+* Strings. A String made at run time was kept in source form, so every String primitive unescaped its arguments and escaped its result: the lexer, which takes a line apart one character at a time, spent about 40% of its time there. Such a String now keeps its text.
+
+Smaller ones: `load_body` reuses the Vec of the OList, and the collector checks plain counters at each step.
+
+| Run | Before | After |
+|---|---|---|
+| ConMa front end, the ConSh module | 9.9 s | 3.7 s |
+| ConSh, `x=$(f $i)` 3000 times | 3.1 s | 1.7 s |
+| ConSh, `x=$(f $i)` 20000 times | 21.0 s | 11.1 s |
+| ConSh, `echo $i \| cat` 3000 times (a process each time) | 9.9 s | 8.9 s |
+
+Every test passes with `CONMA_VM=rust`, and the traces of steps 1–8, 10, 12, 17–20, 28, 30 and 34 (129 runs) are the same as those of the Python VM. The time is now spread over the interpreter itself (`step`, the scheduler, cloning and dropping values); going further needs changes to how environments and Closures are made.
 
 ## Design
 
 * `sexp.rs` — reading and writing S-expressions. `to_string` writes a list on one line when it fits in 80 characters, as `sexp_to_str` does, so that traces match.
 * `module.rs` — loading a module. Every Function and Body is compiled once, when the module is loaded. A global variable that is `Undefined` becomes the primitive of the same name, if there is one.
-* `value.rs` — values. They follow the Python classes, including the two forms of a String: a literal of the program keeps its AST node (`StrNode`) and a String made at run time is kept in source form (`Str`), because traces write them differently.
+* `value.rs` — values. They follow the Python classes, including the two forms of a String: a literal of the program keeps its AST node (`StrNode`) and a String made at run time keeps its text (`Str`), which is escaped and quoted only when a trace writes it.
 * `step.rs` — one step, as `step` in `vproc_step.py`.
 * `vproc.rs` — the state of a VProc. A VProc is held as a `VProcCell`, whose serial number and state are outside the `RefCell` of the rest, so that a primitive can act on its own VProc (suspend it, wait, kill it) while that VProc runs the step.
 * `sched.rs` — the scheduler: the ready queue and the VProcs that wait for the OS (a process to exit, a Stream to be readable or writable), for another VProc, for a LazyList or for a Ref to change. `__Ref_wait_change__` waits while the value is the same object, as `is` in Python. Numbers therefore have an identity too: every new Number gets its own id, and ConSh depends on it (it sets a Ref to an equal but new Number to wake the VProcs that wait for it).
 * `sys.rs` — the C functions that the standard library does not provide (pipe, dup, poll, signal, kill, sysconf), with the constants of macOS and Linux. The crate has no dependencies.
 * `gc.rs` — collecting cycles (see Memory).
+* `alloc.rs` — the global allocator: free lists for blocks of up to 256 bytes (see Speed).
 * `trace.rs` — values and VProcs as S-expressions.
 * `prim/` — the primitives: `basic.rs` (`__is_null__`, `__type_name__`), `os.rs`, `number.rs`, `llist.rs`, `cchain.rs` (CChain, CFrame, `__Cont_get__`), `refs.rs` (Ref, PDict), `collections.rs` (MSeq, Dict), `string.rs` (String, `__Sexp_read__`), `vprocs.rs` (VProc, and loading a program with `bin/includer` and `bin/resolver` for `__VProc_spawn__`), `lazy.rs` (LazyList, `__Ref_wait_change__`), `stream.rs` (Streams, files and directories, the environment), `process.rs` (processes and SIGINT). Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
 

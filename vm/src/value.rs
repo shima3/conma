@@ -15,7 +15,7 @@ pub type SInfo = Rc<Vec<Sexp>>;
 #[derive(Clone)]
 pub enum Value {
     Null,
-    /// A String made at run time, in source form: quoted and escaped.
+    /// A String made at run time: its text, not escaped.
     Str(Rc<str>),
     /// A String literal of the program: its AST node `(String pos "text")`.
     StrNode(Sexp),
@@ -425,8 +425,14 @@ pub fn quoted(s: &str) -> String {
     }
 }
 
-/// A String value of text made at run time: escaped and quoted.
+/// A String value of text made at run time. It keeps the text itself; the
+/// source form is made only for traces (string_source).
 pub fn string_value(text: &str) -> Value {
+    Value::Str(Rc::from(text))
+}
+
+/// The source form of a String made at run time: escaped and quoted.
+pub fn string_source(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
     for ch in text.chars() {
@@ -440,7 +446,7 @@ pub fn string_value(text: &str) -> Value {
         }
     }
     out.push('"');
-    Value::Str(Rc::from(out))
+    out
 }
 
 /// Process the escapes \" \\ \n \t \r of the text of a String.
@@ -473,7 +479,7 @@ pub fn unescape(s: &str) -> Result<String, String> {
 /// The text of a String value (StrNode or Str), unescaped.
 pub fn string_text(v: &Value) -> Option<Result<String, String>> {
     match v {
-        Value::Str(s) => Some(unescape(unquote(s))),
+        Value::Str(s) => Some(Ok(s.to_string())),
         Value::StrNode(n) => {
             let l = n.as_list()?;
             Some(match l.get(2).and_then(|x| x.as_atom()) {

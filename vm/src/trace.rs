@@ -31,7 +31,7 @@ fn sinfo_items(s: &Option<SInfo>) -> Vec<Sexp> {
 pub fn value_to_sexp(v: &Value) -> Sexp {
     match v {
         Value::Null => null_sexp(),
-        Value::Str(s) => Sexp::Atom(s.clone()),
+        Value::Str(s) => Sexp::Atom(std::rc::Rc::from(string_source(s))),
         Value::StrNode(n) | Value::Raw(n) => n.clone(),
         Value::Number(x, _) => l(vec![a("__Number__"), a(&number_to_str(*x))]),
         Value::Closure(c) => closure_to_sexp(c),

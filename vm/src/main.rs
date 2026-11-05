@@ -8,6 +8,7 @@
 //! after each step. --main starts the program with __start__ and passes the
 //! remaining arguments as a Seq of Strings.
 
+mod alloc;
 mod gc;
 mod module;
 mod prim;
@@ -18,6 +19,9 @@ mod sys;
 mod trace;
 mod value;
 mod vproc;
+
+#[global_allocator]
+static GLOBAL: alloc::Pool = alloc::Pool::new();
 
 use std::process::exit;
 use std::rc::Rc;

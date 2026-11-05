@@ -103,6 +103,7 @@ fn bool_closure(param: &str) -> Value {
 
 impl Machine {
     pub fn new(trace: bool) -> Machine {
+        crate::gc::init();
         Machine {
             vprocs: Vec::new(),
             vprocs_pruned: 64,

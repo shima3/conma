@@ -15,7 +15,8 @@
 use crate::module::GVEnv;
 use crate::value::*;
 use crate::vproc::VProcCell;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
@@ -30,13 +31,23 @@ enum Weakly {
 
 thread_local! {
     static REGISTRY: RefCell<Vec<Weakly>> = const { RefCell::new(Vec::new()) };
-    /// Containers registered since the last collection.
-    static MADE: Cell<usize> = const { Cell::new(0) };
-    /// MADE that starts the next collection.
-    static THRESHOLD: Cell<usize> = Cell::new(fixed_threshold().unwrap_or(MIN_THRESHOLD));
     /// CONMA_GC_THRESHOLD, which sets the threshold for every collection (a
     /// small one tests the collector).
     static FIXED: Option<usize> = fixed_threshold();
+}
+
+// Plain statics rather than thread locals, because due() is called at every
+// step. Only the VM thread uses them.
+/// Containers registered since the last collection.
+static MADE: AtomicUsize = AtomicUsize::new(0);
+/// MADE that starts the next collection.
+static THRESHOLD: AtomicUsize = AtomicUsize::new(MIN_THRESHOLD);
+
+/// Read CONMA_GC_THRESHOLD; called before the VM runs.
+pub fn init() {
+    if let Some(n) = FIXED.with(|f| *f) {
+        THRESHOLD.store(n, Relaxed);
+    }
 }
 
 /// The fewest containers made between two collections. After a collection,
@@ -50,7 +61,7 @@ fn fixed_threshold() -> Option<usize> {
 
 fn register(w: Weakly) {
     REGISTRY.with(|r| r.borrow_mut().push(w));
-    MADE.with(|m| m.set(m.get() + 1));
+    MADE.fetch_add(1, Relaxed);
 }
 
 pub fn new_ref(r: RefObj) -> Rc<RefObj> {
@@ -85,7 +96,7 @@ pub fn new_gvenv(g: GVEnv) -> Rc<GVEnv> {
 
 /// True when enough containers have been made to collect.
 pub fn due() -> bool {
-    MADE.with(|m| m.get()) >= THRESHOLD.with(|t| t.get())
+    MADE.load(Relaxed) >= THRESHOLD.load(Relaxed)
 }
 
 /// A value that may be on a cycle, held while collecting.
@@ -375,8 +386,8 @@ pub fn collect() -> usize {
     drop(index);
     drop(trash);
     drop(lv_trash);
-    MADE.with(|m| m.set(0));
+    MADE.store(0, Relaxed);
     let next = FIXED.with(|f| *f).unwrap_or(survivors.max(MIN_THRESHOLD));
-    THRESHOLD.with(|t| t.set(next));
+    THRESHOLD.store(next, Relaxed);
     freed
 }
