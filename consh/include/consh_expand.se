@@ -29,7 +29,7 @@
 ;; 外部コマンドの引数の語として展開する。limit が null でなければ、葉ごとに引数のバイト数の上限から引く
 (define Expand_fields_in ,(sh word limit)
   __Cont_get__ ,(return)
-  Literal_fields word ,(fields done)
+  Literal_fields sh word ,(fields done)
   __if__ done (,() return fields) ,()
   Expand_parts sh word ,(parts)
   Parts_fields_in parts limit)
@@ -55,7 +55,17 @@
 
 ;; リテラルの語を、外部コマンドの語として（関数と組み込みコマンドの引数としても同じ）展開した String の LList と、
 ;; 決まったか。リテラルでないか、glob の記号を含めば、決めずに偽を返す
-(define Literal_fields ,(word)
+(define Literal_fields ,(sh word)
+  __Dict_lookup_or__ sh "litCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table word (,(key)
+    Literal_fields_find word ,(fields done)
+    __NULL__ (,() __NULL__ fields done) ,(code)
+    __Dict_put__ table word code ,()
+    __NULL__ code) ,(code)
+  code)
+
+;; Literal_fields の答え。語ごとに1回だけ求めて、文脈の "litCode" に覚えておく
+(define Literal_fields_find ,(word)
   __Cont_get__ ,(return)
   Word_literal word ,(text)
   __is_null__ text ,(none)
@@ -204,7 +214,7 @@
 ;; どちらも含まなければ、引用符か ${x} を含む語は1つの String。それ以外は、空になれば消える
 (define Expand_args ,(sh word)
   __Cont_get__ ,(return)
-  Literal_fields word ,(fields done)
+  Literal_fields sh word ,(fields done)
   __if__ done (,() return fields) ,()
   Expand_parts sh word ,(parts)
   Parts_single parts ,(kind value)
@@ -256,6 +266,45 @@
       return list) ,()
   Expand_value sh v)
 
+;; 変数定義の右辺 values を、文脈 sh を受け取ってその値（Expand_def_value）を返すクロージャ（値のコード）にする。
+;; リテラルの語は String をそのまま返し、$x と ${x}（既定値なし）だけの語は、変数を引いて返す
+(define Def_value_code ,(values)
+  __Cont_get__ ,(return)
+  __is_null__ values ,(condition)
+  __if__ condition (,() return (,(sh) __NULL__ "")) ,()
+  __LList_uncons__ __print_exit_error__ values ,(v others)
+  Node_split v ,(tag pos elems)
+  __String_equal__ tag "array" ,(condition)
+  __if__ condition (,() return (,(sh) Expand_def_value sh values)) ,()
+  Word_literal v ,(text)
+  __is_null__ text ,(none)
+  __unless__ none (,() return (,(sh) __NULL__ text)) ,()
+  __LList_uncons__ __print_exit_error__ elems ,(elem more)
+  __is_null__ more ,(single)
+  __unless__ single (,() return (,(sh) Expand_value sh v)) ,()
+  Node_split elem ,(kind epos children)
+  __String_equal__ kind "var" ,(isVar)
+  __String_equal__ kind "bvar" ,(isBvar)
+  __or__ isVar isBvar ,(isRef)
+  __unless__ isRef (,() return (,(sh) Expand_value sh v)) ,()
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __is_null__ rest ,(noDefault)
+  __unless__ noDefault (,() return (,(sh) Expand_value sh v)) ,()
+  __if__ isBvar (,() return (,(sh) Sh_lookup sh epos name)) ,()
+  __NULL__ (,(sh)
+    Sh_lookup sh epos name ,(value)
+    Var_def_value sh pos value))
+
+;; $x だけの語（位置 pos）の、変数定義の右辺としての値。String ならそのまま、LazyList なら葉の語が1つだけのはず
+(define Var_def_value ,(sh pos value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(isString)
+  __if__ isString (,() return value) ,()
+  Part_make "leaves" value ,(part)
+  __LList_cons__ part __NULL__ ,(parts)
+  Expand_value_parts sh pos parts)
+
 ;; (語 ...) の各語を外部コマンドの語として展開した String の LList
 (define Expand_array ,(sh words)
   __Cont_get__ ,(return)
@@ -275,6 +324,11 @@
   __unless__ none (,() return text) ,()
   Node_split word ,(tag pos elems)
   Expand_parts_from sh elems ,(parts)
+  Expand_value_parts sh pos parts)
+
+;; Expand_value で、語（位置 pos）の部分の LList parts から値を求める
+(define Expand_value_parts ,(sh pos parts)
+  __Cont_get__ ,(return)
   Parts_single parts ,(kind value)
   __is_null__ kind ,(condition)
   __unless__ condition (,() return value) ,()
@@ -360,14 +414,75 @@
   Node_split word ,(tag pos elems)
   Expand_parts_from sh elems)
 
+;; 語の要素の LList を部分の LList にする。要素の LList は、初めて展開するときに、文脈 sh を受け取って
+;; 部分の LList を返すクロージャ（部分のコード、Parts_compile）に変換し、文脈の "partsCode" に覚えておく
 (define Expand_parts_from ,(sh elems)
+  __Dict_lookup_or__ sh "partsCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table elems (,(key)
+    Parts_compile elems ,(code)
+    __Dict_put__ table elems code ,()
+    __NULL__ code) ,(code)
+  code sh)
+
+;; 要素ごとに部分のコード（Part_code）を作り、順に実行して部分の LList を返すクロージャにする
+(define Parts_compile ,(elems)
   __Cont_get__ ,(return)
   __is_null__ elems ,(condition)
-  __if__ condition (,() return __NULL__) ,()
+  __if__ condition (,() return (,(sh) __NULL__ __NULL__)) ,()
   __LList_uncons__ __print_exit_error__ elems ,(elem rest)
-  Expand_part sh elem ,(part)
-  Expand_parts_from sh rest ,(parts)
-  __LList_cons__ part parts)
+  Part_code elem ,(partCode)
+  __is_null__ rest ,(last)
+  __if__ last
+    (,() return (,(sh)
+      partCode sh ,(part)
+      __LList_cons__ part __NULL__)) ,()
+  Parts_compile rest ,(restCode)
+  __NULL__ (,(sh)
+    partCode sh ,(part)
+    restCode sh ,(parts)
+    __LList_cons__ part parts))
+
+;; 語の要素を、文脈 sh を受け取って部分（Expand_part）を返すクロージャにする。
+;; 引用符のない文字と引用符の中の文字は、部分を作っておいて返す。$x と ${x}（既定値なし）は変数を引く
+(define Part_code ,(elem)
+  __Cont_get__ ,(return)
+  Node_split elem ,(kind pos children)
+  __String_equal__ kind "lit" ,(isLit)
+  __if__ isLit
+    (,()
+      List_first children ,(text)
+      Part_make "plain" text ,(part)
+      return (,(sh) __NULL__ part)) ,()
+  __String_equal__ kind "esc" ,(isEsc)
+  __String_equal__ kind "sq" ,(isSq)
+  __or__ isEsc isSq ,(isQuoted)
+  __if__ isQuoted
+    (,()
+      List_first children ,(text)
+      Part_make "quoted" text ,(part)
+      return (,(sh) __NULL__ part)) ,()
+  __String_equal__ kind "var" ,(isVar)
+  __String_equal__ kind "bvar" ,(isBvar)
+  __or__ isVar isBvar ,(isRef)
+  __unless__ isRef (,() return (,(sh) Expand_part sh elem)) ,()
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __is_null__ rest ,(noDefault)
+  __unless__ noDefault (,() return (,(sh) Expand_part sh elem)) ,()
+  __if__ isVar
+    (,() return (,(sh)
+      Sh_lookup sh pos name ,(value)
+      Ref_part "plain" "leaves" value)) ,()
+  __NULL__ (,(sh)
+    Sh_lookup sh pos name ,(value)
+    Ref_part "braced" "list" value))
+
+;; 変数の値 value の部分。String なら種類 stringKind、LazyList なら listKind
+(define Ref_part ,(stringKind listKind value)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(isString)
+  __if_then_else__ isString
+    (,() Part_make stringKind value)
+    (,() Part_make listKind value))
 
 (define Expand_part ,(sh elem)
   __Cont_get__ ,(return)

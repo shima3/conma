@@ -32,6 +32,10 @@
 ;;   "env"        環境変数（Env_new）
 ;;   "in"         標準入力。Input_new または Input_stream の Dict（読み出し位置を共有する）
 ;;   "out" "err"  標準出力と標準エラー出力のターゲット（Target_*）
+;;   "stmtCode"   文の節から、その文のコード（Stmt_code）への Dict。すべての文脈で共有する
+;;   "linesCode"  コマンド行の LList から、そのコードへの Dict（Eval_lines）。すべての文脈で共有する
+;;   "partsCode"  語の要素の LList から、部分を作るコードへの Dict（Expand_parts_from）。すべての文脈で共有する
+;;   "litCode"    語の節から、リテラルの語としての展開（Literal_fields）への Dict。すべての文脈で共有する
 ;;
 ;; 変数定義は新しい束縛と見る。関数は、定義した時点の局所変数の写しを持つので、
 ;; 後で変数を変えても関数からは見えない。関数名は、スコープごとの Dict を外側へたどって探すので、
@@ -79,6 +83,14 @@
   __Dict_put__ sh "pipeEnds" __NULL__ ,()
   __Dict_put__ sh "exitTo" __NULL__ ,()
   __Dict_put__ sh "recover" __NULL__ ,()
+  __Dict_new__ ,(stmtCode)
+  __Dict_put__ sh "stmtCode" stmtCode ,()
+  __Dict_new__ ,(linesCode)
+  __Dict_put__ sh "linesCode" linesCode ,()
+  __Dict_new__ ,(partsCode)
+  __Dict_put__ sh "partsCode" partsCode ,()
+  __Dict_new__ ,(litCode)
+  __Dict_put__ sh "litCode" litCode ,()
   __Ref_new__ __NULL__ ,(openRef)
   __Dict_put__ sh "openRef" openRef ,()
   __Ref_new__ __NULL__ ,(pipeRef)
@@ -507,78 +519,128 @@
   num status ,(code)
   __OS_exit__ __print_exit_error__ code)
 
+;; ── 文のコード ──
+;; 文の節は、初めて実行するときに、文脈 sh を受け取ってその文を実行するクロージャ（文のコード）に変換し、
+;; 節ごとに覚えておく（文脈の "stmtCode"。キーは節そのもので、同じ節かで引く）。文の種類の振り分けと、
+;; 節の分解は、変換のときに1回だけする。コマンド行の LList も、文を順に実行し、それぞれの後で $( ) を待つ
+;; 1つのクロージャに変換して覚える（"linesCode"）。関数の本体やループの本体を何度実行しても、変換は1回である
+
 (define Eval_lines ,(sh lines)
+  __Dict_lookup_or__ sh "linesCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table lines (,(key) Lines_compile sh table lines) ,(code)
+  code sh)
+
+;; コマンド行の LList のコードを作り、table に覚えて返す
+(define Lines_compile ,(sh table lines)
+  Lines_codes sh lines ,(codes)
+  Code_chain codes ,(code)
+  __Dict_put__ table lines code ,()
+  __NULL__ code)
+
+;; コマンド行の文のコードを、順につないだ LList
+(define Lines_codes ,(sh lines)
   __Cont_get__ ,(return)
   __is_null__ lines ,(condition)
-  __if__ condition return ,()
+  __if__ condition (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ lines ,(line rest)
   Node_split line ,(tag pos stmts)
-  Eval_stmts sh stmts ,()
-  Eval_lines sh rest)
+  Stmts_codes sh stmts ,(front)
+  Lines_codes sh rest ,(back)
+  List_append front back)
 
-(define Eval_stmts ,(sh stmts)
+(define Stmts_codes ,(sh stmts)
   __Cont_get__ ,(return)
   __is_null__ stmts ,(condition)
-  __if__ condition return ,()
+  __if__ condition (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ stmts ,(stmt rest)
-  Eval_stmt sh stmt ,()
-  Eval_stmts sh rest)
+  Stmt_code sh stmt ,(code)
+  Stmts_codes sh rest ,(more)
+  __LList_cons__ code more)
+
+;; 文のコードを順に実行し、それぞれの後で $( ) を待つ（Subst_settle）クロージャ
+(define Code_chain ,(codes)
+  __Cont_get__ ,(return)
+  __is_null__ codes ,(condition)
+  __if__ condition (,() return (,(sh) __nop__)) ,()
+  __LList_uncons__ __print_exit_error__ codes ,(code rest)
+  __is_null__ rest ,(last)
+  __if__ last (,() return (,(sh) code sh ,() Subst_settle sh)) ,()
+  Code_chain rest ,(next)
+  __NULL__ (,(sh)
+    code sh ,()
+    Subst_settle sh ,()
+    next sh))
 
 (define Eval_stmt ,(sh stmt)
   Eval_stmt_run sh stmt ,()
   Subst_settle sh)
 
 (define Eval_stmt_run ,(sh stmt)
+  Stmt_code sh stmt ,(code)
+  code sh)
+
+;; 文の節のコード。なければ変換して覚える
+(define Stmt_code ,(sh stmt)
+  __Dict_lookup_or__ sh "stmtCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table stmt (,(key)
+    Stmt_compile stmt ,(code)
+    __Dict_put__ table stmt code ,()
+    __NULL__ code))
+
+;; 文の節を、文脈を受け取って実行するクロージャにする
+(define Stmt_compile ,(stmt)
+  __Cont_get__ ,(return)
   Node_split stmt ,(tag pos children)
   __String_equal__ tag "cmd" ,(condition)
-  __if_then_else__ condition
-    (,() Eval_cmd sh pos children) (,()
+  __if__ condition
+    (,()
+      Cmd_parts children ,(defs words redirs)
+      return (,(sh) Eval_cmd_parts sh pos defs words redirs)) ,()
+  __String_equal__ tag "assign" ,(condition)
+  __if__ condition
+    (,()
+      Assign_compile children ,(code)
+      return code) ,()
   __String_equal__ tag "if" ,(condition)
-  __if_then_else__ condition
-    (,() Eval_if sh pos children) (,()
+  __if__ condition (,() return (,(sh) Eval_if sh pos children)) ,()
   __String_equal__ tag "for" ,(condition)
-  __if_then_else__ condition
-    (,() Eval_for sh pos children) (,()
+  __if__ condition (,() return (,(sh) Eval_for sh pos children)) ,()
   __String_equal__ tag "break" ,(isBreak)
   __String_equal__ tag "continue" ,(isContinue)
   __or__ isBreak isContinue ,(isJump)
-  __if_then_else__ isJump
-    (,() Eval_jump sh pos tag children) (,()
-  __String_equal__ tag "assign" ,(condition)
-  __if_then_else__ condition
-    (,()
-      Eval_assign sh children ,()
-      Sh_set_status sh "0") (,()
+  __if__ isJump (,() return (,(sh) Eval_jump sh pos tag children)) ,()
   __String_equal__ tag "export" ,(condition)
-  __if_then_else__ condition
-    (,()
+  __if__ condition
+    (,() return (,(sh)
       Eval_export sh children ,()
-      Sh_set_status sh "0") (,()
+      Sh_set_status sh "0")) ,()
   __String_equal__ tag "function" ,(condition)
-  __if_then_else__ condition
-    (,()
+  __if__ condition
+    (,() return (,(sh)
       Func_define sh children ,()
-      Sh_set_status sh "0") (,()
+      Sh_set_status sh "0")) ,()
   __String_equal__ tag "return" ,(condition)
-  __if_then_else__ condition
-    (,() Eval_return sh pos children) (,()
+  __if__ condition (,() return (,(sh) Eval_return sh pos children)) ,()
   __String_equal__ tag "pipe" ,(condition)
-  __if_then_else__ condition
-    (,() Eval_pipe sh pos children)
-    (,() Eval_list sh children))))))))))
+  __if__ condition (,() return (,(sh) Eval_pipe sh pos children)) ,()
+  __NULL__ (,(sh) Eval_list sh children))
 
-;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列
-(define Eval_assign ,(sh defs)
+;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列。
+;; 右辺は変換のときに値のコード（Def_value_code）にし、文のコードは、それを順に実行して設定するクロージャにする
+(define Assign_compile ,(defs)
   __Cont_get__ ,(return)
   __is_null__ defs ,(condition)
-  __if__ condition return ,()
+  __if__ condition (,() return (,(sh) Sh_set_status sh "0")) ,()
   __LList_uncons__ __print_exit_error__ defs ,(def rest)
   Node_split def ,(tag pos children)
   __LList_uncons__ __print_exit_error__ children ,(name values)
-  Expand_def_value sh values ,(value)
-  Sh_get sh "vars" ,(vars)
-  __Dict_put__ vars name value ,()
-  Eval_assign sh rest)
+  Def_value_code values ,(valueCode)
+  Assign_compile rest ,(next)
+  __NULL__ (,(sh)
+    valueCode sh ,(value)
+    __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
+    __Dict_put__ vars name value ,()
+    next sh))
 
 ;; 文「export 項目 ...」。環境変数に設定し、局所変数は変えない
 (define Eval_export ,(sh items)
@@ -750,9 +812,8 @@
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
 ;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する
-(define Eval_cmd ,(sh pos children)
+(define Eval_cmd_parts ,(sh pos defs words redirs)
   __Cont_get__ ,(return)
-  Cmd_parts children ,(defs words redirs)
   Cmd_scope sh defs ,(sh)
   Arg_limit_new sh pos ,(limit)
   Cmd_head sh words limit ,(name more rest)
@@ -1569,8 +1630,8 @@
 ;; 終わったものは記録から除き、待っているもの（値がまだ読まれていない）は残す
 (define Subst_settle ,(sh)
   __Cont_get__ ,(return)
-  Sh_get sh "global" ,(global)
-  Sh_get global "substs" ,(substs)
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "substs" __print_exit_error__ ,(substs)
   __is_null__ substs ,(condition)
   __if__ condition return ,()
   Subst_settle_list substs ,(kept)
