@@ -8,6 +8,7 @@ use std::os::raw::{c_char, c_int, c_long};
 use std::sync::{Arc, Mutex};
 
 extern "C" {
+    fn kill(pid: c_int, sig: c_int) -> c_int;
     fn sysconf(name: c_int) -> c_long;
     fn access(path: *const c_char, mode: c_int) -> c_int;
 }
@@ -100,4 +101,43 @@ impl Drop for Fd {
 /// Write to fd 2 at once (as __OS_print_error__).
 pub fn print_error(s: &str) {
     let _ = io::stderr().write_all(s.as_bytes());
+}
+
+/// Send SIGTERM to a process.
+pub fn terminate(pid: u32) {
+    unsafe {
+        kill(pid as c_int, 15);
+    }
+}
+
+/// With CONSH_JITTER=<seed>, a short random pause or a yield at the points
+/// where threads meet (channels, writes, the start of threads, statements),
+/// so that tests run with many orders of the threads and show races.
+pub fn jitter() {
+    use std::cell::Cell;
+    use std::sync::OnceLock;
+    static SEED: OnceLock<Option<u64>> = OnceLock::new();
+    let seed = match SEED.get_or_init(|| std::env::var("CONSH_JITTER").ok().and_then(|s| s.parse().ok())) {
+        None => return,
+        Some(s) => *s,
+    };
+    thread_local! { static STATE: Cell<u64> = const { Cell::new(0) }; }
+    let r = STATE.with(|st| {
+        let mut x = st.get();
+        if x == 0 {
+            let t = std::thread::current().id();
+            let h = format!("{:?}", t).bytes().fold(seed ^ 0x9e37_79b9_7f4a_7c15, |a, b| a.wrapping_mul(31).wrapping_add(b as u64));
+            x = h | 1;
+        }
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        st.set(x);
+        x
+    });
+    match r % 8 {
+        0 => std::thread::sleep(std::time::Duration::from_micros(r % 2000)),
+        1 | 2 => std::thread::yield_now(),
+        _ => {}
+    }
 }

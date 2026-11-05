@@ -36,6 +36,8 @@ pub struct Global {
     pub interactive: bool,
     /// The $( ) started by this thread that have not finished (newest first).
     substs: Mutex<Vec<Arc<Subst>>>,
+    /// The jobs started by this thread with & (newest first).
+    jobs: Mutex<Vec<Arc<Job>>>,
 }
 
 /// The number of elements a writer of a channel may write before the reader
@@ -48,7 +50,43 @@ pub fn spawn<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> std::
     std::thread::Builder::new().stack_size(256 << 20).spawn(f).expect("cannot start a thread")
 }
 
-pub type Vars = Arc<Mutex<HashMap<String, Value>>>;
+/// A local variable: a value, or the value that a variable list of a job
+/// (f > (a b) &) has not received yet (Value_force waits for it).
+#[derive(Clone)]
+pub enum Var {
+    V(Value),
+    P(Arc<Promise>),
+}
+
+pub struct Promise {
+    cell: Mutex<Option<Value>>,
+    changed: std::sync::Condvar,
+}
+
+impl Promise {
+    fn new() -> Arc<Promise> {
+        Arc::new(Promise { cell: Mutex::new(None), changed: std::sync::Condvar::new() })
+    }
+    /// Set the value (a second time does nothing).
+    fn resolve(&self, v: Value) {
+        let mut c = self.cell.lock().unwrap();
+        if c.is_none() {
+            *c = Some(v);
+            self.changed.notify_all();
+        }
+    }
+    fn wait(&self) -> Value {
+        let mut c = self.cell.lock().unwrap();
+        loop {
+            if let Some(v) = &*c {
+                return v.clone();
+            }
+            c = self.changed.wait(c).unwrap();
+        }
+    }
+}
+
+pub type Vars = Arc<Mutex<HashMap<String, Var>>>;
 type Layer = Arc<Mutex<HashMap<String, String>>>;
 
 /// The environment: the variables of the whole shell (base) and the layers
@@ -114,7 +152,7 @@ pub struct Func {
     body: Sexp,
     scope: Arc<Scope>,
     /// The local variables when the function was defined.
-    vars: HashMap<String, Value>,
+    vars: HashMap<String, Var>,
 }
 
 /// The for loops being run, innermost first: the name of the loop variable
@@ -144,6 +182,10 @@ pub enum TKind {
     /// A Stream passed to the body of a function, an if or a for statement:
     /// LazyLists with the OFS of the context of the redirection.
     File(Arc<Fd>, Arc<Ctx>, Pos),
+    /// The OS pipe to the next element of a pipeline, written by an element
+    /// that is not one external command: LazyLists with the OFS of the
+    /// pipeline's context. If the reader has closed it, the element ends.
+    Pipe(Arc<Fd>, Arc<Ctx>),
     /// A writer of a channel, used only by the thread that made it; another
     /// thread gets a new writer of the same channel (child_target).
     Chan(Arc<Writer>),
@@ -191,6 +233,17 @@ pub struct Ctx {
     /// The id that Sh_abort ends: the thread, or the command whose variable
     /// list is full. None in the thread of the shell.
     abort: Option<u64>,
+    /// What a thread (a VProc of the ConMa version) shares with its copies:
+    /// whether kill has stopped it, the external command it is running, the
+    /// elements of the pipeline it waits for, and the channel of its input
+    /// to cancel when it ends.
+    killed: Arc<AtomicBool>,
+    proc_ref: Arc<Mutex<Option<u32>>>,
+    pipe_members: Arc<Mutex<Vec<Member>>>,
+    cancel_in: Option<Arc<Chan>>,
+    /// The values for the variable lists of a job's simple command (Bg_captures),
+    /// taken in order by its redirections.
+    bg_captures: Option<Arc<Mutex<std::collections::VecDeque<Arc<BgSpec>>>>>,
 }
 
 impl Ctx {
@@ -205,6 +258,7 @@ impl Ctx {
             last_bg: Mutex::new(String::new()),
             interactive: false,
             substs: Mutex::new(Vec::new()),
+            jobs: Mutex::new(Vec::new()),
         });
         let input = Input::from_stream(Fd::standard(0));
         let err = Target { id: new_id(), kind: TKind::Stream(Fd::standard(2)) };
@@ -225,12 +279,31 @@ impl Ctx {
             err,
             cwd: Arc::new(Mutex::new(cwd)),
             abort: None,
+            killed: Arc::new(AtomicBool::new(false)),
+            proc_ref: Arc::new(Mutex::new(None)),
+            pipe_members: Arc::new(Mutex::new(Vec::new())),
+            cancel_in: None,
+            bg_captures: None,
         };
         // The standard output writes with the OFS of this context; the
         // Target holds a copy whose own out is the standard error.
         let top = Arc::new(sh.clone());
         sh.out = Target { id: new_id(), kind: TKind::Top(top) };
         sh
+    }
+
+    /// A local variable, waiting for the value of a job's variable list.
+    fn get_var(&self, name: &str) -> Option<Value> {
+        let v = self.vars.lock().unwrap().get(name).cloned();
+        match v {
+            None => None,
+            Some(Var::V(v)) => Some(v),
+            Some(Var::P(p)) => Some(p.wait()),
+        }
+    }
+
+    fn set_var(&self, name: &str, v: Value) {
+        self.vars.lock().unwrap().insert(name.to_string(), Var::V(v));
     }
 
     pub fn cwd(&self) -> PathBuf {
@@ -279,8 +352,8 @@ impl Ctx {
     /// The value of a variable: a local variable, a special name, or an
     /// environment variable. An undefined variable is an error.
     pub fn lookup(&self, pos: Pos, name: &str) -> R<Value> {
-        if let Some(v) = self.vars.lock().unwrap().get(name) {
-            return Ok(v.clone());
+        if let Some(v) = self.get_var(name) {
+            return Ok(v);
         }
         if name == "@" {
             let args = self.script_args(pos)?;
@@ -332,7 +405,7 @@ impl Ctx {
     /// The separator for making a LazyList a String: OFS of the local
     /// variables, then of the environment, else a space.
     pub fn ofs(&self, pos: Pos) -> R<String> {
-        let v = self.vars.lock().unwrap().get("OFS").cloned();
+        let v = self.get_var("OFS");
         match v {
             Some(Value::Str(s)) => Ok(s.to_string()),
             Some(Value::List(_)) => Err(self.error(pos, "OFS is a LazyList")),
@@ -398,6 +471,7 @@ fn write_fd(fd: &Fd, s: &str) {
 
 /// Write the element line to a target.
 pub fn target_write(sh: &Ctx, pos: Pos, target: &Target, line: &Value) -> R<()> {
+    os::jitter();
     match &target.kind {
         TKind::Top(top) => {
             let s = line_to_string(top, None, line)?;
@@ -410,6 +484,12 @@ pub fn target_write(sh: &Ctx, pos: Pos, target: &Target, line: &Value) -> R<()> 
         TKind::File(fd, fsh, fpos) => {
             let s = line_to_string(fsh, *fpos, line)?;
             write_fd(fd, &format!("{}\n", s));
+        }
+        TKind::Pipe(fd, psh) => {
+            let s = line_to_string(psh, None, line)?;
+            if fd.write_all(format!("{}\n", s).as_bytes()).is_err() {
+                return Err(sh_abort(sh));
+            }
         }
         TKind::Chan(w) => {
             if w.put(line.clone()).is_err() {
@@ -455,12 +535,17 @@ pub fn eval_run(script: &str, args: Vec<String>, lines: &[Sexp]) -> i32 {
     if let Err(Flow::Exit(code)) = r {
         return code;
     }
+    jobs_wait_all(&sh);
     sh.status().parse().unwrap_or(0)
 }
 
 pub fn eval_lines(sh: &Ctx, lines: &[Sexp]) -> R<()> {
     for line in lines {
         for stmt in line.children() {
+            os::jitter();
+            if sh.killed.load(Ordering::SeqCst) {
+                return Err(Flow::Killed);
+            }
             eval_stmt(sh, stmt)?;
             subst_settle(sh);
         }
@@ -477,7 +562,7 @@ fn eval_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
             for def in children {
                 let c = def.children();
                 let value = expand::def_value(sh, &c[1..])?;
-                sh.vars.lock().unwrap().insert(c[0].str().to_string(), value);
+                sh.set_var(c[0].str(), value);
             }
             sh.set_status("0");
             Ok(())
@@ -496,13 +581,14 @@ fn eval_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
             Ok(())
         }
         "return" => eval_return(sh, pos, children),
-        "pipe" => Err(sh.error(pos, "consh-rs: pipelines are not implemented yet")),
+        "pipe" => eval_pipe(sh, children),
         _ => {
             for elem in children {
                 if elem.tag() == "bg" {
-                    return Err(sh.error(elem.pos(), "consh-rs: & is not implemented yet"));
+                    eval_bg(sh, &elem.children()[0])?;
+                } else {
+                    eval_stmt(sh, elem)?;
                 }
-                eval_stmt(sh, elem)?;
             }
             Ok(())
         }
@@ -516,7 +602,7 @@ fn eval_export(sh: &Ctx, items: &[Sexp]) -> R<()> {
         let c = item.children();
         let name = c[0].str();
         let value = if item.tag() == "name" {
-            let v = sh.vars.lock().unwrap().get(name).cloned();
+            let v = sh.get_var(name);
             match v {
                 None => return Err(sh.error(pos, &format!("export of an undefined local variable: {}", name))),
                 Some(v) => expand::value_to_string(sh, pos, &v)?,
@@ -595,10 +681,10 @@ fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: 
     let mut vars = f.vars.clone();
     let mut it = args.into_iter();
     for n in &f.names {
-        vars.insert(n.clone(), it.next().unwrap_or_else(|| Value::str("")));
+        vars.insert(n.clone(), Var::V(it.next().unwrap_or_else(|| Value::str(""))));
     }
     if !f.rest.is_empty() {
-        vars.insert(f.rest.clone(), Value::List(LazyList::from_vec(it.collect())));
+        vars.insert(f.rest.clone(), Var::V(Value::List(LazyList::from_vec(it.collect()))));
     }
     let id = new_id();
     let callee = Ctx {
@@ -772,7 +858,7 @@ fn eval_redirected(sh: &Ctx, pos: Pos, redirs: &[Sexp], run: impl FnOnce(&Ctx) -
         Some(r) => r,
     };
     let (out, err) = body_targets(sh, pos, &out, &err);
-    let inner = Ctx { input, out, err, ..sh.clone() };
+    let inner = Ctx { input, out, err, bg_captures: None, ..sh.clone() };
     capture_run(&inner, &group, run)
 }
 
@@ -858,7 +944,7 @@ fn for_values(sh: &Ctx, name: &str, values: Vec<Value>, body: &[Sexp], id: u64) 
 }
 
 fn for_item(sh: &Ctx, name: &str, item: Value, body: &[Sexp], id: u64) -> R<()> {
-    sh.vars.lock().unwrap().insert(name.to_string(), item);
+    sh.set_var(name, item);
     match eval_lines(sh, body) {
         Err(Flow::Continue(c)) if c == id => Ok(()),
         other => other,
@@ -897,6 +983,7 @@ fn sh_child(sh: &Ctx, input: Arc<Input>, out: Target, err: Target, no_return: &s
         last_bg: Mutex::new(sh.global.last_bg.lock().unwrap().clone()),
         interactive: sh.global.interactive,
         substs: Mutex::new(Vec::new()),
+        jobs: Mutex::new(Vec::new()),
     });
     Ctx {
         global,
@@ -911,47 +998,419 @@ fn sh_child(sh: &Ctx, input: Arc<Input>, out: Target, err: Target, no_return: &s
         loops: None,
         cwd: Arc::new(Mutex::new(sh.cwd())),
         abort: None,
+        killed: Arc::new(AtomicBool::new(false)),
+        proc_ref: Arc::new(Mutex::new(None)),
+        pipe_members: Arc::new(Mutex::new(Vec::new())),
+        cancel_in: None,
+        bg_captures: None,
         ..sh.clone()
     }
 }
 
-/// The target for a child thread (the same id): a new writer of a channel.
+/// The target for a child thread (the same id): a new writer of a channel,
+/// or a copy of the fd of a Stream, which the child closes when it ends
+/// (so that a job or a $( ) that outlives a statement can go on writing to
+/// a file that the statement closes).
 fn child_target(t: &Target) -> Target {
-    match &t.kind {
-        TKind::Chan(w) => Target { id: t.id, kind: TKind::Chan(w.chan.writer()) },
-        _ => t.clone(),
-    }
+    let dup = |fd: &Arc<Fd>| fd.dup().map(|o| Fd::new(std::fs::File::from(o))).unwrap_or_else(|_| fd.clone());
+    let kind = match &t.kind {
+        TKind::Chan(w) => TKind::Chan(w.chan.writer()),
+        TKind::Stream(fd) => TKind::Stream(dup(fd)),
+        TKind::File(fd, c, p) => TKind::File(dup(fd), c.clone(), *p),
+        TKind::Pipe(fd, c) => TKind::Pipe(dup(fd), c.clone()),
+        k => k.clone(),
+    };
+    Target { id: t.id, kind }
 }
 
-/// The targets for a child: the same writer if they go to the same place.
+/// The targets for a child: the same one if they go to the same place.
 fn child_targets(out: &Target, err: &Target) -> (Target, Target) {
     let o = child_target(out);
     let e = if out.id == err.id { o.clone() } else { child_target(err) };
     (o, e)
 }
 
-/// Close what a thread holds when it ends: its writers of channels.
+/// When a thread ends (or is stopped): close its outputs and cancel the
+/// channel of its input.
 fn sh_release(child: &Ctx) {
     for t in [&child.out, &child.err] {
-        if let TKind::Chan(w) = &t.kind {
-            w.close();
+        match &t.kind {
+            TKind::Chan(w) => w.close(),
+            TKind::Stream(fd) | TKind::File(fd, _, _) | TKind::Pipe(fd, _) => fd.close(),
+            _ => {}
+        }
+    }
+    if let Some(c) = &child.cancel_in {
+        c.cancel();
+    }
+}
+
+/// A thread started for a $( ), an element of a pipeline or a job.
+#[derive(Clone)]
+pub struct Member {
+    ctx: Ctx,
+    done: Arc<(Mutex<bool>, std::sync::Condvar)>,
+}
+
+impl Member {
+    fn finished(&self) -> bool {
+        *self.done.0.lock().unwrap()
+    }
+    fn wait(&self) {
+        let mut d = self.done.0.lock().unwrap();
+        while !*d {
+            d = self.done.1.wait(d).unwrap();
         }
     }
 }
 
 /// Start a thread that runs body in child. An abort (the reader of its
-/// output has finished) or exit ends the thread. At its end, its $( ) are
-/// finished and its writers closed, and then done is called.
-fn sh_start(mut child: Ctx, body: impl FnOnce(&Ctx) -> R<()> + Send + 'static, done: impl FnOnce() + Send + 'static) -> std::thread::JoinHandle<()> {
+/// output has finished), exit or kill ends the thread. At its end, its $( )
+/// are finished, its outputs closed and the fds in owned closed, and then
+/// done is called.
+fn sh_start(mut child: Ctx, owned: Vec<Arc<Fd>>, body: impl FnOnce(&Ctx) -> R<()> + Send + 'static, done: impl FnOnce() + Send + 'static) -> Member {
     let id = new_id();
     child.abort = Some(id);
+    let flag = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    let member = Member { ctx: child.clone(), done: flag.clone() };
     spawn(move || {
+        os::jitter();
         let _ = body(&child);
         subst_finish(&child);
         sh_release(&child);
+        for fd in &owned {
+            fd.close();
+        }
         drop(child);
         done();
-    })
+        *flag.0.lock().unwrap() = true;
+        flag.1.notify_all();
+    });
+    member
+}
+
+/// Stop a thread: kill its external command (SIGTERM), close its outputs,
+/// and stop the pipeline it waits for and its $( ) (not its jobs).
+fn vproc_stop(m: &Member) {
+    m.ctx.killed.store(true, Ordering::SeqCst);
+    if let Some(pid) = *m.ctx.proc_ref.lock().unwrap() {
+        os::terminate(pid);
+    }
+    sh_release(&m.ctx);
+    let members = std::mem::take(&mut *m.ctx.pipe_members.lock().unwrap());
+    for p in &members {
+        vproc_stop(p);
+    }
+    let substs = m.ctx.global.substs.lock().unwrap().clone();
+    for rec in substs {
+        match &rec.kind {
+            SubstKind::Chan(c) => c.cancel(),
+            SubstKind::Os(st) => st.cancelled.store(true, Ordering::SeqCst),
+        }
+        vproc_stop(&rec.member);
+    }
+}
+
+// ── Pipelines ──
+
+/// Run the elements of a pipeline in threads, the standard output of each
+/// being the standard input of the next. Wait for all of them; $? is that
+/// of the last.
+fn eval_pipe(sh: &Ctx, elems: &[Sexp]) -> R<()> {
+    pipe_check(sh, elems)?;
+    let members = pipe_start(sh, elems)?;
+    *sh.pipe_members.lock().unwrap() = members.clone();
+    for m in &members {
+        m.wait();
+    }
+    sh.pipe_members.lock().unwrap().clear();
+    let last = members.last().unwrap();
+    sh.set_status(&last.ctx.status());
+    Ok(())
+}
+
+/// Start the elements in turn. If one of two neighbours is one external
+/// command (pipe_is_external), they are joined by an OS pipe, otherwise by a
+/// channel that passes the values as they are.
+fn pipe_start(sh: &Ctx, elems: &[Sexp]) -> R<Vec<Member>> {
+    let mut members = Vec::new();
+    let mut input = sh.input.clone();
+    let mut cancel_in: Option<Arc<Chan>> = None;
+    let mut owned: Vec<Arc<Fd>> = Vec::new();
+    for (i, elem) in elems.iter().enumerate() {
+        if i + 1 == elems.len() {
+            let (out, err) = child_targets(&sh.out, &sh.err);
+            members.push(pipe_element(sh, elem, input, out, err, cancel_in, owned));
+            break;
+        }
+        let writes = pipe_is_external(sh, elem);
+        let reads = pipe_is_external(sh, &elems[i + 1]);
+        let err = child_target(&sh.err);
+        if writes || reads {
+            let (r, w) = std::io::pipe().map_err(|e| sh.error(None, &format!("__OS_pipe__: {}", os::strerror(&e))))?;
+            let reader = Fd::new(std::fs::File::from(std::os::fd::OwnedFd::from(r)));
+            let writer = Fd::new(std::fs::File::from(std::os::fd::OwnedFd::from(w)));
+            let out = if writes {
+                Target { id: new_id(), kind: TKind::Stream(writer) }
+            } else {
+                Target { id: new_id(), kind: TKind::Pipe(writer, Arc::new(sh.clone())) }
+            };
+            members.push(pipe_element(sh, elem, input, out, err, cancel_in.take(), std::mem::take(&mut owned)));
+            input = Input::from_stream(reader.clone());
+            owned = vec![reader];
+        } else {
+            let chan = Chan::new(PIPE_CAP);
+            let out = Target { id: new_id(), kind: TKind::Chan(chan.writer()) };
+            members.push(pipe_element(sh, elem, input, out, err, cancel_in.take(), std::mem::take(&mut owned)));
+            input = Input::from_list(sh, chan.list());
+            cancel_in = Some(chan);
+        }
+    }
+    Ok(members)
+}
+
+fn pipe_element(sh: &Ctx, elem: &Sexp, input: Arc<Input>, out: Target, err: Target, cancel_in: Option<Arc<Chan>>, owned: Vec<Arc<Fd>>) -> Member {
+    let mut child = sh_child(sh, input, out, err, "return in a pipeline");
+    child.cancel_in = cancel_in;
+    let elem = elem.clone();
+    sh_start(child, owned, move |c| {
+        let r = eval_stmt(c, &elem);
+        subst_settle(c);
+        r
+    }, || {})
+}
+
+/// Where a pipe and redirections fight for the input or output: after the
+/// redirections, the pipe of an element that is not the last must have a
+/// writer, and an element that is not the first must not change its input
+/// with <.
+fn pipe_check(sh: &Ctx, elems: &[Sexp]) -> R<()> {
+    for (i, elem) in elems.iter().enumerate() {
+        let (mut out, mut err) = ("pipe", "err");
+        for redir in stmt_redirs(elem) {
+            let op = redir.children()[0].str();
+            match op {
+                "<" => {
+                    if i > 0 {
+                        return Err(sh.error(redir.pos(), "the pipe has no reader"));
+                    }
+                }
+                "1>&2" => out = err,
+                "2>&1" => err = out,
+                "2>" => err = "file",
+                _ => out = "file",
+            }
+        }
+        if out != "pipe" && err != "pipe" && i + 1 < elems.len() {
+            return Err(sh.error(elem.pos(), "the pipe has no writer"));
+        }
+    }
+    Ok(())
+}
+
+/// The redirections of a simple statement (cmd, if, for).
+fn stmt_redirs(elem: &Sexp) -> &[Sexp] {
+    let children = elem.children();
+    match elem.tag() {
+        "cmd" | "if" => children.iter().find(|c| c.tag() == "redirs").map(|r| r.children()).unwrap_or(&[]),
+        _ if children.len() == 4 => children[3].children(),
+        _ => &[],
+    }
+}
+
+// ── Jobs ──
+
+pub struct Job {
+    id: String,
+    members: Vec<Member>,
+    /// The context whose $? is the job's (the last element of a pipeline).
+    last: Ctx,
+    killed: AtomicBool,
+    specs: Vec<Arc<BgSpec>>,
+}
+
+static NEXT_JOB: AtomicU64 = AtomicU64::new(2);
+
+/// pipeline &: start it in other threads without waiting. $! is its id. The
+/// variable lists of a simple command (f > (a b . rest) &) put values that
+/// wait until they are made into a and b, and into rest a LazyList that
+/// grows as elements come (Bg_captures).
+fn eval_bg(sh: &Ctx, pipeline: &Sexp) -> R<()> {
+    let (members, last, specs) = if pipeline.tag() == "pipe" {
+        let elems = pipeline.children();
+        pipe_check(sh, elems)?;
+        let members = pipe_start(sh, elems)?;
+        let last = members.last().unwrap().ctx.clone();
+        (members, last, Vec::new())
+    } else {
+        let (out, err) = child_targets(&sh.out, &sh.err);
+        let mut child = sh_child(sh, sh.input.clone(), out, err, "return in a background job");
+        let specs = bg_captures(sh, stmt_redirs(pipeline));
+        child.bg_captures = Some(Arc::new(Mutex::new(specs.iter().cloned().collect())));
+        let p = pipeline.clone();
+        let m = sh_start(child, Vec::new(), move |c| {
+            let r = eval_stmt(c, &p);
+            subst_settle(c);
+            r
+        }, || {});
+        let last = m.ctx.clone();
+        (vec![m], last, specs)
+    };
+    let id = NEXT_JOB.fetch_add(1, Ordering::Relaxed).to_string();
+    *sh.global.last_bg.lock().unwrap() = id.clone();
+    sh.global.jobs.lock().unwrap().insert(0, Arc::new(Job { id, members, last, killed: AtomicBool::new(false), specs }));
+    sh.set_status("0");
+    Ok(())
+}
+
+/// Wait for a job and return its status: 143 if it was killed.
+fn job_wait(job: &Job) -> String {
+    for m in &job.members {
+        m.wait();
+    }
+    if job.killed.load(Ordering::SeqCst) {
+        return "143".to_string();
+    }
+    job.last.status()
+}
+
+/// Wait for every job of this thread (at the end of the script, and wait).
+fn jobs_wait_all(sh: &Ctx) {
+    loop {
+        let job = {
+            let mut jobs = sh.global.jobs.lock().unwrap();
+            if jobs.is_empty() {
+                return;
+            }
+            jobs.remove(0)
+        };
+        job_wait(&job);
+    }
+}
+
+/// Stop a job, unless it has finished (then wait gives its real status).
+fn job_kill(job: &Job) {
+    if job.members.iter().all(|m| m.finished()) {
+        return;
+    }
+    job.killed.store(true, Ordering::SeqCst);
+    for m in &job.members {
+        vproc_stop(m);
+    }
+    for s in &job.specs {
+        s.finish();
+    }
+}
+
+fn job_find(sh: &Ctx, id: &str) -> Option<Arc<Job>> {
+    sh.global.jobs.lock().unwrap().iter().find(|j| j.id == id).cloned()
+}
+
+/// The values for the variable lists of a job's simple command. For each
+/// > or 2> to a variable list, the caller's variables get values that wait
+/// until they are made, and rest a LazyList that grows.
+fn bg_captures(sh: &Ctx, redirs: &[Sexp]) -> Vec<Arc<BgSpec>> {
+    let mut specs = Vec::new();
+    for redir in redirs {
+        let c = redir.children();
+        if c[0].str() == "<" || c.len() < 2 || c[1].tag() != "params" {
+            continue;
+        }
+        let params = c[1].children();
+        let mut promises = Vec::new();
+        for n in params[0].list() {
+            let p = Promise::new();
+            sh.vars.lock().unwrap().insert(n.str().to_string(), Var::P(p.clone()));
+            promises.push(p);
+        }
+        let rest_name = params.get(1).map(|r| r.str()).unwrap_or("");
+        let rest = if rest_name.is_empty() {
+            None
+        } else {
+            let g = Grow::new();
+            sh.set_var(rest_name, Value::List(g.list()));
+            Some(g)
+        };
+        specs.push(Arc::new(BgSpec { promises, rest }));
+    }
+    specs
+}
+
+/// The values that a variable list of a job gives to the caller.
+pub struct BgSpec {
+    promises: Vec<Arc<Promise>>,
+    rest: Option<Arc<Grow>>,
+}
+
+impl BgSpec {
+    /// The count-th element (from 1) received.
+    fn add(&self, count: usize, item: Value) {
+        match self.promises.get(count - 1) {
+            Some(p) => p.resolve(item),
+            None => {
+                if let Some(g) = &self.rest {
+                    g.append(item);
+                }
+            }
+        }
+    }
+    /// When the statement ends (or the job is killed): "" for the values not
+    /// made, and the end of rest.
+    fn finish(&self) {
+        for p in &self.promises {
+            p.resolve(Value::str(""));
+        }
+        if let Some(g) = &self.rest {
+            g.close(None);
+        }
+    }
+}
+
+/// A LazyList that grows as elements are appended, until it is closed or
+/// continued by another LazyList.
+pub struct Grow {
+    m: Mutex<(std::collections::VecDeque<Value>, Option<Option<LazyList>>)>,
+    changed: std::sync::Condvar,
+}
+
+impl Grow {
+    fn new() -> Arc<Grow> {
+        Arc::new(Grow { m: Mutex::new((std::collections::VecDeque::new(), None)), changed: std::sync::Condvar::new() })
+    }
+    fn append(&self, v: Value) {
+        let mut g = self.m.lock().unwrap();
+        if g.1.is_none() {
+            g.0.push_back(v);
+            self.changed.notify_all();
+        }
+    }
+    /// End the list, or continue it with tail (a second time does nothing).
+    fn close(&self, tail: Option<LazyList>) {
+        let mut g = self.m.lock().unwrap();
+        if g.1.is_none() {
+            g.1 = Some(tail);
+            self.changed.notify_all();
+        }
+    }
+    fn list(self: &Arc<Self>) -> LazyList {
+        let me = self.clone();
+        LazyList::new(move || {
+            let mut g = me.m.lock().unwrap();
+            loop {
+                if let Some(v) = g.0.pop_front() {
+                    drop(g);
+                    return Ok(Some((v, me.list())));
+                }
+                if let Some(end) = &g.1 {
+                    return match end {
+                        None => Ok(None),
+                        Some(l) => l.uncons(),
+                    };
+                }
+                g = me.changed.wait(g).unwrap();
+            }
+        })
+    }
 }
 
 // ── Command substitution ──
@@ -960,7 +1419,7 @@ fn sh_start(mut child: Ctx, body: impl FnOnce(&Ctx) -> R<()> + Send + 'static, d
 /// external command).
 pub struct Subst {
     kind: SubstKind,
-    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+    member: Member,
 }
 
 enum SubstKind {
@@ -992,7 +1451,7 @@ pub fn eval_subst(sh: &Ctx, _pos: Pos, script: &Sexp) -> R<Value> {
         let value = subst_lines(reader.clone(), cancelled.clone());
         let st = Arc::new(OsSubst { value: value.clone(), reader, cancelled, done: Mutex::new(false), changed: std::sync::Condvar::new() });
         let st2 = st.clone();
-        let handle = sh_start(child, move |c| eval_lines(c, &lines), move || {
+        let handle = sh_start(child, Vec::new(), move |c| eval_lines(c, &lines), move || {
             *st2.done.lock().unwrap() = true;
             st2.changed.notify_all();
         });
@@ -1003,14 +1462,14 @@ pub fn eval_subst(sh: &Ctx, _pos: Pos, script: &Sexp) -> R<Value> {
     let out = Target { id: new_id(), kind: TKind::Chan(chan.writer()) };
     let child = sh_child(sh, sh.input.clone(), out, err, "return in a command substitution");
     let c2 = chan.clone();
-    let handle = sh_start(child, move |c| eval_lines(c, &lines), move || c2.set_done());
+    let handle = sh_start(child, Vec::new(), move |c| eval_lines(c, &lines), move || c2.set_done());
     let value = chan.list();
     push_subst(sh, SubstKind::Chan(chan), handle);
     Ok(Value::List(value))
 }
 
-fn push_subst(sh: &Ctx, kind: SubstKind, handle: std::thread::JoinHandle<()>) {
-    let rec = Arc::new(Subst { kind, thread: Mutex::new(Some(handle)) });
+fn push_subst(sh: &Ctx, kind: SubstKind, member: Member) {
+    let rec = Arc::new(Subst { kind, member });
     sh.global.substs.lock().unwrap().insert(0, rec);
 }
 
@@ -1081,19 +1540,18 @@ fn os_lines(r: Arc<Mutex<BufReader<FdReader>>>, fd: Arc<Fd>, cancelled: Arc<Atom
 /// At the end of a statement, wait for each $( ) started by this thread to
 /// finish, or until its writer waits because its output has not been read.
 fn subst_settle(sh: &Ctx) {
-    let list = std::mem::take(&mut *sh.global.substs.lock().unwrap());
+    // The list stays in place while waiting, so that kill can stop them.
+    let list = sh.global.substs.lock().unwrap().clone();
     if list.is_empty() {
         return;
     }
-    let mut kept = Vec::new();
-    for rec in list {
-        if settle_one(&rec) != chan::State::Done {
-            kept.push(rec);
+    let mut done = Vec::new();
+    for rec in &list {
+        if settle_one(rec) == chan::State::Done {
+            done.push(rec.clone());
         }
     }
-    let mut g = sh.global.substs.lock().unwrap();
-    kept.append(&mut g);
-    *g = kept;
+    sh.global.substs.lock().unwrap().retain(|r| !done.iter().any(|d| Arc::ptr_eq(d, r)));
 }
 
 fn settle_one(rec: &Subst) -> chan::State {
@@ -1138,10 +1596,7 @@ fn subst_finish(sh: &Ctx) {
                 st.reader.close();
             }
         }
-        let h = rec.thread.lock().unwrap().take();
-        if let Some(h) = h {
-            let _ = h.join();
-        }
+        rec.member.wait();
     }
 }
 
@@ -1154,13 +1609,53 @@ fn builtin_lookup(name: &str) -> Option<Builtin> {
         "defined" => builtin_defined,
         "exit" => builtin_exit,
         "stdin" => builtin_stdin,
-        "wait" | "kill" => builtin_unimplemented,
+        "wait" => builtin_wait,
+        "kill" => builtin_kill,
         _ => return None,
     })
 }
 
-fn builtin_unimplemented(sh: &Ctx, pos: Pos, _args: Vec<Value>, _in: Arc<Input>, _out: Target, _err: Target) -> R<()> {
-    Err(sh.error(pos, "consh-rs: this builtin is not implemented yet"))
+/// wait [id ...]: without ids, wait for every job started by this thread
+/// with & ($? 0). With ids, wait for each; $? is that of the last; 127 for
+/// one that does not exist (or was waited for).
+fn builtin_wait(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, _out: Target, _err: Target) -> R<()> {
+    if args.is_empty() {
+        jobs_wait_all(sh);
+        sh.set_status("0");
+        return Ok(());
+    }
+    for a in args {
+        let id = arg_string(sh, pos, "wait", a)?;
+        match job_find(sh, &id) {
+            None => sh.set_status("127"),
+            Some(job) => {
+                sh.global.jobs.lock().unwrap().retain(|j| j.id != id);
+                let st = job_wait(&job);
+                sh.set_status(&st);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// kill id ...: stop jobs started by this thread. A job that does not exist
+/// gives a message and $? 1.
+fn builtin_kill(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, _out: Target, _err: Target) -> R<()> {
+    if args.is_empty() {
+        return Err(sh.error(pos, "kill: a job ID is needed"));
+    }
+    sh.set_status("0");
+    for a in args {
+        let id = arg_string(sh, pos, "kill", a)?;
+        match job_find(sh, &id) {
+            None => {
+                sh.warn(pos, &format!("kill: no such job: {}", id));
+                sh.set_status("1");
+            }
+            Some(job) => job_kill(&job),
+        }
+    }
+    Ok(())
 }
 
 /// stdin: write the elements of standard input to standard output, moving
@@ -1177,13 +1672,17 @@ fn builtin_stdin(sh: &Ctx, pos: Pos, args: Vec<Value>, input: Arc<Input>, out: T
             match list.uncons()? {
                 None => break,
                 Some((item, rest)) => {
-                    r.items.lock().unwrap().push(item);
+                    r.add(item);
                     *input.list.lock().unwrap() = rest;
                 }
             }
         }
         if !r.rest.is_empty() && r.items.lock().unwrap().len() >= r.names.len() {
-            *r.direct.lock().unwrap() = Some(input.list.lock().unwrap().clone());
+            let rest = input.list.lock().unwrap().clone();
+            *r.direct.lock().unwrap() = Some(rest.clone());
+            if let Some(g) = r.spec.as_ref().and_then(|s| s.rest.clone()) {
+                g.close(Some(rest));
+            }
         }
         sh.set_status("0");
         return Ok(());
@@ -1371,11 +1870,19 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
             Some(w)
         }
     };
+    os::jitter();
+    // Check killed and keep the pid under the same lock as vproc_stop, so that a
+    // kill either finds the pid or stops the command before it starts.
+    let mut pref = sh.proc_ref.lock().unwrap();
+    if sh.killed.load(Ordering::SeqCst) {
+        return Err(Flow::Killed);
+    }
     let spawned = cmd.spawn();
     drop(cmd);
     let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {
+            drop(pref);
             let msg = os::strerror(&e);
             sh.warn(pos, &format!("{}: {}: {}", name, msg, name));
             let status = if msg.contains("Permission denied") || msg.contains("Argument list too long") { "126" } else { "127" };
@@ -1383,6 +1890,8 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
             return Ok(());
         }
     };
+    *pref = Some(child.id());
+    drop(pref);
     let stop = Arc::new(AtomicBool::new(false));
     if let Some(w) = feed {
         let input = input.clone();
@@ -1412,6 +1921,7 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
         let _ = p.join();
     }
     let st = child.wait();
+    *sh.proc_ref.lock().unwrap() = None;
     stop.store(true, Ordering::SeqCst);
     result?;
     use std::os::unix::process::ExitStatusExt;
@@ -1484,7 +1994,7 @@ fn stdio_of(fd: &Arc<Fd>) -> Stdio {
 fn os_stream(t: &Target) -> Option<Stdio> {
     match &t.kind {
         TKind::Top(_) => Some(Stdio::inherit()),
-        TKind::Stream(fd) | TKind::File(fd, _, _) => Some(stdio_of(fd)),
+        TKind::Stream(fd) | TKind::File(fd, _, _) | TKind::Pipe(fd, _) => Some(stdio_of(fd)),
         TKind::Chan(_) | TKind::Capture(_) => None,
     }
 }
@@ -1547,7 +2057,8 @@ fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<Redirected>> {
             if !rest.is_empty() {
                 g.has_rest.store(true, Ordering::SeqCst);
             }
-            let record = Arc::new(Record { names, rest, items: Mutex::new(Vec::new()), direct: Mutex::new(None), group: Arc::downgrade(g) });
+            let spec = sh.bg_captures.as_ref().and_then(|q| q.lock().unwrap().pop_front());
+            let record = Arc::new(Record { names, rest, items: Mutex::new(Vec::new()), direct: Mutex::new(None), group: Arc::downgrade(g), spec });
             g.records.lock().unwrap().push(record.clone());
             let t = Target { id: new_id(), kind: TKind::Capture(record) };
             if fd == 1 {
@@ -1633,15 +2144,26 @@ pub struct Record {
     /// stdin > (a . rest): the rest of standard input, given to rest as it is.
     direct: Mutex<Option<LazyList>>,
     group: std::sync::Weak<Group>,
+    /// The values given to the caller of a job (Bg_captures).
+    spec: Option<Arc<BgSpec>>,
+}
+
+impl Record {
+    /// Add a received element.
+    fn add(&self, item: Value) {
+        let mut items = self.items.lock().unwrap();
+        items.push(item.clone());
+        if let Some(s) = &self.spec {
+            s.add(items.len(), item);
+        }
+    }
 }
 
 fn capture_put(sh: &Ctx, r: &Arc<Record>, item: Value) -> R<()> {
-    {
-        let mut items = r.items.lock().unwrap();
-        if items.len() < r.names.len() || !r.rest.is_empty() {
-            items.push(item);
-            return Ok(());
-        }
+    let keep = r.items.lock().unwrap().len() < r.names.len() || !r.rest.is_empty();
+    if keep {
+        r.add(item);
+        return Ok(());
     }
     let g = match r.group.upgrade() {
         Some(g) => g,
@@ -1666,7 +2188,7 @@ fn capture_run(sh: &Ctx, group: &Option<Arc<Group>>, body: impl FnOnce(&Ctx) -> 
         Some(g) => g,
     };
     let id = new_id();
-    let inner = Ctx { abort: Some(id), ..sh.clone() };
+    let inner = Ctx { abort: Some(id), bg_captures: None, ..sh.clone() };
     let r = match body(&inner) {
         Err(Flow::Abort(a)) if a == id => Ok(()),
         other => other,
@@ -1691,10 +2213,13 @@ fn capture_assign(sh: &Ctx, group: &Option<Arc<Group>>) {
     let records = g.records.lock().unwrap().clone();
     let mut vars = sh.vars.lock().unwrap();
     for r in records {
+        if let Some(s) = &r.spec {
+            s.finish();
+        }
         let items = r.items.lock().unwrap().clone();
         let mut it = items.into_iter();
         for n in &r.names {
-            vars.insert(n.clone(), it.next().unwrap_or_else(|| Value::str("")));
+            vars.insert(n.clone(), Var::V(it.next().unwrap_or_else(|| Value::str(""))));
         }
         if !r.rest.is_empty() {
             let mut list = r.direct.lock().unwrap().clone().unwrap_or_else(LazyList::empty);
@@ -1702,7 +2227,7 @@ fn capture_assign(sh: &Ctx, group: &Option<Arc<Group>>) {
             for v in more.into_iter().rev() {
                 list = LazyList::cons(v, list);
             }
-            vars.insert(r.rest.clone(), Value::List(list));
+            vars.insert(r.rest.clone(), Var::V(Value::List(list)));
         }
     }
 }

@@ -19,6 +19,8 @@ pub enum Flow {
     /// Stop the command or the thread with this id (a channel whose reader
     /// has cancelled, a variable list that is full: Sh_abort).
     Abort(u64),
+    /// The thread was stopped by kill.
+    Killed,
 }
 
 pub type R<T> = Result<T, Flow>;

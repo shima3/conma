@@ -99,6 +99,7 @@ impl Chan {
 
     /// The next element, waiting for a writer; None when every chain is closed.
     fn next(&self) -> Option<Value> {
+        crate::os::jitter();
         let mut g = self.inner.lock().unwrap();
         loop {
             let n = g.chains.len();
@@ -129,10 +130,11 @@ impl Writer {
     /// Write an element, waiting while cap elements are not taken. Err if the
     /// reader has cancelled (like SIGPIPE).
     pub fn put(&self, v: Value) -> Result<(), ()> {
+        crate::os::jitter();
         let chan = &self.chan;
         let mut g = chan.inner.lock().unwrap();
         loop {
-            if g.cancelled {
+            if g.cancelled || g.chains[self.index].closed {
                 g.chains[self.index].waiting = false;
                 return Err(());
             }
