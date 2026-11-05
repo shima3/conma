@@ -10,7 +10,7 @@ fi
 remove() {
   echo "== $1"
   (../../bin/lexer $1 | ../../bin/comment_remover > /tmp/selfhost4.py.txt) 2>&1 | LC_ALL=C sort > /tmp/selfhost4.py.err
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/test.module.se $1 > /tmp/selfhost4.conma.txt 2> /tmp/selfhost4.conma.err
+  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $1 > /tmp/selfhost4.conma.txt 2> /tmp/selfhost4.conma.err
   echo "exit: $?"
   python3 ../selfhost_compare.py tokens /tmp/selfhost4.py.txt /tmp/selfhost4.conma.txt
   echo "compare: $?"
@@ -42,7 +42,7 @@ case4() {
 # made by hand because the lexer does not give them
 case5() {
   echo "== tokens"
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/test.module.se =tokens 2>&1
+  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se =tokens 2>&1
   echo "exit: $?"
 }
 for c in case1 case2 case3 case4 case5

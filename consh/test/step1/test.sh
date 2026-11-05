@@ -16,7 +16,7 @@ done
 for f in ../parse1/case*.sh
 do
   python3 "$consh/bin/consh_parse" --pos $f > /tmp/consh.ref 2> /dev/null || continue
-  PYTHONUNBUFFERED=1 python3 "$root/test/vproc_run.py" --main /tmp/consh.module.se dump-sexp /tmp/consh.ref $f > /tmp/consh.dump 2>&1
+  PYTHONUNBUFFERED=1 "$root/test/vm.sh" --main /tmp/consh.module.se dump-sexp /tmp/consh.ref $f > /tmp/consh.dump 2>&1
   if ! diff -q /tmp/consh.ref /tmp/consh.dump > /dev/null; then
     echo "== $f (dump-sexp)"
     diff /tmp/consh.ref /tmp/consh.dump
@@ -28,7 +28,7 @@ for mode in dump dump-sexp
 do
   for c in case2 case3 case4 case5
   do
-    PYTHONUNBUFFERED=1 python3 "$root/test/vproc_run.py" --main /tmp/consh.module.se $mode $c.ast $c.ast > /tmp/consh.$c.log 2>&1
+    PYTHONUNBUFFERED=1 "$root/test/vm.sh" --main /tmp/consh.module.se $mode $c.ast $c.ast > /tmp/consh.$c.log 2>&1
     echo "exit: $?" >> /tmp/consh.$c.log
     diff $c.log /tmp/consh.$c.log
   done

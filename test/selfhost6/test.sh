@@ -16,7 +16,7 @@ include() {
   for d in "$@"; do opts="$opts --include $d"; done
   ../../bin/includer $opts $source > /tmp/selfhost6.py.txt 2> /tmp/selfhost6.py.err
   py=$?
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/test.module.se $source "$@" > /tmp/selfhost6.conma.txt 2> /tmp/selfhost6.conma.err
+  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $source "$@" > /tmp/selfhost6.conma.txt 2> /tmp/selfhost6.conma.err
   echo "exit: python $py, conma $?"
   if [ $py = 0 ]
   then

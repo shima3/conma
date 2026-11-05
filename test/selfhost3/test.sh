@@ -8,7 +8,7 @@ fi
 lex() {
   echo "== $1"
   ../../bin/lexer $1 > /tmp/selfhost3.py.txt 2> /tmp/selfhost3.py.err
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/test.module.se $1 > /tmp/selfhost3.conma.txt 2> /tmp/selfhost3.conma.err
+  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $1 > /tmp/selfhost3.conma.txt 2> /tmp/selfhost3.conma.err
   echo "exit: $?"
   python3 ../selfhost_compare.py tokens /tmp/selfhost3.py.txt /tmp/selfhost3.conma.txt
   echo "compare: $?"

@@ -5,7 +5,7 @@ then exit 1
 fi
 run() {
   local c=$1; shift
-  PYTHONUNBUFFERED=1 python3 ../vproc_run.py --main /tmp/main.module.se "$@" > /tmp/$c.log 2>&1
+  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/main.module.se "$@" > /tmp/$c.log 2>&1
   echo "exit: $?" >> /tmp/$c.log
   diff $c.log /tmp/$c.log
 }
