@@ -1,0 +1,86 @@
+;; Step35: __if_then_else__、__if__、__unless__ の組み込み
+;; test.sh は、組み込みを使う test.se と、ConMa 版（control.se）を使う conma.se の両方で
+;; 各 case を実行し、同じログになることを確かめる
+(include "util.se")
+
+(define print ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; case1: プリミティブが返す Boolean を直接渡す。__if__ と __unless__ は、選ばなければ何もしない
+(define case1 ,()
+  __String_equal__ "a" "a" ,(yes)
+  __String_equal__ "a" "b" ,(no)
+  __if_then_else__ yes (,() print "then") (,() print "else") ,()
+  __if_then_else__ no (,() print "then") (,() print "else") ,()
+  __if__ yes (,() print "if yes") ,()
+  __if__ no (,() print "if no") ,()
+  __unless__ yes (,() print "unless yes") ,()
+  __unless__ no (,() print "unless no") ,()
+  print "end")
+
+;; case2: pure.se の __TRUE__ と __FALSE__、__not__、__and__、__or__ の結果
+(define case2 ,()
+  __if__ __TRUE__ (,() print "TRUE") ,()
+  __unless__ __FALSE__ (,() print "FALSE") ,()
+  __not__ __TRUE__ ,(b)
+  __if_then_else__ b (,() print "not TRUE: true") (,() print "not TRUE: false") ,()
+  __and__ __TRUE__ __TRUE__ ,(b)
+  __if__ b (,() print "and") ,()
+  __or__ __FALSE__ __FALSE__ ,(b)
+  __unless__ b (,() print "or") ,()
+  print "end")
+
+;; case3: Boolean を返す関数（条件の thunk）を渡す
+(define case3 ,()
+  __if_then_else__ (,() __is_null__ __NULL__) (,() print "null") (,() print "not null") ,()
+  __if__ (,() __String_equal__ "x" "y") (,() print "equal") ,()
+  __unless__ (,() __String_equal__ "x" "y") (,() print "not equal") ,()
+  __if__ (,() __NULL__ __TRUE__) (,() print "thunk of TRUE") ,()
+  print "end")
+
+;; case4: いろいろな Boolean：その場で書いた Boolean、部分適用した Boolean、選ぶ前に別の計算をする Boolean
+(define case4 ,()
+  __if_then_else__ (,(t f) __NULL__ t) (,() print "literal then") (,() print "literal else") ,()
+  (,(x t f) __NULL__ f) "bound" ,(partial)
+  __if_then_else__ partial (,() print "partial then") (,() print "partial else") ,()
+  __if_then_else__ (,(a b) __is_null__ "x" ,(n) __NULL__ a) (,() print "computed then") (,() print "computed else") ,()
+  print "end")
+
+;; case5: 選んだ節は呼び出しの LCont に値を返す。選ばなかった __if__ は何も返さない。
+;; 節の中の return は、__Cont_get__ を呼んだ関数から戻る
+(define pick ,(b)
+  __Cont_get__ ,(return)
+  __if__ b (,() return "early") ,()
+  __NULL__ "late")
+
+(define case5 ,()
+  __if_then_else__ __TRUE__ (,() __NULL__ "a" "b") (,() __NULL__ "c") ,(x y)
+  print x ,()
+  print y ,()
+  __if__ __FALSE__ (,() __NULL__ "never") ,()
+  print "nothing returned" ,()
+  pick __TRUE__ ,(r)
+  print r ,()
+  pick __FALSE__ ,(r)
+  print r ,()
+  __if_then_else__ (,() __is_null__ "x") (,() __NULL__ "t") (,() __NULL__ "f") ,(r)
+  print r)
+
+;; case6: 入れ子と再帰（条件の中の条件、節の中の条件）
+(define count ,(n)
+  __unless__ (,() __Number_is_zero__ n)
+    (,()
+      __Number_toString__ n ,(s)
+      print s ,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_subtract__ n one ,(m)
+      count m))
+
+(define case6 ,()
+  __if_then_else__ (,() __if_then_else__ __TRUE__ (,() __is_null__ __NULL__) (,() __NULL__ __FALSE__))
+    (,() print "nested condition")
+    (,() print "wrong") ,()
+  __Number_fromString__ __print_exit_error__ "3" ,(n)
+  count n ,()
+  print "end")

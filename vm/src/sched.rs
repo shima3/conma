@@ -62,6 +62,8 @@ pub struct Machine {
     next_serial: usize,
     true_closure: Value,
     false_closure: Value,
+    select_closure: Value,
+    nop_closure: Value,
 }
 
 /// Steps between checks of the OS while some VProc is ready.
@@ -103,6 +105,51 @@ fn bool_closure(param: &str) -> Value {
     }))
 }
 
+/// The Closures that __if_then_else__, __if__ and __unless__ use: `,(clause)
+/// clause`, which applies the clause a Boolean passes back, and `,()`, the
+/// clause that does nothing. They have the AST that test/vproc_step.py builds.
+fn select_closure() -> Value {
+    let a = Sexp::atom;
+    let l = Sexp::list;
+    let p0 = Sexp::pos0;
+    let body = l(vec![
+        a("Body"),
+        p0(),
+        l(vec![a("Operator"), p0(), l(vec![a("Variable"), p0(), a("\"clause\""), l(vec![a("L"), a("0")])])]),
+        l(vec![a("OList"), p0()]),
+        l(vec![a("LCont"), p0()]),
+    ]);
+    Value::Closure(Rc::new(Closure {
+        params: Rc::from(vec![Rc::from("clause")]),
+        skip: 0,
+        body: Some(compile_body(&body)),
+        lvenv: None,
+        gvenv: None,
+        variadic: false,
+    }))
+}
+
+fn nop_closure() -> Value {
+    let a = Sexp::atom;
+    let l = Sexp::list;
+    let p0 = Sexp::pos0;
+    let body = l(vec![
+        a("Body"),
+        p0(),
+        l(vec![a("Operator"), p0(), l(vec![a("Null"), p0()])]),
+        l(vec![a("OList"), p0()]),
+        l(vec![a("LCont"), p0()]),
+    ]);
+    Value::Closure(Rc::new(Closure {
+        params: Rc::from(Vec::<Rc<str>>::new()),
+        skip: 0,
+        body: Some(compile_body(&body)),
+        lvenv: None,
+        gvenv: None,
+        variadic: false,
+    }))
+}
+
 impl Machine {
     pub fn new(trace: bool) -> Machine {
         crate::gc::init();
@@ -128,6 +175,8 @@ impl Machine {
             next_serial: 0,
             true_closure: bool_closure("t"),
             false_closure: bool_closure("f"),
+            select_closure: select_closure(),
+            nop_closure: nop_closure(),
         }
     }
 
@@ -136,6 +185,16 @@ impl Machine {
     }
     pub fn false_closure(&self) -> Value {
         self.false_closure.clone()
+    }
+    pub fn select_closure(&self) -> Value {
+        self.select_closure.clone()
+    }
+    pub fn nop_closure(&self) -> Value {
+        self.nop_closure.clone()
+    }
+    /// True if v is the Closure of nop_closure.
+    pub fn is_nop(&self, v: &Value) -> bool {
+        same(v, &self.nop_closure)
     }
 
     /// A VProc that applies operator to olist in the directory cwd.

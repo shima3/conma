@@ -469,7 +469,7 @@
 ;; 書けるようになるまで待ってから value を書き、次の Sink を返す。cancel されていれば onClosed
 (define __LazyList_pipe_write__ ,(capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef value)
   __LazyList_pipe_wait__ capacity stateRef cancelledRef queueRef countRef ,(cancelled)
-  __if_then_else__ (,() __NULL__ cancelled)
+  __if_then_else__ cancelled
     (,()
       __LazyList_pipe_close__ tailRef ,()
       onClosed)
@@ -491,9 +491,9 @@
   __Ref_get__ countRef ,(count)
   __Number_subtract__ capacity count ,(room)
   __Number_is_negative__ room ,(full)
-  __if_then_else__ (,() __NULL__ cancelled)
+  __if_then_else__ cancelled
     (,() __NULL__ __TRUE__) (,()
-  __if_then_else__ (,() __NULL__ full)
+  __if_then_else__ full
     (,()
       __Ref_get__ queueRef ,(record)
       __LList_uncons__ __print_exit_error__ record ,(outer nextRef)
@@ -556,7 +556,7 @@
   __if_then_else__ (,() __String_equal__ ch "\r") (,() __NULL__ "\\r") (,()
   __String_toCode__ __print_exit_error__ ch ,(code)
   __String_repr_is_printable__ code ,(printable)
-  __if_then_else__ (,() __NULL__ printable)
+  __if_then_else__ printable
     (,() __NULL__ ch)
     (,() __String_repr_escape__ code)))))))
 

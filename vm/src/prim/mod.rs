@@ -9,6 +9,7 @@ use crate::vproc::VProc;
 mod basic;
 mod cchain;
 mod collections;
+mod control;
 pub mod lazy;
 mod llist;
 mod number;
@@ -69,6 +70,9 @@ prims! {
     "__CChain_push_CFrame__" => "prim_CChain_push_CFrame", cchain::push_cframe;
     "__CChain_pop_CFrame__" => "prim_CChain_pop_CFrame", cchain::pop_cframe;
     "__Cont_get__"         => "prim_Cont_get", cchain::cont_get;
+    "__if_then_else__"     => "prim_if_then_else", control::if_then_else;
+    "__if__"               => "prim_if", control::if_;
+    "__unless__"           => "prim_unless", control::unless;
     "__CFrame_get_Closure__" => "prim_CFrame_get_Closure", cchain::cframe_get_closure;
     "__CFrame_get_SInfo__" => "prim_CFrame_get_SInfo", cchain::cframe_get_sinfo;
     "__CFrame_new__"       => "prim_CFrame_new", cchain::cframe_new;

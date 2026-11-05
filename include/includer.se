@@ -92,7 +92,7 @@
   __LList_uncons__ __print_exit_error__ values ,(name rest)
   __Includer_resolve__ fail dirs file baseDir name ,(path)
   __Dict_lookup_or__ seen path (,(key) __NULL__ __FALSE__) ,(found)
-  __if_then_else__ (,() __NULL__ found)
+  __if_then_else__ found
     (,() __NULL__ queue)
     (,()
       __Dict_put__ seen path __TRUE__ ,()
@@ -104,7 +104,7 @@
 ;; 相対パスは、include 文のあるファイルのディレクトリ、include ディレクトリの順に探す
 (define __Includer_resolve__ ,(fail dirs file baseDir name)
   __Includer_is_absolute__ name ,(absolute)
-  __if_then_else__ (,() __NULL__ absolute)
+  __if_then_else__ absolute
     (,() __OS_realpath__ (,(e) __Includer_not_found__ fail file name) name)
     (,()
       __LList_cons__ baseDir dirs ,(dirs)

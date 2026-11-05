@@ -649,3 +649,26 @@ With the mark, the interpreter keeps the CChain of the VProc at the claim (not a
 * **Description**: Sets the cell of a `LazyList` that the current VProc has claimed or holds.
 * **Behavior**: Sets `cell` as the value. The VProcs waiting for the `LazyList` in `__LazyList_claim__` wake up at the next scheduling step.
 * **Error**: Stops the VProc with an error if `LazyList` is not a `Ref`, if its value is not the current VProc, or if `cell` is neither null nor an `LList`.
+
+## 15. Control Primitives
+
+`__if_then_else__`, `__if__` and `__unless__` are primitives that do what their ConMa definitions in `include/control.se` do (see "Control flow" in SPEC.md), in fewer steps.
+A program that includes `control.se` uses those definitions instead, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
+
+A **Boolean** here is a Closure that is one of the two Closures `,(t f) __NULL__ t` and `,(t f) __NULL__ f`, whatever its parameters are named: two parameters (left after a partial application), a Body whose Operator is null, whose OList is the first or the second parameter, and without an LCont.
+The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `include/pure.se`, are of this form.
+
+### **`__if_then_else__ Boolean then else`**
+* **Description**: Applies `then` or `else`, as `Boolean` chooses, with the LCont.
+* **Behavior**:
+    * If `Boolean` is a Boolean, the chosen clause becomes the Operator, without operands and with the LCont of the application, in one step.
+    * Otherwise, as the ConMa definition, `Boolean` is applied to `then` and `else`, and the Closure it passes back is applied: the LCont goes to the CChain (as when a Closure with an LCont is applied), `Boolean` becomes the Operator with the operands `then` and `else`, and the LCont is `,(clause) clause`. This is how a condition written as a function, such as `(,() __is_null__ x)`, is evaluated.
+    * Operands after the third are dropped.
+* **Error**: Stops the VProc with an error if there are fewer than three operands.
+
+### **`__if__ Boolean then`** / **`__unless__ Boolean else`**
+* **Description**: `__if_then_else__ Boolean then __nop__` and `__if_then_else__ Boolean __nop__ else`.
+* **Behavior**: As `__if_then_else__`, with the Closure `,()` as the other clause. When that clause is chosen for a Boolean, the primitive returns to the LCont without values in the same step, as `__nop__` does.
+* **Error**: Stops the VProc with an error if there are fewer than two operands.
+
+**Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error.

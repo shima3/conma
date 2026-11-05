@@ -178,7 +178,7 @@
   __or__ space tab ,(blank)
   __or__ lf cr ,(newline)
   __or__ blank newline ,(skip)
-  __if_then_else__ (,() __NULL__ skip)
+  __if_then_else__ skip
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __Number_add__ i one ,(next)
@@ -270,7 +270,7 @@
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ items) (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ items ,(item rest)
-  __if_then_else__ (,() __NULL__ isParams)
+  __if_then_else__ isParams
     (,() Sexp_write_param item)
     (,() Sexp_write item) ,(s)
   __String_concat__ acc " " ,(acc)
@@ -281,13 +281,13 @@
 (define Sexp_write_param ,(item)
   __type_name__ item ,(type)
   __String_equal__ type "LList" ,(isList)
-  __if_then_else__ (,() __NULL__ isList)
+  __if_then_else__ isList
     (,()
       __LList_uncons__ __print_exit_error__ item ,(head rest)
       __type_name__ head ,(headType)
       __String_equal__ headType "String")
     (,() __NULL__ __FALSE__) ,(isNames)
-  __if_then_else__ (,() __NULL__ isNames)
+  __if_then_else__ isNames
     (,()
       __LList_uncons__ __print_exit_error__ item ,(head rest)
       Sexp_quote head ,(first)

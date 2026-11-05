@@ -69,14 +69,14 @@
 (define Repl_command ,(sh r lineNo text start)
   __Cont_get__ ,(return)
   __String_equal__ text "" ,(first)
-  __if_then_else__ (,() __NULL__ first) (,() __NULL__ "PS1") (,() __NULL__ "PS2") ,(name)
-  __if_then_else__ (,() __NULL__ first) (,() __NULL__ "$ ") (,() __NULL__ "> ") ,(fallback)
+  __if_then_else__ first (,() __NULL__ "PS1") (,() __NULL__ "PS2") ,(name)
+  __if_then_else__ first (,() __NULL__ "$ ") (,() __NULL__ "> ") ,(fallback)
   Repl_prompt sh name fallback ,()
   Repl_read_line sh ,(line)
   ;; プロンプトで Ctrl-C を押したなら、読みかけのコマンドを捨てて、この行から始める
   Sh_get r "discard" ,(discard)
   __Ref_get__ discard ,(discarded)
-  __if_then_else__ (,() __NULL__ discarded)
+  __if_then_else__ discarded
     (,()
       __Ref_set__ discard __FALSE__ ,()
       __NULL__ "" lineNo)
@@ -88,11 +88,11 @@
   __Number_add__ lineNo one ,(lineNo)
   ;; 行末の \ は行継続なので、続きを読む
   Str_ends text "\\\n" ,(continued)
-  __if__ (,() __NULL__ continued) (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
+  __if__ continued (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
   Parse_text text "stdin" start ,(lines full msg)
   __if__ (,() __is_null__ full) (,() return lines lineNo) ,()
   Parse_incomplete msg ,(incomplete)
-  __if__ (,() __NULL__ incomplete) (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
+  __if__ incomplete (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
   __String_concat__ "consh: " full ,(s)
   __String_concat__ s "\n" ,(s)
   __OS_print_error__ s ,()
@@ -118,7 +118,7 @@
 ;; プロンプトの変数 name の値（なければ fallback）を、標準エラー出力に出す
 (define Repl_prompt ,(sh name fallback)
   Sh_defined sh __NULL__ name ,(defined)
-  __if_then_else__ (,() __NULL__ defined)
+  __if_then_else__ defined
     (,()
       Sh_lookup sh __NULL__ name ,(value)
       Value_toString sh __NULL__ value)
@@ -160,7 +160,7 @@
   ;; 止めたかエラーで戻ったコマンドが、リダイレクトで開いたまま残した Stream を閉じる
   Open_release_all sh ,()
   __Ref_get__ killed ,(wasKilled)
-  __if__ (,() __NULL__ wasKilled)
+  __if__ wasKilled
     (,()
       ;; Ctrl-C で止めたコマンドが実行していた外部コマンドに SIGTERM を送る（端末なら SIGINT も届いている。
       ;; 標準入力が端末でないときは、SIGINT はインタプリタにだけ届く）。起動した、パイプラインの要素と $( ) も止める

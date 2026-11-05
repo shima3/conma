@@ -21,16 +21,16 @@
   __String_equal__ mode "dump-src" ,(dumpSrc)
   __or__ runSrc dumpSrc ,(fromSrc)
   __String_equal__ mode "dump-sexp" ,(dumpSexp)
-  __if_then_else__ (,() __NULL__ fromSrc)
+  __if_then_else__ fromSrc
     (,() Parse_file astFile script)
     (,()
-      __if_then_else__ (,() __NULL__ dumpSexp)
+      __if_then_else__ dumpSexp
         (,() Ast_readFile_with main_error astFile Sexp_read)
         (,() Ast_readFile main_error astFile)) ,(lines)
   __String_equal__ mode "dump" ,(dump)
   __or__ dump dumpSrc ,(dump)
   __or__ dump dumpSexp ,(dump)
-  __if_then_else__ (,() __NULL__ dump)
+  __if_then_else__ dump
     (,() main_dump lines)
     (,()
       List_fromSeq args ,(args)

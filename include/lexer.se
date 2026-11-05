@@ -204,7 +204,7 @@
       __Number_add__ j one ,(next)
       __String_substring__ __print_exit_error__ text j next ,(c)
       __Lexer_is_newline__ c ,(isNewline)
-      __if_then_else__ (,() __NULL__ isNewline)
+      __if_then_else__ isNewline
         (,() __NULL__ j)
         (,() __Lexer_line_end__ text len next)))
 
@@ -219,7 +219,7 @@
   __Number_add__ i one ,(j)
   __Lexer_string_end__ text len j ,(end unterminated)
   __String_substring__ __print_exit_error__ text i end ,(value)
-  __if__ (,() __NULL__ unterminated)
+  __if__ unterminated
     (,()
       __Number_toString__ line ,(lineStr)
       __Number_toString__ col ,(colStr)
@@ -244,7 +244,7 @@
       __if_then_else__ (,() __String_equal__ c "\"")
         (,() __NULL__ next __FALSE__) (,()
       __Lexer_is_newline__ c ,(isNewline)
-      __if_then_else__ (,() __NULL__ isNewline)
+      __if_then_else__ isNewline
         (,() __NULL__ j __TRUE__) (,()
       __if_then_else__ (,() __String_equal__ c "\\")
         (,() __Lexer_string_escape__ text len next)
@@ -260,7 +260,7 @@
       __Number_add__ next one ,(after)
       __String_substring__ __print_exit_error__ text next after ,(c)
       __Lexer_is_newline__ c ,(isNewline)
-      __if_then_else__ (,() __NULL__ isNewline)
+      __if_then_else__ isNewline
         (,() __NULL__ next __TRUE__)
         (,() __Lexer_string_end__ text len after)))
 
@@ -286,7 +286,7 @@
           __Number_add__ j one ,(next)
           __String_substring__ __print_exit_error__ text j next ,(c)
           __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
-          __if_then_else__ (,() __NULL__ isSymbol)
+          __if_then_else__ isSymbol
             (,() __Lexer_symbol_end__ symbols text len next)
             (,() __NULL__ j))))
 
@@ -331,7 +331,7 @@
       __Number_add__ line one ,(line)
       __Lexer_scan__ handlers symbols sink text len i line i depth buf bufLine bufCol) (,()
   __Lexer_is_newline__ ch ,(isNewline)
-  __if_then_else__ (,() __NULL__ isNewline)
+  __if_then_else__ isNewline
     (,()
       __Lexer_accum__ buf bufLine bufCol "\n" line col ,(buf bufLine bufCol)
       __Number_add__ i one ,(i)

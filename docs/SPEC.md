@@ -620,6 +620,7 @@ A thunk may leave `__LazyList_force__` without returning, for example by the `re
 ---
 
 ### `Control flow`
+`__if_then_else__`, `__if__` and `__unless__` are primitives of the VM (see "Control Primitives" in PRIMITIVES.md). They behave as the following ConMa definitions, which `include/control.se` provides; a program that includes `control.se` uses these definitions instead of the primitives. The other definitions are in `include/pure.se`.
 ```
 (define __if_then_else__ ,(Boolean then else)
   Boolean then else ,(clause)

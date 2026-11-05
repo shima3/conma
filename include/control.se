@@ -4,6 +4,17 @@
 ;; ステップを ConMa の関数として追いたいときや、組み込みと結果を比べるときに使う
 (include "util.se")
 
+;; Boolean を then と else に適用し、返った節を呼ぶ
+(define __if_then_else__ ,(Boolean then else)
+  Boolean then else ,(clause)
+  clause)
+
+(define __if__ ,(Boolean then)
+  __if_then_else__ Boolean then __nop__)
+
+(define __unless__ ,(Boolean else)
+  __if_then_else__ Boolean __nop__ else)
+
 ;; 呼び出し元に戻る継続 return を LCont に渡す。
 ;; return は可変長引数の関数で、受け取った引数をそのまま呼び出し元の LCont に渡す。
 ;; 引数がなければ、引数なしで呼び出し元に戻る。

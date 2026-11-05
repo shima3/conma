@@ -1552,6 +1552,82 @@ def prim_Cont_get(vp, gvenv):
     vp["lcont"]    = None
 
 
+# ── Control Primitives ────────────────────────────────────────────────────────
+# __if_then_else__, __if__ and __unless__ do what their ConMa definitions in
+# include/control.se do, in fewer steps. A Boolean that is one of the Closures
+# ,(t f) __NULL__ t and ,(t f) __NULL__ f (as the primitives return them, and
+# __TRUE__ and __FALSE__ of pure.se) chooses its clause at once. Any other
+# value is applied to the two clauses, as the ConMa definition does, and the
+# clause it passes back is applied by SELECT_CLOSURE.
+
+def _synthetic_closure(params, operator, olist):
+    body_node = ["Body", ["0","0"],
+                 ["Operator", ["0","0"], operator],
+                 ["OList", ["0","0"]] + olist,
+                 ["LCont", ["0","0"]]]
+    return Closure(params, body_node, [])
+
+# ,(clause) clause
+SELECT_CLOSURE = _synthetic_closure(["clause"], ["Variable", ["0","0"], '"clause"', ["L", "0"]], [])
+# ,() — the clause that does nothing
+NOP_CLOSURE = _synthetic_closure([], ["Null", ["0","0"]], [])
+
+def boolean_choice(v):
+    """True for ,(t f) __NULL__ t, False for ,(t f) __NULL__ f, None otherwise."""
+    if not isinstance(v, Closure) or v.variadic or len(v.params) != 2 or v.body is None:
+        return None
+    entry = _BODY_CACHE.get(id(v.body))
+    if entry is None or entry[0] is not v.body:
+        entry = compile_body(v.body)
+        _BODY_CACHE[id(v.body)] = entry
+    _, _, operator_c, olist_c, lcont_c = entry
+    if operator_c is None or operator_c[0] != "C" or not is_null_value(operator_c[1]):
+        return None
+    if lcont_c is not None or len(olist_c) != 1:
+        return None
+    if olist_c[0] == ("L", 1): return True
+    if olist_c[0] == ("L", 0): return False
+    return None
+
+def _choose(vp, boolean, then, els):
+    vp["olist"] = []
+    b = boolean_choice(boolean)
+    if b is not None:
+        clause = then if b else els
+        if clause is NOP_CLOSURE:
+            _prim_return(vp, [])        # __nop__ returns nothing to the LCont
+        else:
+            vp["operator"] = clause     # applied with the LCont
+        return
+    # As the ConMa definition: the LCont goes to the CChain, the Boolean is
+    # applied to the clauses, and SELECT_CLOSURE applies the one it passes back.
+    lc = vp["lcont"]
+    if lc is not None:
+        vp["cchain"] = cchain_push(vp["cchain"], CFrame(lc, vp["sinfo"]))
+    vp["operator"] = boolean
+    vp["olist"]    = [then, els]
+    vp["lcont"]    = SELECT_CLOSURE
+
+def prim_if_then_else(vp, gvenv):
+    """__if_then_else__ Boolean then else"""
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError("__if_then_else__: missing argument(s)")
+    boolean, then, els = olist[0], olist[1], olist[2]
+    _choose(vp, boolean, then, els)
+
+def prim_if(vp, gvenv):
+    """__if__ Boolean then"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__if__: missing argument(s)")
+    _choose(vp, olist[0], olist[1], NOP_CLOSURE)
+
+def prim_unless(vp, gvenv):
+    """__unless__ Boolean else"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__unless__: missing argument(s)")
+    _choose(vp, olist[0], NOP_CLOSURE, olist[1])
+
+
 # ── LList Primitives ──────────────────────────────────────────────────────────
 
 def prim_LList_cons(vp, gvenv):
@@ -2607,6 +2683,9 @@ PRIMITIVES = {
     "__CChain_push_CFrame__":  prim_CChain_push_CFrame,
     "__CChain_pop_CFrame__":   prim_CChain_pop_CFrame,
     "__Cont_get__":            prim_Cont_get,
+    "__if_then_else__":        prim_if_then_else,
+    "__if__":                  prim_if,
+    "__unless__":              prim_unless,
     "__LList_cons__":          prim_LList_cons,
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,

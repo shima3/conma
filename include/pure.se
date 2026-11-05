@@ -15,15 +15,7 @@
 (define __not__ ,(Boolean)
   Boolean __FALSE__ __TRUE__)
 
-(define __if_then_else__ ,(Boolean then else)
-  Boolean then else ,(clause)
-  clause)
-
-(define __if__ ,(Boolean then)
-  __if_then_else__ Boolean then __nop__)
-
-(define __unless__ ,(Boolean else)
-  __if_then_else__ Boolean __nop__ else)
+;; __if_then_else__、__if__、__unless__ は組み込み（PRIMITIVES.md）。ConMa 版は control.se にある
 
 (define __fix__ ,(x)
   x (,() __fix__ x))

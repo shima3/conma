@@ -20,7 +20,7 @@
 (define Glob_escape_chars ,(s chars)
   __Cont_get__ ,(return)
   Glob_has_any s chars ,(has)
-  __unless__ (,() __NULL__ has) (,() return s) ,()
+  __unless__ has (,() return s) ,()
   __String_length__ s ,(len)
   num "0" ,(zero)
   Glob_escape_from s zero len chars "")
@@ -76,7 +76,7 @@
   num "0" ,(zero)
   __String_find__ __print_exit_error__ pattern "/" zero ,(slash)
   __if_then_else__ (,() __is_null__ slash) (,() __NULL__ __FALSE__) (,() __Number_is_zero__ slash) ,(absolute)
-  __if_then_else__ (,() __NULL__ absolute)
+  __if_then_else__ absolute
     (,()
       __LList_uncons__ __print_exit_error__ comps ,(first rest)
       __LList_cons__ "/" __NULL__ ,(prefixes)
@@ -85,7 +85,7 @@
       __LList_cons__ "" __NULL__ ,(prefixes)
       __NULL__ prefixes comps) ,(prefixes comps)
   Glob_walk prefixes comps __FALSE__ ,(paths multi)
-  __unless__ (,() __NULL__ multi) (,() return paths) ,()
+  __unless__ multi (,() return paths) ,()
   Glob_sort paths)
 
 ;; s を / で区切った String の LList
@@ -112,13 +112,13 @@
   __if__ (,() __String_equal__ comp "")
     (,()
       ;; 最後の / はディレクトリだけに一致させ、/ を付ける。途中の // は1つの / とみなす
-      __if_then_else__ (,() __NULL__ last)
+      __if_then_else__ last
         (,() Glob_dirs prefixes)
         (,() __NULL__ prefixes) ,(prefixes)
       Glob_walk prefixes rest multi ,(paths multi)
       return paths multi) ,()
   Glob_is_magic comp ,(magic)
-  __if__ (,() __NULL__ magic)
+  __if__ magic
     (,()
       List_length prefixes ,(n)
       num "1" ,(one)
@@ -179,9 +179,9 @@
   __String_equal__ first "." ,(hidden)
   __not__ dotted ,(undotted)
   __and__ hidden undotted ,(skip)
-  __if__ (,() __NULL__ skip) (,() return tail) ,()
+  __if__ skip (,() return tail) ,()
   Glob_match comp name ,(ok)
-  __unless__ (,() __NULL__ ok) (,() return tail) ,()
+  __unless__ ok (,() return tail) ,()
   Glob_join prefix name ,(path)
   __LList_cons__ path tail)
 
@@ -191,7 +191,7 @@
   __if__ (,() __is_null__ prefixes) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ prefixes ,(prefix rest)
   Glob_add_literal rest name last ,(tail)
-  __if_then_else__ (,() __NULL__ last)
+  __if_then_else__ last
     (,()
       Glob_dir prefix ,(dir)
       __OS_listdir__ (,(msg) return tail) dir ,(names)
@@ -199,9 +199,9 @@
       __String_equal__ name "." ,(dot)
       __String_equal__ name ".." ,(dotdot)
       __or__ dot dotdot ,(special)
-      __if_then_else__ (,() __NULL__ special) (,() __NULL__ __TRUE__) (,() List_contains names name))
+      __if_then_else__ special (,() __NULL__ __TRUE__) (,() List_contains names name))
     (,() __NULL__ __TRUE__) ,(exists)
-  __unless__ (,() __NULL__ exists) (,() return tail) ,()
+  __unless__ exists (,() return tail) ,()
   Glob_join prefix name ,(path)
   __LList_cons__ path tail)
 
@@ -227,7 +227,7 @@
 (define Glob_is_magic ,(comp)
   __Cont_get__ ,(return)
   Glob_has_meta comp ,(has)
-  __unless__ (,() __NULL__ has) (,() return __FALSE__) ,()
+  __unless__ has (,() return __FALSE__) ,()
   __String_length__ comp ,(len)
   num "0" ,(zero)
   Glob_is_magic_from comp zero len)
@@ -247,7 +247,7 @@
       Glob_is_magic_from p after len ,(b)
       return b) ,()
   Glob_has_meta c ,(meta)
-  __if__ (,() __NULL__ meta) (,() return __TRUE__) ,()
+  __if__ meta (,() return __TRUE__) ,()
   Glob_is_magic_from p next len)
 
 ;; \ を取り除いた String（記号のない部分）
@@ -270,7 +270,7 @@
   __String_equal__ c "\\" ,(isEscape)
   __Number_is_positive__ rest ,(hasNext)
   __and__ isEscape hasNext ,(escaped)
-  __if__ (,() __NULL__ escaped)
+  __if__ escaped
     (,()
       __Number_add__ next one ,(after)
       __String_substring__ __print_exit_error__ p next after ,(d)
@@ -305,9 +305,9 @@
   __if__ (,() __String_equal__ c "[")
     (,()
       Glob_class p next plen ch ,(ok after closed)
-      __if__ (,() __NULL__ closed)
+      __if__ closed
         (,()
-          __unless__ (,() __NULL__ ok) (,() return __FALSE__) ,()
+          __unless__ ok (,() return __FALSE__) ,()
           Glob_match_at p after plen n ni1 nlen ,(b)
           return b) ,()) ,()
   ;; \c はその文字。閉じていない [ と、最後の \ もその文字
@@ -315,7 +315,7 @@
   __String_equal__ c "\\" ,(isEscape)
   __Number_is_positive__ rest ,(hasNext)
   __and__ isEscape hasNext ,(escaped)
-  __if_then_else__ (,() __NULL__ escaped)
+  __if_then_else__ escaped
     (,()
       __Number_add__ next one ,(after)
       __String_substring__ __print_exit_error__ p next after ,(lit)
@@ -328,7 +328,7 @@
 (define Glob_match_star ,(p pi plen n ni nlen)
   __Cont_get__ ,(return)
   Glob_match_at p pi plen n ni nlen ,(ok)
-  __if__ (,() __NULL__ ok) (,() return __TRUE__) ,()
+  __if__ ok (,() return __TRUE__) ,()
   __Number_subtract__ nlen ni ,(left)
   __if__ (,() __Number_is_zero__ left) (,() return __FALSE__) ,()
   num "1" ,(one)
@@ -344,10 +344,10 @@
   __Number_add__ i one ,(next)
   __String_substring__ __print_exit_error__ p i next ,(c)
   __String_equal__ c "!" ,(negate)
-  __if_then_else__ (,() __NULL__ negate) (,() __NULL__ next) (,() __NULL__ i) ,(start)
+  __if_then_else__ negate (,() __NULL__ next) (,() __NULL__ i) ,(start)
   __String_toCode__ __print_exit_error__ ch ,(code)
   Glob_class_items p start start plen code __FALSE__ ,(found after closed)
-  __if_then_else__ (,() __NULL__ negate) (,() __not__ found) (,() __NULL__ found) ,(ok)
+  __if_then_else__ negate (,() __not__ found) (,() __NULL__ found) ,(ok)
   __NULL__ ok after closed)
 
 ;; j 文字目から ] まで。最初の文字（start）の ] はその文字。a-z は範囲、\c は c
@@ -370,7 +370,7 @@
   __String_equal__ c "\\" ,(isEscape)
   __Number_is_positive__ rest ,(hasNext)
   __and__ isEscape hasNext ,(escaped)
-  __if_then_else__ (,() __NULL__ escaped)
+  __if_then_else__ escaped
     (,()
       __Number_add__ next one ,(after)
       __String_substring__ __print_exit_error__ p next after ,(d)
@@ -439,7 +439,7 @@
   __LList_uncons__ __print_exit_error__ a ,(x as)
   __LList_uncons__ __print_exit_error__ b ,(y bs)
   String_less y x ,(yFirst)
-  __if__ (,() __NULL__ yFirst)
+  __if__ yFirst
     (,()
       Glob_merge a bs ,(rest)
       __LList_cons__ y rest ,(list)

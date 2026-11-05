@@ -30,7 +30,7 @@ for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 s
 
 * Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.html)).
 * `__OS_print__` is needed first because every later test reports its result through standard output.
-* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives.
+* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se`).
 
 ## Step 2: Termination and error output
 
@@ -709,3 +709,27 @@ No new primitive.
 | case5 | `return` applied again after its function has returned goes back to the same LCont again |
 | case6 | `return` in the first function of a VProc finishes the VProc, even with values |
 
+## Step 35: `__if_then_else__`, `__if__` and `__unless__` as primitives
+
+| Primitive | Status |
+|---|---|
+| `__if_then_else__` | implemented (was a ConMa definition in `include/pure.se`) |
+| `__if__` | implemented (was a ConMa definition in `include/pure.se`) |
+| `__unless__` | implemented (was a ConMa definition in `include/pure.se`) |
+
+* Goal: Make conditionals cheap. Counting the steps of ConSh by function (`CONMA_PROFILE` of the Rust VM, `test/vm_profile.py`) showed that one iteration of `for i in 1 2 ...; do n=1; done` called `__if_then_else__` 88 times, and that the conditionals took about 40% of its steps.
+* The three are primitives (see "Control Primitives" in PRIMITIVES.md). A Boolean (`,(t f) __NULL__ t` or `,(t f) __NULL__ f`, as the primitives return them and as `__TRUE__` and `__FALSE__` are) chooses its clause in one step, where the ConMa definitions took 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`). Any other value, such as a condition written as a function `(,() __is_null__ x)`, is applied to the two clauses as before, which saves only 1 or 3 steps.
+* The ConMa definitions moved from `include/pure.se` to `include/control.se`, as `__Cont_get__` did in Step 34.
+* In ConSh and in the ConMa front end, the 222 conditions of the form `(,() __NULL__ x)`, which only pass a Boolean on, are written `x`, so that they are chosen in one step.
+* Every test gives the same output, except the step numbers in the error messages of `test/step15` (case3), `test/step17` (case3, case9) and `test/step20` (case10, case15), the largest number of live line cells in `test/step21` (case5, case6), which `memcheck.py` samples every 2000 steps, and the trace of `test/step1` (case2), where `__if_then_else__` is now a primitive. These logs were updated.
+* ConSh (steps of one iteration, counted over 2000): `for i in 1 2 ...; do n=1; done` takes 681 steps instead of 759, and `for i in $(seq 1 2000); do n=$i; done` 1609 instead of 1824; the example `consh/examples/lazy.sh` takes 509,091 steps instead of 580,441.
+* Tests (`test/step35`): each case runs both with the primitives (`test.se`) and with the ConMa versions (`conma.se`, which includes `control.se` and `test.se`), and both must give `caseN.log`.
+
+| Case | What it checks |
+|---|---|
+| case1 | Booleans returned by a primitive choose the clause; `__if__` and `__unless__` do nothing when they do not choose it |
+| case2 | `__TRUE__` and `__FALSE__` of `pure.se`, and the results of `__not__`, `__and__` and `__or__` |
+| case3 | conditions written as functions that return a Boolean |
+| case4 | a Boolean written in place, a partially applied Boolean, and a Closure that computes before it chooses (not of the form of a Boolean) |
+| case5 | the chosen clause returns its values to the LCont; `__if__` that does not choose returns no values; `return` in a clause returns from the function that called `__Cont_get__` |
+| case6 | a conditional in a condition, and recursion through `__unless__` |

@@ -153,7 +153,7 @@
 ;; Program = { Statement }
 (define __Parser_program__ ,(fail fileName toks)
   __Parser_next_is__ toks "FILE" ,(hasFile)
-  __if_then_else__ (,() __NULL__ hasFile)
+  __if_then_else__ hasFile
     (,()
       __LList_uncons__ __print_exit_error__ toks ,(fileTok rest)
       __Token_get_value__ fileTok ,(fileValue)
@@ -199,7 +199,7 @@
       __String_concat__ where "expected '(' to start a statement" ,(msg)
       fail msg) ,()
   __Parser_next_is__ rest "SYMBOL" ,(isSymbol)
-  __if_then_else__ (,() __NULL__ isSymbol)
+  __if_then_else__ isSymbol
     __nop__
     (,()
       __String_concat__ where "expected 'include' or 'define' after '('" ,(msg)
@@ -253,7 +253,7 @@
 ;; Rest は位置も子もないノードなので、__AST_toSexp__ は Rest とだけ書く
 (define __Parser_head__ ,(fail toks)
   __Parser_next_is__ toks "SYMBOL" ,(isSymbol)
-  __if_then_else__ (,() __NULL__ isSymbol)
+  __if_then_else__ isSymbol
     (,() __Parser_rest_head__ toks)
     (,() __Parser_list_head__ fail toks))
 
@@ -278,7 +278,7 @@
   __if_then_else__ (,() __is_null__ kind)
     (,() __NULL__ __TRUE__)
     (,() __String_equal__ kind "RPAREN") ,(atEnd)
-  __if_then_else__ (,() __NULL__ atEnd)
+  __if_then_else__ atEnd
     (,()
       __Parser_reverse__ acc __NULL__ ,(params)
       __NULL__ params toks)
@@ -314,12 +314,12 @@
 ;; Operator と OList がなければ (Operator pos (Null pos)) と (OList pos) にする
 (define __Parser_body__ ,(fail fileName toks)
   __Parser_sinfo_start__ toks ,(hasSInfo)
-  __if_then_else__ (,() __NULL__ hasSInfo)
+  __if_then_else__ hasSInfo
     (,() __Parser_sinfo__ fail toks)
     (,() __NULL__ __NULL__ toks) ,(sinfo toks)
   __Parser_expression_start__ toks ,(hasOperator)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
-  __if_then_else__ (,() __NULL__ hasOperator)
+  __if_then_else__ hasOperator
     (,()
       __Parser_operator__ fail fileName toks ,(inner toks last)
       __AST_get_pos__ inner ,(pos)
@@ -335,7 +335,7 @@
   __if_then_else__ (,() __is_null__ sinfo)
     (,() __Parser_auto_sinfo__ fileName opLine opCol)
     (,() __NULL__ sinfo) ,(sinfo)
-  __if_then_else__ (,() __NULL__ hasOperator)
+  __if_then_else__ hasOperator
     (,() __Parser_olist__ fail fileName toks __NULL__ __NULL__)
     (,() __NULL__ __NULL__ __NULL__ toks) ,(items last toks)
   __if_then_else__ (,() __is_null__ items)
@@ -353,7 +353,7 @@
   __if_then_else__ (,() __is_null__ sinfo)
     (,() __NULL__ children)
     (,() __LList_cons__ sinfo children) ,(children)
-  __if_then_else__ (,() __NULL__ hasSInfo)
+  __if_then_else__ hasSInfo
     (,() __AST_get_pos__ sinfo)
     (,()
       __LList_cons__ opCol __NULL__ ,(pos)
@@ -375,11 +375,11 @@
 ;; 次が "(" "__SInfo__" なら __TRUE__
 (define __Parser_sinfo_start__ ,(toks)
   __Parser_next_is__ toks "LPAREN" ,(isLparen)
-  __if_then_else__ (,() __NULL__ isLparen)
+  __if_then_else__ isLparen
     (,()
       __LList_uncons__ __print_exit_error__ toks ,(tok rest)
       __Parser_next_is__ rest "SYMBOL" ,(isSymbol)
-      __if_then_else__ (,() __NULL__ isSymbol)
+      __if_then_else__ isSymbol
         (,()
           __LList_uncons__ __print_exit_error__ rest ,(kw rest)
           __Token_get_value__ kw ,(value)
@@ -398,7 +398,7 @@
 
 (define __Parser_sinfo_strings__ ,(toks acc)
   __Parser_next_is__ toks "STRING" ,(isString)
-  __if_then_else__ (,() __NULL__ isString)
+  __if_then_else__ isString
     (,()
       __LList_uncons__ __print_exit_error__ toks ,(tok toks)
       __Token_get_value__ tok ,(value)
@@ -440,7 +440,7 @@
 ;; 式が続く限り OList の要素を読む。要素の LList、最後に読んだ Token、残りの Token を返す
 (define __Parser_olist__ ,(fail fileName toks acc last)
   __Parser_expression_start__ toks ,(more)
-  __if_then_else__ (,() __NULL__ more)
+  __if_then_else__ more
     (,()
       __Parser_expression__ fail fileName toks ,(expr toks last)
       __LList_cons__ expr acc ,(acc)
@@ -452,7 +452,7 @@
 ;; LCont = Function。なければ子のない LCont を、最後に読んだ Token の直後の位置に作る
 (define __Parser_lcont__ ,(fail fileName toks last olLine olCol)
   __Parser_next_is__ toks "COMMA" ,(isComma)
-  __if_then_else__ (,() __NULL__ isComma)
+  __if_then_else__ isComma
     (,()
       __Parser_function__ fail fileName toks ,(func toks)
       __AST_get_pos__ func ,(pos)

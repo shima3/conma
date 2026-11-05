@@ -81,7 +81,7 @@
   __unless__ (,() __is_null__ kind)
     (,()
       Single_fields kind value ,(fields done)
-      __if__ (,() __NULL__ done) (,() return fields) ,()) ,()
+      __if__ done (,() return fields) ,()) ,()
   Alt_make "" "" __FALSE__ ,(alt)
   __LList_cons__ alt __NULL__ ,(alts)
   Expand_fields_from parts alts __FALSE__ __FALSE__ limit nullGlob)
@@ -93,7 +93,7 @@
   __if__ (,() __String_equal__ kind "quoted") (,() __LList_cons__ value __NULL__ ,(fields) return fields __TRUE__) ,()
   __if__ (,() __String_equal__ value "") (,() return __NULL__ __TRUE__) ,()
   Glob_has_meta value ,(magic)
-  __if__ (,() __NULL__ magic) (,() return __NULL__ __FALSE__) ,()
+  __if__ magic (,() return __NULL__ __FALSE__) ,()
   __LList_cons__ value __NULL__ ,(fields)
   __NULL__ fields __TRUE__)
 
@@ -136,7 +136,7 @@
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ opts) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ opts ,(opt rest)
-  __if_then_else__ (,() __NULL__ active)
+  __if_then_else__ active
     (,()
       Glob_escape_active opt ,(piece)
       Glob_has_meta opt ,(magic)
@@ -180,14 +180,14 @@
   __String_equal__ text "" ,(empty)
   __not__ keep ,(drop)
   __and__ empty drop ,(skip)
-  __if__ (,() __NULL__ skip) (,() return more) ,()
-  __if__ (,() __NULL__ magic)
+  __if__ skip (,() return more) ,()
+  __if__ magic
     (,()
       Glob_expand pattern ,(matches)
       __is_null__ matches ,(none)
       __not__ nullGlob ,(keepWord)
       __and__ none keepWord ,(useWord)
-      __unless__ (,() __NULL__ useWord)
+      __unless__ useWord
         (,()
           List_append matches more ,(fields)
           return fields) ,()) ,()
@@ -210,9 +210,9 @@
       __String_equal__ kind "braced" ,(isBraced)
       __String_equal__ value "" ,(empty)
       __and__ isBraced empty ,(emptyBraced)
-      __if__ (,() __NULL__ emptyBraced) (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+      __if__ emptyBraced (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
       Single_fields kind value ,(fields done)
-      __if__ (,() __NULL__ done) (,() return fields) ,()
+      __if__ done (,() return fields) ,()
       Parts_fields parts ,(fields)
       return fields) ,()
   Parts_count parts "leaves" ,(nLeaves)
@@ -230,7 +230,7 @@
   __Number_is_zero__ nBraced ,(noBraced)
   __not__ noBraced ,(hasBraced)
   __and__ empty hasBraced ,(emptyBraced)
-  __if__ (,() __NULL__ emptyBraced) (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+  __if__ emptyBraced (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
   Parts_fields parts)
 
 ;; ── 変数定義の右辺 ──
@@ -340,7 +340,7 @@
 (define Part_options_in ,(part limit)
   Part_split part ,(kind value)
   Part_is_list kind ,(isList)
-  __if_then_else__ (,() __NULL__ isList)
+  __if_then_else__ isList
     (,() Value_leaves_in value limit)
     (,() __LList_cons__ value __NULL__))
 
@@ -365,7 +365,7 @@
   __String_equal__ kind "esc" ,(isEsc)
   __String_equal__ kind "sq" ,(isSq)
   __or__ isEsc isSq ,(isQuoted)
-  __if__ (,() __NULL__ isQuoted) (,() Part_make "quoted" text ,(part) return part) ,()
+  __if__ isQuoted (,() Part_make "quoted" text ,(part) return part) ,()
   __if__ (,() __String_equal__ kind "dq")
     (,()
       Expand_dq sh children ,(s)
@@ -377,11 +377,11 @@
   __String_equal__ kind "var" ,(isVar)
   __if__ (,() __String_equal__ type "String")
     (,()
-      __if_then_else__ (,() __NULL__ isVar)
+      __if_then_else__ isVar
         (,() Part_make "plain" value)
         (,() Part_make "braced" value) ,(part)
       return part) ,()
-  __if_then_else__ (,() __NULL__ isVar)
+  __if_then_else__ isVar
     (,() Part_make "leaves" value)
     (,() Part_make "list" value))
 
@@ -404,7 +404,7 @@
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __if__ (,() __is_null__ rest) (,() Sh_lookup sh pos name ,(value) return value) ,()
   Sh_defined sh pos name ,(defined)
-  __if__ (,() __NULL__ defined) (,() Sh_lookup sh pos name ,(value) return value) ,()
+  __if__ defined (,() Sh_lookup sh pos name ,(value) return value) ,()
   __LList_uncons__ __print_exit_error__ rest ,(default others)
   Node_split default ,(dtag dpos values)
   Expand_def_value sh values)
@@ -436,7 +436,7 @@
   __unless__ (,() __is_null__ rest) (,() return __NULL__ __NULL__) ,()
   Part_split part ,(kind value)
   Part_is_list kind ,(isList)
-  __if__ (,() __NULL__ isList) (,() return __NULL__ __NULL__) ,()
+  __if__ isList (,() return __NULL__ __NULL__) ,()
   __NULL__ kind value)
 
 ;; 種類が kind の部分の数
@@ -553,7 +553,7 @@
   __String_equal__ left "" ,(noLeft)
   __String_equal__ right "" ,(noRight)
   __and__ noLeft noRight ,(none)
-  __if__ (,() __NULL__ none) (,() return v) ,()
+  __if__ none (,() return v) ,()
   __type_name__ v ,(type)
   __if_then_else__ (,() __String_equal__ type "String")
     (,()
