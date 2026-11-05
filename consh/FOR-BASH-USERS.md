@@ -18,6 +18,8 @@ The full specification is in [PLAN-ja.md](PLAN-ja.md) (Japanese), section 1; sec
 * **Functions and external commands mix freely in pipes.** Between functions, whole values, lists included, flow through the pipe; when one side is an external command, ConSh connects them with an OS pipe, so bytes flow at full speed.
 * **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, where every step can be traced.
 
+The scripts in [examples](examples/README.md) show several of these next to the Bash code they replace.
+
 These come at a cost: ConSh is much slower for loops (see below), has no `while`, `case`, `&&`, `||`, arithmetic, here-documents or job control, may change the bytes of output that passes through functions (a final newline is added, `\r\n` becomes `\n`), and does not run Bash scripts unchanged. It suits scripts that handle lists of items and pass data between functions; Bash remains the better choice for speed, compatibility and interactive work.
 
 ## Running ConSh

@@ -1,0 +1,10 @@
+Errors (3)
+  2026-11-05 09:05:40 ERROR disk full on /var/data
+  2026-11-05 09:06:03 ERROR write failed: no space left on device
+  2026-11-05 09:15:00 ERROR health check timed out
+Warnings (2)
+  2026-11-05 09:02:13 WARN slow response from db (1.8 s)
+  2026-11-05 09:10:27 WARN cache miss rate 42%
+first error: 2026-11-05 09:05:40 ERROR disk full on /var/data
+later errors: 2026-11-05 09:06:03 ERROR write failed: no space left on device | 2026-11-05 09:15:00 ERROR health check timed out
+exit: 0
