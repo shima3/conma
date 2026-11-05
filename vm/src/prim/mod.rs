@@ -9,11 +9,13 @@ use crate::vproc::VProc;
 mod basic;
 mod cchain;
 mod collections;
+pub mod lazy;
 mod llist;
 mod number;
 pub mod os;
 mod refs;
 mod string;
+mod vprocs;
 
 pub enum VmError {
     /// An error that finishes the VProc (VProcError).
@@ -91,6 +93,18 @@ prims! {
     "__String_toCode__"    => "prim_String_toCode", string::to_code;
     "__String_fromCode__"  => "prim_String_fromCode", string::from_code;
     "__String_equal__"     => "prim_String_equal", string::equal;
+    "__VProc_current__"    => "prim_VProc_current", vprocs::current_vproc;
+    "__VProc_suspend__"    => "prim_VProc_suspend", vprocs::suspend;
+    "__VProc_resume__"     => "prim_VProc_resume", vprocs::resume;
+    "__VProc_wait__"       => "prim_VProc_wait", vprocs::wait;
+    "__VProc_id__"         => "prim_VProc_id", vprocs::id;
+    "__VProc_kill__"       => "prim_VProc_kill", vprocs::kill;
+    "__VProc_spawn__"      => "prim_VProc_spawn", vprocs::spawn;
+    "__VProc_start__"      => "prim_VProc_start", vprocs::start;
+    "__LazyList_claim__"   => "prim_LazyList_claim", lazy::claim;
+    "__LazyList_hold__"    => "prim_LazyList_hold", lazy::hold;
+    "__LazyList_publish__" => "prim_LazyList_publish", lazy::publish;
+    "__Ref_wait_change__"  => "prim_Ref_wait_change", lazy::ref_wait_change;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

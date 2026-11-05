@@ -4,13 +4,12 @@ use super::{err, take_args, PResult, VmError};
 use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn ref_new(m: &mut Machine, vp: &mut VProc) -> PResult {
     let mut a = take_args(vp, "__Ref_new__", 1)?;
     m.serials.refs += 1;
-    let r = Value::Ref(Rc::new(RefObj { serial: m.serials.refs, value: RefCell::new(a.pop().unwrap()) }));
+    let r = Value::Ref(Rc::new(RefObj::new(m.serials.refs, a.pop().unwrap())));
     vp.prim_return(vec![r]);
     Ok(())
 }

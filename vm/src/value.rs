@@ -32,6 +32,8 @@ pub enum Value {
     Dict(Rc<DictObj>),
     /// The escape continuation that __Cont_get__ passes.
     Cont(Rc<ContObj>),
+    /// A VProc, as __VProc_current__ and __VProc_spawn__ return it.
+    VProc(Rc<crate::vproc::VProcCell>),
 }
 
 impl Value {
@@ -48,6 +50,23 @@ impl Value {
 pub struct RefObj {
     pub serial: usize,
     pub value: RefCell<Value>,
+    /// For a LazyList that a VProc evaluates: lazy_chain and lazy_thunk.
+    pub lazy: RefCell<Option<LazyInfo>>,
+}
+
+impl RefObj {
+    pub fn new(serial: usize, value: Value) -> RefObj {
+        RefObj { serial, value: RefCell::new(value), lazy: RefCell::new(None) }
+    }
+}
+
+/// lazy_chain and lazy_thunk of a LazyList that a VProc evaluates: the CChain
+/// of the VProc when it claimed the LazyList (None for HELD, made by
+/// __LazyList_hold__), and the thunk.
+#[derive(Clone)]
+pub struct LazyInfo {
+    pub chain: Option<Value>,
+    pub thunk: Value,
 }
 
 pub struct MSeqObj {
@@ -89,6 +108,7 @@ pub fn identity(v: &Value) -> usize {
         Value::MSeq(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Cont(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Prim(p) => *p as *const _ as *const u8 as usize,
         Value::Raw(s) | Value::StrNode(s) => match s {
             Sexp::List(l) => Rc::as_ptr(l) as *const u8 as usize,
@@ -445,6 +465,7 @@ pub fn value_type_name(v: &Value) -> String {
         Value::Str(_) => "String".into(),
         Value::Number(_) => "Number".into(),
         Value::LList(_) => "LList".into(),
+        Value::VProc(_) => "VProc".into(),
         Value::Null => "null".into(),
     }
 }
@@ -463,6 +484,7 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
         Value::Dict(_) => "Dict",
         Value::CFrame(_) => "CFrame",
         Value::LList(_) => "LList",
+        Value::VProc(_) => "VProc",
         Value::Raw(_) | Value::Null => return Err("__type_name__: unknown value".into()),
     })
 }

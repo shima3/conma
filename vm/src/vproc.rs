@@ -2,6 +2,7 @@
 
 use crate::module::GVEnv;
 use crate::value::*;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -13,10 +14,22 @@ pub enum State {
     Finished,
 }
 
+/// A VProc as the scheduler and ConMa values hold it. The serial number, the
+/// state and kill_pending are outside the RefCell, so that they can be read and
+/// changed while the VProc runs a step (a primitive may act on its own VProc).
+pub struct VProcCell {
+    pub serial: usize,
+    pub state: Cell<State>,
+    /// __VProc_kill__ waits until the VProc has evaluated the LazyLists it claimed.
+    pub kill_pending: Cell<bool>,
+    pub vp: RefCell<VProc>,
+}
+
+pub type VProcRef = Rc<VProcCell>;
+
 pub struct VProc {
     /// The number shown in traces and error messages.
     pub serial: usize,
-    pub state: State,
     pub sinfo: Option<SInfo>,
     pub operator: Value,
     pub olist: Vec<Value>,
@@ -28,22 +41,27 @@ pub struct VProc {
     pub pdict: Vec<(Value, Value)>,
     /// GVEnv of the program the VProc was started with.
     pub gvenv: Rc<GVEnv>,
+    /// The current directory, an absolute path.
+    pub cwd: String,
+    /// LazyLists this VProc has claimed and may be evaluating.
+    pub claims: Vec<Rc<RefObj>>,
 }
 
 impl VProc {
-    pub fn new(serial: usize, operator: Value, olist: Vec<Value>, source_file: &str, gvenv: Rc<GVEnv>) -> VProc {
+    pub fn new(serial: usize, operator: Value, olist: Vec<Value>, source_file: Option<&str>, gvenv: Rc<GVEnv>, cwd: String) -> VProc {
         VProc {
             serial,
-            state: State::Ready,
             sinfo: None,
             operator,
             olist,
             lcont: None,
             lvenv: None,
-            gvenv_files: vec![source_file.to_string()],
+            gvenv_files: source_file.map(|s| vec![s.to_string()]).unwrap_or_default(),
             cchain: Value::Null,
             pdict: Vec::new(),
             gvenv,
+            cwd,
+            claims: Vec::new(),
         }
     }
 
