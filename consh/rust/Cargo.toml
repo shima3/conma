@@ -1,0 +1,13 @@
+[package]
+name = "consh-rs"
+version = "0.1.0"
+edition = "2021"
+description = "ConSh run directly in Rust (the ConMa version in consh/include is the reference)"
+
+[[bin]]
+name = "consh-rs"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false

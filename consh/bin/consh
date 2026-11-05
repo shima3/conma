@@ -6,6 +6,8 @@
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
 # --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 # --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
+# 環境変数 CONSH_IMPL を rust にすると、スクリプトを Rust 版（consh/rust の consh-rs）で実行する（--dump、--conma-parser と
+# 対話モードは、まだ ConMa 版）。consh/rust で cargo build --release して作っておく
 # 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
 # （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
 set -o pipefail
@@ -60,5 +62,9 @@ ast=$(mktemp /tmp/consh.XXXXXX)
 trap 'rm -f "$ast"' EXIT
 if ! python3 "$consh/bin/consh_parse" --pos "$1" > "$ast"
 then exit 1
+fi
+if [ "$CONSH_IMPL" = rust ] && [ $mode = run ]; then
+  "$consh/rust/target/release/consh-rs" run "$ast" "$@"
+  exit
 fi
 "$root/test/vm.sh" --main "$module" $mode "$ast" "$@"
