@@ -144,7 +144,8 @@
 (define __LazyList_lines_scan__ ,(stream buf pieces)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __String_find__ __print_exit_error__ buf "\n" zero ,(pos)
-  __if_then_else__ (,() __is_null__ pos)
+  __is_null__ pos ,(condition)
+  __if_then_else__ condition
     (,()
       __Lines_add_piece__ pieces buf ,(pieces)
       __LazyList_lines_read__ stream pieces)
@@ -161,17 +162,20 @@
 ;; Stream から塊を読み足して続きを探す。EOF なら、行の途中があれば最後の要素にする
 (define __LazyList_lines_read__ ,(stream pieces)
   __OS_read__ __print_exit_error__ stream ,(data)
-  __if_then_else__ (,() __is_null__ data)
+  __is_null__ data ,(condition)
+  __if_then_else__ condition
     (,()
       __LazyList_empty__ ,(empty)
-      __if_then_else__ (,() __is_null__ pieces)
+      __is_null__ pieces ,(condition)
+      __if_then_else__ condition
         (,() __NULL__ empty)
         (,()
           __Lines_join__ pieces "" ,(line)
           __LazyList_cons__ line empty))
     (,()
       __String_length__ data ,(dataLen)
-      __if_then_else__ (,() __Number_is_zero__ dataLen)
+      __Number_is_zero__ dataLen ,(condition)
+      __if_then_else__ condition
         (,()
           __OS_wait_readable__ __print_exit_error__ stream ,()
           __LazyList_lines_read__ stream pieces)
@@ -180,14 +184,16 @@
 ;; 空でない断片を、逆順の LList の先頭に加える
 (define __Lines_add_piece__ ,(pieces piece)
   __String_length__ piece ,(len)
-  __if_then_else__ (,() __Number_is_zero__ len)
+  __Number_is_zero__ len ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ pieces)
     (,() __LList_cons__ piece pieces))
 
 ;; 逆順の断片 pieces の後ろに last をつないだ String。断片がなければ last のまま。
 ;; 半分ずつつなぐので、つなぐ手間は全体の長さ × log(断片の数) になる
 (define __Lines_join__ ,(pieces last)
-  __if_then_else__ (,() __is_null__ pieces)
+  __is_null__ pieces ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ last)
     (,()
       __LList_cons__ last pieces ,(all)
@@ -195,7 +201,8 @@
       __Lines_concat__ ordered))
 
 (define __Lines_reverse__ ,(list acc)
-  __if_then_else__ (,() __is_null__ list)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ acc)
     (,()
       __LList_uncons__ __print_exit_error__ list ,(head tail)
@@ -205,18 +212,21 @@
 ;; String の LList をつなぐ。2つずつつなぐことを、1つになるまで繰り返す
 (define __Lines_concat__ ,(list)
   __LList_uncons__ __print_exit_error__ list ,(head tail)
-  __if_then_else__ (,() __is_null__ tail)
+  __is_null__ tail ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ head)
     (,()
       __Lines_pairs__ list ,(paired)
       __Lines_concat__ paired))
 
 (define __Lines_pairs__ ,(list)
-  __if_then_else__ (,() __is_null__ list)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ __NULL__)
     (,()
       __LList_uncons__ __print_exit_error__ list ,(a rest)
-      __if_then_else__ (,() __is_null__ rest)
+      __is_null__ rest ,(condition)
+      __if_then_else__ condition
         (,() __LList_cons__ a __NULL__)
         (,()
           __LList_uncons__ __print_exit_error__ rest ,(b more)
@@ -272,7 +282,8 @@
 
 ;; chain の先頭から n 個の CFrame を取り出し、逆順にして acc の前に積んだ LList を返す
 (define __Seq_take_CFrames__ ,(n chain acc)
-  __if_then_else__ (,() __Number_is_zero__ n)
+  __Number_is_zero__ n ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ acc)
     (,()
       __LList_uncons__ __print_exit_error__ chain ,(cf chain)
@@ -283,7 +294,8 @@
 
 ;; __Seq_take_CFrames__ が返した frames を chain の上に積み直す（最後の CFrame が先頭になる）
 (define __Seq_push_CFrames__ ,(frames chain)
-  __if_then_else__ (,() __is_null__ frames)
+  __is_null__ frames ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ chain)
     (,()
       __LList_uncons__ __print_exit_error__ frames ,(cf frames)
@@ -296,7 +308,8 @@
   __LList_length_from__ list zero)
 
 (define __LList_length_from__ ,(list n)
-  __if_then_else__ (,() __is_null__ list)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ n)
     (,()
       __LList_uncons__ __print_exit_error__ list ,(head tail)
@@ -348,7 +361,8 @@
 
 (define __LazyList_force_claim__ ,(lazyList)
   __LazyList_claim__ __LazyList_error__ lazyList ,(thunk cell)
-  __if_then_else__ (,() __is_null__ thunk)
+  __is_null__ thunk ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ cell)
     (,()
       thunk ,(result)
@@ -365,7 +379,8 @@
 ;; 空なら onEmpty を呼ぶ（__Seq_get__ と同じく、__LazyList_uncons__ の継続で）
 (define __LazyList_uncons__ ,(onEmpty lazyList)
   __LazyList_force__ lazyList ,(cell)
-  __if_then_else__ (,() __is_null__ cell)
+  __is_null__ cell ,(condition)
+  __if_then_else__ condition
     onEmpty
     (,() __LList_uncons__ __print_exit_error__ cell))
 

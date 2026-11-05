@@ -68,11 +68,13 @@
   __String_length__ line ,(len)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ len one ,(last)
-  __if_then_else__ (,() __Number_is_negative__ last)
+  __Number_is_negative__ last ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ line)
     (,()
       __String_substring__ __print_exit_error__ line last len ,(ch)
-      __if_then_else__ (,() __String_equal__ ch "\n")
+      __String_equal__ ch "\n" ,(condition)
+      __if_then_else__ condition
         (,()
           __Number_fromString__ __print_exit_error__ "0" ,(zero)
           __String_substring__ __print_exit_error__ line zero last)

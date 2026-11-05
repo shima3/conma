@@ -52,7 +52,8 @@
   __String_substring__ (,(msg) return __FALSE__) chars i next ,(ch)
   num "0" ,(zero)
   __String_find__ __print_exit_error__ s ch zero ,(pos)
-  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  __is_null__ pos ,(condition)
+  __unless__ condition (,() return __TRUE__) ,()
   Glob_has_any_from s chars next)
 
 ;; 引用符の外の文字列 s が glob の記号を含むか。語の展開のたびに呼ぶので、記号ごとに直接探す
@@ -60,9 +61,11 @@
   __Cont_get__ ,(return)
   num "0" ,(zero)
   __String_find__ __print_exit_error__ s "*" zero ,(pos)
-  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  __is_null__ pos ,(condition)
+  __unless__ condition (,() return __TRUE__) ,()
   __String_find__ __print_exit_error__ s "?" zero ,(pos)
-  __unless__ (,() __is_null__ pos) (,() return __TRUE__) ,()
+  __is_null__ pos ,(condition)
+  __unless__ condition (,() return __TRUE__) ,()
   __String_find__ __print_exit_error__ s "[" zero ,(pos)
   __is_null__ pos ,(none)
   __not__ none)

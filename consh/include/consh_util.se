@@ -6,14 +6,16 @@
 
 ;; LList の最初の要素。空なら ""
 (define List_first ,(list)
-  __if_then_else__ (,() __is_null__ list)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
     (,() __NULL__ "")
     (,() __LList_uncons__ __print_exit_error__ list ,(head tail) __NULL__ head))
 
 ;; a の後ろに b をつないだ LList
 (define List_append ,(a b)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ a) (,() return b) ,()
+  __is_null__ a ,(condition)
+  __if__ condition (,() return b) ,()
   __LList_uncons__ __print_exit_error__ a ,(head tail)
   List_append tail b ,(rest)
   __LList_cons__ head rest)
@@ -24,7 +26,8 @@
 
 (define List_length_from ,(list n)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ list) (,() return n) ,()
+  __is_null__ list ,(condition)
+  __if__ condition (,() return n) ,()
   __LList_uncons__ __print_exit_error__ list ,(head tail)
   num "1" ,(one)
   __Number_add__ n one ,(n)
@@ -36,7 +39,8 @@
 
 (define List_reverse_onto ,(list acc)
   __Cont_get__ ,(return)
-  __if__ (,() __is_null__ list) (,() return acc) ,()
+  __is_null__ list ,(condition)
+  __if__ condition (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ list ,(head tail)
   __LList_cons__ head acc ,(acc)
   List_reverse_onto tail acc)
