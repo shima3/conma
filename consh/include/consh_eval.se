@@ -1461,7 +1461,10 @@
 ;; 文の終わりには、子が終わるか、チャネルが一杯で書き手が待つまで待つ（Subst_settle）。
 ;; そのため、出力の少ない $( ) の副作用は、次の文より前に終わる
 (define Eval_subst ,(sh pos script)
+  __Cont_get__ ,(return)
   Node_split script ,(tag spos lines)
+  Subst_is_external sh lines ,(external)
+  __if__ external (,() Eval_subst_os sh lines ,(value) return value) ,()
   Pipe_cap ,(cap)
   Chan_new cap ,(chan)
   __Ref_new__ "running" ,(state)
@@ -1489,6 +1492,68 @@
   __LList_cons__ record substs ,(substs)
   __Dict_put__ global "substs" substs ,()
   Chan_list chan)
+
+;; $( ) の中が、外部コマンドを1つだけ起動する単純文1つだけか（Pipe_is_external）
+(define Subst_is_external ,(sh lines)
+  __Cont_get__ ,(return)
+  __LList_uncons__ (,(msg) return __FALSE__) lines ,(line more)
+  __is_null__ more ,(single)
+  __unless__ single (,() return __FALSE__) ,()
+  Node_split line ,(tag pos stmts)
+  __LList_uncons__ (,(msg) return __FALSE__) stmts ,(stmt others)
+  __is_null__ others ,(single)
+  __unless__ single (,() return __FALSE__) ,()
+  Pipe_is_external sh stmt)
+
+;; 外部コマンド1つだけの $( )。チャネルを通さず、外部コマンドの標準出力を OS のパイプにし、
+;; 値は、その読む側から作った行（改行を除く）の LazyList にする（パイプの外部コマンドとつなぐのと同じ）。
+;; 記録には、チャネルの代わりに "value"（値）、"reader"（読む側）、"cancelled"（Subst_finish が読むのをやめたか）を持つ
+(define Eval_subst_os ,(sh lines)
+  __OS_pipe__ ,(reader writer)
+  __Ref_new__ "running" ,(state)
+  Sh_get sh "global" ,(global)
+  Target_stream global writer ,(out)
+  Sh_get sh "err" ,(err)
+  Child_target err ,(err)
+  Sh_get sh "in" ,(in)
+  Sh_child sh in out err "return in a command substitution" ,(child)
+  __Dict_put__ child "substState" state ,()
+  __LList_cons__ writer __NULL__ ,(owned)
+  __Dict_put__ child "owned" owned ,()
+  Sh_start child (,(c) Eval_lines c lines) ,(vproc)
+  Subst_watch vproc child ,()
+  __Ref_new__ __FALSE__ ,(cancelled)
+  __LazyList_lines__ reader ,(raw)
+  Subst_lines raw reader cancelled ,(value)
+  __Dict_new__ ,(record)
+  __Dict_put__ record "vproc" vproc ,()
+  __Dict_put__ record "child" child ,()
+  __Dict_lookup_or__ sh "cmdNo" (,(key) __NULL__ __NULL__) ,(cmdNo)
+  __Dict_put__ record "cmdNo" cmdNo ,()
+  __Dict_put__ record "state" state ,()
+  __Dict_put__ record "value" value ,()
+  __Dict_put__ record "reader" reader ,()
+  __Dict_put__ record "cancelled" cancelled ,()
+  Sh_get global "substs" ,(substs)
+  __LList_cons__ record substs ,(substs)
+  __Dict_put__ global "substs" substs ,()
+  __NULL__ value)
+
+;; OS のパイプから読む $( ) の値。行から改行を除いた LazyList。終わりまで読んだら、パイプの読む側を閉じる。
+;; cancelled が真なら（Subst_finish が読む側を閉じた後）、それ以上読まずに終える
+(define Subst_lines ,(raw reader cancelled)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __Ref_get__ cancelled ,(stop)
+    __if__ stop (,() __LazyList_empty__ ,(empty) return empty) ,()
+    __LazyList_uncons__
+      (,()
+        __OS_close__ (,(msg) __nop__) reader ,()
+        __LazyList_empty__ ,(empty)
+        return empty) raw ,(line rest)
+    Line_chomp line ,(line)
+    Subst_lines rest reader cancelled ,(rest)
+    __LazyList_cons__ line rest))
 
 ;; 子の VProc が ConMa の実行時エラーで止まると、Sh_finish を通らず、状態が "running" のまま、
 ;; チャネルも開いたまま残り、文の終わりや値を読む側が待ち続ける。そのため、別の VProc で子の終わりを待ち、
@@ -1525,12 +1590,54 @@
 ;; 状態が "running" でなくなるまで待ち、その状態（"blocked" か "done"）を返す
 (define Subst_settle_one ,(record)
   __Cont_get__ ,(return)
+  __Dict_lookup_or__ record "value" (,(key) __NULL__ __NULL__) ,(value)
+  __is_null__ value ,(viaChan)
+  __unless__ viaChan (,() Subst_settle_os record value ,(state) return state) ,()
   Sh_get record "state" ,(stateRef)
   __Ref_get__ stateRef ,(state)
   __String_equal__ state "running" ,(condition)
   __unless__ condition (,() return state) ,()
   __Ref_wait_change__ stateRef state ,()
   Subst_settle_one record)
+
+;; OS のパイプでつないだ $( )（Eval_subst_os）を、チャネルと同じように待つ。外部コマンドが終わっていれば、
+;; 残りの出力（OS のパイプに入る分だけ）を読み終えて "done" を返す。そうでなければ、値の先頭から
+;; Pipe_cap 個の要素を読む。その前に出力が終われば、外部コマンドが終わるのを待って "done"、
+;; そうでなければ、書き手が待つとみなして "blocked" を返す。読んだ要素は値の LazyList に残る
+(define Subst_settle_os ,(record value)
+  __Cont_get__ ,(return)
+  Sh_get record "state" ,(stateRef)
+  __Ref_get__ stateRef ,(state)
+  __String_equal__ state "done" ,(done)
+  __if__ done (,() Lazy_drain value ,() return "done") ,()
+  Pipe_cap ,(cap)
+  Lazy_ahead value cap ,(ended)
+  __unless__ ended (,() return "blocked") ,()
+  Subst_wait_done stateRef)
+
+(define Subst_wait_done ,(stateRef)
+  __Cont_get__ ,(return)
+  __Ref_get__ stateRef ,(state)
+  __String_equal__ state "done" ,(done)
+  __if__ done (,() return "done") ,()
+  __Ref_wait_change__ stateRef state ,()
+  Subst_wait_done stateRef)
+
+;; LazyList の先頭から n 個まで評価する。その前に終われば真を返す
+(define Lazy_ahead ,(list n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(none)
+  __if__ none (,() return __FALSE__) ,()
+  __LazyList_uncons__ (,() return __TRUE__) list ,(item rest)
+  num "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  Lazy_ahead rest n)
+
+;; LazyList を終わりまで評価する
+(define Lazy_drain ,(list)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return) list ,(item rest)
+  Lazy_drain rest)
 
 ;; スクリプトや VProc の終わりに、まだ終わっていない $( ) のチャネルを cancel し、終わるのを待つ。
 ;; 出力のないもの（x=$(mkdir d)）は最後まで動き、書き手が待っているもの（x=$(yes)）は次に書いたときに止まる
@@ -1545,11 +1652,21 @@
   __is_null__ substs ,(condition)
   __if__ condition return ,()
   __LList_uncons__ __print_exit_error__ substs ,(record rest)
-  Sh_get record "chan" ,(chan)
-  Chan_cancel chan ,()
+  Subst_cancel record ,()
   Sh_get record "vproc" ,(vproc)
   __VProc_wait__ __print_exit_error__ vproc ,()
   Subst_finish_list rest)
+
+;; $( ) の出力をもう読まないことを書き手に知らせる。OS のパイプなら読む側を閉じる（外部コマンドは次に書いたとき SIGPIPE で止まる）
+(define Subst_cancel ,(record)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ record "chan" (,(key) __NULL__ __NULL__) ,(chan)
+  __is_null__ chan ,(none)
+  __unless__ none (,() Chan_cancel chan ,() return) ,()
+  Sh_get record "cancelled" ,(cancelled)
+  __Ref_set__ cancelled __TRUE__ ,()
+  Sh_get record "reader" ,(reader)
+  __OS_close__ (,(msg) __nop__) reader)
 
 ;; ── パイプライン ──
 
