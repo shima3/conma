@@ -26,13 +26,84 @@
 (define Expand_fields ,(sh word)
   Expand_fields_in sh word __NULL__)
 
-;; 外部コマンドの引数の語として展開する。limit が null でなければ、葉ごとに引数のバイト数の上限から引く
+;; 外部コマンドの引数の語として展開する。limit が null でなければ、葉ごとに引数のバイト数の上限から引く。
+;; 語は、初めて展開するときに、文脈 sh と limit を受け取って展開するクロージャ（Fields_compile）に変換し、
+;; 文脈の "fieldsCode" に覚えておく
 (define Expand_fields_in ,(sh word limit)
+  __Dict_lookup_or__ sh "fieldsCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table word (,(key)
+    Fields_compile word ,(code)
+    __Dict_put__ table word code ,()
+    __NULL__ code) ,(code)
+  code sh limit)
+
+;; 外部コマンドの語のコード。リテラルの語は語の LList を作っておいて返し、$x と ${x}（既定値なし）だけの語は、
+;; 変数を引いて語にする（Var_fields）。ほかの語は、部分の LList にしてから展開する
+(define Fields_compile ,(word)
   __Cont_get__ ,(return)
-  Literal_fields sh word ,(fields done)
-  __if__ done (,() return fields) ,()
-  Expand_parts sh word ,(parts)
-  Parts_fields_in parts limit)
+  Literal_fields word ,(fields done)
+  __if__ done (,() return (,(sh limit) __NULL__ fields)) ,()
+  Word_ref word ,(kind pos name)
+  Ref_kind_is kind "var" ,(isVar)
+  __if__ isVar
+    (,() return (,(sh limit)
+      Sh_lookup sh pos name ,(value)
+      Var_fields "plain" "leaves" value limit)) ,()
+  Ref_kind_is kind "bvar" ,(isBvar)
+  __if__ isBvar
+    (,() return (,(sh limit)
+      Sh_lookup sh pos name ,(value)
+      Var_fields "braced" "list" value limit)) ,()
+  __NULL__ (,(sh limit)
+    Expand_parts sh word ,(parts)
+    Parts_fields_in parts limit))
+
+;; 語が $x か ${x}（既定値なし）だけなら、要素の種類（"var" か "bvar"）、位置、変数の名前。そうでなければ null
+(define Word_ref ,(word)
+  __Cont_get__ ,(return)
+  Node_split word ,(tag wpos elems)
+  __LList_uncons__ (,(msg) return __NULL__ __NULL__ __NULL__) elems ,(elem more)
+  __is_null__ more ,(single)
+  __unless__ single (,() return __NULL__ __NULL__ __NULL__) ,()
+  Node_split elem ,(kind pos children)
+  __String_equal__ kind "var" ,(isVar)
+  __String_equal__ kind "bvar" ,(isBvar)
+  __or__ isVar isBvar ,(isRef)
+  __unless__ isRef (,() return __NULL__ __NULL__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __is_null__ rest ,(noDefault)
+  __unless__ noDefault (,() return __NULL__ __NULL__ __NULL__) ,()
+  __NULL__ kind pos name)
+
+;; Word_ref の種類 kind が kind2 か。kind は null でもよい
+(define Ref_kind_is ,(kind kind2)
+  __is_null__ kind ,(none)
+  __if_then_else__ none
+    (,() __NULL__ __FALSE__)
+    (,() __String_equal__ kind kind2))
+
+;; 変数の値 value だけの語を、外部コマンドの語として展開する（Parts_fields_in と同じ）。部分の種類は、
+;; String なら stringKind、LazyList なら listKind。記号を含まない String は、そのまま1つの語にする
+(define Var_fields ,(stringKind listKind value limit)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(isString)
+  __unless__ isString
+    (,()
+      Part_make listKind value ,(part)
+      __LList_cons__ part __NULL__ ,(parts)
+      Parts_fields_in parts limit ,(fields)
+      return fields) ,()
+  __String_equal__ value "" ,(empty)
+  __if__ empty (,() return __NULL__) ,()
+  Glob_has_meta value ,(magic)
+  __if__ magic
+    (,()
+      Part_make stringKind value ,(part)
+      __LList_cons__ part __NULL__ ,(parts)
+      Parts_fields_in parts limit ,(fields)
+      return fields) ,()
+  __LList_cons__ value __NULL__)
 
 ;; ── リテラルの語 ──
 ;; 引用符も展開もない語（lit の要素が1つだけ）は、部分の LList を作らずに展開する（よくある語なので速くする）。
@@ -55,17 +126,7 @@
 
 ;; リテラルの語を、外部コマンドの語として（関数と組み込みコマンドの引数としても同じ）展開した String の LList と、
 ;; 決まったか。リテラルでないか、glob の記号を含めば、決めずに偽を返す
-(define Literal_fields ,(sh word)
-  __Dict_lookup_or__ sh "litCode" __print_exit_error__ ,(table)
-  __Dict_lookup_or__ table word (,(key)
-    Literal_fields_find word ,(fields done)
-    __NULL__ (,() __NULL__ fields done) ,(code)
-    __Dict_put__ table word code ,()
-    __NULL__ code) ,(code)
-  code)
-
-;; Literal_fields の答え。語ごとに1回だけ求めて、文脈の "litCode" に覚えておく
-(define Literal_fields_find ,(word)
+(define Literal_fields ,(word)
   __Cont_get__ ,(return)
   Word_literal word ,(text)
   __is_null__ text ,(none)
@@ -211,11 +272,49 @@
 
 ;; 外部コマンド以外（関数と組み込みコマンド）の語として展開した値の LList。
 ;; $x の LazyList を含めば、葉ごとの String。そうでなく ${x} の LazyList を含めば、1つの LazyList。
-;; どちらも含まなければ、引用符か ${x} を含む語は1つの String。それ以外は、空になれば消える
+;; どちらも含まなければ、引用符か ${x} を含む語は1つの String。それ以外は、空になれば消える。
+;; 語は、初めて展開するときに、文脈 sh を受け取って展開するクロージャ（Args_compile）に変換し、
+;; 文脈の "argsCode" に覚えておく
 (define Expand_args ,(sh word)
+  __Dict_lookup_or__ sh "argsCode" __print_exit_error__ ,(table)
+  __Dict_lookup_or__ table word (,(key)
+    Args_compile word ,(code)
+    __Dict_put__ table word code ,()
+    __NULL__ code) ,(code)
+  code sh)
+
+;; 外部コマンド以外の語のコード。リテラルの語と $x だけの語は、外部コマンドの語と同じ（Fields_compile）。
+;; ${x} だけの語は、空の String なら空文字列の引数、LazyList ならその値1つ、ほかは外部コマンドの語と同じ
+(define Args_compile ,(word)
   __Cont_get__ ,(return)
-  Literal_fields sh word ,(fields done)
-  __if__ done (,() return fields) ,()
+  Literal_fields word ,(fields done)
+  __if__ done (,() return (,(sh) __NULL__ fields)) ,()
+  Word_ref word ,(kind pos name)
+  Ref_kind_is kind "var" ,(isVar)
+  __if__ isVar
+    (,() return (,(sh)
+      Sh_lookup sh pos name ,(value)
+      Var_fields "plain" "leaves" value __NULL__)) ,()
+  Ref_kind_is kind "bvar" ,(isBvar)
+  __if__ isBvar
+    (,() return (,(sh)
+      Sh_lookup sh pos name ,(value)
+      Bvar_args value)) ,()
+  __NULL__ (,(sh) Expand_args_parts sh word))
+
+;; ${x} だけの語の、外部コマンド以外の語としての値の LList
+(define Bvar_args ,(value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(isString)
+  __unless__ isString (,() __LList_cons__ value __NULL__ ,(values) return values) ,()
+  __String_equal__ value "" ,(empty)
+  __if__ empty (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+  Var_fields "braced" "list" value __NULL__)
+
+;; Expand_args で、リテラルの語でないもの
+(define Expand_args_parts ,(sh word)
+  __Cont_get__ ,(return)
   Expand_parts sh word ,(parts)
   Parts_single parts ,(kind value)
   __is_null__ kind ,(condition)

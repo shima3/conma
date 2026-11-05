@@ -35,7 +35,8 @@
 ;;   "stmtCode"   文の節から、その文のコード（Stmt_code）への Dict。すべての文脈で共有する
 ;;   "linesCode"  コマンド行の LList から、そのコードへの Dict（Eval_lines）。すべての文脈で共有する
 ;;   "partsCode"  語の要素の LList から、部分を作るコードへの Dict（Expand_parts_from）。すべての文脈で共有する
-;;   "litCode"    語の節から、リテラルの語としての展開（Literal_fields）への Dict。すべての文脈で共有する
+;;   "fieldsCode" 語の節から、外部コマンドの語として展開するコードへの Dict（Expand_fields_in）。すべての文脈で共有する
+;;   "argsCode"   語の節から、外部コマンド以外の語として展開するコードへの Dict（Expand_args）。すべての文脈で共有する
 ;;
 ;; 変数定義は新しい束縛と見る。関数は、定義した時点の局所変数の写しを持つので、
 ;; 後で変数を変えても関数からは見えない。関数名は、スコープごとの Dict を外側へたどって探すので、
@@ -89,8 +90,10 @@
   __Dict_put__ sh "linesCode" linesCode ,()
   __Dict_new__ ,(partsCode)
   __Dict_put__ sh "partsCode" partsCode ,()
-  __Dict_new__ ,(litCode)
-  __Dict_put__ sh "litCode" litCode ,()
+  __Dict_new__ ,(fieldsCode)
+  __Dict_put__ sh "fieldsCode" fieldsCode ,()
+  __Dict_new__ ,(argsCode)
+  __Dict_put__ sh "argsCode" argsCode ,()
   __Ref_new__ __NULL__ ,(openRef)
   __Dict_put__ sh "openRef" openRef ,()
   __Ref_new__ __NULL__ ,(pipeRef)
