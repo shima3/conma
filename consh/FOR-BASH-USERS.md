@@ -7,20 +7,20 @@ The full specification is in [PLAN-ja.md](PLAN-ja.md) (Japanese), section 1; sec
 ## Advantages over Bash
 
 * **No accidental word splitting.** An unquoted `$x` is never split on spaces, so file names with spaces do not break a script, and most of the defensive quoting of Bash is unnecessary ([Variables](#variables)).
-* **Lists are values.** A variable can hold a list, nested lists included, and a function can take a list as one argument with `${list}` or as separate arguments with `$list`. Bash arrays cannot be passed to or returned from functions.
+* **Lists are values.** A variable can hold a list, nested lists included, and a function can take a list as one argument with `${list}` or as separate arguments with `$list`. Bash arrays cannot be passed to or returned from functions as values, only by name with `declare -n`.
 * **Lists are lazy.** `$(cmd)` runs alongside the code that reads it, so `for x in $(yes); do …; break; done` ends; in Bash `$(yes)` never does.
 * **Command output is a list of lines.** `for line in $(cat file)` loops over whole lines, spaces kept, without `while IFS= read -r line`. Joining a list into a string uses `OFS`, which only joins, instead of Bash's `IFS`, which both splits and joins.
-* **Output into variables, variables into input.** `cmd > (a b . rest)` puts the first lines of the output into `a` and `b` and the rest into `rest` as a list, then stops the command; `cmd 2> (err)` does the same with standard error; `cmd < (. lines)` feeds a list as input, replacing here-documents ([Redirecting to and from variables](#redirecting-to-and-from-variables)).
+* **Output into variables, variables into input.** `cmd > (a b . rest)` puts the first lines of the output into `a` and `b` and the rest into `rest` as a list; without a rest variable, as in `cmd > (a b)`, the command is stopped once the variables are filled; `cmd 2> (err)` does the same with standard error; `cmd < (. lines)` feeds a list as input, replacing here-documents ([Redirecting to and from variables](#redirecting-to-and-from-variables)).
 * **Functions with named parameters and local variables.** `function greet (name . rest)` names its arguments, and every variable set in a function is local without `local`.
 * **Lexical scope.** A function sees variables as they were where it was defined, so a caller cannot change its behaviour by accident with a variable of the same name, as Bash's dynamic scope allows.
 * **Errors are found early.** Referring to an undefined variable stops the script with the file, line and column, like Bash's `set -u` but always on; defaults are written explicitly with `${x-default}`.
 * **Named `break` and `continue`.** `continue i` names the loop by its variable instead of counting levels as Bash's `continue 2` does.
 * **Functions and external commands mix freely in pipes.** Between functions, whole values, lists included, flow through the pipe; when one side is an external command, ConSh connects them with an OS pipe, so bytes flow at full speed.
-* **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, where every step can be traced.
+* **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, whose `--trace` option (`test/vm.sh --trace`) shows every step.
 
 The scripts in [examples](examples/README.md) show several of these next to the Bash code they replace.
 
-These come at a cost: ConSh is much slower for loops (see below), has no `while`, `case`, `&&`, `||`, arithmetic, here-documents or job control, may change the bytes of output that passes through functions (a final newline is added, `\r\n` becomes `\n`), and does not run Bash scripts unchanged. It suits scripts that handle lists of items and pass data between functions; Bash remains the better choice for speed, compatibility and interactive work.
+These come at a cost: ConSh is much slower for loops (see below), has no `while`, `case`, `&&`, `||`, arithmetic, here-documents or job control (`fg`, `bg`, `jobs`, Ctrl-Z; `&`, `wait` and `kill` work), may change the bytes of output that passes through functions (a final newline is added, `\r\n` becomes `\n`), and does not run Bash scripts unchanged. It suits scripts that handle lists of items and pass data between functions; Bash remains the better choice for speed, compatibility and interactive work.
 
 ## Running ConSh
 
@@ -28,6 +28,7 @@ These come at a cost: ConSh is much slower for loops (see below), has no `while`
 bin/consh script.sh [arg ...]     # run a script
 bin/consh                         # interactive mode
 bin/consh --conma-parser script.sh  # parse with the ConMa parser instead of Python
+bin/consh --dump script.sh        # print the syntax tree without running
 ```
 
 * In interactive mode the prompts are `PS1` and `PS2` (default `$ ` and `> `). An error does not end the shell; it prints a message, sets `$?` to 1 and shows the next prompt. Ctrl-C stops only the running command (`$?` is 130), and Ctrl-D ends the shell.
