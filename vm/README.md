@@ -57,6 +57,8 @@ Smaller ones: `load_body` reuses the Vec of the OList, and the collector checks 
 
 Every test passes with `CONMA_VM=rust`, and the traces of steps 1–8, 10, 12, 17–20, 28, 30 and 34 (129 runs) are the same as those of the Python VM. The time is now spread over the interpreter itself (`step`, the scheduler, cloning and dropping values); going further needs changes to how environments and Closures are made.
 
+To see where a ConMa program spends its steps, run it with `CONMA_PROFILE=<file>`: each step is counted under the Body that the VProc is running, and the calls of each Body and the steps that apply each primitive are counted too. `python3 test/vm_profile.py <file>` sums them by file, by top-level `define` (steps, calls and steps per call) and by primitive. The counts do not depend on the speed of the VM, so they also tell how a change to a ConMa program (such as ConSh) would speed up the Python VM.
+
 ## Design
 
 * `sexp.rs` — reading and writing S-expressions. `to_string` writes a list on one line when it fits in 80 characters, as `sexp_to_str` does, so that traces match.
@@ -68,6 +70,7 @@ Every test passes with `CONMA_VM=rust`, and the traces of steps 1–8, 10, 12, 1
 * `sys.rs` — the C functions that the standard library does not provide (pipe, dup, poll, signal, kill, sysconf), with the constants of macOS and Linux. The crate has no dependencies.
 * `gc.rs` — collecting cycles (see Memory).
 * `alloc.rs` — the global allocator: free lists for blocks of up to 256 bytes (see Speed).
+* `profile.rs` — step counts for `CONMA_PROFILE` (see Speed).
 * `trace.rs` — values and VProcs as S-expressions.
 * `prim/` — the primitives: `basic.rs` (`__is_null__`, `__type_name__`), `os.rs`, `number.rs`, `llist.rs`, `cchain.rs` (CChain, CFrame, `__Cont_get__`), `refs.rs` (Ref, PDict), `collections.rs` (MSeq, Dict), `string.rs` (String, `__Sexp_read__`), `vprocs.rs` (VProc, and loading a program with `bin/includer` and `bin/resolver` for `__VProc_spawn__`), `lazy.rs` (LazyList, `__Ref_wait_change__`), `stream.rs` (Streams, files and directories, the environment), `process.rs` (processes and SIGINT). Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
 

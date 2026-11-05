@@ -35,6 +35,8 @@ pub struct Machine {
     pub current: Option<VProcRef>,
     pub steps: u64,
     pub trace: bool,
+    /// Step counts for CONMA_PROFILE.
+    pub profile: Option<crate::profile::Profile>,
     /// (VProc, VProc) waiting for another VProc to finish.
     joining: Vec<(VProcRef, VProcRef)>,
     /// (VProc, LazyList) waiting for another VProc to evaluate a LazyList.
@@ -111,6 +113,7 @@ impl Machine {
             current: None,
             steps: 0,
             trace,
+            profile: crate::profile::Profile::from_env(),
             joining: Vec::new(),
             lazy: Vec::new(),
             changes: Vec::new(),
@@ -474,6 +477,9 @@ impl Machine {
             cell.state.set(State::Running);
             self.current = Some(cell.clone());
             let mut vp = cell.vp.borrow_mut();
+            if let Some(p) = &mut self.profile {
+                p.count(&vp);
+            }
             let r = step(self, &mut vp);
             self.current = None;
             match r {

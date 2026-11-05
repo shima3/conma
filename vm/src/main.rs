@@ -12,6 +12,7 @@ mod alloc;
 mod gc;
 mod module;
 mod prim;
+mod profile;
 mod sched;
 mod sexp;
 mod step;
@@ -129,6 +130,9 @@ fn run(args: Vec<String>) -> i32 {
         m.print_trace(&vp.vp.borrow(), 0);
     }
     let code = m.run();
+    if let Some(p) = &m.profile {
+        p.write();
+    }
     if trace && code.is_none() {
         eprintln!("[done] normal termination after {} step(s).", m.steps);
     }
