@@ -7,6 +7,7 @@
 //! The syntax tree is what `consh_parse --pos` writes for the script.
 
 mod ast;
+mod chan;
 mod eval;
 mod expand;
 mod glob;
@@ -36,6 +37,8 @@ fn main() {
             }
         }
     }
-    let code = eval::eval_run(&args[3], args[4..].to_vec(), &lines);
+    // Run in a thread with a large stack, as the threads of the shell do.
+    let (script, rest) = (args[3].clone(), args[4..].to_vec());
+    let code = eval::spawn(move || eval::eval_run(&script, rest, &lines)).join().unwrap_or(1);
     std::process::exit(code);
 }

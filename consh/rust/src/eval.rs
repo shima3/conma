@@ -9,6 +9,7 @@
 //! function call, the loop or main catches.
 
 use crate::ast::{Pos, Sexp};
+use crate::chan::{self, Chan, Writer};
 use crate::expand::{self, Limit};
 use crate::os::{self, Fd};
 use crate::value::{Flow, LazyList, Value, R};
@@ -33,6 +34,18 @@ pub struct Global {
     pub status: Mutex<String>,
     pub last_bg: Mutex<String>,
     pub interactive: bool,
+    /// The $( ) started by this thread that have not finished (newest first).
+    substs: Mutex<Vec<Arc<Subst>>>,
+}
+
+/// The number of elements a writer of a channel may write before the reader
+/// takes them, and that the end of a statement reads ahead of a $( ) by an
+/// OS pipe.
+const PIPE_CAP: usize = 16;
+
+/// Run f in a new thread with a large stack (the evaluation recurses).
+pub fn spawn<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> std::thread::JoinHandle<T> {
+    std::thread::Builder::new().stack_size(256 << 20).spawn(f).expect("cannot start a thread")
 }
 
 pub type Vars = Arc<Mutex<HashMap<String, Value>>>;
@@ -47,6 +60,12 @@ pub struct Env {
 }
 
 impl Env {
+    /// A copy: export in it does not change this environment.
+    fn copy(&self) -> Env {
+        let base = Arc::new(Mutex::new(self.base.lock().unwrap().clone()));
+        let layers = self.layers.iter().map(|l| Arc::new(Mutex::new(l.lock().unwrap().clone()))).collect();
+        Env { base, layers: Arc::new(layers) }
+    }
     fn lookup(&self, name: &str) -> Option<String> {
         for l in self.layers.iter() {
             if let Some(v) = l.lock().unwrap().get(name) {
@@ -125,6 +144,11 @@ pub enum TKind {
     /// A Stream passed to the body of a function, an if or a for statement:
     /// LazyLists with the OFS of the context of the redirection.
     File(Arc<Fd>, Arc<Ctx>, Pos),
+    /// A writer of a channel, used only by the thread that made it; another
+    /// thread gets a new writer of the same channel (child_target).
+    Chan(Arc<Writer>),
+    /// A variable list (> (a b . rest)): elements go to the variables in turn.
+    Capture(Arc<Record>),
 }
 
 /// Standard input. list holds the elements not read yet, shared by the
@@ -134,6 +158,18 @@ pub struct Input {
     list: Mutex<LazyList>,
     stream: Option<Arc<Fd>>,
     touched: AtomicBool,
+    /// The context whose OFS makes LazyList elements Strings (made from a
+    /// list); an input from a Stream has only Strings.
+    sh: Option<Arc<Ctx>>,
+}
+
+impl Input {
+    fn from_list(sh: &Ctx, list: LazyList) -> Arc<Input> {
+        Arc::new(Input { list: Mutex::new(list), stream: None, touched: AtomicBool::new(true), sh: Some(Arc::new(sh.clone())) })
+    }
+    fn from_stream(fd: Arc<Fd>) -> Arc<Input> {
+        Arc::new(Input { list: Mutex::new(lines_of(fd.clone())), stream: Some(fd), touched: AtomicBool::new(false), sh: None })
+    }
 }
 
 #[derive(Clone)]
@@ -152,6 +188,9 @@ pub struct Ctx {
     pub out: Target,
     pub err: Target,
     cwd: Arc<Mutex<PathBuf>>,
+    /// The id that Sh_abort ends: the thread, or the command whose variable
+    /// list is full. None in the thread of the shell.
+    abort: Option<u64>,
 }
 
 impl Ctx {
@@ -161,9 +200,13 @@ impl Ctx {
             .collect();
         base.remove("CONSH_RLWRAPPED");
         let env = Env { base: Arc::new(Mutex::new(base)), layers: Arc::new(Vec::new()) };
-        let global = Arc::new(Global { status: Mutex::new("0".into()), last_bg: Mutex::new(String::new()), interactive: false });
-        let stdin = Fd::standard(0);
-        let input = Arc::new(Input { list: Mutex::new(lines_of(stdin.clone())), stream: Some(stdin), touched: AtomicBool::new(false) });
+        let global = Arc::new(Global {
+            status: Mutex::new("0".into()),
+            last_bg: Mutex::new(String::new()),
+            interactive: false,
+            substs: Mutex::new(Vec::new()),
+        });
+        let input = Input::from_stream(Fd::standard(0));
         let err = Target { id: new_id(), kind: TKind::Stream(Fd::standard(2)) };
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
         let mut sh = Ctx {
@@ -181,6 +224,7 @@ impl Ctx {
             out: err.clone(),
             err,
             cwd: Arc::new(Mutex::new(cwd)),
+            abort: None,
         };
         // The standard output writes with the OFS of this context; the
         // Target holds a copy whose own out is the standard error.
@@ -367,8 +411,22 @@ pub fn target_write(sh: &Ctx, pos: Pos, target: &Target, line: &Value) -> R<()> 
             let s = line_to_string(fsh, *fpos, line)?;
             write_fd(fd, &format!("{}\n", s));
         }
+        TKind::Chan(w) => {
+            if w.put(line.clone()).is_err() {
+                return Err(sh_abort(sh));
+            }
+        }
+        TKind::Capture(r) => capture_put(sh, r, line.clone())?,
     }
     Ok(())
+}
+
+/// End the thread, or the command whose variable list is full.
+fn sh_abort(sh: &Ctx) -> Flow {
+    match sh.abort {
+        Some(id) => Flow::Abort(id),
+        None => sh.error(None, "the reader of a pipe has finished"),
+    }
 }
 
 /// The target given to the body of a function, an if or a for statement: a
@@ -392,10 +450,10 @@ fn body_targets(sh: &Ctx, pos: Pos, out: &Target, err: &Target) -> (Target, Targ
 
 pub fn eval_run(script: &str, args: Vec<String>, lines: &[Sexp]) -> i32 {
     let sh = Ctx::top(script, args);
-    match eval_lines(&sh, lines) {
-        Ok(()) => {}
-        Err(Flow::Exit(code)) => return code,
-        Err(_) => {}
+    let r = eval_lines(&sh, lines);
+    subst_finish(&sh);
+    if let Err(Flow::Exit(code)) = r {
+        return code;
     }
     sh.status().parse().unwrap_or(0)
 }
@@ -404,6 +462,7 @@ pub fn eval_lines(sh: &Ctx, lines: &[Sexp]) -> R<()> {
     for line in lines {
         for stmt in line.children() {
             eval_stmt(sh, stmt)?;
+            subst_settle(sh);
         }
     }
     Ok(())
@@ -599,7 +658,7 @@ fn eval_cmd(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
             args.extend(expand::args(sh, w)?);
         }
     }
-    let (input, out, err) = match eval_redirs(sh, redirs)? {
+    let (input, out, err, group) = match eval_redirs(sh, redirs)? {
         None => {
             sh.set_status("1");
             return Ok(());
@@ -608,12 +667,13 @@ fn eval_cmd(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
     };
     let name = match name {
         None => {
+            capture_assign(sh, &group);
             sh.set_status("0");
             return Ok(());
         }
         Some(n) => n,
     };
-    cmd_run_resolved(sh, pos, &name, args, input, out, err, func, builtin)
+    capture_run(sh, &group, |s| cmd_run_resolved(s, pos, &name, args, input, out, err, func, builtin))
 }
 
 /// The context with the layer of the definitions before a command in its
@@ -704,7 +764,7 @@ fn eval_redirected(sh: &Ctx, pos: Pos, redirs: &[Sexp], run: impl FnOnce(&Ctx) -
     if redirs.is_empty() {
         return run(sh);
     }
-    let (input, out, err) = match eval_redirs(sh, redirs)? {
+    let (input, out, err, group) = match eval_redirs(sh, redirs)? {
         None => {
             sh.set_status("1");
             return Ok(());
@@ -713,7 +773,7 @@ fn eval_redirected(sh: &Ctx, pos: Pos, redirs: &[Sexp], run: impl FnOnce(&Ctx) -
     };
     let (out, err) = body_targets(sh, pos, &out, &err);
     let inner = Ctx { input, out, err, ..sh.clone() };
-    run(&inner)
+    capture_run(&inner, &group, run)
 }
 
 /// if: run the conditions in turn and the body of the first one whose $?
@@ -823,10 +883,266 @@ fn eval_jump(sh: &Ctx, pos: Pos, tag: &str, children: &[Sexp]) -> R<()> {
     Err(sh.error(pos, &format!("{}: no loop for {}", tag, name)))
 }
 
+// ── Other threads ──
+// A command substitution (and, later, each element of a pipeline) runs in
+// another thread. Variable definitions, function definitions, export, cd
+// and $? in it do not change the outside; return, and break and continue to
+// an outer loop, are errors.
+
+/// The context of a child thread: copies of the local variables and the
+/// environment, a new scope for functions (outside it, sh's), and $? from sh.
+fn sh_child(sh: &Ctx, input: Arc<Input>, out: Target, err: Target, no_return: &str) -> Ctx {
+    let global = Arc::new(Global {
+        status: Mutex::new(sh.status()),
+        last_bg: Mutex::new(sh.global.last_bg.lock().unwrap().clone()),
+        interactive: sh.global.interactive,
+        substs: Mutex::new(Vec::new()),
+    });
+    Ctx {
+        global,
+        vars: Arc::new(Mutex::new(sh.vars.lock().unwrap().clone())),
+        env: sh.env.copy(),
+        scope: Arc::new(Scope { funcs: Mutex::new(HashMap::new()), parent: Some(sh.scope.clone()) }),
+        input,
+        out,
+        err,
+        ret: None,
+        no_return: Some(Arc::from(no_return)),
+        loops: None,
+        cwd: Arc::new(Mutex::new(sh.cwd())),
+        abort: None,
+        ..sh.clone()
+    }
+}
+
+/// The target for a child thread (the same id): a new writer of a channel.
+fn child_target(t: &Target) -> Target {
+    match &t.kind {
+        TKind::Chan(w) => Target { id: t.id, kind: TKind::Chan(w.chan.writer()) },
+        _ => t.clone(),
+    }
+}
+
+/// The targets for a child: the same writer if they go to the same place.
+fn child_targets(out: &Target, err: &Target) -> (Target, Target) {
+    let o = child_target(out);
+    let e = if out.id == err.id { o.clone() } else { child_target(err) };
+    (o, e)
+}
+
+/// Close what a thread holds when it ends: its writers of channels.
+fn sh_release(child: &Ctx) {
+    for t in [&child.out, &child.err] {
+        if let TKind::Chan(w) = &t.kind {
+            w.close();
+        }
+    }
+}
+
+/// Start a thread that runs body in child. An abort (the reader of its
+/// output has finished) or exit ends the thread. At its end, its $( ) are
+/// finished and its writers closed, and then done is called.
+fn sh_start(mut child: Ctx, body: impl FnOnce(&Ctx) -> R<()> + Send + 'static, done: impl FnOnce() + Send + 'static) -> std::thread::JoinHandle<()> {
+    let id = new_id();
+    child.abort = Some(id);
+    spawn(move || {
+        let _ = body(&child);
+        subst_finish(&child);
+        sh_release(&child);
+        drop(child);
+        done();
+    })
+}
+
 // ── Command substitution ──
 
-pub fn eval_subst(sh: &Ctx, pos: Pos, _script: &Sexp) -> R<Value> {
-    Err(sh.error(pos, "consh-rs: $( ) is not implemented yet"))
+/// A $( ) that has not finished: by a channel, or by an OS pipe (one
+/// external command).
+pub struct Subst {
+    kind: SubstKind,
+    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+enum SubstKind {
+    Chan(Arc<Chan>),
+    Os(Arc<OsSubst>),
+}
+
+struct OsSubst {
+    value: LazyList,
+    reader: Arc<Fd>,
+    cancelled: Arc<AtomicBool>,
+    done: Mutex<bool>,
+    changed: std::sync::Condvar,
+}
+
+/// $( script ): run the script in another thread, and return the LazyList of
+/// the elements of its standard output (the lines of external commands),
+/// made as it is read.
+pub fn eval_subst(sh: &Ctx, _pos: Pos, script: &Sexp) -> R<Value> {
+    let lines: Vec<Sexp> = script.children().to_vec();
+    let err = child_target(&sh.err);
+    if subst_is_external(sh, &lines) {
+        let (r, w) = std::io::pipe().map_err(|e| sh.error(None, &format!("__OS_pipe__: {}", os::strerror(&e))))?;
+        let reader = Fd::new(std::fs::File::from(std::os::fd::OwnedFd::from(r)));
+        let writer = Fd::new(std::fs::File::from(std::os::fd::OwnedFd::from(w)));
+        let out = Target { id: new_id(), kind: TKind::Stream(writer) };
+        let child = sh_child(sh, sh.input.clone(), out, err, "return in a command substitution");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let value = subst_lines(reader.clone(), cancelled.clone());
+        let st = Arc::new(OsSubst { value: value.clone(), reader, cancelled, done: Mutex::new(false), changed: std::sync::Condvar::new() });
+        let st2 = st.clone();
+        let handle = sh_start(child, move |c| eval_lines(c, &lines), move || {
+            *st2.done.lock().unwrap() = true;
+            st2.changed.notify_all();
+        });
+        push_subst(sh, SubstKind::Os(st), handle);
+        return Ok(Value::List(value));
+    }
+    let chan = Chan::new(PIPE_CAP);
+    let out = Target { id: new_id(), kind: TKind::Chan(chan.writer()) };
+    let child = sh_child(sh, sh.input.clone(), out, err, "return in a command substitution");
+    let c2 = chan.clone();
+    let handle = sh_start(child, move |c| eval_lines(c, &lines), move || c2.set_done());
+    let value = chan.list();
+    push_subst(sh, SubstKind::Chan(chan), handle);
+    Ok(Value::List(value))
+}
+
+fn push_subst(sh: &Ctx, kind: SubstKind, handle: std::thread::JoinHandle<()>) {
+    let rec = Arc::new(Subst { kind, thread: Mutex::new(Some(handle)) });
+    sh.global.substs.lock().unwrap().insert(0, rec);
+}
+
+/// Whether a $( ) is one simple statement that starts one external command.
+fn subst_is_external(sh: &Ctx, lines: &[Sexp]) -> bool {
+    match lines {
+        [line] => match line.children() {
+            [stmt] => pipe_is_external(sh, stmt),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Whether elem is a simple statement whose first word is only quoted or
+/// bare text, the name of an external command. Bare text with a glob
+/// character could expand to the name of a function, so it is not.
+fn pipe_is_external(sh: &Ctx, elem: &Sexp) -> bool {
+    if elem.tag() != "cmd" {
+        return false;
+    }
+    let words = match elem.children().iter().find(|c| c.tag() == "words") {
+        Some(w) => w.children(),
+        None => return false,
+    };
+    let parts = match words.first() {
+        Some(w) => w.children(),
+        None => return false,
+    };
+    if parts.len() != 1 {
+        return false;
+    }
+    let tag = parts[0].tag();
+    if tag != "lit" && tag != "sq" {
+        return false;
+    }
+    let name = parts[0].children().first().map(|c| c.str()).unwrap_or("");
+    if tag == "lit" && crate::glob::has_meta(name) {
+        return false;
+    }
+    let (f, b, ext) = cmd_resolve(sh, Some(name));
+    ext && f.is_none() && b.is_none()
+}
+
+/// The lines of the output of a $( ) by an OS pipe, read as the LazyList is
+/// read. At the end, the pipe is closed; after cancelled, nothing is read.
+fn subst_lines(reader: Arc<Fd>, cancelled: Arc<AtomicBool>) -> LazyList {
+    let r = Arc::new(Mutex::new(BufReader::new(FdReader(reader.clone()))));
+    os_lines(r, reader, cancelled)
+}
+
+fn os_lines(r: Arc<Mutex<BufReader<FdReader>>>, fd: Arc<Fd>, cancelled: Arc<AtomicBool>) -> LazyList {
+    LazyList::new(move || {
+        if cancelled.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+        let mut buf = Vec::new();
+        let n = r.lock().unwrap().read_until(b'\n', &mut buf).unwrap_or(0);
+        if n == 0 {
+            fd.close();
+            return Ok(None);
+        }
+        let line = chomp(&String::from_utf8_lossy(&buf)).to_string();
+        Ok(Some((Value::string(line), os_lines(r, fd, cancelled))))
+    })
+}
+
+/// At the end of a statement, wait for each $( ) started by this thread to
+/// finish, or until its writer waits because its output has not been read.
+fn subst_settle(sh: &Ctx) {
+    let list = std::mem::take(&mut *sh.global.substs.lock().unwrap());
+    if list.is_empty() {
+        return;
+    }
+    let mut kept = Vec::new();
+    for rec in list {
+        if settle_one(&rec) != chan::State::Done {
+            kept.push(rec);
+        }
+    }
+    let mut g = sh.global.substs.lock().unwrap();
+    kept.append(&mut g);
+    *g = kept;
+}
+
+fn settle_one(rec: &Subst) -> chan::State {
+    match &rec.kind {
+        SubstKind::Chan(c) => c.settle(),
+        SubstKind::Os(st) => {
+            // If the command has finished, read the rest of its output (what the
+            // OS pipe holds). Otherwise read up to PIPE_CAP elements from the start
+            // of the value: if the output ends before, wait for the command.
+            if *st.done.lock().unwrap() {
+                let _ = st.value.to_vec();
+                return chan::State::Done;
+            }
+            let mut cur = st.value.clone();
+            for _ in 0..PIPE_CAP {
+                match cur.uncons() {
+                    Ok(Some((_, rest))) => cur = rest,
+                    _ => {
+                        let mut d = st.done.lock().unwrap();
+                        while !*d {
+                            d = st.changed.wait(d).unwrap();
+                        }
+                        return chan::State::Done;
+                    }
+                }
+            }
+            chan::State::Blocked
+        }
+    }
+}
+
+/// At the end of a script or a thread: tell the $( ) that their output will
+/// not be read, and wait for them. One without output runs to its end; one
+/// whose writer waits stops when it writes next.
+fn subst_finish(sh: &Ctx) {
+    let list = std::mem::take(&mut *sh.global.substs.lock().unwrap());
+    for rec in list {
+        match &rec.kind {
+            SubstKind::Chan(c) => c.cancel(),
+            SubstKind::Os(st) => {
+                st.cancelled.store(true, Ordering::SeqCst);
+                st.reader.close();
+            }
+        }
+        let h = rec.thread.lock().unwrap().take();
+        if let Some(h) = h {
+            let _ = h.join();
+        }
+    }
 }
 
 // ── Builtins ──
@@ -837,13 +1153,53 @@ fn builtin_lookup(name: &str) -> Option<Builtin> {
         "cd" => builtin_cd,
         "defined" => builtin_defined,
         "exit" => builtin_exit,
-        "stdin" | "wait" | "kill" => builtin_unimplemented,
+        "stdin" => builtin_stdin,
+        "wait" | "kill" => builtin_unimplemented,
         _ => return None,
     })
 }
 
 fn builtin_unimplemented(sh: &Ctx, pos: Pos, _args: Vec<Value>, _in: Arc<Input>, _out: Target, _err: Target) -> R<()> {
     Err(sh.error(pos, "consh-rs: this builtin is not implemented yet"))
+}
+
+/// stdin: write the elements of standard input to standard output, moving
+/// its position past them. To a variable list (stdin > (a . rest)), only as
+/// many as the variables, and rest gets the rest as it is.
+fn builtin_stdin(sh: &Ctx, pos: Pos, args: Vec<Value>, input: Arc<Input>, out: Target, _err: Target) -> R<()> {
+    if !args.is_empty() {
+        return Err(sh.error(pos, "stdin: no arguments are allowed"));
+    }
+    input.touched.store(true, Ordering::SeqCst);
+    if let TKind::Capture(r) = &out.kind {
+        while r.items.lock().unwrap().len() < r.names.len() {
+            let list = input.list.lock().unwrap().clone();
+            match list.uncons()? {
+                None => break,
+                Some((item, rest)) => {
+                    r.items.lock().unwrap().push(item);
+                    *input.list.lock().unwrap() = rest;
+                }
+            }
+        }
+        if !r.rest.is_empty() && r.items.lock().unwrap().len() >= r.names.len() {
+            *r.direct.lock().unwrap() = Some(input.list.lock().unwrap().clone());
+        }
+        sh.set_status("0");
+        return Ok(());
+    }
+    loop {
+        let list = input.list.lock().unwrap().clone();
+        match list.uncons()? {
+            None => break,
+            Some((item, rest)) => {
+                target_write(sh, pos, &out, &item)?;
+                *input.list.lock().unwrap() = rest;
+            }
+        }
+    }
+    sh.set_status("0");
+    Ok(())
 }
 
 /// exit [n]: end the shell with status n (or $?), a number from 0 to 255.
@@ -960,7 +1316,9 @@ fn arg_max(sh: &Ctx, pos: Pos) -> R<i64> {
     }
 }
 
-/// Start an external command, wait for it and set $?.
+/// Start an external command, wait for it and set $?. Output that goes to
+/// a channel or a variable list is read from a pipe line by line; standard
+/// input made from a list is written to a pipe by another thread.
 fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<Input>, out: &Target, err: &Target) -> R<()> {
     let max = arg_max(sh, pos)?;
     let bytes: i64 = std::iter::once(name).chain(args.iter().map(|s| s.as_str())).map(|s| s.len() as i64 + 1).sum();
@@ -969,17 +1327,53 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
     }
     let mut cmd = Command::new(name);
     cmd.args(&args).env_clear().envs(sh.env.dict()).current_dir(sh.cwd());
-    match external_input(input) {
-        Some(fd) => {
-            cmd.stdin(stdio_of(&fd));
+    // Standard output and error: the Stream itself, or a pipe to read.
+    let mut pumps: Vec<(std::io::PipeReader, Target)> = Vec::new();
+    let out_os = os_stream(out);
+    let err_os = os_stream(err);
+    let pipe = |sh: &Ctx| std::io::pipe().map_err(|e| sh.error(pos, &format!("__OS_pipe__: {}", os::strerror(&e))));
+    match (out_os, err_os) {
+        (Some(o), Some(e)) => {
+            cmd.stdout(o).stderr(e);
         }
-        None => {
-            cmd.stdin(Stdio::null());
+        (None, Some(e)) => {
+            let (r, w) = pipe(sh)?;
+            cmd.stdout(w).stderr(e);
+            pumps.push((r, out.clone()));
+        }
+        (Some(o), None) => {
+            let (r, w) = pipe(sh)?;
+            cmd.stdout(o).stderr(w);
+            pumps.push((r, err.clone()));
+        }
+        (None, None) if out.id == err.id => {
+            let (r, w) = pipe(sh)?;
+            let w2 = w.try_clone().map_err(|e| sh.error(pos, &os::strerror(&e)))?;
+            cmd.stdout(w).stderr(w2);
+            pumps.push((r, out.clone()));
+        }
+        (None, None) => {
+            let (r, w) = pipe(sh)?;
+            let (r2, w2) = pipe(sh)?;
+            cmd.stdout(w).stderr(w2);
+            pumps.push((r, out.clone()));
+            pumps.push((r2, err.clone()));
         }
     }
-    cmd.stdout(os_stream(out));
-    cmd.stderr(os_stream(err));
-    let mut child = match cmd.spawn() {
+    let feed = match external_input(input) {
+        Some(fd) => {
+            cmd.stdin(stdio_of(&fd));
+            None
+        }
+        None => {
+            let (r, w) = pipe(sh)?;
+            cmd.stdin(r);
+            Some(w)
+        }
+    };
+    let spawned = cmd.spawn();
+    drop(cmd);
+    let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {
             let msg = os::strerror(&e);
@@ -989,8 +1383,37 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
             return Ok(());
         }
     };
-    drop(cmd);
+    let stop = Arc::new(AtomicBool::new(false));
+    if let Some(w) = feed {
+        let input = input.clone();
+        let stop = stop.clone();
+        spawn(move || feed_loop(input, w, stop));
+    }
+    // The second pipe (standard error to another place) is read by another thread.
+    let mut pumper = None;
+    if pumps.len() == 2 {
+        let (r2, t2) = pumps.pop().unwrap();
+        let t2 = child_target(&t2);
+        let psh = Ctx { abort: Some(new_id()), ..sh.clone() };
+        pumper = Some(spawn(move || {
+            let _ = target_pump(&psh, &t2, r2);
+            if let TKind::Chan(w) = &t2.kind {
+                w.close();
+            }
+        }));
+    }
+    let mut result = Ok(());
+    if let Some((r, t)) = pumps.pop() {
+        // If writing stops the command (the reader has finished, the variable list
+        // is full), close the pipe first (the command stops with SIGPIPE) and wait.
+        result = target_pump(sh, &t, r);
+    }
+    if let Some(p) = pumper {
+        let _ = p.join();
+    }
     let st = child.wait();
+    stop.store(true, Ordering::SeqCst);
+    result?;
     use std::os::unix::process::ExitStatusExt;
     let status = match st {
         Ok(s) => match (s.code(), s.signal()) {
@@ -1004,6 +1427,51 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
     Ok(())
 }
 
+/// Read the lines of a pipe (without their newlines) and write them to the target.
+fn target_pump(sh: &Ctx, t: &Target, r: std::io::PipeReader) -> R<()> {
+    let mut reader = BufReader::new(r);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => return Ok(()),
+            Ok(_) => {}
+        }
+        let line = chomp(&String::from_utf8_lossy(&buf)).to_string();
+        target_write(sh, None, t, &Value::string(line))?;
+    }
+}
+
+/// Write the elements of standard input, each made a String with a newline,
+/// to the pipe of a command, moving the position of the input past each
+/// element written. Stop at the end, when the command has finished, or when
+/// the pipe cannot be written (the command closed it).
+fn feed_loop(input: Arc<Input>, mut w: std::io::PipeWriter, stop: Arc<AtomicBool>) {
+    use std::io::Write;
+    loop {
+        let list = input.list.lock().unwrap().clone();
+        let (item, rest) = match list.uncons() {
+            Ok(Some(x)) => x,
+            _ => return,
+        };
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        let line = match (&item, &input.sh) {
+            (Value::Str(s), _) => s.to_string(),
+            (v, Some(sh)) => match line_to_string(sh, None, v) {
+                Ok(s) => s,
+                Err(_) => return,
+            },
+            (_, None) => return,
+        };
+        if w.write_all(format!("{}\n", line).as_bytes()).is_err() {
+            return;
+        }
+        *input.list.lock().unwrap() = rest;
+    }
+}
+
 fn stdio_of(fd: &Arc<Fd>) -> Stdio {
     match fd.dup() {
         Ok(o) => Stdio::from(o),
@@ -1011,16 +1479,18 @@ fn stdio_of(fd: &Arc<Fd>) -> Stdio {
     }
 }
 
-/// The Stream of a target that an external command can write to as it is.
-fn os_stream(t: &Target) -> Stdio {
+/// The Stream of a target that an external command can write to as it is,
+/// or None for a channel or a variable list.
+fn os_stream(t: &Target) -> Option<Stdio> {
     match &t.kind {
-        TKind::Top(_) => Stdio::inherit(),
-        TKind::Stream(fd) | TKind::File(fd, _, _) => stdio_of(fd),
+        TKind::Top(_) => Some(Stdio::inherit()),
+        TKind::Stream(fd) | TKind::File(fd, _, _) => Some(stdio_of(fd)),
+        TKind::Chan(_) | TKind::Capture(_) => None,
     }
 }
 
 /// The standard input for an external command: the Stream itself while the
-/// input has not been read as a LazyList.
+/// input has not been read as a LazyList; otherwise None (a pipe is fed).
 fn external_input(input: &Arc<Input>) -> Option<Arc<Fd>> {
     match &input.stream {
         Some(fd) if !input.touched.load(Ordering::SeqCst) => Some(fd.clone()),
@@ -1032,7 +1502,10 @@ fn external_input(input: &Arc<Input>) -> Option<Arc<Fd>> {
 
 /// Apply the redirections from left to right: the standard input, output
 /// and error, or None if a file cannot be opened (with a message).
-fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<(Arc<Input>, Target, Target)>> {
+type Redirected = (Arc<Input>, Target, Target, Option<Arc<Group>>);
+
+fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<Redirected>> {
+    let mut group: Option<Arc<Group>> = None;
     let mut used = [false; 3];
     let mut input = sh.input.clone();
     let mut out = sh.out.clone();
@@ -1067,7 +1540,22 @@ fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<(Arc<Input>, Target, Targe
                 input = input_vars(sh, pos, target.children())?;
                 continue;
             }
-            return Err(sh.error(pos, "consh-rs: redirection to a variable list is not implemented yet"));
+            let g = group.get_or_insert_with(|| Arc::new(Group { records: Mutex::new(Vec::new()), has_rest: AtomicBool::new(false), stopped: AtomicBool::new(false) }));
+            let params = target.children();
+            let names: Vec<String> = params[0].list().iter().map(|n| n.str().to_string()).collect();
+            let rest = params.get(1).map(|r| r.str().to_string()).unwrap_or_default();
+            if !rest.is_empty() {
+                g.has_rest.store(true, Ordering::SeqCst);
+            }
+            let record = Arc::new(Record { names, rest, items: Mutex::new(Vec::new()), direct: Mutex::new(None), group: Arc::downgrade(g) });
+            g.records.lock().unwrap().push(record.clone());
+            let t = Target { id: new_id(), kind: TKind::Capture(record) };
+            if fd == 1 {
+                out = t;
+            } else {
+                err = t;
+            }
+            continue;
         }
         let fields = expand::fields(sh, target)?;
         if fields.len() != 1 {
@@ -1090,7 +1578,7 @@ fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<(Arc<Input>, Target, Targe
         };
         let f = Fd::new(file);
         if fd == 0 {
-            input = Arc::new(Input { list: Mutex::new(lines_of(f.clone())), stream: Some(f), touched: AtomicBool::new(false) });
+            input = Input::from_stream(f);
         } else {
             let t = Target { id: new_id(), kind: TKind::Stream(f) };
             if fd == 1 {
@@ -1100,7 +1588,7 @@ fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<(Arc<Input>, Target, Targe
             }
         }
     }
-    Ok(Some((input, out, err)))
+    Ok(Some((input, out, err, group)))
 }
 
 /// < (a b . rest): the values of a and b in turn, then the elements of the
@@ -1122,5 +1610,99 @@ fn input_vars(sh: &Ctx, pos: Pos, params: &[Sexp]) -> R<Arc<Input>> {
     for v in items.into_iter().rev() {
         list = LazyList::cons(v, list);
     }
-    Ok(Arc::new(Input { list: Mutex::new(list), stream: None, touched: AtomicBool::new(true) }))
+    Ok(Input::from_list(sh, list))
+}
+
+// ── Redirections to variable lists ──
+// > (a b . rest) and 2> (a b . rest): the elements received go to a and b
+// in turn, and the others to rest. The variable lists of one statement are a
+// group. When every list without rest has as many elements as variables and
+// no list has rest, the next write stops the command (as SIGPIPE does; $?
+// is 0). Until then, elements beyond the variables are dropped.
+
+pub struct Group {
+    records: Mutex<Vec<Arc<Record>>>,
+    has_rest: AtomicBool,
+    stopped: AtomicBool,
+}
+
+pub struct Record {
+    names: Vec<String>,
+    rest: String,
+    items: Mutex<Vec<Value>>,
+    /// stdin > (a . rest): the rest of standard input, given to rest as it is.
+    direct: Mutex<Option<LazyList>>,
+    group: std::sync::Weak<Group>,
+}
+
+fn capture_put(sh: &Ctx, r: &Arc<Record>, item: Value) -> R<()> {
+    {
+        let mut items = r.items.lock().unwrap();
+        if items.len() < r.names.len() || !r.rest.is_empty() {
+            items.push(item);
+            return Ok(());
+        }
+    }
+    let g = match r.group.upgrade() {
+        Some(g) => g,
+        None => return Ok(()),
+    };
+    if g.has_rest.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let satisfied = g.records.lock().unwrap().iter().all(|r| r.items.lock().unwrap().len() >= r.names.len());
+    if !satisfied {
+        return Ok(());
+    }
+    g.stopped.store(true, Ordering::SeqCst);
+    Err(sh_abort(sh))
+}
+
+/// Run body in a context in which the command can be stopped, then assign
+/// the variables. A stopped command has $? 0.
+fn capture_run(sh: &Ctx, group: &Option<Arc<Group>>, body: impl FnOnce(&Ctx) -> R<()>) -> R<()> {
+    let g = match group {
+        None => return body(sh),
+        Some(g) => g,
+    };
+    let id = new_id();
+    let inner = Ctx { abort: Some(id), ..sh.clone() };
+    let r = match body(&inner) {
+        Err(Flow::Abort(a)) if a == id => Ok(()),
+        other => other,
+    };
+    if matches!(r, Err(Flow::Exit(_)) | Err(Flow::Error)) {
+        return r;
+    }
+    if g.stopped.load(Ordering::SeqCst) {
+        sh.set_status("0");
+    }
+    capture_assign(sh, group);
+    r
+}
+
+/// Assign the values of the group to the local variables of sh: "" for the
+/// variables without one, and the LazyList of the others to rest.
+fn capture_assign(sh: &Ctx, group: &Option<Arc<Group>>) {
+    let g = match group {
+        None => return,
+        Some(g) => g,
+    };
+    let records = g.records.lock().unwrap().clone();
+    let mut vars = sh.vars.lock().unwrap();
+    for r in records {
+        let items = r.items.lock().unwrap().clone();
+        let mut it = items.into_iter();
+        for n in &r.names {
+            vars.insert(n.clone(), it.next().unwrap_or_else(|| Value::str("")));
+        }
+        if !r.rest.is_empty() {
+            let mut list = r.direct.lock().unwrap().clone().unwrap_or_else(LazyList::empty);
+            let more: Vec<Value> = it.collect();
+            for v in more.into_iter().rev() {
+                list = LazyList::cons(v, list);
+            }
+            vars.insert(r.rest.clone(), Value::List(list));
+        }
+    }
 }

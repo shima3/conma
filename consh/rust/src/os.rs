@@ -71,6 +71,12 @@ impl Fd {
             None => Err(io_error(9)),
         }
     }
+    /// Close the file now (a second time does nothing).
+    pub fn close(&self) {
+        if self.raw > 2 {
+            self.file.lock().unwrap().take();
+        }
+    }
     /// A new fd for the same file (for a child process).
     pub fn dup(&self) -> io::Result<std::os::fd::OwnedFd> {
         let g = self.file.lock().unwrap();

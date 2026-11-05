@@ -16,6 +16,9 @@ pub enum Flow {
     /// break and continue of the loop with this id.
     Break(u64),
     Continue(u64),
+    /// Stop the command or the thread with this id (a channel whose reader
+    /// has cancelled, a variable list that is full: Sh_abort).
+    Abort(u64),
 }
 
 pub type R<T> = Result<T, Flow>;
