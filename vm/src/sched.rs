@@ -47,6 +47,10 @@ pub struct Machine {
     waiting: Vec<(VProcRef, OsTarget)>,
     /// Steps since the OS was last checked for the waiting VProcs.
     unpolled: u32,
+    /// A process was added to waiting since the last check of the OS.
+    os_dirty: bool,
+    /// sys::signals() at the last check of the OS.
+    signals_seen: u64,
     /// Read end of the pipe that SIGCHLD and a trapped SIGINT write to.
     wakeup: Option<i32>,
     /// The Ref of __OS_trap_interrupt__, and the SIGINTs counted so far.
@@ -166,6 +170,8 @@ impl Machine {
             changes: Vec::new(),
             waiting: Vec::new(),
             unpolled: 0,
+            os_dirty: false,
+            signals_seen: 0,
             wakeup: None,
             trap: None,
             std_streams: [None, None, None],
@@ -292,6 +298,7 @@ impl Machine {
     pub fn wait_os(&mut self, vp: &VProcRef, target: OsTarget) {
         if matches!(target, OsTarget::Proc(_)) {
             self.install_sigchld();
+            self.os_dirty = true;
         }
         self.make_waiting(vp);
         self.waiting.push((vp.clone(), target));
@@ -300,6 +307,16 @@ impl Machine {
     /// Wake the VProcs whose process has exited or whose Stream is ready. If
     /// block, sleep until one of them can wake.
     fn check_waiting(&mut self, block: bool) {
+        // While only processes wait, one can have exited only if a SIGCHLD came (or it was
+        // added since the last check): skip the poll() and waitpid() calls otherwise.
+        if !block && !self.os_dirty && self.waiting.iter().all(|(_, t)| matches!(t, OsTarget::Proc(_))) {
+            if crate::sys::signals() == self.signals_seen {
+                self.check_interrupts();
+                return;
+            }
+        }
+        self.os_dirty = false;
+        self.signals_seen = crate::sys::signals();
         let mut reads = Vec::new();
         let mut writes = Vec::new();
         let mut timeout = if block { None } else { Some(0) };

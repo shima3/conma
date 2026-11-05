@@ -181,8 +181,11 @@ pub fn sysconf_name(name: &str) -> Option<c_int> {
 static WAKE_FD: AtomicI32 = AtomicI32::new(-1);
 /// The number of SIGINTs since __OS_trap_interrupt__.
 static INTERRUPTS: AtomicU64 = AtomicU64::new(0);
+/// The number of SIGCHLDs and SIGINTs that wrote to the wakeup pipe.
+static SIGNALS: AtomicU64 = AtomicU64::new(0);
 
 extern "C" fn on_sigchld(_sig: c_int) {
+    SIGNALS.fetch_add(1, Ordering::SeqCst);
     let fd = WAKE_FD.load(Ordering::Relaxed);
     if fd >= 0 {
         unsafe { c_write(fd, b"x".as_ptr().cast(), 1) };
@@ -218,6 +221,11 @@ pub fn trap_sigint() {
 
 pub fn interrupts() -> u64 {
     INTERRUPTS.load(Ordering::SeqCst)
+}
+
+/// The number of SIGCHLDs and SIGINTs so far (after install_wakeup).
+pub fn signals() -> u64 {
+    SIGNALS.load(Ordering::SeqCst)
 }
 
 /// Read and drop what the signals wrote to the wakeup pipe.
