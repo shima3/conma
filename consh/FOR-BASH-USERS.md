@@ -243,7 +243,7 @@ echo "a=$a b=$b rest=$rest"        # -> a=1 b=2 rest=3
 /bin/ls /nonexistent 2> (err)      # err is the first line of standard error
 ```
 
-The command is stopped once all the variables are filled, with `$?` 0. As in Bash, variables set by the last element of a pipeline (`echo "a b" | tr … > (a b)`) are lost when the pipeline ends; put the redirection on a statement of its own. `< (a b . rest)` does the reverse and replaces here-documents:
+Without a rest variable, the command is stopped once the variables are filled, with `$?` 0, so `/usr/bin/yes > (a b)` ends. With a rest variable, the next statement waits until the command ends, so `/usr/bin/yes > (a . rest)` never ends. As in Bash, variables set by the last element of a pipeline (`echo "a b" | tr … > (a b)`) are lost when the pipeline ends; put the redirection on a statement of its own. `< (a b . rest)` does the reverse and replaces here-documents:
 
 ```sh
 lines=(alpha beta gamma)
