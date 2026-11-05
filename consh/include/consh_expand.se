@@ -28,8 +28,43 @@
 
 ;; 外部コマンドの引数の語として展開する。limit が null でなければ、葉ごとに引数のバイト数の上限から引く
 (define Expand_fields_in ,(sh word limit)
+  __Cont_get__ ,(return)
+  Literal_fields word ,(fields done)
+  done (,() return fields) __nop__ ,(clause)
+  clause ,()
   Expand_parts sh word ,(parts)
   Parts_fields_in parts limit)
+
+;; ── リテラルの語 ──
+;; 引用符も展開もない語（lit の要素が1つだけ）は、部分の LList を作らずに展開する（よくある語なので速くする）。
+;; すべての語の展開のたびに調べるので、__if__ を使わず、Boolean を2つの節に直接適用して、選んだ節を呼ぶ
+
+;; 語がリテラルだけなら、その String。そうでなければ null
+(define Word_literal ,(word)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ word ,(tag rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pos elems)
+  __LList_uncons__ (,(msg) return __NULL__) elems ,(elem more)
+  __LList_uncons__ __print_exit_error__ elem ,(kind erest)
+  __String_equal__ kind "lit" ,(isLit)
+  isLit __nop__ (,() return __NULL__) ,(clause)
+  clause ,()
+  __is_null__ more ,(single)
+  single __nop__ (,() return __NULL__) ,(clause)
+  clause ,()
+  __LList_uncons__ __print_exit_error__ erest ,(epos children)
+  __LList_uncons__ __print_exit_error__ children ,(text more)
+  return text)
+
+;; リテラルの語を、外部コマンドの語として（関数と組み込みコマンドの引数としても同じ）展開した String の LList と、
+;; 決まったか。リテラルでないか、glob の記号を含めば、決めずに偽を返す
+(define Literal_fields ,(word)
+  __Cont_get__ ,(return)
+  Word_literal word ,(text)
+  __is_null__ text ,(none)
+  none (,() return __NULL__ __FALSE__) __nop__ ,(clause)
+  clause ,()
+  Single_fields "plain" text)
 
 (define Parts_fields ,(parts)
   Parts_fields_in parts __NULL__)
@@ -165,6 +200,9 @@
 ;; どちらも含まなければ、引用符か ${x} を含む語は1つの String。それ以外は、空になれば消える
 (define Expand_args ,(sh word)
   __Cont_get__ ,(return)
+  Literal_fields word ,(fields done)
+  done (,() return fields) __nop__ ,(clause)
+  clause ,()
   Expand_parts sh word ,(parts)
   Parts_single parts ,(kind value)
   __unless__ (,() __is_null__ kind)
@@ -224,6 +262,10 @@
 ;; そうでなく ${x} の LazyList を含めば LazyList。どちらでもなければ String
 (define Expand_value ,(sh word)
   __Cont_get__ ,(return)
+  Word_literal word ,(text)
+  __is_null__ text ,(none)
+  none __nop__ (,() return text) ,(clause)
+  clause ,()
   Node_split word ,(tag pos elems)
   Expand_parts_from sh elems ,(parts)
   Parts_single parts ,(kind value)
