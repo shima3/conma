@@ -129,7 +129,7 @@ pub fn hold(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.refs += 1;
     let r = RefObj::new(m.serials.refs, Value::VProc(cur));
     *r.lazy.borrow_mut() = Some(LazyInfo { chain: None, thunk: Value::Null });
-    vp.prim_return(vec![Value::Ref(Rc::new(r))]);
+    vp.prim_return(vec![Value::Ref(crate::gc::new_ref(r))]);
     Ok(())
 }
 

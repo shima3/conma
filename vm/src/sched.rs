@@ -28,6 +28,8 @@ pub struct Serials {
 pub struct Machine {
     /// Every VProc, in creation order.
     pub vprocs: Vec<VProcRef>,
+    /// The length of vprocs after finished VProcs were last removed from it.
+    vprocs_pruned: usize,
     pub ready: VecDeque<VProcRef>,
     /// The VProc running the current step.
     pub current: Option<VProcRef>,
@@ -103,6 +105,7 @@ impl Machine {
     pub fn new(trace: bool) -> Machine {
         Machine {
             vprocs: Vec::new(),
+            vprocs_pruned: 64,
             ready: VecDeque::new(),
             current: None,
             steps: 0,
@@ -142,7 +145,7 @@ impl Machine {
     ) -> VProcRef {
         self.next_serial += 1;
         let serial = self.next_serial;
-        Rc::new(VProcCell {
+        crate::gc::new_vproc(VProcCell {
             serial,
             state: Cell::new(State::Ready),
             kill_pending: Cell::new(false),
@@ -152,6 +155,12 @@ impl Machine {
 
     pub fn add(&mut self, vp: VProcRef) {
         vp.state.set(State::Ready);
+        // Forget the finished VProcs now and then: the list is only used to
+        // report a deadlock, and it would keep every VProc alive.
+        if self.vprocs.len() >= self.vprocs_pruned * 2 {
+            self.vprocs.retain(|v| v.state.get() != State::Finished);
+            self.vprocs_pruned = self.vprocs.len().max(64);
+        }
         self.vprocs.push(vp.clone());
         self.ready.push_back(vp);
     }
@@ -394,6 +403,11 @@ impl Machine {
     /// primitive exits the interpreter, or on deadlock.
     pub fn run(&mut self) -> Option<i32> {
         loop {
+            if crate::gc::due() {
+                // Between two steps no RefCell is borrowed.
+                self.vprocs.retain(|v| v.state.get() != State::Finished);
+                crate::gc::collect();
+            }
             while let Some(front) = self.ready.front() {
                 if !front.vp.borrow().is_terminal() {
                     break;

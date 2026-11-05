@@ -8,6 +8,7 @@
 //! after each step. --main starts the program with __start__ and passes the
 //! remaining arguments as a Seq of Strings.
 
+mod gc;
 mod module;
 mod prim;
 mod sched;

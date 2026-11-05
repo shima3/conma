@@ -185,7 +185,7 @@ pub fn build_name_index(module: &Sexp) -> HashMap<String, usize> {
 }
 
 pub fn load_module(module: &Sexp) -> Result<Rc<GVEnv>, String> {
-    let gvenv = Rc::new(GVEnv { vals: RefCell::new(Vec::new()) });
+    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()) });
     let mut vals: Vec<Option<Value>> = Vec::new();
     if let Some(l) = module.as_list() {
         for item in l.iter().skip(2) {

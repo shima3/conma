@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 fn new_mseq(m: &mut Machine, items: Vec<Value>) -> Value {
     m.serials.mseqs += 1;
-    Value::MSeq(Rc::new(MSeqObj { serial: m.serials.mseqs, items: RefCell::new(items) }))
+    Value::MSeq(crate::gc::new_mseq(MSeqObj { serial: m.serials.mseqs, items: RefCell::new(items) }))
 }
 
 /// Take onError, an MSeq and count-2 more operands. None after applying
@@ -93,7 +93,7 @@ fn dict_args(vp: &mut VProc, name: &str, count: usize) -> Result<(Rc<DictObj>, V
 
 pub fn dict_new(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.dicts += 1;
-    let d = Value::Dict(Rc::new(DictObj {
+    let d = Value::Dict(crate::gc::new_dict(DictObj {
         serial: m.serials.dicts,
         entries: RefCell::new(Vec::new()),
         index: RefCell::new(HashMap::new()),

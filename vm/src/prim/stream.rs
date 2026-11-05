@@ -350,7 +350,7 @@ pub fn get_env_dict(m: &mut Machine, vp: &mut VProc) -> PResult {
         let v = string_value(&v.to_string_lossy());
         d.append(k, v).map_err(VmError::Error)?;
     }
-    vp.prim_return(vec![Value::Dict(Rc::new(d))]);
+    vp.prim_return(vec![Value::Dict(crate::gc::new_dict(d))]);
     Ok(())
 }
 
