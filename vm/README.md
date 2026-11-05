@@ -29,8 +29,15 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 | 3. VProcs and the scheduler, LazyList, `__Ref_wait_change__` | 10, 17, 20 | done |
 | 4. OS: Streams, files, pipes, processes, signals | 9, 11, 13–16, 21–27, 29, 31–33 | done: every step passes |
 | 5. ConSh: every test, and collecting cycles so that ConSh can run for long | `consh/test` | done |
-| 6. Front end and start-up | `selfhost*` | |
+| 6. Front end and start-up | `selfhost1`–`7`, `module1`, `module2` | done: every test passes without changes to the VM (see Start-up) |
 | 7. Speed (once the steps match) | | |
+
+## Start-up
+
+Measured on an Apple M4, with the ConSh module already built:
+
+* `consh` runs `echo hi` in 0.06 s, of which `consh_parse` (Python) takes 0.02 s; with `--conma-parser` it takes 0.03 s. Loading the ConSh module (5 MB) takes about 0.02 s and 130 MB.
+* Building the ConSh module, when its sources have changed, takes 1.2 s with `bin/includer` and `bin/resolver`. The ConMa front end (`test/selfhost7/test.se`) gives the same module in 9.9 s with the Rust VM, so it is left to stage 7.
 
 ## Design
 
