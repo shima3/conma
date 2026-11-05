@@ -4,6 +4,8 @@
 use crate::module::{BodyDef, GVEnv};
 use crate::prim::PrimDef;
 use crate::sexp::Sexp;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// The SInfo of a Body: the atoms after `(SInfo pos`, such as
@@ -25,6 +27,11 @@ pub enum Value {
     Prim(&'static PrimDef),
     CFrame(Rc<CFrame>),
     LList(Rc<LList>),
+    Ref(Rc<RefObj>),
+    MSeq(Rc<MSeqObj>),
+    Dict(Rc<DictObj>),
+    /// The escape continuation that __Cont_get__ passes.
+    Cont(Rc<ContObj>),
 }
 
 impl Value {
@@ -34,6 +41,141 @@ impl Value {
             Value::Raw(s) | Value::StrNode(s) => s.tag() == Some("Null"),
             _ => false,
         }
+    }
+}
+
+/// A mutable cell. Traces show it by its serial number, because it may contain itself.
+pub struct RefObj {
+    pub serial: usize,
+    pub value: RefCell<Value>,
+}
+
+pub struct MSeqObj {
+    pub serial: usize,
+    pub items: RefCell<Vec<Value>>,
+}
+
+/// A mapping in insertion order. Keys are compared with values_equal; the
+/// index finds a key that has a dict_key without comparing it with every key.
+pub struct DictObj {
+    pub serial: usize,
+    pub entries: RefCell<Vec<(Value, Value)>>,
+    pub index: RefCell<HashMap<DictKey, usize>>,
+}
+
+/// The CChain of the caller of the function that called __Cont_get__.
+pub struct ContObj {
+    pub serial: usize,
+    pub cchain: Value,
+}
+
+/// A key that is equal for two values exactly when values_equal holds.
+#[derive(Hash, PartialEq, Eq, Clone)]
+pub enum DictKey {
+    Null,
+    Num(u64),
+    Str(String),
+    Obj(usize),
+}
+
+/// The identity of a value that is equal only to itself.
+pub fn identity(v: &Value) -> usize {
+    match v {
+        Value::Closure(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Seq(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::CFrame(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::LList(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Ref(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::MSeq(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Cont(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Prim(p) => *p as *const _ as *const u8 as usize,
+        Value::Raw(s) | Value::StrNode(s) => match s {
+            Sexp::List(l) => Rc::as_ptr(l) as *const u8 as usize,
+            Sexp::Atom(a) => Rc::as_ptr(a) as *const u8 as usize,
+        },
+        Value::Str(s) => Rc::as_ptr(s) as *const u8 as usize,
+        Value::Number(_) | Value::Null => 0,
+    }
+}
+
+pub fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Null, Value::Null) => true,
+        (Value::Number(_), _) | (_, Value::Number(_)) => false,
+        (Value::Null, _) | (_, Value::Null) => false,
+        _ => identity(a) == identity(b),
+    }
+}
+
+/// dict_key: None for a value that is not equal even to itself (NaN).
+pub fn dict_key(v: &Value) -> Result<Option<DictKey>, String> {
+    if let Value::Number(x) = v {
+        if x.is_nan() {
+            return Ok(None);
+        }
+        let x = if *x == 0.0 { 0.0f64 } else { *x };
+        return Ok(Some(DictKey::Num(x.to_bits())));
+    }
+    if v.is_null() {
+        return Ok(Some(DictKey::Null));
+    }
+    if let Some(t) = string_text(v) {
+        return Ok(Some(DictKey::Str(t?)));
+    }
+    Ok(Some(DictKey::Obj(identity(v))))
+}
+
+/// Key equality for PDict and Dict: Strings by content, Numbers by value,
+/// null equals null, and any other value only itself.
+pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
+    let (ta, tb) = (value_type_name(a), value_type_name(b));
+    if ta != tb {
+        return Ok(false);
+    }
+    if ta == "null" {
+        return Ok(true);
+    }
+    if ta == "String" {
+        if let (Some(x), Some(y)) = (string_text(a), string_text(b)) {
+            return Ok(x? == y?);
+        }
+    }
+    if let (Value::Number(x), Value::Number(y)) = (a, b) {
+        return Ok(x == y);
+    }
+    Ok(same(a, b))
+}
+
+impl DictObj {
+    pub fn find(&self, key: &Value) -> Result<Option<usize>, String> {
+        if let Some(k) = dict_key(key)? {
+            return Ok(self.index.borrow().get(&k).copied());
+        }
+        for (i, (k, _)) in self.entries.borrow().iter().enumerate() {
+            if values_equal(k, key)? {
+                return Ok(Some(i));
+            }
+        }
+        Ok(None)
+    }
+    pub fn append(&self, key: Value, value: Value) -> Result<(), String> {
+        if let Some(k) = dict_key(&key)? {
+            self.index.borrow_mut().insert(k, self.entries.borrow().len());
+        }
+        self.entries.borrow_mut().push((key, value));
+        Ok(())
+    }
+    pub fn remove(&self, i: usize) -> Result<(), String> {
+        self.entries.borrow_mut().remove(i);
+        let mut index = HashMap::new();
+        for (i, (k, _)) in self.entries.borrow().iter().enumerate() {
+            if let Some(dk) = dict_key(k)? {
+                index.insert(dk, i);
+            }
+        }
+        *self.index.borrow_mut() = index;
+        Ok(())
     }
 }
 
@@ -291,8 +433,11 @@ pub fn value_type_name(v: &Value) -> String {
         return "null".into();
     }
     match v {
-        Value::Closure(_) | Value::Seq(_) | Value::Prim(_) => "Closure".into(),
+        Value::Closure(_) | Value::Seq(_) | Value::Prim(_) | Value::Cont(_) => "Closure".into(),
         Value::CFrame(_) => "CFrame".into(),
+        Value::Ref(_) => "Ref".into(),
+        Value::MSeq(_) => "MSeq".into(),
+        Value::Dict(_) => "Dict".into(),
         Value::StrNode(n) | Value::Raw(n) => match n.tag() {
             Some(t) => t.to_string(),
             None => "list".into(),
@@ -311,8 +456,11 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
     }
     Ok(match v {
         Value::Str(_) | Value::StrNode(_) => "String",
-        Value::Closure(_) | Value::Seq(_) | Value::Prim(_) => "Closure",
+        Value::Closure(_) | Value::Seq(_) | Value::Prim(_) | Value::Cont(_) => "Closure",
         Value::Number(_) => "Number",
+        Value::Ref(_) => "Ref",
+        Value::MSeq(_) => "MSeq",
+        Value::Dict(_) => "Dict",
         Value::CFrame(_) => "CFrame",
         Value::LList(_) => "LList",
         Value::Raw(_) | Value::Null => return Err("__type_name__: unknown value".into()),

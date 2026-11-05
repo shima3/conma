@@ -25,7 +25,7 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 | Stage | Steps | Status |
 |---|---|---|
 | 1. Core: S-expressions, module loading, `step`, traces | 1–3 | done |
-| 2. Data primitives: CChain/CFrame, `__Cont_get__`, Number, String, Dict, MSeq, Ref, PDict | 4–12 and later data steps | |
+| 2. Data primitives: CChain/CFrame, `__Cont_get__`, Number, String, Dict, MSeq, Ref, PDict, `__Sexp_read__` | 4–8, 12, 18, 19, 28, 30, 34 | done (step22 needs the standard Streams of stage 4) |
 | 3. VProcs and the scheduler, LazyList | | |
 | 4. OS: Streams, files, pipes, processes, signals | | |
 | 5. ConSh | `consh/test` | |
@@ -40,6 +40,6 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 * `step.rs` — one step, as `step` in `vproc_step.py`.
 * `sched.rs` — the VProcs and the scheduler.
 * `trace.rs` — values and VProcs as S-expressions.
-* `prim/` — the primitives, in files by the sections of PRIMITIVES.md. Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
+* `prim/` — the primitives: `basic.rs` (`__is_null__`, `__type_name__`), `os.rs`, `number.rs`, `llist.rs`, `cchain.rs` (CChain, CFrame, `__Cont_get__`), `refs.rs` (Ref, PDict), `collections.rs` (MSeq, Dict), `string.rs` (String, `__Sexp_read__`). Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
 
-Memory: values are reference counted (`Rc`). Values without mutable parts cannot form cycles, so cycles can only come through Refs, MSeqs and Dicts; a collector for those cycles will be added with them. Long LLists and LVEnvs are dropped without recursion, and the VM runs in a thread with a large stack, because modules are deeply nested.
+Memory: values are reference counted (`Rc`). Values without mutable parts cannot form cycles, so cycles can only come through Refs, MSeqs, Dicts and the PDict. Such cycles are not collected yet: they stay until the VM exits. A collector for them is still to be written (before ConSh runs for long). Long LLists and LVEnvs are dropped without recursion, and the VM runs in a thread with a large stack, because modules are deeply nested.

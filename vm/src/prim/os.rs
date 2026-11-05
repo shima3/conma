@@ -17,14 +17,18 @@ pub fn exit_error(_m: &mut Machine, _vp: &mut VProc) -> PResult {
 /// Write text to fd 1 or 2 at once, so that the order of standard output and
 /// standard error is kept when both go to the same file.
 pub fn write_std(fd: i32, text: &str) {
-    if fd == 2 {
+    let r = if fd == 2 {
         let mut e = std::io::stderr().lock();
-        let _ = e.write_all(text.as_bytes());
-        let _ = e.flush();
+        e.write_all(text.as_bytes()).and_then(|_| e.flush())
     } else {
         let mut o = std::io::stdout().lock();
-        let _ = o.write_all(text.as_bytes());
-        let _ = o.flush();
+        o.write_all(text.as_bytes()).and_then(|_| o.flush())
+    };
+    // Like a process killed by SIGPIPE: stop when the reader has gone.
+    if let Err(e) = r {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(141);
+        }
     }
 }
 
@@ -42,4 +46,19 @@ pub fn print_error(_m: &mut Machine, vp: &mut VProc) -> PResult {
     write_std(2, &s);
     vp.prim_return(vec![]);
     Ok(())
+}
+
+/// __OS_exit__ onError Number ,(): exit with the code Number, an integer in 0..255.
+pub fn exit(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__OS_exit__";
+    let mut a = super::take_n(vp, name, 2)?;
+    let code = a.pop().unwrap();
+    let on_error = a.pop().unwrap();
+    let x = super::number::check_number(name, &code)?;
+    if !(x.is_finite() && x == x.trunc() && (0.0..=255.0).contains(&x)) {
+        let msg = format!("{}: not an exit code: {}", name, crate::value::number_to_str(x));
+        vp.prim_error(on_error, &msg);
+        return Ok(());
+    }
+    Err(VmError::Exit(x as i32))
 }

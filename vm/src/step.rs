@@ -118,6 +118,23 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
             vp.operator = Value::Prim(p);
             (p.f)(m, vp)
         }
+        Value::Cont(k) => {
+            // Set the CChain back and return to the caller's LCont with all the operands.
+            vp.lcont = None;
+            match crate::vproc::cchain_split(&k.cchain) {
+                None => {
+                    vp.cchain = k.cchain.clone();
+                    vp.operator = Value::Null;
+                    vp.olist = Vec::new();
+                }
+                Some((cf, rest)) => {
+                    vp.cchain = rest;
+                    vp.operator = cf.closure.clone();
+                    vp.sinfo = cf.sinfo.clone();
+                }
+            }
+            Ok(())
+        }
         Value::Closure(c) => apply_closure(vp, c),
         other => {
             let shown = sexp::to_string(&crate::trace::value_to_sexp(&other));

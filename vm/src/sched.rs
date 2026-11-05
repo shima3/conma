@@ -15,11 +15,23 @@ use std::rc::Rc;
 
 pub type VProcRef = Rc<RefCell<VProc>>;
 
+#[derive(Default)]
+pub struct Serials {
+    pub refs: usize,
+    pub mseqs: usize,
+    pub dicts: usize,
+    pub conts: usize,
+}
+
 pub struct Machine {
     pub vprocs: Vec<VProcRef>,
     pub ready: VecDeque<VProcRef>,
     pub steps: u64,
     pub trace: bool,
+    /// A Ref may have changed since the VProcs waiting for a change were checked.
+    pub ref_changed: bool,
+    /// Serial numbers of the values that traces show by number.
+    pub serials: Serials,
     next_serial: usize,
     true_closure: Value,
     false_closure: Value,
@@ -60,6 +72,8 @@ impl Machine {
             ready: VecDeque::new(),
             steps: 0,
             trace,
+            ref_changed: false,
+            serials: Serials::default(),
             next_serial: 0,
             true_closure: bool_closure("t"),
             false_closure: bool_closure("f"),

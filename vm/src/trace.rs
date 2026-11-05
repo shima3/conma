@@ -43,6 +43,10 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
             tagged("__SInfo__", sinfo_items(&cf.sinfo)),
         ]),
         Value::LList(_) => llist_to_sexp(v),
+        Value::Ref(r) => l(vec![a("__Ref__"), a(&quoted(&r.serial.to_string()))]),
+        Value::MSeq(r) => l(vec![a("__MSeq__"), a(&quoted(&r.serial.to_string()))]),
+        Value::Dict(r) => l(vec![a("__Dict__"), a(&quoted(&r.serial.to_string()))]),
+        Value::Cont(r) => l(vec![a("__Cont__"), a(&quoted(&r.serial.to_string()))]),
     }
 }
 
