@@ -228,6 +228,20 @@ impl Machine {
         self.ready.push_back(vp);
     }
 
+    /// True if the next pass of the scheduler would only run cell again:
+    /// no other VProc is ready, none waits, no SIGINT is trapped, no
+    /// collection is due and cell is not to be killed.
+    fn runs_alone(&self, cell: &VProcRef) -> bool {
+        self.ready.is_empty()
+            && self.joining.is_empty()
+            && self.lazy.is_empty()
+            && self.changes.is_empty()
+            && self.waiting.is_empty()
+            && self.trap.is_none()
+            && !cell.kill_pending.get()
+            && !crate::gc::due()
+    }
+
     /// True if vp is the VProc running the current step.
     pub fn is_current(&self, vp: &VProcRef) -> bool {
         self.current.as_ref().map_or(false, |c| Rc::ptr_eq(c, vp))
@@ -536,38 +550,53 @@ impl Machine {
             cell.state.set(State::Running);
             self.current = Some(cell.clone());
             let mut vp = cell.vp.borrow_mut();
-            if let Some(p) = &mut self.profile {
-                p.count(&vp);
-            }
-            let r = step(self, &mut vp);
-            self.current = None;
-            match r {
-                Ok(()) => {
-                    self.steps += 1;
-                    if self.trace {
-                        self.print_trace(&vp, self.steps);
+            let mut requeue = false;
+            // While no other VProc can run and nothing waits, a pass of the
+            // loop above would only take this VProc again: run its steps here.
+            loop {
+                if let Some(p) = &mut self.profile {
+                    p.count(&vp);
+                }
+                let r = step(self, &mut vp);
+                match r {
+                    Ok(()) => {
+                        self.steps += 1;
+                        if self.trace {
+                            self.print_trace(&vp, self.steps);
+                        }
+                    }
+                    Err(VmError::Error(e)) => {
+                        write_std(2, &format!("Error in VProc {} at step {}: {}\n", vp.serial, self.steps, e));
+                        self.steps += 1;
+                        cell.state.set(State::Finished);
+                        self.finished_any = true;
+                    }
+                    Err(VmError::Exit(code)) => {
+                        self.current = None;
+                        return Some(code);
                     }
                 }
-                Err(VmError::Error(e)) => {
-                    write_std(2, &format!("Error in VProc {} at step {}: {}\n", vp.serial, self.steps, e));
-                    self.steps += 1;
-                    cell.state.set(State::Finished);
-                    self.finished_any = true;
+                if cell.kill_pending.get() && cell.state.get() != State::Finished && !evaluating_lazy(&cell, &mut vp) {
+                    self.kill_now(&cell);
                 }
-                Err(VmError::Exit(code)) => return Some(code),
-            }
-            if cell.kill_pending.get() && cell.state.get() != State::Finished && !evaluating_lazy(&cell, &mut vp) {
-                self.kill_now(&cell);
-            }
-            if cell.state.get() == State::Running {
+                if cell.state.get() != State::Running {
+                    break;
+                }
                 if vp.is_terminal() {
                     cell.state.set(State::Finished);
                     self.finished_any = true;
-                } else {
-                    cell.state.set(State::Ready);
-                    drop(vp);
-                    self.ready.push_back(cell);
+                    break;
                 }
+                if !self.runs_alone(&cell) {
+                    requeue = true;
+                    break;
+                }
+            }
+            self.current = None;
+            if requeue {
+                cell.state.set(State::Ready);
+                drop(vp);
+                self.ready.push_back(cell);
             }
         }
     }
