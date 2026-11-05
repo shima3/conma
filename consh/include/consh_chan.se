@@ -14,6 +14,8 @@
 ;; 1つの鎖に書くのは1つの VProc だけで、節を書くのは書き手、consumed を変えるのは読み手だけなので、競合しない。
 ;;
 ;; 書き手は Dict で、"chan"、"chain"、"tail"（次に書く節）、"produced"（書いた数）を持ち、その VProc だけが使う。
+;; 要素ごとに使う値（鎖の "consumed"、チャネルの "cancelled"、"wake"、"cap"、$( ) なら "state"）も、
+;; 書き手を作るときに書き手に写しておく（要素ごとに Dict をたどらない）。
 ;;
 ;; 読み手は、すべての鎖が閉じたら LazyList を終える。鎖を加えるのは、すでに書き手を持つ VProc か、
 ;; チャネルを作った VProc（読み始める前）なので、まだ閉じていない鎖があるうちに加わる。
@@ -46,6 +48,15 @@
   __Dict_put__ writer "chain" chain ,()
   __Dict_put__ writer "tail" head ,()
   __Dict_put__ writer "produced" zero ,()
+  __Dict_put__ writer "consumed" consumed ,()
+  Sh_get chan "cancelled" ,(cancelled)
+  __Dict_put__ writer "cancelled" cancelled ,()
+  Sh_get chan "wake" ,(wake)
+  __Dict_put__ writer "wake" wake ,()
+  Sh_get chan "cap" ,(cap)
+  __Dict_put__ writer "cap" cap ,()
+  __Dict_lookup_or__ chan "state" (,(key) __NULL__ __NULL__) ,(state)
+  __Dict_put__ writer "state" state ,()
   __NULL__ writer)
 
 ;; 書き手のチャネル
@@ -56,17 +67,18 @@
 ;; 読み手が cancel していれば、書かずに onCancelled を呼ぶ（SIGPIPE に当たる）
 (define Chan_put ,(writer item onCancelled)
   Chan_wait_room writer onCancelled ,()
-  Sh_get writer "tail" ,(tail)
+  __Dict_lookup_or__ writer "tail" __print_exit_error__ ,(tail)
   __Ref_new__ __NULL__ ,(next)
   __LList_cons__ item next ,(cell)
   __Ref_set__ tail cell ,()
   __Dict_put__ writer "tail" next ,()
-  Sh_get writer "produced" ,(produced)
-  num "1" ,(one)
+  __Dict_lookup_or__ writer "produced" __print_exit_error__ ,(produced)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_add__ produced one ,(produced)
   __Dict_put__ writer "produced" produced ,()
-  Sh_get writer "chan" ,(chan)
-  Chan_wake chan)
+  __Dict_lookup_or__ writer "wake" __print_exit_error__ ,(wake)
+  __Dict_new__ ,(token)
+  __Ref_set__ wake token)
 
 ;; consumed を cancelled より先に読む。cancelled を先に読むと、その後で読み手が cancel して consumed を
 ;; 書き換えたとき、書き換えた後の consumed が変わるのを待ってしまい、二度と起きない。
@@ -74,20 +86,18 @@
 ;; チャネルに "state"（$( ) の状態の Ref）があれば、待つ間は "blocked" にする（Subst_settle）
 (define Chan_wait_room ,(writer onCancelled)
   __Cont_get__ ,(return)
-  Sh_get writer "chan" ,(chan)
-  Sh_get writer "chain" ,(chain)
-  Sh_get chain "consumed" ,(consumedRef)
+  __Dict_lookup_or__ writer "consumed" __print_exit_error__ ,(consumedRef)
   __Ref_get__ consumedRef ,(consumed)
-  Sh_get chan "cancelled" ,(cancelledRef)
+  __Dict_lookup_or__ writer "cancelled" __print_exit_error__ ,(cancelledRef)
   __Ref_get__ cancelledRef ,(cancelled)
   __if__ cancelled onCancelled ,()
-  Sh_get writer "produced" ,(produced)
-  Sh_get chan "cap" ,(cap)
+  __Dict_lookup_or__ writer "produced" __print_exit_error__ ,(produced)
+  __Dict_lookup_or__ writer "cap" __print_exit_error__ ,(cap)
   __Number_subtract__ produced consumed ,(ahead)
   __Number_subtract__ ahead cap ,(over)
   __Number_is_negative__ over ,(condition)
   __if__ condition return ,()
-  __Dict_lookup_or__ chan "state" (,(key) __NULL__ __NULL__) ,(state)
+  __Dict_lookup_or__ writer "state" __print_exit_error__ ,(state)
   __is_null__ state ,(condition)
   __unless__ condition (,() __Ref_set__ state "blocked") ,()
   __Ref_wait_change__ consumedRef consumed ,()
@@ -134,7 +144,7 @@
 ;; ── 読み手 ──
 ;; 読み手の状態は Dict で、"chan"、"seen"（読み手が知っている鎖の数）、
 ;; "cursors"（まだ閉じていない鎖の読み位置の LList）、"untilRegister"（次に新しい鎖を探すまでに取り出す要素の数）を持つ。
-;; 読み位置は Dict で、"chain" と "node"（次に読む節）。
+;; 状態には、チャネルの "wake" も写しておく。読み位置は Dict で、"chain"、"node"（次に読む節）、鎖の "consumed"。
 ;; LazyList の節は順に1つずつ評価されるので、状態を同時に2つの VProc が変えることはない。
 ;; 新しい鎖を探す（Chan_register）のは、知っている鎖に要素がないときと、Chan_register_every 個ごとだけにする。
 ;; 鎖の MSeq をたどるのは手間がかかり、要素ごとに探すと、読み手の時間の大半になっていた
@@ -143,6 +153,8 @@
 (define Chan_list ,(chan)
   __Dict_new__ ,(state)
   __Dict_put__ state "chan" chan ,()
+  Sh_get chan "wake" ,(wake)
+  __Dict_put__ state "wake" wake ,()
   num "0" ,(zero)
   __Dict_put__ state "seen" zero ,()
   __Dict_put__ state "cursors" __NULL__ ,()
@@ -160,10 +172,9 @@
 ;; すべての鎖が閉じたと決めるのは、新しい鎖を探した後だけである
 (define Chan_next ,(state)
   __Cont_get__ ,(return)
-  Sh_get state "chan" ,(chan)
-  Sh_get chan "wake" ,(wake)
+  __Dict_lookup_or__ state "wake" __print_exit_error__ ,(wake)
   __Ref_get__ wake ,(token)
-  Sh_get state "untilRegister" ,(until)
+  __Dict_lookup_or__ state "untilRegister" __print_exit_error__ ,(until)
   __Number_is_zero__ until ,(condition)
   __if__ condition
     (,()
@@ -198,15 +209,15 @@
 
 ;; 知っている鎖から1つ取り出し、読み位置を更新する。要素と、取り出せたかを返す
 (define Chan_take_from ,(state)
-  Sh_get state "cursors" ,(cursors)
+  __Dict_lookup_or__ state "cursors" __print_exit_error__ ,(cursors)
   Chan_take cursors __NULL__ ,(item cursors found)
   __Dict_put__ state "cursors" cursors ,()
   __NULL__ item found)
 
 ;; 取り出した要素 item を先頭にし、続きを遅延にした LazyList
 (define Chan_found ,(state item)
-  Sh_get state "untilRegister" ,(until)
-  num "1" ,(one)
+  __Dict_lookup_or__ state "untilRegister" __print_exit_error__ ,(until)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ until one ,(until)
   __Dict_put__ state "untilRegister" until ,()
   Chan_list_from state ,(rest)
@@ -249,6 +260,8 @@
   __Dict_put__ cursor "chain" chain ,()
   Sh_get chain "head" ,(head)
   __Dict_put__ cursor "node" head ,()
+  Sh_get chain "consumed" ,(consumedRef)
+  __Dict_put__ cursor "consumed" consumedRef ,()
   Chan_cursors rest ,(more)
   __LList_cons__ cursor more)
 
@@ -263,7 +276,7 @@
       List_reverse passed ,(cursors)
       return __NULL__ cursors __FALSE__) ,()
   __LList_uncons__ __print_exit_error__ cursors ,(cursor rest)
-  Sh_get cursor "node" ,(node)
+  __Dict_lookup_or__ cursor "node" __print_exit_error__ ,(node)
   __Ref_get__ node ,(value)
   __is_null__ value ,(condition)
   __if__ condition (,()
@@ -277,10 +290,9 @@
     return item cursors found) ,()
   __LList_uncons__ __print_exit_error__ value ,(item next)
   __Dict_put__ cursor "node" next ,()
-  Sh_get cursor "chain" ,(chain)
-  Sh_get chain "consumed" ,(consumedRef)
+  __Dict_lookup_or__ cursor "consumed" __print_exit_error__ ,(consumedRef)
   __Ref_get__ consumedRef ,(consumed)
-  num "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_add__ consumed one ,(consumed)
   __Ref_set__ consumedRef consumed ,()
   __is_null__ passed ,(noPassed)
