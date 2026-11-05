@@ -9,7 +9,7 @@ use crate::vproc::VProc;
 mod basic;
 mod cchain;
 mod collections;
-mod control;
+pub mod control;
 pub mod lazy;
 mod llist;
 mod number;

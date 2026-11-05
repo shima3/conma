@@ -19,12 +19,15 @@ pub struct Profile {
     calls: HashMap<usize, (SInfo, u64)>,
     /// Calls by caller: the Body running when a Body is loaded, and that Body.
     edges: HashMap<(usize, usize), (Option<SInfo>, SInfo, u64)>,
+    /// Conditions that are not Booleans (written as functions), passed to
+    /// __if_then_else__, __if__ or __unless__, by the Body that passes them.
+    thunks: HashMap<usize, (SInfo, u64)>,
 }
 
 impl Profile {
     pub fn from_env() -> Option<Profile> {
         let path = std::env::var("CONMA_PROFILE").ok().filter(|p| !p.is_empty())?;
-        Some(Profile { path, by_sinfo: HashMap::new(), no_sinfo: 0, prims: HashMap::new(), calls: HashMap::new(), edges: HashMap::new() })
+        Some(Profile { path, by_sinfo: HashMap::new(), no_sinfo: 0, prims: HashMap::new(), calls: HashMap::new(), edges: HashMap::new(), thunks: HashMap::new() })
     }
 
     pub fn count(&mut self, vp: &VProc) {
@@ -33,7 +36,16 @@ impl Profile {
             None => self.no_sinfo += 1,
         }
         match &vp.operator {
-            Value::Prim(p) => *self.prims.entry(p.name).or_insert(0) += 1,
+            Value::Prim(p) => {
+                *self.prims.entry(p.name).or_insert(0) += 1;
+                if matches!(p.name, "__if_then_else__" | "__if__" | "__unless__") {
+                    if let (Some(cond), Some(s)) = (vp.olist.first(), &vp.sinfo) {
+                        if crate::prim::control::boolean_choice(cond).is_none() {
+                            self.thunks.entry(Rc::as_ptr(s) as usize).or_insert_with(|| (s.clone(), 0)).1 += 1;
+                        }
+                    }
+                }
+            }
             Value::Closure(c) if c.variadic || c.params().is_empty() => {
                 if let Some(s) = c.body.as_ref().and_then(|b| b.sinfo.as_ref()) {
                     self.calls.entry(Rc::as_ptr(s) as usize).or_insert_with(|| (s.clone(), 0)).1 += 1;
@@ -49,13 +61,14 @@ impl Profile {
     }
 
     /// Write `count<TAB>body<TAB>file<TAB>line<TAB>column` for each Body, the
-    /// same with `call` for the calls of each Body,
+    /// same with `call` for the calls of each Body and with `thunk` for the
+    /// conditions that are not Booleans, by the Body that passes them,
     /// `count<TAB>edge<TAB>caller file, line, column<TAB>callee file, line, column`
     /// for the calls by caller, and
     /// `count<TAB>prim<TAB>name` for each primitive.
     pub fn write(&self) {
         let mut out = String::new();
-        for (kind, table) in [("body", &self.by_sinfo), ("call", &self.calls)] {
+        for (kind, table) in [("body", &self.by_sinfo), ("call", &self.calls), ("thunk", &self.thunks)] {
             let mut merged: HashMap<Vec<String>, u64> = HashMap::new();
             for (s, n) in table.values() {
                 let key: Vec<String> = s.iter().filter_map(|x| x.as_atom()).map(|a| crate::value::unquote(a).to_string()).collect();

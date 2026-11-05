@@ -59,6 +59,8 @@ def main():
     ap.add_argument("--top", type=int, default=30)
     ap.add_argument("--callers", metavar="NAME",
                     help="show who calls the function NAME, by calling function")
+    ap.add_argument("--thunks", action="store_true",
+                    help="show the lines that pass a condition written as a function (not a Boolean) to __if__, __unless__ or __if_then_else__")
     ap.add_argument("profile")
     args = ap.parse_args()
     funcs = defaultdict(int)
@@ -66,6 +68,7 @@ def main():
     prims = defaultdict(int)
     calls = defaultdict(int)
     callers = defaultdict(int)
+    thunks = defaultdict(int)
     total = 0
     records = []
     with open(args.profile, encoding="utf-8") as f:
@@ -99,6 +102,9 @@ def main():
                     caller = f"{function_of(parts[2], int(parts[3]))} ({os.path.basename(parts[2])}:{parts[3]})"
                 callers[caller] += n
             continue
+        if parts[1] == "thunk":
+            thunks[f"{os.path.basename(parts[2])}:{parts[3]} {function_of(parts[2], int(parts[3]))}"] += n
+            continue
         if parts[1] == "call":
             if is_start(parts[2], int(parts[3]), int(parts[4])):
                 short = os.path.basename(parts[2])
@@ -118,6 +124,12 @@ def main():
         for k, n in sorted(table.items(), key=lambda kv: -kv[1])[:args.top]:
             print(f"{n:>12,} {100 * n / denom:5.1f}%  {k}")
         print()
+
+    if args.thunks:
+        print("== conditions written as functions (file:line function)")
+        for k, n in sorted(thunks.items(), key=lambda kv: -kv[1])[:args.top]:
+            print(f"{n:>12,}  {k}")
+        return
 
     if args.callers:
         print(f"== callers of {args.callers} (calling function and line)")

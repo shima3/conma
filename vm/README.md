@@ -57,7 +57,7 @@ Smaller ones: `load_body` reuses the Vec of the OList, and the collector checks 
 
 Every test passes with `CONMA_VM=rust`, and the traces of steps 1–8, 10, 12, 17–20, 28, 30 and 34 (129 runs) are the same as those of the Python VM. The time is now spread over the interpreter itself (`step`, the scheduler, cloning and dropping values); going further needs changes to how environments and Closures are made.
 
-To see where a ConMa program spends its steps, run it with `CONMA_PROFILE=<file>`: each step is counted under the Body that the VProc is running, and the calls of each Body and the steps that apply each primitive are counted too. `python3 test/vm_profile.py <file>` sums them by file, by top-level `define` (steps, calls and steps per call) and by primitive. The counts do not depend on the speed of the VM, so they also tell how a change to a ConMa program (such as ConSh) would speed up the Python VM.
+To see where a ConMa program spends its steps, run it with `CONMA_PROFILE=<file>`: each step is counted under the Body that the VProc is running, and the calls of each Body and the steps that apply each primitive are counted too. `python3 test/vm_profile.py <file>` sums them by file, by top-level `define` (steps, calls and steps per call) and by primitive; `--callers NAME` shows the lines that call a function, and `--thunks` the lines that pass `__if__`, `__unless__` or `__if_then_else__` a condition written as a function instead of a Boolean. The counts do not depend on the speed of the VM, so they also tell how a change to a ConMa program (such as ConSh) would speed up the Python VM.
 
 ## Design
 
