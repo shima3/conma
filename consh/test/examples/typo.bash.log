@@ -1,0 +1,4 @@
+cache: /tmp/myapp-cache
+would run: rm -rf /*
+not reached
+exit: 0
