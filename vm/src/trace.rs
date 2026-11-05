@@ -33,7 +33,7 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::Null => null_sexp(),
         Value::Str(s) => Sexp::Atom(s.clone()),
         Value::StrNode(n) | Value::Raw(n) => n.clone(),
-        Value::Number(x) => l(vec![a("__Number__"), a(&number_to_str(*x))]),
+        Value::Number(x, _) => l(vec![a("__Number__"), a(&number_to_str(*x))]),
         Value::Closure(c) => closure_to_sexp(c),
         Value::Seq(s) => seq_to_sexp(s),
         Value::Prim(p) => l(vec![a("PrimFunc"), a(&quoted(p.pyname))]),
@@ -48,6 +48,8 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::Dict(r) => l(vec![a("__Dict__"), a(&quoted(&r.serial.to_string()))]),
         Value::Cont(r) => l(vec![a("__Cont__"), a(&quoted(&r.serial.to_string()))]),
         Value::VProc(r) => l(vec![a("__VProcRef__"), a(&quoted(&r.serial.to_string()))]),
+        Value::Stream(s) => l(vec![a("__OSStream__"), a(&format!("\"{}:{}\"", s.mode, s.serial))]),
+        Value::OSProc(p) => l(vec![a("__OSProc__"), a(&quoted(&p.serial.to_string()))]),
     }
 }
 

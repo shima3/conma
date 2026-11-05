@@ -12,6 +12,8 @@ mod collections;
 pub mod lazy;
 mod llist;
 mod number;
+mod process;
+pub mod stream;
 pub mod os;
 mod refs;
 mod string;
@@ -105,6 +107,31 @@ prims! {
     "__LazyList_hold__"    => "prim_LazyList_hold", lazy::hold;
     "__LazyList_publish__" => "prim_LazyList_publish", lazy::publish;
     "__Ref_wait_change__"  => "prim_Ref_wait_change", lazy::ref_wait_change;
+    "__OS_get_stdin__"     => "prim_OS_get_stdin", stream::get_stdin;
+    "__OS_get_stdout__"    => "prim_OS_get_stdout", stream::get_stdout;
+    "__OS_get_stderr__"    => "prim_OS_get_stderr", stream::get_stderr;
+    "__OS_read__"          => "prim_OS_read", stream::read;
+    "__OS_write__"         => "prim_OS_write", stream::write;
+    "__OS_close__"         => "prim_OS_close", stream::close;
+    "__OS_dup__"           => "prim_OS_dup", stream::dup;
+    "__OS_pipe__"          => "prim_OS_pipe", stream::pipe;
+    "__OS_wait_readable__" => "prim_OS_wait_readable", stream::wait_readable;
+    "__OS_wait_writable__" => "prim_OS_wait_writable", stream::wait_writable;
+    "__OS_get_String__"    => "prim_OS_get_String", stream::get_string;
+    "__OS_open__"          => "prim_OS_open", stream::open;
+    "__OS_chdir__"         => "prim_OS_chdir", stream::chdir;
+    "__OS_getcwd__"        => "prim_OS_getcwd", stream::getcwd;
+    "__OS_realpath__"      => "prim_OS_realpath", stream::realpath;
+    "__OS_listdir__"       => "prim_OS_listdir", stream::listdir;
+    "__OS_get_envDict__"   => "prim_OS_get_envDict", stream::get_env_dict;
+    "__OS_getpid__"        => "prim_OS_getpid", stream::getpid;
+    "__OS_sysconf__"       => "prim_OS_sysconf", stream::sysconf;
+    "__OS_spawn__"         => "prim_OS_spawn", process::spawn;
+    "__OS_spawn_detached__" => "prim_OS_spawn_detached", process::spawn_detached;
+    "__OS_poll__"          => "prim_OS_poll", process::poll;
+    "__OS_wait__"          => "prim_OS_wait", process::wait;
+    "__OS_kill__"          => "prim_OS_kill", process::kill;
+    "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

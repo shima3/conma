@@ -8,7 +8,7 @@ use crate::vproc::VProc;
 
 pub fn check_number(name: &str, v: &Value) -> Result<f64, VmError> {
     match v {
-        Value::Number(x) => Ok(*x),
+        Value::Number(x, _) => Ok(*x),
         _ => err(format!("{}: expected Number, got {}", name, value_type_name(v))),
     }
 }
@@ -80,7 +80,7 @@ pub fn from_string(_m: &mut Machine, vp: &mut VProc) -> PResult {
         vp.prim_error(on_error, &format!("__Number_fromString__: out of range: \"{}\"", s));
         return Ok(());
     }
-    vp.prim_return(vec![Value::Number(n)]);
+    vp.prim_return(vec![num(n)]);
     Ok(())
 }
 
@@ -113,7 +113,7 @@ fn binop(vp: &mut VProc, name: &str, f: fn(f64, f64) -> f64) -> PResult {
     let a = take_args(vp, name, 2)?;
     let x = check_number(name, &a[0])?;
     let y = check_number(name, &a[1])?;
-    vp.prim_return(vec![Value::Number(f(x, y))]);
+    vp.prim_return(vec![num(f(x, y))]);
     Ok(())
 }
 
@@ -138,13 +138,13 @@ pub fn divide(_m: &mut Machine, vp: &mut VProc) -> PResult {
         vp.prim_error(on_error, "__Number_divide__: division by zero");
         return Ok(());
     }
-    vp.prim_return(vec![Value::Number(x / y)]);
+    vp.prim_return(vec![num(x / y)]);
     Ok(())
 }
 
 pub fn floor(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let a = take_args(vp, "__Number_floor__", 1)?;
     let x = check_number("__Number_floor__", &a[0])?;
-    vp.prim_return(vec![Value::Number(if x.is_finite() { x.floor() } else { x })]);
+    vp.prim_return(vec![num(if x.is_finite() { x.floor() } else { x })]);
     Ok(())
 }

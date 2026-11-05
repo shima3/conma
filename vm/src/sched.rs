@@ -21,6 +21,8 @@ pub struct Serials {
     pub mseqs: usize,
     pub dicts: usize,
     pub conts: usize,
+    pub streams: usize,
+    pub osprocs: usize,
 }
 
 pub struct Machine {
@@ -37,6 +39,16 @@ pub struct Machine {
     lazy: Vec<(VProcRef, Rc<RefObj>)>,
     /// (VProc, Ref, value) waiting for the value of a Ref to change.
     changes: Vec<(VProcRef, Rc<RefObj>, Value)>,
+    /// (VProc, OSProc or Stream) waiting for the OS.
+    waiting: Vec<(VProcRef, OsTarget)>,
+    /// Steps since the OS was last checked for the waiting VProcs.
+    unpolled: u32,
+    /// Read end of the pipe that SIGCHLD and a trapped SIGINT write to.
+    wakeup: Option<i32>,
+    /// The Ref of __OS_trap_interrupt__, and the SIGINTs counted so far.
+    trap: Option<(Rc<RefObj>, u64)>,
+    /// Streams of fds 0, 1, 2, made on first use.
+    pub std_streams: [Option<Rc<StreamObj>>; 3],
     /// A VProc may have finished since joining was checked.
     pub finished_any: bool,
     /// A Ref may have changed since the VProcs waiting for a change were checked.
@@ -46,6 +58,17 @@ pub struct Machine {
     next_serial: usize,
     true_closure: Value,
     false_closure: Value,
+}
+
+/// Steps between checks of the OS while some VProc is ready.
+const POLL_INTERVAL: u32 = 64;
+
+/// What a VProc waits for in the OS.
+pub enum OsTarget {
+    /// The process to exit; its exit code is given to the VProc.
+    Proc(Rc<OSProcObj>),
+    /// The Stream to be readable (input) or writable (output), or closed.
+    Stream(Rc<StreamObj>),
 }
 
 /// The Boolean Closures `,(t f) t` and `,(t f) f`, with the AST that
@@ -87,6 +110,11 @@ impl Machine {
             joining: Vec::new(),
             lazy: Vec::new(),
             changes: Vec::new(),
+            waiting: Vec::new(),
+            unpolled: 0,
+            wakeup: None,
+            trap: None,
+            std_streams: [None, None, None],
             finished_any: false,
             ref_changed: false,
             serials: Serials::default(),
@@ -146,6 +174,95 @@ impl Machine {
         vp.state.set(State::Waiting);
     }
 
+    /// Make SIGCHLD wake a wait for fds (once).
+    pub fn install_sigchld(&mut self) {
+        if self.wakeup.is_none() {
+            self.wakeup = crate::sys::install_wakeup().ok();
+        }
+    }
+
+    /// From now on SIGINT sets the value of r to the number of SIGINTs so far.
+    pub fn trap_interrupt(&mut self, r: Rc<RefObj>) {
+        self.install_sigchld();
+        crate::sys::trap_sigint();
+        let seen = crate::sys::interrupts();
+        self.trap = Some((r, seen));
+    }
+
+    /// Set the Ref of __OS_trap_interrupt__ if a SIGINT came.
+    fn check_interrupts(&mut self) {
+        if let Some((r, seen)) = &mut self.trap {
+            let n = crate::sys::interrupts();
+            if n != *seen {
+                *seen = n;
+                *r.value.borrow_mut() = num(n as f64);
+                self.ref_changed = true;
+            }
+        }
+    }
+
+    /// Make vp wait for the OS: until the process exits, or the Stream is
+    /// readable (input) or writable (output).
+    pub fn wait_os(&mut self, vp: &VProcRef, target: OsTarget) {
+        if matches!(target, OsTarget::Proc(_)) {
+            self.install_sigchld();
+        }
+        self.make_waiting(vp);
+        self.waiting.push((vp.clone(), target));
+    }
+
+    /// Wake the VProcs whose process has exited or whose Stream is ready. If
+    /// block, sleep until one of them can wake.
+    fn check_waiting(&mut self, block: bool) {
+        let mut reads = Vec::new();
+        let mut writes = Vec::new();
+        let mut timeout = if block { None } else { Some(0) };
+        for (_, t) in &self.waiting {
+            if let OsTarget::Stream(s) = t {
+                if s.closed.get() {
+                    timeout = Some(0); // a closed Stream wakes its VProc at once
+                } else if s.mode == 'r' {
+                    reads.push(s.fd);
+                } else {
+                    writes.push(s.fd);
+                }
+            }
+        }
+        if let Some(w) = self.wakeup {
+            reads.push(w);
+        }
+        let ready = if !reads.is_empty() || !writes.is_empty() || timeout == Some(0) {
+            crate::sys::wait_fds(&reads, &writes, timeout).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        if let Some(w) = self.wakeup {
+            if ready.contains(&w) {
+                crate::sys::drain(w);
+            }
+        }
+        self.check_interrupts();
+        let list = std::mem::take(&mut self.waiting);
+        for (vp, t) in list {
+            match &t {
+                OsTarget::Proc(p) => match p.poll() {
+                    Ok(Some(code)) => vp.vp.borrow_mut().olist.insert(0, num(code as f64)),
+                    _ => {
+                        self.waiting.push((vp, t));
+                        continue;
+                    }
+                },
+                OsTarget::Stream(s) => {
+                    if !(s.closed.get() || ready.contains(&s.fd)) {
+                        self.waiting.push((vp, t));
+                        continue;
+                    }
+                }
+            }
+            self.wake(&vp);
+        }
+    }
+
     /// Make vp wait until the VProc target has finished.
     pub fn join(&mut self, vp: &VProcRef, target: &VProcRef) {
         self.make_waiting(vp);
@@ -202,7 +319,7 @@ impl Machine {
     fn check_changes(&mut self) {
         let list = std::mem::take(&mut self.changes);
         for (vp, r, value) in list {
-            if same_for_wait(&r.value.borrow(), &value) {
+            if same(&r.value.borrow(), &value) {
                 self.changes.push((vp, r, value));
             } else {
                 self.wake(&vp);
@@ -256,6 +373,7 @@ impl Machine {
         if vp.state.get() == State::Ready {
             self.remove_ready(vp);
         }
+        self.waiting.retain(|(v, _)| !Rc::ptr_eq(v, vp));
         self.joining.retain(|(v, _)| !Rc::ptr_eq(v, vp));
         self.lazy.retain(|(v, _)| !Rc::ptr_eq(v, vp));
         self.changes.retain(|(v, _, _)| !Rc::ptr_eq(v, vp));
@@ -291,9 +409,31 @@ impl Machine {
             if !self.lazy.is_empty() {
                 self.check_lazy();
             }
+            self.check_interrupts();
             if !self.changes.is_empty() && self.ref_changed {
                 self.ref_changed = false;
                 self.check_changes();
+            }
+            if !self.waiting.is_empty() {
+                if self.ready.is_empty() {
+                    // Without a ready VProc, sleep in the OS instead of busy waiting.
+                    self.unpolled = 0;
+                    self.check_waiting(true);
+                    if self.ready.is_empty() {
+                        continue;
+                    }
+                } else if self.unpolled >= POLL_INTERVAL {
+                    self.unpolled = 0;
+                    self.check_waiting(false);
+                } else {
+                    self.unpolled += 1;
+                }
+            }
+            if self.ready.is_empty() && self.trap.is_some() && !self.changes.is_empty() {
+                // A VProc may wait for the Ref of __OS_trap_interrupt__:
+                // sleep until a signal arrives instead of reporting a deadlock.
+                self.check_waiting(true);
+                continue;
             }
             if self.ready.is_empty() {
                 let waiting: Vec<&VProcRef> = self
@@ -353,11 +493,3 @@ impl Machine {
     }
 }
 
-/// `ref.value is value` of Python. Numbers have no identity here, so equal
-/// Numbers count as the same.
-fn same_for_wait(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.to_bits() == y.to_bits(),
-        _ => same(a, b),
-    }
-}

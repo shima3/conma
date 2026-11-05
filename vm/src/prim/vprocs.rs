@@ -73,7 +73,7 @@ pub fn wait(m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn id(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let target = vproc_arg(vp, "__VProc_id__")?;
-    vp.prim_return(vec![Value::Number(target.serial as f64)]);
+    vp.prim_return(vec![num(target.serial as f64)]);
     Ok(())
 }
 
@@ -146,17 +146,6 @@ fn root_dir() -> PathBuf {
     exe.ancestors().nth(4).map(Path::to_path_buf).unwrap_or_default()
 }
 
-fn os_error(e: &std::io::Error) -> String {
-    match e.raw_os_error() {
-        Some(n) => {
-            let s = e.to_string();
-            let text = s.split(" (os error").next().unwrap_or(&s);
-            format!("[Errno {}] {}", n, text)
-        }
-        None => e.to_string(),
-    }
-}
-
 /// Run bin/includer and bin/resolver on source_file (relative to cwd) and
 /// load the result, as load_program in test/vproc_step.py.
 pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), String> {
@@ -171,7 +160,7 @@ pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), S
         .current_dir(cwd)
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| format!("cannot run includer: {}", os_error(&e)))?;
+        .map_err(|e| format!("cannot run includer: {}", crate::sys::errno_str(&e)))?;
     if !inc.status.success() {
         return Err(format!("includer failed: {}", String::from_utf8_lossy(&inc.stderr).trim()));
     }
@@ -183,12 +172,12 @@ pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), S
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("cannot run resolver: {}", os_error(&e)))?;
+        .map_err(|e| format!("cannot run resolver: {}", crate::sys::errno_str(&e)))?;
     let mut stdin = child.stdin.take().unwrap();
     let writer = std::thread::spawn(move || {
         let _ = stdin.write_all(ast.as_bytes());
     });
-    let res = child.wait_with_output().map_err(|e| format!("cannot run resolver: {}", os_error(&e)))?;
+    let res = child.wait_with_output().map_err(|e| format!("cannot run resolver: {}", crate::sys::errno_str(&e)))?;
     let _ = writer.join();
     if !res.status.success() {
         return Err(format!("resolver failed: {}", String::from_utf8_lossy(&res.stderr).trim()));

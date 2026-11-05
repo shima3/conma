@@ -170,10 +170,7 @@ pub fn ref_wait_change(m: &mut Machine, vp: &mut VProc) -> PResult {
         other => return err(format!("{}: expected Ref, got {}", name, value_type_name(&other))),
     };
     vp.prim_return(vec![]);
-    let unchanged = match (&*r.value.borrow(), &value) {
-        (Value::Number(x), Value::Number(y)) => x.to_bits() == y.to_bits(),
-        (x, y) => same(x, y),
-    };
+    let unchanged = same(&r.value.borrow(), &value);
     if unchanged {
         let cur = m.current.clone().expect("no current VProc");
         m.wait_change(&cur, &r, value);

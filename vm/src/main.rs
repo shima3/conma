@@ -13,6 +13,7 @@ mod prim;
 mod sched;
 mod sexp;
 mod step;
+mod sys;
 mod trace;
 mod value;
 mod vproc;

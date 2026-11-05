@@ -21,7 +21,9 @@ pub enum Value {
     StrNode(Sexp),
     /// Any other AST node that ended up as a value.
     Raw(Sexp),
-    Number(f64),
+    /// A Number and its identity: every new Number is another object, as in
+    /// Python, because __Ref_wait_change__ compares values by identity.
+    Number(f64, u64),
     Closure(Rc<Closure>),
     Seq(Rc<SeqClosure>),
     Prim(&'static PrimDef),
@@ -34,6 +36,112 @@ pub enum Value {
     Cont(Rc<ContObj>),
     /// A VProc, as __VProc_current__ and __VProc_spawn__ return it.
     VProc(Rc<crate::vproc::VProcCell>),
+    /// An OS file descriptor.
+    Stream(Rc<StreamObj>),
+    /// An OS process started by __OS_spawn__.
+    OSProc(Rc<OSProcObj>),
+}
+
+/// A raw OS file descriptor as a ConMa value.
+pub struct StreamObj {
+    pub serial: usize,
+    pub fd: i32,
+    /// 'r' or 'w'
+    pub mode: char,
+    pub closed: std::cell::Cell<bool>,
+    /// One of the interpreter's own fds 0, 1, 2, which stay open.
+    pub std: bool,
+    /// Bytes of a UTF-8 character split between reads.
+    pub pending: RefCell<Vec<u8>>,
+}
+
+impl StreamObj {
+    pub fn new(serial: usize, fd: i32, mode: char, std: bool) -> StreamObj {
+        StreamObj { serial, fd, mode, closed: std::cell::Cell::new(false), std, pending: RefCell::new(Vec::new()) }
+    }
+    pub fn kind(&self) -> &'static str {
+        if self.mode == 'r' {
+            "input Stream"
+        } else {
+            "output Stream"
+        }
+    }
+    /// Close the fd (fds 0, 1, 2 stay open). Marked closed first: the fd
+    /// number may be reused by a later pipe.
+    pub fn close(&self) -> std::io::Result<()> {
+        if !self.closed.get() {
+            self.closed.set(true);
+            if !self.std {
+                return crate::sys::close_fd(self.fd);
+            }
+        }
+        Ok(())
+    }
+    /// Decode bytes as UTF-8 across reads, replacing invalid bytes with U+FFFD.
+    pub fn decode(&self, data: &[u8], last: bool) -> String {
+        let mut buf = self.pending.borrow_mut();
+        buf.extend_from_slice(data);
+        let mut out = String::new();
+        let mut i = 0;
+        loop {
+            match std::str::from_utf8(&buf[i..]) {
+                Ok(s) => {
+                    out.push_str(s);
+                    i = buf.len();
+                    break;
+                }
+                Err(e) => {
+                    let ok = e.valid_up_to();
+                    out.push_str(std::str::from_utf8(&buf[i..i + ok]).unwrap());
+                    i += ok;
+                    match e.error_len() {
+                        Some(n) => {
+                            out.push('\u{FFFD}');
+                            i += n;
+                        }
+                        None => {
+                            if last {
+                                out.push('\u{FFFD}');
+                                i = buf.len();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        buf.drain(..i);
+        out
+    }
+}
+
+pub struct OSProcObj {
+    pub serial: usize,
+    pub child: RefCell<std::process::Child>,
+    /// The exit code, once the process has been waited for.
+    pub code: std::cell::Cell<Option<i32>>,
+}
+
+impl OSProcObj {
+    /// The exit code (a negative signal number if a signal killed it), or
+    /// None if the process is still running (Popen.poll).
+    pub fn poll(&self) -> std::io::Result<Option<i32>> {
+        if let Some(c) = self.code.get() {
+            return Ok(Some(c));
+        }
+        use std::os::unix::process::ExitStatusExt;
+        let st = self.child.borrow_mut().try_wait()?;
+        let code = st.map(|s| s.code().unwrap_or_else(|| -s.signal().unwrap_or(0)));
+        self.code.set(code);
+        Ok(code)
+    }
+}
+
+/// A new Number object.
+pub fn num(x: f64) -> Value {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    Value::Number(x, NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 impl Value {
@@ -109,20 +217,24 @@ pub fn identity(v: &Value) -> usize {
         Value::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Cont(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Stream(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::OSProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Prim(p) => *p as *const _ as *const u8 as usize,
         Value::Raw(s) | Value::StrNode(s) => match s {
             Sexp::List(l) => Rc::as_ptr(l) as *const u8 as usize,
             Sexp::Atom(a) => Rc::as_ptr(a) as *const u8 as usize,
         },
         Value::Str(s) => Rc::as_ptr(s) as *const u8 as usize,
-        Value::Number(_) | Value::Null => 0,
+        Value::Number(_, id) => *id as usize,
+        Value::Null => 0,
     }
 }
 
 pub fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Null, Value::Null) => true,
-        (Value::Number(_), _) | (_, Value::Number(_)) => false,
+        (Value::Number(_, x), Value::Number(_, y)) => x == y,
+        (Value::Number(..), _) | (_, Value::Number(..)) => false,
         (Value::Null, _) | (_, Value::Null) => false,
         _ => identity(a) == identity(b),
     }
@@ -130,7 +242,7 @@ pub fn same(a: &Value, b: &Value) -> bool {
 
 /// dict_key: None for a value that is not equal even to itself (NaN).
 pub fn dict_key(v: &Value) -> Result<Option<DictKey>, String> {
-    if let Value::Number(x) = v {
+    if let Value::Number(x, _) = v {
         if x.is_nan() {
             return Ok(None);
         }
@@ -161,7 +273,7 @@ pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
             return Ok(x? == y?);
         }
     }
-    if let (Value::Number(x), Value::Number(y)) = (a, b) {
+    if let (Value::Number(x, _), Value::Number(y, _)) = (a, b) {
         return Ok(x == y);
     }
     Ok(same(a, b))
@@ -463,9 +575,11 @@ pub fn value_type_name(v: &Value) -> String {
             None => "list".into(),
         },
         Value::Str(_) => "String".into(),
-        Value::Number(_) => "Number".into(),
+        Value::Number(..) => "Number".into(),
         Value::LList(_) => "LList".into(),
         Value::VProc(_) => "VProc".into(),
+        Value::Stream(s) => s.kind().into(),
+        Value::OSProc(_) => "OSProc".into(),
         Value::Null => "null".into(),
     }
 }
@@ -478,13 +592,15 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
     Ok(match v {
         Value::Str(_) | Value::StrNode(_) => "String",
         Value::Closure(_) | Value::Seq(_) | Value::Prim(_) | Value::Cont(_) => "Closure",
-        Value::Number(_) => "Number",
+        Value::Number(..) => "Number",
         Value::Ref(_) => "Ref",
         Value::MSeq(_) => "MSeq",
         Value::Dict(_) => "Dict",
         Value::CFrame(_) => "CFrame",
         Value::LList(_) => "LList",
         Value::VProc(_) => "VProc",
+        Value::Stream(_) => "Stream",
+        Value::OSProc(_) => "OSProc",
         Value::Raw(_) | Value::Null => return Err("__type_name__: unknown value".into()),
     })
 }

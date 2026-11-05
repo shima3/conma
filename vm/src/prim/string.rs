@@ -45,7 +45,7 @@ fn byte_at(s: &str, i: usize) -> usize {
 
 pub fn length(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let s = string_args(vp, "__String_length__", 1)?;
-    vp.prim_return(vec![Value::Number(s[0].chars().count() as f64)]);
+    vp.prim_return(vec![num(s[0].chars().count() as f64)]);
     Ok(())
 }
 
@@ -117,7 +117,7 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let b = byte_at(&s, i as usize);
     let r = match s[b..].find(pattern.as_str()) {
         None => Value::Null,
-        Some(off) => Value::Number((i as usize + s[b..b + off].chars().count()) as f64),
+        Some(off) => num((i as usize + s[b..b + off].chars().count()) as f64),
     };
     vp.prim_return(vec![r]);
     Ok(())
@@ -130,7 +130,7 @@ pub fn to_code(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let s = string_args(vp, name, 1)?.pop().unwrap();
     let mut it = s.chars();
     match (it.next(), it.next()) {
-        (Some(c), None) => vp.prim_return(vec![Value::Number(c as u32 as f64)]),
+        (Some(c), None) => vp.prim_return(vec![num(c as u32 as f64)]),
         _ => {
             let msg = format!("{}: expected one character, got length {}", name, s.chars().count());
             vp.prim_error(on_error, &msg)
@@ -213,7 +213,7 @@ fn atom(t: &[char], mut i: usize) -> Result<(Value, usize), SexpError> {
         if !is_number_syntax(&symbol) || parse_number(&symbol).is_infinite() {
             return Err(SexpError("invalid number", start));
         }
-        return Ok((Value::Number(parse_number(&symbol)), i));
+        return Ok((num(parse_number(&symbol)), i));
     }
     Ok((string_value(&symbol), i))
 }
