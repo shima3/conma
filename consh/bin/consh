@@ -6,8 +6,9 @@
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
 # --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 # --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
-# 環境変数 CONSH_IMPL を rust にすると、スクリプトを Rust 版（consh/rust の consh-rs）で実行する（--dump、--conma-parser と
-# 対話モードは、まだ ConMa 版）。consh/rust で cargo build --release して作っておく
+# 環境変数 CONSH_IMPL を rust にすると、Rust 版（consh/rust の consh-rs）で実行する。構文解析も Rust 版で行い、--dump は
+# Rust 版の構文解析の構文木を出す。対話モードも Rust 版になる（--conma-parser は ConMa 版のまま）。
+# consh/rust で cargo build --release して作っておく
 # 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
 # （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
 set -o pipefail
@@ -30,6 +31,20 @@ elif [ $# -lt 1 ]; then
   echo "usage: consh [--conma-parser] [--dump] <script> [<arg> ...]" >&2
   exit 1
 fi
+rust="$consh/rust/target/release/consh-rs"
+[ "$CONSH_IMPL" = rust ] && [ -z "$src" ] || rust=
+if [ -n "$rust" ] && [ -z "$interactive" ]; then
+  [ $mode = dump ] && exec "$rust" dump "$1"
+  exec "$rust" run "$@"
+fi
+if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
+  # rlwrap が起動する consh は、もう一度 rlwrap を通さない。CONSH_RLWRAPPED は、ConSh が起動時に環境変数から除くので、
+  # 中で起動するコマンドには渡らない（中で対話モードの consh を起動すれば、それも rlwrap を使う）
+  CONSH_RLWRAPPED=1 exec rlwrap -C consh "$0"
+fi
+if [ -n "$interactive" ] && [ -n "$rust" ]; then
+  exec "$rust" interactive
+fi
 # ConMa のモジュールは、ソースが変わったときだけ作り直す
 module=/tmp/consh.module.se
 main="$consh/include/consh_main.se"
@@ -47,11 +62,6 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.
   then rm -f "$module"; exit 1
   fi
 fi
-if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
-  # rlwrap が起動する consh は、もう一度 rlwrap を通さない。CONSH_RLWRAPPED は、ConSh が起動時に環境変数から除くので、
-  # 中で起動するコマンドには渡らない（中で対話モードの consh を起動すれば、それも rlwrap を使う）
-  CONSH_RLWRAPPED=1 exec rlwrap -C consh "$0"
-fi
 if [ -n "$interactive" ]; then
   exec "$root/test/vm.sh" --main "$module" interactive - stdin
 fi
@@ -62,9 +72,5 @@ ast=$(mktemp /tmp/consh.XXXXXX)
 trap 'rm -f "$ast"' EXIT
 if ! python3 "$consh/bin/consh_parse" --pos "$1" > "$ast"
 then exit 1
-fi
-if [ "$CONSH_IMPL" = rust ] && [ $mode = run ]; then
-  "$consh/rust/target/release/consh-rs" run "$ast" "$@"
-  exit
 fi
 "$root/test/vm.sh" --main "$module" $mode "$ast" "$@"

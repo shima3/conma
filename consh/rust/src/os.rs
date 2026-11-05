@@ -11,6 +11,31 @@ extern "C" {
     fn kill(pid: c_int, sig: c_int) -> c_int;
     fn sysconf(name: c_int) -> c_long;
     fn access(path: *const c_char, mode: c_int) -> c_int;
+    fn signal(sig: c_int, handler: usize) -> usize;
+    fn write(fd: c_int, buf: *const std::ffi::c_void, n: usize) -> isize;
+}
+
+static INTERRUPT_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+extern "C" fn on_interrupt(_sig: c_int) {
+    let fd = INTERRUPT_FD.load(std::sync::atomic::Ordering::Relaxed);
+    if fd >= 0 {
+        unsafe {
+            write(fd, b"i".as_ptr() as *const std::ffi::c_void, 1);
+        }
+    }
+}
+
+/// SIGINT does not end the process: each one writes a byte to a pipe, whose
+/// reading end this returns (interactive mode, __OS_trap_interrupt__).
+pub fn trap_interrupt() -> File {
+    use std::os::fd::IntoRawFd;
+    let (r, w) = io::pipe().expect("cannot make a pipe");
+    INTERRUPT_FD.store(w.into_raw_fd(), std::sync::atomic::Ordering::Relaxed);
+    unsafe {
+        signal(2, on_interrupt as *const () as usize);
+    }
+    File::from(std::os::fd::OwnedFd::from(r))
 }
 
 #[cfg(target_os = "linux")]

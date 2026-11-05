@@ -17,6 +17,10 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+#[path = "repl.rs"]
+mod repl;
+pub use repl::repl_run;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -244,10 +248,17 @@ pub struct Ctx {
     /// The values for the variable lists of a job's simple command (Bg_captures),
     /// taken in order by its redirections.
     bg_captures: Option<Arc<Mutex<std::collections::VecDeque<Arc<BgSpec>>>>>,
+    /// In a job of interactive mode: external commands start outside the
+    /// foreground process group of the terminal (Ctrl-C does not reach them).
+    detached: bool,
 }
 
 impl Ctx {
     pub fn top(script: &str, args: Vec<String>) -> Ctx {
+        Ctx::top_with(script, args, false)
+    }
+
+    pub fn top_with(script: &str, args: Vec<String>, interactive: bool) -> Ctx {
         let mut base: HashMap<String, String> = std::env::vars_os()
             .map(|(k, v)| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned()))
             .collect();
@@ -256,7 +267,7 @@ impl Ctx {
         let global = Arc::new(Global {
             status: Mutex::new("0".into()),
             last_bg: Mutex::new(String::new()),
-            interactive: false,
+            interactive,
             substs: Mutex::new(Vec::new()),
             jobs: Mutex::new(Vec::new()),
         });
@@ -284,6 +295,7 @@ impl Ctx {
             pipe_members: Arc::new(Mutex::new(Vec::new())),
             cancel_in: None,
             bg_captures: None,
+            detached: false,
         };
         // The standard output writes with the OFS of this context; the
         // Target holds a copy whose own out is the standard error.
@@ -1236,6 +1248,7 @@ static NEXT_JOB: AtomicU64 = AtomicU64::new(2);
 /// wait until they are made into a and b, and into rest a LazyList that
 /// grows as elements come (Bg_captures).
 fn eval_bg(sh: &Ctx, pipeline: &Sexp) -> R<()> {
+    let sh = &Ctx { detached: sh.detached || sh.global.interactive, ..sh.clone() };
     let (members, last, specs) = if pipeline.tag() == "pipe" {
         let elems = pipeline.children();
         pipe_check(sh, elems)?;
@@ -1870,6 +1883,10 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
             Some(w)
         }
     };
+    if sh.detached {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     os::jitter();
     // Check killed and keep the pid under the same lock as vproc_stop, so that a
     // kill either finds the pid or stops the command before it starts.
