@@ -26,7 +26,7 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 |---|---|---|
 | 1. Core: S-expressions, module loading, `step`, traces | 1–3 | done |
 | 2. Data primitives: CChain/CFrame, `__Cont_get__`, Number, String, Dict, MSeq, Ref, PDict, `__Sexp_read__` | 4–8, 12, 18, 19, 28, 30, 34 | done (step22 needs the standard Streams of stage 4) |
-| 3. VProcs and the scheduler, LazyList | | |
+| 3. VProcs and the scheduler, LazyList, `__Ref_wait_change__` | 10, 17, 20 | done (step20 case6 and the LazyList tests of steps 21, 26 and 33 need the Streams and processes of stage 4) |
 | 4. OS: Streams, files, pipes, processes, signals | | |
 | 5. ConSh | `consh/test` | |
 | 6. Front end and start-up | `selfhost*` | |
@@ -38,8 +38,9 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 * `module.rs` — loading a module. Every Function and Body is compiled once, when the module is loaded. A global variable that is `Undefined` becomes the primitive of the same name, if there is one.
 * `value.rs` — values. They follow the Python classes, including the two forms of a String: a literal of the program keeps its AST node (`StrNode`) and a String made at run time is kept in source form (`Str`), because traces write them differently.
 * `step.rs` — one step, as `step` in `vproc_step.py`.
-* `sched.rs` — the VProcs and the scheduler.
+* `vproc.rs` — the state of a VProc. A VProc is held as a `VProcCell`, whose serial number and state are outside the `RefCell` of the rest, so that a primitive can act on its own VProc (suspend it, wait, kill it) while that VProc runs the step.
+* `sched.rs` — the scheduler: the ready queue and the VProcs that wait for another VProc, for a LazyList or for a Ref to change. `__Ref_wait_change__` waits while the value is the same object, as `is` in Python; Numbers have no identity here, so an equal Number counts as the same.
 * `trace.rs` — values and VProcs as S-expressions.
-* `prim/` — the primitives: `basic.rs` (`__is_null__`, `__type_name__`), `os.rs`, `number.rs`, `llist.rs`, `cchain.rs` (CChain, CFrame, `__Cont_get__`), `refs.rs` (Ref, PDict), `collections.rs` (MSeq, Dict), `string.rs` (String, `__Sexp_read__`). Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
+* `prim/` — the primitives: `basic.rs` (`__is_null__`, `__type_name__`), `os.rs`, `number.rs`, `llist.rs`, `cchain.rs` (CChain, CFrame, `__Cont_get__`), `refs.rs` (Ref, PDict), `collections.rs` (MSeq, Dict), `string.rs` (String, `__Sexp_read__`), `vprocs.rs` (VProc, and loading a program with `bin/includer` and `bin/resolver` for `__VProc_spawn__`), `lazy.rs` (LazyList, `__Ref_wait_change__`). Traces write a primitive by the name of its Python function (`(PrimFunc "prim_OS_print")`).
 
-Memory: values are reference counted (`Rc`). Values without mutable parts cannot form cycles, so cycles can only come through Refs, MSeqs, Dicts and the PDict. Such cycles are not collected yet: they stay until the VM exits. A collector for them is still to be written (before ConSh runs for long). Long LLists and LVEnvs are dropped without recursion, and the VM runs in a thread with a large stack, because modules are deeply nested.
+Memory: values are reference counted (`Rc`). Values without mutable parts cannot form cycles, so cycles can only come through Refs, MSeqs, Dicts, the PDict and VProcs (a VProc can hold itself, for example in its LVEnv). Such cycles are not collected yet: they stay until the VM exits. A collector for them is still to be written (before ConSh runs for long). Long LLists and LVEnvs are dropped without recursion, and the VM runs in a thread with a large stack, because modules are deeply nested.

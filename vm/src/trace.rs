@@ -47,6 +47,7 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::MSeq(r) => l(vec![a("__MSeq__"), a(&quoted(&r.serial.to_string()))]),
         Value::Dict(r) => l(vec![a("__Dict__"), a(&quoted(&r.serial.to_string()))]),
         Value::Cont(r) => l(vec![a("__Cont__"), a(&quoted(&r.serial.to_string()))]),
+        Value::VProc(r) => l(vec![a("__VProcRef__"), a(&quoted(&r.serial.to_string()))]),
     }
 }
 

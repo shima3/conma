@@ -116,10 +116,11 @@ fn run(args: Vec<String>) -> i32 {
         None => Vec::new(),
     };
     let mut m = sched::Machine::new(trace);
-    let vp = m.make_vproc(closure, olist, &module_file, gvenv);
+    let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let vp = m.make_vproc(closure, olist, Some(&module_file), gvenv, cwd);
     m.add(vp.clone());
     if trace {
-        m.print_trace(&vp.borrow(), 0);
+        m.print_trace(&vp.vp.borrow(), 0);
     }
     let code = m.run();
     if trace && code.is_none() {
