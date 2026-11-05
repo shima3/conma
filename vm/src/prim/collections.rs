@@ -140,6 +140,19 @@ pub fn dict_remove(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// __Dict_copy__ Dict ,(Dict): a new Dict with the same keys and values, in the same order.
+pub fn dict_copy(m: &mut Machine, vp: &mut VProc) -> PResult {
+    let (d, _) = dict_args(vp, "__Dict_copy__", 1)?;
+    m.serials.dicts += 1;
+    let c = Value::Dict(crate::gc::new_dict(DictObj {
+        serial: m.serials.dicts,
+        entries: RefCell::new(d.entries.borrow().clone()),
+        index: RefCell::new(d.index.borrow().clone()),
+    }));
+    vp.prim_return(vec![c]);
+    Ok(())
+}
+
 pub fn dict_keys(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let (d, _) = dict_args(vp, "__Dict_keys__", 1)?;
     let keys: Vec<Value> = d.entries.borrow().iter().map(|(k, _)| k.clone()).collect();

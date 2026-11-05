@@ -91,6 +91,11 @@ prims! {
     "__Dict_lookup_or__"   => "prim_Dict_lookup_or", collections::dict_lookup_or;
     "__Dict_remove__"      => "prim_Dict_remove", collections::dict_remove;
     "__Dict_keys__"        => "prim_Dict_keys", collections::dict_keys;
+    "__Dict_copy__"        => "prim_Dict_copy", collections::dict_copy;
+    "__LList_append__"     => "prim_LList_append", llist::append;
+    "__LList_length__"     => "prim_LList_length", llist::length;
+    "__String_find_any__"  => "prim_String_find_any", string::find_any;
+    "__String_strip_suffix__" => "prim_String_strip_suffix", string::strip_suffix;
     "__String_length__"    => "prim_String_length", string::length;
     "__String_substring__" => "prim_String_substring", string::substring;
     "__String_find__"      => "prim_String_find", string::find;

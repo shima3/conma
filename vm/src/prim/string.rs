@@ -123,6 +123,54 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// __String_find_any__ onError String chars start ,(index): the position of the first
+/// character at or after start that is one of the characters of chars, or null.
+pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__String_find_any__";
+    need(vp, name, 4)?;
+    let on_error = vp.olist.remove(0);
+    let mut sp = string_args(vp, name, 2)?;
+    let chars = sp.pop().unwrap();
+    let s = sp.pop().unwrap();
+    let start = take_args(vp, name, 1)?.pop().unwrap();
+    let x = check_number(name, &start)?;
+    let i = match int_index(x) {
+        Some(i) => i,
+        None => {
+            vp.prim_error(on_error, &format!("{}: not an integer index: {}", name, number_to_str(x)));
+            return Ok(());
+        }
+    };
+    let len = s.chars().count() as i128;
+    if !(0 <= i && i <= len) {
+        vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
+        return Ok(());
+    }
+    let r = match s.chars().skip(i as usize).position(|c| chars.contains(c)) {
+        None => Value::Null,
+        Some(off) => num((i as usize + off) as f64),
+    };
+    vp.prim_return(vec![r]);
+    Ok(())
+}
+
+/// __String_strip_suffix__ String suffix ,(String): String without suffix at its end,
+/// or String itself if it does not end with suffix.
+pub fn strip_suffix(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__String_strip_suffix__";
+    need(vp, name, 2)?;
+    let s0 = vp.olist[0].clone();
+    let mut sp = string_args(vp, name, 2)?;
+    let suffix = sp.pop().unwrap();
+    let s = sp.pop().unwrap();
+    let r = match s.strip_suffix(suffix.as_str()) {
+        Some(t) if !suffix.is_empty() => string_value(t),
+        _ => s0,
+    };
+    vp.prim_return(vec![r]);
+    Ok(())
+}
+
 pub fn to_code(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_toCode__";
     need(vp, name, 2)?;

@@ -40,33 +40,17 @@
   __String_concat__ acc ch ,(acc)
   Glob_escape_from s next len chars acc)
 
-;; s が chars のどれかの文字を含むか。chars の文字ごとに __String_find__ で探す
+;; s が chars のどれかの文字を含むか
 (define Glob_has_any ,(s chars)
   num "0" ,(zero)
-  Glob_has_any_from s chars zero)
+  __String_find_any__ __print_exit_error__ s chars zero ,(pos)
+  __is_null__ pos ,(none)
+  __not__ none)
 
-(define Glob_has_any_from ,(s chars i)
-  __Cont_get__ ,(return)
-  num "1" ,(one)
-  __Number_add__ i one ,(next)
-  __String_substring__ (,(msg) return __FALSE__) chars i next ,(ch)
-  num "0" ,(zero)
-  __String_find__ __print_exit_error__ s ch zero ,(pos)
-  __is_null__ pos ,(condition)
-  __unless__ condition (,() return __TRUE__) ,()
-  Glob_has_any_from s chars next)
-
-;; 引用符の外の文字列 s が glob の記号を含むか。語の展開のたびに呼ぶので、記号ごとに直接探す
+;; 引用符の外の文字列 s が glob の記号を含むか。語の展開のたびに呼ぶので、組み込みの __String_find_any__ で探す
 (define Glob_has_meta ,(s)
-  __Cont_get__ ,(return)
   num "0" ,(zero)
-  __String_find__ __print_exit_error__ s "*" zero ,(pos)
-  __is_null__ pos ,(condition)
-  __unless__ condition (,() return __TRUE__) ,()
-  __String_find__ __print_exit_error__ s "?" zero ,(pos)
-  __is_null__ pos ,(condition)
-  __unless__ condition (,() return __TRUE__) ,()
-  __String_find__ __print_exit_error__ s "[" zero ,(pos)
+  __String_find_any__ __print_exit_error__ s "*?[" zero ,(pos)
   __is_null__ pos ,(none)
   __not__ none)
 
@@ -123,7 +107,7 @@
   Glob_is_magic comp ,(magic)
   __if__ magic
     (,()
-      List_length prefixes ,(n)
+      __LList_length__ prefixes ,(n)
       num "1" ,(one)
       __Number_subtract__ n one ,(more)
       __Number_is_positive__ more ,(several)
@@ -164,7 +148,7 @@
   __String_equal__ first "." ,(dotted)
   Glob_filter prefix names comp dotted ,(front)
   Glob_list_matches rest comp ,(back)
-  List_append front back)
+  __LList_append__ front back)
 
 ;; ディレクトリの名前の LList。読めなければ null
 (define Glob_listdir ,(dir)

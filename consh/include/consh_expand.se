@@ -228,7 +228,7 @@
   __LList_uncons__ __print_exit_error__ alts ,(alt rest)
   Fields_prefix alt opts ,(front)
   Fields_product rest opts ,(back)
-  List_append front back)
+  __LList_append__ front back)
 
 (define Fields_prefix ,(alt opts)
   __Cont_get__ ,(return)
@@ -264,7 +264,7 @@
       __and__ none keepWord ,(useWord)
       __unless__ useWord
         (,()
-          List_append matches more ,(fields)
+          __LList_append__ matches more ,(fields)
           return fields) ,()) ,()
   __LList_cons__ text more)
 
@@ -411,7 +411,7 @@
   __LList_uncons__ __print_exit_error__ words ,(word rest)
   Expand_fields sh word ,(fields)
   Expand_array sh rest ,(more)
-  List_append fields more)
+  __LList_append__ fields more)
 
 ;; 変数定義の右辺の語の値。
 ;; $x の LazyList を含めば、葉の語が1つならその String、なければ空文字列、2つ以上ならエラー。
@@ -442,7 +442,7 @@
       __LList_uncons__ __print_exit_error__ alts ,(first others)
       __unless__ (,() __is_null__ others)
         (,()
-          List_length alts ,(n)
+          __LList_length__ alts ,(n)
           __Number_toString__ n ,(s)
           __String_concat__ s " words in a variable definition" ,(msg)
           Sh_error sh pos msg) ,()
@@ -737,7 +737,7 @@
   __LList_uncons__ __print_exit_error__ alts ,(alt rest)
   Product_prefix alt opts ,(front)
   Product rest opts ,(back)
-  List_append front back)
+  __LList_append__ front back)
 
 (define Product_prefix ,(alt opts)
   __Cont_get__ ,(return)
@@ -771,7 +771,7 @@
   __LazyList_uncons__ (,() return __NULL__) list ,(item rest)
   Value_leaves_in item limit ,(front)
   Value_leaves_lazy rest limit ,(back)
-  List_append front back)
+  __LList_append__ front back)
 
 ;; 葉 s の文字数 + 1（NUL）を、引数のバイト数の上限 limit の残りから引く。足りなければ limit の "onOver" を呼ぶ
 (define Arg_charge ,(limit s)
@@ -826,7 +826,7 @@
   __LList_uncons__ __print_exit_error__ values ,(v rest)
   Value_leaves_in v limit ,(front)
   Values_leaves_in rest limit ,(back)
-  List_append front back)
+  __LList_append__ front back)
 
 ;; 値の LList の各値を String にした LList
 (define Values_strings ,(sh pos values)
@@ -848,7 +848,7 @@
     (,() __NULL__ head rest)
     (,()
       Value_head sh pos head ,(name inner)
-      List_append inner rest ,(more)
+      __LList_append__ inner rest ,(more)
       __NULL__ name more))
 
 ;; 値を1つの String にする。LazyList は、葉を OFS で区切って連結し、末尾には付けない

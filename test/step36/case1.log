@@ -1,0 +1,6 @@
+a: x=10 z=3
+b: x=1 y=2 z=3 w=4
+b y: 2
+e:
+f: k=v
+exit: 0

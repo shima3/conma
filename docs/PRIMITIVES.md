@@ -203,6 +203,15 @@ Low-level operations for the fundamental linked list structure.
 * **Returns**: If `list` is not null and is a LList, returns two values: the `head` element and the `tail` (the remaining LList).
 * **Error**: If `list` is null or not a `LList`, the interpreter sets the Operator to `onError` with an error message String.
 
+### **`__LList_append__ a b ,(list)`**
+* **Description**: Returns a new list of the elements of `a` followed by `b`. The cells of `a` are copied; `b` is not (the result ends with `b` itself). If `a` is null, returns `b`.
+* **Usage**: One step instead of one function call for each element of `a` (Step 36). The ConMa version is in `include/data.se`.
+* **Error**: If `a` is not a list that ends with null, the VProc stops with an error. `b` may be any value.
+
+### **`__LList_length__ list ,(Number)`**
+* **Description**: Returns the number of elements of `list` (0 for null).
+* **Error**: If `list` is not a list that ends with null, the VProc stops with an error.
+
 ---
 
 ## 4. Continuation Chain (CChain) Primitives
@@ -555,6 +564,11 @@ A variable defined as null.
 * **Returns**:
   A Seq of keys.
 
+### **`__Dict_copy__ Dict ,(Dict)`**
+* **Description**: Returns a new Dict with the same keys and values as `Dict`, in the same order (the keys come from `__Dict_keys__` in that order). The values are not copied. Changing one Dict afterwards does not change the other.
+* **Usage**: ConSh copies its context, a Dict of about 35 keys, when it calls a function or enters a loop; with `__Dict_keys__` and a Sink this took about 10 steps for each key (Step 36). The ConMa version is in `include/data.se`.
+* **Error**: A non-Dict argument stops the VProc with an error.
+
 ---
 
 ## 12. String Primitives
@@ -575,6 +589,17 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 * **Returns**: The position (a Number, counted in characters like `__String_substring__`) where `pattern` starts, or null if it does not occur. An empty `pattern` is found at `start`.
 * **Usage**: Searching with one primitive instead of comparing one character at a time is much faster on long Strings; the line readers of `include/util.se` use it to find newlines.
 * **Error**: If `start` is not an integer, or `0 <= start <= length` does not hold, the interpreter invokes `onError` with an error message string. A non-String `String` or `pattern` stops the VProc with an error.
+
+### **`__String_find_any__ onError String chars start ,(index)`**
+* **Description**: Finds the first character of `String` at or after position `start` that is one of the characters of `chars`.
+* **Returns**: The position of that character (a Number), or null if there is none (also when `chars` is empty).
+* **Usage**: ConSh checks every word for the glob characters `*`, `?` and `[` with one call (Step 36). The ConMa version (`include/data.se`) calls `__String_find__` for each character of `chars`.
+* **Error**: As for `__String_find__`: if `start` is not an integer, or `0 <= start <= length` does not hold, invokes `onError` with an error message string; a non-String `String` or `chars` stops the VProc with an error.
+
+### **`__String_strip_suffix__ String suffix ,(String)`**
+* **Description**: If `String` ends with `suffix`, returns `String` without it; otherwise (and when `suffix` is empty) returns `String` itself.
+* **Usage**: ConSh removes the newline (and a carriage return before it) from each line it reads (Step 36). The ConMa version is in `include/data.se`.
+* **Error**: A non-String argument stops the VProc with an error.
 
 ### **`__Sexp_read__ onError String ,(value)`**
 * **Description**: Reads the `String` as one S-expression and passes the value to the LCont.

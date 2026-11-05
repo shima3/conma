@@ -11,27 +11,8 @@
     (,() __NULL__ "")
     (,() __LList_uncons__ __print_exit_error__ list ,(head tail) __NULL__ head))
 
-;; a の後ろに b をつないだ LList
-(define List_append ,(a b)
-  __Cont_get__ ,(return)
-  __is_null__ a ,(condition)
-  __if__ condition (,() return b) ,()
-  __LList_uncons__ __print_exit_error__ a ,(head tail)
-  List_append tail b ,(rest)
-  __LList_cons__ head rest)
-
-(define List_length ,(list)
-  num "0" ,(zero)
-  List_length_from list zero)
-
-(define List_length_from ,(list n)
-  __Cont_get__ ,(return)
-  __is_null__ list ,(condition)
-  __if__ condition (,() return n) ,()
-  __LList_uncons__ __print_exit_error__ list ,(head tail)
-  num "1" ,(one)
-  __Number_add__ n one ,(n)
-  List_length_from tail n)
+;; LList をつなぐ、長さを数える、Dict を写すには、組み込みの __LList_append__、__LList_length__、__Dict_copy__ を使う
+;; （ConMa 版は include/data.se）
 
 ;; 逆順の LList
 (define List_reverse ,(list)
@@ -83,10 +64,6 @@
   List_join_rest tail sep acc)
 
 ;; Dict の写し
-(define Dict_copy ,(src)
-  __Dict_new__ ,(dst)
-  Dict_copy_into src dst ,()
-  __NULL__ dst)
 
 ;; src のすべてのキーと値を dst に置く
 (define Dict_copy_into ,(src dst)

@@ -1,0 +1,89 @@
+;; VM の組み込みと同じ働きをする、ConMa 版のデータの関数（Step 36）。
+;; このファイルを include すると、ここで定義した関数が、同じ名前の組み込みの代わりに使われる
+;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。
+;; ステップを ConMa の関数として追いたいときや、組み込みと結果を比べるときに使う。
+;; 引数の型が違うときのエラーは、組み込みとは違う（ここで使う組み込みのエラーになる）
+(include "util.se")
+
+;; 同じキーと値を同じ順に持つ、新しい Dict
+(define __Dict_copy__ ,(src)
+  __Dict_new__ ,(dst)
+  __Dict_keys__ src ,(keys)
+  __Dict_copy_sink__ src dst ,(sink)
+  keys sink ,(sink)
+  __NULL__ dst)
+
+;; キーを受け取るたびに、src の値を dst に写す Sink
+(define __Dict_copy_sink__ ,(src dst)
+  __NULL__ (,(key)
+    __Dict_lookup_or__ src key __print_exit_error__ ,(value)
+    __Dict_put__ dst key value ,()
+    __Dict_copy_sink__ src dst))
+
+;; a の要素の後ろに b をつないだ LList。b は写さない
+(define __LList_append__ ,(a b)
+  __Cont_get__ ,(return)
+  __is_null__ a ,(empty)
+  __if__ empty (,() return b) ,()
+  __LList_uncons__ __print_exit_error__ a ,(head tail)
+  __LList_append__ tail b ,(rest)
+  __LList_cons__ head rest)
+
+;; LList の要素の数
+(define __LList_length__ ,(list)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __LList_length_from__ list zero)
+
+(define __LList_length_from__ ,(list n)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(empty)
+  __if__ empty (,() return n) ,()
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  __LList_length_from__ tail n)
+
+;; String の位置 start から後で、chars のどれかの文字が最初に現れる位置。なければ null。
+;; chars の文字ごとに __String_find__ で探し、最も前の位置を選ぶ
+(define __String_find_any__ ,(onError s chars start)
+  __String_find_any_from__ onError s chars start __NULL__)
+
+(define __String_find_any_from__ ,(onError s chars start best)
+  __Cont_get__ ,(return)
+  __String_length__ chars ,(len)
+  __Number_is_zero__ len ,(done)
+  __if__ done (,() return best) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ chars zero one ,(c)
+  __String_substring__ __print_exit_error__ chars one len ,(others)
+  __String_find__ onError s c start ,(pos)
+  __String_find_any_min__ best pos ,(best)
+  __String_find_any_from__ onError s others start best)
+
+;; 位置 a と b（どちらも null でもよい）の前の方
+(define __String_find_any_min__ ,(a b)
+  __Cont_get__ ,(return)
+  __is_null__ a ,(noA)
+  __if__ noA (,() return b) ,()
+  __is_null__ b ,(noB)
+  __if__ noB (,() return a) ,()
+  __Number_subtract__ b a ,(diff)
+  __Number_is_negative__ diff ,(bFirst)
+  __if_then_else__ bFirst (,() __NULL__ b) (,() __NULL__ a))
+
+;; String の終わりの suffix を除いた String。suffix で終わらなければ（suffix が空でも）String そのもの
+(define __String_strip_suffix__ ,(s suffix)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __String_length__ suffix ,(n)
+  __Number_is_zero__ n ,(empty)
+  __if__ empty (,() return s) ,()
+  __Number_subtract__ len n ,(cut)
+  __Number_is_negative__ cut ,(short)
+  __if__ short (,() return s) ,()
+  __String_substring__ __print_exit_error__ s cut len ,(tail)
+  __String_equal__ tail suffix ,(ends)
+  __unless__ ends (,() return s) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_substring__ __print_exit_error__ s zero cut)

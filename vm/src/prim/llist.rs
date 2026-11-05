@@ -30,3 +30,40 @@ pub fn uncons(_m: &mut Machine, vp: &mut VProc) -> PResult {
     }
     Ok(())
 }
+
+/// The cells of a list that ends with null, or an error that names the primitive.
+fn cells(name: &str, list: &Value) -> Result<Vec<Value>, super::VmError> {
+    let mut items = Vec::new();
+    let mut cur = list.clone();
+    loop {
+        match cur {
+            Value::Null => return Ok(items),
+            Value::LList(cell) => {
+                items.push(cell.head.clone());
+                cur = cell.tail.clone();
+            }
+            other => return super::err(format!("{}: expected LList, got {}", name, value_type_name(&other))),
+        }
+    }
+}
+
+/// __LList_append__ a b ,(list): the elements of a followed by b (b is not copied).
+pub fn append(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let mut a = take_args(vp, "__LList_append__", 2)?;
+    let b = a.pop().unwrap();
+    let front = cells("__LList_append__", &a.pop().unwrap())?;
+    let mut list = b;
+    for head in front.into_iter().rev() {
+        list = Value::LList(Rc::new(LList { head, tail: list }));
+    }
+    vp.prim_return(vec![list]);
+    Ok(())
+}
+
+/// __LList_length__ list ,(Number)
+pub fn length(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let mut a = take_args(vp, "__LList_length__", 1)?;
+    let n = cells("__LList_length__", &a.pop().unwrap())?.len();
+    vp.prim_return(vec![num(n as f64)]);
+    Ok(())
+}

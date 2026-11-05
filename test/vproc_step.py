@@ -1653,6 +1653,38 @@ def prim_LList_uncons(vp, gvenv):
     _prim_return(vp, [lst.head, lst.tail])
 
 
+def _llist_cells(name, lst):
+    """The elements of a list that ends with null; raise for anything else."""
+    items = []
+    while isinstance(lst, LList):
+        items.append(lst.head)
+        lst = lst.tail
+    if lst is not NULL:
+        raise VProcError(f"{name}: expected LList, got {value_type_name(lst)}")
+    return items
+
+def prim_LList_append(vp, gvenv):
+    """__LList_append__ a b ,(list) — the elements of a followed by b
+    (b is not copied)."""
+    olist = vp["olist"]
+    if len(olist) < 2:
+        raise VProcError("__LList_append__: missing argument(s)")
+    a = olist.pop(0)
+    b = olist.pop(0)
+    lst = b
+    for head in reversed(_llist_cells("__LList_append__", a)):
+        lst = LList(head, lst)
+    _prim_return(vp, [lst])
+
+def prim_LList_length(vp, gvenv):
+    """__LList_length__ list ,(Number)"""
+    olist = vp["olist"]
+    if len(olist) < 1:
+        raise VProcError("__LList_length__: missing argument(s)")
+    lst = olist.pop(0)
+    _prim_return(vp, [Number(float(len(_llist_cells("__LList_length__", lst))))])
+
+
 # ── Ref Primitives ────────────────────────────────────────────────────────────
 
 def prim_Ref_new(vp, gvenv):
@@ -1838,6 +1870,15 @@ def prim_Dict_remove(vp, gvenv):
     if i >= 0: d.remove(i)
     _prim_return(vp, [])
 
+def prim_Dict_copy(vp, gvenv):
+    """__Dict_copy__ Dict ,(Dict) — a new Dict with the same keys and values,
+    in the same order."""
+    (d,) = _dict_args(vp, "__Dict_copy__", 1)
+    c = Dict()
+    c.entries = list(d.entries)
+    c.index   = dict(d.index)
+    _prim_return(vp, [c])
+
 def prim_Dict_keys(vp, gvenv):
     """__Dict_keys__ Dict ,(Seq) — the keys in insertion order."""
     (d,) = _dict_args(vp, "__Dict_keys__", 1)
@@ -1921,6 +1962,43 @@ def prim_String_find(vp, gvenv):
         return
     found = s.find(pattern, i)
     _prim_return(vp, [NULL if found < 0 else Number(float(found))])
+
+def prim_String_find_any(vp, gvenv):
+    """__String_find_any__ onError String chars start ,(index)
+
+    The position of the first character at or after position start that is
+    one of the characters of chars, or null if there is none. start is
+    checked as in __String_find__."""
+    name  = "__String_find_any__"
+    olist = vp["olist"]
+    if len(olist) < 4: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    (s, chars) = _string_args(vp, name, 2)
+    start = olist.pop(0)
+    _check_number(name, start)
+    x = start.value
+    if not (math.isfinite(x) and x == int(x)):
+        _prim_error(vp, on_error, f"{name}: not an integer index: {number_to_str(x)}")
+        return
+    i = int(x)
+    if not (0 <= i <= len(s)):
+        _prim_error(vp, on_error, f"{name}: index out of range: {i} (length {len(s)})")
+        return
+    found = next((j for j in range(i, len(s)) if s[j] in chars), None)
+    _prim_return(vp, [NULL if found is None else Number(float(found))])
+
+def prim_String_strip_suffix(vp, gvenv):
+    """__String_strip_suffix__ String suffix ,(String) — String without suffix
+    at its end, or String itself if it does not end with suffix."""
+    name  = "__String_strip_suffix__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    original = olist[0]
+    (s, suffix) = _string_args(vp, name, 2)
+    if suffix and s.endswith(suffix):
+        _prim_return(vp, [string_value(s[:-len(suffix)])])
+    else:
+        _prim_return(vp, [original])
 
 _SEXP_DELIMITERS = ('', ' ', '\t', '\n', '\r', '(', ')', '"')
 _SEXP_ESCAPES = {'n': '\n', 't': '\t', 'r': '\r'}
@@ -2706,6 +2784,11 @@ PRIMITIVES = {
     "__Dict_lookup_or__":      prim_Dict_lookup_or,
     "__Dict_remove__":         prim_Dict_remove,
     "__Dict_keys__":           prim_Dict_keys,
+    "__Dict_copy__":           prim_Dict_copy,
+    "__LList_append__":        prim_LList_append,
+    "__LList_length__":        prim_LList_length,
+    "__String_find_any__":     prim_String_find_any,
+    "__String_strip_suffix__": prim_String_strip_suffix,
     "__String_length__":       prim_String_length,
     "__String_substring__":    prim_String_substring,
     "__String_find__":         prim_String_find,

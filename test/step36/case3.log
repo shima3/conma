@@ -1,0 +1,9 @@
+from 0: 1
+from 2: 3
+[: 5
+none: null
+no chars: null
+at the end: null
+empty: null
+after non-ASCII: 2
+exit: 0

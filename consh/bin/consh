@@ -6,6 +6,8 @@
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
 # --dump を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 # --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
+# 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
+# （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
 set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
@@ -28,12 +30,18 @@ elif [ $# -lt 1 ]; then
 fi
 # ConMa のモジュールは、ソースが変わったときだけ作り直す
 module=/tmp/consh.module.se
+main="$consh/include/consh_main.se"
+if [ -n "$CONSH_CONMA_DATA" ]; then
+  module=/tmp/consh.data.module.se
+  main=/tmp/consh_data_main.se
+  [ -s "$main" ] || printf '(include "data.se")\n(include "consh_main.se")\n' > "$main"
+fi
 if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.se' -newer "$module")" ]; then
-  if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$consh/include/consh_main.se" \
-      | sed -e 's/"\/.*\/conma/"conma/' > /tmp/consh.ast.se
+  if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$main" \
+      | sed -e 's/"\/.*\/conma/"conma/' > "${module%.module.se}.ast.se"
   then rm -f "$module"; exit 1
   fi
-  if ! "$root/bin/resolver" < /tmp/consh.ast.se > "$module"
+  if ! "$root/bin/resolver" < "${module%.module.se}.ast.se" > "$module"
   then rm -f "$module"; exit 1
   fi
 fi

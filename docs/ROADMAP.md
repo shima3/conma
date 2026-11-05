@@ -733,3 +733,26 @@ No new primitive.
 | case4 | a Boolean written in place, a partially applied Boolean, and a Closure that computes before it chooses (not of the form of a Boolean) |
 | case5 | the chosen clause returns its values to the LCont; `__if__` that does not choose returns no values; `return` in a clause returns from the function that called `__Cont_get__` |
 | case6 | a conditional in a condition, and recursion through `__unless__` |
+
+## Step 36: Data primitives for ConSh
+
+| Primitive | Status |
+|---|---|
+| `__Dict_copy__` | implemented |
+| `__LList_append__` | implemented |
+| `__LList_length__` | implemented |
+| `__String_find_any__` | implemented |
+| `__String_strip_suffix__` | implemented |
+
+* Goal: Make the data operations that ConSh repeats for every statement cheap. Counting the steps of ConSh by function (`CONMA_PROFILE`, `test/vm_profile.py`) showed that copying its context Dict took 27% of the steps of a script that calls a function in a loop, and that checking words for glob characters, appending lists and removing newlines took 10 to 15% of a loop of `echo`.
+* They work only on data and never apply a Closure, so each is one step (see the LList, Dict and String Primitives in PRIMITIVES.md). The ConMa versions are in `include/data.se`, like `include/control.se` for Step 35: a program that includes it uses them instead of the primitives. With a wrong type of argument, the ConMa versions stop with the error of the primitive they use, not with the same error.
+* ConSh uses them in place of its own `Dict_copy`, `List_append` and `List_length`, and in `Glob_has_meta`, `Glob_has_any`, `Ast_chomp` and `Line_chomp`. With `CONSH_CONMA_DATA=1`, `consh/bin/consh` builds a module that includes `include/data.se` (`/tmp/consh.data.module.se`), and every ConSh test gives the same output with it.
+* ConSh (Rust VM, steps of the benchmarks of `consh/PLAN-ja.md`, stage 18): `y=$(f $i)` 3000 times takes 11,988,797 steps instead of 17,550,750 (0.63 s instead of 0.96 s), `echo $i` 5000 times 4,933,016 instead of 5,565,174, and `for i in 1 2 ... 20000; do n=1; done` 4,898,524 instead of 5,798,940.
+* Tests (`test/step36`): each case runs both with the primitives (`test.se`) and with the ConMa versions (`conma.se`, which includes `data.se` and `test.se`), and both must give `caseN.log`. The traces of the Python VM and the Rust VM are the same.
+
+| Case | What it checks |
+|---|---|
+| case1 | `__Dict_copy__` keeps the order of the keys, and changing the copy or the original does not change the other; copying an empty Dict |
+| case2 | `__LList_append__` with empty lists on either side, and the original list is unchanged; `__LList_length__` |
+| case3 | `__String_find_any__` from several positions, with no match, no characters, at the end, in an empty String and after non-ASCII characters |
+| case4 | `__String_strip_suffix__` with and without the suffix, `\r\n` in two steps, an empty suffix, a suffix longer than the String, and the whole String |
