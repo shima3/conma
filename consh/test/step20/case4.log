@@ -1,0 +1,35 @@
+found b
+not found
+start
+v=1
+v=2
+status 0
+got a
+got b
+got c
+got a
+got b
+got c
+a=i=1
+b=i=2
+c=i=2
+i=3
+loop-end
+n=1
+n=2
+n=3
+outer-start
+inner-B
+inner-rest
+inner-after
+outer-rest
+r1=seen x r2=seen y
+status 4
+status 1
+empty 0
+piped
+B-piped
+rest-piped
+bg
+job 0
+exit: 0

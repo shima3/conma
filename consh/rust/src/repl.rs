@@ -206,6 +206,9 @@ fn run(sh: &Ctx, state: &Shared, lines: Vec<Sexp>) {
         proc_ref: Arc::new(Mutex::new(None)),
         pipe_members: Arc::new(Mutex::new(Vec::new())),
         cwd: Arc::new(Mutex::new(sh.cwd())),
+        // The resets of the command (a continuation of an earlier command is
+        // from another thread, and cannot be called).
+        meta: Arc::new(Mutex::new(Vec::new())),
         ..sh.clone()
     };
     let before = sh.global.substs.lock().unwrap().clone();

@@ -100,6 +100,9 @@
   __Dict_put__ sh "pipeRef" pipeRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
+  __Ref_new__ __NULL__ ,(meta)
+  __Dict_put__ sh "meta" meta ,()
+  __Dict_put__ sh "redirected" __FALSE__ ,()
   Target_new_id global ,(outId)
   Target_make "top" outId (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
@@ -277,6 +280,7 @@
     Env_lookup env key (,(key) return " ")) ,(ofs)
   Value_force ofs ,(ofs)
   __type_name__ ofs ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() Func_string_error sh pos) ,()
   __unless__ (,() __String_equal__ type "String") (,() Sh_error sh pos "OFS is a LazyList") ,()
   __NULL__ ofs)
 
@@ -613,6 +617,10 @@
   __if__ condition (,() return (,(sh) Eval_return sh pos children)) ,()
   __String_equal__ tag "pipe" ,(condition)
   __if__ condition (,() return (,(sh) Eval_pipe sh pos children)) ,()
+  __String_equal__ tag "reset" ,(condition)
+  __if__ condition (,() return (,(sh) Eval_reset sh pos children)) ,()
+  __String_equal__ tag "shift" ,(condition)
+  __if__ condition (,() return (,(sh) Eval_shift sh pos children)) ,()
   __NULL__ (,(sh) Eval_list sh children))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列。
@@ -677,6 +685,8 @@
   __Number_subtract__ n one ,(diff)
   __unless__ (,() __Number_is_zero__ diff) (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ fields ,(word others)
+  __type_name__ word ,(type)
+  __unless__ (,() __String_equal__ type "String") (,() return __NULL__) ,()
   __unless__ (,() String_is_digits word) (,() return __NULL__) ,()
   num word ,(value)
   num "255" ,(max)
@@ -693,6 +703,12 @@
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __LList_uncons__ __print_exit_error__ rest ,(params rest)
   __LList_uncons__ __print_exit_error__ rest ,(body rest)
+  Func_make sh params body ,(fn)
+  Sh_get sh "funcs" ,(funcs)
+  __Dict_put__ funcs name fn)
+
+;; 関数の Dict。変数リストの節 params、本体の節 body、定義した文脈 sh と、その時点の局所変数の写し
+(define Func_make ,(sh params body)
   Sh_get sh "vars" ,(vars)
   __Dict_copy__ vars ,(vars)
   __Dict_new__ ,(fn)
@@ -700,8 +716,51 @@
   __Dict_put__ fn "body" body ,()
   __Dict_put__ fn "scope" sh ,()
   __Dict_put__ fn "vars" vars ,()
-  Sh_get sh "funcs" ,(funcs)
-  __Dict_put__ funcs name fn)
+  __NULL__ fn)
+
+;; ── 関数値（段階 20）──
+;; 関数値は ConMa の Closure で、組み込みコマンドと同じく、文脈、位置、引数、標準入力、標準出力、標準エラー出力を
+;; 受け取って実行する（Cmd_resolve は、先頭の語の値が関数値なら、組み込みコマンドとして扱う）
+
+;; 値の節 (fun params script) の関数値。変数は作った時点の局所変数の写し、関数名は sh のスコープから探す
+(define Func_value ,(sh children)
+  __LList_uncons__ __print_exit_error__ children ,(params rest)
+  List_first rest ,(body)
+  Func_make sh params body ,(fn)
+  __NULL__ (,(caller pos args in out err)
+    Func_targets caller pos out err ,(out err)
+    Func_call caller pos fn args in out err))
+
+;; bind 名前|関数値 引数 ...: 呼ぶと、名前か関数値を、先に引数を付けて呼ぶ関数値を1つ出す。
+;; 名前は呼ぶときに、bind を実行したスコープから、先頭の語と同じ規則（関数、組み込みコマンド、外部コマンド）で探す
+(define Builtin_bind ,(sh pos args in out err)
+  __if__ (,() __is_null__ args) (,() Sh_error sh pos "bind: a command name or a function value is needed") ,()
+  __LList_uncons__ __print_exit_error__ args ,(target bound)
+  __type_name__ target ,(type)
+  __String_equal__ type "String" ,(isName)
+  __String_equal__ type "Closure" ,(isFunc)
+  __or__ isName isFunc ,(ok)
+  __unless__ ok (,() Sh_error sh pos "bind: a command name or a function value is needed") ,()
+  Target_write sh pos out (,(caller p more i o e)
+    __LList_append__ bound more ,(all)
+    Bind_call sh caller p target all i o e) ,()
+  Sh_set_status sh "0")
+
+;; bind の関数値を呼ぶ。scope は bind を実行した文脈
+(define Bind_call ,(scope sh pos target args in out err)
+  __Cont_get__ ,(return)
+  __type_name__ target ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() target sh pos args in out err ,() return) ,()
+  __Dict_copy__ sh ,(inner)
+  Sh_get scope "funcs" ,(funcs)
+  __Dict_put__ inner "funcs" funcs ,()
+  Sh_get scope "parent" ,(parent)
+  __Dict_put__ inner "parent" parent ,()
+  Cmd_is_external inner target ,(external)
+  __unless__ external (,() Cmd_run inner pos target args in out err ,() return) ,()
+  Arg_limit_new inner pos ,(limit)
+  Values_leaves_in args limit ,(args)
+  External_run inner pos target args in out err)
 
 ;; name の関数。レキシカルに外側へ向かって、最も近いスコープの関数を探す。なければ null
 (define Func_lookup ,(sh name)
@@ -742,6 +801,7 @@
   __Dict_put__ callee "in" in ,()
   __Dict_put__ callee "out" out ,()
   __Dict_put__ callee "err" err ,()
+  Seg_register callee ,()
   Node_split body ,(btag bpos lines)
   Sh_set_status sh "0" ,()
   Eval_lines callee lines)
@@ -804,6 +864,7 @@
 ;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する
 (define Eval_cmd_parts ,(sh pos defs words redirs)
   __Cont_get__ ,(return)
+  Cmd_redirected sh redirs ,(sh)
   Cmd_scope sh defs ,(sh)
   Arg_limit_new sh pos ,(limit)
   Cmd_head sh words limit ,(name more rest)
@@ -836,6 +897,14 @@
   Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
   Open_release sh mark)
 
+;; リダイレクトがあれば、その印（"redirected"）を付けた文脈を返す（Eval_shift）
+(define Cmd_redirected ,(sh redirs)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ redirs) (,() return sh) ,()
+  __Dict_copy__ sh ,(inner)
+  __Dict_put__ inner "redirected" __TRUE__ ,()
+  __NULL__ inner)
+
 ;; 前置の変数定義があれば、その層を環境変数に積んだ文脈を返す。
 ;; 前置の変数定義どうしは影響しないので、どれも sh で展開する
 (define Cmd_scope ,(sh defs)
@@ -848,6 +917,7 @@
   Env_push env layer ,(env)
   __Dict_copy__ sh ,(inner)
   __Dict_put__ inner "env" env ,()
+  Seg_register inner ,()
   __NULL__ inner)
 
 ;; 先頭の語を展開して、コマンドの名前と、先頭の語から出た残りの値の LList と、残りの語を返す。
@@ -882,7 +952,7 @@
   __and__ noLeaves hasList ,(isList)
   __if__ isList
     (,()
-      Parts_list_value parts nList ,(value)
+      Parts_list_value parts nList limit ,(value)
       Value_head sh pos value ,(name more)
       return name more rest) ,()
   Parts_fields_in parts limit ,(fields)
@@ -901,6 +971,8 @@
   __Cont_get__ ,(return)
   __is_null__ name ,(condition)
   __if__ condition (,() return __NULL__ __NULL__ __TRUE__) ,()
+  __type_name__ name ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() return __NULL__ name __FALSE__) ,()
   __String_equal__ name "builtin" ,(isBuiltin)
   __String_equal__ name "command" ,(isCommand)
   __or__ isBuiltin isCommand ,(special)
@@ -973,6 +1045,8 @@
 ;; Cmd_run で、関数 fn と組み込みコマンド builtin（Cmd_resolve）が分かっているとき
 (define Cmd_run_resolved ,(sh pos name args in out err fn builtin)
   __Cont_get__ ,(return)
+  __type_name__ name ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() name sh pos args in out err ,() return) ,()
   __String_equal__ name "builtin" ,(condition)
   __if__ condition (,() Cmd_run sh pos name args in out err ,() return) ,()
   __String_equal__ name "command" ,(condition)
@@ -993,6 +1067,7 @@
 ;; 組み込みコマンドの引数 v が String なら、そのまま返す。LazyList ならエラー
 (define Arg_string ,(sh pos command v)
   __type_name__ v ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() Func_string_error sh pos) ,()
   __String_concat__ command ": a LazyList is not allowed as an argument" ,(msg)
   __unless__ (,() __String_equal__ type "String") (,() Sh_error sh pos msg) ,()
   __NULL__ v)
@@ -1023,6 +1098,7 @@
   Open_track sh opened ,(mark)
   Func_targets sh pos out err ,(out err)
   __Dict_copy__ sh ,(inner)
+  __Dict_put__ inner "redirected" __TRUE__ ,()
   __Dict_put__ inner "bgCaptures" __NULL__ ,()
   __Dict_put__ inner "in" in ,()
   __Dict_put__ inner "out" out ,()
@@ -1139,6 +1215,9 @@
   __Dict_put__ child "finished" finished ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
+  __Ref_new__ __NULL__ ,(meta)
+  __Dict_put__ child "meta" meta ,()
+  __Dict_put__ child "redirected" __FALSE__ ,()
   __NULL__ child)
 
 ;; 子の VProc に渡すターゲット（id は同じ）。chan なら、同じチャネルの新しい書き手にする。
@@ -1281,7 +1360,10 @@
     (,()
       Sh_lookup sh pos restName ,(value)
       __type_name__ value ,(type)
-      __if_then_else__ (,() __String_equal__ type "String")
+      __String_equal__ type "String" ,(isString)
+      __String_equal__ type "Closure" ,(isFunc)
+      __or__ isString isFunc ,(single)
+      __if_then_else__ single
         (,()
           __LazyList_empty__ ,(empty)
           __LazyList_cons__ value empty)
@@ -1915,6 +1997,10 @@
     (,()
       If_parts children ,(clauses elseBody redirs)
       return redirs) ,()
+  __if__ (,() __String_equal__ tag "reset")
+    (,()
+      Reset_parts children ,(script redirs)
+      return redirs) ,()
   __LList_length__ children ,(n)
   num "4" ,(four)
   __Number_subtract__ n four ,(diff)
@@ -1923,6 +2009,157 @@
   List_first reversed ,(redirsNode)
   Node_split redirsNode ,(rtag rpos redirs)
   __NULL__ redirs)
+
+;; ── reset と shift（段階 20）──
+;; 範囲を区切った継続。VProc ごとに、実行中の reset（と、継続の呼び出し）の枠のスタックを、文脈の "meta"（Ref）に持つ。
+;; 枠は Dict で、"k"（終わったときに戻る継続）、"sh"（その場所の文脈）、"in"、"out"、"err"（その場所の標準入出力）、
+;; "registry"（その中で作った文脈の LList の Ref。継続を呼ぶとき、その標準入出力を呼んだ文のものに替える）を持つ。
+;; reset の本体の中では、文脈の "redirected" を偽にし、リダイレクトを持つ文の中では真にする（shift はエラーにする）
+
+;; (reset script [redirs]) の子を、本体のスクリプトとリダイレクトの LList に分ける
+(define Reset_parts ,(children)
+  __LList_uncons__ __print_exit_error__ children ,(script rest)
+  __if_then_else__ (,() __is_null__ rest)
+    (,() __NULL__ __NULL__)
+    (,() List_first rest ,(node) Node_split node ,(rtag rpos redirs) __NULL__ redirs) ,(redirs)
+  __NULL__ script redirs)
+
+(define Eval_reset ,(sh pos children)
+  Reset_parts children ,(script redirs)
+  Eval_redirected sh pos redirs (,(inner) Reset_run inner script))
+
+;; 枠を積んで本体を実行する。本体が終われば、一番上の枠（この reset か、継続の呼び出しの枠）を除いて、その "k" に戻る。
+;; 本体の中から外へ return、break、continue で抜けることはできない（$( ) と同じくエラー）
+(define Reset_run ,(sh script)
+  __Cont_get__ ,(k)
+  __Dict_copy__ sh ,(body)
+  __Dict_put__ body "redirected" __FALSE__ ,()
+  __Dict_put__ body "loops" __NULL__ ,()
+  __Dict_put__ body "noReturn" "return in reset" ,()
+  ;; 変数リストが一杯になって文を止める（Sh_abort）ときは、この reset の枠も除く
+  Sh_get sh "meta" ,(meta)
+  __Ref_get__ meta ,(frames)
+  Sh_get sh "abort" ,(abortRef)
+  __unless__ (,() __is_null__ abortRef)
+    (,()
+      __Ref_new__ (,() __Ref_set__ meta frames ,() __Ref_get__ abortRef ,(abort) abort) ,(wrapped)
+      __Dict_put__ body "abort" wrapped) ,()
+  L1 body ,(dicts)
+  __Ref_new__ dicts ,(registry)
+  Sh_get sh "in" ,(in)
+  Sh_get sh "out" ,(out)
+  Sh_get sh "err" ,(err)
+  Reset_frame k sh in out err registry ,(frame)
+  __LList_cons__ frame frames ,(frames)
+  __Ref_set__ meta frames ,()
+  Node_split script ,(tag spos lines)
+  Eval_lines body lines ,()
+  Reset_end body)
+
+(define Reset_frame ,(k sh in out err registry)
+  __Dict_new__ ,(frame)
+  __Dict_put__ frame "k" k ,()
+  __Dict_put__ frame "sh" sh ,()
+  __Dict_put__ frame "in" in ,()
+  __Dict_put__ frame "out" out ,()
+  __Dict_put__ frame "err" err ,()
+  __Dict_put__ frame "registry" registry ,()
+  __NULL__ frame)
+
+;; reset の本体の終わり。一番上の枠を除いて、その継続に戻る
+(define Reset_end ,(sh)
+  Sh_get sh "meta" ,(meta)
+  __Ref_get__ meta ,(frames)
+  __LList_uncons__ __print_exit_error__ frames ,(frame outer)
+  __Ref_set__ meta outer ,()
+  Sh_get frame "k" ,(k)
+  k)
+
+;; reset の中で作った文脈 dict を、一番上の枠の "registry" に加える（reset の外では何もしない）
+(define Seg_register ,(dict)
+  __Cont_get__ ,(return)
+  Sh_get dict "meta" ,(meta)
+  __Ref_get__ meta ,(frames)
+  __if__ (,() __is_null__ frames) return ,()
+  __LList_uncons__ __print_exit_error__ frames ,(frame outer)
+  Sh_get frame "registry" ,(registry)
+  __Ref_get__ registry ,(dicts)
+  __LList_cons__ dict dicts ,(dicts)
+  __Ref_set__ registry dicts)
+
+;; (shift "k" [params] script)。最も内側の reset から、この shift までの残りの計算を関数値（継続）にして変数 k に入れ、
+;; reset の残りを捨てて、reset の代わりに本体を実行する。本体は、ここで作った関数値を reset の場所で呼ぶのと同じ
+(define Eval_shift ,(sh pos children)
+  __Cont_get__ ,(resume)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(first more)
+  __if_then_else__ (,() __is_null__ more)
+    (,() __NULL__ __NULL__ first)
+    (,() List_first more ,(script) __NULL__ first script) ,(params script)
+  Sh_get sh "meta" ,(meta)
+  __Ref_get__ meta ,(frames)
+  __if__ (,() __is_null__ frames) (,() Sh_error sh pos "shift outside reset") ,()
+  Sh_get sh "redirected" ,(redirected)
+  __if__ redirected (,() Sh_error sh pos "shift: a redirection between reset and shift") ,()
+  __LList_uncons__ __print_exit_error__ frames ,(frame outer)
+  __Ref_set__ meta outer ,()
+  __VProc_current__ ,(vproc)
+  __VProc_id__ vproc ,(vid)
+  Sh_get frame "registry" ,(registry)
+  __Ref_get__ registry ,(dicts)
+  Sh_get sh "vars" ,(vars)
+  Shift_cont meta vid dicts vars params resume ,(k)
+  __LList_cons__ __NULL__ __NULL__ ,(noNames)
+  Node_make "params" pos noNames ,(noParams)
+  Func_make sh noParams script ,(fn)
+  Sh_get fn "vars" ,(fvars)
+  __Dict_put__ fvars name k ,()
+  Sh_get frame "sh" ,(fsh)
+  Sh_get frame "in" ,(in)
+  Sh_get frame "out" ,(out)
+  Sh_get frame "err" ,(err)
+  Func_targets fsh pos out err ,(out err)
+  Func_call fsh pos fn __NULL__ in out err ,()
+  Sh_get frame "k" ,(fk)
+  fk)
+
+;; 継続の関数値。呼ぶと、呼んだ文の枠を積み、継続の中の文脈の標準入出力を呼んだ文のものに替え、
+;; 引数を shift の変数リストに入れて（局所変数 vars）、shift の後から続ける。reset の本体が終われば、呼んだ文に戻る
+(define Shift_cont ,(meta vid dicts vars params resume)
+  __NULL__ (,(caller pos args in out err)
+    __Cont_get__ ,(back)
+    __VProc_current__ ,(vproc)
+    __VProc_id__ vproc ,(cid)
+    __Number_subtract__ cid vid ,(d)
+    __unless__ (,() __Number_is_zero__ d) (,() Sh_error caller pos "a continuation called in another VProc") ,()
+    Func_targets caller pos out err ,(out err)
+    __Ref_new__ dicts ,(registry)
+    Reset_frame back caller in out err registry ,(frame)
+    __Ref_get__ meta ,(frames)
+    __LList_cons__ frame frames ,(frames)
+    __Ref_set__ meta frames ,()
+    Seg_retarget dicts in out err ,()
+    Shift_bind vars params args ,()
+    Sh_set_status caller "0" ,()
+    resume))
+
+(define Seg_retarget ,(dicts in out err)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ dicts) return ,()
+  __LList_uncons__ __print_exit_error__ dicts ,(dict rest)
+  __Dict_put__ dict "in" in ,()
+  __Dict_put__ dict "out" out ,()
+  __Dict_put__ dict "err" err ,()
+  Seg_retarget rest in out err)
+
+;; 継続に渡した値を、shift の変数リストに関数の引数と同じ規則で入れる。変数リストがなければ捨てる
+(define Shift_bind ,(vars params args)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ params) return ,()
+  Node_split params ,(ptag ppos pchildren)
+  __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
+  List_first rest ,(restName)
+  Func_bind vars names restName args)
 
 ;; ── for 文、break、continue ──
 
@@ -1964,6 +2201,7 @@
   Sh_get sh "loops" ,(outer)
   __Dict_copy__ sh ,(inner)
   __Dict_put__ inner "outerLoops" outer ,()
+  Seg_register inner ,()
   For_each inner name values lines break)
 
 (define For_each ,(sh name values lines break)
@@ -2499,8 +2737,10 @@
   __String_equal__ name "kill" ,(condition)
   __if_then_else__ condition (,() __NULL__ Builtin_kill) (,()
   __String_equal__ name "exit" ,(condition)
-  __if_then_else__ condition (,() __NULL__ Builtin_exit)
-    (,() __NULL__ __NULL__))))))))
+  __if_then_else__ condition (,() __NULL__ Builtin_exit) (,()
+  __String_equal__ name "bind" ,(condition)
+  __if_then_else__ condition (,() __NULL__ Builtin_bind)
+    (,() __NULL__ __NULL__)))))))))
 
 ;; exit [n]：シェルを終了ステータス n（省略すれば $?）で終える。0 から 255 の整数でなければエラー。
 ;; パイプラインの要素、$( )、& の中では、その VProc だけを終える（$? が n になる）。
@@ -2919,6 +3159,7 @@
   __Dict_put__ limit "left" max ,()
   Arg_over_message max ,(msg)
   __Dict_put__ limit "onOver" (,() Sh_error sh pos msg) ,()
+  __Dict_put__ limit "onFunc" (,() Func_string_error sh pos) ,()
   __NULL__ limit)
 
 (define Arg_over_message ,(max)
@@ -2926,10 +3167,20 @@
   __String_concat__ "the arguments of an external command exceed ARG_MAX (" s ,(msg)
   __String_concat__ msg " bytes)")
 
+;; 外部コマンドの引数に関数値があればエラー
+(define Args_no_func ,(sh pos args)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ args) return ,()
+  __LList_uncons__ __print_exit_error__ args ,(arg rest)
+  __type_name__ arg ,(type)
+  __if__ (,() __String_equal__ type "Closure") (,() Func_string_error sh pos) ,()
+  Args_no_func sh pos rest)
+
 ;; 外部コマンドを起動する前に、コマンド名と引数の正確なバイト数を調べる。
 ;; 文字数の 4 倍（UTF-8 の1文字は 4 バイト以下）でも上限以下なら、バイト数は数えない
 (define Arg_check ,(sh pos name args)
   __Cont_get__ ,(return)
+  Args_no_func sh pos args ,()
   Arg_max sh pos ,(max)
   __LList_cons__ name args ,(all)
   num "0" ,(zero)
@@ -3103,6 +3354,8 @@
   __Number_is_zero__ diff ,(condition)
   __unless__ condition (,() Sh_error sh pos "ambiguous redirect") ,()
   __LList_uncons__ __print_exit_error__ fields ,(path others)
+  __type_name__ path ,(ptype)
+  __if__ (,() __String_equal__ ptype "Closure") (,() Func_string_error sh pos) ,()
   Redir_mode op ,(mode)
   __OS_open__ (,(msg)
     Msg_strip msg ,(msg)

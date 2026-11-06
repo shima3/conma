@@ -1,0 +1,2 @@
+consh_parse: case65.sh:1:12: expected a command, but found ')'
+exit: 1

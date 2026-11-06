@@ -1,0 +1,21 @@
+$ $ $ consh: stdin:3:7: a function value cannot be made into a string
+$ consh: stdin:4:7: a function value cannot be made into a string
+$ consh: stdin:5:1: a function value cannot be made into a string
+$ consh: stdin:6:1: a function value cannot be made into a string
+$ consh: stdin:7:8: a function value cannot be made into a string
+$ consh: stdin:8:1: a function value cannot be made into a string
+$ consh: stdin:9:9: a function value cannot be made into a string
+$ consh: stdin: a function value cannot be made into a string
+$ $ consh: stdin:12:6: a function value cannot be made into a string
+$ consh: stdin:13:1: a function value cannot be made into a string
+$ consh: stdin:14:3: a function value cannot be made into a string
+$ consh: stdin:15:4: a function value cannot be made into a string
+$ consh: stdin:16:1: a function value cannot be made into a string
+$ consh: stdin:17:1: bind: a command name or a function value is needed
+$ consh: stdin:18:1: bind: a command name or a function value is needed
+$ consh: stdin:19:1: a function value cannot be made into a string
+$ consh: stdin:20:1: a function value cannot be made into a string
+$ $ consh: stdin: a function value cannot be made into a string
+$ $ $ consh: stdin:24:17: return needs a number from 0 to 255
+$ still here 1
+$ exit: 0

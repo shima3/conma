@@ -1,5 +1,5 @@
-//! Values of ConSh: a String or a LazyList, whose elements are values too
-//! (nested LazyLists). A LazyList is evaluated as it is read, at most once
+//! Values of ConSh: a String, a LazyList, whose elements are values too
+//! (nested LazyLists), or a function value (stage 20). A LazyList is evaluated as it is read, at most once
 //! for each cell, and may be read from several threads.
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -29,6 +29,7 @@ pub type R<T> = Result<T, Flow>;
 pub enum Value {
     Str(Arc<str>),
     List(LazyList),
+    Func(Arc<crate::eval::FuncValue>),
 }
 
 impl Value {
@@ -41,7 +42,7 @@ impl Value {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) => Some(s),
-            Value::List(_) => None,
+            _ => None,
         }
     }
     pub fn is_string(&self) -> bool {

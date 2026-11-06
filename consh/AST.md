@@ -60,7 +60,7 @@ In the formats below, `[...]` is optional and `...` is a repetition of the eleme
 | `script` | `(script line ...)` (zero or more lines) | the character right after `$(`, `{` or the keyword (`if`, `then`, `elif`, `else`, `do`) |
 
 The top level of the output is a sequence of `line` nodes without an enclosing `script`.
-A `script` appears as the body of a `function`, in a `subst`, in the parts of an `if`, and as the body of a `for`.
+A `script` appears as the body of a `function` and of a `fun`, in a `subst`, in the parts of an `if`, as the body of a `for`, of a `reset` and of a `shift`.
 
 ### Statements
 
@@ -78,12 +78,14 @@ A `script` appears as the body of a `function`, in a `subst`, in the parts of an
 | `cmd` | `(cmd [env] words [redirs])` | 単純文 with a コマンド | the first `def` of `env`, or else the first word |
 | `if` | `(if clause ... [else] [redirs])` (one or more clauses) | 単純文 with an if文 | `if` |
 | `for` | `(for "name" in script [redirs])` | 単純文 with a リストfor文 | `for` |
+| `reset` | `(reset script [redirs])` | 単純文 with a reset文 | `reset` |
+| `shift` | `(shift "name" [params] script)` | shift文 | `shift` |
 
 A Statement is one of `return`, `break`, `continue`, `export`, `function`, `assign`, or a command list, which is written in the shortest form:
 
 * A command list (コマンド列) is `(list Element ...)`, where an Element is `(bg Pipeline)` for a pipeline followed by `&`, or a Pipeline otherwise.
   If the command list has only one pipeline and no `&`, the `list` is left out and the Pipeline is written alone.
-* A Pipeline (パイプライン) is `(pipe Simple ...)`, where a Simple is a `cmd`, an `if` or a `for`. If it has only one simple statement, the `pipe` is left out and the Simple is written alone.
+* A Pipeline (パイプライン) is `(pipe Simple ...)`, where a Simple is a `cmd`, an `if`, a `for`, a `reset` or a `shift`. If it has only one simple statement, the `pipe` is left out and the Simple is written alone.
 
 Examples:
 
@@ -101,6 +103,7 @@ Examples:
 | --- | --- | --- |
 | `def` | `(def "name" [Value])` | the variable name |
 | `array` | `(array word ...)` (zero or more) | `(` |
+| `fun` | `(fun params script)` | `function` |
 | `name` | `(name "name")` | the variable name |
 | `env` | `(env def ...)` (one or more) | the first `def` |
 | `words` | `(words word ...)` (one or more) | the first word |
@@ -111,7 +114,8 @@ Examples:
 | `else` | `(else script)` | `else` |
 | `in` | `(in word ...)` (zero or more) | `in` |
 
-* `def` is a variable definition (`name=値`). A Value (値) is a `word`, or an `array` for `(word ...)`. The Value is left out when the right side is empty (`x=`).
+* `def` is a variable definition (`name=値`). A Value (値) is a `word`, an `array` for `(word ...)`, or a `fun` for a function value `function (a b . rest) { ... }`. The Value is left out when the right side is empty (`x=`).
+* `fun` holds the variable list and the body of a function value. `function` is a function value only when `(` follows it, after spaces if any (`x=function` is a word).
 * An Item of `export` is `(name "x")` for `export x`, or a `def` for `export x=値`.
 * `env` holds the variable definitions before the command (`x=1 cmd`). It is left out when there are none.
 * `redirs` holds the redirections after the words. It is left out when there are none.
@@ -125,6 +129,8 @@ Examples:
 * The `redirs` of an `if` holds the redirections after `fi`.
 * `for` holds the name of the loop variable, the words after `in` in an `in`, and the script between `do` and `done`. Its `redirs` holds the redirections after `done`.
 * `break` and `continue` hold the name of a loop variable when one is given.
+* `reset` holds the script between `{` and `}`, and its `redirs` the redirections after `}`. `reset` is a keyword only when `{` follows it, after spaces if any.
+* `shift` holds the name of the variable for the continuation, the variable list for the values given to it (left out when there is none), and the script between `{` and `}`. A `shift` has no redirections. `shift` is a keyword only when spaces, a variable name, and `(` or `{` (after spaces if any) follow it.
 
 ### Words
 

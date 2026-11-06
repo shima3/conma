@@ -1,0 +1,26 @@
+f=function (a) { echo "f $a"; }
+l=(p q)
+echo "$f"
+echo a$f
+ls $f
+echo $f $f
+export f
+cd $f
+echo hi > $f
+echo $f
+m=$(echo $f)
+echo $m
+ls ${m}
+x=a${m}
+x=a$f
+g=function () { true; } true
+bind
+bind ${l}
+builtin $f
+command $f
+OFS=$f
+echo ${l}
+OFS=' '
+function r () { return $f; }
+r
+echo "still here $?"

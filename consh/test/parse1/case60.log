@@ -1,0 +1,2 @@
+consh_parse: case60.sh:1:16: expected '{', but found 'e'
+exit: 1

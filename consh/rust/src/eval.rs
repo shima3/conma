@@ -251,6 +251,24 @@ pub struct Ctx {
     /// In a job of interactive mode: external commands start outside the
     /// foreground process group of the terminal (Ctrl-C does not reach them).
     detached: bool,
+    /// In a statement with redirections (a shift there is an error), and the
+    /// resets of the thread being run (stage 20, the "meta" of the ConMa version).
+    redirected: bool,
+    meta: Meta,
+}
+
+/// The resets (and calls of continuations) being run in a thread, innermost
+/// last: where each goes on when it ends, and the context and the standard
+/// input and outputs of its place (for the body of a shift).
+type Meta = Arc<Mutex<Vec<ResetInfo>>>;
+
+#[derive(Clone)]
+struct ResetInfo {
+    k: Chain,
+    sh: Ctx,
+    input: Arc<Input>,
+    out: Target,
+    err: Target,
 }
 
 impl Ctx {
@@ -296,6 +314,8 @@ impl Ctx {
             cancel_in: None,
             bg_captures: None,
             detached: false,
+            redirected: false,
+            meta: Arc::new(Mutex::new(Vec::new())),
         };
         // The standard output writes with the OFS of this context; the
         // Target holds a copy whose own out is the standard error.
@@ -420,6 +440,7 @@ impl Ctx {
         let v = self.get_var("OFS");
         match v {
             Some(Value::Str(s)) => Ok(s.to_string()),
+            Some(Value::Func(_)) => Err(self.error(pos, expand::FUNC_STRING)),
             Some(Value::List(_)) => Err(self.error(pos, "OFS is a LazyList")),
             None => Ok(self.env.lookup("OFS").unwrap_or_else(|| " ".to_string())),
         }
@@ -551,25 +572,171 @@ pub fn eval_run(script: &str, args: Vec<String>, lines: &[Sexp]) -> i32 {
     sh.status().parse().unwrap_or(0)
 }
 
-pub fn eval_lines(sh: &Ctx, lines: &[Sexp]) -> R<()> {
-    for line in lines {
-        for stmt in line.children() {
-            os::jitter();
-            if sh.killed.load(Ordering::SeqCst) {
-                return Err(Flow::Killed);
-            }
-            eval_stmt(sh, stmt)?;
-            subst_settle(sh);
+// ── The machine ──
+// Statements run in continuation-passing style, as in the ConMa version: the
+// rest of the computation of a thread is a persistent list of frames (a
+// Chain, the CChain of the ConMa version), run by a trampoline (run). A
+// statement either finishes at once or pushes the frames that do the rest
+// (the statements of a script, the parts of an if, the next item of a for,
+// the end of a function call). return, break and continue are Err values
+// that run unwinds to their frame. A statement with redirections runs its
+// body in a nested run, so that the redirections are undone when it ends;
+// a continuation (stage 20) never contains one.
+
+/// The rest of the computation: a persistent list of frames.
+#[derive(Clone, Default)]
+pub struct Chain(Option<Arc<Node>>);
+
+pub struct Node {
+    frame: Frame,
+    next: Chain,
+}
+
+impl Chain {
+    fn push(&mut self, frame: Frame) {
+        let next = std::mem::take(self);
+        self.0 = Some(Arc::new(Node { frame, next }));
+    }
+}
+
+#[derive(Clone)]
+enum Frame {
+    /// The statements of a script from line, stmt. settle: Subst_settle first
+    /// (the statement before has ended).
+    Lines { sh: Ctx, script: Sexp, line: usize, stmt: usize, settle: bool },
+    /// The clauses of an if from clause; test: the condition of clause has
+    /// been run, look at $?.
+    If { sh: Ctx, node: Sexp, clause: usize, test: bool },
+    /// The next item of a for loop: values[index..], and the rest of the
+    /// LazyList being read.
+    For { sh: Ctx, name: Arc<str>, values: Arc<Vec<Value>>, index: usize, cur: Option<LazyList>, body: Sexp, id: u64 },
+    /// The elements of a command list (list Element ...) from index.
+    List { sh: Ctx, node: Sexp, index: usize },
+    /// The end of a function call: return with this id ends here.
+    Call { id: u64 },
+    /// The end of the body of a reset: go on where the innermost reset (or
+    /// call of a continuation) of the thread goes on.
+    ResetEnd { sh: Ctx },
+}
+
+/// Run a chain to its end.
+pub fn run(mut chain: Chain) -> R<()> {
+    while let Some(node) = chain.0.take() {
+        chain = node.next.clone();
+        if let Err(flow) = step(&node.frame, &mut chain) {
+            chain = unwind(chain, flow)?;
         }
     }
     Ok(())
 }
 
-fn eval_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
+/// Leave the frames up to the one that return, break or continue goes to;
+/// any other Err ends the run.
+fn unwind(mut chain: Chain, flow: Flow) -> R<Chain> {
+    loop {
+        let node = match chain.0.take() {
+            None => return Err(flow),
+            Some(n) => n,
+        };
+        match (&node.frame, &flow) {
+            (Frame::Call { id }, Flow::Return(r)) if id == r => return Ok(node.next.clone()),
+            (Frame::For { id, sh, .. }, Flow::Break(b)) if id == b => {
+                sh.set_status("0");
+                return Ok(node.next.clone());
+            }
+            (Frame::For { id, .. }, Flow::Continue(c)) if id == c => return Ok(Chain(Some(node))),
+            // Leaving the body of a reset (a full variable list stops the command).
+            (Frame::ResetEnd { sh }, _) => {
+                sh.meta.lock().unwrap().pop();
+            }
+            _ => {}
+        }
+        chain = node.next.clone();
+    }
+}
+
+fn step(frame: &Frame, chain: &mut Chain) -> R<()> {
+    match frame {
+        Frame::Lines { sh, script, line, stmt, settle } => step_lines(sh, script, *line, *stmt, *settle, chain),
+        Frame::If { sh, node, clause, test } => step_if(sh, node, *clause, *test, chain),
+        Frame::For { sh, name, values, index, cur, body, id } => step_for(sh, name, values, *index, cur.clone(), body, *id, chain),
+        Frame::List { sh, node, index } => step_list(sh, node, *index, chain),
+        Frame::Call { .. } => Ok(()),
+        Frame::ResetEnd { sh } => {
+            let info = sh.meta.lock().unwrap().pop().expect("the end of a reset without its frame");
+            *chain = info.k;
+            Ok(())
+        }
+    }
+}
+
+/// A script node holding the command lines (for the top level and $( )).
+fn script_of(lines: &[Sexp]) -> Sexp {
+    let mut v = Vec::with_capacity(lines.len() + 1);
+    v.push(Sexp::Sym(Arc::from("script")));
+    v.extend(lines.iter().cloned());
+    Sexp::List(Arc::new(v))
+}
+
+pub fn eval_lines(sh: &Ctx, lines: &[Sexp]) -> R<()> {
+    run_script(sh, &script_of(lines))
+}
+
+/// Run the command lines of a script node.
+fn run_script(sh: &Ctx, script: &Sexp) -> R<()> {
+    let mut chain = Chain::default();
+    chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line: 0, stmt: 0, settle: false });
+    run(chain)
+}
+
+/// Run one statement to its end (the element of a pipeline, a job).
+fn run_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
+    let mut chain = Chain::default();
+    exec_stmt(sh, stmt, &mut chain)?;
+    run(chain)
+}
+
+/// Push the frames that run a script; an empty one sets $? to 0 (if and for).
+fn push_script(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
+    if script.children().is_empty() {
+        sh.set_status("0");
+        return;
+    }
+    chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line: 0, stmt: 0, settle: false });
+}
+
+fn step_lines(sh: &Ctx, script: &Sexp, mut line: usize, mut stmt: usize, settle: bool, chain: &mut Chain) -> R<()> {
+    if settle {
+        subst_settle(sh);
+    }
+    let lines = script.children();
+    let s = loop {
+        let l = match lines.get(line) {
+            None => return Ok(()),
+            Some(l) => l,
+        };
+        match l.children().get(stmt) {
+            Some(s) => break s,
+            None => {
+                line += 1;
+                stmt = 0;
+            }
+        }
+    };
+    os::jitter();
+    if sh.killed.load(Ordering::SeqCst) {
+        return Err(Flow::Killed);
+    }
+    chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line, stmt: stmt + 1, settle: true });
+    exec_stmt(sh, s, chain)
+}
+
+/// Run a statement, or push the frames that run it.
+fn exec_stmt(sh: &Ctx, stmt: &Sexp, chain: &mut Chain) -> R<()> {
     let pos = stmt.pos();
     let children = stmt.children();
     match stmt.tag() {
-        "cmd" => eval_cmd(sh, pos, children),
+        "cmd" => exec_cmd(sh, pos, children, chain),
         "assign" => {
             for def in children {
                 let c = def.children();
@@ -579,8 +746,8 @@ fn eval_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
             sh.set_status("0");
             Ok(())
         }
-        "if" => eval_if(sh, pos, children),
-        "for" => eval_for(sh, pos, children),
+        "if" => exec_if(sh, pos, stmt, chain),
+        "for" => exec_for(sh, pos, stmt, chain),
         "break" | "continue" => eval_jump(sh, pos, stmt.tag(), children),
         "export" => {
             eval_export(sh, children)?;
@@ -594,17 +761,27 @@ fn eval_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
         }
         "return" => eval_return(sh, pos, children),
         "pipe" => eval_pipe(sh, children),
+        "reset" => exec_reset(sh, pos, children, chain),
+        "shift" => exec_shift(sh, pos, children, chain),
         _ => {
-            for elem in children {
-                if elem.tag() == "bg" {
-                    eval_bg(sh, &elem.children()[0])?;
-                } else {
-                    eval_stmt(sh, elem)?;
-                }
-            }
+            chain.push(Frame::List { sh: sh.clone(), node: stmt.clone(), index: 0 });
             Ok(())
         }
     }
+}
+
+/// A command list: the jobs start at once, the other elements run in turn.
+fn step_list(sh: &Ctx, node: &Sexp, index: usize, chain: &mut Chain) -> R<()> {
+    let elems = node.children();
+    for (i, elem) in elems.iter().enumerate().skip(index) {
+        if elem.tag() == "bg" {
+            eval_bg(sh, &elem.children()[0])?;
+        } else {
+            chain.push(Frame::List { sh: sh.clone(), node: node.clone(), index: i + 1 });
+            return exec_stmt(sh, elem, chain);
+        }
+    }
+    Ok(())
 }
 
 /// export item ...: set environment variables; local variables do not change.
@@ -644,7 +821,7 @@ fn eval_return(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
     };
     let fields = expand::fields(sh, &children[0])?;
     let value = match fields.as_slice() {
-        [w] if is_digits(w) => w.parse::<u64>().ok().filter(|n| *n <= 255),
+        [Value::Str(w)] if is_digits(w) => w.parse::<u64>().ok().filter(|n| *n <= 255),
         _ => None,
     };
     match value {
@@ -689,7 +866,7 @@ fn func_lookup(sh: &Ctx, name: &str) -> Option<Arc<Func>> {
 
 /// Call a function: the arguments go to the parameters ("" for those
 /// missing; the rest as a LazyList), and the body runs in a new scope.
-fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
+fn func_push(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) {
     let mut vars = f.vars.clone();
     let mut it = args.into_iter();
     for n in &f.names {
@@ -712,10 +889,236 @@ fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: 
         ..sh.clone()
     };
     sh.set_status("0");
-    match eval_lines(&callee, f.body.children()) {
-        Err(Flow::Return(r)) if r == id => Ok(()),
-        other => other,
+    chain.push(Frame::Call { id });
+    chain.push(Frame::Lines { sh: callee, script: f.body.clone(), line: 0, stmt: 0, settle: false });
+}
+
+// ── Function values and continuations (stage 20) ──
+// A function value is called like a builtin: with the context, the
+// position, the arguments, the standard input and outputs. It is a function
+// made by f=function (...) { ... }, a bind, or a continuation of a shift.
+
+pub enum FuncValue {
+    Func(Arc<Func>),
+    /// bind name|function value args ...: the scope of the bind finds the name.
+    Bind { scope: Arc<Scope>, target: Value, args: Vec<Value> },
+    Cont(Cont),
+}
+
+/// A continuation: the rest of the computation after a shift (up to the end
+/// of its reset), the thread that made it, and the local variables and the
+/// variable list of the shift that the values given to it go to.
+pub struct Cont {
+    resume: Chain,
+    thread: std::thread::ThreadId,
+    vars: Vars,
+    params: Option<Sexp>,
+    meta: Meta,
+}
+
+/// The function value of (fun params script): the local variables when it is
+/// made, and the functions of the scope where it is made.
+pub fn func_value(sh: &Ctx, children: &[Sexp]) -> Value {
+    Value::Func(Arc::new(FuncValue::Func(Arc::new(func_make(sh, &children[0], &children[1])))))
+}
+
+fn func_make(sh: &Ctx, params: &Sexp, body: &Sexp) -> Func {
+    let p = params.children();
+    let names = p.first().map(|n| n.list().iter().map(|n| n.str().to_string()).collect()).unwrap_or_default();
+    let rest = p.get(1).map(|r| r.str().to_string()).unwrap_or_default();
+    Func { names, rest, body: body.clone(), scope: sh.scope.clone(), vars: sh.vars.lock().unwrap().clone() }
+}
+
+/// Call a function value, going on in chain.
+#[allow(clippy::too_many_arguments)]
+fn call_value(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+    match &**f {
+        FuncValue::Func(func) => {
+            let (out, err) = body_targets(sh, pos, &out, &err);
+            func_push(sh, func, args, input, out, err, chain);
+            Ok(())
+        }
+        FuncValue::Bind { scope, target, args: bound } => {
+            let mut all = bound.clone();
+            all.extend(args);
+            bind_call(sh, scope, pos, target, all, input, out, err, chain)
+        }
+        FuncValue::Cont(c) => cont_call(sh, pos, c, args, input, out, err, chain),
     }
+}
+
+/// Call a function value and wait for it (a command with redirections).
+#[allow(clippy::too_many_arguments)]
+fn call_value_direct(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
+    let mut chain = Chain::default();
+    call_value(sh, pos, f, args, input, out, err, &mut chain)?;
+    run(chain)
+}
+
+/// bind name|function value args ...: a function value that calls the name
+/// or the function value with args before its own arguments. The name is
+/// found when it is called, from the scope of the bind, as a command name.
+fn builtin_bind(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, out: Target, _err: Target) -> R<()> {
+    let msg = "bind: a command name or a function value is needed";
+    let mut it = args.into_iter();
+    let target = match it.next() {
+        Some(v @ (Value::Str(_) | Value::Func(_))) => v,
+        _ => return Err(sh.error(pos, msg)),
+    };
+    let f = Value::Func(Arc::new(FuncValue::Bind { scope: sh.scope.clone(), target, args: it.collect() }));
+    target_write(sh, pos, &out, &f)?;
+    sh.set_status("0");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bind_call(sh: &Ctx, scope: &Arc<Scope>, pos: Pos, target: &Value, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+    let name = match target {
+        Value::Func(f) => return call_value(sh, pos, f, args, input, out, err, chain),
+        Value::Str(s) => s.to_string(),
+        Value::List(_) => unreachable!(),
+    };
+    let inner = Ctx { scope: scope.clone(), ..sh.clone() };
+    let (func, builtin, is_external) = cmd_resolve(&inner, Some(&name));
+    if is_external {
+        let max = arg_max(&inner, pos)?;
+        let leaves = expand::values_leaves_in(&inner, &args, &mut Limit::new(max, pos))?;
+        return external_run(&inner, pos, &name, leaves, &input, &out, &err);
+    }
+    if let Some(f) = &func {
+        if name != "builtin" && name != "command" {
+            let (out, err) = body_targets(&inner, pos, &out, &err);
+            func_push(&inner, f, args, input, out, err, chain);
+            return Ok(());
+        }
+    }
+    cmd_run_resolved(&inner, pos, &name, args, input, out, err, func, builtin)
+}
+
+/// (reset script [redirs]): run the script; a shift in it takes the rest of
+/// it as a continuation. return, break and continue cannot leave it.
+fn exec_reset(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
+    let script = &children[0];
+    let redirs = children.get(1).map(|r| r.children()).unwrap_or(&[]);
+    if redirs.is_empty() {
+        reset_push(sh, script, chain);
+        return Ok(());
+    }
+    eval_redirected(sh, pos, redirs, |inner| {
+        let mut chain = Chain::default();
+        reset_push(inner, script, &mut chain);
+        run(chain)
+    })
+}
+
+fn reset_push(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
+    let body = Ctx { redirected: false, loops: None, no_return: Some(Arc::from("return in reset")), ..sh.clone() };
+    sh.meta.lock().unwrap().push(ResetInfo { k: chain.clone(), sh: sh.clone(), input: sh.input.clone(), out: sh.out.clone(), err: sh.err.clone() });
+    chain.push(Frame::ResetEnd { sh: body.clone() });
+    chain.push(Frame::Lines { sh: body, script: script.clone(), line: 0, stmt: 0, settle: false });
+}
+
+/// (shift "k" [params] script): the rest of the computation up to the end of
+/// the innermost reset becomes a function value in k; the rest of the reset
+/// is dropped and the script runs in its place, like a function value made
+/// here and called there.
+fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
+    let name = children[0].str();
+    let (params, script) = if children.len() == 3 { (Some(children[1].clone()), &children[2]) } else { (None, &children[1]) };
+    let info = {
+        let mut meta = sh.meta.lock().unwrap();
+        if meta.is_empty() {
+            drop(meta);
+            return Err(sh.error(pos, "shift outside reset"));
+        }
+        if sh.redirected {
+            drop(meta);
+            return Err(sh.error(pos, "shift: a redirection between reset and shift"));
+        }
+        meta.pop().unwrap()
+    };
+    let k = Value::Func(Arc::new(FuncValue::Cont(Cont {
+        resume: chain.clone(),
+        thread: std::thread::current().id(),
+        vars: sh.vars.clone(),
+        params,
+        meta: sh.meta.clone(),
+    })));
+    let mut vars = sh.vars.lock().unwrap().clone();
+    vars.insert(name.to_string(), Var::V(k));
+    let body = Arc::new(Func { names: Vec::new(), rest: String::new(), body: script.clone(), scope: sh.scope.clone(), vars });
+    let (out, err) = body_targets(&info.sh, pos, &info.out, &info.err);
+    let mut next = info.k.clone();
+    func_push(&info.sh, &body, Vec::new(), info.input.clone(), out, err, &mut next);
+    *chain = next;
+    Ok(())
+}
+
+/// Call a continuation: the place of the call becomes the innermost reset,
+/// the standard input and outputs in the continuation become those of the
+/// call, the values go to the variable list of the shift, and the rest after
+/// the shift goes on.
+#[allow(clippy::too_many_arguments)]
+fn cont_call(sh: &Ctx, pos: Pos, c: &Cont, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+    if std::thread::current().id() != c.thread {
+        return Err(sh.error(pos, "a continuation called in another VProc"));
+    }
+    let (out, err) = body_targets(sh, pos, &out, &err);
+    c.meta.lock().unwrap().push(ResetInfo { k: chain.clone(), sh: sh.clone(), input: input.clone(), out: out.clone(), err: err.clone() });
+    let resume = retarget(&c.resume, &input, &out, &err);
+    if let Some(p) = &c.params {
+        let pc = p.children();
+        let names: Vec<String> = pc.first().map(|n| n.list().iter().map(|n| n.str().to_string()).collect()).unwrap_or_default();
+        let rest = pc.get(1).map(|r| r.str()).unwrap_or("");
+        let mut vars = c.vars.lock().unwrap();
+        let mut it = args.into_iter();
+        for n in &names {
+            vars.insert(n.clone(), Var::V(it.next().unwrap_or_else(|| Value::str(""))));
+        }
+        if !rest.is_empty() {
+            vars.insert(rest.to_string(), Var::V(Value::List(LazyList::from_vec(it.collect()))));
+        }
+    }
+    sh.set_status("0");
+    *chain = resume;
+    Ok(())
+}
+
+/// The frames of a continuation up to the end of its reset, with the standard
+/// input and outputs of their contexts replaced.
+fn retarget(chain: &Chain, input: &Arc<Input>, out: &Target, err: &Target) -> Chain {
+    let set = |sh: &Ctx| Ctx { input: input.clone(), out: out.clone(), err: err.clone(), ..sh.clone() };
+    let mut frames = Vec::new();
+    let mut cur = chain.0.clone();
+    while let Some(node) = cur {
+        let f = match &node.frame {
+            Frame::Lines { sh, script, line, stmt, settle } => Frame::Lines { sh: set(sh), script: script.clone(), line: *line, stmt: *stmt, settle: *settle },
+            Frame::If { sh, node, clause, test } => Frame::If { sh: set(sh), node: node.clone(), clause: *clause, test: *test },
+            Frame::For { sh, name, values, index, cur, body, id } => {
+                Frame::For { sh: set(sh), name: name.clone(), values: values.clone(), index: *index, cur: cur.clone(), body: body.clone(), id: *id }
+            }
+            Frame::List { sh, node, index } => Frame::List { sh: set(sh), node: node.clone(), index: *index },
+            Frame::Call { id } => Frame::Call { id: *id },
+            Frame::ResetEnd { sh } => {
+                frames.push(Frame::ResetEnd { sh: set(sh) });
+                break;
+            }
+        };
+        frames.push(f);
+        cur = node.next.0.clone();
+    }
+    let mut out_chain = Chain::default();
+    for f in frames.into_iter().rev() {
+        out_chain.push(f);
+    }
+    out_chain
+}
+
+/// Call a function and wait for it (a command with redirections).
+fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
+    let mut chain = Chain::default();
+    func_push(sh, f, args, input, out, err, &mut chain);
+    run(chain)
 }
 
 // ── Simple commands ──
@@ -725,7 +1128,7 @@ fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: 
 /// first word is expanded first to find the command; the others are
 /// expanded as words of an external command or, for functions and
 /// builtins, by the rules of the other words.
-fn eval_cmd(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
+fn exec_cmd(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
     let (mut defs, mut words, mut redirs): (&[Sexp], &[Sexp], &[Sexp]) = (&[], &[], &[]);
     for c in children {
         match c.tag() {
@@ -734,24 +1137,36 @@ fn eval_cmd(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
             _ => redirs = c.children(),
         }
     }
+    let redirected;
+    let sh = if redirs.is_empty() {
+        sh
+    } else {
+        redirected = Ctx { redirected: true, ..sh.clone() };
+        &redirected
+    };
     let sh = &cmd_scope(sh, defs)?;
     let max = arg_max(sh, pos)?;
-    let mut limit = Limit { left: max, max, pos };
-    let head = expand::cmd_head(sh, words, &mut Some(&mut limit))?;
+    let mut limit = Limit::new(max, pos);
+    let head = expand::cmd_head(sh, words, &mut limit)?;
     let (name, more, rest) = match head {
         Some((n, m, r)) => (Some(n), m, r),
         None => (None, Vec::new(), words.len()),
     };
-    let (func, builtin, is_external) = cmd_resolve(sh, name.as_deref());
+    // A function value as the command (stage 20) is run like a builtin.
+    let fval = match &name {
+        Some(Value::Func(f)) => Some(f.clone()),
+        _ => None,
+    };
+    let (func, builtin, is_external) = if fval.is_some() { (None, None, false) } else { cmd_resolve(sh, name.as_ref().and_then(|n| n.as_str())) };
     let mut args = if is_external {
-        let leaves = expand::values_leaves_in(sh, &more, &mut Some(&mut limit))?;
+        let leaves = expand::values_leaves_in(sh, &more, &mut limit)?;
         leaves.into_iter().map(Value::string).collect()
     } else {
         more
     };
     for w in &words[rest..] {
         if is_external {
-            args.extend(expand::fields_in(sh, w, &mut Some(&mut limit))?.into_iter().map(Value::string));
+            args.extend(expand::fields_in(sh, w, &mut limit)?);
         } else {
             args.extend(expand::args(sh, w)?);
         }
@@ -771,6 +1186,24 @@ fn eval_cmd(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
         }
         Some(n) => n,
     };
+    // Without redirections, a function call goes on in this chain (so that a
+    // continuation can contain it); with them, it runs in a nested one.
+    if redirs.is_empty() {
+        if let Some(f) = &fval {
+            return call_value(sh, pos, f, args, input, out, err, chain);
+        }
+        if let Some(f) = &func {
+            if name.as_str() != Some("builtin") && name.as_str() != Some("command") {
+                let (out, err) = body_targets(sh, pos, &out, &err);
+                func_push(sh, f, args, input, out, err, chain);
+                return Ok(());
+            }
+        }
+    }
+    if let Some(f) = fval {
+        return capture_run(sh, &group, |s| call_value_direct(s, pos, &f, args, input, out, err));
+    }
+    let name = name.as_str().unwrap_or("").to_string();
     capture_run(sh, &group, |s| cmd_run_resolved(s, pos, &name, args, input, out, err, func, builtin))
 }
 
@@ -825,8 +1258,8 @@ fn cmd_run_resolved(sh: &Ctx, pos: Pos, name: &str, args: Vec<Value>, input: Arc
     }
     if name == "command" {
         let max = arg_max(sh, pos)?;
-        let mut limit = Limit { left: max, max, pos };
-        let leaves = expand::values_leaves_in(sh, &args, &mut Some(&mut limit))?;
+        let mut limit = Limit::new(max, pos);
+        let leaves = expand::values_leaves_in(sh, &args, &mut limit)?;
         let mut it = leaves.into_iter();
         let name2 = match it.next() {
             None => return Err(sh.error(pos, "command: a command name is needed")),
@@ -841,6 +1274,9 @@ fn cmd_run_resolved(sh: &Ctx, pos: Pos, name: &str, args: Vec<Value>, input: Arc
     if let Some(b) = builtin {
         return b(sh, pos, args, input, out, err);
     }
+    if args.iter().any(|v| matches!(v, Value::Func(_))) {
+        return Err(sh.error(pos, expand::FUNC_STRING));
+    }
     let strings = args.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect();
     external_run(sh, pos, name, strings, &input, &out, &err)
 }
@@ -849,6 +1285,7 @@ fn cmd_run_resolved(sh: &Ctx, pos: Pos, name: &str, args: Vec<Value>, input: Arc
 fn arg_string(sh: &Ctx, pos: Pos, command: &str, v: Value) -> R<String> {
     match v {
         Value::Str(s) => Ok(s.to_string()),
+        Value::Func(_) => Err(sh.error(pos, expand::FUNC_STRING)),
         Value::List(_) => Err(sh.error(pos, &format!("{}: a LazyList is not allowed as an argument", command))),
     }
 }
@@ -870,97 +1307,104 @@ fn eval_redirected(sh: &Ctx, pos: Pos, redirs: &[Sexp], run: impl FnOnce(&Ctx) -
         Some(r) => r,
     };
     let (out, err) = body_targets(sh, pos, &out, &err);
-    let inner = Ctx { input, out, err, bg_captures: None, ..sh.clone() };
+    let inner = Ctx { input, out, err, bg_captures: None, redirected: true, ..sh.clone() };
     capture_run(&inner, &group, run)
 }
 
 /// if: run the conditions in turn and the body of the first one whose $?
 /// is 0, or else the else part. Without it, $? is 0.
-fn eval_if(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
-    let mut clauses = Vec::new();
-    let mut else_body = None;
-    let mut redirs: &[Sexp] = &[];
-    for c in children {
-        match c.tag() {
-            "clause" => clauses.push(c),
-            "else" => else_body = c.children().first(),
-            _ => redirs = c.children(),
-        }
-    }
-    eval_redirected(sh, pos, redirs, |sh| {
-        for clause in &clauses {
-            let scripts = clause.children();
-            if_script(sh, &scripts[0])?;
-            if sh.status() == "0" {
-                return if_script(sh, &scripts[1]);
-            }
-        }
-        match else_body {
-            None => {
-                sh.set_status("0");
-                Ok(())
-            }
-            Some(b) => if_script(sh, b),
-        }
-    })
-}
-
-/// A script in an if statement. An empty one sets $? to 0.
-fn if_script(sh: &Ctx, script: &Sexp) -> R<()> {
-    let lines = script.children();
-    if lines.is_empty() {
-        sh.set_status("0");
+fn exec_if(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut Chain) -> R<()> {
+    let redirs = node.children().iter().find(|c| c.tag() == "redirs").map(|r| r.children()).unwrap_or(&[]);
+    if redirs.is_empty() {
+        chain.push(Frame::If { sh: sh.clone(), node: node.clone(), clause: 0, test: false });
         return Ok(());
     }
-    eval_lines(sh, lines)
-}
-
-/// for name in words; do script; done. break leaves the loop and continue
-/// the iteration. $? is 0 at the end.
-fn eval_for(sh: &Ctx, pos: Pos, children: &[Sexp]) -> R<()> {
-    let name = children[0].str().to_string();
-    let words = children[1].children();
-    let body = children[2].children();
-    let redirs = children.get(3).map(|r| r.children()).unwrap_or(&[]);
     eval_redirected(sh, pos, redirs, |inner| {
-        let mut values = Vec::new();
-        for w in words {
-            values.extend(expand::args(inner, w)?);
-        }
-        let id = new_id();
-        let looped = Ctx { loops: Some(Arc::new(LoopNode { name: name.clone(), id, next: inner.loops.clone() })), ..inner.clone() };
-        let r = for_values(&looped, &name, values, body, id);
-        match r {
-            Err(Flow::Break(b)) if b == id => {}
-            other => other?,
-        }
-        inner.set_status("0");
-        Ok(())
+        let mut chain = Chain::default();
+        chain.push(Frame::If { sh: inner.clone(), node: node.clone(), clause: 0, test: false });
+        run(chain)
     })
 }
 
-fn for_values(sh: &Ctx, name: &str, values: Vec<Value>, body: &[Sexp], id: u64) -> R<()> {
-    for v in values {
-        match v {
-            Value::Str(_) => for_item(sh, name, v, body, id)?,
-            Value::List(l) => {
-                let mut cur = l;
-                while let Some((item, rest)) = cur.uncons()? {
-                    for_item(sh, name, item, body, id)?;
-                    cur = rest;
-                }
-            }
+fn step_if(sh: &Ctx, node: &Sexp, mut clause: usize, test: bool, chain: &mut Chain) -> R<()> {
+    let children = node.children();
+    let clauses: Vec<&Sexp> = children.iter().filter(|c| c.tag() == "clause").collect();
+    if test {
+        if sh.status() == "0" {
+            push_script(sh, &clauses[clause].children()[1], chain);
+            return Ok(());
         }
+        clause += 1;
+    }
+    if clause < clauses.len() {
+        chain.push(Frame::If { sh: sh.clone(), node: node.clone(), clause, test: true });
+        push_script(sh, &clauses[clause].children()[0], chain);
+        return Ok(());
+    }
+    match children.iter().find(|c| c.tag() == "else") {
+        None => sh.set_status("0"),
+        Some(e) => push_script(sh, &e.children()[0], chain),
     }
     Ok(())
 }
 
-fn for_item(sh: &Ctx, name: &str, item: Value, body: &[Sexp], id: u64) -> R<()> {
-    sh.set_var(name, item);
-    match eval_lines(sh, body) {
-        Err(Flow::Continue(c)) if c == id => Ok(()),
-        other => other,
+/// for name in words; do script; done. break leaves the loop and continue
+/// the iteration. $? is 0 at the end.
+fn exec_for(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut Chain) -> R<()> {
+    let redirs = node.children().get(3).map(|r| r.children()).unwrap_or(&[]);
+    if redirs.is_empty() {
+        return for_start(sh, node, chain);
     }
+    eval_redirected(sh, pos, redirs, |inner| {
+        let mut chain = Chain::default();
+        for_start(inner, node, &mut chain)?;
+        run(chain)
+    })
+}
+
+fn for_start(sh: &Ctx, node: &Sexp, chain: &mut Chain) -> R<()> {
+    let children = node.children();
+    let name: Arc<str> = Arc::from(children[0].str());
+    let mut values = Vec::new();
+    for w in children[1].children() {
+        values.extend(expand::args(sh, w)?);
+    }
+    let id = new_id();
+    let looped = Ctx { loops: Some(Arc::new(LoopNode { name: name.to_string(), id, next: sh.loops.clone() })), ..sh.clone() };
+    chain.push(Frame::For { sh: looped, name, values: Arc::new(values), index: 0, cur: None, body: children[2].clone(), id });
+    Ok(())
+}
+
+/// The next item: a String value, or the next element of a LazyList value.
+#[allow(clippy::too_many_arguments)]
+fn step_for(sh: &Ctx, name: &Arc<str>, values: &Arc<Vec<Value>>, mut index: usize, mut cur: Option<LazyList>, body: &Sexp, id: u64, chain: &mut Chain) -> R<()> {
+    let item = loop {
+        if let Some(l) = cur.take() {
+            if let Some((item, rest)) = l.uncons()? {
+                cur = Some(rest);
+                break item;
+            }
+            continue;
+        }
+        match values.get(index) {
+            None => {
+                sh.set_status("0");
+                return Ok(());
+            }
+            Some(Value::List(l)) => {
+                cur = Some(l.clone());
+                index += 1;
+            }
+            Some(v) => {
+                index += 1;
+                break v.clone();
+            }
+        }
+    };
+    chain.push(Frame::For { sh: sh.clone(), name: name.clone(), values: values.clone(), index, cur, body: body.clone(), id });
+    sh.set_var(name, item);
+    chain.push(Frame::Lines { sh: sh.clone(), script: body.clone(), line: 0, stmt: 0, settle: false });
+    Ok(())
 }
 
 /// break [name] and continue [name]: the innermost loop of that variable, or
@@ -1015,6 +1459,8 @@ fn sh_child(sh: &Ctx, input: Arc<Input>, out: Target, err: Target, no_return: &s
         pipe_members: Arc::new(Mutex::new(Vec::new())),
         cancel_in: None,
         bg_captures: None,
+        redirected: false,
+        meta: Arc::new(Mutex::new(Vec::new())),
         ..sh.clone()
     }
 }
@@ -1186,7 +1632,7 @@ fn pipe_element(sh: &Ctx, elem: &Sexp, input: Arc<Input>, out: Target, err: Targ
     child.cancel_in = cancel_in;
     let elem = elem.clone();
     sh_start(child, owned, move |c| {
-        let r = eval_stmt(c, &elem);
+        let r = run_stmt(c, &elem);
         subst_settle(c);
         r
     }, || {})
@@ -1262,7 +1708,7 @@ fn eval_bg(sh: &Ctx, pipeline: &Sexp) -> R<()> {
         child.bg_captures = Some(Arc::new(Mutex::new(specs.iter().cloned().collect())));
         let p = pipeline.clone();
         let m = sh_start(child, Vec::new(), move |c| {
-            let r = eval_stmt(c, &p);
+            let r = run_stmt(c, &p);
             subst_settle(c);
             r
         }, || {});
@@ -1616,6 +2062,9 @@ fn subst_finish(sh: &Ctx) {
 // ── Builtins ──
 
 fn builtin_lookup(name: &str) -> Option<Builtin> {
+    if name == "bind" {
+        return Some(builtin_bind);
+    }
     Some(match name {
         "echo" => builtin_echo,
         "cd" => builtin_cd,
@@ -2089,7 +2538,11 @@ fn eval_redirs(sh: &Ctx, redirs: &[Sexp]) -> R<Option<Redirected>> {
         if fields.len() != 1 {
             return Err(sh.error(pos, "ambiguous redirect"));
         }
-        let path = &fields[0];
+        let path = match &fields[0] {
+            Value::Str(p) => p.to_string(),
+            _ => return Err(sh.error(pos, expand::FUNC_STRING)),
+        };
+        let path = &path;
         let full = sh.cwd().join(path);
         let mut opts = std::fs::OpenOptions::new();
         match op {
@@ -2130,8 +2583,8 @@ fn input_vars(sh: &Ctx, pos: Pos, params: &[Sexp]) -> R<Arc<Input>> {
     let mut tail = LazyList::empty();
     if !rest.is_empty() {
         tail = match sh.lookup(pos, rest)? {
-            Value::Str(s) => LazyList::cons(Value::Str(s), LazyList::empty()),
             Value::List(l) => l,
+            v => LazyList::cons(v, LazyList::empty()),
         };
     }
     let mut list = tail;

@@ -1,0 +1,2 @@
+consh_parse: case67.sh:1:16: unexpected '>'
+exit: 1

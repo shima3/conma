@@ -1,0 +1,24 @@
+$ consh: stdin:1:1: shift outside reset
+$ $ consh: stdin:2:17: shift outside reset
+$ consh: stdin:4:24: shift outside reset
+$ consh: stdin:5:13: shift outside reset
+x=[]
+$ consh: stdin:2:17: shift: a redirection between reset and shift
+$ consh: stdin:2:17: shift: a redirection between reset and shift
+$ consh: stdin:2:17: shift: a redirection between reset and shift
+$ consh: stdin:2:17: shift: a redirection between reset and shift
+$ $ after redirect reset 0
+$ $ $ consh: stdin:14:9: return in reset
+$ consh: stdin:15:26: break outside a loop
+$ consh: stdin:16:26: continue outside a loop
+$ $ consh: stdin:17:25: return in reset
+$ consh: stdin:19:19: break outside a loop
+$ a=1 b=2 r=3 4
+$ twice
+twice
+$ end
+$ $ consh: stdin:24:1: a continuation called in another VProc
+$ end
+$ $ a=1 b=2
+consh: stdin:27:41: shift outside reset
+$ exit: 1

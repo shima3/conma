@@ -1,0 +1,2 @@
+consh_parse: case70.sh:1:14: unexpected 'y'
+exit: 1

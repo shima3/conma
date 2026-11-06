@@ -488,8 +488,11 @@ impl<'a> Parser<'a> {
         Ok(self.item(loc, &name, v))
     }
 
-    /// value = [word] | "(" {space} [word {space+ word}] {space} ")". None if empty.
+    /// value = [word] | "(" {space} [word {space+ word}] {space} ")" | function value. None if empty.
     fn value(&mut self) -> P<Option<Sexp>> {
+        if self.word_then("function", '(') {
+            return Ok(Some(self.fun_value()?));
+        }
         if self.peek() == '(' {
             let loc = self.loc(self.index(0));
             self.advance(1);
@@ -515,6 +518,51 @@ impl<'a> Parser<'a> {
         } else {
             Ok(None)
         }
+    }
+
+    /// The index k characters ahead after spaces and tabs.
+    fn spaces_from(&self, mut k: usize) -> usize {
+        while is_space(self.peek_at(k)) {
+            k += 1;
+        }
+        k
+    }
+
+    /// Whether word is here, followed by c after spaces if any.
+    fn word_then(&self, word: &str, c: char) -> bool {
+        let n = word.len();
+        self.peek_str(n) == word && self.peek_at(self.spaces_from(n)) == c
+    }
+
+    /// function value = "function" {space} params {space} "{" script "}"
+    fn fun_value(&mut self) -> P<Sexp> {
+        let loc = self.loc(self.index(0));
+        self.advance(8);
+        self.skip_spaces();
+        let params = self.params()?;
+        self.skip_spaces();
+        self.expect('{')?;
+        let body = self.script_node(Some('}'))?;
+        self.advance(1);
+        if self.is_word_start() {
+            return self.err(format!("unexpected {} after '}}'", self.describe()));
+        }
+        Ok(self.node("fun", loc, vec![params, body]))
+    }
+
+    /// shift: a keyword only before spaces, a variable name, and ( or {.
+    fn at_shift(&self) -> bool {
+        if self.peek_str(5) != "shift" || !is_space(self.peek_at(5)) {
+            return false;
+        }
+        let mut k = self.spaces_from(5);
+        if !is_ident_start(self.peek_at(k)) {
+            return false;
+        }
+        while is_ident_char(self.peek_at(k)) {
+            k += 1;
+        }
+        matches!(self.peek_at(self.spaces_from(k)), '(' | '{')
     }
 
     fn ident(&mut self) -> String {
@@ -635,6 +683,36 @@ impl<'a> Parser<'a> {
             }
         };
         let _ = given;
+        // reset and shift: not after definitions.
+        if defs.is_empty() && self.word_then("reset", '{') {
+            self.advance(5);
+            self.skip_spaces();
+            self.expect('{')?;
+            let mut parts = vec![self.script_node(Some('}'))?];
+            self.advance(1);
+            let mut redirs = Vec::new();
+            if self.skip_spaces() > 0 && !self.at_comment() && self.at_redirect() {
+                self.redirects(&mut redirs)?;
+            }
+            if !redirs.is_empty() {
+                parts.push(self.redirs_node(redirs));
+            }
+            return Ok(self.node("reset", loc, parts));
+        }
+        if defs.is_empty() && self.at_shift() {
+            self.advance(5);
+            self.skip_spaces();
+            let mut parts = vec![s(&self.ident())];
+            self.skip_spaces();
+            if self.peek() == '(' {
+                parts.push(self.params()?);
+                self.skip_spaces();
+            }
+            self.expect('{')?;
+            parts.push(self.script_node(Some('}'))?);
+            self.advance(1);
+            return Ok(self.node("shift", loc, parts));
+        }
         // A keyword at the start; not after definitions.
         let kw = if defs.is_empty() { self.keyword() } else { None };
         if kw == Some("if") {

@@ -150,6 +150,9 @@
   __Number_add__ cmdNo one ,(cmdNo)
   __Dict_put__ sh "cmdNo" cmdNo ,()
   __Ref_new__ __NULL__ ,(cwdRef)
+  ;; reset の枠のスタックは、コマンドごとに新しくする（前のコマンドで取った継続は、別の VProc なので呼べない）
+  __Ref_new__ __NULL__ ,(meta)
+  __Dict_put__ sh "meta" meta ,()
   __VProc_start__ (,() Repl_body sh lines cwdRef) ,(vproc)
   Sh_get r "running" ,(running)
   __Ref_set__ running vproc ,()

@@ -361,7 +361,9 @@ class Parser:
         return node(pos, 'def', name, self.parse_value())
 
     def parse_value(self):
-        # 値 = [語] | "(" {スペース} [語 {スペース+ 語}] {スペース} ")"。空なら None
+        # 値 = [語] | "(" {スペース} [語 {スペース+ 語}] {スペース} ")" | 関数値。空なら None
+        if self.at_fun_value():
+            return self.parse_fun_value()
         if self.peek() == '(':
             pos = self._index(0)
             self.advance()
@@ -378,6 +380,77 @@ class Parser:
                 self.error(f"unexpected {self.describe()} after ')'")
             return node(pos, 'array', words)
         return self.parse_word() if self.is_word_start() else None
+
+    def at_fun_value(self):
+        # 値の位置の function は、直後に {スペース} と ( が続くときだけ関数値になる
+        if self.peek_str(8) != 'function':
+            return False
+        k = 8
+        while self.peek(k) in SPACES and self.peek(k) != '':
+            k += 1
+        return self.peek(k) == '('
+
+    def parse_fun_value(self):
+        # 関数値 = "function" {スペース} 変数リスト {スペース} "{" スクリプト "}"
+        pos = self._index(0)
+        self.advance(8)
+        self.skip_spaces()
+        params = self.parse_params()
+        self.skip_spaces()
+        self.expect('{')
+        body = self.parse_script('}')
+        self.advance()
+        if self.is_word_start():
+            self.error(f"unexpected {self.describe()} after '}}'")
+        return node(pos, 'fun', params, body)
+
+    def at_reset(self):
+        # reset は、直後に {スペース} と { が続くときだけキーワードになる
+        if self.peek_str(5) != 'reset':
+            return False
+        k = 5
+        while self.peek(k) in SPACES and self.peek(k) != '':
+            k += 1
+        return self.peek(k) == '{'
+
+    def at_shift(self):
+        # shift は、直後にスペースと変数名が続き、その後に ( か { が来るときだけキーワードになる
+        if self.peek_str(5) != 'shift' or not (self.peek(5) in SPACES and self.peek(5) != ''):
+            return False
+        k = 5
+        while self.peek(k) in SPACES and self.peek(k) != '':
+            k += 1
+        if not is_ident_start(self.peek(k)):
+            return False
+        while is_ident_char(self.peek(k)):
+            k += 1
+        while self.peek(k) in SPACES and self.peek(k) != '':
+            k += 1
+        return self.peek(k) in ('(', '{') and self.peek(k) != ''
+
+    def parse_reset(self):
+        # "reset" {スペース} "{" スクリプト "}"
+        self.advance(5)
+        self.skip_spaces()
+        self.expect('{')
+        body = self.parse_script('}')
+        self.advance()
+        return body
+
+    def parse_shift(self):
+        # "shift" スペース+ 変数名 [{スペース} 変数リスト] {スペース} "{" スクリプト "}"
+        self.advance(5)
+        self.skip_spaces()
+        name = self.parse_ident()
+        self.skip_spaces()
+        params = None
+        if self.peek() == '(':
+            params = self.parse_params()
+            self.skip_spaces()
+        self.expect('{')
+        body = self.parse_script('}')
+        self.advance()
+        return name, params, body
 
     def parse_ident(self):
         name = ''
@@ -456,6 +529,15 @@ class Parser:
                 if self.skip_spaces() == 0:
                     break
         # 単純文の先頭のキーワード。前置の変数定義の後ではキーワードにならない
+        if not defs and self.at_reset():
+            body = self.parse_reset()
+            redirs = []
+            if self.skip_spaces() and not self.at_comment() and self.at_redirect():
+                self.parse_redirects(redirs)
+            return node(pos, 'reset', body, redirs)
+        if not defs and self.at_shift():
+            name, params, body = self.parse_shift()
+            return node(pos, 'shift', name, params, body)
         kw = None if defs else self.keyword()
         if kw == 'if':
             clauses, else_body = self.parse_if()
@@ -811,6 +893,19 @@ def sx_stmt(s):
         return sx(kind, s.pos, *(sx_stmt(x) for x in s[1]))
     if kind == 'bg':
         return sx(kind, s.pos, sx_stmt(s[1]))
+    if kind == 'reset':
+        _, body, redirs = s
+        parts = [sx_script(body)]
+        if redirs:
+            parts.append(sx('redirs', redirs[0].pos, *(sx_redir(r) for r in redirs)))
+        return sx(kind, s.pos, *parts)
+    if kind == 'shift':
+        _, name, params, body = s
+        parts = [q(name)]
+        if params is not None:
+            parts.append(sx_params(params))
+        parts.append(sx_script(body))
+        return sx(kind, s.pos, *parts)
     if kind == 'if':
         _, clauses, else_body, redirs = s
         parts = [sx('clause', c.pos, sx_script(c[1]), sx_script(c[2])) for c in clauses]
@@ -841,6 +936,8 @@ def sx_def_value(v):
     # 値。語か (array 語 ...)
     if v[0] == 'array':
         return sx('array', v.pos, *(sx_word(w) for w in v[1]))
+    if v[0] == 'fun':
+        return sx('fun', v.pos, sx_params(v[1]), sx_script(v[2]))
     return sx_word(v)
 
 
@@ -1066,7 +1163,13 @@ def map_leaves(v, f):
     return f(v)
 
 
+class FuncValue:
+    """関数値。展開のモードでは定義だけを出し、参照はエラーとする"""
+
+
 def sx_value(v):
+    if isinstance(v, FuncValue):
+        return '(function)'
     if isinstance(v, LazyList):
         return '(list' + ''.join(' ' + sx_value(e) for e in v) + ')'
     return q(v)
@@ -1147,6 +1250,8 @@ class Expander:
             return self.exec_cmd(s, ctx, out)
         if kind == 'if':
             raise ConShError('if is not supported in the expand mode', s.pos)
+        if kind in ('reset', 'shift'):
+            raise ConShError(f'{kind} is not supported in the expand mode', s.pos)
         raise ValueError(kind)
 
     def exec_part(self, s, ctx):
@@ -1247,7 +1352,10 @@ class Expander:
         if name == '$':
             return '1'
         if name in ctx.local:
-            return ctx.local[name]
+            v = ctx.local[name]
+            if isinstance(v, FuncValue):
+                raise ConShError('function values are not supported in the expand mode', pos)
+            return v
         return ctx.env[name]
 
     def defined(self, name, ctx):
@@ -1419,6 +1527,8 @@ class Expander:
         """変数定義の右辺の値。v は None（空）、語、または (array 語 ...)"""
         if v is None:
             return ''
+        if v[0] == 'fun':
+            return FuncValue()
         if v[0] == 'array':
             return LazyList(f for w in v[1] for f in self.fields(w, ctx))
         return self.value(v, ctx)

@@ -885,9 +885,11 @@
   Ps_value p ,(value)
   Def_make pos name value)
 
-;; 値 = [語] | "(" {スペース} [語 {スペース+ 語}] {スペース} ")"。空なら null
+;; 値 = [語] | "(" {スペース} [語 {スペース+ 語}] {スペース} ")" | 関数値。空なら null
 (define Ps_value ,(p)
   __Cont_get__ ,(return)
+  Ps_at_fun_value p ,(fun)
+  __if__ fun (,() Ps_fun_value p ,(v) return v) ,()
   Ps_c p ,(c)
   __unless__ (,() __String_equal__ c "(")
     (,()
@@ -971,6 +973,111 @@
   __LList_cons__ name acc ,(acc)
   Ps_param_names p acc __FALSE__)
 
+;; ── 関数値、reset、shift ──
+
+;; k 文字先（Number）から空白とタブを読み飛ばした位置（Number）
+(define Ps_spaces_from ,(p k)
+  __Cont_get__ ,(return)
+  Ps_peek_n p k ,(c)
+  Is_space c ,(space)
+  __unless__ space (,() return k) ,()
+  num "1" ,(one)
+  __Number_add__ k one ,(k)
+  Ps_spaces_from p k)
+
+;; k 文字先（Number）から識別子の文字を読み飛ばした位置（Number）
+(define Ps_ident_end ,(p k)
+  __Cont_get__ ,(return)
+  Ps_peek_n p k ,(c)
+  Is_ident_char c ,(more)
+  __unless__ more (,() return k) ,()
+  num "1" ,(one)
+  __Number_add__ k one ,(k)
+  Ps_ident_end p k)
+
+;; 今の位置に、n 文字（Number）の word があり、その後ろに空白を読み飛ばして c があるか
+(define Ps_word_then ,(p word n c)
+  __Cont_get__ ,(return)
+  Ps_peek_str p n ,(s)
+  __unless__ (,() __String_equal__ s word) (,() return __FALSE__) ,()
+  Ps_spaces_from p n ,(k)
+  Ps_peek_n p k ,(d)
+  __String_equal__ d c)
+
+;; 値の位置の function は、直後に {スペース} と ( が続くときだけ関数値になる
+(define Ps_at_fun_value ,(p)
+  num "8" ,(n)
+  Ps_word_then p "function" n "(")
+
+;; 関数値 = "function" {スペース} 変数リスト {スペース} "{" スクリプト "}"
+(define Ps_fun_value ,(p)
+  Ps_pos p ,(pos)
+  Ps_advance p "8" ,()
+  Ps_skip_spaces p ,(n)
+  Ps_params p ,(params)
+  Ps_skip_spaces p ,(n)
+  Ps_expect p "{" ,()
+  Ps_script p "}" ,(body)
+  Ps_advance p "1" ,()
+  Ps_is_word_start p ,(start)
+  __if__ start
+    (,()
+      Ps_describe p ,(d)
+      __String_concat__ "unexpected " d ,(m)
+      __String_concat__ m " after '}'" ,(m)
+      Ps_error p m) ,()
+  L2 params body ,(children)
+  Node_make "fun" pos children)
+
+;; reset は、直後に {スペース} と { が続くときだけキーワードになる
+(define Ps_at_reset ,(p)
+  num "5" ,(n)
+  Ps_word_then p "reset" n "{")
+
+;; shift は、直後にスペースと変数名が続き、その後に ( か { が来るときだけキーワードになる
+(define Ps_at_shift ,(p)
+  __Cont_get__ ,(return)
+  num "5" ,(n)
+  Ps_peek_str p n ,(s)
+  __unless__ (,() __String_equal__ s "shift") (,() return __FALSE__) ,()
+  Ps_peek_n p n ,(c)
+  Is_space c ,(space)
+  __unless__ space (,() return __FALSE__) ,()
+  Ps_spaces_from p n ,(k)
+  Ps_peek_n p k ,(c)
+  Is_ident_start c ,(ident)
+  __unless__ ident (,() return __FALSE__) ,()
+  Ps_ident_end p k ,(k)
+  Ps_spaces_from p k ,(k)
+  Ps_peek_n p k ,(c)
+  Ch_in c "({")
+
+;; "reset" {スペース} "{" スクリプト "}"。スクリプトの節を返す
+(define Ps_reset ,(p)
+  Ps_advance p "5" ,()
+  Ps_skip_spaces p ,(n)
+  Ps_expect p "{" ,()
+  Ps_script p "}" ,(body)
+  Ps_advance p "1" ,()
+  __NULL__ body)
+
+;; "shift" スペース+ 変数名 [{スペース} 変数リスト] {スペース} "{" スクリプト "}"。子の LList を返す
+(define Ps_shift ,(p)
+  Ps_advance p "5" ,()
+  Ps_skip_spaces p ,(n)
+  Ps_ident p ,(name)
+  Ps_skip_spaces p ,(n)
+  Ps_c p ,(c)
+  __if_then_else__ (,() __String_equal__ c "(")
+    (,() Ps_params p ,(params) Ps_skip_spaces p ,(n) L1 params)
+    (,() __NULL__ __NULL__) ,(plist)
+  Ps_expect p "{" ,()
+  Ps_script p "}" ,(body)
+  Ps_advance p "1" ,()
+  L1 body ,(tail)
+  __LList_append__ plist tail ,(children)
+  __LList_cons__ name children)
+
 ;; ── コマンド列、パイプライン、単純文 ──
 
 ;; defs は文の先頭で読んだ前置の変数定義。parsed が真なら読み終えている
@@ -1050,6 +1157,23 @@
   __if_then_else__ parsed
     (,() __NULL__ defs)
     (,() Ps_defs p __NULL__) ,(defs)
+  ;; reset と shift。前置の変数定義の後ではキーワードにならない
+  __if__ (,() __is_null__ defs)
+    (,()
+      Ps_at_reset p ,(isReset)
+      __if__ isReset
+        (,()
+          Ps_reset p ,(body)
+          Ps_stmt_redirs p ,(redirs)
+          __LList_cons__ body redirs ,(children)
+          Node_make "reset" pos children ,(s)
+          return s) ,()
+      Ps_at_shift p ,(isShift)
+      __if__ isShift
+        (,()
+          Ps_shift p ,(children)
+          Node_make "shift" pos children ,(s)
+          return s) ,()) ,()
   __if_then_else__ (,() __is_null__ defs) (,() Ps_keyword p) (,() __NULL__ __NULL__) ,(kw)
   Is_kw kw "if" ,(isIf)
   __if__ isIf

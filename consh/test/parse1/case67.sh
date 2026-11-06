@@ -1,0 +1,1 @@
+shift k { x; } > out

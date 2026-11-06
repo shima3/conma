@@ -1,0 +1,2 @@
+consh_parse: case62.sh:1:22: unexpected 'y' after '}'
+exit: 1

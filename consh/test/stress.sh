@@ -7,7 +7,7 @@
 cd "$(dirname "$0")"
 n=${1:-10}
 shift
-dirs=${*:-step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 examples}
+dirs=${*:-step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step20 examples}
 for seed in $(seq 1 $n); do
   for d in $dirs; do
     out=$(CONSH_IMPL=rust CONSH_JITTER=$seed bash $d/test.sh 2>&1)
