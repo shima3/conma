@@ -1,6 +1,7 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
+require lsof
 # REVIEW-ja.md の 2026-11-05 の指摘への対応
 d=$(mktemp -d /tmp/consh.step14.XXXXXX)
 for c in case1 case2 case3 case4 case5 case6

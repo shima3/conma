@@ -1,6 +1,7 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
+require lsof
 # case1、case3：中断、exit、kill で文の残りを捨てても、開いたファイルを閉じ、起動した VProc を止める
 d=$(mktemp -d /tmp/consh.step13.XXXXXX)
 run case1 case1.sh $d < /dev/null

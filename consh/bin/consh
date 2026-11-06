@@ -8,7 +8,7 @@
 # --conma-parser を付けると、Python の consh_parse を使わず、ConMa 版の構文解析（consh_parser.se）でスクリプトを読む
 # 環境変数 CONSH_IMPL を rust にすると、Rust 版（consh/rust の consh-rs）で実行する。構文解析も Rust 版で行い、--dump は
 # Rust 版の構文解析の構文木を出す。対話モードも Rust 版になる（--conma-parser は ConMa 版のまま）。
-# consh/rust で cargo build --release して作っておく
+# consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）
 # 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
 # （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
 set -o pipefail

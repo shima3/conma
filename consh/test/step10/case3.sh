@@ -10,4 +10,4 @@ x=$(f)
 echo "[$x]"
 f > (p q)
 echo "[$p][$q]"
-f | od -c | sed 's/  */ /g'
+f | od -c | sed 's/  */ /g; s/ *$//'

@@ -27,3 +27,15 @@ run() {
   echo "exit: $?" >> /tmp/consh.$c.log
   diff $c.log /tmp/consh.$c.log
 }
+
+# テストに要る道具がなければ、その名前を出して止める（macOS には入っているが、Linux では入れる必要があるもの）
+require() {
+  local tool
+  for tool in "$@"
+  do
+    if ! command -v "$tool" > /dev/null; then
+      echo "${PWD##*/}: $tool is needed for this test (install it)" >&2
+      exit 1
+    fi
+  done
+}

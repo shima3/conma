@@ -2,7 +2,7 @@
 d=$1
 function f () { echo begin; printf 'a\r\nno newline'; echo; echo end; }
 f > $d/out
-od -c $d/out | sed 's/  */ /g'
+od -c $d/out | sed 's/  */ /g; s/ *$//'
 # 要素の LazyList は、リダイレクトを書いた文の OFS で文字列化する
 l=(x y)
 function g () { echo ${l}; }

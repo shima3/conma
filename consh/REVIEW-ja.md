@@ -352,4 +352,7 @@ vm/README.md には、同じループが 0.61 秒、`echo hi` の起動が 0.06 
 
 ### 対応
 
-指摘だけで、修正はしていない。
+指摘のあと、4 と 5 を直した（1〜3 はまだ）。
+
+* 4：`consh/rust/Cargo.toml` に `rust-version = "1.87"`、`vm/Cargo.toml` に `rust-version = "1.75"` を書いた。rustup で 1.75、1.86、1.87 を入れて確かめた。`vm/` は 1.75 でビルドでき、`consh/rust/` は 1.86 では `std::io::pipe` が安定していないのでビルドできず、1.87 でビルドできる。両方の `Cargo.lock` を version 3 にした（Cargo 1.78 より前でも読める。依存クレートがないので中身は同じで、新しい Cargo でビルドしても version 3 のまま）。vm/README.md と `bin/consh` の説明にも、必要なバージョンを書いた。
+* 5：step10 の case2 と case3 は、`od -c` の出力の行末の空白を `sed 's/ *$//'` で消し、期待ログの行末の空白も消した。BSD と GNU のどちらの `od` でも同じになるはずである（GNU の `od` では確かめていない）。`common.sh` に `require 道具 …` を足し、step13 と step14 の `test.sh` は、`lsof` がなければ `step13: lsof is needed for this test (install it)` を出して止める。ConMa 版（Python と Rust の両方の VM）と Rust 版で、step10、step13、step14 が通る。

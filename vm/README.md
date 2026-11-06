@@ -10,6 +10,8 @@ vm/target/release/conma [--trace] <module_file> <func_name>
 vm/target/release/conma [--trace] --main <module_file> [<arg> ...]
 ```
 
+It needs Rust 1.75 or later (`rust-version` in `Cargo.toml`), and no crates. ConSh run directly in Rust (`consh/rust`, `CONSH_IMPL=rust`) needs Rust 1.87 or later, for `std::io::pipe`. Both `Cargo.lock` files are in version 3, which Cargo before 1.78 can read.
+
 `test/vm.sh` starts either VM with the arguments of `vproc_run.py`: the Python one by default, the Rust one when `CONMA_VM=rust`. Every `test.sh`, `consh/bin/consh` and the ConSh tests start the VM through it, so
 
 ```

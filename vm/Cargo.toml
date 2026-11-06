@@ -2,6 +2,7 @@
 name = "conma"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75"
 description = "The ConMa VM, compatible step by step with test/vproc_step.py"
 
 [[bin]]
