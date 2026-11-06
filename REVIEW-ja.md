@@ -162,6 +162,14 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * test/step2 に、異常系の case5〜8（型の違い、引数が多い、引数が足りない、文字列を呼ぶ）を足した。2 つの VM の出力とトレースは、`vm_compare.sh` で一致する。
     * 2 の 1 つ目（引数が足りないときに、原因と違う所で見つかる）は、位置が出るようになったが、出る位置はエラーが見つかった所（`__Number_toString__` を呼んだ所）で、`add2` を呼んだ所ではない。これを見つけやすくするのは、2 の 2 つ目（リゾルバの警告）である。
 * 11 の 2 つ目：README.md に、ConMa の特徴と、docs/index.md、vm/README.md、consh/README-ja.md への案内を書いた。
+* 10：test/ のテストが、`/tmp` の決まった名前を使わないようにした。
+    * test/common.sh を足した。各 `test.sh` はこれを source し、テストのディレクトリに移って、`mktemp -d` で一時ディレクトリ `$tmp` を作る（`trap` で消す）。`resolve test.se` で `$tmp/test.module.se` を作り、ケースのログも `$tmp` に書く。45 の `test.sh` をすべてこの形にした。
+    * `resolver.sh` は、`basename` でファイル名を取り、2 つ目の引数で出力先のディレクトリを選べる（既定は今のとおり `/tmp`）。パスを付けて呼べる。includer が失敗したときも止まる（`pipefail`）。
+    * `vproc_step.sh`（module1、module2）は、作業ファイルを `mktemp -d` のディレクトリに置き、ログは標準出力にだけ書く（これまでは `/tmp/caseN.vproc.log` にも書いていた）。
+    * 出力に `$tmp` のパスが入る所（step1 のトレースのモジュール名、selfhost2 と selfhost5 のファイル名）は `<tmp>` と書く。期待ログはその分だけ変えた。
+    * selfhost6 の期待ログに、別の場所の絶対パス（`/Users/shima/tmp/conma`）が入っていて、どちらの VM でも通らなかった。テストのディレクトリの外にあるリポジトリのパスを `<root>` と書くようにして、直した。
+    * すべてのテスト（`test/run_all.sh` を足した）が、Python 版と Rust 版の両方で通る。Python 版の全体を実行している間に、Rust 版で別のステップを同時に実行しても、互いに壊さないことを確かめた。
+    * 残り：同じテストを同時に 2 つ実行することはできない。step14、16、23、24、selfhost6、7 は、テストのディレクトリに `work/` やリンクを作り（selfhost7 は selfhost6 のディレクトリに `link.se` を作る）、step33 は、ConMa のプログラムが `/tmp/step33.dup.txt` に書く。consh/test も、`/tmp/consh.$c.log` の決まった名前を使っている。
 * ほかはまだ。
 
 ### 付録: 実験に使ったプログラム

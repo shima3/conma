@@ -1,18 +1,16 @@
 #!/bin/bash
 # Compare the ConMa lexer (include/lexer.se) with bin/lexer.
 # Each case prints the result of selfhost_compare.py and the difference of the error messages.
-cd ${0%/*}
-if ! ../resolver.sh test.se 2> /tmp/selfhost3.err
-then cat /tmp/selfhost3.err; exit 1
-fi
+. "${0%/*}/../common.sh"
+resolve test.se
 lex() {
   echo "== $1"
-  ../../bin/lexer $1 > /tmp/selfhost3.py.txt 2> /tmp/selfhost3.py.err
-  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $1 > /tmp/selfhost3.conma.txt 2> /tmp/selfhost3.conma.err
+  ../../bin/lexer $1 > $tmp/selfhost3.py.txt 2> $tmp/selfhost3.py.err
+  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $1 > $tmp/selfhost3.conma.txt 2> $tmp/selfhost3.conma.err
   echo "exit: $?"
-  python3 ../selfhost_compare.py tokens /tmp/selfhost3.py.txt /tmp/selfhost3.conma.txt
+  python3 ../selfhost_compare.py tokens $tmp/selfhost3.py.txt $tmp/selfhost3.conma.txt
   echo "compare: $?"
-  diff /tmp/selfhost3.py.err /tmp/selfhost3.conma.err
+  diff $tmp/selfhost3.py.err $tmp/selfhost3.conma.err
 }
 # case1: comments, strings, include and Japanese text; CRLF line endings
 case1() {
@@ -46,7 +44,6 @@ case6() {
 }
 for c in case1 case2 case3 case4 case5 case6
 do
-  $c > /tmp/$c.log 2>&1
-  diff $c.log /tmp/$c.log
+  $c > $tmp/$c.log 2>&1
+  diff $c.log $tmp/$c.log
 done
-rm -f /tmp/selfhost3.*

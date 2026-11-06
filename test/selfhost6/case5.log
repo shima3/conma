@@ -12,8 +12,8 @@ Error: Unexpected character '@' at line 2, column 15
 exit: python 0, conma 0
 compare: 0
 -- files
-/Users/shima/tmp/conma/test/step14/test.se
-/Users/shima/tmp/conma/include/util.se
-/Users/shima/tmp/conma/include/pure.se
+<root>/test/step14/test.se
+<root>/include/util.se
+<root>/include/pure.se
 -- python stderr
 -- conma stderr

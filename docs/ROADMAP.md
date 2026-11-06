@@ -11,8 +11,14 @@ Status shows whether `test/vproc_step.py` currently has the primitive (as of 202
 Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
-for t in module1 module2 step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29 step30 step31 step32 step33 step34; do test/$t/test.sh; done
+test/run_all.sh
+CONMA_VM=rust test/run_all.sh
 ```
+
+`test/run_all.sh` runs every `test.sh` under `test/` (the steps, the modules and the self-hosting tests) and prints `== name` before each.
+
+* Each `test.sh` sources `test/common.sh`, which moves to the test directory and makes a temporary directory `$tmp` (`mktemp -d`, removed when the test ends); `resolve test.se` builds `$tmp/test.module.se` with `test/resolver.sh`, and the logs of the cases are written in `$tmp`. So tests of different steps can run at the same time. The same test cannot run twice at the same time, since some tests make a `work/` directory or links in their own directory (`step14`, `step16`, `step23`, `step24`, `selfhost6`, `selfhost7`), and `step33` writes `/tmp/step33.dup.txt`. Where an output holds a path in `$tmp` (the module file in the trace of `step1`, file names in `selfhost2` and `selfhost5`), it is written as `<tmp>`.
+* `test/resolver.sh [path/]file.se [dir]` writes `dir/file.ast.se` and `dir/file.module.se` (`dir` is `/tmp` by default).
 
 * `test.sh` starts the VM through `test/vm.sh`: the Python VM (`test/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`.
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.

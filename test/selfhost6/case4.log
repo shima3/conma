@@ -27,7 +27,7 @@ Error: --include directory not found: 'nodir'
 exit: python 1, conma 1
 -- python stderr
     with open(filename, 'r', encoding='utf-8') as f:
-  File "/Users/shima/tmp/conma/bin/lexer", line 242, in <module>
+  File "<root>/bin/lexer", line 242, in <module>
 Error: lexer exited with code 1
 FileNotFoundError: [Errno 2] No such file or directory: '<dir>/none.se'
 Traceback (most recent call last):

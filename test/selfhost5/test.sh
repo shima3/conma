@@ -3,26 +3,24 @@
 # Each file is parsed with a file name (bin/parser --file) and without one.
 # For each, the exit codes, the result of selfhost_compare.py and the difference of the error messages
 # are printed, and the error message itself.
-cd ${0%/*}
-if ! ../resolver.sh test.se 2> /tmp/selfhost5.err
-then cat /tmp/selfhost5.err; exit 1
-fi
+. "${0%/*}/../common.sh"
+resolve test.se
 parse() {
   echo "== $1"
   for mode in file nofile
   do
     if [ $mode = file ]; then opt="--file $1"; else opt=""; fi
-    ../../bin/lexer $1 2> /dev/null | ../../bin/comment_remover 2> /dev/null | ../../bin/parser $opt > /tmp/selfhost5.py.txt 2> /tmp/selfhost5.py.err
+    ../../bin/lexer $1 2> /dev/null | ../../bin/comment_remover 2> /dev/null | ../../bin/parser $opt > $tmp/selfhost5.py.txt 2> $tmp/selfhost5.py.err
     py=$?
-    PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $mode $1 > /tmp/selfhost5.conma.txt 2> /tmp/selfhost5.conma.err
+    PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $mode $1 > $tmp/selfhost5.conma.txt 2> $tmp/selfhost5.conma.err
     echo "$mode: exit python $py, conma $?"
     if [ $py = 0 ]
     then
-      python3 ../selfhost_compare.py ast /tmp/selfhost5.py.txt /tmp/selfhost5.conma.txt
+      python3 ../selfhost_compare.py ast $tmp/selfhost5.py.txt $tmp/selfhost5.conma.txt
       echo "compare: $?"
     fi
-    diff /tmp/selfhost5.py.err /tmp/selfhost5.conma.err
-    cat /tmp/selfhost5.py.err
+    diff $tmp/selfhost5.py.err $tmp/selfhost5.conma.err
+    cat $tmp/selfhost5.py.err
   done
 }
 # case1: sources with comments, includes and nested functions
@@ -62,7 +60,7 @@ case5() {
 # also for an error deep in the recursion
 case6() {
   echo "== recover"
-  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se recover err_end.se err_toplevel.se empty.se 2>&1
+  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se recover err_end.se err_toplevel.se empty.se 2>&1
   echo "exit: $?"
 }
 # case7: an unterminated String that is only a double quote, at the end of a line,
@@ -75,7 +73,6 @@ case7() {
 }
 for c in case1 case2 case3 case4 case5 case6 case7
 do
-  $c > /tmp/$c.log 2>&1
-  diff $c.log /tmp/$c.log
+  $c 2>&1 | sed -e "s|$tmp/|<tmp>/|g" > $tmp/$c.log
+  diff $c.log $tmp/$c.log
 done
-rm -f /tmp/selfhost5.*

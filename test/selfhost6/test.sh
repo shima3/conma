@@ -1,11 +1,9 @@
 #!/bin/bash
 # Compare the ConMa includer (include/includer.se) with bin/includer.
 # For each run, the exit codes, the result of selfhost_compare.py (when both succeed),
-# and the error messages of both sides (sorted, absolute paths written as <dir>) are printed.
-cd ${0%/*}
-if ! ../resolver.sh test.se 2> /tmp/selfhost6.err
-then cat /tmp/selfhost6.err; exit 1
-fi
+# and the error messages of both sides (sorted, absolute paths written as <dir> in the test directory and <root> in the repository) are printed.
+. "${0%/*}/../common.sh"
+resolve test.se
 dir="$(pwd -P)"
 # include source include-dir...
 include() {
@@ -14,21 +12,21 @@ include() {
   shift
   local opts=""
   for d in "$@"; do opts="$opts --include $d"; done
-  ../../bin/includer $opts $source > /tmp/selfhost6.py.txt 2> /tmp/selfhost6.py.err
+  ../../bin/includer $opts $source > $tmp/selfhost6.py.txt 2> $tmp/selfhost6.py.err
   py=$?
-  PYTHONUNBUFFERED=1 ../vm.sh --main /tmp/test.module.se $source "$@" > /tmp/selfhost6.conma.txt 2> /tmp/selfhost6.conma.err
+  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $source "$@" > $tmp/selfhost6.conma.txt 2> $tmp/selfhost6.conma.err
   echo "exit: python $py, conma $?"
   if [ $py = 0 ]
   then
-    python3 ../selfhost_compare.py ast /tmp/selfhost6.py.txt /tmp/selfhost6.conma.txt
+    python3 ../selfhost_compare.py ast $tmp/selfhost6.py.txt $tmp/selfhost6.conma.txt
     echo "compare: $?"
     echo "-- files"
-    grep -o '^(Program ([0-9]* [0-9]* "[^"]*"' /tmp/selfhost6.conma.txt | sed -e 's/^(Program ([0-9]* [0-9]* "//' -e 's/"$//' -e "s|$dir|<dir>|g"
+    grep -o '^(Program ([0-9]* [0-9]* "[^"]*"' $tmp/selfhost6.conma.txt | sed -e 's/^(Program ([0-9]* [0-9]* "//' -e 's/"$//' -e "s|$dir|<dir>|g" -e "s|$root|<root>|g"
   fi
   echo "-- python stderr"
-  sed -e "s|$dir|<dir>|g" /tmp/selfhost6.py.err | LC_ALL=C sort
+  sed -e "s|$dir|<dir>|g" -e "s|$root|<root>|g" $tmp/selfhost6.py.err | LC_ALL=C sort
   echo "-- conma stderr"
-  sed -e "s|$dir|<dir>|g" /tmp/selfhost6.conma.err | LC_ALL=C sort
+  sed -e "s|$dir|<dir>|g" -e "s|$root|<root>|g" $tmp/selfhost6.conma.err | LC_ALL=C sort
 }
 # link.se is a symbolic link to a.se, work/abs*.se include files by absolute paths
 setup() {
@@ -74,8 +72,7 @@ case5() {
 setup
 for c in case1 case2 case3 case4 case5
 do
-  $c > /tmp/$c.log 2>&1
-  diff $c.log /tmp/$c.log
+  $c > $tmp/$c.log 2>&1
+  diff $c.log $tmp/$c.log
 done
 cleanup
-rm -f /tmp/selfhost6.*
