@@ -379,3 +379,112 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
     vp.operator = Value::Null;
     Ok(Next::Enter(cf, env))
 }
+
+// ── Direct calls of primitives (the generated code evaluates the operands
+// itself and calls these, without the OList; translate.py's DIRECT) ──
+
+/// What a primitive called directly gives.
+pub enum Out {
+    R0,
+    R1(Value),
+    R2(Value, Value),
+    /// Apply this (onError, onMissing) to one value, with the LCont.
+    Call(Value, Value),
+}
+
+/// The Body of Function fid (for the generated code).
+pub fn body_of(t: &Table, fid: usize) -> &crate::module::BodyDef {
+    body(t, fid)
+}
+
+/// Go on after a direct call in a Body with the LCont Function lc, as the VM
+/// would after the primitive returned (or applied onError).
+pub fn finish(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>, out: Out) -> NResult {
+    let (n, a, b) = match out {
+        Out::Call(f, x) => {
+            vp.operator = f;
+            vp.olist.clear();
+            vp.olist.push(x);
+            vp.lcont = lc.map(|l| make_closure(&t.funcs[l], &env, Some(gv)));
+            vp.lvenv = env;
+            return Ok(Next::Apply);
+        }
+        Out::R0 => (0, None, None),
+        Out::R1(x) => (1, Some(x), None),
+        Out::R2(x, y) => (2, Some(x), Some(y)),
+    };
+    if let Some(l) = lc {
+        let f = &t.funcs[l];
+        if !f.variadic && f.params.len() == n {
+            let mut e = env;
+            for (k, v) in a.into_iter().chain(b).enumerate() {
+                e = lv_push(&e, f.params[k].clone(), v);
+            }
+            return Ok(Next::Enter(l, e));
+        }
+    }
+    vp.olist.clear();
+    vp.olist.extend(a.into_iter().chain(b));
+    vp.operator = Value::Null;
+    vp.lcont = None;
+    pass_results(vp, env, gv, t, lc)
+}
+
+use crate::prim::{basic, collections, llist, number, string};
+
+pub fn d_is_null(m: &mut Machine, a: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(basic::is_null_core(m, &a)))
+}
+pub fn d_type_name(_m: &mut Machine, a: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(basic::type_name_core(&a)?))
+}
+pub fn d_number_add(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_add__", &a, &b, |x, y| x + y)?))
+}
+pub fn d_number_subtract(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_subtract__", &a, &b, |x, y| x - y)?))
+}
+pub fn d_number_multiply(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_multiply__", &a, &b, |x, y| x * y)?))
+}
+pub fn d_number_is_zero(m: &mut Machine, a: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_zero__", &a, |x| x == 0.0)?))
+}
+pub fn d_number_is_positive(m: &mut Machine, a: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_positive__", &a, |x| x > 0.0)?))
+}
+pub fn d_number_is_negative(m: &mut Machine, a: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_negative__", &a, |x| x < 0.0)?))
+}
+pub fn d_string_equal(m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(string::equal_core(m, &a, &b)?))
+}
+pub fn d_string_concat(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(string::concat_core(&a, &b)?))
+}
+pub fn d_llist_cons(_m: &mut Machine, head: Value, tail: Value) -> Result<Out, VmError> {
+    Ok(Out::R1(Value::LList(Rc::new(LList { head, tail }))))
+}
+pub fn d_llist_uncons(_m: &mut Machine, on_error: Value, lst: Value) -> Result<Out, VmError> {
+    Ok(match llist::uncons_core(&lst) {
+        Ok((h, t)) => Out::R2(h, t),
+        Err(msg) => Out::Call(on_error, string_value(&msg)),
+    })
+}
+pub fn d_dict_lookup_or(_m: &mut Machine, d: Value, key: Value, on_missing: Value) -> Result<Out, VmError> {
+    Ok(match collections::dict_lookup_core(&d, &key)? {
+        Some(v) => Out::R1(v),
+        None => Out::Call(on_missing, key),
+    })
+}
+pub fn d_dict_put(_m: &mut Machine, d: Value, key: Value, value: Value) -> Result<Out, VmError> {
+    collections::dict_put_core(&d, key, value)?;
+    Ok(Out::R0)
+}
+
+/// `__Cont_get__ ,(return) ...`: the escape continuation of the calling
+/// function, passed to the LCont written in place.
+pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> Result<Out, VmError> {
+    m.serials.conts += 1;
+    Ok(Out::R1(Value::Cont(Rc::new(ContObj { serial: m.serials.conts, cchain: vp.cchain.clone() }))))
+}

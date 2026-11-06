@@ -14,6 +14,15 @@ pub fn cons(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// The head and tail of an LList, or the message for onError (also for
+/// vm/src/native.rs).
+pub fn uncons_core(lst: &Value) -> Result<(Value, Value), String> {
+    match lst {
+        Value::LList(cell) => Ok((cell.head.clone(), cell.tail.clone())),
+        _ => Err(format!("__LList_uncons__: expected LList, got {}", value_type_name(lst))),
+    }
+}
+
 pub fn uncons(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let mut a = take_args(vp, "__LList_uncons__", 2)?;
     let lst = a.pop().unwrap();

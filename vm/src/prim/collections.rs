@@ -114,6 +114,28 @@ pub fn dict_put(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// The value of key in the Dict d, or None (for vm/src/native.rs; the
+/// checks and errors of __Dict_lookup_or__).
+pub fn dict_lookup_core(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
+    let Value::Dict(d) = d else {
+        return err(format!("__Dict_lookup_or__: expected Dict, got {}", value_type_name(d)));
+    };
+    Ok(d.find(key).map_err(VmError::Error)?.map(|i| d.entries.borrow()[i].1.clone()))
+}
+
+/// Put value under key in the Dict d (for vm/src/native.rs; the checks and
+/// errors of __Dict_put__).
+pub fn dict_put_core(d: &Value, key: Value, value: Value) -> Result<(), VmError> {
+    let Value::Dict(d) = d else {
+        return err(format!("__Dict_put__: expected Dict, got {}", value_type_name(d)));
+    };
+    match d.find(&key).map_err(VmError::Error)? {
+        None => d.append(key, value).map_err(VmError::Error)?,
+        Some(i) => d.entries.borrow_mut()[i].1 = value,
+    }
+    Ok(())
+}
+
 pub fn dict_lookup_or(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let (d, mut a) = dict_args(vp, "__Dict_lookup_or__", 3)?;
     let on_missing = a.pop().unwrap();

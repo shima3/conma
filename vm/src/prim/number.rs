@@ -93,10 +93,15 @@ pub fn to_string(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 fn predicate(m: &mut Machine, vp: &mut VProc, name: &str, f: fn(f64) -> bool) -> PResult {
     let a = take_args(vp, name, 1)?;
-    let x = check_number(name, &a[0])?;
-    let b = if f(x) { m.true_closure() } else { m.false_closure() };
+    let b = predicate_core(m, name, &a[0], f)?;
     vp.prim_return(vec![b]);
     Ok(())
+}
+
+/// The result of a predicate primitive (also for vm/src/native.rs).
+pub fn predicate_core(m: &Machine, name: &str, v: &Value, f: fn(f64) -> bool) -> Result<Value, VmError> {
+    let x = check_number(name, v)?;
+    Ok(if f(x) { m.true_closure() } else { m.false_closure() })
 }
 
 pub fn is_zero(m: &mut Machine, vp: &mut VProc) -> PResult {
@@ -111,10 +116,16 @@ pub fn is_negative(m: &mut Machine, vp: &mut VProc) -> PResult {
 
 fn binop(vp: &mut VProc, name: &str, f: fn(f64, f64) -> f64) -> PResult {
     let a = take_args(vp, name, 2)?;
-    let x = check_number(name, &a[0])?;
-    let y = check_number(name, &a[1])?;
-    vp.prim_return(vec![num(f(x, y))]);
+    let v = binop_core(name, &a[0], &a[1], f)?;
+    vp.prim_return(vec![v]);
     Ok(())
+}
+
+/// The result of a binary Number primitive (also for vm/src/native.rs).
+pub fn binop_core(name: &str, a: &Value, b: &Value, f: fn(f64, f64) -> f64) -> Result<Value, VmError> {
+    let x = check_number(name, a)?;
+    let y = check_number(name, b)?;
+    Ok(num(f(x, y)))
 }
 
 pub fn add(_m: &mut Machine, vp: &mut VProc) -> PResult {

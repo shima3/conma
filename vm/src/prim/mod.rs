@@ -6,18 +6,18 @@
 use crate::sched::Machine;
 use crate::vproc::VProc;
 
-mod basic;
+pub mod basic;
 mod cchain;
-mod collections;
+pub mod collections;
 pub mod control;
 pub mod lazy;
-mod llist;
-mod number;
+pub mod llist;
+pub mod number;
 mod process;
 pub mod stream;
 pub mod os;
 mod refs;
-mod string;
+pub mod string;
 mod vprocs;
 
 pub enum VmError {

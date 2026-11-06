@@ -62,6 +62,26 @@ PURE = {
 
 IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
 
+# Primitives called directly (vm/src/native.rs, d_...): the operands are
+# evaluated into Rust variables and the results bound without the OList.
+# Used when the Body has exactly this many operands.
+DIRECT = {
+    "__is_null__": ("d_is_null", 1),
+    "__type_name__": ("d_type_name", 1),
+    "__Number_add__": ("d_number_add", 2),
+    "__Number_subtract__": ("d_number_subtract", 2),
+    "__Number_multiply__": ("d_number_multiply", 2),
+    "__Number_is_zero__": ("d_number_is_zero", 1),
+    "__Number_is_positive__": ("d_number_is_positive", 1),
+    "__Number_is_negative__": ("d_number_is_negative", 1),
+    "__String_equal__": ("d_string_equal", 2),
+    "__String_concat__": ("d_string_concat", 2),
+    "__LList_cons__": ("d_llist_cons", 2),
+    "__LList_uncons__": ("d_llist_uncons", 2),
+    "__Dict_lookup_or__": ("d_dict_lookup_or", 3),
+    "__Dict_put__": ("d_dict_put", 3),
+}
+
 
 # ── S-expressions (as vm/src/sexp.rs reads them) ──
 
@@ -233,6 +253,15 @@ def native_call(funcs, prims, f, prim_index):
         else:
             then, els = "Clause::Nop", clause(1)
         return f"if_call(m, vp, env, gv, t, {f.id}, {cond}, {then}, {els}, {lc})"
+    if name == "__Cont_get__" and b.lcont is not None and not b.olist:
+        return (f"let b = body_of(t, {f.id}); vp.sinfo = b.sinfo.clone(); "
+                f"let o = cont_get(m, vp)?; finish(vp, env, gv, t, {lc}, o)")
+    if name in DIRECT and len(b.olist) == DIRECT[name][1]:
+        fn, n = DIRECT[name]
+        args = "".join(f"let a{i} = eval(&b.olist[{i}], &env, gv)?; " for i in range(n))
+        names = ", ".join(f"a{i}" for i in range(n))
+        return (f"let b = body_of(t, {f.id}); {args}vp.sinfo = b.sinfo.clone(); "
+                f"let o = {fn}(m, {names})?; finish(vp, env, gv, t, {lc}, o)")
     if name in CHAIN:
         return f"prim_call(m, vp, env, gv, t, {f.id}, {prim_index(name)}, {lc})"
     return None

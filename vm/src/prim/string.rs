@@ -50,16 +50,51 @@ pub fn length(_m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 pub fn concat(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let s = string_args(vp, "__String_concat__", 2)?;
-    vp.prim_return(vec![string_value(&format!("{}{}", s[0], s[1]))]);
+    need(vp, "__String_concat__", 2)?;
+    let a: Vec<Value> = vp.olist.drain(..2).collect();
+    let v = concat_core(&a[0], &a[1])?;
+    vp.prim_return(vec![v]);
     Ok(())
 }
 
 pub fn equal(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let s = string_args(vp, "__String_equal__", 2)?;
-    let b = if s[0] == s[1] { m.true_closure() } else { m.false_closure() };
+    need(vp, "__String_equal__", 2)?;
+    let a: Vec<Value> = vp.olist.drain(..2).collect();
+    let b = equal_core(m, &a[0], &a[1])?;
     vp.prim_return(vec![b]);
     Ok(())
+}
+
+/// The text of each of two operands of name, which must be Strings (checked
+/// in order, as string_args does), without copying a String made at run time.
+fn two_texts<'a>(name: &str, a: &'a Value, b: &'a Value) -> Result<[std::borrow::Cow<'a, str>; 2], VmError> {
+    for v in [a, b] {
+        if value_type_name(v) != "String" {
+            return err(format!("{}: expected String, got {}", name, value_type_name(v)));
+        }
+    }
+    let text = |v: &'a Value| -> Result<std::borrow::Cow<'a, str>, VmError> {
+        match v {
+            Value::Str(s) => Ok(std::borrow::Cow::Borrowed(&**s)),
+            _ => Ok(std::borrow::Cow::Owned(value_to_display(v).map_err(VmError::Error)?)),
+        }
+    };
+    Ok([text(a)?, text(b)?])
+}
+
+/// The result of __String_concat__ (also for vm/src/native.rs).
+pub fn concat_core(a: &Value, b: &Value) -> Result<Value, VmError> {
+    let [x, y] = two_texts("__String_concat__", a, b)?;
+    let mut s = String::with_capacity(x.len() + y.len());
+    s.push_str(&x);
+    s.push_str(&y);
+    Ok(string_value(&s))
+}
+
+/// The result of __String_equal__ (also for vm/src/native.rs).
+pub fn equal_core(m: &Machine, a: &Value, b: &Value) -> Result<Value, VmError> {
+    let [x, y] = two_texts("__String_equal__", a, b)?;
+    Ok(if x == y { m.true_closure() } else { m.false_closure() })
 }
 
 pub fn substring(_m: &mut Machine, vp: &mut VProc) -> PResult {
