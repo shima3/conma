@@ -6,11 +6,11 @@ cd ${0%/*}
 for f in ../parse1/case*.sh ../parse2/case*.sh
 do
   d=${f%/*}; b=${f##*/}
-  (cd $d && python3 "$consh/bin/consh_parse" --pos $b 2>&1; echo "exit: $?") | sed 's/^consh_parse: /consh: /' > /tmp/consh.parse3.expected
-  (cd $d && "$consh/bin/consh" --conma-parser --dump $b 2>&1; echo "exit: $?") > /tmp/consh.parse3.actual
-  if ! diff -q /tmp/consh.parse3.expected /tmp/consh.parse3.actual > /dev/null
+  (cd $d && python3 "$consh/bin/consh_parse" --pos $b 2>&1; echo "exit: $?") | sed 's/^consh_parse: /consh: /' > $tmp/parse3.expected
+  (cd $d && "$consh/bin/consh" --conma-parser --dump $b 2>&1; echo "exit: $?") > $tmp/parse3.actual
+  if ! diff -q $tmp/parse3.expected $tmp/parse3.actual > /dev/null
   then
     echo "${d#../}/$b:"
-    diff /tmp/consh.parse3.expected /tmp/consh.parse3.actual
+    diff $tmp/parse3.expected $tmp/parse3.actual
   fi
 done

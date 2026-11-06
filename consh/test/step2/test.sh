@@ -10,9 +10,9 @@ do
   if [ -e $c.args ]; then
     while IFS= read -r line; do args+=("$line"); done < $c.args
   fi
-  python3 "$consh/bin/consh_parse" --expand $f ${args[@]+"${args[@]}"} | sed -n 's/^(cmd .*\((words .*\))$/\1/p' > /tmp/consh.$c.ref
-  PATH="$PWD:$PATH" "$consh/bin/consh" $f ${args[@]+"${args[@]}"} > /tmp/consh.$c.out 2>&1
-  diff /tmp/consh.$c.ref /tmp/consh.$c.out
+  python3 "$consh/bin/consh_parse" --expand $f ${args[@]+"${args[@]}"} | sed -n 's/^(cmd .*\((words .*\))$/\1/p' > $tmp/$c.ref
+  PATH="$PWD:$PATH" "$consh/bin/consh" $f ${args[@]+"${args[@]}"} > $tmp/$c.out 2>&1
+  diff $tmp/$c.ref $tmp/$c.out
 done
 run case1 case1.sh < /dev/null
 d=$(mktemp -d /tmp/consh.step2.XXXXXX)

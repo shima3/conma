@@ -34,14 +34,17 @@
   __String_concat__ "read: " head ,(line)
   println line)
 
-;; case2: dup した Stream は、元の Stream を閉じても書ける
+;; case2: dup した Stream は、元の Stream を閉じても書ける。ファイルは環境変数 STEP33_DIR（test.sh の一時ディレクトリ）に作る
 (define case2 ,()
-  __OS_open__ __print_exit_error__ "/tmp/step33.dup.txt" "w" ,(file)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "STEP33_DIR" (,(key) __NULL__ "/tmp") ,(dir)
+  __String_concat__ dir "/step33.dup.txt" ,(path)
+  __OS_open__ __print_exit_error__ path "w" ,(file)
   __OS_dup__ __print_exit_error__ file ,(copy)
   __OS_close__ __print_exit_error__ file ,()
   __OS_write__ __print_exit_error__ copy "written through the dup\n" ,()
   __OS_close__ __print_exit_error__ copy ,()
-  __OS_open__ __print_exit_error__ "/tmp/step33.dup.txt" "r" ,(in)
+  __OS_open__ __print_exit_error__ path "r" ,(in)
   __LazyList_lines__ in ,(lines)
   __LazyList_uncons__ (,() println "no line") lines ,(line rest)
   __OS_print__ line ,()

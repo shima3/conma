@@ -11,6 +11,7 @@
 # consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）
 # 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
 # （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
+# 環境変数 CONSH_MODULE_DIR は、ConMa のモジュールを作るディレクトリ（既定は /tmp）
 set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
@@ -45,22 +46,29 @@ fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
 fi
-# ConMa のモジュールは、ソースが変わったときだけ作り直す
-module=/tmp/consh.module.se
+# ConMa のモジュールは、ソースが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
+# 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
+dir="${CONSH_MODULE_DIR:-/tmp}"
+module="$dir/consh.module.se"
 main="$consh/include/consh_main.se"
 if [ -n "$CONSH_CONMA_DATA" ]; then
-  module=/tmp/consh.data.module.se
-  main=/tmp/consh_data_main.se
-  [ -s "$main" ] || printf '(include "data.se")\n(include "consh_main.se")\n' > "$main"
+  module="$dir/consh.data.module.se"
+  main="$dir/consh_data_main.se"
+  if [ ! -s "$main" ]; then
+    t=$(mktemp "$main.XXXXXX") || exit 1
+    printf '(include "data.se")\n(include "consh_main.se")\n' > "$t" && mv -f "$t" "$main"
+  fi
 fi
 if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.se' -newer "$module")" ]; then
+  ast_tmp=$(mktemp "${module%.module.se}.ast.XXXXXX") || exit 1
+  module_tmp=$(mktemp "$module.XXXXXX") || { rm -f "$ast_tmp"; exit 1; }
   if ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$main" \
-      | sed -e 's/"\/.*\/conma/"conma/' > "${module%.module.se}.ast.se"
-  then rm -f "$module"; exit 1
+      | sed -e 's/"\/.*\/conma/"conma/' > "$ast_tmp" ||
+     ! "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
+  then rm -f "$ast_tmp" "$module_tmp"; exit 1
   fi
-  if ! "$root/bin/resolver" < "${module%.module.se}.ast.se" > "$module"
-  then rm -f "$module"; exit 1
-  fi
+  rm -f "$ast_tmp"
+  mv -f "$module_tmp" "$module"
 fi
 if [ -n "$interactive" ]; then
   exec "$root/test/vm.sh" --main "$module" interactive - stdin

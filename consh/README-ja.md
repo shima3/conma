@@ -52,7 +52,7 @@ ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos
 `--conma-parser` を付けると、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読み、Python を使わずに動く。
 構文木は `consh_parse --pos` と同じで、構文エラーのメッセージは `consh_parse:` の代わりに `consh:` で始まる。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
-ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。
+ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。作るディレクトリは環境変数 `CONSH_MODULE_DIR` で変えられる（既定は `/tmp`）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 
 ### できること（段階 3〜13）
 
@@ -136,6 +136,7 @@ bin/consh_parse --expand スクリプト [引数 ...]
 
 ```
 test/run_all.sh
+test/run_all.sh -j 8
 ```
 
-diff の出力がなければ成功である。
+diff の出力がなければ成功である。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。
