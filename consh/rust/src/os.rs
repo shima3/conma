@@ -8,6 +8,8 @@ use std::os::raw::{c_char, c_int, c_long};
 use std::sync::{Arc, Mutex};
 
 extern "C" {
+    #[link_name = "setsid"]
+    fn c_setsid() -> c_int;
     fn kill(pid: c_int, sig: c_int) -> c_int;
     fn sysconf(name: c_int) -> c_long;
     fn access(path: *const c_char, mode: c_int) -> c_int;
@@ -126,6 +128,13 @@ impl Drop for Fd {
 /// Write to fd 2 at once (as __OS_print_error__).
 pub fn print_error(s: &str) {
     let _ = io::stderr().write_all(s.as_bytes());
+}
+
+/// Start a new session (in a child before exec).
+pub fn setsid() {
+    unsafe {
+        c_setsid();
+    }
 }
 
 /// Send SIGTERM to a process.

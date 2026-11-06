@@ -2333,8 +2333,15 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
         }
     };
     if sh.detached {
+        // A new session (setsid), as __OS_spawn_detached__ of the ConMa version:
+        // no controlling terminal, so it is not stopped by reading it.
         use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
+        unsafe {
+            cmd.pre_exec(|| {
+                os::setsid();
+                Ok(())
+            });
+        }
     }
     os::jitter();
     // Check killed and keep the pid under the same lock as vproc_stop, so that a
