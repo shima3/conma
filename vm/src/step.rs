@@ -54,8 +54,8 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gven
         if let Some(id) = body.func_id {
             let table = gvenv.native.borrow().clone();
             if let Some(t) = table {
-                if let Some(f) = t.natives.get(id).copied().flatten() {
-                    return f(m, vp, lvenv, gvenv, &t);
+                if t.natives.get(id).copied().flatten().is_some() {
+                    return crate::native::run(m, vp, id, lvenv, gvenv, &t);
                 }
             }
         }

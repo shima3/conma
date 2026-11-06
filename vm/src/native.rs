@@ -9,24 +9,63 @@
 //! instead. The native function runs the Body and the Bodies after it as far
 //! as it can without the VM (calls of primitives that only work on their
 //! operands, passing values on with `__NULL__`, `__if_then_else__`, `__if__`
-//! and `__unless__` with clauses written in place), and then either loads a
-//! Body the VM goes on with (`deopt`) or leaves the VProc in the state the VM
-//! would be in after the same steps. So the results are those of the VM;
-//! only the number of steps (and so the order of the VProcs, and traces)
-//! differ. With --trace or CONMA_PROFILE the native code is not used.
+//! and `__unless__` with clauses written in place). Where a Body needs the VM
+//! it is loaded (`deopt`), and `run` goes on doing the steps that follow as
+//! the VM would, as long as they are applications of Closures with as many
+//! operands as parameters (calls), of null (returns through the LCont or the
+//! CChain), of escape continuations (`return` of __Cont_get__) and of the
+//! primitives of SAFE_PRIMS, entering the native code of the Bodies it
+//! reaches; at anything else, or after BUDGET such steps, it leaves the VProc
+//! to the VM. All this is one step of the VM. So the results are those of
+//! the VM; only the number of steps (and so the order of the VProcs, and
+//! traces) differ. With --trace or CONMA_PROFILE the native code is not used.
 
 #![allow(dead_code)] // without generated code, the helpers are unused
 
 use crate::module::{make_closure, FuncDef, GVEnv};
 use crate::prim::control::boolean_choice;
-use crate::prim::{PResult, PrimDef};
+use crate::prim::{PResult, PrimDef, VmError};
 use crate::sched::Machine;
 use crate::step::{eval, load_body_interp};
 use crate::value::*;
 use crate::vproc::VProc;
 use std::rc::Rc;
 
-pub type NativeFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> PResult;
+/// What `run` does next.
+pub enum Next {
+    /// Run the Body of this Function in this LVEnv.
+    Enter(usize, LVEnv),
+    /// The VProc is as before a step of the VM: do that step if it is one
+    /// that `apply` does.
+    Apply,
+}
+
+pub type NResult = Result<Next, VmError>;
+
+pub type NativeFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> NResult;
+
+/// The steps `run` does in one step of the VM at most, so that a VProc that
+/// loops in native code lets the others run.
+const BUDGET: u32 = 1000;
+
+/// Primitives `apply` calls: those of translate.py's CHAIN (and __Ref_set__),
+/// the conditionals and __Cont_get__. They only change the registers of the
+/// VProc (and Refs, Dicts and so on); they do not block or switch VProcs.
+const SAFE_PRIMS: &[&str] = &[
+    "__is_null__", "__type_name__",
+    "__LList_cons__", "__LList_uncons__", "__LList_append__", "__LList_length__",
+    "__Number_fromString__", "__Number_toString__", "__Number_is_zero__",
+    "__Number_is_positive__", "__Number_is_negative__", "__Number_add__",
+    "__Number_subtract__", "__Number_multiply__", "__Number_divide__", "__Number_floor__",
+    "__String_find_any__", "__String_strip_suffix__", "__String_length__",
+    "__String_substring__", "__String_find__", "__Sexp_read__", "__String_concat__",
+    "__String_toCode__", "__String_fromCode__", "__String_equal__",
+    "__Dict_new__", "__Dict_put__", "__Dict_lookup_or__", "__Dict_remove__",
+    "__Dict_keys__", "__Dict_copy__",
+    "__MSeq_new__", "__MSeq_is_empty__", "__MSeq_uncons__", "__MSeq_set_head__", "__MSeq_append__",
+    "__Ref_new__", "__Ref_get__", "__PDict_put__", "__PDict_lookup_or__",
+    "__if_then_else__", "__if__", "__unless__", "__Cont_get__",
+];
 
 /// The native code of one module file, as the generated code gives it.
 pub struct Module {
@@ -44,9 +83,12 @@ pub struct Table {
     pub funcs: Vec<Rc<FuncDef>>,
     pub natives: &'static [Option<NativeFn>],
     pub prims: Vec<&'static PrimDef>,
+    /// The PrimDefs of SAFE_PRIMS.
+    safe: Vec<*const PrimDef>,
 }
 
 mod generated {
+    #![allow(unused_variables)]
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/native_gen.rs"));
 }
@@ -72,7 +114,103 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     for name in m.prims {
         prims.push(crate::prim::lookup(name)?);
     }
-    Some(Rc::new(Table { funcs, natives: m.natives, prims }))
+    let mut safe: Vec<*const PrimDef> = SAFE_PRIMS.iter().filter_map(|n| crate::prim::lookup(n)).map(|p| p as *const PrimDef).collect();
+    safe.sort();
+    Some(Rc::new(Table { funcs, natives: m.natives, prims, safe }))
+}
+
+// ── The loop ──
+
+/// Run the Body of Function fid in env (load_body calls this instead of
+/// loading it), and the steps after it that `apply` does, up to BUDGET.
+pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {
+    let mut next = Next::Enter(fid, env);
+    let mut budget = BUDGET;
+    loop {
+        next = match next {
+            Next::Enter(fid, env) => match t.natives[fid] {
+                Some(f) => f(m, vp, env, gv, t)?,
+                None => deopt(vp, fid, env, gv, t)?,
+            },
+            Next::Apply => {
+                if budget == 0 {
+                    return Ok(());
+                }
+                budget -= 1;
+                match apply(m, vp, gv, t)? {
+                    Some(n) => n,
+                    None => return Ok(()),
+                }
+            }
+        };
+    }
+}
+
+/// Do the next step of the VM if it is one of these, as `step` would do it:
+/// null as the Operator (pass the OList to the LCont, or to the top CFrame of
+/// the CChain), a Closure of this module with as many operands as its
+/// parameters (bind them; the LCont goes to the CChain), an escape
+/// continuation (set the CChain back), a primitive of SAFE_PRIMS. None for
+/// anything else: the VM does that step.
+fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<Option<Next>, VmError> {
+    match &vp.operator {
+        Value::Null => {
+            if let Some(lc) = vp.lcont.take() {
+                vp.operator = lc;
+                return Ok(Some(Next::Apply));
+            }
+            match vp.cchain_pop() {
+                Some(cf) => {
+                    vp.operator = cf.closure.clone();
+                    vp.sinfo = cf.sinfo.clone();
+                    Ok(Some(Next::Apply))
+                }
+                None => Ok(None),
+            }
+        }
+        Value::Closure(c) => {
+            if c.variadic || c.params().len() != vp.olist.len() {
+                return Ok(None);
+            }
+            let same_module = match &c.gvenv {
+                Some(g) => Rc::ptr_eq(g, gv),
+                None => Rc::ptr_eq(&vp.gvenv, gv),
+            };
+            let Some(fid) = c.body.as_ref().and_then(|b| b.func_id) else { return Ok(None) };
+            if !same_module {
+                return Ok(None);
+            }
+            let c = c.clone();
+            let params = c.params();
+            let mut env = c.lvenv.clone();
+            for (k, v) in vp.olist.drain(..).enumerate() {
+                env = lv_push(&env, params[k].clone(), v);
+            }
+            if let Some(lc) = vp.lcont.take() {
+                let sinfo = vp.sinfo.clone();
+                vp.cchain_push(lc, sinfo);
+            }
+            vp.operator = Value::Null;
+            Ok(Some(Next::Enter(fid, env)))
+        }
+        Value::Cont(k) => {
+            let Some((cf, rest)) = crate::vproc::cchain_split(&k.cchain) else { return Ok(None) };
+            vp.lcont = None;
+            vp.cchain = rest;
+            vp.operator = cf.closure.clone();
+            vp.sinfo = cf.sinfo.clone();
+            Ok(Some(Next::Apply))
+        }
+        Value::Prim(p) => {
+            let p: &'static PrimDef = *p;
+            if t.safe.binary_search(&(p as *const PrimDef)).is_err() {
+                return Ok(None);
+            }
+            (p.f)(m, vp)?;
+            Ok(Some(Next::Apply))
+        }
+        _ => Ok(None),
+    }
 }
 
 // ── Helpers called by the generated code ──
@@ -101,17 +239,11 @@ fn body(t: &Table, fid: usize) -> &crate::module::BodyDef {
     t.funcs[fid].body.as_ref().expect("a native Function has a Body")
 }
 
-/// Load the Body of Function fid for the VM, without its native code.
-pub fn deopt(vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {
-    load_body_interp(vp, body(t, fid), env, gv)
-}
-
-/// Run the Body of Function fid: its native code if it has some.
-pub fn enter(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {
-    match t.natives[fid] {
-        Some(f) => f(m, vp, env, gv, t),
-        None => deopt(vp, fid, env, gv, t),
-    }
+/// Load the Body of Function fid for the VM, without its native code; `run`
+/// goes on with the step after it.
+pub fn deopt(vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {
+    load_body_interp(vp, body(t, fid), env, gv)?;
+    Ok(Next::Apply)
 }
 
 /// The operands of the Body of fid, evaluated in env, as the OList.
@@ -135,59 +267,60 @@ fn load_operands(vp: &mut VProc, fid: usize, env: &LVEnv, gv: &Rc<GVEnv>, t: &Ta
 /// The VProc is as after a primitive returned its results (the OList) with
 /// no LCont: pass them to the LCont Function lc of the Body, as the VM would
 /// apply the LCont Closure to them. With the same number of values as its
-/// parameters (and not variadic), bind them and run its Body here; otherwise
-/// make the Closure and let the VM apply it.
-fn pass_results(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> PResult {
+/// parameters (and not variadic), bind them and run its Body; otherwise make
+/// the Closure and go on as the VM would.
+fn pass_results(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> NResult {
     let Some(l) = lc else {
-        vp.lvenv = env; // no LCont: the VM goes on with the CChain
-        return Ok(());
+        vp.lvenv = env; // no LCont: the values go to the CChain
+        return Ok(Next::Apply);
     };
     let f = &t.funcs[l];
     if f.variadic || vp.olist.len() != f.params.len() {
         vp.operator = make_closure(f, &env, Some(gv));
         vp.lvenv = env;
-        return Ok(());
+        return Ok(Next::Apply);
     }
     let mut e = env;
     for (k, v) in vp.olist.drain(..).enumerate() {
         e = lv_push(&e, f.params[k].clone(), v);
     }
-    enter(m, vp, l, e, gv, t)
+    Ok(Next::Enter(l, e))
 }
 
 /// After a primitive called with the LCont set to a mark (Null): if it
 /// returned its results, pass them on; otherwise (onError, a Closure to
-/// apply) put the real LCont back and leave the VProc to the VM.
-fn after_prim(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> PResult {
+/// apply) put the real LCont back and go on as the VM would.
+fn after_prim(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> NResult {
     if vp.operator.is_null() && vp.lcont.is_none() {
-        return pass_results(m, vp, env, gv, t, lc);
+        return pass_results(vp, env, gv, t, lc);
     }
     if matches!(vp.lcont, Some(Value::Null)) {
         vp.lcont = lc.map(|l| make_closure(&t.funcs[l], &env, Some(gv)));
     }
     vp.lvenv = env;
-    Ok(())
+    Ok(Next::Apply)
 }
 
 /// `prim a ... [,(x ...) ...]`: the Body of fid calls primitive p (an index
 /// into Table::prims) with the LCont Function lc.
-pub fn prim_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, p: usize, lc: Option<usize>) -> PResult {
+#[allow(clippy::too_many_arguments)]
+pub fn prim_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, p: usize, lc: Option<usize>) -> NResult {
     load_operands(vp, fid, &env, gv, t)?;
     let prim = t.prims[p];
     vp.sinfo = body(t, fid).sinfo.clone();
     vp.operator = Value::Prim(prim);
     vp.lcont = Some(Value::Null);
     (prim.f)(m, vp)?;
-    after_prim(m, vp, env, gv, t, lc)
+    after_prim(vp, env, gv, t, lc)
 }
 
 /// `__NULL__ a ... ,(x ...) ...`: pass the operands to the LCont Function lc.
-pub fn null_pass(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, lc: usize) -> PResult {
+pub fn null_pass(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, lc: usize) -> NResult {
     load_operands(vp, fid, &env, gv, t)?;
     vp.sinfo = body(t, fid).sinfo.clone();
     vp.operator = Value::Null;
     vp.lcont = None;
-    pass_results(m, vp, env, gv, t, Some(lc))
+    pass_results(vp, env, gv, t, Some(lc))
 }
 
 /// `__if_then_else__`, `__if__` or `__unless__` in the Body of fid, with the
@@ -195,7 +328,7 @@ pub fn null_pass(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t:
 /// one of the two Boolean Closures or the clause is a value other than
 /// __nop__.
 #[allow(clippy::too_many_arguments)]
-pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, cond: Cond, then: Clause, els: Clause, lc: Option<usize>) -> PResult {
+pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, cond: Cond, then: Clause, els: Clause, lc: Option<usize>) -> NResult {
     let b = body(t, fid);
     let boolean = match cond {
         Cond::Value => eval(&b.olist[0], &env, gv)?,
@@ -234,7 +367,7 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
         // __nop__ returns nothing to the LCont.
         vp.operator = Value::Null;
         vp.lcont = None;
-        return pass_results(m, vp, env, gv, t, lc);
+        return pass_results(vp, env, gv, t, lc);
     }
     let Clause::Thunk(cf) = clause else { unreachable!() };
     // The thunk is applied with the LCont: the LCont goes to the CChain.
@@ -244,5 +377,5 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
     }
     vp.lcont = None;
     vp.operator = Value::Null;
-    enter(m, vp, cf, env, gv, t)
+    Ok(Next::Enter(cf, env))
 }

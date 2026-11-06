@@ -208,7 +208,7 @@ def native_call(funcs, prims, f, prim_index):
     lc = "None" if b.lcont is None else f"Some({b.lcont})"
     op = b.operator
     if op == ("Null",):
-        return None if b.lcont is None else f"null_pass(m, vp, env, gv, t, {f.id}, {b.lcont})"
+        return None if b.lcont is None else f"null_pass(vp, env, gv, t, {f.id}, {b.lcont})"
     if op[0] != "G" or op[1] not in prims:
         return None
     name = prims[op[1]]
@@ -255,7 +255,7 @@ def translate(index, path, prim_names, out):
     out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in natives)} with native code")
     for f, call in zip(funcs, natives):
         if call is not None:
-            out.append(f"fn {p}_f{f.id}(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {{ {call} }}")
+            out.append(f"fn {p}_f{f.id}(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {{ {call} }}")
     entries = ", ".join(f"Some({p}_f{f.id} as NativeFn)" if c is not None else "None" for f, c in zip(funcs, natives))
     out.append(f"static {p.upper()}_NATIVES: [Option<NativeFn>; {len(funcs)}] = [{entries}];")
     names = ", ".join(f'"{n}"' for n in used)
