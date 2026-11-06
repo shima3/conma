@@ -1,3 +1,3 @@
 before
-Error in VProc 1 at step 9: __VProc_start__: expected Closure, got String
+Error in VProc 1 at step 9: conma/test/step24/test.se:47:3: __VProc_start__: expected Closure, got String
 exit: 1

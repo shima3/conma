@@ -1,5 +1,5 @@
 3
-Error in VProc 3 at step 162: G9 ('undefinedFunction') Undefined
+Error in VProc 3 at step 162: conma/test/step17/child.se:27:3: G9 ('undefinedFunction') Undefined
 call: no result
 value: (null)
 __VProc_spawn__: entry point not defined: noSuchFunction

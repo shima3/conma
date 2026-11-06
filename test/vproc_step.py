@@ -8,15 +8,11 @@ import types
 class VProcError(Exception): pass
 
 def sinfo_to_str(sinfo):
-    """Format SInfo as 'filename:line' for error messages."""
+    """Format SInfo as 'filename:line:column' (as much of it as there is)."""
     if not sinfo:
         return None
     parts = [unquote(s) for s in sinfo if isinstance(s, str)]
-    if len(parts) >= 2:
-        return f"{parts[0]}:{parts[1]}"
-    if len(parts) == 1:
-        return parts[0]
-    return None
+    return ":".join(parts[:3]) if parts else None
 
 def format_error(msg, sinfo):
     """Prefix msg with source location from sinfo if available."""
@@ -625,7 +621,7 @@ def step(vp, gvenv):
             vp["operator"] = lcont
             vp["lcont"]    = None
         else:
-            if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("Null Operator: CChain empty, no LCont", vp.get("sinfo")))
+            if cchain_is_empty(vp["cchain"]): raise VProcError("Null Operator: CChain empty, no LCont")
             cf, vp["cchain"] = cchain_pop(vp["cchain"])
             vp["operator"] = cf.closure
             vp["sinfo"]    = cf.sinfo
@@ -638,7 +634,7 @@ def step(vp, gvenv):
             vp["olist"]    = list(operator.olist)
             vp["lvenv"]    = operator.lvenv
         else:
-            if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("SeqClosure: no OList and CChain empty", vp.get("sinfo")))
+            if cchain_is_empty(vp["cchain"]): raise VProcError("SeqClosure: no OList and CChain empty")
             cf, vp["cchain"] = cchain_pop(vp["cchain"])
             vp["olist"]    = list(operator.olist)
             vp["operator"] = cf.closure
@@ -659,8 +655,7 @@ def step(vp, gvenv):
         return
 
     if not isinstance(operator, Closure):
-        print(f"operator: {operator}")
-        raise VProcError(f"Primitive not implemented: {operator!r}")
+        raise VProcError(f"Not a function: {sexp_to_str(value_to_sexp(operator))}")
 
     params = operator.params
     body_node = operator.body
@@ -724,7 +719,7 @@ def step(vp, gvenv):
         vp["operator"] = lcont
         vp["lcont"]    = None
     else:
-        if cchain_is_empty(vp["cchain"]): raise VProcError(format_error("Partial apply: OList empty, no LCont, CChain empty", vp.get("sinfo")))
+        if cchain_is_empty(vp["cchain"]): raise VProcError("Partial apply: OList empty, no LCont, CChain empty")
         cf, vp["cchain"] = cchain_pop(vp["cchain"])
         vp["olist"]    = [operator]
         vp["operator"] = cf.closure
@@ -1543,7 +1538,7 @@ def prim_Cont_get(vp, gvenv):
     lc = vp["lcont"]
     if lc is None:
         if cchain_is_empty(vp["cchain"]):
-            raise VProcError(format_error("__Cont_get__: no LCont and CChain empty", vp.get("sinfo")))
+            raise VProcError("__Cont_get__: no LCont and CChain empty")
         cf, vp["cchain"] = cchain_pop(vp["cchain"])
         lc = cf.closure
         vp["sinfo"] = cf.sinfo
@@ -2362,7 +2357,7 @@ class Scheduler:
                 if on_step: on_step(vp)
             except VProcError as e:
                 # The step number is the number of steps completed before the error.
-                print(f"Error in VProc {vp.serial} at step {self.steps}: {e}", file=sys.stderr)
+                print(f"Error in VProc {vp.serial} at step {self.steps}: {format_error(e, vp.get('sinfo'))}", file=sys.stderr)
                 if vp.serial == 1:
                     self.main_failed = True     # the exit code is 1 (vproc_run.py)
                 self.steps += 1
@@ -2829,7 +2824,7 @@ def main():
     try:
         step(vp, gvenv)
     except VProcError as e:
-        print(f"Error: {e}", file=sys.stderr); sys.exit(1)
+        print(f"Error: {format_error(e, vp.get('sinfo'))}", file=sys.stderr); sys.exit(1)
     print(sexp_to_str(vproc_to_sexp(vp)))
 
 if __name__ == "__main__":

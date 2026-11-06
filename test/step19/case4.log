@@ -1,2 +1,2 @@
-Error in VProc 1 at step 7: __String_toCode__: expected String, got Number
+Error in VProc 1 at step 7: conma/test/step19/test.se:79:3: __String_toCode__: expected String, got Number
 exit: 1

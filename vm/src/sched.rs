@@ -586,7 +586,7 @@ impl Machine {
                         }
                     }
                     Err(VmError::Error(e)) => {
-                        write_std(2, &format!("Error in VProc {} at step {}: {}\n", vp.serial, self.steps, e));
+                        write_std(2, &format!("Error in VProc {} at step {}: {}\n", vp.serial, self.steps, crate::step::format_error(&e, &vp.sinfo)));
                         if vp.serial == 1 {
                             self.main_failed = true;
                         }

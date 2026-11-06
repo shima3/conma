@@ -156,6 +156,12 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 指摘のあと、11 の 1 つ目（`Cargo.lock` と `rust-version`）を直した（consh/REVIEW-ja.md の 4 と同じ。`vm/Cargo.toml` に `rust-version = "1.75"` を書き、1.75 でビルドできることを確かめ、`Cargo.lock` を version 3 にした）。
 
 * 3：提案のとおり、最初の VProc（入口の関数を実行するもの、番号 1）がエラーで終わったときは、すべての VProc が終わった後の終了コードを 1 にした。ほかの VProc のエラーは終了コードを変えない（ConSh の `$( )` やパイプラインの要素のように、ほかの VProc のエラーを意図して受け流す使い方があるので）。Python 版（`vproc_step.py` の `Scheduler.main_failed`、`vproc_run.py`）と Rust 版（`sched.rs`、`main.rs`）の両方を直し、DESIGN.md の「Scheduling and Termination」を書き換えた。test/ で、VProc 1 がエラーで終わる 14 ケースの期待ログの `exit: 0` を `exit: 1` にした。差はそれだけで、step4、5、6、8、10、12、19、20、22、24 が両方の VM で通る。consh/test には、VProc 1 がエラーで終わるケースはない。
+* 4：「関数でない値を呼ぶ」エラーを、2 つの VM で `Not a function: 値` にそろえた。値はトレースと同じ S 式の形で書く（`Not a function: (__Number__ 2)`）。Python 版の `operator: …` を出す `print` は消した。モジュールを読むときの、実装されていないプリミティブ（`PrimFunc`）のエラーは、今の `Primitive not implemented` のままである。
+* 1：VProc がエラーで終わったときのメッセージに、その時の VProc の SInfo の位置を `ファイル名:行:列` で付けた（`Error in VProc 1 at step 12: conma/test/step2/test.se:71:3: Not a function: (__Number__ 2)`）。位置は、呼び出しに失敗した Body の位置（プリミティブのエラーなら、それを呼んだ Body の位置）である。SInfo がなければ、今のとおり位置を付けない。これまで一部のエラー（`Null Operator`、`SeqClosure`、`Partial apply`、`__Cont_get__`）だけが自分で `ファイル名:行` を付けていたが、それをやめ、スケジューラがすべてのエラーに付けるようにした（`vproc_step.py` を 1 ステップだけ実行するときの `Error: …` も同じ）。Python 版（`vproc_step.py`）と Rust 版（`step.rs`、`sched.rs`、`prim/cchain.rs`）の両方を直し、DESIGN.md の「Scheduling and Termination」と VPROC_STEP.md に書いた。
+    * 期待ログは、エラーの行に位置が付くだけ変わった（step4、5、6、8、10、12、17、19、20、22、24 と module1、module2）。
+    * test/step2 に、異常系の case5〜8（型の違い、引数が多い、引数が足りない、文字列を呼ぶ）を足した。2 つの VM の出力とトレースは、`vm_compare.sh` で一致する。
+    * 2 の 1 つ目（引数が足りないときに、原因と違う所で見つかる）は、位置が出るようになったが、出る位置はエラーが見つかった所（`__Number_toString__` を呼んだ所）で、`add2` を呼んだ所ではない。これを見つけやすくするのは、2 の 2 つ目（リゾルバの警告）である。
+* 11 の 2 つ目：README.md に、ConMa の特徴と、docs/index.md、vm/README.md、consh/README-ja.md への案内を書いた。
 * ほかはまだ。
 
 ### 付録: 実験に使ったプログラム

@@ -1,2 +1,2 @@
-Error in VProc 1 at step 1: __VProc_resume__: expected VProc, got String
+Error in VProc 1 at step 1: conma/test/step10/test.se:152:3: __VProc_resume__: expected VProc, got String
 exit: 1

@@ -1,2 +1,2 @@
-Error in VProc 1 at step 6: __LazyList_publish__: the LazyList is not being evaluated by this VProc
+Error in VProc 1 at step 6: conma/test/step20/test.se:312:3: __LazyList_publish__: the LazyList is not being evaluated by this VProc
 exit: 1

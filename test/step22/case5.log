@@ -1,2 +1,2 @@
-Error in VProc 1 at step 1: __OS_exit__: expected Number, got String
+Error in VProc 1 at step 1: conma/test/step22/test.se:51:3: __OS_exit__: expected Number, got String
 exit: 1

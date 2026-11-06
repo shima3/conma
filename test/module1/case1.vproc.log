@@ -205,4 +205,4 @@ Step 6
   (__CChain__)
   (__PDict__))
 Step 7
-Error: G1 ('f') Undefined
+Error: test.se:10:5: G1 ('f') Undefined

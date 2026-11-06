@@ -1,2 +1,2 @@
-Error in VProc 1 at step 1: __CFrame_get_SInfo__: expected CFrame, got String
+Error in VProc 1 at step 1: conma/test/step4/test.se:135:3: __CFrame_get_SInfo__: expected CFrame, got String
 exit: 1

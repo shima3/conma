@@ -8,16 +8,16 @@ use crate::value::*;
 use crate::vproc::VProc;
 use std::rc::Rc;
 
-/// Prefix msg with the source location `file:line` of sinfo, if any.
+/// Prefix msg with the source location `file:line:column` of sinfo, if any.
 pub fn format_error(msg: &str, sinfo: &Option<SInfo>) -> String {
     let parts: Vec<&str> = match sinfo {
         Some(s) => s.iter().filter_map(|x| x.as_atom()).map(unquote).collect(),
         None => Vec::new(),
     };
-    match parts.len() {
-        0 => msg.to_string(),
-        1 => format!("{}: {}", parts[0], msg),
-        _ => format!("{}:{}: {}", parts[0], parts[1], msg),
+    if parts.is_empty() {
+        msg.to_string()
+    } else {
+        format!("{}: {}", parts[..parts.len().min(3)].join(":"), msg)
     }
 }
 
@@ -94,7 +94,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
                 }
                 None => {
                     vp.operator = operator;
-                    return err(format_error("Null Operator: CChain empty, no LCont", &vp.sinfo));
+                    return err("Null Operator: CChain empty, no LCont");
                 }
             },
         }
@@ -117,7 +117,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
                     }
                     None => {
                         vp.operator = Value::Seq(seq);
-                        return err(format_error("SeqClosure: no OList and CChain empty", &vp.sinfo));
+                        return err("SeqClosure: no OList and CChain empty");
                     }
                 }
             }
@@ -148,7 +148,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
         other => {
             let shown = sexp::to_string(&crate::trace::value_to_sexp(&other));
             vp.operator = other;
-            err(format!("Primitive not implemented: {}", shown))
+            err(format!("Not a function: {}", shown))
         }
     }
 }
@@ -224,7 +224,7 @@ fn apply_closure(vp: &mut VProc, c: Rc<Closure>) -> PResult {
             }
             None => {
                 vp.operator = Value::Closure(c);
-                return err(format_error("Partial apply: OList empty, no LCont, CChain empty", &vp.sinfo));
+                return err("Partial apply: OList empty, no LCont, CChain empty");
             }
         },
     }

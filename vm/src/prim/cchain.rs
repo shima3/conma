@@ -2,7 +2,6 @@
 
 use super::{err, take_args, PResult};
 use crate::sched::Machine;
-use crate::step::format_error;
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
@@ -60,7 +59,7 @@ pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> PResult {
                 vp.sinfo = cf.sinfo.clone();
                 cf.closure.clone()
             }
-            None => return err(format_error("__Cont_get__: no LCont and CChain empty", &vp.sinfo)),
+            None => return err("__Cont_get__: no LCont and CChain empty"),
         },
     };
     m.serials.conts += 1;

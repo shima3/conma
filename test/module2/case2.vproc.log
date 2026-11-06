@@ -2079,4 +2079,4 @@ Step 24
       (__SInfo__ "conma/test/module2/test.se" "12" "3")))
   (__PDict__))
 Step 25
-Error: Primitive not implemented: ['String', ['13', '16'], '"hoge2"']
+Error: conma/include/pure.se:7:3: Not a function: (String (13 16) "hoge2")

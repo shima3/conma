@@ -1,0 +1,2 @@
+Error in VProc 1 at step 13: conma/test/step2/test.se:56:3: __Number_toString__: expected Number, got Closure
+exit: 1

@@ -1,2 +1,2 @@
-Error in VProc 1 at step 1: __Ref_get__: expected Ref, got String
+Error in VProc 1 at step 1: conma/test/step6/test.se:92:3: __Ref_get__: expected Ref, got String
 exit: 1

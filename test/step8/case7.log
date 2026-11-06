@@ -1,2 +1,2 @@
-Error in VProc 1 at step 4: __Dict_put__: expected Dict, got MSeq
+Error in VProc 1 at step 4: conma/test/step8/test.se:164:3: __Dict_put__: expected Dict, got MSeq
 exit: 1

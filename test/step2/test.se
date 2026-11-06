@@ -48,3 +48,38 @@
   fail __print_exit_error__ ,()
   __OS_print__ "not reached\n" ,()
   )
+
+;; 実行時エラーの例で使う関数
+(define add2 ,(a b) __Number_add__ a b)
+(define num ,(s) __Number_fromString__ __print_exit_error__ s)
+(define show_number ,(n)
+  __Number_toString__ n ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; case5: 型の違う値をプリミティブに渡すと、VProc はエラーで終わる。
+;; メッセージには、エラーになった Body の位置（ファイル名:行:列）が付く
+(define case5 ,()
+  __OS_print__ "before\n" ,()
+  __Number_add__ "x" "y" ,(r)
+  __OS_print__ "not reached\n")
+
+;; case6: 引数が多いと、余った引数を戻り値（Number）に適用しようとして、
+;; 「関数でない値を呼んだ」エラーになる。位置は add2 を呼んだ Body
+(define case6 ,()
+  num "1" ,(one)
+  add2 one one one ,(r)
+  show_number r)
+
+;; case7: 引数が足りないと、部分適用の Closure が戻り値になり、
+;; エラーはそれを使った show_number の中で見つかる
+(define case7 ,()
+  num "1" ,(one)
+  add2 one ,(r)
+  show_number r)
+
+;; case8: 関数でない値（String）を呼ぶ
+(define case8 ,()
+  __NULL__ "not a function" ,(f)
+  f "x" ,(r)
+  __OS_print__ "not reached\n")

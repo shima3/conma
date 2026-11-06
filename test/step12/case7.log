@@ -1,2 +1,2 @@
-Error in VProc 1 at step 7: __String_length__: expected String, got Number
+Error in VProc 1 at step 7: conma/test/step12/test.se:157:3: __String_length__: expected String, got Number
 exit: 1

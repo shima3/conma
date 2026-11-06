@@ -121,7 +121,7 @@ It then runs the round-robin scheduler (`SCHEDULER`, a `Scheduler` in `vproc_ste
 See "Scheduling and Termination" in DESIGN.md for the states of a VProc and for when the interpreter exits.
 
 * **VProc value**: A VProc is a `VProc` object (a `dict` of its registers with `serial`, `state` and `gvenv`). `__VProc_current__` and `__VProc_spawn__` pass this object itself as a ConMa value, written as `(__VProcRef__ "N")`.
-* **Errors**: A `VProcError` raised by a step finishes only that VProc and prints `Error in VProc N at step S: message` to standard error.
+* **Errors**: A `VProcError` raised by a step finishes only that VProc and prints `Error in VProc N at step S: file:line:column: message` to standard error, where `file:line:column` comes from the SInfo of the VProc (see step 5 of "Scheduling and Termination" in DESIGN.md). When `vproc_step.py` runs a single step from the command line, it prints `Error: file:line:column: message` in the same way.
 * **Exit codes**:
 
 | Code | Meaning |
