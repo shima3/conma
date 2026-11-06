@@ -21,7 +21,7 @@ pub fn format_error(msg: &str, sinfo: &Option<SInfo>) -> String {
     }
 }
 
-fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmError> {
+pub fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmError> {
     match c {
         CExpr::L(i) => match lv_get(lvenv, *i) {
             Some(v) => Ok(v.clone()),
@@ -47,9 +47,25 @@ fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmError> {
     }
 }
 
+/// Load a Body into the VProc, or run its native code (vm/native), which
+/// loads a Body later in the same way or leaves the VProc as a step would.
+fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
+    if m.native_on {
+        if let Some(id) = body.func_id {
+            let table = gvenv.native.borrow().clone();
+            if let Some(t) = table {
+                if let Some(f) = t.natives.get(id).copied().flatten() {
+                    return f(m, vp, lvenv, gvenv, &t);
+                }
+            }
+        }
+    }
+    load_body_interp(vp, body, lvenv, gvenv)
+}
+
 /// Load a Body into the VProc: its SInfo, Operator, OList and LCont,
 /// evaluated in lvenv.
-fn load_body(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
+pub fn load_body_interp(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
     let operator = match &body.operator {
         Some(c) => eval(c, &lvenv, gvenv)?,
         None => return err("Primitive not implemented: None"),
@@ -144,7 +160,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
             }
             Ok(())
         }
-        Value::Closure(c) => apply_closure(vp, c),
+        Value::Closure(c) => apply_closure(m, vp, c),
         other => {
             let shown = sexp::to_string(&crate::trace::value_to_sexp(&other));
             vp.operator = other;
@@ -153,7 +169,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
 }
 
-fn apply_closure(vp: &mut VProc, c: Rc<Closure>) -> PResult {
+fn apply_closure(m: &mut Machine, vp: &mut VProc, c: Rc<Closure>) -> PResult {
     let gvenv = c.gvenv.clone().unwrap_or_else(|| vp.gvenv.clone());
 
     // Variadic: the parameter is bound to a Seq of all the operands.
@@ -169,7 +185,7 @@ fn apply_closure(vp: &mut VProc, c: Rc<Closure>) -> PResult {
             Some(b) => b.clone(),
             None => return err("Closure has no Body"),
         };
-        return load_body(vp, &body, new_lvenv, &gvenv);
+        return load_body(m, vp, &body, new_lvenv, &gvenv);
     }
 
     let params = c.params();
@@ -189,7 +205,7 @@ fn apply_closure(vp: &mut VProc, c: Rc<Closure>) -> PResult {
             Some(b) => b.clone(),
             None => return err("Closure has no Body"),
         };
-        return load_body(vp, &body, c.lvenv.clone(), &gvenv);
+        return load_body(m, vp, &body, c.lvenv.clone(), &gvenv);
     }
 
     // Head not empty, OList not empty: bind as many parameters as there are operands.

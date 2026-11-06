@@ -65,6 +65,14 @@ While a VProc is ready and others wait for the OS, the scheduler checks the OS e
 
 To see where a ConMa program spends its steps, run it with `CONMA_PROFILE=<file>`: each step is counted under the Body that the VProc is running, and the calls of each Body and the steps that apply each primitive are counted too. `python3 test/vm_profile.py <file>` sums them by file, by top-level `define` (steps, calls and steps per call) and by primitive; `--callers NAME` shows the lines that call a function, and `--thunks` the lines that pass `__if__`, `__unless__` or `__if_then_else__` a condition written as a function instead of a Boolean. The counts do not depend on the speed of the VM, so they also tell how a change to a ConMa program (such as ConSh) would speed up the Python VM.
 
+## Native code (experimental)
+
+`vm/native/translate.py` makes Rust code for ConMa modules (files made by `bin/resolver`), and `vm/native/build.sh <module>...` builds the VM with it in `vm/target-native`; `CONMA_VM=native` in `test/vm.sh` runs that VM. The native code of a module is used only for a module file with the same text (FNV-1a hash); `CONMA_NATIVE_REPORT=1` says whether it is used, and `CONMA_NATIVE_OFF=1` turns it off.
+
+For each Function whose Body can run without the VM (a primitive that only works on its operands, `__NULL__` passing values on, `__if_then_else__`, `__if__` and `__unless__` with clauses written in place), the native code runs that Body and the ones after it in one step, and gives the next Body (a call of a function, a primitive that may block or switch VProcs) back to the VM (`src/native.rs`). The results are those of the VM; the number of steps, and so the order in which VProcs run, differ, so traces and the step numbers in error messages differ. With `--trace` or `CONMA_PROFILE` the native code is not used.
+
+First measurements (Apple M4): a loop of 10,000,000 iterations takes 2.42 s instead of 3.75 s; ConSh (with `/tmp/consh.module.se`) is about 1.2 times as fast, and its tests pass. ConSh takes about 4,300 steps for a simple command, most of them calls of small functions and returns, which this first version leaves to the VM.
+
 ## Design
 
 * `sexp.rs` — reading and writing S-expressions. `to_string` writes a list on one line when it fits in 80 characters, as `sexp_to_str` does, so that traces match.

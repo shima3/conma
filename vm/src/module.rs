@@ -13,6 +13,8 @@ use std::rc::Rc;
 /// (Undefined and not a primitive).
 pub struct GVEnv {
     pub vals: RefCell<Vec<Option<Value>>>,
+    /// The native code of the module (vm/native), if the binary has it.
+    pub native: RefCell<Option<Rc<crate::native::Table>>>,
 }
 
 impl GVEnv {
@@ -51,6 +53,9 @@ pub enum CLCont {
 /// A Body AST, compiled. The node is kept for traces.
 pub struct BodyDef {
     pub node: Sexp,
+    /// The number of the Function whose Body this is, in the order in which
+    /// load_module compiles them (the numbers of vm/native/translate.py).
+    pub func_id: Option<usize>,
     pub sinfo: Option<SInfo>,
     pub operator: Option<CExpr>,
     pub olist: Vec<CExpr>,
@@ -64,7 +69,18 @@ pub fn is_variadic_head(head: Option<&Sexp>) -> bool {
     }
 }
 
+thread_local! {
+    /// The Functions compiled by the load_module running now, by number.
+    static REGISTRY: RefCell<Option<Vec<Option<Rc<FuncDef>>>>> = const { RefCell::new(None) };
+}
+
 pub fn compile_function(node: &Sexp) -> Rc<FuncDef> {
+    let id = REGISTRY.with(|r| {
+        r.borrow_mut().as_mut().map(|v| {
+            v.push(None);
+            v.len() - 1
+        })
+    });
     let mut head = None;
     let mut body = None;
     if let Some(l) = node.as_list() {
@@ -86,11 +102,19 @@ pub fn compile_function(node: &Sexp) -> Rc<FuncDef> {
             .collect(),
         None => Vec::new(),
     };
-    Rc::new(FuncDef {
+    let f = Rc::new(FuncDef {
         params: Rc::from(params),
         variadic: is_variadic_head(head),
-        body: body.map(compile_body),
-    })
+        body: body.map(|b| compile_body_of(b, id)),
+    });
+    if let Some(i) = id {
+        REGISTRY.with(|r| {
+            if let Some(v) = r.borrow_mut().as_mut() {
+                v[i] = Some(f.clone());
+            }
+        });
+    }
+    f
 }
 
 fn compile_expr(expr: &Sexp) -> CExpr {
@@ -122,6 +146,10 @@ fn compile_expr(expr: &Sexp) -> CExpr {
 }
 
 pub fn compile_body(node: &Sexp) -> Rc<BodyDef> {
+    compile_body_of(node, None)
+}
+
+fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
     let mut sinfo = None;
     let mut operator = None;
     let mut olist = Vec::new();
@@ -148,7 +176,7 @@ pub fn compile_body(node: &Sexp) -> Rc<BodyDef> {
             }
         }
     }
-    Rc::new(BodyDef { node: node.clone(), sinfo, operator, olist, lcont })
+    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont })
 }
 
 /// A Closure of a compiled Function in an environment.
@@ -185,7 +213,29 @@ pub fn build_name_index(module: &Sexp) -> HashMap<String, usize> {
 }
 
 pub fn load_module(module: &Sexp) -> Result<Rc<GVEnv>, String> {
-    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()) });
+    load_module_native(module, None)
+}
+
+/// load_module, and if the binary has native code for the module whose file
+/// has this hash (vm/native), attach it to the GVEnv.
+pub fn load_module_native(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
+    REGISTRY.with(|r| *r.borrow_mut() = Some(Vec::new()));
+    let result = load_module_inner(module);
+    let funcs = REGISTRY.with(|r| r.borrow_mut().take()).unwrap_or_default();
+    let gvenv = result?;
+    if let Some(h) = hash {
+        let funcs: Vec<Rc<FuncDef>> = funcs.into_iter().flatten().collect();
+        let table = crate::native::table_for(h, funcs);
+        if std::env::var_os("CONMA_NATIVE_REPORT").is_some() {
+            eprintln!("native code: {}", if table.is_some() { "used" } else { "none for this module" });
+        }
+        *gvenv.native.borrow_mut() = table;
+    }
+    Ok(gvenv)
+}
+
+fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
+    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), native: RefCell::new(None) });
     let mut vals: Vec<Option<Value>> = Vec::new();
     if let Some(l) = module.as_list() {
         for item in l.iter().skip(2) {

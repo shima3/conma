@@ -35,6 +35,9 @@ pub struct Machine {
     pub current: Option<VProcRef>,
     pub steps: u64,
     pub trace: bool,
+    /// Run the native code of modules (vm/native): not with --trace or
+    /// CONMA_PROFILE, which count every step, nor with CONMA_NATIVE_OFF.
+    pub native_on: bool,
     /// Step counts for CONMA_PROFILE.
     pub profile: Option<crate::profile::Profile>,
     /// (VProc, VProc) waiting for another VProc to finish.
@@ -198,6 +201,7 @@ impl Machine {
             current: None,
             steps: 0,
             trace,
+            native_on: false,
             profile: crate::profile::Profile::from_env(),
             joining: Vec::new(),
             lazy: Vec::new(),
