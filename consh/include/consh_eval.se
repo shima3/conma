@@ -10,7 +10,8 @@
 ;; 文を実行する文脈 sh は Dict で、次のキーを持つ。
 ;;   "global"     VProc ごとの Dict。"status" に最後の文の終了ステータスの String（$?）、
 ;;                "substs" にこの VProc で起動して、まだ終わっていない $( ) の記録の LList（Subst_settle）、
-;;                "jobs" にこの VProc から & で起動したジョブの LList（Job_add）、"lastBg" に $! の String
+;;                "jobs" にこの VProc から & で起動したジョブの LList（Job_add）、"lastBg" に $! の String、
+;;                "argMax" に OS の引数のバイト数の上限（Arg_max_os、問い合わせた後）
 ;;   "script"     スクリプトのファイル名（$0、エラーメッセージ）
 ;;   "args"       スクリプトの引数の LList（$@、$1、$#）
 ;;   "vars"       局所変数の Dict。値は String か LazyList
@@ -589,7 +590,8 @@
   __if__ condition
     (,()
       Cmd_parts children ,(defs words redirs)
-      return (,(sh) Eval_cmd_parts sh pos defs words redirs)) ,()
+      Cmd_compile pos defs words redirs ,(code)
+      return code) ,()
   __String_equal__ tag "assign" ,(condition)
   __if__ condition
     (,()
@@ -887,22 +889,72 @@
     (,() Cmd_parts_from rest defs items redirs)
     (,() Cmd_parts_from rest defs words items)))
 
+;; 単純文を、文脈を受け取って実行するクロージャ（文のコード）にする。文ごとに同じになることは、変換のときに決めておく。
+;; 先頭の語がリテラルなら、コマンドの名前と残りの語（Cmd_head_code）。リダイレクトと前置の変数定義がなければ、
+;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす
+(define Cmd_compile ,(pos defs words redirs)
+  Cmd_head_code words ,(headCode resolveCode)
+  __is_null__ redirs ,(noRedirs)
+  __is_null__ defs ,(noDefs)
+  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs noRedirs noDefs headCode resolveCode))
+
+;; 先頭の語を展開するコード（文脈 sh と上限 limit を受け取り、Cmd_head と同じく、名前、先頭の語から出た残りの値、
+;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）。
+;; 先頭の語がリテラルで、glob の記号を含まず、空でなければ、展開した結果を作っておいて返し、コマンドは、
+;; 関数だけを探す（関数は後から定義できるので。builtin、command と組み込みコマンドは、名前で決まる）
+(define Cmd_head_code ,(words)
+  __Cont_get__ ,(return)
+  __is_null__ words ,(none)
+  __if__ none (,() return (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve) ,()
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Literal_fields word ,(fields done)
+  __is_null__ fields ,(empty)
+  __not__ empty ,(some)
+  __and__ done some ,(fixed)
+  __unless__ fixed (,() return (,(sh limit) Cmd_head sh words limit) Cmd_resolve) ,()
+  __LList_uncons__ __print_exit_error__ fields ,(name more)
+  Cmd_resolve_code name ,(resolveCode)
+  __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode)
+
+;; String の名前 name のコマンドを決めるコード（Cmd_resolve と同じ）
+(define Cmd_resolve_code ,(name)
+  __Cont_get__ ,(return)
+  __String_equal__ name "builtin" ,(isBuiltin)
+  __String_equal__ name "command" ,(isCommand)
+  __or__ isBuiltin isCommand ,(special)
+  __if__ special (,() return (,(sh name) __NULL__ __NULL__ __NULL__ __FALSE__)) ,()
+  Builtin_lookup name ,(builtin)
+  __is_null__ builtin ,(external)
+  __NULL__ (,(sh name)
+    Func_lookup sh name ,(fn)
+    __is_null__ fn ,(noFunc)
+    __if_then_else__ noFunc
+      (,() __NULL__ __NULL__ builtin external)
+      (,() __NULL__ fn __NULL__ __FALSE__)))
+
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
-;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する
-(define Eval_cmd_parts ,(sh pos defs words redirs)
+;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する。
+;; noRedirs と noDefs は、リダイレクトと前置の変数定義がないか。headCode と resolveCode は Cmd_head_code
+(define Eval_cmd_parts ,(sh pos defs redirs noRedirs noDefs headCode resolveCode)
   __Cont_get__ ,(return)
-  Cmd_redirected sh redirs ,(sh)
-  Cmd_scope sh defs ,(sh)
+  __if_then_else__ noRedirs (,() __NULL__ sh) (,() Cmd_redirected sh redirs) ,(sh)
+  __if_then_else__ noDefs (,() __NULL__ sh) (,() Cmd_scope sh defs) ,(sh)
   Arg_limit_new sh pos ,(limit)
-  Cmd_head sh words limit ,(name more rest)
-  Cmd_resolve sh name ,(fn builtin isExternal)
+  headCode sh limit ,(name more rest)
+  resolveCode sh name ,(fn builtin isExternal)
   Eval_args sh rest isExternal limit ,(args)
   __if_then_else__ isExternal
     (,() Values_leaves_in more limit)
     (,() __NULL__ more) ,(more)
   __LList_append__ more args ,(args)
-  Eval_redirs sh redirs ,(in out err opened ok group)
+  __if_then_else__ noRedirs
+    (,()
+      Sh_get sh "in" ,(in)
+      Sh_get sh "out" ,(out)
+      Sh_get sh "err" ,(err)
+      __NULL__ in out err __NULL__ __TRUE__ __NULL__)
+    (,() Eval_redirs sh redirs) ,(in out err opened ok group)
   __unless__ ok
     (,()
       Eval_close opened ,()
@@ -3170,10 +3222,7 @@
   Sh_get sh "env" ,(env)
   Env_lookup env "ARG_MAX" (,(key) __NULL__ __NULL__) ,(value)
   __is_null__ value ,(condition)
-  __if__ condition
-    (,()
-      __OS_sysconf__ (,(msg) Sh_error sh pos msg) "SC_ARG_MAX" ,(n)
-      return n) ,()
+  __if__ condition (,() Arg_max_os sh pos ,(n) return n) ,()
   __String_concat__ "ARG_MAX is not a non-negative integer: " value ,(msg)
   __Number_fromString__ (,(m) Sh_error sh pos msg) value ,(n)
   __Number_floor__ n ,(whole)
@@ -3182,12 +3231,20 @@
   __if__ (,() __Number_is_negative__ n) (,() Sh_error sh pos msg) ,()
   __NULL__ n)
 
+;; OS の上限（__OS_sysconf__ "SC_ARG_MAX"）。VProc ごとの "global" に覚えておき、問い合わせるのは1回だけにする
+(define Arg_max_os ,(sh pos)
+  Sh_get sh "global" ,(global)
+  __Dict_lookup_or__ global "argMax" (,(key)
+    __OS_sysconf__ (,(msg) Sh_error sh pos msg) "SC_ARG_MAX" ,(n)
+    __Dict_put__ global "argMax" n ,()
+    __NULL__ n))
+
 ;; 語の展開の途中で引く、上限の残り（Value_leaves_in）。Dict で、"left"（残り）と "onOver"（超えたときのエラー）。
-;; "onOver" と "onFunc" の関数は Dict を作る前に作る（後で作ると、関数が limit を取り込み、Dict と循環する）
+;; "onOver" と "onFunc" の関数は Dict を作る前に作る（後で作ると、関数が limit を取り込み、Dict と循環する）。
+;; "onOver" のメッセージは、超えたときに作る
 (define Arg_limit_new ,(sh pos)
   Arg_max sh pos ,(max)
-  Arg_over_message max ,(msg)
-  __NULL__ (,() Sh_error sh pos msg) ,(onOver)
+  __NULL__ (,() Arg_over_message max ,(msg) Sh_error sh pos msg) ,(onOver)
   __NULL__ (,() Func_string_error sh pos) ,(onFunc)
   __Dict_new__ ,(limit)
   __Dict_put__ limit "left" max ,()

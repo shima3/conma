@@ -302,21 +302,6 @@
       __LList_cons__ cf chain ,(chain)
       __Seq_push_CFrames__ frames chain))
 
-;; LList の要素の数
-(define __LList_length__ ,(list)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __LList_length_from__ list zero)
-
-(define __LList_length_from__ ,(list n)
-  __is_null__ list ,(condition)
-  __if_then_else__ condition
-    (,() __NULL__ n)
-    (,()
-      __LList_uncons__ __print_exit_error__ list ,(head tail)
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ n one ,(n)
-      __LList_length_from__ tail n))
-
 ;; Seq の要素を順に __OS_print__ で出力する
 (define __Seq_print__ ,(seq)
   __Cont_get__ ,(return)

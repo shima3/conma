@@ -685,6 +685,10 @@ ConSh による意味解釈を以下のように定義する。
 1. **部分が2つ以上の語の展開を速くする**：`$a$b` や `x$e` のような語は、部分の数を種類ごとに数える（`Parts_count` を3回）、連結する（`Parts_concat`）、候補と glob のパターンを作る（`Expand_fields_from`）と、部分の LList を何度もたどり、そのたびに部分を分けていた（`Part_split`、`List_first`）。`Parts_strings` で部分を1回だけたどり、部分がみな String（`"plain"`、`"quoted"`、`"braced"`）で、引用符の外に glob の記号がなければ、連結した String を1つの語にする（空なら、外部コマンドの語は引用符があるとき、それ以外の語は引用符か `${x}` があるときだけ残す）。LazyList、関数値、glob の記号を含む語は、今までどおり展開する。`Expand_args_parts` と `Parts_glob_fields` の初めに使う。
     - `function add (a b) { echo $a$b; }` を呼ぶ `add $i x > (r)` 1つは 4,335 → 3,113 ステップ（語の展開は約 1,600 → 約 600）、1 万 5 千回で 2.78 → 2.13 秒（Rust 版の VM）。
     - テスト：`step2` に `expand3.sh`（外部コマンドの語。consh_parse --expand と比べる）と `case19`（関数の引数。ログは Rust 版の ConSh の出力）を足した。
+1. **単純文を変換のときに決める**：単純文のコード（`Stmt_compile` の `"cmd"`）を `Cmd_compile` で作る。先頭の語がリテラル（glob の記号を含まず、空でない）なら、コマンドの名前と残りの語を作っておき（`Cmd_head_code`）、コマンドを決めるときは関数だけを探す（`Cmd_resolve_code`。`builtin`、`command` と組み込みコマンドは名前で決まる）。リダイレクトと前置の変数定義がなければ、その処理（`Cmd_redirected`、`Eval_redirs`、`Cmd_scope`）を飛ばす。
+    - 引数のバイト数の上限（`Arg_limit_new`）は、今までどおり文ごとに作る（環境変数 ARG_MAX が正しくなければ、組み込みコマンドでもエラーにする。Rust 版と同じ）。OS の値（`__OS_sysconf__`）は VProc ごとの `"global"` の `"argMax"` に覚えて1回だけ問い合わせ、超えたときのメッセージは超えたときに作る。
+    - `include/util.se` が `__LList_length__` を ConMa で定義していたので、組み込み（段階 18）が使われていなかった。util.se の定義を消した（ConMa 版は `include/data.se` にある）。そのため、test/step20 の case15 のエラーの位置（util.se の行）と、step21 の case6 の数（2000 ステップごとに数えるので、数える時点が変わる）を直した。
+    - `add $i x > (r)` 1つは 3,113 → 2,525 ステップ、`echo $i > (r)` は 1,686 → 1,430 ステップ。関数の呼び出し 1 万 5 千回は 2.16 → 1.81 秒（Rust 版の VM。語の展開の改良の前の 2.78 秒から 35% 減）。
 
 ### 2.2. 検討中
 
