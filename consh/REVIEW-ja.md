@@ -285,3 +285,71 @@ cat f10                # ない。スクリプトが終わると、slow も打�
     * チャネルの読み手は、開いた鎖がなくなったら、もう一度 `Chan_register` してから終える。
     * 別々の鎖に書かれた行の順序は、85cea09 の前からのものなので、2.3 の制限に書いた。
     * ARG_MAX は環境変数を数えないまま（2.1 に書いてある）。起動が E2BIG（と権限がない）で失敗したときの `$?` を 126 にした。
+
+## 2026-11-06: 実行文脈の設計、性能、起動経路、Linux での再現
+
+対象は f9625cd（段階 20 の後）である。ConMa 本体の指摘は、リポジトリ直下の REVIEW-ja.md にある。
+
+確かめた環境は Linux（Ubuntu 24.04）、Python 3.12.3、rustc 1.75（apt）で、作者の環境（macOS、Apple M4）とは違う。VM は `CONMA_VM=rust`（vm/）を使った。`consh/test/run_all.sh` は 116 秒で終わった。最初の実行で差分が出たのは step10、step13、step14 で、すべて「5. テストが macOS の道具に頼っている」の原因だった。`lsof` を入れた後は、step10 の `od` の行末の空白の差だけが残る。
+
+### 1. 実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict である（中）
+
+consh_eval.se の先頭の説明のとおり、`sh` は Dict で、`"global"`、`"vars"`、`"loops"`、`"outerLoops"`、`"bgCaptures"`、`"stmtCode"`、`"fieldsCode"` などのキーを持つ。26 個を数えた。
+
+* キーの綴りの誤りは、実行時に読むまで分からない。キーが書かれた場所が 1 か所にまとまっていないので、読んだときに初めて空だと分かる。
+* キーによって、持つ文脈が決まっている（`"outerLoops"` は `For_run` の文脈だけ、`"noReturn"` は関数を呼ぶと null に戻る、など）。この決まりは、先頭のコメントだけが保っている。
+* ConSh の Rust 版（consh/rust）では、同じ内容を構造体にできるので、この問題は起きない。ConMa 版は 7,670 行（consh/include）、Rust 版は 5,639 行（consh/rust/src）で、同じ仕様を実現している。差のかなりの部分は、ConMa に構造体がないことによると思われる（行数の内訳は調べていない）。
+* 修正案：
+    * キーを定数の関数にして、綴りを 1 か所にする。読み書きは、キーごとの関数（`Sh_get_loops` など）を通す。アクセサがすでにあるかどうかは、確かめていない。
+    * 根本は ConMa 側の課題で、リゾルバがフィールド名をスロット番号にするレコードを、REVIEW-ja.md（ConMa）の 6 に書いた。
+
+### 2. 起動に 0.17 秒かかり、ループは Bash の約 70 倍遅い（低〜中）
+
+| 項目 | ConSh | Bash |
+|---|---|---|
+| `examples/logsummary.sh`（起動と 1 回の実行） | 0.17 秒 | 0.013 秒 |
+| `for i in $(seq 1 20000); do n=$i; done` | 1.87 秒 | 0.026 秒 |
+
+vm/README.md には、同じループが 0.61 秒、`echo hi` の起動が 0.06 秒とある（Apple M4）。この環境が 3 倍ほど遅いので、数字は矛盾していない。比は同じ環境で測った。プロファイルは取っていない。
+
+対話的な使い方やスクリプトの実行には足りる。ループの多い処理や、短いスクリプトを大量に起動する使い方には向かない。性能の根本は ConMa 側にある（ConMa の 7）。
+
+### 3. 通常の起動経路に Python が残っている（中）
+
+* `bin/consh` は、`python3 consh_parse --pos` で構文木を作る（73 行目）。`--conma-parser` を付けると Python の構文解析は外れる。
+* ConSh のモジュールを作り直すときは、`bin/includer` と `bin/resolver`（どちらも Python）を使う。ConMa 版のフロントエンドでも同じモジュールができるが、3.7 秒かかる（Python 版は 1.2 秒。vm/README.md）。
+* `CONSH_IMPL=rust` は、構文解析も Rust 版で行うので、Python を使わない。
+* このため、ConSh を 1 つの実行形式として配るには、Rust 版を使うか、ビルド済みのモジュールと `--conma-parser` を既定にする必要がある。どちらを正式な配布形態とするかが、決まっていないように見える。
+
+### 4. Rust 版のビルドに必要な Rust のバージョンが書かれていない（中）
+
+* `consh/rust` は `std::io::pipe` と `PipeReader`、`PipeWriter` を使う。これらは Rust 1.87 以降の API である。rustc 1.75 では、`eval.rs` と `os.rs` で 7 件のエラーになり、ビルドできなかった。
+* `Cargo.lock` が version 4 で、Cargo 1.78 以降が要る。rustc 1.75 では、`vm/` も `consh/rust/` も、ロックファイルの読み込みで失敗する。`vm/` は、`Cargo.lock` を消すとビルドできた（依存クレートがないので、消してよい）。
+* どちらの `Cargo.toml` にも `rust-version` がなく、エラーを見て初めて分かる。
+* 修正案：`consh/rust/Cargo.toml` に `rust-version = "1.87"`、`vm/Cargo.toml` に必要な最小のバージョンを書く。README にも書く。
+
+この環境でビルドできなかったので、Rust 版 ConSh の出力を ConMa 版と比べることはしていない。
+
+### 5. テストが macOS の道具に頼っている（低）
+
+* step13 の case1、step14 の case6 が、`lsof` を使う。入っていないと `consh: case1.sh:3:30: lsof: No such file or directory: lsof` が出て、差分になる。`lsof` を入れると、step13 と step14 は通る。
+* step10 の case2、case3 が、`od -c | sed 's/  */ /g'` の出力を比べる。BSD の `od` は行末に空白を付け、GNU の `od` は付けないので、期待ログ（`0000020 i n e \n e n d \n ` など）が GNU の出力と 1 文字違う。
+* 修正案：
+    * `od` の出力に `sed 's/ *$//'` を足し、期待ログの行末の空白を消す。どちらの `od` でも通る。
+    * `lsof` がないときは、`common.sh` で、足りない道具の名前を出して止める。
+
+### 問題なしと確かめたところ
+
+* `consh/test/run_all.sh` を、Rust 版の VM で実行した。上のとおり、環境の違いによる差分を除いて、すべて通る。
+* `examples/` の 4 つ（lazy、logsummary、spaces、typo）は、テストが通り、実行しても期待どおりの出力になる。
+* ConSh の継続（`return`、`break`、`continue`、`reset` と `shift`）は、ConMa の継続の機能で実現されている。設計の意図どおりに使われている。
+
+### 未確認
+
+* Rust 版 ConSh（consh-rs）の出力と、ConMa 版の出力の比較（4 のとおり、ビルドできなかった）。
+* 対話モード、メモリ使用量、長時間の実行。
+* Python 版の VM での `run_all.sh` の実行。
+
+### 対応
+
+指摘だけで、修正はしていない。
