@@ -25,7 +25,7 @@ do
   run $c $c.sh < /dev/null
 done
 run case14 case14.sh a b < /dev/null
-for c in case15 case16 case17 case18
+for c in case15 case16 case17 case18 case19
 do
   run $c $c.sh < /dev/null
 done

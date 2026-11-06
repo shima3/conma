@@ -682,6 +682,9 @@ ConSh による意味解釈を以下のように定義する。
     - テスト：`step3` に `case25`〜`case28`（足りない、多い、`. rest`、関数値と `bind`）を足し、`step20` の `case3` と `case5`（対話モード）に、関数値と継続の数のエラーを足した。古い規則に頼っていた `step3/case1`、`case6`、`case22`、`case23`、`step14/case1`（`eat $x` を `eat ${x}` にした）、`step20/case1`、`case2`、`case4` を直した。
 1. **循環するゴミを減らす**：ConMa の VM の循環の回収（Rust 版の gc.rs）が、コマンドごとに、約 15 個の Dict（文脈の Dict を含む）と Ref を回収していた。調べると、`Arg_limit_new` と `Limit_guard` が、Dict を作った後で `"onOver"` と `"onFunc"` の関数を作っていたので、関数が Dict を取り込み、Dict と循環していた。その Dict を通して、文脈の Dict などもすべて循環の回収を待っていた。関数を Dict より前に作るようにして、参照カウントだけで解放されるようにした。関数を 1 万 5 千回呼ぶスクリプトで、時間が約 13% 減り（3.29 秒から 2.88 秒。Rust 版の VM）、最大メモリが 211 MB から 159 MB に減った。
     - 残りは、変数リストへのリダイレクトの組（`group`）と記録（`record`）の相互の参照（`> (r)` 1 つにつき 6 個）。`&` の文では、文が終わった後も書き手が記録から組をたどるので、そのままにした。
+1. **部分が2つ以上の語の展開を速くする**：`$a$b` や `x$e` のような語は、部分の数を種類ごとに数える（`Parts_count` を3回）、連結する（`Parts_concat`）、候補と glob のパターンを作る（`Expand_fields_from`）と、部分の LList を何度もたどり、そのたびに部分を分けていた（`Part_split`、`List_first`）。`Parts_strings` で部分を1回だけたどり、部分がみな String（`"plain"`、`"quoted"`、`"braced"`）で、引用符の外に glob の記号がなければ、連結した String を1つの語にする（空なら、外部コマンドの語は引用符があるとき、それ以外の語は引用符か `${x}` があるときだけ残す）。LazyList、関数値、glob の記号を含む語は、今までどおり展開する。`Expand_args_parts` と `Parts_glob_fields` の初めに使う。
+    - `function add (a b) { echo $a$b; }` を呼ぶ `add $i x > (r)` 1つは 4,335 → 3,113 ステップ（語の展開は約 1,600 → 約 600）、1 万 5 千回で 2.78 → 2.13 秒（Rust 版の VM）。
+    - テスト：`step2` に `expand3.sh`（外部コマンドの語。consh_parse --expand と比べる）と `case19`（関数の引数。ログは Rust 版の ConSh の出力）を足した。
 
 ### 2.2. 検討中
 

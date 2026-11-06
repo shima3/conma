@@ -149,9 +149,19 @@
 
 ;; 語の部分を外部コマンドの語として展開し、glob を適用した String の LList。
 ;; 一致しなければ、nullGlob が偽なら語をそのまま残し、真なら消す（${-語}）。
-;; 部分が LazyList でない1つだけで、記号を含まなければ（よくある語）、候補を作らずに決める
+;; 部分がみな String で記号を含まないか（よくある語）、LazyList でない1つだけで記号を含まなければ、候補を作らずに決める
 (define Parts_glob_fields ,(parts limit nullGlob)
   __Cont_get__ ,(return)
+  ;; 部分がみな String で、glob の記号もなければ、連結した String が1つの語（空なら、引用符があるときだけ残す）
+  Parts_strings parts ,(strings text quoted braced magic)
+  __not__ magic ,(noMagic)
+  __and__ strings noMagic ,(simple)
+  __if__ simple
+    (,()
+      __String_equal__ text "" ,(empty)
+      __unless__ empty (,() __LList_cons__ text __NULL__ ,(fields) return fields) ,()
+      __if__ quoted (,() __LList_cons__ "" __NULL__ ,(fields) return fields) ,()
+      return __NULL__) ,()
   Parts_single parts ,(kind value)
   __is_null__ kind ,(condition)
   __unless__ condition
@@ -325,8 +335,18 @@
 ;; Expand_args で、リテラルの語でないもの
 (define Expand_args_parts ,(sh word)
   __Cont_get__ ,(return)
-  Node_split word ,(wtag wpos welems)
   Expand_parts sh word ,(parts)
+  ;; 部分がみな String で、glob の記号もなければ、連結した String が1つの語（空なら、引用符か ${x} があるときだけ残す）
+  Parts_strings parts ,(strings text quoted braced magic)
+  __not__ magic ,(noMagic)
+  __and__ strings noMagic ,(simple)
+  __if__ simple
+    (,()
+      __String_equal__ text "" ,(empty)
+      __unless__ empty (,() __LList_cons__ text __NULL__ ,(values) return values) ,()
+      __or__ quoted braced ,(keep)
+      __if__ keep (,() __LList_cons__ "" __NULL__ ,(values) return values) ,()
+      return __NULL__) ,()
   Parts_single parts ,(kind value)
   __is_null__ kind ,(condition)
   __unless__ condition
@@ -339,6 +359,7 @@
       __if__ done (,() return fields) ,()
       Parts_fields parts ,(fields)
       return fields) ,()
+  Node_split word ,(wtag wpos welems)
   Limit_guard sh wpos __NULL__ ,(guard)
   Parts_count parts "leaves" ,(nLeaves)
   __Number_is_zero__ nLeaves ,(condition)
@@ -754,6 +775,39 @@
   Part_split part ,(k v)
   __String_concat__ acc v ,(acc)
   Parts_concat_from rest acc)
+
+;; 部分がみな String（"plain"、"quoted"、"braced"）か。そうなら、それらを連結した String、"quoted" を含むか、
+;; "braced" を含むか、引用符の外の String が glob の記号を含むかも返す（真、String、Boolean 3 つ）。
+;; 部分が2つ以上の語のよくある形（$a$b、a$x など）を、部分を1回たどるだけで決めるために使う
+(define Parts_strings ,(parts)
+  Parts_strings_from parts "" __FALSE__ __FALSE__ __FALSE__)
+
+(define Parts_strings_from ,(parts text quoted braced magic)
+  __is_null__ parts ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __TRUE__ text quoted braced magic)
+    (,()
+      __LList_uncons__ __print_exit_error__ parts ,(part rest)
+      __LList_uncons__ __print_exit_error__ part ,(kind prest)
+      __LList_uncons__ __print_exit_error__ prest ,(value prest)
+      __String_equal__ kind "plain" ,(isPlain)
+      __String_equal__ kind "braced" ,(isBraced)
+      ;; Boolean を直接適用する（__or__ と同じ）
+      isPlain __TRUE__ isBraced ,(active)
+      __if_then_else__ active
+        (,()
+          __String_concat__ text value ,(text)
+          Glob_has_meta value ,(m)
+          magic __TRUE__ m ,(magic)
+          braced __TRUE__ isBraced ,(braced)
+          Parts_strings_from rest text quoted braced magic)
+        (,()
+          __String_equal__ kind "quoted" ,(isQuoted)
+          __if_then_else__ isQuoted
+            (,()
+              __String_concat__ text value ,(text)
+              Parts_strings_from rest text __TRUE__ braced magic)
+            (,() __NULL__ __FALSE__ text quoted braced magic))))
 
 ;; LazyList の部分が1つだけのとき、その前後の String を、入れ子の形を保ったまま葉に付けた値
 (define Parts_affix ,(parts left limit)
