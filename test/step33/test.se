@@ -10,11 +10,14 @@
   __Number_fromString__ __print_exit_error__ s)
 
 ;; case1: VProc A が LazyList を評価している途中で止める。A は評価を終えてから止まり、その値は読める。
-;; A が評価の後に進むはずの処理（"after the evaluation"）は実行されない
+;; A が評価の後に進むはずの処理（"after the evaluation"）は実行されない。
+;; __Ref_wait_change__ は同じオブジェクトかどうかで比べるので、Ref に入れた文字列 wait そのものを渡す
+;; （文字列のリテラルを 2 回書くと別のオブジェクトになり、A は待たずに評価を進め、止める前に出力することがある）
 (define case1 ,()
-  __Ref_new__ "wait" ,(gate)
+  __NULL__ "wait" ,(wait)
+  __Ref_new__ wait ,(gate)
   __LazyList_new__ (,()
-    __Ref_wait_change__ gate "wait" ,()
+    __Ref_wait_change__ gate wait ,()
     println "evaluating" ,()
     __LazyList_empty__ ,(empty)
     __LazyList_cons__ "value" empty) ,(list)
