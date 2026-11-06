@@ -134,6 +134,12 @@ __Resolver_main__ programs ,(Module)
 * As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`, and to the name of a `Definition`: `(define __NULL__ ...)` gives `(G n "__NULL__" (Function ...))`, so the name is taken from the `Definition` before its children are annotated. [RESOLVER.md](RESOLVER.html) does not describe this.
 * `(F)` with no file names would be written as `F` by `__AST_toSexp__` (a node without a position and children). This does not happen, because every `Program` from `__Includer_main__` has a file name.
 
+```
+__Resolver_warnings__ Module ,(messages)
+```
+
+* Returns the LList of the warnings of [RESOLVER.md](RESOLVER.html) ("Warnings") for the `Module`, each a String without a newline, in the same order as `bin/resolver` writes them. The caller writes them (`test/selfhost7/test.se` writes them to standard error).
+
 ---
 
 ## Data Types
@@ -336,7 +342,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case4 | errors: an included file not found, a syntax error, a missing source file, a missing include directory, an absolute path that does not exist (the two differences above show in the messages) |
 | case5 | lexical errors in a file; `test/step14/test.se` with `include/` as the include directory |
 
-`test/selfhost7` tests the resolver. `test.se` takes a source file and include directories, runs `__Includer_main__` and `__Resolver_main__`, and writes the `Module` on one line. `test.sh` compares it with `bin/includer --include <dir>... <source> | bin/resolver` by `selfhost_compare.py ast`; for the small sources, the log also shows the `Module`, with the `test` directory written as `<dir>`. The whole test takes about 30 seconds.
+`test/selfhost7` tests the resolver. `test.se` takes a source file and include directories, runs `__Includer_main__` and `__Resolver_main__`, writes the `Module` on one line, and writes the warnings of `__Resolver_warnings__` to standard error. `test.sh` compares the `Module` with `bin/includer --include <dir>... <source> | bin/resolver` by `selfhost_compare.py ast`, and the warnings with those of `bin/resolver` (case6 has calls with too few arguments); for the small sources, the log also shows the `Module`, with the `test` directory written as `<dir>`. The whole test takes about 30 seconds.
 
 | Case | What it checks |
 |---|---|

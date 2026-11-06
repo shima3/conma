@@ -275,6 +275,52 @@ class Resolver:
         text = "\n".join(lines)
         print(self._merge_close_parens(text))
 
+    def arity_warnings(self):
+        """Warnings for the calls of a global function, defined with a Head of k
+        parameters (not variadic), with m operands where 0 < m < k. Such a call
+        is a partial application: its result is a function, which is an error
+        unless it was meant. Calls with more operands (a function that returns
+        a Sink) or none (a function passed as a value) are not warned about.
+        The functions are those in the Module (the first Definition of each
+        name), visited in the order of their numbers, each in preorder."""
+        arities = {}
+        for name in self.global_order:
+            val = self.global_registry[name]["value"]
+            if val is None or val.type != "Function":
+                continue
+            head = next((c for c in val.children if c.type == "Head"), None)
+            if head is None or any(c.type != "Variable" for c in head.children):
+                continue
+            arities[name] = len(head.children)
+        warnings = []
+        def visit(node):
+            if node.type == "Body":
+                self.check_call(node, arities, warnings)
+            for child in node.children:
+                visit(child)
+        for name in self.global_order:
+            val = self.global_registry[name]["value"]
+            if val is not None:
+                visit(val)
+        return warnings
+
+    def check_call(self, body, arities, warnings):
+        op = next((c for c in body.children if c.type == "Operator"), None)
+        olist = next((c for c in body.children if c.type == "OList"), None)
+        if op is None or olist is None or not op.children:
+            return
+        var = op.children[0]
+        if var.type != "Variable" or var.is_local:
+            return
+        name = var.value.strip('"')
+        k, m = arities.get(name), len(olist.children)
+        if k is None or not 0 < m < k:
+            return
+        sinfo = next((c for c in body.children if c.type == "SInfo"), None)
+        parts = re.findall(r'"((?:[^"\\]|\\.)*)"', sinfo.value) if sinfo else []
+        loc = ":".join(parts[:3]) if parts else f"{op.line}:{op.col}"
+        warnings.append(f"Warning: {loc}: too few arguments to {name}: {m} of {k} (partial application)")
+
 def main():
     input_lines = sys.stdin.readlines()
     roots = parse_ast_stream(input_lines)
@@ -287,6 +333,8 @@ def main():
         resolver.resolve(root, [])
 
     resolver.print_module(roots)
+    for w in resolver.arity_warnings():
+        print(w, file=sys.stderr)
 
 if __name__ == "__main__":
     main()

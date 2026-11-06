@@ -17,7 +17,17 @@
         __LList_cons__ arg acc ,(acc)
         listSink acc)))
 
-;; 引数: ソースファイル、続けて include ディレクトリ。Module を1行の S式で出力する
+;; 各メッセージを1行ずつ標準エラー出力に書く
+(define printLines ,(lines)
+  __unless__ (,() __is_null__ lines)
+    (,()
+      __LList_uncons__ __print_exit_error__ lines ,(line rest)
+      __OS_print_error__ line ,()
+      __OS_print_error__ "\n" ,()
+      printLines rest))
+
+;; 引数: ソースファイル、続けて include ディレクトリ。Module を1行の S式で標準出力に、
+;; 引数の個数の警告を標準エラー出力に書く
 (define main ,(args)
   listSink __NULL__ ,(sink)
   args sink ,(sink)
@@ -28,4 +38,5 @@
   __AST_toSexp__ module ,(str)
   __OS_print__ str ,()
   __OS_print__ "\n" ,()
-  )
+  __Resolver_warnings__ module ,(warnings)
+  printLines warnings)

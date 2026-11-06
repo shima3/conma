@@ -1,0 +1,7 @@
+== arity.se
+exit: python 0, conma 0
+compare: 0
+Warning: <dir>/selfhost7/arity.se:10:3: too few arguments to add2: 1 of 2 (partial application)
+Warning: <dir>/selfhost7/arity.se:11:3: too few arguments to add3: 2 of 3 (partial application)
+Warning: explicit.se:7:9: too few arguments to add3: 1 of 3 (partial application)
+Warning: <dir>/selfhost7/arity.se:26:18: too few arguments to add3: 1 of 3 (partial application)

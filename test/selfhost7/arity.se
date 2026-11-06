@@ -1,0 +1,27 @@
+;; 引数の個数の警告（bin/resolver と include/resolver.se）
+(define add2 ,(a b) __Number_add__ a b)
+(define add3 ,(a b c) __Number_add__ a b ,(ab) __Number_add__ ab c)
+(define all , args __NULL__ args)
+(define twice ,(x) __NULL__ x)
+(define twice ,(x y) __NULL__ x y)
+
+;; 足りない：警告する
+(define few ,(one)
+  add2 one ,(f)
+  add3 one one ,(g)
+  (__SInfo__ "explicit.se" "7" "9" "ignored") add3 one ,(h)
+  twice one)
+
+;; 同じ数、多い、ない、可変長、ローカル変数：警告しない
+(define ok ,(one)
+  add2 one one ,(r)
+  add2 one one one ,(s)
+  add2 ,(f)
+  all one ,(t)
+  (,(add2) add2 one) (,(x) __NULL__ x) ,(u)
+  __NULL__ r)
+
+;; 関数の中の関数（OList の Function、LCont）の中も調べる
+(define nested ,(one)
+  __NULL__ (,(x) add3 x) ,(f)
+  f one)

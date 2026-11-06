@@ -1,7 +1,8 @@
 #!/bin/bash
 # Compare the ConMa resolver (include/resolver.se), after the ConMa includer, with
-# bin/includer | bin/resolver. For each run, the exit codes and the result of
-# selfhost_compare.py are printed, and the ConMa Module with the test directory written as <dir>.
+# bin/includer | bin/resolver. For each run, the exit codes, the result of
+# selfhost_compare.py and the difference of the warnings (standard error) are printed,
+# and the warnings and the ConMa Module with the test directory written as <dir>.
 . "$(dirname "$0")/../common.sh"
 resolve test.se
 dir="$(cd ..; pwd -P)"
@@ -12,12 +13,14 @@ resolve() {
   shift
   local opts=""
   for d in "$@"; do opts="$opts --include $d"; done
-  ../../bin/includer $opts $source 2> /dev/null | ../../bin/resolver > $tmp/selfhost7.py.txt
+  ../../bin/includer $opts $source 2> /dev/null | ../../bin/resolver > $tmp/selfhost7.py.txt 2> $tmp/selfhost7.py.err
   py=$?
-  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $source "$@" > $tmp/selfhost7.conma.txt 2> /dev/null
+  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $source "$@" > $tmp/selfhost7.conma.txt 2> $tmp/selfhost7.conma.err
   echo "exit: python $py, conma $?"
   python3 ../selfhost_compare.py ast $tmp/selfhost7.py.txt $tmp/selfhost7.conma.txt
   echo "compare: $?"
+  diff $tmp/selfhost7.py.err $tmp/selfhost7.conma.err
+  sed -e "s|$dir|<dir>|g" $tmp/selfhost7.py.err
 }
 # case1: de Bruijn indexes: several parameters, nested functions, shadowing,
 # the same name twice in a Head, an LCont and a FuncExp, a free variable; variadic Heads
@@ -48,7 +51,13 @@ case4() {
 case5() {
   resolve ../step14/test.se ../../include
 }
-for c in case1 case2 case3 case4 case5
+# case6: warnings for too few arguments to a global function: with an SInfo from the file name,
+# with an explicit SInfo; none for the same number, more arguments, no arguments,
+# a variadic function, a local variable with the name of a global function, a name defined twice
+case6() {
+  resolve arity.se
+}
+for c in case1 case2 case3 case4 case5 case6
 do
   $c > $tmp/$c.log 2>&1
   diff $c.log $tmp/$c.log

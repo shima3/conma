@@ -8,11 +8,17 @@ cd "$(dirname "$0")" || exit 1
 tmp="$(mktemp -d /tmp/conma-test.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 
-# resolve file.se...: 各ファイルから $tmp/file.module.se を作る。失敗したらテストを止める
+# resolve file.se...: 各ファイルから $tmp/file.module.se を作る。失敗したらテストを止める。
+# resolver の警告（標準エラー出力）は、file.resolve.log があればそれと比べ、なければそのまま出す
 resolve() {
-  local f
+  local f base
   for f in "$@"
   do
-    "$test/resolver.sh" "$f" "$tmp" || exit 1
+    base="$(basename "${f%.se}")"
+    "$test/resolver.sh" "$f" "$tmp" 2> "$tmp/$base.resolve.log" || { cat "$tmp/$base.resolve.log" >&2; exit 1; }
+    if [ -e "$base.resolve.log" ]
+    then diff "$base.resolve.log" "$tmp/$base.resolve.log"
+    else cat "$tmp/$base.resolve.log"
+    fi
   done
 }

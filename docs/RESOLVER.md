@@ -190,6 +190,20 @@ A `Head` may bind several parameters, as in `,(Boolean then else)`. The paramete
   (G 1 "__print__" Undefined))
 ```
 
+### Warnings
+
+After the `Module`, `resolver` writes a warning to standard error for each call of a global function with too few arguments, and still exits with code 0:
+
+```
+Warning: file:line:column: too few arguments to name: m of k (partial application)
+```
+
+* The function is the value of the `G` entry of `name` (the first `Definition` of the name): a `Function` whose `Head` has `k` parameters and is not variadic.
+* A call is a `Body` whose `Operator` is a global `Variable` (`(G n)`) of such a name and whose `OList` has `m` operands with `0 < m < k`. Such a call is a partial application: its result is a function. It is legal ConMa (see DESIGN.md), but it is rare in written programs and is usually a mistake that shows up later, far from the call; so it is warned about but not rejected.
+* Calls with more operands than parameters are not warned about: a function that returns a function (such as a Sink) is called that way on purpose. Neither are calls with no operands, which pass the function on as a value. A call with too many operands whose result is not a function is reported by the VM, at the position of the call (`Not a function: ...`).
+* `file:line:column` are the first three Strings of the `SInfo` of the `Body` (as in the runtime errors of the VMs), or `line:column` of the `Operator` if the `Body` has no `SInfo` with Strings.
+* The `G` entries are visited in the order of their numbers, and each `Function` in pre-order, so the warnings come in that order. `include/resolver.se` gives the same warnings with `__Resolver_warnings__` (SELFHOST.md).
+
 ---
 
 ### Notes
