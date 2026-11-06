@@ -1,0 +1,4 @@
+a=1 b=2
+a=1 b=2
+consh: case28.sh:6:1: expected 2 arguments, got 3
+exit: 1

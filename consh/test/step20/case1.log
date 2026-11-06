@@ -1,22 +1,22 @@
 a=p b=q x=1 rest=r s
 later x=2
-a= b= x=1 rest=
+a=p b=q x=1 rest=
 later x=2
 status 7
 a=from-list b=via-list x=1 rest=
 later x=2
 loop 7
 loop 7
-a=via-capture b= x=1 rest=
+a=via-capture b=B x=1 rest=
 later x=2
 a=other b=from-array x=1 rest=
 later x=2
-a=1 2 3 b= x=1 rest=
+a=1 2 3 b=end x=1 rest=
 later x=2
 inner 5 6
-a=piped b= x=1 rest=
+a=piped b=P x=1 rest=
 later x=2
-a=copy b= x=1 rest=
+a=copy b=C x=1 rest=
 later x=2
 default d
 no rec

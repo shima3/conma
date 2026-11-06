@@ -7,9 +7,9 @@ function f (a b . rest) {
 }
 f 1 2 3 "4 5"
 echo "status $?"
-f only
+f only two
 function g () { echo "no params" }
-g extra args are dropped
+g
 function h (. all) { echo all: $all }
 h x y
 function last () { false }

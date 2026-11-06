@@ -6,11 +6,11 @@ reset { find b ${l} }
 reset { find z ${l} }
 reset { echo start; shift k (v) { $k 1; $k 2; }; echo "v=$v"; }
 echo "status $?"
-function gen () { for i in a b c; do shift k { echo $i; echo $k; }; done; shift k { echo end; }; }
+function gen () { for i in a b c; do shift k { echo $i; echo $k; }; done; shift k { echo end; echo $k; }; }
 function consume (v next) { if test "$v" = end; then return 0; fi; echo "got $v"; $next > (v2 next2); consume $v2 $next2; }
 reset { gen } > (v next)
 consume $v $next
-function gen () { for i in a b c; do shift k { echo $i; echo $k; }; done; echo end; }
+function gen () { for i in a b c; do shift k { echo $i; echo $k; }; done; echo end; echo none; }
 function consume (v next) { if test "$v" = end; then return 0; fi; echo "got $v"; $next > (v2 next2); consume $v2 $next2; }
 reset { gen } > (v next)
 consume $v $next

@@ -14,7 +14,7 @@ $p a b
 # 名前は呼ぶときに探すので、後で定義した関数も見える
 bind late x > (bl)
 function late (v) { echo "late $v"; }
-$bl y
+$bl
 # 同じ名前の関数と変数：bind add は関数、bind $add は変数の値
 add=function (a) { echo "var add $a"; }
 bind add 1 > (byname)

@@ -21,4 +21,8 @@ $ $ consh: stdin:24:1: a continuation called in another VProc
 $ end
 $ $ a=1 b=2
 consh: stdin:27:41: shift outside reset
-$ exit: 1
+$ consh: stdin:28:23: expected 1 argument, got 2
+$ consh: stdin:29:27: expected at least 1 argument, got 0
+$ no params
+$ end
+$ exit: 0

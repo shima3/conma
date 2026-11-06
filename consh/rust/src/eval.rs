@@ -866,7 +866,20 @@ fn func_lookup(sh: &Ctx, name: &str) -> Option<Arc<Func>> {
 
 /// Call a function: the arguments go to the parameters ("" for those
 /// missing; the rest as a LazyList), and the body runs in a new scope.
-fn func_push(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) {
+/// Check the number of arguments for a variable list of `names` (and a rest
+/// parameter if `rest`): the same number, or at least as many with a rest.
+fn arity_check(sh: &Ctx, pos: Pos, names: usize, rest: bool, args: usize) -> R<()> {
+    if (rest && args >= names) || (!rest && args == names) {
+        return Ok(());
+    }
+    let word = if names == 1 { "argument" } else { "arguments" };
+    let at_least = if rest { "at least " } else { "" };
+    Err(sh.error(pos, &format!("expected {}{} {}, got {}", at_least, names, word, args)))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn func_push(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+    arity_check(sh, pos, f.names.len(), !f.rest.is_empty(), args.len())?;
     let mut vars = f.vars.clone();
     let mut it = args.into_iter();
     for n in &f.names {
@@ -891,6 +904,7 @@ fn func_push(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: 
     sh.set_status("0");
     chain.push(Frame::Call { id });
     chain.push(Frame::Lines { sh: callee, script: f.body.clone(), line: 0, stmt: 0, settle: false });
+    Ok(())
 }
 
 // ── Function values and continuations (stage 20) ──
@@ -935,8 +949,7 @@ fn call_value(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: A
     match &**f {
         FuncValue::Func(func) => {
             let (out, err) = body_targets(sh, pos, &out, &err);
-            func_push(sh, func, args, input, out, err, chain);
-            Ok(())
+            func_push(sh, pos, func, args, input, out, err, chain)
         }
         FuncValue::Bind { scope, target, args: bound } => {
             let mut all = bound.clone();
@@ -988,8 +1001,7 @@ fn bind_call(sh: &Ctx, scope: &Arc<Scope>, pos: Pos, target: &Value, args: Vec<V
     if let Some(f) = &func {
         if name != "builtin" && name != "command" {
             let (out, err) = body_targets(&inner, pos, &out, &err);
-            func_push(&inner, f, args, input, out, err, chain);
-            return Ok(());
+            return func_push(&inner, pos, f, args, input, out, err, chain);
         }
     }
     cmd_run_resolved(&inner, pos, &name, args, input, out, err, func, builtin)
@@ -1049,7 +1061,7 @@ fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()>
     let body = Arc::new(Func { names: Vec::new(), rest: String::new(), body: script.clone(), scope: sh.scope.clone(), vars });
     let (out, err) = body_targets(&info.sh, pos, &info.out, &info.err);
     let mut next = info.k.clone();
-    func_push(&info.sh, &body, Vec::new(), info.input.clone(), out, err, &mut next);
+    func_push(&info.sh, pos, &body, Vec::new(), info.input.clone(), out, err, &mut next)?;
     *chain = next;
     Ok(())
 }
@@ -1070,6 +1082,7 @@ fn cont_call(sh: &Ctx, pos: Pos, c: &Cont, args: Vec<Value>, input: Arc<Input>, 
         let pc = p.children();
         let names: Vec<String> = pc.first().map(|n| n.list().iter().map(|n| n.str().to_string()).collect()).unwrap_or_default();
         let rest = pc.get(1).map(|r| r.str()).unwrap_or("");
+        arity_check(sh, pos, names.len(), !rest.is_empty(), args.len())?;
         let mut vars = c.vars.lock().unwrap();
         let mut it = args.into_iter();
         for n in &names {
@@ -1115,9 +1128,9 @@ fn retarget(chain: &Chain, input: &Arc<Input>, out: &Target, err: &Target) -> Ch
 }
 
 /// Call a function and wait for it (a command with redirections).
-fn func_call(sh: &Ctx, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
+fn func_call(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
     let mut chain = Chain::default();
-    func_push(sh, f, args, input, out, err, &mut chain);
+    func_push(sh, pos, f, args, input, out, err, &mut chain)?;
     run(chain)
 }
 
@@ -1195,8 +1208,7 @@ fn exec_cmd(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
         if let Some(f) = &func {
             if name.as_str() != Some("builtin") && name.as_str() != Some("command") {
                 let (out, err) = body_targets(sh, pos, &out, &err);
-                func_push(sh, f, args, input, out, err, chain);
-                return Ok(());
+                return func_push(sh, pos, f, args, input, out, err, chain);
             }
         }
     }
@@ -1269,7 +1281,7 @@ fn cmd_run_resolved(sh: &Ctx, pos: Pos, name: &str, args: Vec<Value>, input: Arc
     }
     if let Some(f) = func {
         let (out, err) = body_targets(sh, pos, &out, &err);
-        return func_call(sh, &f, args, input, out, err);
+        return func_call(sh, pos, &f, args, input, out, err);
     }
     if let Some(b) = builtin {
         return b(sh, pos, args, input, out, err);

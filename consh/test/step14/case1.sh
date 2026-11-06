@@ -4,7 +4,7 @@
 # 文の終わりに $( ) が終わるまで待ち、kill の前にジョブが終わる）
 x=$(seq 1 2000; sleep 2)
 function eat (l) { for i in $l; do true $i; done; }
-eat $x &
+eat ${x} &
 j=$!
 sleep 1
 kill $j

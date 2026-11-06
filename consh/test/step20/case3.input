@@ -24,3 +24,7 @@ OFS=' '
 function r () { return $f; }
 r
 echo "still here $?"
+f=function (a) { echo "a=$a"; }
+$f
+$f 1 2
+$f 1

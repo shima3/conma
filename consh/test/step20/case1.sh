@@ -4,7 +4,7 @@ f=function (a b . rest) { echo "a=$a b=$b x=$x rest=${rest}"; later; }
 x=2
 function later () { echo "later x=$x"; }
 $f p q r s
-$f
+$f p q
 g=function () { return 7; }
 $g
 echo "status $?"
@@ -14,21 +14,21 @@ ${l} via-list
 fs=$(echo $g; echo $g)
 for h in ${fs}; do $h; echo "loop $?"; done
 echo $f > (c)
-$c via-capture
+$c via-capture B
 arr=($f other)
 ${arr} from-array
-function apply (fn . args) { $fn ${args}; }
+function apply (fn . args) { $fn ${args} end; }
 apply $f 1 2 3
 # 関数値の中で作る関数値
 mk=function (n) { inner=function (m) { echo "inner $n $m"; }; echo $inner; }
 $mk 5 > (i5)
 $i5 6
 # パイプ、写し、既定値
-$f piped | cat
+$f piped P | cat
 k=$f
-$k copy
+$k copy C
 y=${undefined-function (a) { echo "default $a"; }}
 $y d
 # 自分の名前の変数は、作った時点ではないので見えない
-rec=function (n) { if defined rec; then echo "sees rec"; else echo "no rec"; fi; }
+rec=function () { if defined rec; then echo "sees rec"; else echo "no rec"; fi; }
 $rec

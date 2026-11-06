@@ -786,6 +786,7 @@
   Node_split params ,(ptag ppos pchildren)
   __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
   List_first rest ,(restName)
+  Arity_check sh pos names restName args ,()
   Func_bind vars names restName args ,()
   Sh_get sh "env" ,(env)
   __Dict_new__ ,(funcs)
@@ -806,7 +807,34 @@
   Sh_set_status sh "0" ,()
   Eval_lines callee lines)
 
-;; 引数を順に名前に渡す。足りなければ空文字列。残りは LazyList にして restName に渡す（restName が "" なら捨てる）
+;; 引数の数を調べる。restName が "" なら names と同じ数、そうでなければ names 以上でなければエラー
+(define Arity_check ,(sh pos names restName args)
+  __LList_length__ names ,(n)
+  __LList_length__ args ,(m)
+  __Number_subtract__ m n ,(d)
+  __String_equal__ restName "" ,(fixed)
+  __Number_is_zero__ d ,(same)
+  __Number_is_negative__ d ,(fewer)
+  __if_then_else__ fixed (,() __not__ same) (,() __NULL__ fewer) ,(bad)
+  __if__ bad
+    (,()
+      __if_then_else__ fixed (,() __NULL__ "expected ") (,() __NULL__ "expected at least ") ,(msg)
+      Arity_count n ,(nStr)
+      __String_concat__ msg nStr ,(msg)
+      __String_concat__ msg ", got " ,(msg)
+      __Number_toString__ m ,(mStr)
+      __String_concat__ msg mStr ,(msg)
+      Sh_error sh pos msg))
+
+;; "1 argument"、"2 arguments" など
+(define Arity_count ,(n)
+  __Number_toString__ n ,(s)
+  __String_equal__ s "1" ,(one)
+  __if_then_else__ one (,() __NULL__ " argument") (,() __NULL__ " arguments") ,(word)
+  __String_concat__ s word)
+
+;; 引数を順に名前に渡し、残りは LazyList にして restName に渡す（restName が "" なら捨てる）。
+;; 数は Arity_check で調べてある（足りなければ空文字列を渡す）
 (define Func_bind ,(vars names restName args)
   __Cont_get__ ,(return)
   __is_null__ names ,(condition)
@@ -2139,7 +2167,7 @@
     __LList_cons__ frame frames ,(frames)
     __Ref_set__ meta frames ,()
     Seg_retarget dicts in out err ,()
-    Shift_bind vars params args ,()
+    Shift_bind caller pos vars params args ,()
     Sh_set_status caller "0" ,()
     resume))
 
@@ -2152,13 +2180,15 @@
   __Dict_put__ dict "err" err ,()
   Seg_retarget rest in out err)
 
-;; 継続に渡した値を、shift の変数リストに関数の引数と同じ規則で入れる。変数リストがなければ捨てる
-(define Shift_bind ,(vars params args)
+;; 継続に渡した値を、shift の変数リストに関数の引数と同じ規則（数が違えばエラー）で入れる。
+;; 変数リストがなければ、値はいくつでもよく、捨てる
+(define Shift_bind ,(sh pos vars params args)
   __Cont_get__ ,(return)
   __if__ (,() __is_null__ params) return ,()
   Node_split params ,(ptag ppos pchildren)
   __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
   List_first rest ,(restName)
+  Arity_check sh pos names restName args ,()
   Func_bind vars names restName args)
 
 ;; ── for 文、break、continue ──

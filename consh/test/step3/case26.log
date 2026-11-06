@@ -1,0 +1,4 @@
+a=1
+g
+consh: case26.sh:6:1: expected 0 arguments, got 1
+exit: 1

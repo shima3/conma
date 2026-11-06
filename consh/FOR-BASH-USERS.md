@@ -164,7 +164,7 @@ greet Alice Bob Carol; echo "status $?"
 # -> status 3
 ```
 
-* Missing arguments are empty strings (or an empty list for the rest parameter); extra arguments are dropped.
+* The number of arguments must match: without a rest parameter, exactly the number of parameters; with one, at least that many. Otherwise it is an error (`expected 2 arguments, got 1`). Use `bind` for partial application and `. rest` for a variable number of arguments.
 * Inside a function, `$1`, `$@` and `$#` are errors. Use named parameters; `function f (. args)` takes all of them.
 * `return` needs a number from 0 to 255: a bare `return` is a syntax error.
 * Variables set in a function are local to it. Functions see variables by lexical scope, that is, the values at the point where the function was defined:
@@ -198,7 +198,7 @@ To pass a list to a function as one value, use `${list}`; `$list` passes its lea
 list=(p q r)
 function first (x) { echo "first: $x" }
 first ${list}     # -> first: p q r   (x is the whole list)
-first $list       # -> first: p
+first $list       # -> error: expected 1 argument, got 3   (three arguments p q r)
 ```
 
 ## Output is a sequence of elements

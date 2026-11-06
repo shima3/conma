@@ -25,3 +25,7 @@ $kk
 echo end
 function y () { for i in $(seq 1 100); do echo $i; done; }
 reset { y; } > (a b); echo "a=$a b=$b"; shift k { echo stale; }
+reset { shift k (v) { $k 1 2; }; echo "v=$v"; }
+reset { shift k (a . r) { $k; }; echo "a=$a"; }
+reset { shift k { $k 1 2; }; echo "no params"; }
+echo end

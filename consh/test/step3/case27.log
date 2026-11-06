@@ -1,0 +1,4 @@
+a=1 rest=2 3
+a=1 2 rest=
+consh: case27.sh:6:1: expected at least 1 argument, got 0
+exit: 1
