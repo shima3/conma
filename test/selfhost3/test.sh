@@ -1,7 +1,7 @@
 #!/bin/bash
 # Compare the ConMa lexer (include/lexer.se) with bin/lexer.
 # Each case prints the result of selfhost_compare.py and the difference of the error messages.
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 lex() {
   echo "== $1"

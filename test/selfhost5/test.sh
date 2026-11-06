@@ -3,7 +3,7 @@
 # Each file is parsed with a file name (bin/parser --file) and without one.
 # For each, the exit codes, the result of selfhost_compare.py and the difference of the error messages
 # are printed, and the error message itself.
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 parse() {
   echo "== $1"

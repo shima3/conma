@@ -25,6 +25,7 @@ CONMA_VM=rust test/run_all.sh
 * Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`; `test/step21` gives each case its own input).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
 * Cases that run several VProcs make their output independent of how the scheduler interleaves them: a VProc writes only after it has synchronized with the others through Refs and `__VProc_suspend__` / `__VProc_resume__`.
+* `test/stress.sh [count] [dir ...]` runs the tests (all by default, with the Rust VM unless `CONMA_VM` says otherwise) with `CONMA_SEED` from 1 to `count` (10 by default), so that the scheduler runs the VProcs in a different order each time (see "Scheduling and Termination" in DESIGN.md), and prints the differences with the seed. Differences only in the step number of an error message (`at step N`), which counts the steps of every VProc, are not printed. The directories are relative to `test/`, so `../consh/test/step6` runs a ConSh test.
 
 ## Step 1: VM foundation
 

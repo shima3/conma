@@ -1,5 +1,5 @@
 #!/bin/bash
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 for c in case1 case2 case3 case4 case5 case6 case7 case8 case9
 do

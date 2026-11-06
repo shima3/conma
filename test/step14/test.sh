@@ -1,5 +1,5 @@
 #!/bin/bash
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 # The current directory is printed as <dir>, so that the logs do not depend on where the repository is
 dir="$(pwd -P)"

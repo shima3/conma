@@ -1,5 +1,5 @@
 #!/bin/bash
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se worker.se
 run() {
   PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $1 < /dev/null > $tmp/$1.log 2>&1

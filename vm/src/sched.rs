@@ -70,6 +70,38 @@ pub struct Machine {
     false_closure: Value,
     select_closure: Value,
     nop_closure: Value,
+    /// CONMA_SEED: choose the next VProc at random.
+    rng: Option<SplitMix64>,
+}
+
+/// The pseudo-random numbers of CONMA_SEED (the same as SplitMix64 in
+/// test/vproc_step.py).
+pub struct SplitMix64(u64);
+
+impl SplitMix64 {
+    /// A number in 0 .. n-1.
+    fn below(&mut self, n: usize) -> usize {
+        self.0 = self.0.wrapping_add(0x9E3779B97F4A7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+        ((z ^ (z >> 31)) % n as u64) as usize
+    }
+}
+
+/// The SplitMix64 of CONMA_SEED, or None when it is not set.
+fn seed_from_env() -> Option<SplitMix64> {
+    let text = std::env::var("CONMA_SEED").unwrap_or_default();
+    if text.is_empty() {
+        return None;
+    }
+    match text.parse::<u64>() {
+        Ok(n) if text.bytes().all(|b| b.is_ascii_digit()) => Some(SplitMix64(n)),
+        _ => {
+            write_std(2, &format!("Error: CONMA_SEED must be a number from 0 to {}: '{}'\n", u64::MAX, text));
+            std::process::exit(2);
+        }
+    }
 }
 
 /// Steps between checks of the OS while some VProc is ready.
@@ -181,6 +213,7 @@ impl Machine {
             main_failed: false,
             ref_changed: false,
             serials: Serials::default(),
+            rng: None,
             next_serial: 0,
             true_closure: bool_closure("t"),
             false_closure: bool_closure("f"),
@@ -499,6 +532,7 @@ impl Machine {
     /// Run until every VProc has finished. Returns the exit code when a
     /// primitive exits the interpreter, or on deadlock.
     pub fn run(&mut self) -> Option<i32> {
+        self.rng = seed_from_env();
         loop {
             if crate::gc::due() {
                 // Between two steps no RefCell is borrowed.
@@ -565,6 +599,19 @@ impl Machine {
                 }
                 write_std(2, &format!("Deadlock: no VProc is ready; blocked VProc(s): {}\n", blocked.join(", ")));
                 return Some(2);
+            }
+            if let Some(rng) = &mut self.rng {
+                if self.ready.len() > 1 {
+                    // CONMA_SEED: move a VProc chosen at random to the front.
+                    let i = rng.below(self.ready.len());
+                    if i > 0 {
+                        let chosen = self.ready.remove(i).unwrap();
+                        self.ready.push_front(chosen);
+                    }
+                    if self.ready[0].vp.borrow().is_terminal() {
+                        continue; // the top of the loop finishes it
+                    }
+                }
             }
             let cell = self.ready.pop_front().unwrap();
             cell.state.set(State::Running);

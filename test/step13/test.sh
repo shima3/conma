@@ -1,5 +1,5 @@
 #!/bin/bash
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se args.se exit.se
 # Standard input of each case
 input() {

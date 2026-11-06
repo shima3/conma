@@ -3,7 +3,7 @@
 # Each case prints the result of selfhost_compare.py and the difference of the error messages.
 # The ConMa lexer and comment_remover run together, so their error messages are mixed:
 # both sides are sorted before they are compared.
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 remove() {
   echo "== $1"

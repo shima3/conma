@@ -1,5 +1,5 @@
 #!/bin/bash
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 PYTHONUNBUFFERED=1 ../vm.sh --trace $tmp/test.module.se case1 2>&1 | sed -e "s|$tmp/|<tmp>/|g" > $tmp/case1.log
 diff case1.log $tmp/case1.log

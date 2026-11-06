@@ -2128,6 +2128,28 @@ def prim_String_fromCode(vp, gvenv):
 
 POLL_INTERVAL = 64   # steps between checks of the OS while some VProc is ready
 
+MASK64 = (1 << 64) - 1
+
+class SplitMix64:
+    """The pseudo-random numbers of CONMA_SEED (the same as in vm/src/sched.rs)."""
+    def __init__(self, seed): self.state = seed & MASK64
+    def below(self, n):
+        """A number in 0 .. n-1."""
+        self.state = (self.state + 0x9E3779B97F4A7C15) & MASK64
+        z = self.state
+        z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & MASK64
+        z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & MASK64
+        return (z ^ (z >> 31)) % n
+
+def seed_from_env():
+    """The SplitMix64 of CONMA_SEED, or None when it is not set."""
+    text = os.environ.get("CONMA_SEED", "")
+    if text == "": return None
+    if not text.isdigit() or int(text) > MASK64:
+        print(f"Error: CONMA_SEED must be a number from 0 to {MASK64}: {text!r}", file=sys.stderr)
+        sys.exit(2)
+    return SplitMix64(int(text))
+
 class Scheduler:
     """Round-robin scheduler. Each scheduling step runs one Operator
     application of the VProc at the front of the ready queue."""
@@ -2149,6 +2171,7 @@ class Scheduler:
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
         self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
+        self.rng      = None     # CONMA_SEED: choose the next VProc at random (run)
 
     def _install_sigchld(self):
         """Make SIGCHLD write a byte to a pipe, so that select() wakes up
@@ -2308,6 +2331,7 @@ class Scheduler:
         each step. A VProc that raises VProcError is finished with an error
         message; the others keep running. Returns normally when every VProc
         has finished; exits with code 2 on deadlock."""
+        self.rng = seed_from_env()
         while True:
             while self.ready and is_terminal(self.ready[0]):
                 self.ready.popleft().state = "finished"
@@ -2348,6 +2372,15 @@ class Scheduler:
                 ids = ", ".join(str(vp.serial) for vp in blocked)
                 print(f"Deadlock: no VProc is ready; blocked VProc(s): {ids}", file=sys.stderr)
                 sys.exit(2)
+            if self.rng is not None and len(self.ready) > 1:
+                # CONMA_SEED: move a VProc chosen at random to the front.
+                i = self.rng.below(len(self.ready))
+                if i > 0:
+                    chosen = self.ready[i]
+                    del self.ready[i]
+                    self.ready.appendleft(chosen)
+                if is_terminal(self.ready[0]):
+                    continue        # the top of the loop finishes it
             vp = self.ready.popleft()
             vp.state = "running"
             self.current = vp

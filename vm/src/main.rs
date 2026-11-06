@@ -7,6 +7,9 @@
 //! --trace prints the VProc state to standard error before the first step and
 //! after each step. --main starts the program with __start__ and passes the
 //! remaining arguments as a Seq of Strings.
+//!
+//! With CONMA_SEED=<n>, the scheduler chooses the VProc to run next at random
+//! (see "Scheduling and Termination" in docs/DESIGN.md).
 
 mod alloc;
 mod gc;

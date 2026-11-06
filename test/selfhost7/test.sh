@@ -2,7 +2,7 @@
 # Compare the ConMa resolver (include/resolver.se), after the ConMa includer, with
 # bin/includer | bin/resolver. For each run, the exit codes and the result of
 # selfhost_compare.py are printed, and the ConMa Module with the test directory written as <dir>.
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 dir="$(cd ..; pwd -P)"
 # resolve source include-dir...

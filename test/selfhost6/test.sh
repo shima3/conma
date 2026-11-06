@@ -2,7 +2,7 @@
 # Compare the ConMa includer (include/includer.se) with bin/includer.
 # For each run, the exit codes, the result of selfhost_compare.py (when both succeed),
 # and the error messages of both sides (sorted, absolute paths written as <dir> in the test directory and <root> in the repository) are printed.
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se
 dir="$(pwd -P)"
 # include source include-dir...

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests of test/selfhost_compare.py with the outputs of the Python tools for sample.se
 # and the same outputs in the ConMa format (conma/*.txt)
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 bin=../../bin
 compare="python3 ../selfhost_compare.py"
 out=$tmp/selfhost2

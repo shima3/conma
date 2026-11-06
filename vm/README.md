@@ -18,7 +18,7 @@ It needs Rust 1.75 or later (`rust-version` in `Cargo.toml`), and no crates. Con
 CONMA_VM=rust test/step3/test.sh
 ```
 
-runs a test with the Rust VM. `test/vm_compare.sh <module_file> <func_name>` runs both VMs with `--trace` and shows the differences in the output, the exit code and the trace.
+runs a test with the Rust VM. `test/vm_compare.sh <module_file> <func_name>` runs both VMs with `--trace` and shows the differences in the output, the exit code and the trace. With `CONMA_SEED=<n>`, both VMs choose the VProc to run next with the same pseudo-random numbers (see "Scheduling and Termination" in docs/DESIGN.md), so `vm_compare.sh` also compares them under a seed.
 
 ## Stages
 

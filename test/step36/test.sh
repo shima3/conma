@@ -1,6 +1,6 @@
 #!/bin/bash
 # 各 case を、組み込みの __Dict_copy__ など（test.se）と ConMa 版（conma.se、data.se）の両方で実行して比べる
-. "${0%/*}/../common.sh"
+. "$(dirname "$0")/../common.sh"
 resolve test.se conma.se
 for c in case1 case2 case3 case4
 do

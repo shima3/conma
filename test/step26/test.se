@@ -23,11 +23,15 @@
   printNumber "child: " id ,()
   __VProc_wait__ __print_exit_error__ child)
 
-;; case2: Ref が変わるのを待っている VProc を止めると、その VProc を待つ VProc が起きる。止めた VProc は続きを実行しない
+;; case2: Ref が変わるのを待っている VProc を止めると、その VProc を待つ VProc が起きる。止めた VProc は続きを実行しない。
+;; __Ref_wait_change__ は同じオブジェクトかどうかで比べるので、Ref に入れた文字列 a そのものを渡す
+;; （文字列のリテラルを 2 回書くと別のオブジェクトになり、待たずに戻る）。
+;; 子が待ち始める前に止めることもある（CONMA_SEED）が、どちらでも子は続きを実行しない
 (define case2 ,()
-  __Ref_new__ "a" ,(ref)
+  __NULL__ "a" ,(a)
+  __Ref_new__ a ,(ref)
   __VProc_start__ (,()
-    __Ref_wait_change__ ref "a" ,()
+    __Ref_wait_change__ ref a ,()
     println "not reached") ,(child)
   __VProc_start__ (,()
     __VProc_wait__ __print_exit_error__ child ,()

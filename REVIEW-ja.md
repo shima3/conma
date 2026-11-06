@@ -170,6 +170,10 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * selfhost6 の期待ログに、別の場所の絶対パス（`/Users/shima/tmp/conma`）が入っていて、どちらの VM でも通らなかった。テストのディレクトリの外にあるリポジトリのパスを `<root>` と書くようにして、直した。
     * すべてのテスト（`test/run_all.sh` を足した）が、Python 版と Rust 版の両方で通る。Python 版の全体を実行している間に、Rust 版で別のステップを同時に実行しても、互いに壊さないことを確かめた。
     * 残り：同じテストを同時に 2 つ実行することはできない。step14、16、23、24、selfhost6、7 は、テストのディレクトリに `work/` やリンクを作り（selfhost7 は selfhost6 のディレクトリに `link.se` を作る）、step33 は、ConMa のプログラムが `/tmp/step33.dup.txt` に書く。consh/test も、`/tmp/consh.$c.log` の決まった名前を使っている。
+* 9：環境変数 `CONMA_SEED`（0〜2^64-1 の数）を足した。これがあると、スケジューラは、実行できる VProc が 2 つ以上のとき、SplitMix64 の乱数 `r` で、待ち行列の `r mod n` 番目の VProc を先頭に移してから実行する（ほかの順は変えない）。2 つの VM は同じ乱数を同じように使うので、同じ種なら、トレースまで一致する（step10、17、20 の全ケースを、種 1 と 2 で `vm_compare.sh` で確かめた）。数でない値は、終了コード 2 のエラーにした。Python 版（`vproc_step.py` の `SplitMix64`、`Scheduler.run`）と Rust 版（`sched.rs`）の両方を直し、DESIGN.md の「Scheduling and Termination」に書いた。
+    * `test/stress.sh [回数] [ディレクトリ ...]` を足した。種を 1 から回数まで変えて、テストを繰り返す（既定は全テスト、Rust 版）。エラーのメッセージの `at step N` は、全 VProc を通したステップ数で、順によって変わるので、それだけが違う diff は出さない。`../consh/test/step6` のように書けば、ConSh のテストも回せる。
+    * test/ の全テストを種 1〜20 で、ConSh のテスト（ConMa 版、examples と step1〜20）を種 1〜5 で回した。見つかったのは、step26 の case2 の 1 つだけで、テストの誤りだった。`__Ref_wait_change__` は同じオブジェクトかどうかで比べるが、テストは `__Ref_new__ "a"` と `__Ref_wait_change__ ref "a"` に別の文字列を渡していたので、子の VProc は待たずに進んでいた。ラウンドロビンでは、子が `println "not reached"` に着く前に、親が子を止めていたので通っていた。同じ文字列を渡すように直し、種 1〜40 で通ることを確かめた。
+    * そのとき、10 で入れた不具合も直した。`test.sh` をパスを付けずに（`bash test.sh`）呼ぶと、`${0%/*}` が `test.sh` になり、common.sh を読めなかった。`dirname "$0"` を使うようにした。
 * ほかはまだ。
 
 ### 付録: 実験に使ったプログラム
