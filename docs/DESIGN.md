@@ -479,7 +479,7 @@ State changes made by primitives:
 
 The interpreter exits:
 
-* with code 0 when every VProc has finished, whether or not some of them finished with an error;
+* when every VProc has finished, with code 1 if the first VProc (the one that runs the entry function) finished with an error, and code 0 otherwise (an error of another VProc does not change it);
 * with code 0 or 1 at once when any VProc runs `__OS_exit_normal__` or `__OS_exit_error__`;
 * with code 2 on deadlock.
 

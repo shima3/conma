@@ -59,6 +59,8 @@ pub struct Machine {
     pub std_streams: [Option<Rc<StreamObj>>; 3],
     /// A VProc may have finished since joining was checked.
     pub finished_any: bool,
+    /// The first VProc (serial 1) ended with an error: exit with code 1.
+    pub main_failed: bool,
     /// A Ref may have changed since the VProcs waiting for a change were checked.
     pub ref_changed: bool,
     /// Serial numbers of the values that traces show by number.
@@ -176,6 +178,7 @@ impl Machine {
             trap: None,
             std_streams: [None, None, None],
             finished_any: false,
+            main_failed: false,
             ref_changed: false,
             serials: Serials::default(),
             next_serial: 0,
@@ -584,6 +587,9 @@ impl Machine {
                     }
                     Err(VmError::Error(e)) => {
                         write_std(2, &format!("Error in VProc {} at step {}: {}\n", vp.serial, self.steps, e));
+                        if vp.serial == 1 {
+                            self.main_failed = true;
+                        }
                         self.steps += 1;
                         cell.state.set(State::Finished);
                         self.finished_any = true;

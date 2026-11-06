@@ -110,6 +110,9 @@ def run(module_file, func_name, trace=False, program_args=None):
 
     if trace:
         print(f"[done] normal termination after {scheduler.steps} step(s).", file=sys.stderr)
+    # 1 if the first VProc ended with an error (the others do not count).
+    if scheduler.main_failed:
+        sys.exit(1)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 

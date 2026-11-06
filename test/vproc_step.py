@@ -2149,6 +2149,7 @@ class Scheduler:
         # joining or changes was last checked: they are checked only then,
         # instead of on every step.
         self.finished_any = False
+        self.main_failed = False      # the first VProc ended with an error
         self.ref_changed  = False
         self.wakeup  = None      # read end of the pipe that SIGCHLD writes to
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
@@ -2362,6 +2363,8 @@ class Scheduler:
             except VProcError as e:
                 # The step number is the number of steps completed before the error.
                 print(f"Error in VProc {vp.serial} at step {self.steps}: {e}", file=sys.stderr)
+                if vp.serial == 1:
+                    self.main_failed = True     # the exit code is 1 (vproc_run.py)
                 self.steps += 1
                 vp.state = "finished"
                 self.finished_any = True

@@ -136,7 +136,8 @@ fn run(args: Vec<String>) -> i32 {
     if trace && code.is_none() {
         eprintln!("[done] normal termination after {} step(s).", m.steps);
     }
-    code.unwrap_or(0)
+    // 1 if the first VProc ended with an error (the others do not count).
+    code.unwrap_or(if m.main_failed { 1 } else { 0 })
 }
 
 fn main() {
