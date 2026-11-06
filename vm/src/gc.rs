@@ -166,7 +166,10 @@ impl Node {
                 value_child(&l.head, f);
                 value_child(&l.tail, f);
             }
-            Node::Cont(c) => value_child(&c.cchain, f),
+            Node::Cont(c) => {
+                let Ok(cc) = c.cchain.try_borrow() else { return false };
+                value_child(&cc, f)
+            }
             Node::LV(n) => {
                 value_child(&n.value, f);
                 lvenv_child(&n.next, f);

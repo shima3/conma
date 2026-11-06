@@ -17,7 +17,11 @@ vm/src/native.rs:
 * prim_call: the Operator is a primitive of CHAIN (one that only works on its
   operands and returns its results or applies onError), with an LCont written
   in place or none.
-* null_pass: the Operator is __NULL__ with an LCont written in place.
+* null_pass: the Operator is __NULL__, with an LCont written in place or
+  none (a return).
+* call: the Operator is a variable that is not a primitive: a call of a
+  Closure of the module with native code is run in place, as a Rust call
+  (vm/src/native.rs, rust_call) if the LCont is written in place.
 * if_call: __if_then_else__, __if__ or __unless__. A condition `(,() p a ...)`
   with a primitive p of PURE is computed in place; clauses `(,() ...)` are
   run in place.
@@ -228,8 +232,10 @@ def native_call(funcs, prims, f, prim_index):
     lc = "None" if b.lcont is None else f"Some({b.lcont})"
     op = b.operator
     if op == ("Null",):
-        return None if b.lcont is None else f"null_pass(vp, env, gv, t, {f.id}, {b.lcont})"
-    if op[0] != "G" or op[1] not in prims:
+        return f"null_pass(vp, env, gv, t, {f.id}, {lc})"
+    if op[0] == "L" or (op[0] == "G" and op[1] not in prims):
+        return f"call(m, vp, env, gv, t, {f.id}, {lc})"
+    if op[0] != "G":
         return None
     name = prims[op[1]]
     if name in IFS:

@@ -19,6 +19,13 @@
 //! to the VM. All this is one step of the VM. So the results are those of
 //! the VM; only the number of steps (and so the order of the VProcs, and
 //! traces) differ. With --trace or CONMA_PROFILE the native code is not used.
+//!
+//! A call of a Closure of the module with an LCont written in place is a Rust
+//! call (`call`, `rust_call`): the LCont stays in the Rust code instead of
+//! going to the CChain as a Closure, and gets the values when the VProc
+//! returns to the CChain the call started with. Leaving native code in the
+//! middle of Rust calls puts their CFrames into the CChain (Next::Leave), and
+//! continuations made in them get those CFrames when the calls end (Frame).
 
 #![allow(dead_code)] // without generated code, the helpers are unused
 
@@ -38,6 +45,16 @@ pub enum Next {
     /// The VProc is as before a step of the VM: do that step if it is one
     /// that `apply` does.
     Apply,
+    /// The values in the OList go back to the Rust call that is running
+    /// (the VProc returned to the base of its Frame).
+    Return,
+    /// Leave the Rust calls: each puts its CFrame into the CChain, so that
+    /// the VProc is as before a step of the VM with the CChain the VM would
+    /// have.
+    Leave,
+    /// The Operator is a continuation made in a Rust call around this one:
+    /// leave the Rust calls up to that one, which applies it.
+    Escape,
 }
 
 pub type NResult = Result<Next, VmError>;
@@ -47,6 +64,69 @@ pub type NativeFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> N
 /// The steps `run` does in one step of the VM at most, so that a VProc that
 /// loops in native code lets the others run.
 const BUDGET: u32 = 1000;
+
+/// Rust calls nested deeper than this are made as the VM makes them (the
+/// LCont goes to the CChain), so that leaving them does not take long.
+const MAX_DEPTH: usize = 256;
+
+/// A call that native code runs as a Rust call: its LCont is not in the
+/// CChain but in the Rust code that called it.
+pub struct Frame {
+    id: u64,
+    /// The CChain when it was called. The call returns when the VProc passes
+    /// values to this CChain (null as the Operator without an LCont, or a
+    /// continuation made in it whose CChain is this).
+    base: Value,
+    /// Continuations made while it was the innermost Rust call: their
+    /// CChains lack its CFrame (and those of the Rust calls around it).
+    conts: Vec<Rc<ContObj>>,
+}
+
+/// The Rust calls of native code (Machine::nctx).
+#[derive(Default)]
+pub struct Ctx {
+    frames: Vec<Frame>,
+    ids: u64,
+    budget: u32,
+}
+
+impl Ctx {
+    fn current(&self) -> u64 {
+        self.frames.last().map_or(0, |f| f.id)
+    }
+}
+
+fn same_chain(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Null, Value::Null) => true,
+        (Value::LList(x), Value::LList(y)) => Rc::ptr_eq(x, y),
+        _ => false,
+    }
+}
+
+/// The CChain `chain`, which ends with `base`, with `node` (a CChain whose
+/// tail is base) in place of base.
+fn splice(chain: &Value, base: &Value, node: &Value) -> Value {
+    let mut heads = Vec::new();
+    let mut cur = chain;
+    while !same_chain(cur, base) {
+        match cur {
+            Value::LList(cell) => {
+                heads.push(cell.head.clone());
+                cur = &cell.tail;
+            }
+            _ => {
+                debug_assert!(false, "a CChain in a Rust call without its base");
+                return chain.clone();
+            }
+        }
+    }
+    let mut out = node.clone();
+    for h in heads.into_iter().rev() {
+        out = Value::LList(Rc::new(LList { head: h, tail: out }));
+    }
+    out
+}
 
 /// Primitives `apply` calls: those of translate.py's CHAIN (and __Ref_set__),
 /// the conditionals and __Cont_get__. They only change the registers of the
@@ -124,8 +204,26 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
 /// Run the Body of Function fid in env (load_body calls this instead of
 /// loading it), and the steps after it that `apply` does, up to BUDGET.
 pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {
-    let mut next = Next::Enter(fid, env);
-    let mut budget = BUDGET;
+    debug_assert!(m.nctx.frames.is_empty());
+    m.nctx.budget = BUDGET;
+    drive(m, vp, Next::Enter(fid, env), gv, t)?;
+    Ok(())
+}
+
+/// What `drive` ends with.
+enum Ret {
+    /// Values in the OList, for the Rust call (Next::Return).
+    Values,
+    /// The VM does the next step (or, in a Rust call, it is left).
+    Leave,
+    /// Next::Escape.
+    Escape,
+}
+
+/// Do `next` and the steps after it, in the innermost Rust call (or with
+/// none, for `run`).
+fn drive(m: &mut Machine, vp: &mut VProc, mut next: Next, gv: &Rc<GVEnv>, t: &Table) -> Result<Ret, VmError> {
+    let in_frame = !m.nctx.frames.is_empty();
     loop {
         next = match next {
             Next::Enter(fid, env) => match t.natives[fid] {
@@ -133,15 +231,23 @@ pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEn
                 None => deopt(vp, fid, env, gv, t)?,
             },
             Next::Apply => {
-                if budget == 0 {
-                    return Ok(());
+                if m.nctx.budget == 0 {
+                    return Ok(Ret::Leave);
                 }
-                budget -= 1;
+                m.nctx.budget -= 1;
                 match apply(m, vp, gv, t)? {
                     Some(n) => n,
-                    None => return Ok(()),
+                    None => return Ok(Ret::Leave),
                 }
             }
+            Next::Return => return Ok(Ret::Values),
+            // Out of all Rust calls: go on as the VM would.
+            Next::Leave if !in_frame => Next::Apply,
+            Next::Leave => return Ok(Ret::Leave),
+            Next::Escape => match &vp.operator {
+                Value::Cont(k) if in_frame && k.owner.get() != m.nctx.current() => return Ok(Ret::Escape),
+                _ => Next::Apply,
+            },
         };
     }
 }
@@ -151,13 +257,19 @@ pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEn
 /// the CChain), a Closure of this module with as many operands as its
 /// parameters (bind them; the LCont goes to the CChain), an escape
 /// continuation (set the CChain back), a primitive of SAFE_PRIMS. None for
-/// anything else: the VM does that step.
+/// anything else: the VM does that step. In a Rust call, values passed to
+/// the CChain it was called with go back to it (Next::Return).
 fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<Option<Next>, VmError> {
     match &vp.operator {
         Value::Null => {
             if let Some(lc) = vp.lcont.take() {
                 vp.operator = lc;
                 return Ok(Some(Next::Apply));
+            }
+            if let Some(f) = m.nctx.frames.last() {
+                if same_chain(&vp.cchain, &f.base) {
+                    return Ok(Some(Next::Return));
+                }
             }
             match vp.cchain_pop() {
                 Some(cf) => {
@@ -170,6 +282,18 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
         }
         Value::Closure(c) => {
             if c.variadic || c.params().len() != vp.olist.len() {
+                return Ok(None);
+            }
+            if c.body.as_ref().is_some_and(|b| b.func_id.is_none()) {
+                // A Boolean (`,(t f) __NULL__ t` or `f`): pass on the operand
+                // it chooses.
+                if let Some(b) = boolean_choice(&vp.operator) {
+                    let v = vp.olist.swap_remove(if b { 0 } else { 1 });
+                    vp.olist.clear();
+                    vp.olist.push(v);
+                    vp.operator = Value::Null;
+                    return Ok(Some(Next::Apply));
+                }
                 return Ok(None);
             }
             let same_module = match &c.gvenv {
@@ -194,11 +318,28 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
             Ok(Some(Next::Enter(fid, env)))
         }
         Value::Cont(k) => {
-            let Some((cf, rest)) = crate::vproc::cchain_split(&k.cchain) else { return Ok(None) };
+            // A continuation made in another Rust call (or out of them, or
+            // in one that has ended): leave the Rust calls, which gives it
+            // its whole CChain, and apply it as the VM would.
+            if k.owner.get() != m.nctx.current() && !m.nctx.frames.is_empty() {
+                // Made out of the Rust calls (owner 0) or after one has ended:
+                // they all must be left. Made in a Rust call around this one:
+                // that one applies it.
+                let owner = k.owner.get();
+                if owner != 0 && m.nctx.frames.iter().any(|f| f.id == owner) {
+                    return Ok(Some(Next::Escape));
+                }
+                return Ok(Some(Next::Leave));
+            }
+            let kc = k.cchain.borrow().clone();
             vp.lcont = None;
-            vp.cchain = rest;
-            vp.operator = cf.closure.clone();
-            vp.sinfo = cf.sinfo.clone();
+            vp.operator = Value::Null;
+            if kc.is_null() && !m.nctx.frames.last().is_some_and(|f| f.base.is_null()) {
+                vp.olist.clear(); // as the VM: the VProc ends
+            }
+            vp.cchain = kc;
+            // Now null as the Operator: return the values to the top CFrame
+            // (or to the Rust call).
             Ok(Some(Next::Apply))
         }
         Value::Prim(p) => {
@@ -206,10 +347,95 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
             if t.safe.binary_search(&(p as *const PrimDef)).is_err() {
                 return Ok(None);
             }
+            if p.name == "__Cont_get__" {
+                // Without an LCont, the LCont is the top CFrame: in a Rust
+                // call that may be the Rust caller's, which only the VM sees.
+                let Some(lc) = vp.lcont.take() else {
+                    return Ok(if m.nctx.frames.is_empty() { (p.f)(m, vp).map(|_| Some(Next::Apply))? } else { Some(Next::Leave) });
+                };
+                let k = make_cont(m, vp);
+                vp.operator = lc;
+                vp.olist.clear();
+                vp.olist.push(k);
+                return Ok(Some(Next::Apply));
+            }
             (p.f)(m, vp)?;
             Ok(Some(Next::Apply))
         }
         _ => Ok(None),
+    }
+}
+
+/// A new escape continuation with the CChain of the VProc, recorded in the
+/// innermost Rust call.
+fn make_cont(m: &mut Machine, vp: &mut VProc) -> Value {
+    m.serials.conts += 1;
+    let k = Rc::new(ContObj::new(m.serials.conts, vp.cchain.clone()));
+    if let Some(f) = m.nctx.frames.last_mut() {
+        k.owner.set(f.id);
+        f.conts.push(k.clone());
+    }
+    Value::Cont(k)
+}
+
+/// A Rust call: run Function fid in env as a call with the LCont Function lc
+/// (in lenv, with sinfo for its CFrame), then bind the values it returns to
+/// lc.
+#[allow(clippy::too_many_arguments)]
+fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: LVEnv, sinfo: Option<SInfo>) -> NResult {
+    if m.nctx.frames.len() >= MAX_DEPTH {
+        let lcv = make_closure(&t.funcs[lc], &lenv, Some(gv));
+        vp.cchain_push(lcv, sinfo);
+        return Ok(Next::Enter(fid, env));
+    }
+    m.nctx.ids += 1;
+    let id = m.nctx.ids;
+    m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
+    let r = drive(m, vp, Next::Enter(fid, env), gv, t);
+    let f = m.nctx.frames.pop().expect("the Frame of a Rust call");
+    // The CFrame the VM would have pushed, made only when it is needed.
+    let mut node: Option<Value> = None;
+    let node_of = |node: &mut Option<Value>| -> Value {
+        node.get_or_insert_with(|| {
+            let cf = Value::CFrame(Rc::new(CFrame { closure: make_closure(&t.funcs[lc], &lenv, Some(gv)), sinfo: sinfo.clone() }));
+            Value::LList(Rc::new(LList { head: cf, tail: f.base.clone() }))
+        })
+        .clone()
+    };
+    if matches!(r, Ok(Ret::Values)) {
+        // Drop what still holds the continuations made in the call.
+        vp.lvenv = None;
+        vp.operator = Value::Null;
+    }
+    // Left: the VM goes on with the CChain the VM would have. (Escape: the
+    // continuation will replace the CChain.)
+    if matches!(r, Ok(Ret::Leave)) {
+        let n = node_of(&mut node);
+        vp.cchain = splice(&vp.cchain, &f.base, &n);
+    }
+    // Continuations still in use get the CFrame, and belong to the Rust call
+    // around this one.
+    let parent = m.nctx.current();
+    for k in f.conts {
+        if Rc::strong_count(&k) > 1 {
+            let n = node_of(&mut node);
+            let c = splice(&k.cchain.borrow(), &f.base, &n);
+            *k.cchain.borrow_mut() = c;
+            k.owner.set(parent);
+            if let Some(p) = m.nctx.frames.last_mut() {
+                p.conts.push(k);
+            }
+        }
+    }
+    match r? {
+        Ret::Values => {
+            // As the VM pops the CFrame: the SInfo of the calling Body.
+            vp.sinfo = sinfo;
+            vp.lcont = None;
+            pass_results(vp, lenv, gv, t, Some(lc))
+        }
+        Ret::Leave => Ok(Next::Leave),
+        Ret::Escape => Ok(Next::Escape),
     }
 }
 
@@ -314,13 +540,52 @@ pub fn prim_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t:
     after_prim(vp, env, gv, t, lc)
 }
 
-/// `__NULL__ a ... ,(x ...) ...`: pass the operands to the LCont Function lc.
-pub fn null_pass(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, lc: usize) -> NResult {
+/// `__NULL__ a ... [,(x ...) ...]`: pass the operands to the LCont Function
+/// lc, or with none, return them.
+pub fn null_pass(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, lc: Option<usize>) -> NResult {
     load_operands(vp, fid, &env, gv, t)?;
     vp.sinfo = body(t, fid).sinfo.clone();
     vp.operator = Value::Null;
     vp.lcont = None;
-    pass_results(vp, env, gv, t, Some(lc))
+    pass_results(vp, env, gv, t, lc)
+}
+
+/// `f a ... [,(x ...) ...]` with f a variable: a call of a Closure of this
+/// module with native code and as many operands as its parameters is run in
+/// place, as a Rust call if there is an LCont; anything else is left to the
+/// VM's way (deopt).
+pub fn call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, fid: usize, lc: Option<usize>) -> NResult {
+    let b = body(t, fid);
+    let f = eval(b.operator.as_ref().expect("an Operator"), &env, gv)?;
+    let target = match &f {
+        Value::Closure(c) if !c.variadic && c.params().len() == b.olist.len() => {
+            let same_module = match &c.gvenv {
+                Some(g) => Rc::ptr_eq(g, gv),
+                None => Rc::ptr_eq(&vp.gvenv, gv),
+            };
+            match c.body.as_ref().and_then(|b| b.func_id) {
+                Some(cf) if same_module => Some((c, cf)),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    // A call is a step of `apply` for the BUDGET (a loop of tail calls must
+    // let the other VProcs run).
+    let Some((c, cf)) = target.filter(|_| m.nctx.budget > 0) else { return deopt(vp, fid, env, gv, t) };
+    m.nctx.budget -= 1;
+    let params = c.params();
+    let mut e = c.lvenv.clone();
+    for (k, o) in b.olist.iter().enumerate() {
+        e = lv_push(&e, params[k].clone(), eval(o, &env, gv)?);
+    }
+    vp.sinfo = b.sinfo.clone();
+    vp.operator = Value::Null;
+    vp.lcont = None;
+    match lc {
+        Some(l) => rust_call(m, vp, cf, e, gv, t, l, env, b.sinfo.clone()),
+        None => Ok(Next::Enter(cf, e)),
+    }
 }
 
 /// `__if_then_else__`, `__if__` or `__unless__` in the Body of fid, with the
@@ -370,14 +635,16 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
         return pass_results(vp, env, gv, t, lc);
     }
     let Clause::Thunk(cf) = clause else { unreachable!() };
-    // The thunk is applied with the LCont: the LCont goes to the CChain.
-    if let Some(l) = lc {
-        let lcv = make_closure(&t.funcs[l], &env, Some(gv));
-        vp.cchain_push(lcv, b.sinfo.clone());
-    }
+    // The thunk is applied with the LCont: a Rust call.
     vp.lcont = None;
     vp.operator = Value::Null;
-    Ok(Next::Enter(cf, env))
+    match lc {
+        Some(l) => {
+            let sinfo = b.sinfo.clone();
+            rust_call(m, vp, cf, env.clone(), gv, t, l, env, sinfo)
+        }
+        None => Ok(Next::Enter(cf, env)),
+    }
 }
 
 // ── Direct calls of primitives (the generated code evaluates the operands
@@ -485,6 +752,5 @@ pub fn d_dict_put(_m: &mut Machine, d: Value, key: Value, value: Value) -> Resul
 /// `__Cont_get__ ,(return) ...`: the escape continuation of the calling
 /// function, passed to the LCont written in place.
 pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> Result<Out, VmError> {
-    m.serials.conts += 1;
-    Ok(Out::R1(Value::Cont(Rc::new(ContObj { serial: m.serials.conts, cchain: vp.cchain.clone() }))))
+    Ok(Out::R1(make_cont(m, vp)))
 }
