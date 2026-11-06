@@ -322,6 +322,13 @@ class Resolver:
         warnings.append(f"Warning: {loc}: too few arguments to {name}: {m} of {k} (partial application)")
 
 def main():
+    # --warn-arity: write the warnings of arity_warnings to standard error
+    args = sys.argv[1:]
+    warn_arity = "--warn-arity" in args
+    unknown = [a for a in args if a != "--warn-arity"]
+    if unknown:
+        print(f"usage: resolver [--warn-arity] < AST > Module (unknown: {' '.join(unknown)})", file=sys.stderr)
+        sys.exit(2)
     input_lines = sys.stdin.readlines()
     roots = parse_ast_stream(input_lines)
     
@@ -333,8 +340,9 @@ def main():
         resolver.resolve(root, [])
 
     resolver.print_module(roots)
-    for w in resolver.arity_warnings():
-        print(w, file=sys.stderr)
+    if warn_arity:
+        for w in resolver.arity_warnings():
+            print(w, file=sys.stderr)
 
 if __name__ == "__main__":
     main()

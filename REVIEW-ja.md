@@ -174,11 +174,11 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * `test/stress.sh [回数] [ディレクトリ ...]` を足した。種を 1 から回数まで変えて、テストを繰り返す（既定は全テスト、Rust 版）。エラーのメッセージの `at step N` は、全 VProc を通したステップ数で、順によって変わるので、それだけが違う diff は出さない。`../consh/test/step6` のように書けば、ConSh のテストも回せる。
     * test/ の全テストを種 1〜20 で、ConSh のテスト（ConMa 版、examples と step1〜20）を種 1〜5 で回した。見つかったのは、step26 の case2 の 1 つだけで、テストの誤りだった。`__Ref_wait_change__` は同じオブジェクトかどうかで比べるが、テストは `__Ref_new__ "a"` と `__Ref_wait_change__ ref "a"` に別の文字列を渡していたので、子の VProc は待たずに進んでいた。ラウンドロビンでは、子が `println "not reached"` に着く前に、親が子を止めていたので通っていた。同じ文字列を渡すように直し、種 1〜40 で通ることを確かめた。
     * そのとき、10 で入れた不具合も直した。`test.sh` をパスを付けずに（`bash test.sh`）呼ぶと、`${0%/*}` が `test.sh` になり、common.sh を読めなかった。`dirname "$0"` を使うようにした。
-* 2 の 2 つ目：リゾルバ（`bin/resolver` と `include/resolver.se`）が、大域の define の関数（Head が k 個で、可変長でない）を、0 < m < k 個の引数で呼ぶ所を、標準エラー出力に警告するようにした（`Warning: conma/test/step2/test.se:78:3: too few arguments to add2: 1 of 2 (partial application)`）。終了コードは 0 のままである。
-    * 警告を「少ない」ときだけにしたのは、ConMa のコードを数えた結果による。ConSh（2,565 の呼び出し）と include/ には、「少ない」呼び出しが 1 つもなかった。「多い」呼び出しは、Sink を返す関数（`stdout str "\n" ,(out)` など）で意図して使われていて、引数がない呼び出しは、関数を値として返す（`errSink` などの Sink が自分を返す）のに使われている。「多い」の誤りは、結果が関数でなければ、VM が呼び出した位置で `Not a function` を出す（1 と 4）。
-    * ConMa 版は `__Resolver_warnings__ Module ,(messages)` で、同じ警告を同じ順で返す。selfhost7 は、2 つの警告も比べるようにし、case6（arity.se）を足した。
-    * test/common.sh の `resolve` は、resolver の警告を `test.resolve.log` があればそれと比べ、なければそのまま出す。step2 の case7（わざと引数を足りなくしたもの）の警告を、test/step2/test.resolve.log にした。
-    * test/ の全テストが両方の VM で、ConSh のテスト（ConMa 版、Rust 版の VM）が通る。RESOLVER.md、SELFHOST.md、ROADMAP.md に書いた。
+* 2 の 2 つ目：リゾルバ（`bin/resolver` と `include/resolver.se`）に、大域の define の関数（Head が k 個で、可変長でない）を、0 < m < k 個の引数で呼ぶ所の警告を足した（`Warning: conma/test/step2/test.se:78:3: too few arguments to add2: 1 of 2 (partial application)`）。ただし、既定では出さず、`bin/resolver --warn-arity` のときだけ標準エラー出力に出す。終了コードは 0 のままである。
+    * 既定で出さないのは、作者の方針による。ConMa では、部分適用と可変長引数のために、引数の数が違う呼び出しは正しく、よくあるものなので、警告しない。引数の数の誤りをエラーにするのは、部分適用（`bind`）と可変長引数（`. rest`）に明示的な構文がある ConSh の側で行う（consh/PLAN-ja.md で扱う）。
+    * 警告を「少ない」ときだけにしたのは、ConMa のコードを数えた結果による。ConSh（2,565 の呼び出し）と include/ には、「少ない」呼び出しが 1 つもなかった。「多い」呼び出しは、Sink を返す関数（`stdout str "\n" ,(out)` など）で、引数のない呼び出しは、関数を値として返すのに、意図して使われている。「多い」の誤りは、結果が関数でなければ、VM が呼び出した位置で `Not a function` を出す（1 と 4）。
+    * ConMa 版は `__Resolver_warnings__ Module ,(messages)` で、同じ警告を同じ順で返す（出すかどうかは呼ぶ側が決める）。selfhost7 は、`bin/resolver --warn-arity` の警告と ConMa 版の警告も比べ、case6（arity.se）を足した。
+    * RESOLVER.md と SELFHOST.md に書いた。
 * ほかはまだ。
 
 ### 付録: 実験に使ったプログラム

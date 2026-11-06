@@ -71,7 +71,7 @@
   add2 one one one ,(r)
   show_number r)
 
-;; case7: 引数が足りないと、部分適用の Closure が戻り値になり（resolver が警告する。test.resolve.log）、
+;; case7: 引数が足りないと、部分適用の Closure が戻り値になり、
 ;; エラーはそれを使った show_number の中で見つかる
 (define case7 ,()
   num "1" ,(one)

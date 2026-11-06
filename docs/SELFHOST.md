@@ -342,7 +342,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case4 | errors: an included file not found, a syntax error, a missing source file, a missing include directory, an absolute path that does not exist (the two differences above show in the messages) |
 | case5 | lexical errors in a file; `test/step14/test.se` with `include/` as the include directory |
 
-`test/selfhost7` tests the resolver. `test.se` takes a source file and include directories, runs `__Includer_main__` and `__Resolver_main__`, writes the `Module` on one line, and writes the warnings of `__Resolver_warnings__` to standard error. `test.sh` compares the `Module` with `bin/includer --include <dir>... <source> | bin/resolver` by `selfhost_compare.py ast`, and the warnings with those of `bin/resolver` (case6 has calls with too few arguments); for the small sources, the log also shows the `Module`, with the `test` directory written as `<dir>`. The whole test takes about 30 seconds.
+`test/selfhost7` tests the resolver. `test.se` takes a source file and include directories, runs `__Includer_main__` and `__Resolver_main__`, writes the `Module` on one line, and writes the warnings of `__Resolver_warnings__` to standard error. `test.sh` compares the `Module` with `bin/includer --include <dir>... <source> | bin/resolver` by `selfhost_compare.py ast`, and the warnings with those of `bin/resolver --warn-arity` (case6 has calls with too few arguments); for the small sources, the log also shows the `Module`, with the `test` directory written as `<dir>`. The whole test takes about 30 seconds.
 
 | Case | What it checks |
 |---|---|

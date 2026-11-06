@@ -1,6 +1,6 @@
 #!/bin/bash
 # Compare the ConMa resolver (include/resolver.se), after the ConMa includer, with
-# bin/includer | bin/resolver. For each run, the exit codes, the result of
+# bin/includer | bin/resolver --warn-arity. For each run, the exit codes, the result of
 # selfhost_compare.py and the difference of the warnings (standard error) are printed,
 # and the warnings and the ConMa Module with the test directory written as <dir>.
 . "$(dirname "$0")/../common.sh"
@@ -13,7 +13,7 @@ resolve() {
   shift
   local opts=""
   for d in "$@"; do opts="$opts --include $d"; done
-  ../../bin/includer $opts $source 2> /dev/null | ../../bin/resolver > $tmp/selfhost7.py.txt 2> $tmp/selfhost7.py.err
+  ../../bin/includer $opts $source 2> /dev/null | ../../bin/resolver --warn-arity > $tmp/selfhost7.py.txt 2> $tmp/selfhost7.py.err
   py=$?
   PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $source "$@" > $tmp/selfhost7.conma.txt 2> $tmp/selfhost7.conma.err
   echo "exit: python $py, conma $?"
