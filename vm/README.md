@@ -73,7 +73,7 @@ For each Function whose Body can run without the VM (a primitive that only works
 
 The most used primitives (`__is_null__`, `__String_equal__`, `__LList_uncons__`, `__Dict_lookup_or__`, the Number arithmetic and so on; `DIRECT` in `translate.py`) are called directly, with their operands in Rust variables and their results bound without the OList, through functions shared with the primitives (`is_null_core`, `equal_core` and so on), and `__Cont_get__ ,(return)` makes the continuation in place.
 
-Measurements (Apple M4): a loop of 10,000,000 iterations takes 1.99 s instead of 3.76 s; ConSh (with `/tmp/consh.module.se`) is 1.5 to 1.6 times as fast, and its tests pass. The time now goes mostly to the values themselves (cloning and dropping them, LVEnv nodes, Closures, the cycle collector), not to the steps; with `CONMA_GC_THRESHOLD=1000000` ConSh takes another fifth less time.
+Measurements (Apple M4): a loop of 10,000,000 iterations takes 1.99 s instead of 3.76 s; ConSh (with `/tmp/consh.module.se`) is 1.5 to 1.6 times as fast, and its tests pass. The time now goes mostly to the values themselves (cloning and dropping them, LVEnv nodes, Closures, the cycle collector), not to the steps; much of the cycle collector's work for ConSh came from cycles that ConSh made by mistake for every command, which it no longer makes (consh/PLAN-ja.md), so that ConSh with native code now runs a loop of 15,000 function calls in 1.90 s instead of 3.29 s.
 
 ## Design
 

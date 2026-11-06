@@ -3182,14 +3182,17 @@
   __if__ (,() __Number_is_negative__ n) (,() Sh_error sh pos msg) ,()
   __NULL__ n)
 
-;; 語の展開の途中で引く、上限の残り（Value_leaves_in）。Dict で、"left"（残り）と "onOver"（超えたときのエラー）
+;; 語の展開の途中で引く、上限の残り（Value_leaves_in）。Dict で、"left"（残り）と "onOver"（超えたときのエラー）。
+;; "onOver" と "onFunc" の関数は Dict を作る前に作る（後で作ると、関数が limit を取り込み、Dict と循環する）
 (define Arg_limit_new ,(sh pos)
   Arg_max sh pos ,(max)
+  Arg_over_message max ,(msg)
+  __NULL__ (,() Sh_error sh pos msg) ,(onOver)
+  __NULL__ (,() Func_string_error sh pos) ,(onFunc)
   __Dict_new__ ,(limit)
   __Dict_put__ limit "left" max ,()
-  Arg_over_message max ,(msg)
-  __Dict_put__ limit "onOver" (,() Sh_error sh pos msg) ,()
-  __Dict_put__ limit "onFunc" (,() Func_string_error sh pos) ,()
+  __Dict_put__ limit "onOver" onOver ,()
+  __Dict_put__ limit "onFunc" onFunc ,()
   __NULL__ limit)
 
 (define Arg_over_message ,(max)

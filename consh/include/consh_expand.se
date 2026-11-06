@@ -806,13 +806,15 @@
 (define Func_string_error ,(sh pos)
   Sh_error sh pos "a function value cannot be made into a string")
 
-;; limit（null なら、関数値のエラーだけを出す、位置 pos の新しいもの）
+;; limit（null なら、関数値のエラーだけを出す、位置 pos の新しいもの）。
+;; "onFunc" の関数は Dict を作る前に作る（Arg_limit_new と同じく、循環しないように）
 (define Limit_guard ,(sh pos limit)
   __Cont_get__ ,(return)
   __unless__ (,() __is_null__ limit) (,() return limit) ,()
+  __NULL__ (,() Func_string_error sh pos) ,(onFunc)
   __Dict_new__ ,(guard)
   __Dict_put__ guard "left" __NULL__ ,()
-  __Dict_put__ guard "onFunc" (,() Func_string_error sh pos) ,()
+  __Dict_put__ guard "onFunc" onFunc ,()
   __NULL__ guard)
 
 ;; 葉が関数値だったとき
