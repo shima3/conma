@@ -49,6 +49,7 @@ richards 20 (Apple M4, best of 3; the Rust VM with 5 runs, scaled):
 | transpiled VM, arguments passed to a direct entry | 1.79 s | 2.2 |
 | + `__Number_floor__` computed in place in fused chains | 1.21 s | 1.5 |
 | + last uses of variables moved, not cloned; Booleans of predicates as Rust `bool`s | 1.03 s | 1.27 |
+| + values returned in arrays, straight back to the Rust call | 1.00 s | 1.23 |
 | Rust VM | about 10.4 s | about 13 |
 
 Where the time of the transpiled VM goes (a sample of the running VM): calls take about 40% (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27% (largely the arguments, into the LVEnv and out of it), and the Dict lookups 12%. The bit operations written with arithmetic take about a third of the time: computing each `^ 0xD008` twice makes the run 0.63 s longer. `__Number_floor__` is not computed in place in fused chains, so each bit goes through the code of the Bodies. With the arguments passed to a direct entry, most of the LVEnv work left was in `xor_bits`, which went back to the code of the Bodies at each `__Number_floor__` and so made and dropped an LVEnv of 12 variables for each bit; fused chains now compute `__Number_floor__` on `f64`, and `xor_bits` is a Rust loop.

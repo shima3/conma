@@ -571,9 +571,9 @@ class Fuser:
             tup = "(" + "".join(v + ", " for v in vals) + ")"
             out.append(f"break '{j['label']} {tup};")
         else:
-            out.append(f"let v = vec![{', '.join(vals)}];")
+            out.append(f"let v = [{', '.join(vals)}];")
             self.push_joins(J, out)
-            out.append(f"return fused_return(vp, env, {self.sinfo(x)}, v);")
+            out.append(f"return fused_return(m, vp, env, {self.sinfo(x)}, v);")
 
     def bail(self, x, d, locals_, out, J=()):
         self.bails.add(x)
@@ -666,7 +666,7 @@ class Fuser:
         jpush = " ".join(jpush)
         if lc is None:
             if not J:
-                out.append(f"{sinfo_set} return finish(vp, env.clone(), gv, t, None, o);")
+                out.append(f"{sinfo_set} return finish_return(m, vp, env.clone(), gv, t, o);")
                 return
             p = J[-1]["p"]
             if p <= 2:
@@ -727,7 +727,7 @@ class Fuser:
             if lc is None:
                 if J:
                     return self.to_join(J, args, x, out)
-                out.append(f"let v = vec![{', '.join(args)}]; return fused_return(vp, env, {self.sinfo(x)}, v);")
+                out.append(f"let v = [{', '.join(args)}]; return fused_return(m, vp, env, {self.sinfo(x)}, v);")
                 return
             g = self.funcs[lc]
             if g.variadic or g.params != len(args):
@@ -756,7 +756,7 @@ class Fuser:
                         if J:
                             self.to_join(J, [], x, out)
                         else:
-                            out.append(f"return fused_return(vp, env, {self.sinfo(x)}, vec![]);")
+                            out.append(f"return fused_return(m, vp, env, {self.sinfo(x)}, []);")
                     else:
                         self.emit(cl, d, locals_, out, J)
                     out.append("}")
@@ -828,7 +828,7 @@ class Fuser:
                     news = "".join(f"let v{j} = {a}; " for j, a in enumerate(args))
                     sets = "".join(f"x{j} = v{j}; " for j in range(len(args)))
                     out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &env, gv) {{ {news}{sets}full = None; continue 'l0; }}")
-                out.append(f"let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
+                out.append(f"let v = [{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
                 return
             # in a clause: the call's LCont is the clause's. A continuation
             # (return) drops the LCont: left to apply as it is.
@@ -836,7 +836,7 @@ class Fuser:
             outer = []
             self.push_joins(J[:-1], outer)
             outer = " ".join(outer)
-            out.append(f"if matches!(f, Value::Cont(_)) {{ let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v); }}")
+            out.append(f"if matches!(f, Value::Cont(_)) {{ let v = [{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v); }}")
             out.append(f"let v = [{', '.join(args)}];")
             out.append(f"let o = fused_call(m, vp, f, v, gv, t, {self.node(None, d, self.mark(locals_, self.after(None, d, J)), x, J)}, &body_of(t, {j['x']}).sinfo)?;")
             vs = [f"r{k}" for k in range(j["p"])]

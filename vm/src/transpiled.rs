@@ -1022,19 +1022,42 @@ pub fn self_call(m: &mut Machine, vp: &VProc, f: &Value, fid: usize, n: usize, b
 
 /// Return the values to the LCont or CChain, as the VM does for a Body
 /// without an LCont (`__NULL__ a ...`, or a Boolean clause that is missing).
-pub fn fused_return(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, values: Vec<Value>) -> NResult {
+/// Values for the Rust call that is running go back to it at once (as
+/// `apply` would send them next).
+pub fn fused_return<const N: usize>(m: &Machine, vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, values: [Value; N]) -> NResult {
     vp.olist.clear();
     vp.olist.extend(values);
     vp.operator = Value::Null;
     vp.lcont = None;
     vp.sinfo = sinfo.clone();
     vp.lvenv = env;
-    Ok(Next::Apply)
+    Ok(to_caller(m, vp))
+}
+
+/// After a chain has put values in the OList with null as the Operator and
+/// no LCont: Next::Return if they are for the Rust call that is running
+/// (the CChain is the one it was called with), else Next::Apply.
+#[inline]
+fn to_caller(m: &Machine, vp: &VProc) -> Next {
+    match m.nctx.frames.last() {
+        Some(f) if same_chain(&vp.cchain, &f.base) => Next::Return,
+        _ => Next::Apply,
+    }
+}
+
+/// `finish` without an LCont, at the end of a chain: the values go back to
+/// the Rust call at once if they are for it.
+pub fn finish_return(m: &Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, out: Out) -> NResult {
+    let r = finish(vp, env, gv, t, None, out)?;
+    Ok(match r {
+        Next::Apply if vp.operator.is_null() && vp.lcont.is_none() => to_caller(m, vp),
+        r => r,
+    })
 }
 
 /// A call without an LCont: leave it to `apply` (which counts it against the
 /// budget) as the VM would do it.
-pub fn fused_tail_call(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, f: Value, args: Vec<Value>) -> NResult {
+pub fn fused_tail_call<const N: usize>(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, f: Value, args: [Value; N]) -> NResult {
     vp.olist.clear();
     vp.olist.extend(args);
     vp.operator = f;
