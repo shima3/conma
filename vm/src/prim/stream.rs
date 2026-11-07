@@ -7,7 +7,6 @@ use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::os::fd::IntoRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::rc::Rc;
@@ -372,7 +371,7 @@ pub fn listdir(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn get_env_dict(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.dicts += 1;
-    let d = DictObj { serial: m.serials.dicts, entries: RefCell::new(Vec::new()), index: RefCell::new(HashMap::new()) };
+    let d = DictObj { serial: m.serials.dicts, entries: RefCell::new(Vec::new()), index: RefCell::new(DictIndex::default()) };
     for (k, v) in std::env::vars_os() {
         let k = string_value(&k.to_string_lossy());
         let v = string_value(&v.to_string_lossy());

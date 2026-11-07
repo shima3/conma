@@ -5,7 +5,6 @@ use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 fn new_mseq(m: &mut Machine, items: Vec<Value>) -> Value {
@@ -96,7 +95,7 @@ pub fn dict_new(m: &mut Machine, vp: &mut VProc) -> PResult {
     let d = Value::Dict(crate::gc::new_dict(DictObj {
         serial: m.serials.dicts,
         entries: RefCell::new(Vec::new()),
-        index: RefCell::new(HashMap::new()),
+        index: RefCell::new(DictIndex::default()),
     }));
     vp.prim_return(vec![d]);
     Ok(())

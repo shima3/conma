@@ -185,7 +185,116 @@ pub struct MSeqObj {
 pub struct DictObj {
     pub serial: usize,
     pub entries: RefCell<Vec<(Value, Value)>>,
-    pub index: RefCell<HashMap<DictKey, usize>>,
+    pub index: RefCell<DictIndex>,
+}
+
+/// A fast hash for the index of a Dict (Fx, as in rustc): Dicts do not need
+/// the protection of SipHash against keys made to collide.
+#[derive(Default, Clone, Copy)]
+pub struct FxHasher(u64);
+
+impl std::hash::Hasher for FxHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for c in &mut chunks {
+            self.add(u64::from_le_bytes(c.try_into().unwrap()));
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut b = [0u8; 8];
+            b[..rest.len()].copy_from_slice(rest);
+            self.add(u64::from_le_bytes(b) ^ ((rest.len() as u64) << 56));
+        }
+    }
+    fn write_u8(&mut self, i: u8) {
+        self.add(i as u64);
+    }
+    fn write_u64(&mut self, i: u64) {
+        self.add(i);
+    }
+    fn write_usize(&mut self, i: usize) {
+        self.add(i as u64);
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+impl FxHasher {
+    #[inline]
+    fn add(&mut self, w: u64) {
+        self.0 = (self.0.rotate_left(5) ^ w).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
+pub type FxBuild = std::hash::BuildHasherDefault<FxHasher>;
+
+/// The index of a Dict: String keys by their text (looked up without making a
+/// String), other keys by their DictKey.
+#[derive(Default, Clone)]
+pub struct DictIndex {
+    strs: HashMap<Box<str>, usize, FxBuild>,
+    others: HashMap<DictKey, usize, FxBuild>,
+}
+
+/// How a key is found in the index: a String by its text, another value by
+/// its DictKey, NaN not at all (it is not equal even to itself).
+pub enum IndexKey<'a> {
+    Str(std::borrow::Cow<'a, str>),
+    Other(DictKey),
+    None,
+}
+
+pub fn index_key(v: &Value) -> Result<IndexKey<'_>, String> {
+    use std::borrow::Cow;
+    match v {
+        Value::Str(s) => return Ok(IndexKey::Str(Cow::Borrowed(s))),
+        Value::StrNode(n) => {
+            let text = n.as_list().and_then(|l| l.get(2)).and_then(|x| x.as_atom()).map(unquote).unwrap_or("");
+            return Ok(IndexKey::Str(if text.contains('\\') { Cow::Owned(unescape(text)?) } else { Cow::Borrowed(text) }));
+        }
+        _ => {}
+    }
+    Ok(match dict_key(v)? {
+        Some(k) => IndexKey::Other(k),
+        None => IndexKey::None,
+    })
+}
+
+impl DictObj {
+    /// The position of the String key with this text (a key that is not a
+    /// String is never equal to it).
+    #[inline]
+    pub fn find_str(&self, text: &str) -> Option<usize> {
+        self.index.borrow().strs.get(text).copied()
+    }
+}
+
+impl DictIndex {
+    /// The position of the key, or None; Err(()) for a key that is never in
+    /// the index (NaN).
+    pub fn get(&self, k: &IndexKey) -> Result<Option<usize>, ()> {
+        match k {
+            IndexKey::Str(s) => Ok(self.strs.get(&**s).copied()),
+            IndexKey::Other(d) => Ok(self.others.get(d).copied()),
+            IndexKey::None => Err(()),
+        }
+    }
+    pub fn insert(&mut self, k: IndexKey, i: usize) {
+        match k {
+            IndexKey::Str(s) => {
+                self.strs.insert(s.into_owned().into_boxed_str(), i);
+            }
+            IndexKey::Other(d) => {
+                self.others.insert(d, i);
+            }
+            IndexKey::None => {}
+        }
+    }
+    pub fn clear(&mut self) {
+        self.strs.clear();
+        self.others.clear();
+    }
 }
 
 /// The CChain of the caller of the function that called __Cont_get__.
@@ -283,8 +392,8 @@ pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
 
 impl DictObj {
     pub fn find(&self, key: &Value) -> Result<Option<usize>, String> {
-        if let Some(k) = dict_key(key)? {
-            return Ok(self.index.borrow().get(&k).copied());
+        if let Ok(found) = self.index.borrow().get(&index_key(key)?) {
+            return Ok(found);
         }
         for (i, (k, _)) in self.entries.borrow().iter().enumerate() {
             if values_equal(k, key)? {
@@ -294,19 +403,16 @@ impl DictObj {
         Ok(None)
     }
     pub fn append(&self, key: Value, value: Value) -> Result<(), String> {
-        if let Some(k) = dict_key(&key)? {
-            self.index.borrow_mut().insert(k, self.entries.borrow().len());
-        }
+        let n = self.entries.borrow().len();
+        self.index.borrow_mut().insert(index_key(&key)?, n);
         self.entries.borrow_mut().push((key, value));
         Ok(())
     }
     pub fn remove(&self, i: usize) -> Result<(), String> {
         self.entries.borrow_mut().remove(i);
-        let mut index = HashMap::new();
+        let mut index = DictIndex::default();
         for (i, (k, _)) in self.entries.borrow().iter().enumerate() {
-            if let Some(dk) = dict_key(k)? {
-                index.insert(dk, i);
-            }
+            index.insert(index_key(k)?, i);
         }
         *self.index.borrow_mut() = index;
         Ok(())
