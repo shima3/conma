@@ -299,8 +299,10 @@ def transpiled_call(funcs, prims, f, prim_index):
 # where the code below hands the VProc back to the code above (a "bail"), one
 # Rust function runs the Body and the Bodies after it that it can, keeping
 # the variables they bind in Rust variables instead of LVEnv nodes:
-# primitives of DIRECT, __NULL__, __if_then_else__, __if__ and __unless__
-# without an LCont and with clauses written in place (both are inlined), and
+# primitives of DIRECT, __NULL__, __Cont_get__ (the continuation in a Rust
+# variable), __if_then_else__, __if__ and __unless__ with clauses written in
+# place (both are inlined; with an LCont, in a labeled block whose value is
+# what the clause returns, the LCont going on after it), and
 # calls with an LCont (Rust calls, vm/src/transpiled.rs fused_call; the chain
 # binds the values they return), and at the end a return or a call without an
 # LCont (left to `apply`). At any
@@ -329,6 +331,7 @@ class Fuser:
             if f.body is None or f.variadic:
                 continue
             self.bails = set()
+            self.labels = 0
             out = []
             self.emit(fid, 0, [], out)
             for x in self.bails:
@@ -401,25 +404,74 @@ class Fuser:
                          for i, (lc, j, kind) in enumerate(locals_))
         return f"{{ let e = env.clone(); {pushes}e }}"
 
-    def bail(self, x, d, locals_, out):
+    # J, the clauses the code is in: for each __if__ (or __unless__,
+    # __if_then_else__) with an LCont whose clause is inlined, outermost
+    # first, a dict with its LCont "lc", the depth "d" and variables "locals"
+    # of the chain at the __if__, its Function "x", the label "label" of the
+    # Rust block whose value the clause gives, and the number "p" of
+    # parameters of lc. The VM would have the CFrames of these LConts on the
+    # CChain; where the code hands the VProc back (a bail, onError, a call
+    # left to the VM), it puts them there first (push_joins), and a Rust call
+    # puts them there if it is left (node).
+
+    def wrap(self, J, base):
+        """Rust code for the CChain base with the CFrames of the clauses J on
+        top (the innermost on top)."""
+        for j in J:
+            base = (f"cframe_on(t, gv, {j['lc']}, {self.mat(j['d'], j['locals'])}, "
+                    f"&body_of(t, {j['x']}).sinfo, {base})")
+        return base
+
+    def push_joins(self, J, out):
+        if J:
+            out.append(f"vp.cchain = {self.wrap(J, 'std::mem::replace(&mut vp.cchain, Value::Null)')};")
+
+    def node(self, lc, d, locals_, x, J):
+        """The CFrame builder of a call with the LCont Function lc."""
+        inner = self.wrap(J, "b.clone()")
+        if lc is None:
+            return f"&|b: &Value| {inner}"
+        return f"&|b: &Value| cframe_on(t, gv, {lc}, {self.mat(d, locals_)}, &body_of(t, {x}).sinfo, {inner})"
+
+    def to_join(self, J, vals, x, out):
+        """Give the values (Rust code of Values) to the LCont of the innermost
+        clause J: the value of its block if they are as many as its
+        parameters; otherwise apply its LCont to them as the VM would."""
+        j = J[-1]
+        if len(vals) == j["p"]:
+            tup = "(" + "".join(v + ", " for v in vals) + ")"
+            out.append(f"break '{j['label']} {tup};")
+        else:
+            out.append(f"let v = vec![{', '.join(vals)}];")
+            self.push_joins(J, out)
+            out.append(f"return fused_return(vp, env, {self.sinfo(x)}, v);")
+
+    def bail(self, x, d, locals_, out, J=()):
         self.bails.add(x)
+        self.push_joins(J, out)
         out.append(f"return Ok(Next::Enter({x}, {self.mat(d, locals_)}));")
 
     def sinfo(self, x):
         return f"&body_of(t, {x}).sinfo"
 
-    def emit(self, x, d, locals_, out):
-        """The code of Function x's Body at depth d, ending with a return."""
+    def emit(self, x, d, locals_, out, J=()):
+        """The code of Function x's Body at depth d, ending with a return or
+        (in a clause) a break."""
         f = self.funcs[x]
         b = f.body
         if b is None or b.operator is None or b.lcont == "value":
-            return self.bail(x, d, locals_, out)
+            return self.bail(x, d, locals_, out, J)
         op = b.operator
         name = self.prims.get(op[1]) if op[0] == "G" else None
         args = [self.ref(x, d, e, f"olist[{k}]", locals_) for k, e in enumerate(b.olist)]
         lc = b.lcont
         g1 = self.funcs[lc] if isinstance(lc, int) else None
         one = g1 is not None and not g1.variadic and g1.params == 1
+        if name == "__Cont_get__" and one and not b.olist and not J:
+            # the escape continuation, in a Rust variable (made in a clause, it
+            # would lack the CFrames of the clauses: left to the VM)
+            out.append(f"let x{d} = make_cont(m, vp);")
+            return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
         if one and name in NUM_OPS and len(b.olist) == NUM_OPS[name][1]:
             kind, n = NUM_OPS[name]
             ops = b.olist[n - (2 if kind in ("bin", "div") else 1):]
@@ -434,14 +486,16 @@ class Fuser:
                     msg = ("__Number_divide__: division by zero" if kind == "div"
                            else "__Number_sqrt__: square root of a negative number")
                     oe = self.ref(x, d, b.olist[0], "olist[0]", locals_)
-                    out.append(f"if {bad} {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); let oe = {oe}; "
+                    inner = []
+                    self.push_joins(J, inner)
+                    out.append(f"if {bad} {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); let oe = {oe}; {' '.join(inner)} "
                                f"return finish(vp, {self.mat(d, locals_)}, gv, t, Some({lc}), Out::Call(oe, string_value({msg!r}))); }}".replace("'", '"'))
                 if kind == "pred":
                     out.append(f"let x{d} = if n0 {NUM_PRED[name]} {{ m.true_closure() }} else {{ m.false_closure() }};")
-                    return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out)
+                    return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
                 expr = {"bin": f"n0 {NUM_BIN.get(name)} n1", "div": "n0 / n1", "sqrt": "n0.sqrt()"}[kind]
                 out.append(f"let x{d}: f64 = {expr};")
-                return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out)
+                return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None
         if (key is not None and key[0] == "C" and key[1] and "\\" not in key[1] and None not in args
                 and self.rref(x, d, b.olist[0], 0, locals_) is not None):
@@ -453,11 +507,11 @@ class Fuser:
                 out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
                 out.append(f'd_dict_put_str(t, {x}, a0, "{text}", a2){err};')
                 out.append("let o = Out::R0;")
-                return self.direct_result(x, d, locals_, lc, out)
+                return self.direct_result(x, d, locals_, lc, out, J)
             # the value, or onMissing applied to the key (evaluated only then)
             out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}"){err} {{ Some(v) => Out::R1(v), '
                        f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
-            return self.direct_result(x, d, locals_, lc, out)
+            return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
             fn = DIRECT[name][0]
             names = []
@@ -465,34 +519,63 @@ class Fuser:
                 out.append(f"let a{k}: &Value = {self.rref(x, d, e, k, locals_)};")
                 names.append(f"a{k}")
             out.append(f"let o = {fn}(m, {', '.join(names)}).map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?;")
-            return self.direct_result(x, d, locals_, lc, out)
-        return self.emit_rest(x, d, locals_, out, b, op, name, args, lc)
+            return self.direct_result(x, d, locals_, lc, out, J)
+        return self.emit_rest(x, d, locals_, out, b, op, name, args, lc, J)
 
-    def direct_result(self, x, d, locals_, lc, out):
-        """After `let o = d_...(...)`: bind the results to the LCont lc."""
-        if True:
-            if lc is None:
-                out.append(f"vp.sinfo = body_of(t, {x}).sinfo.clone(); return finish(vp, env.clone(), gv, t, None, o);")
+    def direct_result(self, x, d, locals_, lc, out, J):
+        """After `let o = d_...(...)`: bind the results to the LCont lc (or,
+        without one, give them to the clause J or return them)."""
+        sinfo_set = f"vp.sinfo = body_of(t, {x}).sinfo.clone();"
+        jpush = []
+        self.push_joins(J, jpush)
+        jpush = " ".join(jpush)
+        if lc is None:
+            if not J:
+                out.append(f"{sinfo_set} return finish(vp, env.clone(), gv, t, None, o);")
                 return
-            g = self.funcs[lc]
-            fallback = f"o => {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); return finish(vp, {self.mat(d, locals_)}, gv, t, Some({lc}), o); }}"
-            if g.variadic or g.params > 2:
-                out.append(f"match o {{ {fallback} }}")
-                return
-            vs = [f"x{d + j}" for j in range(g.params)]
-            pat = ["Out::R0", "Out::R1({})", "Out::R2({}, {})"][g.params].format(*vs)
-            tup = "(" + "".join(v + ", " for v in vs) + ")"
-            out.append(f"let {tup} = match o {{ {pat} => {tup}, {fallback} }};")
-            return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out)
+            p = J[-1]["p"]
+            if p <= 2:
+                vs = [f"r{k}" for k in range(p)]
+                pat = ["Out::R0", "Out::R1({})", "Out::R2({}, {})"][p].format(*vs)
+                tup = "(" + "".join(v + ", " for v in vs) + ")"
+                out.append(f"match o {{ {pat} => break '{J[-1]['label']} {tup}, "
+                           f"o => {{ {sinfo_set} {jpush} return finish(vp, env.clone(), gv, t, None, o); }} }}")
+            else:
+                out.append(f"{sinfo_set} {jpush} return finish(vp, env.clone(), gv, t, None, o);")
+            return
+        g = self.funcs[lc]
+        fallback = f"o => {{ {sinfo_set} {jpush} return finish(vp, {self.mat(d, locals_)}, gv, t, Some({lc}), o); }}"
+        if g.variadic or g.params > 2:
+            out.append(f"match o {{ {fallback} }}")
+            return
+        vs = [f"x{d + j}" for j in range(g.params)]
+        pat = ["Out::R0", "Out::R1({})", "Out::R2({}, {})"][g.params].format(*vs)
+        tup = "(" + "".join(v + ", " for v in vs) + ")"
+        out.append(f"let {tup} = match o {{ {pat} => {tup}, {fallback} }};")
+        return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out, J)
 
-    def emit_rest(self, x, d, locals_, out, b, op, name, args, lc):
+    def clauses(self, b, name):
+        """The then and else clauses of an __if__ and the others: a thunk
+        Function, "nop" (missing) or "value" (not written in place)."""
+        def clause(i):
+            c = thunk(self.funcs, b.olist[i])
+            return c if c is not None else "value"
+        if name == "__if_then_else__":
+            return clause(1), clause(2)
+        if name == "__if__":
+            return clause(1), "nop"
+        return "nop", clause(1)
+
+    def emit_rest(self, x, d, locals_, out, b, op, name, args, lc, J):
         if op == ("Null",) and None not in args:
             if lc is None:
+                if J:
+                    return self.to_join(J, args, x, out)
                 out.append(f"let v = vec![{', '.join(args)}]; return fused_return(vp, env, {self.sinfo(x)}, v);")
                 return
             g = self.funcs[lc]
             if g.variadic or g.params != len(args):
-                return self.bail(x, d, locals_, out)
+                return self.bail(x, d, locals_, out, J)
             kinds = []
             for j, (a, e) in enumerate(zip(args, b.olist)):
                 if e[0] == "L" and e[1] < d and self.local(d, locals_, e[1])[1]:
@@ -501,65 +584,100 @@ class Fuser:
                 else:
                     out.append(f"let x{d + j} = {a};")
                     kinds.append("v")
-            return self.emit(lc, d + g.params, locals_ + [(lc, j, kinds[j]) for j in range(g.params)], out)
-        if name in IFS and len(b.olist) == IFS[name] and lc is None and args[0] is not None:
-            def clause(i):
-                if i is None:
-                    return "nop"
-                c = thunk(self.funcs, b.olist[i])
-                return c if c is not None else "value"
-            if name == "__if_then_else__":
-                then, els = clause(1), clause(2)
-            elif name == "__if__":
-                then, els = clause(1), None
-            else:
-                then, els = None, clause(1)
-            then = then if then is not None else "nop"
-            els = els if els is not None else "nop"
-            if "value" in (then, els):
-                return self.bail(x, d, locals_, out)
+            return self.emit(lc, d + g.params, locals_ + [(lc, j, kinds[j]) for j in range(g.params)], out, J)
+        if name in IFS and len(b.olist) == IFS[name] and args[0] is not None:
+            then, els = self.clauses(b, name)
+            g = self.funcs[lc] if isinstance(lc, int) else None
+            if "value" in (then, els) or (g is not None and g.variadic):
+                return self.bail(x, d, locals_, out, J)
+            if g is None:
+                # no LCont: the clauses end the chain (or the clause it is in)
+                out.append(f"let c = {args[0]};")
+                out.append("match boolean_choice(&c) {")
+                for label, cl in (("Some(true)", then), ("Some(false)", els)):
+                    out.append(f"{label} => {{")
+                    if cl == "nop":
+                        if J:
+                            self.to_join(J, [], x, out)
+                        else:
+                            out.append(f"return fused_return(vp, env, {self.sinfo(x)}, vec![]);")
+                    else:
+                        self.emit(cl, d, locals_, out, J)
+                    out.append("}")
+                out.append("None => {")
+                self.bail(x, d, locals_, out, J)
+                out.append("}")
+                out.append("}")
+                return
+            # an LCont: the clauses give the values of a labeled block, and the
+            # LCont goes on after it
+            self.labels += 1
+            label = f"j{self.labels}"
+            jn = J + ({"lc": lc, "d": d, "locals": locals_, "x": x, "label": label, "p": g.params},)
+            vs = [f"x{d + k}" for k in range(g.params)]
+            tup = "(" + "".join(v + ", " for v in vs) + ")"
+            out.append(f"let {tup} = '{label}: {{")
             out.append(f"let c = {args[0]};")
             out.append("match boolean_choice(&c) {")
-            for label, cl in (("Some(true)", then), ("Some(false)", els)):
-                out.append(f"{label} => {{")
+            for arm, cl in (("Some(true)", then), ("Some(false)", els)):
+                out.append(f"{arm} => {{")
                 if cl == "nop":
-                    out.append(f"return fused_return(vp, env, {self.sinfo(x)}, vec![]);")
+                    self.to_join(jn, [], x, out)
                 else:
-                    self.emit(cl, d, locals_, out)
+                    self.emit(cl, d, locals_, out, jn)
                 out.append("}")
             out.append("None => {")
-            self.bail(x, d, locals_, out)
+            self.bail(x, d, locals_, out, J)
             out.append("}")
             out.append("}")
-            return
+            out.append("};")
+            return self.emit(lc, d + g.params, locals_ + [(lc, k, "v") for k in range(g.params)], out, J)
         callable_op = op[0] == "L" or (op[0] == "G" and op[1] not in self.prims)
         f_ref = self.ref(x, d, op, "operator", locals_) if callable_op else None
         if callable_op and isinstance(lc, int) and None not in args and f_ref is not None:
             # a call with an LCont: a Rust call, whose values the chain binds
             g = self.funcs[lc]
             mat = self.mat(d, locals_)
+            jpush = []
+            self.push_joins(J, jpush)
+            jpush = " ".join(jpush)
             out.append(f"let f = {f_ref};")
             # the arguments in an array (no heap), the values bound from the
             # OList (which keeps its buffer)
             out.append(f"let v = [{', '.join(args)}];")
-            out.append(f"let o = fused_call(m, vp, f, v, gv, t, {lc}, &|| {mat}, {self.sinfo(x)})?;")
+            out.append(f"let o = fused_call(m, vp, f, v, gv, t, {self.node(lc, d, locals_, x, J)}, {self.sinfo(x)})?;")
             if g.variadic:
-                out.append(f"match o {{ Called::Values => return fused_pass(vp, gv, t, {lc}, {mat}), Called::Next(n) => return Ok(n) }}")
+                out.append(f"match o {{ Called::Values => {{ {jpush} return fused_pass(vp, gv, t, {lc}, {mat}); }}, Called::Next(n) => return Ok(n) }}")
                 return
             out.append(f"match o {{ Called::Values if vp.olist.len() == {g.params} => {{}}, "
-                       f"Called::Values => return fused_pass(vp, gv, t, {lc}, {mat}), Called::Next(n) => return Ok(n) }}")
+                       f"Called::Values => {{ {jpush} return fused_pass(vp, gv, t, {lc}, {mat}); }}, Called::Next(n) => return Ok(n) }}")
             if g.params:
                 out.append("let mut v = vp.olist.drain(..);")
                 for j in range(g.params):
                     out.append(f"let x{d + j} = v.next().unwrap();")
                 out.append("drop(v);")
-            return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out)
+            return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out, J)
         if callable_op and lc is None and None not in args:
-            f_code = self.ref(x, d, op, "operator", locals_)
-            out.append(f"let f = {f_code};")
-            out.append(f"let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
+            out.append(f"let f = {f_ref};")
+            if not J:
+                out.append(f"let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
+                return
+            # in a clause: the call's LCont is the clause's. A continuation
+            # (return) drops the LCont: left to apply as it is.
+            j = J[-1]
+            outer = []
+            self.push_joins(J[:-1], outer)
+            outer = " ".join(outer)
+            out.append(f"if matches!(f, Value::Cont(_)) {{ let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v); }}")
+            out.append(f"let v = [{', '.join(args)}];")
+            out.append(f"let o = fused_call(m, vp, f, v, gv, t, {self.node(None, d, locals_, x, J)}, &body_of(t, {j['x']}).sinfo)?;")
+            vs = [f"r{k}" for k in range(j["p"])]
+            tup = "(" + "".join(v + ", " for v in vs) + ")"
+            binds = " ".join(f"let r{k} = v.next().unwrap();" for k in range(j["p"]))
+            out.append(f"match o {{ Called::Values if vp.olist.len() == {j['p']} => {{ let mut v = vp.olist.drain(..); {binds} drop(v); break '{j['label']} {tup}; }}, "
+                       f"Called::Values => {{ {outer} return fused_pass(vp, gv, t, {j['lc']}, {self.mat(j['d'], j['locals'])}); }}, Called::Next(n) => return Ok(n) }}")
             return
-        return self.bail(x, d, locals_, out)
+        return self.bail(x, d, locals_, out, J)
 
 
 def translate(index, path, prim_names, out):

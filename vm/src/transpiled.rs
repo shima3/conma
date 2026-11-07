@@ -398,7 +398,7 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
 
 /// A new escape continuation with the CChain of the VProc, recorded in the
 /// innermost Rust call.
-fn make_cont(m: &mut Machine, vp: &mut VProc) -> Value {
+pub fn make_cont(m: &mut Machine, vp: &mut VProc) -> Value {
     m.serials.conts += 1;
     let k = Rc::new(ContObj::new(m.serials.conts, vp.cchain.clone()));
     if let Some(f) = m.nctx.frames.last_mut() {
@@ -418,7 +418,7 @@ fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
         vp.cchain_push(lcv, sinfo);
         return Ok(Next::Enter(fid, env));
     }
-    match frame_run(m, vp, fid, env, gv, t, lc, &|| lenv.clone(), &sinfo)? {
+    match frame_run(m, vp, fid, env, gv, t, &|b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
         Ret::Values => {
             vp.lcont = None;
             pass_results(vp, lenv, gv, t, Some(lc))
@@ -428,14 +428,22 @@ fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     }
 }
 
-/// Run Function fid in env as a Rust call whose LCont is Function lc in the
-/// LVEnv that lenv makes (only if it is needed: to put its CFrame into the
-/// CChain when the call is left, or to give it to continuations made in the
-/// call that are still in use), with sinfo for that CFrame. With Values, the
-/// values are in the OList and the SInfo is sinfo, as after the VM pops the
-/// CFrame.
+/// The CChain base with the CFrame of the LCont Function lc in lenv (with
+/// sinfo) on top, as the VM pushes it for a call.
+pub fn cframe_on(t: &Table, gv: &Rc<GVEnv>, lc: usize, lenv: LVEnv, sinfo: &Option<SInfo>, base: Value) -> Value {
+    let cf = Value::CFrame(Rc::new(CFrame { closure: make_closure(&t.funcs[lc], &lenv, Some(gv)), sinfo: sinfo.clone() }));
+    Value::LList(Rc::new(LList { head: cf, tail: base }))
+}
+
+/// Run Function fid in env as a Rust call. node puts on a CChain the CFrames
+/// the VM would have pushed for the call (its LCont, and in a fused chain the
+/// LConts of the clauses it is in), and is called only if they are needed: to
+/// put them into the CChain when the call is left, or to give them to
+/// continuations made in the call that are still in use. With Values, the
+/// values are in the OList and the SInfo is sinfo (of the calling Body), as
+/// after the VM pops the CFrame.
 #[allow(clippy::too_many_arguments)]
-fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: &dyn Fn() -> LVEnv, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
+fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
     m.nctx.ids += 1;
     let id = m.nctx.ids;
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
@@ -443,14 +451,9 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     let f = m.nctx.frames.pop().expect("the Frame of a Rust call");
     t.note(fid, &r);
     // The CFrame the VM would have pushed, made only when it is needed.
-    let mut node: Option<Value> = None;
-    let node_of = |node: &mut Option<Value>| -> Value {
-        node.get_or_insert_with(|| {
-            let cf = Value::CFrame(Rc::new(CFrame { closure: make_closure(&t.funcs[lc], &lenv(), Some(gv)), sinfo: sinfo.clone() }));
-            Value::LList(Rc::new(LList { head: cf, tail: f.base.clone() }))
-        })
-        .clone()
-    };
+    let mut made: Option<Value> = None;
+    let base = f.base.clone();
+    let node_of = |n: &mut Option<Value>| -> Value { n.get_or_insert_with(|| node(&base)).clone() };
     if matches!(r, Ok(Ret::Values)) {
         // Drop what still holds the continuations made in the call.
         vp.lvenv = None;
@@ -459,7 +462,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     // Left: the VM goes on with the CChain the VM would have. (Escape: the
     // continuation will replace the CChain.)
     if matches!(r, Ok(Ret::Leave)) {
-        let n = node_of(&mut node);
+        let n = node_of(&mut made);
         vp.cchain = splice(&vp.cchain, &f.base, &n);
     }
     // Continuations still in use get the CFrame, and belong to the Rust call
@@ -467,7 +470,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     let parent = m.nctx.current();
     for k in f.conts {
         if Rc::strong_count(&k) > 1 {
-            let n = node_of(&mut node);
+            let n = node_of(&mut made);
             let c = splice(&k.cchain.borrow(), &f.base, &n);
             *k.cchain.borrow_mut() = c;
             k.owner.set(parent);
@@ -498,7 +501,7 @@ pub enum Called {
 /// call; the chain gets the values it returns. Anything else is applied as the
 /// VM would, with the LCont Closure (lc in the LVEnv that lenv makes).
 #[allow(clippy::too_many_arguments)]
-pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: &dyn Fn() -> LVEnv, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
+pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
     vp.sinfo = sinfo.clone();
     let target = match &f {
         Value::Closure(c) if !c.variadic && c.params().len() == N => {
@@ -515,10 +518,13 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
     };
     let rust = m.nctx.budget > 0 && m.nctx.frames.len() < MAX_DEPTH && target.as_ref().is_some_and(|(_, cf)| t.rust_ok(*cf));
     let Some((c, cf)) = target.filter(|_| rust) else {
+        // As the VM applies f with the LCont: its CFrame (and those of the
+        // clauses around the call) on the CChain.
+        vp.cchain = node(&vp.cchain);
         vp.operator = f;
         vp.olist.clear();
         vp.olist.extend(args);
-        vp.lcont = Some(make_closure(&t.funcs[lc], &lenv(), Some(gv)));
+        vp.lcont = None;
         return Ok(Called::Next(Next::Apply));
     };
     m.nctx.budget -= 1;
@@ -529,7 +535,7 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
     }
     vp.operator = Value::Null;
     vp.lcont = None;
-    Ok(match frame_run(m, vp, cf, e, gv, t, lc, lenv, sinfo)? {
+    Ok(match frame_run(m, vp, cf, e, gv, t, node, sinfo)? {
         Ret::Values => Called::Values,
         Ret::Leave => Called::Next(Next::Leave),
         Ret::Escape => Called::Next(Next::Escape),
