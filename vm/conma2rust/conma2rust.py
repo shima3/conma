@@ -97,9 +97,10 @@ DIRECT = {
 
 # Number primitives that fused chains compute on f64 Rust variables
 # (kind, number of operands); the operands are Numbers, after onError.
+# __Number_floor__ keeps an infinity or NaN as it is (vm/src/prim/number.rs).
 NUM_OPS = {
     "__Number_add__": ("bin", 2), "__Number_subtract__": ("bin", 2), "__Number_multiply__": ("bin", 2),
-    "__Number_divide__": ("div", 3), "__Number_sqrt__": ("sqrt", 2),
+    "__Number_divide__": ("div", 3), "__Number_sqrt__": ("sqrt", 2), "__Number_floor__": ("floor", 1),
     "__Number_is_zero__": ("pred", 1), "__Number_is_positive__": ("pred", 1), "__Number_is_negative__": ("pred", 1),
 }
 NUM_BIN = {"__Number_add__": "+", "__Number_subtract__": "-", "__Number_multiply__": "*"}
@@ -521,7 +522,8 @@ class Fuser:
                 if kind == "pred":
                     out.append(f"let x{d} = if n0 {NUM_PRED[name]} {{ m.true_closure() }} else {{ m.false_closure() }};")
                     return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
-                expr = {"bin": f"n0 {NUM_BIN.get(name)} n1", "div": "n0 / n1", "sqrt": "n0.sqrt()"}[kind]
+                expr = {"bin": f"n0 {NUM_BIN.get(name)} n1", "div": "n0 / n1", "sqrt": "n0.sqrt()",
+                        "floor": "if n0.is_finite() { n0.floor() } else { n0 }"}[kind]
                 out.append(f"let x{d}: f64 = {expr};")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None
