@@ -486,8 +486,9 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
 
 /// What a call from a fused chain gives.
 pub enum Called {
-    /// The values the callee returned: the chain binds them to its LCont.
-    Values(Vec<Value>),
+    /// The callee returned its values, which are in the OList (which keeps
+    /// its buffer): the chain binds them to its LCont.
+    Values,
     /// The chain ends: go on with this.
     Next(Next),
 }
@@ -497,10 +498,10 @@ pub enum Called {
 /// call; the chain gets the values it returns. Anything else is applied as the
 /// VM would, with the LCont Closure (lc in the LVEnv that lenv makes).
 #[allow(clippy::too_many_arguments)]
-pub fn fused_call(m: &mut Machine, vp: &mut VProc, f: Value, args: Vec<Value>, gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: &dyn Fn() -> LVEnv, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
+pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: &dyn Fn() -> LVEnv, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
     vp.sinfo = sinfo.clone();
     let target = match &f {
-        Value::Closure(c) if !c.variadic && c.params().len() == args.len() => {
+        Value::Closure(c) if !c.variadic && c.params().len() == N => {
             let same_module = match &c.gvenv {
                 Some(g) => Rc::ptr_eq(g, gv),
                 None => Rc::ptr_eq(&vp.gvenv, gv),
@@ -529,18 +530,17 @@ pub fn fused_call(m: &mut Machine, vp: &mut VProc, f: Value, args: Vec<Value>, g
     vp.operator = Value::Null;
     vp.lcont = None;
     Ok(match frame_run(m, vp, cf, e, gv, t, lc, lenv, sinfo)? {
-        Ret::Values => Called::Values(std::mem::take(&mut vp.olist)),
+        Ret::Values => Called::Values,
         Ret::Leave => Called::Next(Next::Leave),
         Ret::Escape => Called::Next(Next::Escape),
     })
 }
 
-/// Values a fused chain cannot bind to its LCont lc (another number of them,
-/// or a variadic lc): apply the LCont Closure to them as the VM would.
-pub fn fused_pass(vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: LVEnv, values: Vec<Value>) -> NResult {
+/// Values (in the OList) a fused chain cannot bind to its LCont lc (another
+/// number of them, or a variadic lc): apply the LCont Closure to them as the
+/// VM would.
+pub fn fused_pass(vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table, lc: usize, lenv: LVEnv) -> NResult {
     vp.operator = make_closure(&t.funcs[lc], &lenv, Some(gv));
-    vp.olist.clear();
-    vp.olist.extend(values);
     vp.lcont = None;
     Ok(Next::Apply)
 }

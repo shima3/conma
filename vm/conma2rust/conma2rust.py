@@ -539,17 +539,20 @@ class Fuser:
             g = self.funcs[lc]
             mat = self.mat(d, locals_)
             out.append(f"let f = {f_ref};")
-            out.append(f"let v = vec![{', '.join(args)}];")
+            # the arguments in an array (no heap), the values bound from the
+            # OList (which keeps its buffer)
+            out.append(f"let v = [{', '.join(args)}];")
             out.append(f"let o = fused_call(m, vp, f, v, gv, t, {lc}, &|| {mat}, {self.sinfo(x)})?;")
             if g.variadic:
-                out.append(f"match o {{ Called::Values(v) => return fused_pass(vp, gv, t, {lc}, {mat}, v), Called::Next(n) => return Ok(n) }}")
+                out.append(f"match o {{ Called::Values => return fused_pass(vp, gv, t, {lc}, {mat}), Called::Next(n) => return Ok(n) }}")
                 return
-            out.append(f"let v = match o {{ Called::Values(v) if v.len() == {g.params} => v, "
-                       f"Called::Values(v) => return fused_pass(vp, gv, t, {lc}, {mat}, v), Called::Next(n) => return Ok(n) }};")
+            out.append(f"match o {{ Called::Values if vp.olist.len() == {g.params} => {{}}, "
+                       f"Called::Values => return fused_pass(vp, gv, t, {lc}, {mat}), Called::Next(n) => return Ok(n) }}")
             if g.params:
-                out.append("let mut v = v.into_iter();")
+                out.append("let mut v = vp.olist.drain(..);")
                 for j in range(g.params):
                     out.append(f"let x{d + j} = v.next().unwrap();")
+                out.append("drop(v);")
             return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out)
         if callable_op and lc is None and None not in args:
             f_code = self.ref(x, d, op, "operator", locals_)
