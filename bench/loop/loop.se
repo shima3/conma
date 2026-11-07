@@ -1,0 +1,25 @@
+;; loop: a loop that counts, a benchmark of the simplest iteration, the same computation as loop.py.
+;;   main N: counts N down to 0 and an accumulator up from 0, and prints the accumulator (N).
+(include "util.se")
+
+(define num ,(s)
+  __Number_fromString__ __print_exit_error__ s)
+
+(define loop ,(one n acc)
+  __Number_is_zero__ n ,(z)
+  __if_then_else__ z
+    (,() __NULL__ acc)
+    (,()
+      __Number_subtract__ n one ,(n2)
+      __Number_add__ acc one ,(acc2)
+      loop one n2 acc2))
+
+(define main ,(args)
+  args (,(nText)
+    num nText ,(n)
+    num "1" ,(one)
+    num "0" ,(zero)
+    loop one n zero ,(r)
+    __Number_toString__ r ,(s)
+    __OS_print__ s ,()
+    __OS_print__ "\n"))

@@ -1,0 +1,30 @@
+;; fib: the naive recursive Fibonacci function, a benchmark of calls, the same computation as fib.py.
+;;   main N: prints fib(N).
+(include "util.se")
+
+(define num ,(s)
+  __Number_fromString__ __print_exit_error__ s)
+
+(define fib ,(one n)
+  __Number_is_zero__ n ,(z0)
+  __if_then_else__ z0
+    (,() __NULL__ n)
+    (,()
+      __Number_subtract__ n one ,(n1)
+      __Number_is_zero__ n1 ,(z1)
+      __if_then_else__ z1
+        (,() __NULL__ one)
+        (,()
+          __Number_subtract__ n1 one ,(n2)
+          fib one n1 ,(a)
+          fib one n2 ,(b)
+          __Number_add__ a b)))
+
+(define main ,(args)
+  args (,(nText)
+    num nText ,(n)
+    num "1" ,(one)
+    fib one n ,(r)
+    __Number_toString__ r ,(s)
+    __OS_print__ s ,()
+    __OS_print__ "\n"))

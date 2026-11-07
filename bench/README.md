@@ -3,6 +3,8 @@
 Each benchmark is a small, known Python program and the same computation in ConMa, done in the same order, so that both print the same output:
 
 * `nbody/`: the orbits of the Jovian planets (the n-body benchmark of pyperformance and of the Computer Language Benchmarks Game). `nbody.py N` and `nbody.se` (`main N`) print the energy of the system, advance it N steps of 0.01 days, and print the energy again.
+* `fib/`: the naive recursive Fibonacci function, a benchmark of calls. `fib.py N` and `fib.se` (`main N`) print fib(N).
+* `loop/`: a loop that counts N down to 0, a benchmark of the simplest iteration (a function that calls itself in ConMa, `while` in Python). `loop.py N` and `loop.se` (`main N`) print N.
 * `richards/`: Martin Richards' simulation of the task dispatcher of an operating system (the richards benchmark of pyperformance). `richards.py N` and `richards.se` (`main N`) run it N times and print the hold count and the packet count of each run (9297 23246). Tasks, packets and the records of the tasks are objects in Python and Dicts in ConMa, a task having the function that runs it under `"fn"`. ConMa has no bit operations, so the idle task computes `control & 1`, `control // 2` and `^ 0xD008` with arithmetic (`xor_bits`, bit by bit).
 
 ```
@@ -21,8 +23,11 @@ Apple M4, CPython 3.9.6, times in user + sys seconds (best of 3), including the 
 | Benchmark | CPython | Rust VM | Transpiled VM |
 |---|---|---|---|
 | nbody 100000 | 0.56 s | 6.59 s (11.8×) | 3.80 s (6.8×) |
+| richards 20, when it was added | 0.81 s | about 10.4 s (13×) | 1.99 s (2.5×) |
 
-The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; `bench/run.sh` now leaves the Rust VM out unless `CONMA_BENCH_RUST=1`):
+`bench/run.sh` leaves the Rust VM out unless `CONMA_BENCH_RUST=1`. The transpiler has since been improved (vm/README.md, "Fused chains"); the tables below give the effect of each change on the transpiled VM.
+
+### Effect of each change: up to calls with an LCont
 
 | nbody 100000, transpiled VM | Time | CPython = 1 |
 |---|---|---|
@@ -34,24 +39,23 @@ The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; 
 | + String keys written in place looked up by their text | 0.72 s | 1.24 |
 | + calls with an LCont as Rust calls in fused chains | 0.67 s | 1.18 |
 | + `onMissing` evaluated only when the key is missing, `chk` inlined | 0.51 s | 0.89 |
-| + calls of a function to itself without an LCont as Rust loops | 0.43 s | 0.72 |
-| + arguments passed to a direct entry of the called function, not through an LVEnv | 0.39 s | 0.70 |
-| + last uses of variables moved, not cloned; Booleans of predicates as Rust `bool`s | 0.36 s | 0.64 |
-| + hashes of String keys written in place computed at compile time | 0.31 s | 0.55 |
 
-With these, the transpiled VM runs nbody faster than CPython 3.9.6 (0.31 s against 0.56 s, measured together).
+### Effect of each change: since then
 
-richards 20 (Apple M4, best of 3; the Rust VM with 5 runs, scaled):
+The transpiled VM of each commit, built with the transpiled code of the benchmarks and timed together with CPython (user + sys, best of 5). All of them print the same. ConSh: the 15,000 function calls of `for i in $(seq 1 15000); do add $i x > (r); done` (user time, measured when the commit was made, with the transpiled code of ConSh).
 
-| richards 20 | Time | CPython = 1 |
-|---|---|---|
-| CPython 3.9.6 | 0.81 s | 1 |
-| transpiled VM | 1.99 s | 2.5 |
-| transpiled VM, arguments passed to a direct entry | 1.79 s | 2.2 |
-| + `__Number_floor__` computed in place in fused chains | 1.21 s | 1.5 |
-| + last uses of variables moved, not cloned; Booleans of predicates as Rust `bool`s | 1.03 s | 1.27 |
-| + values returned in arrays, straight back to the Rust call | 1.00 s | 1.23 |
-| + hashes of String keys written in place computed at compile time (CPython 0.80 s) | 0.88 s | 1.10 |
-| Rust VM | about 10.4 s | about 13 |
+| Change | Commit | nbody 100000 | richards 20 | fib 32 | loop 10000000 | ConSh |
+|---|---|---|---|---|---|---|
+| before: calls with an LCont as Rust calls, `__Cont_get__` and `__if__` with an LCont in fused chains | af7fcff | 0.49 s | 2.10 s | 0.68 s | 0.65 s | 0.89 s |
+| a function that calls itself without an LCont as a Rust loop | 94ebbc7 | 0.40 s | 1.98 s | 0.68 s | 0.12 s | 0.92 s |
+| arguments passed to a direct entry of the function called, not through an LVEnv | 76bee68 | 0.38 s | 1.77 s | 0.48 s | 0.12 s | 0.90 s |
+| `__Number_floor__` computed on `f64` in fused chains | c8c9fda | 0.37 s | 1.19 s | 0.48 s | 0.12 s | — |
+| last uses of variables moved, not cloned; Booleans of `__is_null__` and the Number predicates as Rust `bool`s | df896d6 | 0.35 s | 1.03 s | 0.39 s | 0.06 s | 0.81 s |
+| values returned in an array, straight back to the Rust call | 008d091 | 0.35 s | 1.00 s | 0.36 s | 0.06 s | 0.80 s |
+| hashes of String keys written in place computed at compile time | 0506be7 | 0.30 s | 0.87 s | 0.35 s | 0.06 s | 0.81 s |
+| a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | fc38a7c | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
+| CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
-Where the time of the transpiled VM goes (a sample of the running VM): calls take about 40% (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27% (largely the arguments, into the LVEnv and out of it), and the Dict lookups 12%. The bit operations written with arithmetic take about a third of the time: computing each `^ 0xD008` twice makes the run 0.63 s longer. `__Number_floor__` is not computed in place in fused chains, so each bit goes through the code of the Bodies. With the arguments passed to a direct entry, most of the LVEnv work left was in `xor_bits`, which went back to the code of the Bodies at each `__Number_floor__` and so made and dropped an LVEnv of 12 variables for each bit; fused chains now compute `__Number_floor__` on `f64`, and `xor_bits` is a Rust loop.
+So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and about as fast for richards (4% slower), whose idle task computes its bit operations with arithmetic (ConMa has none).
+
+What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).
