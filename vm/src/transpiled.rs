@@ -494,13 +494,22 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     m.nctx.ids += 1;
     let id = m.nctx.ids;
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
-    // The first step (entering the Body of fid), then the steps after it.
+    // The first step (entering the Body of fid), then the steps after it
+    // (none if the chain returned its values to this call at once).
     let r = match first(m, vp) {
+        Ok(Next::Return) => Ok(Ret::Values),
         Ok(next) => drive(m, vp, next, gv, t),
         Err(e) => Err(e),
     };
     let f = m.nctx.frames.pop().expect("the Frame of a Rust call");
     t.note(fid, &r);
+    if f.conts.is_empty() && matches!(r, Ok(Ret::Values)) {
+        // The usual end: values, and no continuation to give the CFrame.
+        vp.lvenv = None;
+        vp.operator = Value::Null;
+        vp.sinfo = sinfo.clone();
+        return Ok(Ret::Values);
+    }
     // The CFrame the VM would have pushed, made only when it is needed.
     let mut made: Option<Value> = None;
     let base = f.base.clone();
