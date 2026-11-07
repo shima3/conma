@@ -3,6 +3,7 @@
 Each benchmark is a small, known Python program and the same computation in ConMa, done in the same order, so that both print the same output:
 
 * `nbody/`: the orbits of the Jovian planets (the n-body benchmark of pyperformance and of the Computer Language Benchmarks Game). `nbody.py N` and `nbody.se` (`main N`) print the energy of the system, advance it N steps of 0.01 days, and print the energy again.
+* `richards/`: Martin Richards' simulation of the task dispatcher of an operating system (the richards benchmark of pyperformance). `richards.py N` and `richards.se` (`main N`) run it N times and print the hold count and the packet count of each run (9297 23246). Tasks, packets and the records of the tasks are objects in Python and Dicts in ConMa, a task having the function that runs it under `"fn"`. ConMa has no bit operations, so the idle task computes `control & 1`, `control // 2` and `^ 0xD008` with arithmetic (`xor_bits`, bit by bit).
 
 ```
 bench/build.sh            # build the transpiled VM with the transpiled code of the benchmarks (and of ConSh)
@@ -36,3 +37,13 @@ The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; 
 | + calls of a function to itself without an LCont as Rust loops | 0.43 s | 0.72 |
 
 With these, the transpiled VM runs nbody faster than CPython 3.9.6 (0.43 s against 0.60 s, measured together).
+
+richards 20 (Apple M4, best of 3; the Rust VM with 5 runs, scaled):
+
+| richards 20 | Time | CPython = 1 |
+|---|---|---|
+| CPython 3.9.6 | 0.81 s | 1 |
+| transpiled VM | 1.99 s | 2.5 |
+| Rust VM | about 10.4 s | about 13 |
+
+Where the time of the transpiled VM goes (a sample of the running VM): calls take about 40% (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27% (largely the arguments, into the LVEnv and out of it), and the Dict lookups 12%. The bit operations written with arithmetic take about a third of the time: computing each `^ 0xD008` twice makes the run 0.63 s longer. `__Number_floor__` is not computed in place in fused chains, so each bit goes through the code of the Bodies.
