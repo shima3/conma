@@ -45,6 +45,15 @@ bin/consh [--conma-parser] [--dump] スクリプト [引数 ...]
 bin/consh
 ```
 
+ConSh には 2 つの版があり、環境変数 `CONSH_IMPL` で選ぶ。
+
+| `CONSH_IMPL` | 版 |
+|---|---|
+| `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版で実行する |
+| `conma` | ConMa 版（仕様の参照実装）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+
+`--conma-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` に関係なく ConMa 版で実行する。
+
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）が使える。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
@@ -139,4 +148,4 @@ test/run_all.sh
 test/run_all.sh -j 8
 ```
 
-diff の出力がなければ成功である。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。
+diff の出力がなければ成功である。テストは、`CONSH_IMPL` がなければ ConMa 版をテストする（`common.sh`）。Rust 版をテストするには `CONSH_IMPL=rust` を付ける。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。

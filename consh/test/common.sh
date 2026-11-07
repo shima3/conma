@@ -2,6 +2,9 @@
 # 一時ディレクトリ $tmp を作る（テストが終わると消す）。ログはそこに作るので、別のテストを同時に実行しても壊しあわない
 consh="$(cd ${BASH_SOURCE[0]%/*}/..; pwd)"
 root="${consh%/*}"
+# テストするのは、CONSH_IMPL がなければ ConMa 版（仕様の参照実装。bin/consh の既定は Rust 版）。
+# 中で起動する consh にも渡るように export する
+export CONSH_IMPL="${CONSH_IMPL:-conma}"
 tmp="$(mktemp -d /tmp/consh-test.XXXXXX)" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 

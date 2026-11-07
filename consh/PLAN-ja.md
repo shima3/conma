@@ -690,6 +690,7 @@ ConSh による意味解釈を以下のように定義する。
     - `include/util.se` が `__LList_length__` を ConMa で定義していたので、組み込み（段階 18）が使われていなかった。util.se の定義を消した（ConMa 版は `include/data.se` にある）。そのため、test/step20 の case15 のエラーの位置（util.se の行）と、step21 の case6 の数（2000 ステップごとに数えるので、数える時点が変わる）を直した。
     - `add $i x > (r)` 1つは 3,113 → 2,525 ステップ、`echo $i > (r)` は 1,686 → 1,430 ステップ。関数の呼び出し 1 万 5 千回は 2.16 → 1.81 秒（Rust 版の VM。語の展開の改良の前の 2.78 秒から 35% 減）。
 1. **kill したジョブのファイルが開いたまま残る競合を直す**：リダイレクトで開いたファイルは、開いてから（`__OS_open__`）、開いた Stream の表（`"openRef"`）に加える（`Open_track`）までに数ステップあり、その間にジョブを kill すると、閉じる人がいなかった。上の改良で文が速くなり、`step13` の case1 で親の `kill` がその間に届くようになって見つかった（`CONMA_SEED` の 20 個の種のうち 6 個、変換版の VM ではほぼ毎回）。開くのと表に加えるのを1ステップでする組み込み `__OS_open_tracked__`（ROADMAP.md の Step 37）を足し、`Eval_redirs_from` で使う。`Eval_redirs` は始めに表の長さ（`Open_mark`）を返し、文はそこまで閉じる（`Redirs_close`、`Open_release`）。20 個の種のどれでも残らなくなった。
+1. **`bin/consh` の既定を Rust 版にする**：`CONSH_IMPL` の既定を `rust` にし、`CONSH_IMPL=conma` で ConMa 版にする（VM は `CONMA_VM`）。Rust 版は ConMa 版のすべてのテストを通るので、ふだん使うには Rust 版がよい（関数の呼び出しで 20 倍ほど速い）。`consh-rs` を作っていなければ、そう出して ConMa 版で実行する。`--conma-parser` と `CONSH_CONMA_DATA` は ConMa 版で実行する。ほかの値はエラー。テストは、`CONSH_IMPL` がなければ ConMa 版をテストする（`consh/test/common.sh` が `CONSH_IMPL=conma` を export する）。
 
 ### 2.2. 検討中
 
