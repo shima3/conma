@@ -63,6 +63,17 @@ pub type NResult = Result<Next, VmError>;
 
 pub type TranspiledFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> NResult;
 
+/// The direct entry of a Function with a fused chain: its arguments as
+/// Values (taken from the slice, one per parameter) instead of LVEnv nodes,
+/// with the LVEnv of the Closure, and the LVEnv with the arguments if there
+/// is one already (else the chain makes it when it needs it).
+pub type DirectFn = fn(&mut Machine, &mut VProc, LVEnv, &mut [Value], Option<LVEnv>, &Rc<GVEnv>, &Table) -> NResult;
+
+/// The arguments of a call made through a direct entry are moved into an
+/// array of this many Values on the stack; a call with more is made with an
+/// LVEnv.
+const DIRECT_MAX: usize = 8;
+
 /// The steps `run` does in one step of the VM at most, so that a VProc that
 /// loops in transpiled code lets the others run.
 const BUDGET: u32 = 1000;
@@ -158,12 +169,14 @@ pub struct Module {
     /// takes an index into this list.
     pub prims: &'static [&'static str],
     pub fns: &'static [Option<TranspiledFn>],
+    pub dfns: &'static [Option<DirectFn>],
 }
 
 /// The transpiled code of a loaded module, with the Functions it refers to.
 pub struct Table {
     pub funcs: Vec<Rc<FuncDef>>,
     pub fns: &'static [Option<TranspiledFn>],
+    pub dfns: &'static [Option<DirectFn>],
     pub prims: Vec<&'static PrimDef>,
     /// The PrimDefs of SAFE_PRIMS.
     safe: Vec<*const PrimDef>,
@@ -197,7 +210,7 @@ impl Table {
 }
 
 mod generated {
-    #![allow(unused_variables)]
+    #![allow(unused_variables, unused_mut)]
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/transpiled_gen.rs"));
 }
@@ -216,7 +229,7 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
 /// it and it has the same number of Functions.
 pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     let m = generated::MODULES.iter().find(|m| m.hash == hash)?;
-    if m.nfuncs != funcs.len() || m.fns.len() != funcs.len() {
+    if m.nfuncs != funcs.len() || m.fns.len() != funcs.len() || m.dfns.len() != funcs.len() {
         return None;
     }
     let mut prims = Vec::new();
@@ -226,7 +239,7 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     let mut safe: Vec<*const PrimDef> = SAFE_PRIMS.iter().filter_map(|n| crate::prim::lookup(n)).map(|p| p as *const PrimDef).collect();
     safe.sort();
     let rust_calls = (0..funcs.len()).map(|_| (Cell::new(0), Cell::new(0))).collect();
-    Some(Rc::new(Table { funcs, fns: m.fns, prims, safe, rust_calls }))
+    Some(Rc::new(Table { funcs, fns: m.fns, dfns: m.dfns, prims, safe, rust_calls }))
 }
 
 // ── The loop ──
@@ -335,14 +348,24 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
                 return Ok(None);
             }
             let c = c.clone();
+            if let Some(lc) = vp.lcont.take() {
+                let sinfo = vp.sinfo.clone();
+                vp.cchain_push(lc, sinfo);
+            }
+            let n = vp.olist.len();
+            if let Some(d) = t.dfns[fid].filter(|_| c.skip == 0 && n <= DIRECT_MAX) {
+                // The arguments go to the direct entry, not into an LVEnv.
+                let mut a: [Value; DIRECT_MAX] = std::array::from_fn(|_| Value::Null);
+                for (k, v) in vp.olist.drain(..).enumerate() {
+                    a[k] = v;
+                }
+                vp.operator = Value::Null;
+                return d(m, vp, c.lvenv.clone(), &mut a[..n], None, gv, t).map(Some);
+            }
             let params = c.params();
             let mut env = c.lvenv.clone();
             for (k, v) in vp.olist.drain(..).enumerate() {
                 env = lv_push(&env, params[k].clone(), v);
-            }
-            if let Some(lc) = vp.lcont.take() {
-                let sinfo = vp.sinfo.clone();
-                vp.cchain_push(lc, sinfo);
             }
             vp.operator = Value::Null;
             Ok(Some(Next::Enter(fid, env)))
@@ -418,7 +441,9 @@ fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
         vp.cchain_push(lcv, sinfo);
         return Ok(Next::Enter(fid, env));
     }
-    match frame_run(m, vp, fid, env, gv, t, &|b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
+    let mut env = Some(env);
+    let first = &mut |_: &mut Machine, _: &mut VProc| Ok(Next::Enter(fid, env.take().expect("entered once")));
+    match frame_run(m, vp, fid, first, gv, t, &|b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
         Ret::Values => {
             vp.lcont = None;
             pass_results(vp, lenv, gv, t, Some(lc))
@@ -443,11 +468,15 @@ pub fn cframe_on(t: &Table, gv: &Rc<GVEnv>, lc: usize, lenv: LVEnv, sinfo: &Opti
 /// values are in the OList and the SInfo is sinfo (of the calling Body), as
 /// after the VM pops the CFrame.
 #[allow(clippy::too_many_arguments)]
-fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
+fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(&mut Machine, &mut VProc) -> NResult, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
     m.nctx.ids += 1;
     let id = m.nctx.ids;
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
-    let r = drive(m, vp, Next::Enter(fid, env), gv, t);
+    // The first step (entering the Body of fid), then the steps after it.
+    let r = match first(m, vp) {
+        Ok(next) => drive(m, vp, next, gv, t),
+        Err(e) => Err(e),
+    };
     let f = m.nctx.frames.pop().expect("the Frame of a Rust call");
     t.note(fid, &r);
     // The CFrame the VM would have pushed, made only when it is needed.
@@ -528,14 +557,29 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
         return Ok(Called::Next(Next::Apply));
     };
     m.nctx.budget -= 1;
-    let params = c.params();
-    let mut e = c.lvenv.clone();
-    for (k, v) in args.into_iter().enumerate() {
-        e = lv_push(&e, params[k].clone(), v);
-    }
     vp.operator = Value::Null;
     vp.lcont = None;
-    Ok(match frame_run(m, vp, cf, e, gv, t, node, sinfo)? {
+    let r = match t.dfns[cf].filter(|_| c.skip == 0) {
+        // The arguments go to the direct entry, not into an LVEnv.
+        Some(d) => {
+            let mut args = args;
+            let base = c.lvenv.clone();
+            let mut base = Some(base);
+            let first = &mut |m: &mut Machine, vp: &mut VProc| d(m, vp, base.take().expect("entered once"), &mut args, None, gv, t);
+            frame_run(m, vp, cf, first, gv, t, node, sinfo)?
+        }
+        None => {
+            let params = c.params();
+            let mut e = c.lvenv.clone();
+            for (k, v) in args.into_iter().enumerate() {
+                e = lv_push(&e, params[k].clone(), v);
+            }
+            let mut e = Some(e);
+            let first = &mut |_: &mut Machine, _: &mut VProc| Ok(Next::Enter(cf, e.take().expect("entered once")));
+            frame_run(m, vp, cf, first, gv, t, node, sinfo)?
+        }
+    };
+    Ok(match r {
         Ret::Values => Called::Values,
         Ret::Leave => Called::Next(Next::Leave),
         Ret::Escape => Called::Next(Next::Escape),

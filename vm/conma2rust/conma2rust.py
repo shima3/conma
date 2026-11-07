@@ -305,7 +305,10 @@ def transpiled_call(funcs, prims, f, prim_index):
 # what the clause returns, the LCont going on after it), and
 # calls with an LCont (Rust calls, vm/src/transpiled.rs fused_call; the chain
 # binds the values they return), and at the end a return or a call without an
-# LCont (left to `apply`). A call of the Closure running without an LCont
+# LCont (left to `apply`). The parameters of the head are Rust variables
+# too: its direct entry (m{i}_d{fid}) takes the arguments as Values, and its
+# entry for the VM (m{i}_f{fid}) reads them from the LVEnv and calls it with
+# that LVEnv ("full", which a bail reuses). A call of the Closure running without an LCont
 # (outside clauses with an LCont) makes the Function a Rust loop: its
 # parameters in Rust variables, set to the new arguments (self_call). At any
 # other Body it makes the LVEnv the VM would have (the LVEnv it started with
@@ -316,8 +319,9 @@ class Fuser:
     def __init__(self, funcs, prims, tops):
         self.funcs, self.prims, self.tops = funcs, prims, tops
         self.loop = None
+        self.head_p = 0
 
-    def apply(self, calls):
+    def apply(self, calls, directs):
         heads = list(self.tops)
         for f in self.funcs:   # function expressions given as operands
             if f.body is not None:
@@ -333,20 +337,18 @@ class Fuser:
             f = self.funcs[fid]
             if f.body is None or f.variadic:
                 continue
-            # first as a loop (its parameters in Rust variables, a call of
-            # itself without an LCont going back to the top); without such a
-            # call, as a chain
+            # its parameters in Rust variables (x0 ...), env the LVEnv of the
+            # Closure and full the LVEnv with the parameters if the caller
+            # has it; a call of itself without an LCont goes back to the top
+            # of a loop
             p = f.params
-            self.bails, self.labels, self.loop = set(), 0, {"fid": fid, "p": p, "used": False}
+            self.bails, self.labels, self.loop, self.head_p = set(), 0, {"fid": fid, "p": p, "used": False}, p
             out = []
             self.emit(fid, p, [(fid, j, "v") for j in range(p)], out)
-            if self.loop["used"] and fid not in self.bails:
-                gets = "".join(f"let mut x{j} = lget(&env, {p - 1 - j})?; " for j in range(p))
-                out = [f"{gets}let env = lv_skip(&env, {p});", "'l0: loop {"] + out + ["}"]
-            else:
-                self.bails, self.labels, self.loop = set(), 0, None
-                out = []
-                self.emit(fid, 0, [], out)
+            takes = "".join(f"let mut x{j} = std::mem::replace(&mut a[{j}], Value::Null); " for j in range(p))
+            if self.loop["used"]:
+                out = ["'l0: loop {"] + out + ["}"]
+            out = [f"{takes}let mut full = full;"] + out
             for x in self.bails:
                 b = self.funcs[x].body
                 if isinstance(b.lcont, int):
@@ -356,7 +358,10 @@ class Fuser:
                         heads.append(e[1])
             if fid in self.bails:
                 continue   # its first Body is not fused: keep the code above
-            calls[fid] = "\n    ".join(out)
+            directs[fid] = "\n    ".join(out)
+            reads = ", ".join(f"lget(&env, {p - 1 - j})?" for j in range(p))
+            calls[fid] = (f"let mut a: [Value; {p}] = [{reads}]; let base = lv_skip(&env, {p}); "
+                          f"DIRECT_{fid}(m, vp, base, &mut a, Some(env), gv, t)")
 
     def local(self, d, locals_, i):
         """The Rust variable of the variable with de Bruijn index i (< d), and
@@ -410,12 +415,22 @@ class Fuser:
         return None if r is None else f'chk(vp, t, {x}, "{name}", {r})?'
 
     def mat(self, d, locals_):
+        """Rust code for the LVEnv the VM would have: env with the variables
+        of the chain. The parameters of the head (the first head_p) are taken
+        from full when it is there."""
         if d == 0:
             return "env.clone()"
-        pushes = "".join(f"let e = lv_push(&e, t.funcs[{lc}].params[{j}].clone(), "
-                         f"{f'num(x{i})' if kind == 'f' else f'x{i}.clone()'}); "
-                         for i, (lc, j, kind) in enumerate(locals_))
-        return f"{{ let e = env.clone(); {pushes}e }}"
+
+        def pushes(items):
+            return "".join(f"let e = lv_push(&e, t.funcs[{lc}].params[{j}].clone(), "
+                           f"{f'num(x{i})' if kind == 'f' else f'x{i}.clone()'}); "
+                           for i, (lc, j, kind) in items)
+        hp = self.head_p
+        items = list(enumerate(locals_))
+        if hp == 0:
+            return f"{{ let e = env.clone(); {pushes(items)}e }}"
+        return (f"{{ let e = match &full {{ Some(f) => f.clone(), None => {{ let e = env.clone(); {pushes(items[:hp])}e }} }}; "
+                f"{pushes(items[hp:])}e }}")
 
     # J, the clauses the code is in: for each __if__ (or __unless__,
     # __if_then_else__) with an LCont whose clause is inlined, outermost
@@ -680,7 +695,7 @@ class Fuser:
                     lp["used"] = True
                     news = "".join(f"let v{j} = {a}; " for j, a in enumerate(args))
                     sets = "".join(f"x{j} = v{j}; " for j in range(len(args)))
-                    out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &env, gv) {{ {news}{sets}continue 'l0; }}")
+                    out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &env, gv) {{ {news}{sets}full = None; continue 'l0; }}")
                 out.append(f"let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
                 return
             # in a clause: the call's LCont is the clause's. A continuation
@@ -714,17 +729,25 @@ def translate(index, path, prim_names, out):
             used.append(name)
         return used.index(name)
     calls = [transpiled_call(funcs, prims, f, prim_index) for f in funcs]
-    Fuser(funcs, prims, tops).apply(calls)
+    directs = {}
+    Fuser(funcs, prims, tops).apply(calls, directs)
     p = f"m{index}"
-    out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in calls)} with transpiled code")
+    out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in calls)} with transpiled code, "
+               f"{len(directs)} with a direct entry")
     for f, call in zip(funcs, calls):
         if call is not None:
+            call = re.sub(r"\bDIRECT_(\d+)\b", lambda mo: f"{p}_d{mo.group(1)}", call)
             out.append(f"fn {p}_f{f.id}(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {{ {call} }}")
+        if f.id in directs:
+            out.append(f"fn {p}_d{f.id}(m: &mut Machine, vp: &mut VProc, env: LVEnv, a: &mut [Value], full: Option<LVEnv>, "
+                       f"gv: &Rc<GVEnv>, t: &Table) -> NResult {{ {directs[f.id]} }}")
     entries = ", ".join(f"Some({p}_f{f.id} as TranspiledFn)" if c is not None else "None" for f, c in zip(funcs, calls))
     out.append(f"static {p.upper()}_FNS: [Option<TranspiledFn>; {len(funcs)}] = [{entries}];")
+    dentries = ", ".join(f"Some({p}_d{f.id} as DirectFn)" if f.id in directs else "None" for f in funcs)
+    out.append(f"static {p.upper()}_DFNS: [Option<DirectFn>; {len(funcs)}] = [{dentries}];")
     names = ", ".join(f'"{n}"' for n in used)
     return (f"Module {{ hash: 0x{fnv1a(data):016x}, nfuncs: {len(funcs)}, "
-            f"prims: &[{names}], fns: &{p.upper()}_FNS }}")
+            f"prims: &[{names}], fns: &{p.upper()}_FNS, dfns: &{p.upper()}_DFNS }}")
 
 
 def prim_names_of_vm():
