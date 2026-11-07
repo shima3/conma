@@ -54,9 +54,20 @@ The transpiled VM of each commit, built with the transpiled code of the benchmar
 | values returned in an array, straight back to the Rust call | 008d091 | 0.35 s | 1.00 s | 0.36 s | 0.06 s | 0.80 s |
 | hashes of String keys written in place computed at compile time | 0506be7 | 0.30 s | 0.87 s | 0.35 s | 0.06 s | 0.81 s |
 | a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | fc38a7c | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
-| a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 67bc6d4 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
+| a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 4159838 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
+| String keys in the index of a Dict by their hash, a short text compared without `memcmp` | (next) | 0.25 s | 0.77 s | 0.31 s | 0.06 s | 0.80 s |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
-So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards, whose idle task computes its bit operations with arithmetic (ConMa has none).
+So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards (slightly faster), whose idle task computes its bit operations with arithmetic (ConMa has none).
 
 What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).
+
+### What these results do not say
+
+They are for these programs: no implementation is faster than another for every program. The cost of each kind of operation differs between the two, and a program made mostly of operations that one does better is faster there:
+
+* ConMa has no bit operations: they are written with arithmetic (as in richards), several times slower than an operator of Python.
+* Much of what a Python program does runs in C inside CPython (`sort`, the methods of `str`, `dict` and `list`), while the same work in ConMa is ConMa code.
+* Some operations take time that grows differently: `__Dict_remove__` rebuilds the index of the Dict (linear in its size; `del d[k]` in Python takes constant time on average), and `__LList_append__` copies its first list and `__LList_length__` walks the list (linear, as in Lisp; a Python list appends and gives its length in constant time). A growing sequence is an MSeq in ConMa.
+* The transpiled VM is fast only where the transpiled code runs as expected: a module without transpiled code (any module not built into the VM, `vm/conma2rust/build.sh`), and the Bodies a fused chain hands back to the code of the Bodies, run at the speed of the Rust VM.
+* The comparison is with CPython 3.9.6; later versions of CPython run pure Python code faster.

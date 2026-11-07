@@ -254,70 +254,43 @@ pub const fn str_hash(s: &str) -> u64 {
     h ^ (h >> 29)
 }
 
-/// A String key in the index, with its str_hash.
+/// The String keys of the index with one str_hash: almost always one.
 #[derive(Clone)]
-struct StrKey {
-    hash: u64,
-    text: Box<str>,
+enum StrSlot {
+    One(Box<str>, usize),
+    Many(Vec<(Box<str>, usize)>),
 }
 
-/// A String key as the index looks it up: a StrKey, or a text with its hash.
-trait StrLike {
-    fn key_hash(&self) -> u64;
-    fn key_text(&self) -> &str;
-}
-
-impl StrLike for StrKey {
-    fn key_hash(&self) -> u64 {
-        self.hash
-    }
-    fn key_text(&self) -> &str {
-        &self.text
+impl StrSlot {
+    #[inline]
+    fn get(&self, text: &str) -> Option<usize> {
+        match self {
+            StrSlot::One(t, i) => same_text(t, text).then_some(*i),
+            StrSlot::Many(v) => v.iter().find(|(t, _)| same_text(t, text)).map(|(_, i)| *i),
+        }
     }
 }
 
-impl StrLike for (u64, &str) {
-    fn key_hash(&self) -> u64 {
-        self.0
+/// Whether two texts are the same: a short one byte by byte, without a call
+/// of memcmp.
+#[inline]
+fn same_text(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
     }
-    fn key_text(&self) -> &str {
-        self.1
+    if a.len() > 16 {
+        return a == b;
     }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
-
-impl<'a> std::borrow::Borrow<dyn StrLike + 'a> for StrKey {
-    fn borrow(&self) -> &(dyn StrLike + 'a) {
-        self
-    }
-}
-
-impl std::hash::Hash for dyn StrLike + '_ {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u64(self.key_hash());
-    }
-}
-
-impl PartialEq for dyn StrLike + '_ {
-    fn eq(&self, other: &Self) -> bool {
-        self.key_hash() == other.key_hash() && self.key_text() == other.key_text()
-    }
-}
-
-impl Eq for dyn StrLike + '_ {}
-
-impl std::hash::Hash for StrKey {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u64(self.hash);
-    }
-}
-
-impl PartialEq for StrKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.hash == other.hash && self.text == other.text
-    }
-}
-
-impl Eq for StrKey {}
 
 /// The hasher of the String index: the key is hashed already (str_hash).
 #[derive(Default, Clone, Copy)]
@@ -339,7 +312,8 @@ impl std::hash::Hasher for HashedHasher {
 /// String), other keys by their DictKey.
 #[derive(Default, Clone)]
 pub struct DictIndex {
-    strs: HashMap<StrKey, usize, std::hash::BuildHasherDefault<HashedHasher>>,
+    /// String keys by their str_hash (the hash map compares only the u64).
+    strs: HashMap<u64, StrSlot, std::hash::BuildHasherDefault<HashedHasher>>,
     others: HashMap<DictKey, usize, FxBuild>,
 }
 
@@ -378,7 +352,7 @@ impl DictObj {
     /// find_str with the str_hash of the text.
     #[inline]
     pub fn find_str_hashed(&self, text: &str, hash: u64) -> Option<usize> {
-        self.index.borrow().strs.get(&(hash, text) as &dyn StrLike).copied()
+        self.index.borrow().strs.get(&hash).and_then(|slot| slot.get(text))
     }
 }
 
@@ -387,7 +361,7 @@ impl DictIndex {
     /// the index (NaN).
     pub fn get(&self, k: &IndexKey) -> Result<Option<usize>, ()> {
         match k {
-            IndexKey::Str(s) => Ok(self.strs.get(&(str_hash(s), &**s) as &dyn StrLike).copied()),
+            IndexKey::Str(s) => Ok(self.strs.get(&str_hash(s)).and_then(|slot| slot.get(s))),
             IndexKey::Other(d) => Ok(self.others.get(d).copied()),
             IndexKey::None => Err(()),
         }
@@ -395,7 +369,28 @@ impl DictIndex {
     pub fn insert(&mut self, k: IndexKey, i: usize) {
         match k {
             IndexKey::Str(s) => {
-                self.strs.insert(StrKey { hash: str_hash(&s), text: s.into_owned().into_boxed_str() }, i);
+                let text: Box<str> = s.into_owned().into_boxed_str();
+                match self.strs.entry(str_hash(&text)) {
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert(StrSlot::One(text, i));
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        let slot = e.get_mut();
+                        if let StrSlot::One(t, j) = slot {
+                            if same_text(t, &text) {
+                                *j = i;
+                                return;
+                            }
+                            *slot = StrSlot::Many(vec![(t.clone(), *j)]);
+                        }
+                        if let StrSlot::Many(v) = slot {
+                            match v.iter_mut().find(|(t, _)| same_text(t, &text)) {
+                                Some((_, j)) => *j = i,
+                                None => v.push((text, i)),
+                            }
+                        }
+                    }
+                }
             }
             IndexKey::Other(d) => {
                 self.others.insert(d, i);
