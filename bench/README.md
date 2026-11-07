@@ -54,8 +54,9 @@ The transpiled VM of each commit, built with the transpiled code of the benchmar
 | values returned in an array, straight back to the Rust call | 008d091 | 0.35 s | 1.00 s | 0.36 s | 0.06 s | 0.80 s |
 | hashes of String keys written in place computed at compile time | 0506be7 | 0.30 s | 0.87 s | 0.35 s | 0.06 s | 0.81 s |
 | a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | fc38a7c | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
+| a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 67bc6d4 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
-So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and about as fast for richards (4% slower), whose idle task computes its bit operations with arithmetic (ConMa has none).
+So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards, whose idle task computes its bit operations with arithmetic (ConMa has none).
 
 What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).

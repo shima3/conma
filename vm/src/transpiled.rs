@@ -1103,6 +1103,17 @@ pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64
     Ok(o.find_str_hashed(text, hash).map(|i| o.entries.borrow()[i].1.clone()))
 }
 
+/// __Dict_lookup_or__ with a String key written in place, for a value that the
+/// chain uses only as conditions: whether it is true, tested in the Dict
+/// without cloning it. None if d is not a Dict, the key is missing or the
+/// value is not a Boolean (the code of the Body does the lookup then).
+#[inline]
+pub fn d_dict_lookup_bool_str(d: &Value, text: &str, hash: u64) -> Option<bool> {
+    let Value::Dict(o) = d else { return None };
+    let i = o.find_str_hashed(text, hash)?;
+    boolean_choice(&o.entries.borrow()[i].1)
+}
+
 /// __Dict_put__ with a String key written in place (operand 1 of the Body of
 /// Function fid).
 #[inline]

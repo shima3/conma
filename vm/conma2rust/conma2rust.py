@@ -324,6 +324,7 @@ class Fuser:
         self.funcs, self.prims, self.tops = funcs, prims, tops
         self.loop = None
         self.head_p = 0
+        self.bails, self.retries, self.labels = set(), set(), 0
 
     def apply(self, calls, directs):
         heads = list(self.tops)
@@ -347,13 +348,14 @@ class Fuser:
             # of a loop
             p = f.params
             self.bails, self.labels, self.loop, self.head_p = set(), 0, {"fid": fid, "p": p, "used": False}, p
+            self.retries = set()
             out = []
             self.emit(fid, p, [(fid, j, "v") for j in range(p)], out)
             takes = "".join(f"let mut x{j} = std::mem::replace(&mut a[{j}], Value::Null); " for j in range(p))
             if self.loop["used"]:
                 out = ["'l0: loop {"] + out + ["}"]
             out = [f"{takes}let mut full = full;"] + out
-            for x in self.bails:
+            for x in self.bails | self.retries:
                 b = self.funcs[x].body
                 if isinstance(b.lcont, int):
                     heads.append(b.lcont)
@@ -415,6 +417,30 @@ class Fuser:
         if e[0] == "X":
             return ALL
         return set()
+
+    def use_kinds(self, fid, i):
+        """How the Body of fid and what it contains use the variable with de
+        Bruijn index i (in the LVEnv of the Body): a set of "cond" (as the
+        condition of __if_then_else__, __if__ or __unless__) and "other"."""
+        b = self.funcs[fid].body
+        kinds = set()
+        if b is None:
+            return kinds
+        if b.lcont == "value":
+            return {"other"}
+        op = b.operator
+        name = self.prims.get(op[1]) if op is not None and op[0] == "G" else None
+        for k, e in enumerate(([op] if op is not None else []) + b.olist):
+            if e[0] == "L" and e[1] == i:
+                is_cond = name in IFS and op is not None and k == 1 and len(b.olist) == IFS[name]
+                kinds.add("cond" if is_cond else "other")
+            elif e[0] == "F":
+                kinds |= self.use_kinds(e[1], i + self.funcs[e[1]].params)
+            elif e[0] == "X":
+                kinds.add("other")
+        if isinstance(b.lcont, int):
+            kinds |= self.use_kinds(b.lcont, i + self.funcs[b.lcont].params)
+        return kinds
 
     def live(self, x, dx, J):
         """The chain variables (by index) read by Function x's Body run at
@@ -575,8 +601,11 @@ class Fuser:
             self.push_joins(J, out)
             out.append(f"return fused_return(m, vp, env, {self.sinfo(x)}, v);")
 
-    def bail(self, x, d, locals_, out, J=()):
-        self.bails.add(x)
+    def bail(self, x, d, locals_, out, J=(), retry=False):
+        """Enter the code of Function x's Body above, with the LVEnv the VM
+        would have. With retry, x is fused, and its code above is for a case
+        the chain leaves to it (not a Body it cannot run)."""
+        (self.retries if retry else self.bails).add(x)
         self.push_joins(J, out)
         out.append(f"return Ok(Next::Enter({x}, {self.mat(d, locals_)}));")
 
@@ -644,6 +673,14 @@ class Fuser:
                 out.append(f'd_dict_put_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2){err};')
                 out.append("let o = Out::R0;")
                 return self.direct_result(x, d, locals_, lc, out, J)
+            if one and self.use_kinds(lc, 0) == {"cond"}:
+                # a value used only as conditions: a bool, the value tested in
+                # the Dict; a missing key or a value that is not a Boolean is
+                # left to the code of this Body
+                out.append(f'let x{d}: bool = match d_dict_lookup_bool_str(a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}) {{ Some(b) => b, None => {{')
+                self.bail(x, d, locals_, out, J, retry=True)
+                out.append("} };")
+                return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
             # the value, or onMissing applied to the key (evaluated only then)
             out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}){err} {{ Some(v) => Out::R1(v), '
                        f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
