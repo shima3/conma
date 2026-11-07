@@ -63,7 +63,7 @@ pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> PResult {
         },
     };
     m.serials.conts += 1;
-    let k = Value::Cont(Rc::new(ContObj { serial: m.serials.conts, cchain: vp.cchain.clone() }));
+    let k = Value::Cont(Rc::new(ContObj::new(m.serials.conts, vp.cchain.clone())));
     vp.operator = lc;
     vp.olist = vec![k];
     Ok(())

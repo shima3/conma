@@ -146,9 +146,10 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
         Value::Cont(k) => {
             // Set the CChain back and return to the caller's LCont with all the operands.
             vp.lcont = None;
-            match crate::vproc::cchain_split(&k.cchain) {
+            let kc = k.cchain.borrow().clone();
+            match crate::vproc::cchain_split(&kc) {
                 None => {
-                    vp.cchain = k.cchain.clone();
+                    vp.cchain = kc;
                     vp.operator = Value::Null;
                     vp.olist = Vec::new();
                 }

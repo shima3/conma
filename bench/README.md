@@ -31,5 +31,7 @@ The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; 
 | + operands of direct primitives by reference | 1.08 s | 1.9 |
 | + Numbers as `f64` | 0.91 s | 1.55 |
 | + String keys written in place looked up by their text | 0.72 s | 1.24 |
+| + calls with an LCont as Rust calls in fused chains | 0.67 s | 1.18 |
+| + `onMissing` evaluated only when the key is missing, `chk` inlined | 0.51 s | 0.89 |
 
-What is left is mostly calls with an LCont (`pairs_step` calling `pair_step`), where the fused chain makes the LVEnv and the VM makes the LCont Closure and the CFrame, and the Dict lookups themselves.
+With these, the transpiled VM runs nbody a little faster than CPython 3.9.6 (0.51 s against 0.57 s).

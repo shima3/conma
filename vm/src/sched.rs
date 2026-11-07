@@ -40,6 +40,8 @@ pub struct Machine {
     pub transpiled_on: bool,
     /// Step counts for CONMA_PROFILE.
     pub profile: Option<crate::profile::Profile>,
+    /// The Rust calls of native code that are running (vm/src/native.rs).
+    pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
     joining: Vec<(VProcRef, VProcRef)>,
     /// (VProc, LazyList) waiting for another VProc to evaluate a LazyList.
@@ -203,6 +205,7 @@ impl Machine {
             trace,
             transpiled_on: false,
             profile: crate::profile::Profile::from_env(),
+            nctx: Default::default(),
             joining: Vec::new(),
             lazy: Vec::new(),
             changes: Vec::new(),

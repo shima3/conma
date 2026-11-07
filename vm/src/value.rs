@@ -4,7 +4,7 @@
 use crate::module::{BodyDef, GVEnv};
 use crate::prim::PrimDef;
 use crate::sexp::Sexp;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -300,7 +300,18 @@ impl DictIndex {
 /// The CChain of the caller of the function that called __Cont_get__.
 pub struct ContObj {
     pub serial: usize,
-    pub cchain: Value,
+    /// Changed only by native code (vm/src/native.rs): a continuation made
+    /// while native code runs a call as a Rust call has a CChain without the
+    /// CFrames of the pending Rust calls, and gets them when they end.
+    pub cchain: RefCell<Value>,
+    /// The Rust call of native code that made it (native::Frame), or 0.
+    pub owner: Cell<u64>,
+}
+
+impl ContObj {
+    pub fn new(serial: usize, cchain: Value) -> ContObj {
+        ContObj { serial, cchain: RefCell::new(cchain), owner: Cell::new(0) }
+    }
 }
 
 /// A key that is equal for two values exactly when values_equal holds.

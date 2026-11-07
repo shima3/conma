@@ -17,7 +17,11 @@ vm/src/transpiled.rs:
 * prim_call: the Operator is a primitive of CHAIN (one that only works on its
   operands and returns its results or applies onError), with an LCont written
   in place or none.
-* null_pass: the Operator is __NULL__ with an LCont written in place.
+* null_pass: the Operator is __NULL__, with an LCont written in place or
+  none (a return).
+* call: the Operator is a variable that is not a primitive: a call of a
+  Closure of the module with transpiled code is run in place, as a Rust call
+  (vm/src/transpiled.rs, rust_call) if the LCont is written in place.
 * if_call: __if_then_else__, __if__ or __unless__. A condition `(,() p a ...)`
   with a primitive p of PURE is computed in place; clauses `(,() ...)` are
   run in place.
@@ -248,8 +252,10 @@ def transpiled_call(funcs, prims, f, prim_index):
     lc = "None" if b.lcont is None else f"Some({b.lcont})"
     op = b.operator
     if op == ("Null",):
-        return None if b.lcont is None else f"null_pass(vp, env, gv, t, {f.id}, {b.lcont})"
-    if op[0] != "G" or op[1] not in prims:
+        return f"null_pass(vp, env, gv, t, {f.id}, {lc})"
+    if op[0] == "L" or (op[0] == "G" and op[1] not in prims):
+        return f"call(m, vp, env, gv, t, {f.id}, {lc})"
+    if op[0] != "G":
         return None
     name = prims[op[1]]
     if name in IFS:
@@ -295,7 +301,9 @@ def transpiled_call(funcs, prims, f, prim_index):
 # the variables they bind in Rust variables instead of LVEnv nodes:
 # primitives of DIRECT, __NULL__, __if_then_else__, __if__ and __unless__
 # without an LCont and with clauses written in place (both are inlined), and
-# at the end a return or a call without an LCont (left to `apply`). At any
+# calls with an LCont (Rust calls, vm/src/transpiled.rs fused_call; the chain
+# binds the values they return), and at the end a return or a call without an
+# LCont (left to `apply`). At any
 # other Body it makes the LVEnv the VM would have (the LVEnv it started with
 # and its variables) and enters the code of that Body above ("bail"), so the
 # results are those of the VM.
@@ -439,10 +447,16 @@ class Fuser:
                 and self.rref(x, d, b.olist[0], 0, locals_) is not None):
             # a String key written in place: its text, without escapes
             text = key[1][1:-1]
-            fn = "d_dict_lookup_str" if name == "__Dict_lookup_or__" else "d_dict_put_str"
+            err = f".map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?"
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
-            out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
-            out.append(f'let o = {fn}(m, a0, "{text}", cref(t, {x}, 1), a2).map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?;')
+            if name == "__Dict_put__":
+                out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
+                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", a2){err};')
+                out.append("let o = Out::R0;")
+                return self.direct_result(x, d, locals_, lc, out)
+            # the value, or onMissing applied to the key (evaluated only then)
+            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}"){err} {{ Some(v) => Out::R1(v), '
+                       f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
             return self.direct_result(x, d, locals_, lc, out)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
             fn = DIRECT[name][0]
@@ -519,6 +533,24 @@ class Fuser:
             out.append("}")
             return
         callable_op = op[0] == "L" or (op[0] == "G" and op[1] not in self.prims)
+        f_ref = self.ref(x, d, op, "operator", locals_) if callable_op else None
+        if callable_op and isinstance(lc, int) and None not in args and f_ref is not None:
+            # a call with an LCont: a Rust call, whose values the chain binds
+            g = self.funcs[lc]
+            mat = self.mat(d, locals_)
+            out.append(f"let f = {f_ref};")
+            out.append(f"let v = vec![{', '.join(args)}];")
+            out.append(f"let o = fused_call(m, vp, f, v, gv, t, {lc}, &|| {mat}, {self.sinfo(x)})?;")
+            if g.variadic:
+                out.append(f"match o {{ Called::Values(v) => return fused_pass(vp, gv, t, {lc}, {mat}, v), Called::Next(n) => return Ok(n) }}")
+                return
+            out.append(f"let v = match o {{ Called::Values(v) if v.len() == {g.params} => v, "
+                       f"Called::Values(v) => return fused_pass(vp, gv, t, {lc}, {mat}, v), Called::Next(n) => return Ok(n) }};")
+            if g.params:
+                out.append("let mut v = v.into_iter();")
+                for j in range(g.params):
+                    out.append(f"let x{d + j} = v.next().unwrap();")
+            return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out)
         if callable_op and lc is None and None not in args:
             f_code = self.ref(x, d, op, "operator", locals_)
             out.append(f"let f = {f_code};")
