@@ -37,6 +37,7 @@ use crate::sched::Machine;
 use crate::step::{eval, load_body_interp};
 use crate::value::*;
 use crate::vproc::VProc;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// What `run` does next.
@@ -166,6 +167,33 @@ pub struct Table {
     pub prims: Vec<&'static PrimDef>,
     /// The PrimDefs of SAFE_PRIMS.
     safe: Vec<*const PrimDef>,
+    /// For each Function, how often a Rust call of it returned values and
+    /// how often it was left (to the VM, or by an escape): see rust_ok.
+    rust_calls: Vec<(Cell<u32>, Cell<u32>)>,
+}
+
+impl Table {
+    /// Whether to call Function fid as a Rust call. A Rust call that is left
+    /// costs more than a call made as the VM makes it (its LCont, LVEnv and
+    /// CFrame are made then after all, and the CChain is spliced), so a
+    /// Function whose Rust calls are left more than 8 times, and more than a
+    /// third as often as they return values, is called as the VM calls it
+    /// from then on (ConSh, whose commands reach a step of the VM through many
+    /// calls; the Functions of nbody are never left).
+    #[inline]
+    pub fn rust_ok(&self, fid: usize) -> bool {
+        let (values, left) = &self.rust_calls[fid];
+        let left = left.get();
+        left <= 8 || left * 3 <= values.get()
+    }
+
+    fn note(&self, fid: usize, r: &Result<Ret, VmError>) {
+        let (values, left) = &self.rust_calls[fid];
+        match r {
+            Ok(Ret::Values) => values.set(values.get().saturating_add(1)),
+            _ => left.set(left.get().saturating_add(1)),
+        }
+    }
 }
 
 mod generated {
@@ -197,7 +225,8 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     }
     let mut safe: Vec<*const PrimDef> = SAFE_PRIMS.iter().filter_map(|n| crate::prim::lookup(n)).map(|p| p as *const PrimDef).collect();
     safe.sort();
-    Some(Rc::new(Table { funcs, fns: m.fns, prims, safe }))
+    let rust_calls = (0..funcs.len()).map(|_| (Cell::new(0), Cell::new(0))).collect();
+    Some(Rc::new(Table { funcs, fns: m.fns, prims, safe, rust_calls }))
 }
 
 // ── The loop ──
@@ -412,6 +441,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
     let r = drive(m, vp, Next::Enter(fid, env), gv, t);
     let f = m.nctx.frames.pop().expect("the Frame of a Rust call");
+    t.note(fid, &r);
     // The CFrame the VM would have pushed, made only when it is needed.
     let mut node: Option<Value> = None;
     let node_of = |node: &mut Option<Value>| -> Value {
@@ -482,7 +512,7 @@ pub fn fused_call(m: &mut Machine, vp: &mut VProc, f: Value, args: Vec<Value>, g
         }
         _ => None,
     };
-    let rust = m.nctx.budget > 0 && m.nctx.frames.len() < MAX_DEPTH;
+    let rust = m.nctx.budget > 0 && m.nctx.frames.len() < MAX_DEPTH && target.as_ref().is_some_and(|(_, cf)| t.rust_ok(*cf));
     let Some((c, cf)) = target.filter(|_| rust) else {
         vp.operator = f;
         vp.olist.clear();
@@ -659,7 +689,12 @@ pub fn call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Tab
     vp.operator = Value::Null;
     vp.lcont = None;
     match lc {
-        Some(l) => rust_call(m, vp, cf, e, gv, t, l, env, b.sinfo.clone()),
+        Some(l) if t.rust_ok(cf) => rust_call(m, vp, cf, e, gv, t, l, env, b.sinfo.clone()),
+        Some(l) => {
+            let lcv = make_closure(&t.funcs[l], &env, Some(gv));
+            vp.cchain_push(lcv, b.sinfo.clone());
+            Ok(Next::Enter(cf, e))
+        }
         None => Ok(Next::Enter(cf, e)),
     }
 }
@@ -717,7 +752,13 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
     match lc {
         Some(l) => {
             let sinfo = b.sinfo.clone();
-            rust_call(m, vp, cf, env.clone(), gv, t, l, env, sinfo)
+            if t.rust_ok(cf) {
+                rust_call(m, vp, cf, env.clone(), gv, t, l, env, sinfo)
+            } else {
+                let lcv = make_closure(&t.funcs[l], &env, Some(gv));
+                vp.cchain_push(lcv, sinfo);
+                Ok(Next::Enter(cf, env))
+            }
         }
         None => Ok(Next::Enter(cf, env)),
     }
