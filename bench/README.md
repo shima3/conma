@@ -42,20 +42,20 @@ Apple M4, CPython 3.9.6, times in user + sys seconds (best of 3), including the 
 
 ### Effect of each change: since then
 
-The transpiled VM of each commit, built with the transpiled code of the benchmarks and timed together with CPython (user + sys, best of 5). All of them print the same. ConSh: the 15,000 function calls of `for i in $(seq 1 15000); do add $i x > (r); done` (user time, measured when the commit was made, with the transpiled code of ConSh).
+The transpiled VM after each change, built with the transpiled code of the benchmarks and timed together with CPython (user + sys, best of 5). All of them print the same. ConSh: the 15,000 function calls of `for i in $(seq 1 15000); do add $i x > (r); done` (user time, measured when the change was made, with the transpiled code of ConSh).
 
-| Change | Commit | nbody 100000 | richards 20 | fib 32 | loop 10000000 | ConSh |
+| Change | Date | nbody 100000 | richards 20 | fib 32 | loop 10000000 | ConSh |
 |---|---|---|---|---|---|---|
-| before: calls with an LCont as Rust calls, `__Cont_get__` and `__if__` with an LCont in fused chains | af7fcff | 0.49 s | 2.10 s | 0.68 s | 0.65 s | 0.89 s |
-| a function that calls itself without an LCont as a Rust loop | 94ebbc7 | 0.40 s | 1.98 s | 0.68 s | 0.12 s | 0.92 s |
-| arguments passed to a direct entry of the function called, not through an LVEnv | 76bee68 | 0.38 s | 1.77 s | 0.48 s | 0.12 s | 0.90 s |
-| `__Number_floor__` computed on `f64` in fused chains | c8c9fda | 0.37 s | 1.19 s | 0.48 s | 0.12 s | — |
-| last uses of variables moved, not cloned; Booleans of `__is_null__` and the Number predicates as Rust `bool`s | df896d6 | 0.35 s | 1.03 s | 0.39 s | 0.06 s | 0.81 s |
-| values returned in an array, straight back to the Rust call | 008d091 | 0.35 s | 1.00 s | 0.36 s | 0.06 s | 0.80 s |
-| hashes of String keys written in place computed at compile time | 0506be7 | 0.30 s | 0.87 s | 0.35 s | 0.06 s | 0.81 s |
-| a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | fc38a7c | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
-| a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 4159838 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
-| String keys in the index of a Dict by their hash, a short text compared without `memcmp` | 44f3fad | 0.25 s | 0.77 s | 0.31 s | 0.06 s | 0.80 s |
+| before: calls with an LCont as Rust calls, `__Cont_get__` and `__if__` with an LCont in fused chains | 2026-11-07 | 0.49 s | 2.10 s | 0.68 s | 0.65 s | 0.89 s |
+| a function that calls itself without an LCont as a Rust loop | 2026-11-07 | 0.40 s | 1.98 s | 0.68 s | 0.12 s | 0.92 s |
+| arguments passed to a direct entry of the function called, not through an LVEnv | 2026-11-07 | 0.38 s | 1.77 s | 0.48 s | 0.12 s | 0.90 s |
+| `__Number_floor__` computed on `f64` in fused chains | 2026-11-07 | 0.37 s | 1.19 s | 0.48 s | 0.12 s | — |
+| last uses of variables moved, not cloned; Booleans of `__is_null__` and the Number predicates as Rust `bool`s | 2026-11-07 | 0.35 s | 1.03 s | 0.39 s | 0.06 s | 0.81 s |
+| values returned in an array, straight back to the Rust call | 2026-11-07 | 0.35 s | 1.00 s | 0.36 s | 0.06 s | 0.80 s |
+| hashes of String keys written in place computed at compile time | 2026-11-07 | 0.30 s | 0.87 s | 0.35 s | 0.06 s | 0.81 s |
+| a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | 2026-11-08 | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
+| a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 2026-11-08 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
+| String keys in the index of a Dict by their hash, a short text compared without `memcmp` | 2026-11-08 | 0.25 s | 0.77 s | 0.31 s | 0.06 s | 0.80 s |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
 So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards (slightly faster), whose idle task computes its bit operations with arithmetic (ConMa has none).
