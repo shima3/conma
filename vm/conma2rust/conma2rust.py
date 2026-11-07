@@ -305,7 +305,9 @@ def transpiled_call(funcs, prims, f, prim_index):
 # what the clause returns, the LCont going on after it), and
 # calls with an LCont (Rust calls, vm/src/transpiled.rs fused_call; the chain
 # binds the values they return), and at the end a return or a call without an
-# LCont (left to `apply`). At any
+# LCont (left to `apply`). A call of the Closure running without an LCont
+# (outside clauses with an LCont) makes the Function a Rust loop: its
+# parameters in Rust variables, set to the new arguments (self_call). At any
 # other Body it makes the LVEnv the VM would have (the LVEnv it started with
 # and its variables) and enters the code of that Body above ("bail"), so the
 # results are those of the VM.
@@ -313,6 +315,7 @@ def transpiled_call(funcs, prims, f, prim_index):
 class Fuser:
     def __init__(self, funcs, prims, tops):
         self.funcs, self.prims, self.tops = funcs, prims, tops
+        self.loop = None
 
     def apply(self, calls):
         heads = list(self.tops)
@@ -330,10 +333,20 @@ class Fuser:
             f = self.funcs[fid]
             if f.body is None or f.variadic:
                 continue
-            self.bails = set()
-            self.labels = 0
+            # first as a loop (its parameters in Rust variables, a call of
+            # itself without an LCont going back to the top); without such a
+            # call, as a chain
+            p = f.params
+            self.bails, self.labels, self.loop = set(), 0, {"fid": fid, "p": p, "used": False}
             out = []
-            self.emit(fid, 0, [], out)
+            self.emit(fid, p, [(fid, j, "v") for j in range(p)], out)
+            if self.loop["used"] and fid not in self.bails:
+                gets = "".join(f"let mut x{j} = lget(&env, {p - 1 - j})?; " for j in range(p))
+                out = [f"{gets}let env = lv_skip(&env, {p});", "'l0: loop {"] + out + ["}"]
+            else:
+                self.bails, self.labels, self.loop = set(), 0, None
+                out = []
+                self.emit(fid, 0, [], out)
             for x in self.bails:
                 b = self.funcs[x].body
                 if isinstance(b.lcont, int):
@@ -660,6 +673,14 @@ class Fuser:
         if callable_op and lc is None and None not in args:
             out.append(f"let f = {f_ref};")
             if not J:
+                lp = self.loop
+                if lp is not None and len(args) == lp["p"]:
+                    # the Closure running (same Function and LVEnv): its new
+                    # arguments in the parameters' variables, and again
+                    lp["used"] = True
+                    news = "".join(f"let v{j} = {a}; " for j, a in enumerate(args))
+                    sets = "".join(f"x{j} = v{j}; " for j in range(len(args)))
+                    out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &env, gv) {{ {news}{sets}continue 'l0; }}")
                 out.append(f"let v = vec![{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
                 return
             # in a clause: the call's LCont is the clause's. A continuation

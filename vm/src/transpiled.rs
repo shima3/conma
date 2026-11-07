@@ -913,6 +913,47 @@ pub fn lget(env: &LVEnv, i: usize) -> Result<Value, VmError> {
     }
 }
 
+/// The LVEnv env without its first n nodes (the parameters of the Function
+/// it was made for): the LVEnv of the Closure.
+pub fn lv_skip(env: &LVEnv, n: usize) -> LVEnv {
+    let mut e = env;
+    for _ in 0..n {
+        match e {
+            Some(node) => e = &node.next,
+            None => break,
+        }
+    }
+    e.clone()
+}
+
+/// Whether the call of f without an LCont, with n operands, at the end of a
+/// fused chain that loops (Function fid with n parameters, run in a Closure
+/// with the LVEnv base) calls that same Closure again: the chain then binds
+/// the new arguments and starts again. The call counts against the budget
+/// as `apply` would count it, so that a loop lets the other VProcs run.
+#[inline]
+pub fn self_call(m: &mut Machine, vp: &VProc, f: &Value, fid: usize, n: usize, base: &LVEnv, gv: &Rc<GVEnv>) -> bool {
+    if m.nctx.budget == 0 {
+        return false;
+    }
+    let Value::Closure(c) = f else { return false };
+    let same_env = match (&c.lvenv, base) {
+        (None, None) => true,
+        (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+        _ => false,
+    };
+    let same_module = match &c.gvenv {
+        Some(g) => Rc::ptr_eq(g, gv),
+        None => Rc::ptr_eq(&vp.gvenv, gv),
+    };
+    let ok = same_env && same_module && !c.variadic && c.skip == 0 && c.params.len() == n
+        && c.body.as_ref().and_then(|b| b.func_id) == Some(fid);
+    if ok {
+        m.nctx.budget -= 1;
+    }
+    ok
+}
+
 /// Return the values to the LCont or CChain, as the VM does for a Body
 /// without an LCont (`__NULL__ a ...`, or a Boolean clause that is missing).
 pub fn fused_return(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, values: Vec<Value>) -> NResult {

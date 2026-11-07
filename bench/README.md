@@ -33,5 +33,6 @@ The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; 
 | + String keys written in place looked up by their text | 0.72 s | 1.24 |
 | + calls with an LCont as Rust calls in fused chains | 0.67 s | 1.18 |
 | + `onMissing` evaluated only when the key is missing, `chk` inlined | 0.51 s | 0.89 |
+| + calls of a function to itself without an LCont as Rust loops | 0.43 s | 0.72 |
 
-With these, the transpiled VM runs nbody a little faster than CPython 3.9.6 (0.51 s against 0.57 s).
+With these, the transpiled VM runs nbody faster than CPython 3.9.6 (0.43 s against 0.60 s, measured together).
