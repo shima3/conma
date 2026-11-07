@@ -634,17 +634,18 @@ class Fuser:
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None
         if (key is not None and key[0] == "C" and key[1] and "\\" not in key[1] and None not in args
                 and self.rref(x, d, b.olist[0], 0, locals_) is not None):
-            # a String key written in place: its text, without escapes
+            # a String key written in place: its text, without escapes, and
+            # its hash in the Dict index (computed by the Rust compiler)
             text = key[1][1:-1]
             err = f".map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?"
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
             if name == "__Dict_put__":
                 out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
-                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", a2){err};')
+                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2){err};')
                 out.append("let o = Out::R0;")
                 return self.direct_result(x, d, locals_, lc, out, J)
             # the value, or onMissing applied to the key (evaluated only then)
-            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}"){err} {{ Some(v) => Out::R1(v), '
+            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}){err} {{ Some(v) => Out::R1(v), '
                        f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
             return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:

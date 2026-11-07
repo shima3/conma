@@ -1089,17 +1089,17 @@ fn chk_error(vp: &mut VProc, t: &Table, fid: usize, name: &str, v: &Value) -> Re
 /// the value, or None if the key is missing (the chain then applies
 /// onMissing, which it evaluates only then).
 #[inline]
-pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str) -> Result<Option<Value>, VmError> {
+pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64) -> Result<Option<Value>, VmError> {
     let Value::Dict(o) = d else { return collections::dict_lookup_core(d, cref(t, fid, 1)) };
-    Ok(o.find_str(text).map(|i| o.entries.borrow()[i].1.clone()))
+    Ok(o.find_str_hashed(text, hash).map(|i| o.entries.borrow()[i].1.clone()))
 }
 
 /// __Dict_put__ with a String key written in place (operand 1 of the Body of
 /// Function fid).
 #[inline]
-pub fn d_dict_put_str(t: &Table, fid: usize, d: &Value, text: &str, value: &Value) -> Result<(), VmError> {
+pub fn d_dict_put_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, value: &Value) -> Result<(), VmError> {
     let Value::Dict(o) = d else { return collections::dict_put_core(d, cref(t, fid, 1).clone(), value.clone()) };
-    let found = o.find_str(text);
+    let found = o.find_str_hashed(text, hash);
     match found {
         Some(i) => o.entries.borrow_mut()[i].1 = value.clone(),
         None => o.append(cref(t, fid, 1).clone(), value.clone()).map_err(VmError::Error)?,

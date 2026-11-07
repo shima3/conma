@@ -229,11 +229,117 @@ impl FxHasher {
 
 pub type FxBuild = std::hash::BuildHasherDefault<FxHasher>;
 
+/// The hash of a String key in the index of a Dict: Fx over its bytes, with
+/// the high bits mixed into the low ones. A const fn, so that transpiled code
+/// has the hash of a key written in place as a constant.
+pub const fn str_hash(s: &str) -> u64 {
+    const K: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+    let b = s.as_bytes();
+    let mut h: u64 = 0;
+    let mut i = 0;
+    while i + 8 <= b.len() {
+        let w = u64::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3], b[i + 4], b[i + 5], b[i + 6], b[i + 7]]);
+        h = (h.rotate_left(5) ^ w).wrapping_mul(K);
+        i += 8;
+    }
+    if i < b.len() {
+        let mut w: u64 = 0;
+        let mut k = 0;
+        while i + k < b.len() {
+            w |= (b[i + k] as u64) << (8 * k);
+            k += 1;
+        }
+        h = (h.rotate_left(5) ^ (w ^ ((k as u64) << 56))).wrapping_mul(K);
+    }
+    h ^ (h >> 29)
+}
+
+/// A String key in the index, with its str_hash.
+#[derive(Clone)]
+struct StrKey {
+    hash: u64,
+    text: Box<str>,
+}
+
+/// A String key as the index looks it up: a StrKey, or a text with its hash.
+trait StrLike {
+    fn key_hash(&self) -> u64;
+    fn key_text(&self) -> &str;
+}
+
+impl StrLike for StrKey {
+    fn key_hash(&self) -> u64 {
+        self.hash
+    }
+    fn key_text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl StrLike for (u64, &str) {
+    fn key_hash(&self) -> u64 {
+        self.0
+    }
+    fn key_text(&self) -> &str {
+        self.1
+    }
+}
+
+impl<'a> std::borrow::Borrow<dyn StrLike + 'a> for StrKey {
+    fn borrow(&self) -> &(dyn StrLike + 'a) {
+        self
+    }
+}
+
+impl std::hash::Hash for dyn StrLike + '_ {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u64(self.key_hash());
+    }
+}
+
+impl PartialEq for dyn StrLike + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key_hash() == other.key_hash() && self.key_text() == other.key_text()
+    }
+}
+
+impl Eq for dyn StrLike + '_ {}
+
+impl std::hash::Hash for StrKey {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u64(self.hash);
+    }
+}
+
+impl PartialEq for StrKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && self.text == other.text
+    }
+}
+
+impl Eq for StrKey {}
+
+/// The hasher of the String index: the key is hashed already (str_hash).
+#[derive(Default, Clone, Copy)]
+pub struct HashedHasher(u64);
+
+impl std::hash::Hasher for HashedHasher {
+    fn write(&mut self, _: &[u8]) {
+        unreachable!("String keys are hashed with str_hash")
+    }
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
 /// The index of a Dict: String keys by their text (looked up without making a
 /// String), other keys by their DictKey.
 #[derive(Default, Clone)]
 pub struct DictIndex {
-    strs: HashMap<Box<str>, usize, FxBuild>,
+    strs: HashMap<StrKey, usize, std::hash::BuildHasherDefault<HashedHasher>>,
     others: HashMap<DictKey, usize, FxBuild>,
 }
 
@@ -266,7 +372,13 @@ impl DictObj {
     /// String is never equal to it).
     #[inline]
     pub fn find_str(&self, text: &str) -> Option<usize> {
-        self.index.borrow().strs.get(text).copied()
+        self.find_str_hashed(text, str_hash(text))
+    }
+
+    /// find_str with the str_hash of the text.
+    #[inline]
+    pub fn find_str_hashed(&self, text: &str, hash: u64) -> Option<usize> {
+        self.index.borrow().strs.get(&(hash, text) as &dyn StrLike).copied()
     }
 }
 
@@ -275,7 +387,7 @@ impl DictIndex {
     /// the index (NaN).
     pub fn get(&self, k: &IndexKey) -> Result<Option<usize>, ()> {
         match k {
-            IndexKey::Str(s) => Ok(self.strs.get(&**s).copied()),
+            IndexKey::Str(s) => Ok(self.strs.get(&(str_hash(s), &**s) as &dyn StrLike).copied()),
             IndexKey::Other(d) => Ok(self.others.get(d).copied()),
             IndexKey::None => Err(()),
         }
@@ -283,7 +395,7 @@ impl DictIndex {
     pub fn insert(&mut self, k: IndexKey, i: usize) {
         match k {
             IndexKey::Str(s) => {
-                self.strs.insert(s.into_owned().into_boxed_str(), i);
+                self.strs.insert(StrKey { hash: str_hash(&s), text: s.into_owned().into_boxed_str() }, i);
             }
             IndexKey::Other(d) => {
                 self.others.insert(d, i);
