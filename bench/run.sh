@@ -1,7 +1,7 @@
 #!/bin/bash
-# bench/run.sh NAME ARG...: run benchmark NAME (NAME/NAME.py and NAME/NAME.se) with CPython, the Rust VM and
-# the transpiled VM (built by build.sh), check that they print the same, and print the best of 3 times
-# (user + sys seconds) of each.
+# bench/run.sh NAME ARG...: run benchmark NAME (NAME/NAME.py and NAME/NAME.se) with CPython and the transpiled
+# VM (built by build.sh), check that they print the same, and print the best of 3 times (user + sys seconds)
+# of each. With CONMA_BENCH_RUST=1, the Rust VM too.
 bench="$(cd "$(dirname "$0")"; pwd)"
 root="${bench%/*}"
 name=$1; shift
@@ -20,8 +20,8 @@ run() {  # label command...
   printf '%-12s %6.2f s\n' "$1" "$best"
 }
 run cpython python3 "$bench/$name/$name.py" "$@"
-run rust "$root/vm/target/release/conma" --main "$tmp/$name.module.se" "$@"
+[ -n "$CONMA_BENCH_RUST" ] && run rust "$root/vm/target/release/conma" --main "$tmp/$name.module.se" "$@"
 run transpiled "$root/vm/target-transpiled/release/conma" --main "$tmp/$name.module.se" "$@"
-for vm in rust transpiled; do
+for vm in transpiled ${CONMA_BENCH_RUST:+rust}; do
   cmp -s "$tmp/cpython.out" "$tmp/$vm.out" || { echo "$vm prints otherwise than cpython:"; diff "$tmp/cpython.out" "$tmp/$vm.out"; }
 done

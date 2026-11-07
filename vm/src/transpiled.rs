@@ -433,53 +433,53 @@ pub fn finish(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<
 
 use crate::prim::{basic, collections, llist, number, string};
 
-pub fn d_is_null(m: &mut Machine, a: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(basic::is_null_core(m, &a)))
+pub fn d_is_null(m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(basic::is_null_core(m, a)))
 }
-pub fn d_type_name(_m: &mut Machine, a: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(basic::type_name_core(&a)?))
+pub fn d_type_name(_m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(basic::type_name_core(a)?))
 }
-pub fn d_number_add(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::binop_core("__Number_add__", &a, &b, |x, y| x + y)?))
+pub fn d_number_add(_m: &mut Machine, a: &Value, b: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_add__", a, b, |x, y| x + y)?))
 }
-pub fn d_number_subtract(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::binop_core("__Number_subtract__", &a, &b, |x, y| x - y)?))
+pub fn d_number_subtract(_m: &mut Machine, a: &Value, b: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_subtract__", a, b, |x, y| x - y)?))
 }
-pub fn d_number_multiply(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::binop_core("__Number_multiply__", &a, &b, |x, y| x * y)?))
+pub fn d_number_multiply(_m: &mut Machine, a: &Value, b: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::binop_core("__Number_multiply__", a, b, |x, y| x * y)?))
 }
-pub fn d_number_is_zero(m: &mut Machine, a: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::predicate_core(m, "__Number_is_zero__", &a, |x| x == 0.0)?))
+pub fn d_number_is_zero(m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_zero__", a, |x| x == 0.0)?))
 }
-pub fn d_number_is_positive(m: &mut Machine, a: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::predicate_core(m, "__Number_is_positive__", &a, |x| x > 0.0)?))
+pub fn d_number_is_positive(m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_positive__", a, |x| x > 0.0)?))
 }
-pub fn d_number_is_negative(m: &mut Machine, a: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(number::predicate_core(m, "__Number_is_negative__", &a, |x| x < 0.0)?))
+pub fn d_number_is_negative(m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(number::predicate_core(m, "__Number_is_negative__", a, |x| x < 0.0)?))
 }
-pub fn d_string_equal(m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(string::equal_core(m, &a, &b)?))
+pub fn d_string_equal(m: &mut Machine, a: &Value, b: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(string::equal_core(m, a, b)?))
 }
-pub fn d_string_concat(_m: &mut Machine, a: Value, b: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(string::concat_core(&a, &b)?))
+pub fn d_string_concat(_m: &mut Machine, a: &Value, b: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(string::concat_core(a, b)?))
 }
-pub fn d_llist_cons(_m: &mut Machine, head: Value, tail: Value) -> Result<Out, VmError> {
-    Ok(Out::R1(Value::LList(Rc::new(LList { head, tail }))))
+pub fn d_llist_cons(_m: &mut Machine, head: &Value, tail: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(Value::LList(Rc::new(LList { head: head.clone(), tail: tail.clone() }))))
 }
-pub fn d_llist_uncons(_m: &mut Machine, on_error: Value, lst: Value) -> Result<Out, VmError> {
-    Ok(match llist::uncons_core(&lst) {
+pub fn d_llist_uncons(_m: &mut Machine, on_error: &Value, lst: &Value) -> Result<Out, VmError> {
+    Ok(match llist::uncons_core(lst) {
         Ok((h, t)) => Out::R2(h, t),
-        Err(msg) => Out::Call(on_error, string_value(&msg)),
+        Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
     })
 }
-pub fn d_dict_lookup_or(_m: &mut Machine, d: Value, key: Value, on_missing: Value) -> Result<Out, VmError> {
-    Ok(match collections::dict_lookup_core(&d, &key)? {
+pub fn d_dict_lookup_or(_m: &mut Machine, d: &Value, key: &Value, on_missing: &Value) -> Result<Out, VmError> {
+    Ok(match collections::dict_lookup_core(d, key)? {
         Some(v) => Out::R1(v),
-        None => Out::Call(on_missing, key),
+        None => Out::Call(on_missing.clone(), key.clone()),
     })
 }
-pub fn d_dict_put(_m: &mut Machine, d: Value, key: Value, value: Value) -> Result<Out, VmError> {
-    collections::dict_put_core(&d, key, value)?;
+pub fn d_dict_put(_m: &mut Machine, d: &Value, key: &Value, value: &Value) -> Result<Out, VmError> {
+    collections::dict_put_core(d, key.clone(), value.clone())?;
     Ok(Out::R0)
 }
 
@@ -488,4 +488,96 @@ pub fn d_dict_put(_m: &mut Machine, d: Value, key: Value, value: Value) -> Resul
 pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> Result<Out, VmError> {
     m.serials.conts += 1;
     Ok(Out::R1(Value::Cont(Rc::new(ContObj { serial: m.serials.conts, cchain: vp.cchain.clone() }))))
+}
+
+pub fn d_number_divide(_m: &mut Machine, on_error: &Value, a: &Value, b: &Value) -> Result<Out, VmError> {
+    let x = number::check_number("__Number_divide__", a)?;
+    let y = number::check_number("__Number_divide__", b)?;
+    if y == 0.0 {
+        return Ok(Out::Call(on_error.clone(), string_value("__Number_divide__: division by zero")));
+    }
+    Ok(Out::R1(num(x / y)))
+}
+pub fn d_number_sqrt(_m: &mut Machine, on_error: &Value, a: &Value) -> Result<Out, VmError> {
+    let x = number::check_number("__Number_sqrt__", a)?;
+    if x < 0.0 {
+        return Ok(Out::Call(on_error.clone(), string_value("__Number_sqrt__: square root of a negative number")));
+    }
+    Ok(Out::R1(num(x.sqrt())))
+}
+
+// ── Fused chains (conma2rust.py, Fuser): one Rust function runs a Body and
+// the Bodies after it with the variables they bind in Rust variables ──
+
+/// The constant operand k (a String or null) of the Body of Function fid.
+pub fn cref(t: &Table, fid: usize, k: usize) -> &Value {
+    match &body(t, fid).olist[k] {
+        crate::module::CExpr::C(v) => v,
+        _ => unreachable!("cref of an operand that is not a constant"),
+    }
+}
+
+/// The local variable i of the LVEnv the fused chain started with.
+pub fn lget(env: &LVEnv, i: usize) -> Result<Value, VmError> {
+    match lv_get(env, i) {
+        Some(v) => Ok(v.clone()),
+        None => crate::prim::err(format!("LVEnv[{}] out of range", i)),
+    }
+}
+
+/// Return the values to the LCont or CChain, as the VM does for a Body
+/// without an LCont (`__NULL__ a ...`, or a Boolean clause that is missing).
+pub fn fused_return(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, values: Vec<Value>) -> NResult {
+    vp.olist.clear();
+    vp.olist.extend(values);
+    vp.operator = Value::Null;
+    vp.lcont = None;
+    vp.sinfo = sinfo.clone();
+    vp.lvenv = env;
+    Ok(Next::Apply)
+}
+
+/// A call without an LCont: leave it to `apply` (which counts it against the
+/// budget) as the VM would do it.
+pub fn fused_tail_call(vp: &mut VProc, env: LVEnv, sinfo: &Option<SInfo>, f: Value, args: Vec<Value>) -> NResult {
+    vp.olist.clear();
+    vp.olist.extend(args);
+    vp.operator = f;
+    vp.lcont = None;
+    vp.sinfo = sinfo.clone();
+    vp.lvenv = env;
+    Ok(Next::Apply)
+}
+
+/// The f64 of an operand of a Number primitive in Function fid's Body, with
+/// the error of the primitive (at that Body) if it is not a Number.
+#[inline]
+pub fn chk(vp: &mut VProc, t: &Table, fid: usize, name: &str, v: &Value) -> Result<f64, VmError> {
+    match v {
+        Value::Number(x) => Ok(*x),
+        _ => {
+            vp.sinfo = body(t, fid).sinfo.clone();
+            number::check_number(name, v)
+        }
+    }
+}
+
+/// __Dict_lookup_or__ with a String key written in place, whose text (without
+/// escapes) the transpiler gives.
+pub fn d_dict_lookup_str(_m: &mut Machine, d: &Value, text: &str, key: &Value, on_missing: &Value) -> Result<Out, VmError> {
+    let Value::Dict(o) = d else { return collections::dict_lookup_core(d, key).map(|_| Out::R0) };
+    Ok(match o.find_str(text) {
+        Some(i) => Out::R1(o.entries.borrow()[i].1.clone()),
+        None => Out::Call(on_missing.clone(), key.clone()),
+    })
+}
+
+/// __Dict_put__ with a String key written in place.
+pub fn d_dict_put_str(_m: &mut Machine, d: &Value, text: &str, key: &Value, value: &Value) -> Result<Out, VmError> {
+    let Value::Dict(o) = d else { return collections::dict_put_core(d, key.clone(), value.clone()).map(|_| Out::R0) };
+    match o.find_str(text) {
+        Some(i) => o.entries.borrow_mut()[i].1 = value.clone(),
+        None => o.append(key.clone(), value.clone()).map_err(VmError::Error)?,
+    }
+    Ok(Out::R0)
 }

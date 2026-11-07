@@ -20,3 +20,16 @@ Apple M4, CPython 3.9.6, times in user + sys seconds (best of 3), including the 
 | Benchmark | CPython | Rust VM | Transpiled VM |
 |---|---|---|---|
 | nbody 100000 | 0.56 s | 6.59 s (11.8×) | 3.80 s (6.8×) |
+
+The transpiler has since been improved for nbody (vm/README.md, "Fused chains"; `bench/run.sh` now leaves the Rust VM out unless `CONMA_BENCH_RUST=1`):
+
+| nbody 100000, transpiled VM | Time | CPython = 1 |
+|---|---|---|
+| before | 3.80 s | 6.8 |
+| fused chains (variables in Rust variables) | 1.61 s | 2.9 |
+| + Dict index by `&str`, Fx hash | 1.24 s | 2.2 |
+| + operands of direct primitives by reference | 1.08 s | 1.9 |
+| + Numbers as `f64` | 0.91 s | 1.55 |
+| + String keys written in place looked up by their text | 0.72 s | 1.24 |
+
+What is left is mostly calls with an LCont (`pairs_step` calling `pair_step`), where the fused chain makes the LVEnv and the VM makes the LCont Closure and the CFrame, and the Dict lookups themselves.
