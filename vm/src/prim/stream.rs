@@ -222,11 +222,34 @@ fn io_error(errno: i32) -> std::io::Error {
 }
 
 pub fn open(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let name = "__OS_open__";
-    let mut a = take_n(vp, name, 3)?;
+    open_with(m, vp, "__OS_open__", false)
+}
+
+/// __OS_open_tracked__ onError path mode Ref ,(Stream): __OS_open__, and in
+/// the same step, put the Stream in front of the LList in the Ref, so that a
+/// VProc killed between two steps never leaves a file open but not recorded.
+pub fn open_tracked(m: &mut Machine, vp: &mut VProc) -> PResult {
+    open_with(m, vp, "__OS_open_tracked__", true)
+}
+
+fn open_with(m: &mut Machine, vp: &mut VProc, name: &str, tracked: bool) -> PResult {
+    let mut a = take_n(vp, name, if tracked { 4 } else { 3 })?;
+    let track = if tracked { a.pop() } else { None };
     let mode = a.pop().unwrap();
     let path = a.pop().unwrap();
     let on_error = a.pop().unwrap();
+    let track = match track {
+        None => None,
+        Some(Value::Ref(r)) if matches!(&*r.value.borrow(), Value::Null | Value::LList(_)) => Some(r),
+        Some(v) => {
+            let got = match &v {
+                Value::Ref(r) => format!("a Ref of {}", value_type_name(&r.value.borrow())),
+                other => value_type_name(other).to_string(),
+            };
+            vp.prim_error(on_error, &format!("{}: expected a Ref of an LList, got {}", name, got));
+            return Ok(());
+        }
+    };
     for (what, v) in [("path", &path), ("mode", &mode)] {
         if value_type_name(v) != "String" {
             vp.prim_error(on_error, &format!("{}: expected String {}, got {}", name, what, value_type_name(v)));
@@ -264,8 +287,13 @@ pub fn open(m: &mut Machine, vp: &mut VProc) -> PResult {
     });
     match r {
         Ok(f) => {
-            let s = new_stream(m, f.into_raw_fd(), smode);
-            vp.prim_return(vec![Value::Stream(s)]);
+            let s = Value::Stream(new_stream(m, f.into_raw_fd(), smode));
+            if let Some(r) = track {
+                let tail = std::mem::replace(&mut *r.value.borrow_mut(), Value::Null);
+                *r.value.borrow_mut() = Value::LList(Rc::new(LList { head: s.clone(), tail }));
+                m.ref_changed = true;
+            }
+            vp.prim_return(vec![s]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&e), path)),
     }

@@ -128,6 +128,7 @@ prims! {
     "__OS_wait_writable__" => "prim_OS_wait_writable", stream::wait_writable;
     "__OS_get_String__"    => "prim_OS_get_String", stream::get_string;
     "__OS_open__"          => "prim_OS_open", stream::open;
+    "__OS_open_tracked__"  => "prim_OS_open_tracked", stream::open_tracked;
     "__OS_chdir__"         => "prim_OS_chdir", stream::chdir;
     "__OS_getcwd__"        => "prim_OS_getcwd", stream::getcwd;
     "__OS_realpath__"      => "prim_OS_realpath", stream::realpath;

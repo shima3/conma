@@ -1,0 +1,87 @@
+;; Step37: __OS_open_tracked__。__OS_open__ と同じくファイルを開き、同じステップで、Stream を Ref の LList の先頭に加える。
+;; ファイルは環境変数 STEP37_DIR（test.sh の一時ディレクトリ）に作る
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define printError ,(msg)
+  __String_concat__ "error: " msg ,(line)
+  println line ,()
+  __NULL__ __NULL__)
+
+(define path ,(name)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "STEP37_DIR" (,(key) __NULL__ "/tmp") ,(dir)
+  __String_concat__ dir "/" ,(dir)
+  __String_concat__ dir name)
+
+(define printLength ,(ref)
+  __Ref_get__ ref ,(list)
+  __LList_length__ list ,(n)
+  __Number_toString__ n ,(s)
+  __String_concat__ "recorded: " s ,(line)
+  println line)
+
+;; 表の Stream をすべて閉じる
+(define closeAll ,(list)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ list) return ,()
+  __LList_uncons__ __print_exit_error__ list ,(stream rest)
+  __OS_close__ __print_exit_error__ stream ,()
+  closeAll rest)
+
+(define readFirst ,(name)
+  path name ,(p)
+  __OS_open__ __print_exit_error__ p "r" ,(in)
+  __LazyList_lines__ in ,(lines)
+  __LazyList_uncons__ (,() println "no line") lines ,(line rest)
+  __OS_print__ line ,()
+  __OS_close__ __print_exit_error__ in)
+
+;; case1: 2つ開くと、Ref の LList の先頭が新しい方。書いて閉じれば、ファイルに残る
+(define case1 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  path "a.txt" ,(pa)
+  path "b.txt" ,(pb)
+  __OS_open_tracked__ __print_exit_error__ pa "w" ref ,(a)
+  __OS_open_tracked__ __print_exit_error__ pb "w" ref ,(b)
+  printLength ref ,()
+  __Ref_get__ ref ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(first rest)
+  __OS_write__ __print_exit_error__ first "written to the newest\n" ,()
+  __OS_write__ __print_exit_error__ a "written to a\n" ,()
+  closeAll list ,()
+  readFirst "a.txt" ,()
+  readFirst "b.txt")
+
+;; case2: 開けなければ onError で、Ref は変わらない。Ref でないもの、LList でも null でもない値の Ref、正しくない mode も onError
+;; （onError の値が Stream の代わりに LCont に渡る）
+(define case2 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __OS_open_tracked__ printError "no-such-dir/x" "r" ref ,(s)
+  printLength ref ,()
+  path "c.txt" ,(pc)
+  __OS_open_tracked__ printError pc "w" "not a ref" ,(s)
+  __Ref_new__ "a String" ,(bad)
+  __OS_open_tracked__ printError pc "w" bad ,(s)
+  __OS_open_tracked__ printError pc "x" ref ,(s)
+  printLength ref)
+
+;; case3: 子の VProc が開いて記録したファイルは、子を kill した後でも、記録から閉じられる
+(define case3 ,()
+  __Ref_new__ __NULL__ ,(ref)
+  __Ref_new__ "wait" ,(gate)
+  __Ref_get__ gate ,(wait)
+  path "d.txt" ,(pd)
+  __VProc_start__ (,()
+    __OS_open_tracked__ __print_exit_error__ pd "w" ref ,(s)
+    __Ref_wait_change__ gate wait ,()
+    println "not here") ,(child)
+  __Ref_wait_change__ ref __NULL__ ,()
+  __VProc_kill__ child ,()
+  printLength ref ,()
+  __Ref_get__ ref ,(list)
+  closeAll list ,()
+  println "closed")

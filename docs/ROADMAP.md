@@ -763,3 +763,19 @@ No new primitive.
 | case2 | `__LList_append__` with empty lists on either side, and the original list is unchanged; `__LList_length__` |
 | case3 | `__String_find_any__` from several positions, with no match, no characters, at the end, in an empty String and after non-ASCII characters |
 | case4 | `__String_strip_suffix__` with and without the suffix, `\r\n` in two steps, an empty suffix, a suffix longer than the String, and the whole String |
+
+## Step 37: Opening a file and recording it in one step
+
+| Primitive | Status |
+|---|---|
+| `__OS_open_tracked__` | implemented |
+
+* Goal: A VProc can be killed between any two of its steps, so a program that opens a file and then records it (to close it when the VProc is killed) leaves the file open if the VProc is killed in between. ConSh records the files that redirections open in a Ref of its context (`"openRef"`), and closes them when a job is killed; in `consh/test/step13` case1 the file of a killed job sometimes stayed open (with some `CONMA_SEED` values, and often with transpiled code), because the job was killed after opening the file of `for ... done > file &` and before recording it.
+* `__OS_open_tracked__ onError path mode Ref ,(Stream)` opens the file as `__OS_open__` does and, in the same step, puts the Stream in front of the LList in the Ref (see PRIMITIVES.md). ConSh uses it for the files of redirections: `Eval_redirs` takes the length of the table before it starts (`Open_mark`), and the statement closes the table back to it, instead of recording the opened Streams after `Eval_redirs` returns (`Open_track`).
+* Tests (`test/step37`; the files are made in `$tmp`, which `test.sh` passes in `STEP37_DIR`):
+
+| Case | What it checks |
+|---|---|
+| case1 | two files opened into the same Ref: the newer is first; writing through the recorded Streams and closing them |
+| case2 | a file that cannot be opened, a value that is not a Ref, a Ref of a String and a wrong mode go to `onError`, and the Ref is unchanged |
+| case3 | a VProc that opened a file into a Ref and then waits is killed; the file is in the Ref, and is closed from it |

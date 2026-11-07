@@ -147,6 +147,12 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 * **Returns**: The Stream. It is used with `__OS_read__`, `__OS_write__`, `__OS_close__` and `__OS_spawn__` like a pipe end.
 * **Error**: If `path` or `mode` is not a String, `mode` is not one of the above, `path` is a directory, or the OS cannot open the file (for example, it does not exist or permission is denied), invokes `onError` with an error message string.
 
+### **`__OS_open_tracked__ onError path mode Ref ,(Stream)`**
+* **Description**: Opens the file `path` as `__OS_open__` does and, in the same step, records the Stream in `Ref`.
+* **Behavior**: On success, the value of `Ref` (an LList or null) becomes the LList with the Stream in front of it, as `__LList_cons__` would make it, before the Stream is returned. A VProc is killed only between two steps, so a program that records the files it opens (to close them if the VProc is killed) never has a file open but not recorded. VProcs waiting for the Ref to change (`__Ref_wait_change__`) are woken as by `__Ref_set__`.
+* **Returns**: The Stream.
+* **Error**: As `__OS_open__`, and if `Ref` is not a Ref whose value is an LList or null, invokes `onError` with an error message string; then no file is opened and the Ref is unchanged.
+
 ### **`__OS_chdir__ onError path ,()`**
 * **Description**: Changes the current directory of the current VProc to `path`.
 * **Behavior**: Each VProc has its own current directory, an absolute path. The first VProc starts in the directory where the interpreter was started, and a VProc made by `__VProc_spawn__` starts in the current directory of the VProc that made it; after that, `__OS_chdir__` changes only the current VProc's. A relative `path` is relative to the current directory of the current VProc, and the new current directory is its real path (symbolic links resolved), as `__OS_getcwd__` of the OS gives. The current directory is used for relative paths in `__OS_open__`, `__OS_chdir__`, `__OS_realpath__` and the `sourceFileName` of `__VProc_spawn__`, and as the working directory of processes started by `__OS_spawn__`. The interpreter's own current directory does not change.

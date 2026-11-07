@@ -1249,10 +1249,25 @@ def prim_OS_open(vp, gvenv):
     Open the file path (relative to the current VProc's directory). mode "r" gives
     an input Stream; "w" (create or truncate) and "a" (create or append)
     give an output Stream."""
-    name  = "__OS_open__"
+    _os_open(vp, "__OS_open__", False)
+
+def prim_OS_open_tracked(vp, gvenv):
+    """__OS_open_tracked__ onError path mode Ref ,(Stream)
+    __OS_open__, and in the same step, put the Stream in front of the LList in
+    the Ref, so that a VProc killed between two steps never leaves a file open
+    but not recorded."""
+    _os_open(vp, "__OS_open_tracked__", True)
+
+def _os_open(vp, name, tracked):
     olist = vp["olist"]
-    if len(olist) < 3: raise VProcError(f"{name}: missing argument(s)")
+    n = 4 if tracked else 3
+    if len(olist) < n: raise VProcError(f"{name}: missing argument(s)")
     on_error, path, mode = [olist.pop(0) for _ in range(3)]
+    track = olist.pop(0) if tracked else None
+    if tracked and not (isinstance(track, Ref) and (is_null_value(track.value) or isinstance(track.value, LList))):
+        got = f"a Ref of {value_type_name(track.value)}" if isinstance(track, Ref) else value_type_name(track)
+        _prim_error(vp, on_error, f"{name}: expected a Ref of an LList, got {got}")
+        return
     for what, val in (("path", path), ("mode", mode)):
         if value_type_name(val) != "String":
             _prim_error(vp, on_error, f"{name}: expected String {what}, got {value_type_name(val)}")
@@ -1270,7 +1285,11 @@ def prim_OS_open(vp, gvenv):
     except OSError as e:
         _prim_error(vp, on_error, f"{name}: {e.strerror}: {path}")
         return
-    _prim_return(vp, [Stream(fd, stream_mode)])
+    stream = Stream(fd, stream_mode)
+    if tracked:
+        track.value = LList(stream, track.value)
+        SCHEDULER.ref_changed = True
+    _prim_return(vp, [stream])
 
 def prim_OS_chdir(vp, gvenv):
     """__OS_chdir__ onError path ,()
@@ -2774,6 +2793,7 @@ PRIMITIVES = {
     "__OS_write__":            prim_OS_write,
     "__OS_close__":            prim_OS_close,
     "__OS_open__":             prim_OS_open,
+    "__OS_open_tracked__":     prim_OS_open_tracked,
     "__OS_chdir__":            prim_OS_chdir,
     "__OS_getcwd__":           prim_OS_getcwd,
     "__OS_realpath__":         prim_OS_realpath,

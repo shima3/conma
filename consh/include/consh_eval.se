@@ -953,17 +953,17 @@
       Sh_get sh "in" ,(in)
       Sh_get sh "out" ,(out)
       Sh_get sh "err" ,(err)
-      __NULL__ in out err __NULL__ __TRUE__ __NULL__)
-    (,() Eval_redirs sh redirs) ,(in out err opened ok group)
+      __NULL__ in out err __NULL__ __NULL__ __TRUE__ __NULL__)
+    (,() Eval_redirs sh redirs) ,(in out err opened mark ok group)
   __unless__ ok
     (,()
-      Eval_close opened ,()
+      Redirs_close sh opened mark ,()
       Sh_set_status sh "1" ,()
       return) ,()
   __is_null__ name ,(condition)
   __if__ condition
     (,()
-      Eval_close opened ,()
+      Redirs_close sh opened mark ,()
       Capture_assign sh group ,()
       Sh_set_status sh "0" ,()
       return) ,()
@@ -973,7 +973,6 @@
     (,()
       Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
       return) ,()
-  Open_track sh opened ,(mark)
   Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
   Open_release sh mark)
 
@@ -1169,13 +1168,12 @@
     (,()
       run sh ,()
       return) ,()
-  Eval_redirs sh redirs ,(in out err opened ok group)
+  Eval_redirs sh redirs ,(in out err opened mark ok group)
   __unless__ ok
     (,()
-      Eval_close opened ,()
+      Redirs_close sh opened mark ,()
       Sh_set_status sh "1" ,()
       return) ,()
-  Open_track sh opened ,(mark)
   Func_targets sh pos out err ,(out err)
   __Dict_copy__ sh ,(inner)
   __Dict_put__ inner "redirected" __TRUE__ ,()
@@ -3361,6 +3359,12 @@
 ;; ConMa では Stream が同じかを比べられないので、文の始めの LList の長さ（mark）を覚えておき、それより上を閉じる。
 ;; 中で return、break、continue したときは、それぞれの継続が、表をその文の mark まで閉じる（Loops_closing）
 
+;; 表の今の長さ
+(define Open_mark ,(sh)
+  Sh_get sh "openRef" ,(ref)
+  __Ref_get__ ref ,(list)
+  __LList_length__ list)
+
 ;; opened を表に加え、加える前の長さを返す
 (define Open_track ,(sh opened)
   Sh_get sh "openRef" ,(ref)
@@ -3392,14 +3396,24 @@
 ;; ── リダイレクト ──
 
 ;; リダイレクトを左から順に適用し、標準入力、標準出力と標準エラー出力のターゲット、開いた Stream の LList、
-;; 成功したか、変数リストへのリダイレクトの組（Capture_group、なければ null）を返す。
-;; ファイルを開けなければ、メッセージを出して失敗とする
+;; 開く前の開いた Stream の表の長さ（mark）、成功したか、変数リストへのリダイレクトの組（Capture_group、なければ null）を返す。
+;; ファイルを開けなければ、メッセージを出して失敗とする。
+;; 開いた Stream は、開くのと同じステップで表に加える（__OS_open_tracked__）。開いてから表に加えるまでの間に
+;; VProc が kill されると、閉じる人がいなくなるので。閉じるときは、表を mark まで閉じる（Redirs_close）
 (define Eval_redirs ,(sh redirs)
   __Dict_new__ ,(used)
   Sh_get sh "in" ,(in)
   Sh_get sh "out" ,(out)
   Sh_get sh "err" ,(err)
-  Eval_redirs_from sh redirs used in out err __NULL__ __NULL__)
+  Open_mark sh ,(mark)
+  Eval_redirs_from sh redirs used in out err __NULL__ __NULL__ ,(in out err opened ok group)
+  __NULL__ in out err opened mark ok group)
+
+;; Eval_redirs が開いた Stream（opened。表には mark より上にある）を閉じる
+(define Redirs_close ,(sh opened mark)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ opened) return ,()
+  Open_release sh mark)
 
 (define Eval_redirs_from ,(sh redirs used in out err opened group)
   __Cont_get__ ,(return)
@@ -3447,12 +3461,13 @@
   __type_name__ path ,(ptype)
   __if__ (,() __String_equal__ ptype "Closure") (,() Func_string_error sh pos) ,()
   Redir_mode op ,(mode)
-  __OS_open__ (,(msg)
+  Sh_get sh "openRef" ,(openRef)
+  __OS_open_tracked__ (,(msg)
     Msg_strip msg ,(msg)
     __String_concat__ path ": " ,(m)
     __String_concat__ m msg ,(m)
     Sh_warn sh pos m ,()
-    return in out err opened __FALSE__ group) path mode ,(stream)
+    return in out err opened __FALSE__ group) path mode openRef ,(stream)
   __LList_cons__ stream opened ,(opened)
   __String_equal__ fd "0" ,(condition)
   __if_then_else__ condition
