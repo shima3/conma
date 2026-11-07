@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""translate.py — make native code (Rust) for ConMa modules.
+"""conma2rust.py — the ConMa-to-Rust transpiler: Rust code for ConMa modules.
 
 Usage:
-    python3 vm/native/translate.py OUT.rs MODULE.module.se ...
+    python3 vm/conma2rust/conma2rust.py OUT.rs MODULE.module.se ...
 
 Each MODULE is the output of bin/resolver (test/resolver.sh). OUT.rs is
-included by vm/src/native.rs when the VM is built with CONMA_NATIVE=OUT.rs
-(vm/native/build.sh). A module's native code is used only for a module file
+included by vm/src/transpiled.rs when the VM is built with CONMA_TRANSPILED=OUT.rs
+(vm/conma2rust/build.sh). A module's transpiled code is used only for a module file
 with the same text (its FNV-1a hash).
 
 The Functions of a module are numbered in the order in which load_module in
 vm/src/module.rs compiles them. For each Function whose Body can start
-running without the VM, a native function is made that calls a helper of
-vm/src/native.rs:
+running without the VM, a transpiled function is made that calls a helper of
+vm/src/transpiled.rs:
 
 * prim_call: the Operator is a primitive of CHAIN (one that only works on its
   operands and returns its results or applies onError), with an LCont written
@@ -22,7 +22,7 @@ vm/src/native.rs:
   with a primitive p of PURE is computed in place; clauses `(,() ...)` are
   run in place.
 
-The helpers go on with the native function of the next Body, so a run of such
+The helpers go on with the transpiled function of the next Body, so a run of such
 Bodies takes one step of the VM.
 """
 
@@ -49,7 +49,7 @@ CHAIN = {
 }
 # Not __Ref_set__: the VM wakes the VProcs waiting for a change of a Ref
 # (__Ref_wait_change__) after each step, so a change that is undone within a
-# run of native code would not wake them, as it does in the VM.
+# run of transpiled code would not wake them, as it does in the VM.
 
 # Primitives of CHAIN without side effects that return one value: a condition
 # thunk calling one of them is computed in place (and again by the VM if the
@@ -62,7 +62,7 @@ PURE = {
 
 IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
 
-# Primitives called directly (vm/src/native.rs, d_...): the operands are
+# Primitives called directly (vm/src/transpiled.rs, d_...): the operands are
 # evaluated into Rust variables and the results bound without the OList.
 # Used when the Body has exactly this many operands.
 DIRECT = {
@@ -220,8 +220,8 @@ def thunk(funcs, expr):
     return None
 
 
-def native_call(funcs, prims, f, prim_index):
-    """The helper call of the native function of f, or None."""
+def transpiled_call(funcs, prims, f, prim_index):
+    """The helper call of the transpiled function of f, or None."""
     b = f.body
     if b is None or b.lcont == "value" or b.operator is None:
         return None
@@ -279,17 +279,17 @@ def translate(index, path, prim_names, out):
         if name not in used:
             used.append(name)
         return used.index(name)
-    natives = [native_call(funcs, prims, f, prim_index) for f in funcs]
+    calls = [transpiled_call(funcs, prims, f, prim_index) for f in funcs]
     p = f"m{index}"
-    out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in natives)} with native code")
-    for f, call in zip(funcs, natives):
+    out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in calls)} with transpiled code")
+    for f, call in zip(funcs, calls):
         if call is not None:
             out.append(f"fn {p}_f{f.id}(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {{ {call} }}")
-    entries = ", ".join(f"Some({p}_f{f.id} as NativeFn)" if c is not None else "None" for f, c in zip(funcs, natives))
-    out.append(f"static {p.upper()}_NATIVES: [Option<NativeFn>; {len(funcs)}] = [{entries}];")
+    entries = ", ".join(f"Some({p}_f{f.id} as TranspiledFn)" if c is not None else "None" for f, c in zip(funcs, calls))
+    out.append(f"static {p.upper()}_FNS: [Option<TranspiledFn>; {len(funcs)}] = [{entries}];")
     names = ", ".join(f'"{n}"' for n in used)
     return (f"Module {{ hash: 0x{fnv1a(data):016x}, nfuncs: {len(funcs)}, "
-            f"prims: &[{names}], natives: &{p.upper()}_NATIVES }}")
+            f"prims: &[{names}], fns: &{p.upper()}_FNS }}")
 
 
 def prim_names_of_vm():
@@ -302,13 +302,13 @@ def main():
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         sys.exit(2)
     prim_names = prim_names_of_vm()
-    out = ["// Made by vm/native/translate.py. Do not edit."]
+    out = ["// Made by vm/conma2rust/conma2rust.py. Do not edit."]
     modules = []
     for path in sys.argv[2:]:
         try:
             modules.append(translate(len(modules), path, prim_names, out))
         except (IndexError, ValueError, UnicodeDecodeError) as e:
-            print(f"translate.py: {path}: not a module ({e!r}); skipped", file=sys.stderr)
+            print(f"conma2rust.py: {path}: not a module ({e!r}); skipped", file=sys.stderr)
     out.append("pub static MODULES: &[Module] = &[" + ", ".join(modules) + "];")
     Path(sys.argv[1]).write_text("\n".join(out) + "\n")
 

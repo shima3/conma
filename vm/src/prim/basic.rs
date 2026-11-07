@@ -12,7 +12,7 @@ pub fn is_null(m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
-/// The result of __is_null__ (also for vm/src/native.rs).
+/// The result of __is_null__ (also for vm/src/transpiled.rs).
 pub fn is_null_core(m: &Machine, v: &Value) -> Value {
     if v.is_null() {
         m.true_closure()

@@ -1,12 +1,13 @@
-//! Native code of ConMa modules, made by vm/native/translate.py (stage 2 of
+//! Transpiled code of ConMa modules, made by the ConMa-to-Rust transpiler
+//! vm/conma2rust/conma2rust.py (stage 2 of
 //! item 7 of the ConMa review: running the parts of a program that need no
 //! VProc switch as Rust, several steps at a time).
 //!
-//! A module of native code belongs to one module file, identified by the
+//! A module of transpiled code belongs to one module file, identified by the
 //! FNV-1a hash of its text. For each Function of the module (numbered in the
-//! order in which load_module compiles them), it may have a native function,
+//! order in which load_module compiles them), it may have a transpiled function,
 //! which stands for loading the Body of that Function: load_body calls it
-//! instead. The native function runs the Body and the Bodies after it as far
+//! instead. The transpiled function runs the Body and the Bodies after it as far
 //! as it can without the VM (calls of primitives that only work on their
 //! operands, passing values on with `__NULL__`, `__if_then_else__`, `__if__`
 //! and `__unless__` with clauses written in place). Where a Body needs the VM
@@ -14,11 +15,11 @@
 //! the VM would, as long as they are applications of Closures with as many
 //! operands as parameters (calls), of null (returns through the LCont or the
 //! CChain), of escape continuations (`return` of __Cont_get__) and of the
-//! primitives of SAFE_PRIMS, entering the native code of the Bodies it
+//! primitives of SAFE_PRIMS, entering the transpiled code of the Bodies it
 //! reaches; at anything else, or after BUDGET such steps, it leaves the VProc
 //! to the VM. All this is one step of the VM. So the results are those of
 //! the VM; only the number of steps (and so the order of the VProcs, and
-//! traces) differ. With --trace or CONMA_PROFILE the native code is not used.
+//! traces) differ. With --trace or CONMA_PROFILE the transpiled code is not used.
 
 #![allow(dead_code)] // without generated code, the helpers are unused
 
@@ -42,13 +43,13 @@ pub enum Next {
 
 pub type NResult = Result<Next, VmError>;
 
-pub type NativeFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> NResult;
+pub type TranspiledFn = fn(&mut Machine, &mut VProc, LVEnv, &Rc<GVEnv>, &Table) -> NResult;
 
 /// The steps `run` does in one step of the VM at most, so that a VProc that
-/// loops in native code lets the others run.
+/// loops in transpiled code lets the others run.
 const BUDGET: u32 = 1000;
 
-/// Primitives `apply` calls: those of translate.py's CHAIN (and __Ref_set__),
+/// Primitives `apply` calls: those of conma2rust.py's CHAIN (and __Ref_set__),
 /// the conditionals and __Cont_get__. They only change the registers of the
 /// VProc (and Refs, Dicts and so on); they do not block or switch VProcs.
 const SAFE_PRIMS: &[&str] = &[
@@ -67,21 +68,21 @@ const SAFE_PRIMS: &[&str] = &[
     "__if_then_else__", "__if__", "__unless__", "__Cont_get__",
 ];
 
-/// The native code of one module file, as the generated code gives it.
+/// The transpiled code of one module file, as the generated code gives it.
 pub struct Module {
     pub hash: u64,
     /// The number of Functions in the module.
     pub nfuncs: usize,
-    /// The primitives the native code calls, by ConMa name; `prim_call`
+    /// The primitives the transpiled code calls, by ConMa name; `prim_call`
     /// takes an index into this list.
     pub prims: &'static [&'static str],
-    pub natives: &'static [Option<NativeFn>],
+    pub fns: &'static [Option<TranspiledFn>],
 }
 
-/// The native code of a loaded module, with the Functions it refers to.
+/// The transpiled code of a loaded module, with the Functions it refers to.
 pub struct Table {
     pub funcs: Vec<Rc<FuncDef>>,
-    pub natives: &'static [Option<NativeFn>],
+    pub fns: &'static [Option<TranspiledFn>],
     pub prims: Vec<&'static PrimDef>,
     /// The PrimDefs of SAFE_PRIMS.
     safe: Vec<*const PrimDef>,
@@ -90,10 +91,10 @@ pub struct Table {
 mod generated {
     #![allow(unused_variables)]
     use super::*;
-    include!(concat!(env!("OUT_DIR"), "/native_gen.rs"));
+    include!(concat!(env!("OUT_DIR"), "/transpiled_gen.rs"));
 }
 
-/// FNV-1a (64 bits) of a module file, as vm/native/translate.py computes it.
+/// FNV-1a (64 bits) of a module file, as vm/conma2rust/conma2rust.py computes it.
 pub fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in bytes {
@@ -103,11 +104,11 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-/// The Table for the module file with this hash, if there is native code for
+/// The Table for the module file with this hash, if there is transpiled code for
 /// it and it has the same number of Functions.
 pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     let m = generated::MODULES.iter().find(|m| m.hash == hash)?;
-    if m.nfuncs != funcs.len() || m.natives.len() != funcs.len() {
+    if m.nfuncs != funcs.len() || m.fns.len() != funcs.len() {
         return None;
     }
     let mut prims = Vec::new();
@@ -116,7 +117,7 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     }
     let mut safe: Vec<*const PrimDef> = SAFE_PRIMS.iter().filter_map(|n| crate::prim::lookup(n)).map(|p| p as *const PrimDef).collect();
     safe.sort();
-    Some(Rc::new(Table { funcs, natives: m.natives, prims, safe }))
+    Some(Rc::new(Table { funcs, fns: m.fns, prims, safe }))
 }
 
 // ── The loop ──
@@ -128,7 +129,7 @@ pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEn
     let mut budget = BUDGET;
     loop {
         next = match next {
-            Next::Enter(fid, env) => match t.natives[fid] {
+            Next::Enter(fid, env) => match t.fns[fid] {
                 Some(f) => f(m, vp, env, gv, t)?,
                 None => deopt(vp, fid, env, gv, t)?,
             },
@@ -236,10 +237,10 @@ pub enum Clause {
 }
 
 fn body(t: &Table, fid: usize) -> &crate::module::BodyDef {
-    t.funcs[fid].body.as_ref().expect("a native Function has a Body")
+    t.funcs[fid].body.as_ref().expect("a transpiled Function has a Body")
 }
 
-/// Load the Body of Function fid for the VM, without its native code; `run`
+/// Load the Body of Function fid for the VM, without its transpiled code; `run`
 /// goes on with the step after it.
 pub fn deopt(vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {
     load_body_interp(vp, body(t, fid), env, gv)?;
@@ -381,7 +382,7 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
 }
 
 // ── Direct calls of primitives (the generated code evaluates the operands
-// itself and calls these, without the OList; translate.py's DIRECT) ──
+// itself and calls these, without the OList; conma2rust.py's DIRECT) ──
 
 /// What a primitive called directly gives.
 pub enum Out {

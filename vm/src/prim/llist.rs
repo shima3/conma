@@ -15,7 +15,7 @@ pub fn cons(_m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 /// The head and tail of an LList, or the message for onError (also for
-/// vm/src/native.rs).
+/// vm/src/transpiled.rs).
 pub fn uncons_core(lst: &Value) -> Result<(Value, Value), String> {
     match lst {
         Value::LList(cell) => Ok((cell.head.clone(), cell.tail.clone())),

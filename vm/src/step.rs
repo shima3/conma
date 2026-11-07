@@ -47,15 +47,15 @@ pub fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmErro
     }
 }
 
-/// Load a Body into the VProc, or run its native code (vm/native), which
+/// Load a Body into the VProc, or run its transpiled code (vm/conma2rust), which
 /// loads a Body later in the same way or leaves the VProc as a step would.
 fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
-    if m.native_on {
+    if m.transpiled_on {
         if let Some(id) = body.func_id {
-            let table = gvenv.native.borrow().clone();
+            let table = gvenv.transpiled.borrow().clone();
             if let Some(t) = table {
-                if t.natives.get(id).copied().flatten().is_some() {
-                    return crate::native::run(m, vp, id, lvenv, gvenv, &t);
+                if t.fns.get(id).copied().flatten().is_some() {
+                    return crate::transpiled::run(m, vp, id, lvenv, gvenv, &t);
                 }
             }
         }

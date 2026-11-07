@@ -98,7 +98,7 @@ fn predicate(m: &mut Machine, vp: &mut VProc, name: &str, f: fn(f64) -> bool) ->
     Ok(())
 }
 
-/// The result of a predicate primitive (also for vm/src/native.rs).
+/// The result of a predicate primitive (also for vm/src/transpiled.rs).
 pub fn predicate_core(m: &Machine, name: &str, v: &Value, f: fn(f64) -> bool) -> Result<Value, VmError> {
     let x = check_number(name, v)?;
     Ok(if f(x) { m.true_closure() } else { m.false_closure() })
@@ -121,7 +121,7 @@ fn binop(vp: &mut VProc, name: &str, f: fn(f64, f64) -> f64) -> PResult {
     Ok(())
 }
 
-/// The result of a binary Number primitive (also for vm/src/native.rs).
+/// The result of a binary Number primitive (also for vm/src/transpiled.rs).
 pub fn binop_core(name: &str, a: &Value, b: &Value, f: fn(f64, f64) -> f64) -> Result<Value, VmError> {
     let x = check_number(name, a)?;
     let y = check_number(name, b)?;

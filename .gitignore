@@ -2,4 +2,4 @@
 *#*
 __pycache__
 vm/target/
-vm/target-native/
+vm/target-transpiled/

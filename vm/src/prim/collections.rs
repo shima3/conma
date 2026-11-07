@@ -114,7 +114,7 @@ pub fn dict_put(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
-/// The value of key in the Dict d, or None (for vm/src/native.rs; the
+/// The value of key in the Dict d, or None (for vm/src/transpiled.rs; the
 /// checks and errors of __Dict_lookup_or__).
 pub fn dict_lookup_core(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
     let Value::Dict(d) = d else {
@@ -123,7 +123,7 @@ pub fn dict_lookup_core(d: &Value, key: &Value) -> Result<Option<Value>, VmError
     Ok(d.find(key).map_err(VmError::Error)?.map(|i| d.entries.borrow()[i].1.clone()))
 }
 
-/// Put value under key in the Dict d (for vm/src/native.rs; the checks and
+/// Put value under key in the Dict d (for vm/src/transpiled.rs; the checks and
 /// errors of __Dict_put__).
 pub fn dict_put_core(d: &Value, key: Value, value: Value) -> Result<(), VmError> {
     let Value::Dict(d) = d else {

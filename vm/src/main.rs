@@ -14,7 +14,7 @@
 mod alloc;
 mod gc;
 mod module;
-mod native;
+mod transpiled;
 mod prim;
 mod profile;
 mod sched;
@@ -104,7 +104,7 @@ fn run(args: Vec<String>) -> i32 {
             return 1;
         }
     };
-    let gvenv = match module::load_module_native(&module_sexp, Some(native::fnv1a(text.as_bytes()))) {
+    let gvenv = match module::load_module_transpiled(&module_sexp, Some(transpiled::fnv1a(text.as_bytes()))) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -127,7 +127,7 @@ fn run(args: Vec<String>) -> i32 {
         None => Vec::new(),
     };
     let mut m = sched::Machine::new(trace);
-    m.native_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_NATIVE_OFF").is_none();
+    m.transpiled_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_TRANSPILED_OFF").is_none();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let vp = m.make_vproc(closure, olist, Some(&module_file), gvenv, cwd);
     m.add(vp.clone());

@@ -13,8 +13,8 @@ use std::rc::Rc;
 /// (Undefined and not a primitive).
 pub struct GVEnv {
     pub vals: RefCell<Vec<Option<Value>>>,
-    /// The native code of the module (vm/native), if the binary has it.
-    pub native: RefCell<Option<Rc<crate::native::Table>>>,
+    /// The transpiled code of the module (vm/conma2rust), if the binary has it.
+    pub transpiled: RefCell<Option<Rc<crate::transpiled::Table>>>,
 }
 
 impl GVEnv {
@@ -54,7 +54,7 @@ pub enum CLCont {
 pub struct BodyDef {
     pub node: Sexp,
     /// The number of the Function whose Body this is, in the order in which
-    /// load_module compiles them (the numbers of vm/native/translate.py).
+    /// load_module compiles them (the numbers of vm/conma2rust/conma2rust.py).
     pub func_id: Option<usize>,
     pub sinfo: Option<SInfo>,
     pub operator: Option<CExpr>,
@@ -213,29 +213,29 @@ pub fn build_name_index(module: &Sexp) -> HashMap<String, usize> {
 }
 
 pub fn load_module(module: &Sexp) -> Result<Rc<GVEnv>, String> {
-    load_module_native(module, None)
+    load_module_transpiled(module, None)
 }
 
-/// load_module, and if the binary has native code for the module whose file
-/// has this hash (vm/native), attach it to the GVEnv.
-pub fn load_module_native(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
+/// load_module, and if the binary has transpiled code for the module whose file
+/// has this hash (vm/conma2rust), attach it to the GVEnv.
+pub fn load_module_transpiled(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
     REGISTRY.with(|r| *r.borrow_mut() = Some(Vec::new()));
     let result = load_module_inner(module);
     let funcs = REGISTRY.with(|r| r.borrow_mut().take()).unwrap_or_default();
     let gvenv = result?;
     if let Some(h) = hash {
         let funcs: Vec<Rc<FuncDef>> = funcs.into_iter().flatten().collect();
-        let table = crate::native::table_for(h, funcs);
-        if std::env::var_os("CONMA_NATIVE_REPORT").is_some() {
-            eprintln!("native code: {}", if table.is_some() { "used" } else { "none for this module" });
+        let table = crate::transpiled::table_for(h, funcs);
+        if std::env::var_os("CONMA_TRANSPILED_REPORT").is_some() {
+            eprintln!("transpiled code: {}", if table.is_some() { "used" } else { "none for this module" });
         }
-        *gvenv.native.borrow_mut() = table;
+        *gvenv.transpiled.borrow_mut() = table;
     }
     Ok(gvenv)
 }
 
 fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
-    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), native: RefCell::new(None) });
+    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), transpiled: RefCell::new(None) });
     let mut vals: Vec<Option<Value>> = Vec::new();
     if let Some(l) = module.as_list() {
         for item in l.iter().skip(2) {

@@ -82,7 +82,7 @@ fn two_texts<'a>(name: &str, a: &'a Value, b: &'a Value) -> Result<[std::borrow:
     Ok([text(a)?, text(b)?])
 }
 
-/// The result of __String_concat__ (also for vm/src/native.rs).
+/// The result of __String_concat__ (also for vm/src/transpiled.rs).
 pub fn concat_core(a: &Value, b: &Value) -> Result<Value, VmError> {
     let [x, y] = two_texts("__String_concat__", a, b)?;
     let mut s = String::with_capacity(x.len() + y.len());
@@ -91,7 +91,7 @@ pub fn concat_core(a: &Value, b: &Value) -> Result<Value, VmError> {
     Ok(string_value(&s))
 }
 
-/// The result of __String_equal__ (also for vm/src/native.rs).
+/// The result of __String_equal__ (also for vm/src/transpiled.rs).
 pub fn equal_core(m: &Machine, a: &Value, b: &Value) -> Result<Value, VmError> {
     let [x, y] = two_texts("__String_equal__", a, b)?;
     Ok(if x == y { m.true_closure() } else { m.false_closure() })
