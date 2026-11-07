@@ -1,0 +1,43 @@
+;; Step39: __Number_sqrt__ onError Number ,(Number)。負の数は onError
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(s)
+  __Number_fromString__ __print_exit_error__ s)
+
+(define showRoot ,(s)
+  num s ,(x)
+  __Number_sqrt__ (,(msg) println msg ,() __NULL__ __NULL__) x ,(r)
+  __is_null__ r ,(failed)
+  __unless__ failed
+    (,()
+      __Number_toString__ r ,(t)
+      __String_concat__ s " -> " ,(line)
+      __String_concat__ line t ,(line)
+      println line))
+
+;; case1: 平方根。完全平方、2、0、-0、無限大、NaN
+(define case1 ,()
+  showRoot "4" ,()
+  showRoot "2" ,()
+  showRoot "0" ,()
+  showRoot "-0" ,()
+  showRoot "1e300" ,()
+  num "1e300" ,(big)
+  __Number_multiply__ big big ,(inf)
+  __Number_sqrt__ __print_exit_error__ inf ,(r)
+  __Number_toString__ r ,(t)
+  println t ,()
+  __Number_subtract__ inf inf ,(nan)
+  __Number_sqrt__ __print_exit_error__ nan ,(r)
+  __Number_toString__ r ,(t)
+  println t)
+
+;; case2: 負の数は onError（-0 は負ではない）
+(define case2 ,()
+  showRoot "-1" ,()
+  showRoot "-0.5" ,()
+  println "end")

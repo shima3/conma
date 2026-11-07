@@ -191,6 +191,10 @@ Primitives for floating-point arithmetic and numeric utilities.
 * **Returns**: The resulting `Number`.
 * **Error**: If `bNumber` is zero, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
 
+### **`__Number_sqrt__ onError Number ,(rootNumber)`**
+* **Description**: Returns the square root of `Number` (the root of `-0` is `-0`, of infinity infinity, of NaN NaN).
+* **Error**: If `Number` is negative, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
+
 ### **`__Number_floor__ Number ,(intNumber)`**
 * **Description**: Returns the greatest integer less than or equal to the given `Number` as an integer-valued `Number`.
 

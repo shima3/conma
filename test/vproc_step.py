@@ -1476,6 +1476,18 @@ def prim_Number_divide(vp, gvenv):
         return
     _prim_return(vp, [Number(a.value / b.value)])
 
+def prim_Number_sqrt(vp, gvenv):
+    """__Number_sqrt__ onError Number ,(Number)"""
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError("__Number_sqrt__: missing argument(s)")
+    on_error = olist.pop(0)
+    val = olist.pop(0)
+    _check_number("__Number_sqrt__", val)
+    if val.value < 0:
+        _prim_error(vp, on_error, "__Number_sqrt__: square root of a negative number")
+        return
+    _prim_return(vp, [Number(math.sqrt(val.value) if val.value == val.value else val.value)])
+
 def prim_Number_floor(vp, gvenv):
     """__Number_floor__ Number ,(Number)"""
     olist = vp["olist"]
@@ -2815,6 +2827,7 @@ PRIMITIVES = {
     "__Number_subtract__":     prim_Number_subtract,
     "__Number_multiply__":     prim_Number_multiply,
     "__Number_divide__":       prim_Number_divide,
+    "__Number_sqrt__":         prim_Number_sqrt,
     "__Number_floor__":        prim_Number_floor,
     "__CChain_get__":          prim_CChain_get,
     "__CChain_set__":          prim_CChain_set,

@@ -791,3 +791,18 @@ No new primitive.
 | case1 | setting an equal Number does not wake a VProc waiting with `__Ref_wait_change__`; setting another one does |
 | case2 | a VProc waiting with another NaN on a Ref of NaN, and with `-0` on a Ref of `0`, waits until another value is set |
 | case3 | a String with the same text is another String: setting it wakes the waiting VProc |
+
+## Step 39: Square root
+
+| Primitive | Status |
+|---|---|
+| `__Number_sqrt__` | implemented |
+
+* Goal: The benchmarks that compare ConMa with CPython (`bench/`) need a square root (nbody), which Python has in `math.sqrt` (C in CPython); written in ConMa with Newton's method it would make ConMa do several times as much work.
+* `__Number_sqrt__ onError Number ,(Number)` returns the square root; a negative Number (not `-0`) applies `onError`, as `math.sqrt` raises an error (see PRIMITIVES.md). The transpiled code calls it in place (`CHAIN` in `vm/conma2rust/conma2rust.py`).
+* Tests (`test/step39`):
+
+| Case | What it checks |
+|---|---|
+| case1 | the roots of 4, 2, 0, -0, 1e300, infinity and NaN |
+| case2 | a negative Number goes to `onError` |

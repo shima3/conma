@@ -153,6 +153,21 @@ pub fn divide(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// __Number_sqrt__ onError Number ,(Number): the square root; a negative
+/// Number (not -0) applies onError.
+pub fn sqrt(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let mut a = take_args(vp, "__Number_sqrt__", 2)?;
+    let x = a.pop().unwrap();
+    let on_error = a.pop().unwrap();
+    let x = check_number("__Number_sqrt__", &x)?;
+    if x < 0.0 {
+        vp.prim_error(on_error, "__Number_sqrt__: square root of a negative number");
+        return Ok(());
+    }
+    vp.prim_return(vec![num(x.sqrt())]);
+    Ok(())
+}
+
 pub fn floor(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let a = take_args(vp, "__Number_floor__", 1)?;
     let x = check_number("__Number_floor__", &a[0])?;
