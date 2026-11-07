@@ -174,7 +174,7 @@ pub fn kill(_m: &mut Machine, vp: &mut VProc) -> PResult {
         None => return Ok(()),
     };
     let sig = match rest[0] {
-        Value::Number(x, _) if x.is_finite() && x == x.trunc() && (1.0..=64.0).contains(&x) => x as i32,
+        Value::Number(x) if x.is_finite() && x == x.trunc() && (1.0..=64.0).contains(&x) => x as i32,
         _ => {
             vp.prim_error(on_error, &format!("{}: expected a signal number from 1 to 64", name));
             return Ok(());

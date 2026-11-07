@@ -139,13 +139,22 @@ class Stream:
     def __repr__(self):
         return f"Stream({self.mode}, fd={self.fd})"
 class Number:
-    """An immutable floating-point number as a ConMa value."""
+    """An immutable floating-point number as a ConMa value. It has no
+    identity: two Numbers are the same value when they are equal (same_value)."""
     def __init__(self, value):
         self.value = float(value)
     def value_to_sexp(self):
         return ["__Number__", number_to_str(self.value)]
     def __repr__(self):
         return f"Number({self.value!r})"
+def same_value(a, b):
+    """Whether a and b are the same value (__Ref_wait_change__): Numbers when
+    they are equal, +0 and -0 being the same and NaN the same as NaN; any other
+    value only itself."""
+    if isinstance(a, Number) and isinstance(b, Number):
+        return a.value == b.value or (a.value != a.value and b.value != b.value)
+    return a is b
+
 class Ref:
     """A mutable cell holding a single ConMa value."""
     _count = 0
@@ -2263,7 +2272,7 @@ class Scheduler:
         """Wake the VProcs whose Ref has changed."""
         still = []
         for vp, ref, value in self.changes:
-            if ref.value is value:
+            if same_value(ref.value, value):
                 still.append((vp, ref, value))
             else:
                 vp.state = "ready"
@@ -2672,7 +2681,7 @@ def prim_Ref_wait_change(vp, gvenv):
     if not isinstance(ref, Ref):
         raise VProcError(f"{name}: expected Ref, got {value_type_name(ref)}")
     _prim_return(vp, [])
-    if ref.value is value:
+    if same_value(ref.value, value):
         SCHEDULER.wait_change(vp, ref, value)
 
 def prim_VProc_spawn(vp, gvenv):

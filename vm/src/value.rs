@@ -21,9 +21,9 @@ pub enum Value {
     StrNode(Sexp),
     /// Any other AST node that ended up as a value.
     Raw(Sexp),
-    /// A Number and its identity: every new Number is another object, as in
-    /// Python, because __Ref_wait_change__ compares values by identity.
-    Number(f64, u64),
+    /// A Number. It has no identity: two Numbers are the same value when they
+    /// are equal, NaN being the same as NaN (`same`).
+    Number(f64),
     Closure(Rc<Closure>),
     Seq(Rc<SeqClosure>),
     Prim(&'static PrimDef),
@@ -137,11 +137,9 @@ impl OSProcObj {
     }
 }
 
-/// A new Number object.
+/// A Number.
 pub fn num(x: f64) -> Value {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    Value::Number(x, NEXT.fetch_add(1, Ordering::Relaxed))
+    Value::Number(x)
 }
 
 impl Value {
@@ -205,7 +203,8 @@ pub enum DictKey {
     Obj(usize),
 }
 
-/// The identity of a value that is equal only to itself.
+/// The identity of a value that is equal only to itself (not used for
+/// Numbers, which have none).
 pub fn identity(v: &Value) -> usize {
     match v {
         Value::Closure(r) => Rc::as_ptr(r) as *const u8 as usize,
@@ -225,15 +224,18 @@ pub fn identity(v: &Value) -> usize {
             Sexp::Atom(a) => Rc::as_ptr(a) as *const u8 as usize,
         },
         Value::Str(s) => Rc::as_ptr(s) as *const u8 as usize,
-        Value::Number(_, id) => *id as usize,
+        Value::Number(x) => x.to_bits() as usize,
         Value::Null => 0,
     }
 }
 
+/// Whether a and b are the same value (__Ref_wait_change__, __nop__):
+/// Numbers when they are equal, any other value only itself.
 pub fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Null, Value::Null) => true,
-        (Value::Number(_, x), Value::Number(_, y)) => x == y,
+        // +0 and -0 are the same, and NaN is the same as NaN.
+        (Value::Number(x), Value::Number(y)) => x == y || (x.is_nan() && y.is_nan()),
         (Value::Number(..), _) | (_, Value::Number(..)) => false,
         (Value::Null, _) | (_, Value::Null) => false,
         _ => identity(a) == identity(b),
@@ -242,7 +244,7 @@ pub fn same(a: &Value, b: &Value) -> bool {
 
 /// dict_key: None for a value that is not equal even to itself (NaN).
 pub fn dict_key(v: &Value) -> Result<Option<DictKey>, String> {
-    if let Value::Number(x, _) = v {
+    if let Value::Number(x) = v {
         if x.is_nan() {
             return Ok(None);
         }
@@ -273,7 +275,7 @@ pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
             return Ok(x? == y?);
         }
     }
-    if let (Value::Number(x, _), Value::Number(y, _)) = (a, b) {
+    if let (Value::Number(x), Value::Number(y)) = (a, b) {
         return Ok(x == y);
     }
     Ok(same(a, b))

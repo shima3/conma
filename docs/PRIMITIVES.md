@@ -474,7 +474,7 @@ Invokes the current LCont with no argument
 
 ### `__Ref_wait_change__ Ref value ,()`
 * **Description**: Waits until the value of a `Ref` is another value.
-* **Behavior**: If the value of `Ref` is `value` (the same object), the current VProc waits (it is not in the ready queue) until another VProc sets another value, and then returns. Otherwise it returns at once. A VProc that reads the value, tests it, and then waits for it to change does not miss a change made in between, because it passes the value it read. A waiting VProc is counted as blocked for deadlock detection.
+* **Behavior**: If the value of `Ref` is `value` (the same value: for Numbers, an equal Number, with `+0` and `-0` the same and NaN the same as NaN, since Numbers have no identity; for any other value, including Strings, the same object), the current VProc waits (it is not in the ready queue) until another VProc sets another value, and then returns. Otherwise it returns at once. A VProc that reads the value, tests it, and then waits for it to change does not miss a change made in between, because it passes the value it read. A waiting VProc is counted as blocked for deadlock detection.
 * **Error**: Stops the VProc with an error if `Ref` is not a `Ref`.
 
 ---

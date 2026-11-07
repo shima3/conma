@@ -1,0 +1,75 @@
+;; Step38: Number には識別子がない。__Ref_wait_change__ は、Number を値で比べる（+0 と -0 は同じ、NaN は NaN と同じ）。
+;; ほかの値（String を含む）は、今までどおり同じオブジェクトかで比べる
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(s)
+  __Number_fromString__ __print_exit_error__ s)
+
+;; 他の VProc に順番を回す（何もしない VProc を起動して、終わるのを待つ）
+(define yield ,()
+  __VProc_start__ (,() __nop__) ,(other)
+  __VProc_wait__ __print_exit_error__ other)
+
+;; ref が old から変わるのを待つ VProc を起動する。起きたら name と今の値を出す
+(define waiter ,(name ref old)
+  __VProc_start__ (,()
+    __Ref_wait_change__ ref old ,()
+    __Ref_get__ ref ,(v)
+    __Number_toString__ v ,(s)
+    __String_concat__ name " woke: " ,(m)
+    __String_concat__ m s ,(m)
+    println m))
+
+;; case1: 等しい値の新しい Number を入れても、待っている VProc は起きない。違う値を入れると起きる
+(define case1 ,()
+  num "5" ,(five)
+  __Ref_new__ five ,(ref)
+  waiter "a" ref five ,(a)
+  yield ,()
+  num "5" ,(fiveAgain)
+  __Ref_set__ ref fiveAgain ,()
+  println "set an equal 5" ,()
+  yield ,()
+  num "6" ,(six)
+  println "set 6" ,()
+  __Ref_set__ ref six ,()
+  __VProc_wait__ __print_exit_error__ a ,()
+  println "end")
+
+;; case2: NaN は NaN と同じ、-0 は 0 と同じなので、どちらも待つ。違う値を入れると起きる
+(define case2 ,()
+  num "1e300" ,(big)
+  __Number_multiply__ big big ,(inf)
+  __Number_subtract__ inf inf ,(nan1)
+  __Number_subtract__ inf inf ,(nan2)
+  __Ref_new__ nan1 ,(r1)
+  waiter "nan" r1 nan2 ,(a)
+  num "0" ,(zero)
+  num "-0" ,(negZero)
+  __Ref_new__ zero ,(r2)
+  waiter "zero" r2 negZero ,(b)
+  yield ,()
+  println "both wait" ,()
+  num "1" ,(one)
+  __Ref_set__ r1 one ,()
+  __VProc_wait__ __print_exit_error__ a ,()
+  __Ref_set__ r2 one ,()
+  __VProc_wait__ __print_exit_error__ b ,()
+  println "end")
+
+;; case3: String は同じオブジェクトかで比べる。同じ文字の別の String を入れると起きる
+(define case3 ,()
+  __String_concat__ "a" "b" ,(s1)
+  __Ref_new__ s1 ,(ref)
+  __VProc_start__ (,()
+    __Ref_wait_change__ ref s1 ,()
+    println "woke by another String with the same text") ,(a)
+  yield ,()
+  __String_concat__ "a" "b" ,(s2)
+  __Ref_set__ ref s2 ,()
+  __VProc_wait__ __print_exit_error__ a ,()
+  println "end")

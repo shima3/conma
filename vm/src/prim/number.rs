@@ -8,7 +8,7 @@ use crate::vproc::VProc;
 
 pub fn check_number(name: &str, v: &Value) -> Result<f64, VmError> {
     match v {
-        Value::Number(x, _) => Ok(*x),
+        Value::Number(x) => Ok(*x),
         _ => err(format!("{}: expected Number, got {}", name, value_type_name(v))),
     }
 }

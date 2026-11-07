@@ -33,7 +33,7 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::Null => null_sexp(),
         Value::Str(s) => Sexp::Atom(std::rc::Rc::from(string_source(s))),
         Value::StrNode(n) | Value::Raw(n) => n.clone(),
-        Value::Number(x, _) => l(vec![a("__Number__"), a(&number_to_str(*x))]),
+        Value::Number(x) => l(vec![a("__Number__"), a(&number_to_str(*x))]),
         Value::Closure(c) => closure_to_sexp(c),
         Value::Seq(s) => seq_to_sexp(s),
         Value::Prim(p) => l(vec![a("PrimFunc"), a(&quoted(p.pyname))]),

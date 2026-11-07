@@ -134,11 +134,10 @@
   __if__ empty return ,()
   __MSeq_uncons__ __print_exit_error__ chains ,(chain rest)
   Sh_get chain "consumed" ,(consumedRef)
-  __Ref_get__ consumedRef ,(consumed)
-  ;; __Ref_wait_change__ は値の同一性で比べるので、同じ数の別のオブジェクトを置いて、待っている書き手を起こす
-  num "0" ,(zero)
-  __Number_add__ consumed zero ,(same)
-  __Ref_set__ consumedRef same ,()
+  ;; consumed を、取り出した数としてはありえない -1 にして、変わるのを待っている書き手を起こす（Number には
+  ;; 識別子がないので、同じ数を置いても起きない）。書き手は、起きると先に "cancelled" を見るので、-1 は数として使わない
+  num "-1" ,(none)
+  __Ref_set__ consumedRef none ,()
   Chan_cancel_chains rest)
 
 ;; ── 読み手 ──

@@ -779,3 +779,15 @@ No new primitive.
 | case1 | two files opened into the same Ref: the newer is first; writing through the recorded Streams and closing them |
 | case2 | a file that cannot be opened, a value that is not a Ref, a Ref of a String and a wrong mode go to `onError`, and the Ref is unchanged |
 | case3 | a VProc that opened a file into a Ref and then waits is killed; the file is in the Ref, and is closed from it |
+
+## Step 38: Numbers without identity
+
+* Goal: Numbers were objects with an identity, as in Python: every arithmetic result was another Number, and `__Ref_wait_change__`, which compares values by identity, woke a VProc when another VProc set an equal Number. Only ConSh used this: cancelling a channel (`Chan_cancel_chains` in `consh_chan.se`) set the count of consumed elements to an equal Number to wake the writers waiting for it to change; it now sets it to -1, which no count is. It also kept a Number from being only an `f64`, which the ConMa-to-Rust transpiler needs to keep Numbers in Rust variables.
+* A Number is now only its value (`Value::Number(f64)` in the Rust VM). `__Ref_wait_change__` compares Numbers by value, with `+0` and `-0` the same and NaN the same as NaN (`same` in the Rust VM, `same_value` in the Python VM); every other value, including Strings, is still compared by identity. Dict and PDict keys keep their rule (Numbers by value, NaN equal to nothing).
+* Tests (`test/step38`):
+
+| Case | What it checks |
+|---|---|
+| case1 | setting an equal Number does not wake a VProc waiting with `__Ref_wait_change__`; setting another one does |
+| case2 | a VProc waiting with another NaN on a Ref of NaN, and with `-0` on a Ref of `0`, waits until another value is set |
+| case3 | a String with the same text is another String: setting it wakes the waiting VProc |
