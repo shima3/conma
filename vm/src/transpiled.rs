@@ -248,9 +248,31 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
 /// loading it), and the steps after it that `apply` does, up to BUDGET.
 pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> PResult {
     debug_assert!(m.nctx.frames.is_empty());
+    BOOLS.with(|b| {
+        if b.borrow().is_none() {
+            *b.borrow_mut() = Some((m.false_closure(), m.true_closure()));
+        }
+    });
     m.nctx.budget = BUDGET;
     drive(m, vp, Next::Enter(fid, env), gv, t)?;
     Ok(())
+}
+
+thread_local! {
+    /// The Booleans of the Machine (false, true), for bool_value.
+    static BOOLS: std::cell::RefCell<Option<(Value, Value)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The Boolean of a bool that a fused chain keeps in a Rust variable (the
+/// result of `__is_null__` or a Number predicate), where it is used as a
+/// Value. Without a Machine at hand (in a CFrame builder), from BOOLS, which
+/// `run` sets before any transpiled code runs.
+pub fn bool_value(b: bool) -> Value {
+    BOOLS.with(|v| {
+        let v = v.borrow();
+        let (f, t) = v.as_ref().expect("the Booleans of the Machine");
+        if b { t.clone() } else { f.clone() }
+    })
 }
 
 /// What `drive` ends with.
