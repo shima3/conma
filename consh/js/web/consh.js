@@ -3,7 +3,8 @@
 // typed is given to its standard input; standard output and standard error are shown in the page.
 //
 // The files of the page are in the virtual file system of the VM, from /home/user (the current
-// directory); "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
+// directory), where the page puts the files of HOME_FILES (from consh/js/web) when it opens;
+// "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
 // standard input, as if they were typed (the ConMa version of ConSh has no source). There are no
 // external commands.
 (async function () {
@@ -13,6 +14,8 @@
   const line = document.getElementById("line");
   const status = document.getElementById("status");
   const HOME = "/home/user";
+  // Files of consh/js/web that are put in HOME when the page opens
+  const HOME_FILES = ["names.txt"];
 
   function show(text, cls) {
     if (text === "") return;
@@ -51,7 +54,11 @@
     vm.makeDirs(HOME);
     vm.setCwd(HOME);
     for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
-    vm.putFile(HOME + "/names.txt", "ConSh\nConMa\nwasm\n");
+    // The files of the page that start in HOME (fetched from beside the page)
+    for (const name of HOME_FILES) {
+      const r = await fetch(name);
+      if (r.ok) vm.putFile(HOME + "/" + name, new Uint8Array(await r.arrayBuffer()));
+    }
     const code = vm.start(new Uint8Array(moduleBytes), ["--main", "consh.module.se", "interactive", "-", "stdin"]);
     if (code !== 0) {
       finish(code);
