@@ -2870,7 +2870,31 @@
   __if_then_else__ condition (,() __NULL__ Builtin_bind) (,()
   __String_equal__ name "js" ,(condition)
   __if_then_else__ condition (,() __NULL__ Builtin_js)
-    (,() __NULL__ __NULL__))))))))))
+    (,() Builtin_host_lookup name))))))))))
+
+;; ホストの組み込みコマンド：インタプリタの環境変数 CONSH_HOST_BUILTINS（スペースで区切った名前）にある名前は、
+;; 組み込みコマンドとし、ホストのコマンド builtin:名前 を外部コマンドと同じく起動する。
+;; ブラウザ版（consh/js/web）が、JavaScript で作った cat をこうして組み込みコマンドにする。
+;; この変数がなければ（ネイティブ版）、組み込みコマンドは増えない。null か組み込みコマンドを返す
+(define Builtin_host_lookup ,(name)
+  __Cont_get__ ,(return)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "CONSH_HOST_BUILTINS" (,(key) return __NULL__) ,(names)
+  __String_concat__ " " names ,(list)
+  __String_concat__ list " " ,(list)
+  __String_concat__ " " name ,(word)
+  __String_concat__ word " " ,(word)
+  num "0" ,(zero)
+  __String_find__ __print_exit_error__ list word zero ,(found)
+  __if__ (,() __is_null__ found) (,() return __NULL__) ,()
+  __NULL__ (,(sh pos args in out err) Builtin_host sh pos name args in out err))
+
+;; ホストの組み込みコマンド name を実行する。引数は、外部コマンドと同じく葉ごとの String にする
+(define Builtin_host ,(sh pos name args in out err)
+  Arg_limit_new sh pos ,(limit)
+  Values_leaves_in args limit ,(args)
+  __String_concat__ "builtin:" name ,(hostName)
+  External_run sh pos hostName args in out err)
 
 ;; js [変数名=] コード {引数}：JavaScript のコードを式として評価する（consh/js/PLAN-ja.md の 2.1）。
 ;; 値が関数なら引数を渡して呼ぶ。Promise なら解決するまで待つ（ほかの VProc は動き続ける）。

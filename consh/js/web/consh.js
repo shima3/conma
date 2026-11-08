@@ -7,9 +7,10 @@
 // "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
 // standard input, as if they were typed (the ConMa version of ConSh has no source).
 //
-// The external commands are the ones of COMMANDS, written in JavaScript (cat), which the VM starts
-// as processes (hostProc): they read and write the standard input, output and error that ConSh gives
-// them, as a real process does. While one reads the terminal, the lines typed go to it instead of
+// The commands of COMMANDS, written in JavaScript (cat), are builtin commands of ConSh: the page
+// names them in CONSH_HOST_BUILTINS, and ConSh starts each as the process builtin:<name> (hostProc),
+// which reads and writes the standard input, output and error that ConSh gives it, as a real process
+// does. There are no external commands. While one reads the terminal, the lines typed go to it instead of
 // ConSh, Ctrl+D ends only its input, and Ctrl+C stops it (and ConSh gets the interrupt).
 (async function () {
   "use strict";
@@ -91,7 +92,8 @@
   }
 
   function spawnProcess(argv, env, cwd, stdio) {
-    const command = COMMANDS[argv[0]] || (argv[0].includes("/") ? COMMANDS[argv[0].split("/").pop()] : null);
+    // Only as builtin commands of ConSh (builtin:<name>); there are no external commands
+    const command = argv[0].startsWith("builtin:") ? COMMANDS[argv[0].slice(8)] : null;
     if (!command) return -2; // ENOENT: ConSh says "No such file or directory" and sets $? to 127
     const id = ++nextProc;
     const p = {
@@ -178,8 +180,10 @@
   let vm;
   try {
     const [wasmBytes, moduleBytes] = await Promise.all(
+      // Ask the server each time (it answers 304 when nothing changed), so that the page never runs
+      // an old module or wasm from the cache after consh/js/build.sh
       ["conma.wasm", "consh.module.se"].map((f) =>
-        fetch(f).then((r) => {
+        fetch(f, { cache: "no-cache" }).then((r) => {
           if (!r.ok) throw new Error(f + ": " + r.status + " " + r.statusText);
           return r.arrayBuffer();
         })
@@ -195,9 +199,11 @@
     vm.makeDirs(HOME);
     vm.setCwd(HOME);
     for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
+    // The commands of COMMANDS are builtin commands of ConSh
+    vm.setenv("CONSH_HOST_BUILTINS", Object.keys(COMMANDS).join(" "));
     // The files of the page that start in HOME (fetched from beside the page)
     for (const name of HOME_FILES) {
-      const r = await fetch(name);
+      const r = await fetch(name, { cache: "no-cache" });
       if (r.ok) vm.putFile(HOME + "/" + name, new Uint8Array(await r.arrayBuffer()));
     }
     const code = vm.start(new Uint8Array(moduleBytes), ["--main", "consh.module.se", "interactive", "-", "stdin"]);
@@ -212,7 +218,7 @@
   }
   status.textContent = "動作中";
   show(
-    "ConSh (ConMa VM on WebAssembly). 組込コマンドは cat だけです（JavaScript で作ったもの）。例:\n" +
+    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。cat は JavaScript で作った組み込みコマンドです。例:\n" +
       '  function greet (. names) { for n in $names; do echo "hello, $n"; done }\n' +
       "  greet $(cat < names.txt)\n",
     "n"
