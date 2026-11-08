@@ -220,6 +220,10 @@ def main():
         for inc_name in extract_includer_names(ast_text):
             if os.path.isabs(inc_name):
                 inc_abs = os.path.realpath(inc_name)
+                if not os.path.isfile(inc_abs):
+                    print(f"Error: included file not found: {inc_name!r}"
+                          f" (from {file_abs!r})", file=sys.stderr)
+                    sys.exit(1)
             else:
                 inc_abs = resolve_file(inc_name, base_dir, include_dirs)
                 if inc_abs is None:
