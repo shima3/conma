@@ -264,6 +264,27 @@ pub unsafe extern "C" fn conma_write(fd: i32, ptr: *const u8, len: usize) -> i32
     }
 }
 
+/// Read up to len bytes from the fd (a pipe end that the host was given by
+/// host_proc_spawn) into ptr without waiting. Returns the number read (0 at
+/// the end), or minus the errno (-35, EAGAIN, when there is nothing yet).
+///
+/// # Safety
+/// ptr must point to len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn conma_read(fd: i32, ptr: *mut u8, len: usize) -> i32 {
+    let buf = if len == 0 { &mut [][..] } else { std::slice::from_raw_parts_mut(ptr, len) };
+    match sys::read_fd(fd, buf) {
+        Ok(n) => n as i32,
+        Err(e) => -e.raw_os_error().unwrap_or(5),
+    }
+}
+
+/// A process of the host has exited: the scheduler polls the processes again.
+#[no_mangle]
+pub extern "C" fn conma_child_event() {
+    sys::child_event();
+}
+
 /// Close the fd (the pipe of __JS_call__). Returns 0, or the errno.
 #[no_mangle]
 pub extern "C" fn conma_close(fd: i32) -> i32 {

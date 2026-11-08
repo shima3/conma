@@ -130,7 +130,7 @@ function jsDone() {
 
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
-  const vm = ConMaVM.create(wasm, writeAll, readInput, null, null, jsDone, hostFs);
+  const vm = ConMaVM.create(wasm, writeAll, { inputNeeded: readInput, jsDone, hostFs });
   vm.useHostFs();
   vm.setCwd(process.cwd());
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);

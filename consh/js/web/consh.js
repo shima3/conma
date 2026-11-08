@@ -46,10 +46,7 @@
     vm = ConMaVM.create(
       wasm,
       (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""),
-      null,
-      null,
-      null,
-      () => pump()
+      { jsDone: () => pump() }
     );
     vm.makeDirs(HOME);
     vm.setCwd(HOME);

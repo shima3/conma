@@ -69,6 +69,34 @@ extern "C" {
     /// Write the names in the directory path, each followed by NUL, to out, as
     /// host_fs_realpath writes.
     fn host_fs_readdir(path_ptr: *const u8, path_len: usize, out: *mut u8, cap: usize) -> i32;
+
+    // Processes of the host (__OS_spawn__ and the others).
+    /// Start a process: argv and env (KEY=VALUE) are strings each followed by
+    /// NUL; stdio points to 3 pairs (kind, number) for standard input, output
+    /// and error: kind 0 the host's own fd number (0, 1, 2), 1 a file of the
+    /// host (its fd), 2 the read end of a pipe of the VM (an fd of the VM that
+    /// the host reads, conma_read, and closes), 3 the write end of a pipe of the
+    /// VM (an fd of the VM that the host writes, conma_write, and closes), 4
+    /// /dev/null. detached: in a new session. Returns the number of the
+    /// process, or minus an errno (-38, ENOSYS, if the host cannot start one).
+    fn host_proc_spawn(
+        argv_ptr: *const u8,
+        argv_len: usize,
+        env_ptr: *const u8,
+        env_len: usize,
+        cwd_ptr: *const u8,
+        cwd_len: usize,
+        stdio: *const i32,
+        detached: i32,
+    ) -> i32;
+    /// The exit code of the process (minus the signal number if a signal
+    /// killed it), or 999 while it runs.
+    fn host_proc_poll(id: i32) -> i32;
+    /// Send the signal; 0, or minus an errno.
+    fn host_proc_kill(id: i32, sig: i32) -> i32;
+    /// __OS_trap_interrupt__: from now on, a SIGINT of the host (or its
+    /// Ctrl-C) is counted (conma_interrupt) instead of ending it.
+    fn host_trap_sigint();
 }
 
 /// A result of a host_fs_ function: the value, or the error of minus it.
@@ -198,6 +226,9 @@ struct Os {
     /// Files are those of the host (conma_use_host_fs): open_file, is_dir,
     /// canonicalize and read_dir go to the host_fs_ functions.
     host_fs: bool,
+    /// The number of processes that the host said have exited
+    /// (conma_child_event): counted with the interrupts as signals.
+    child_events: u64,
 }
 
 thread_local! {
@@ -215,6 +246,7 @@ thread_local! {
         assume_dirs: false,
         js_jobs: 0,
         host_fs: false,
+        child_events: 0,
     });
 }
 
@@ -395,6 +427,81 @@ pub fn writable(fd: c_int) -> io::Result<bool> {
 
 pub fn send_signal(_pid: c_int, _sig: c_int) -> io::Result<()> {
     Err(err(ESRCH))
+}
+
+/// Start a process in the host (__OS_spawn__); its number in the host. fds
+/// are the fds of the VM for its standard input, output and error (None: the
+/// interpreter's own).
+pub fn spawn(args: &[String], fds: &[Option<i32>], env: &[(String, String)], cwd: &str, detached: bool) -> io::Result<i32> {
+    // The pipe ends that the host reads and writes are its own fds of the VM.
+    let mut stdio: Vec<i32> = Vec::new();
+    let mut taken: Vec<c_int> = Vec::new();
+    let r = with(|os| {
+        for (i, fd) in fds.iter().enumerate() {
+            let (kind, n) = match fd {
+                None => (0, i as i32),
+                Some(fd) => match os.get(*fd)? {
+                    Fd::StdIn => (0, 0),
+                    Fd::StdOut => (0, 1),
+                    Fd::StdErr => (0, 2),
+                    Fd::Host(f, _) => (1, f.0),
+                    f @ Fd::PipeRead(_) => {
+                        let d = os.add(f);
+                        taken.push(d);
+                        (2, d)
+                    }
+                    f @ Fd::PipeWrite(_) => {
+                        let d = os.add(f);
+                        taken.push(d);
+                        (3, d)
+                    }
+                    Fd::Null => (4, 0),
+                    _ => return Err(err(EBADF)),
+                },
+            };
+            stdio.push(kind);
+            stdio.push(n);
+        }
+        Ok(())
+    });
+    let close_taken = |taken: &[c_int]| {
+        for d in taken {
+            let _ = close_fd(*d);
+        }
+    };
+    if let Err(e) = r {
+        close_taken(&taken);
+        return Err(e);
+    }
+    let argv: String = args.iter().map(|a| format!("{}\0", a)).collect();
+    let envs: String = env.iter().map(|(k, v)| format!("{}={}\0", k, v)).collect();
+    let id = unsafe {
+        host_proc_spawn(
+            argv.as_ptr(),
+            argv.len(),
+            envs.as_ptr(),
+            envs.len(),
+            cwd.as_ptr(),
+            cwd.len(),
+            stdio.as_ptr(),
+            detached as i32,
+        )
+    };
+    if id < 0 {
+        close_taken(&taken);
+        return Err(err(-id));
+    }
+    Ok(id)
+}
+
+/// The exit code of a process of the host, or None while it runs.
+pub fn proc_poll(id: i32) -> io::Result<Option<i32>> {
+    let r = unsafe { host_proc_poll(id) };
+    Ok(if r == 999 { None } else { Some(r) })
+}
+
+pub fn proc_kill(id: i32, sig: c_int) -> io::Result<()> {
+    host_result(unsafe { host_proc_kill(id, sig) }).map(|_| ())
 }
 
 pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
@@ -631,14 +738,23 @@ pub fn install_wakeup() -> io::Result<c_int> {
     Err(unsupported())
 }
 
-pub fn trap_sigint() {}
+pub fn trap_sigint() {
+    unsafe { host_trap_sigint() };
+}
 
 pub fn interrupts() -> u64 {
     with(|os| os.interrupts)
 }
 
+/// The interrupts and the exits of processes so far: the scheduler polls the
+/// processes again only when this changes.
 pub fn signals() -> u64 {
-    interrupts()
+    with(|os| os.interrupts + os.child_events)
+}
+
+/// The host saw a process exit (or its output end): poll the processes again.
+pub fn child_event() {
+    with(|os| os.child_events += 1);
 }
 
 pub fn drain(_fd: c_int) {}
@@ -649,6 +765,8 @@ pub fn strerror(e: &io::Error) -> String {
     let text = match e.raw_os_error() {
         Some(EPERM) => "Operation not permitted",
         Some(ENOENT) => "No such file or directory",
+        Some(7) => "Argument list too long",
+        Some(38) => "Function not implemented",
         Some(ESRCH) => "No such process",
         Some(EBADF) => "Bad file descriptor",
         Some(13) => "Permission denied",

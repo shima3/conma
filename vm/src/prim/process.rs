@@ -81,20 +81,27 @@ fn do_spawn(m: &mut Machine, vp: &mut VProc, name: &str, detached: bool) -> PRes
     start_process(m, vp, name, detached, on_error, args, fds, env)
 }
 
-/// Without processes (wasm32): every start fails.
+/// The VM for wasm32: the host starts the process (sys::spawn), if it can.
 #[cfg(not(unix))]
 #[allow(clippy::too_many_arguments)]
 fn start_process(
-    _m: &mut Machine,
+    m: &mut Machine,
     vp: &mut VProc,
     name: &str,
-    _detached: bool,
+    detached: bool,
     on_error: Value,
     args: Vec<String>,
-    _fds: Vec<Option<i32>>,
-    _env: Vec<(String, String)>,
+    fds: Vec<Option<i32>>,
+    env: Vec<(String, String)>,
 ) -> PResult {
-    vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&sys::unsupported()), args[0]));
+    match sys::spawn(&args, &fds, &env, &vp.cwd, detached) {
+        Ok(host) => {
+            m.serials.osprocs += 1;
+            let p = OSProcObj { serial: m.serials.osprocs, host, code: std::cell::Cell::new(None) };
+            vp.prim_return(vec![Value::OSProc(Rc::new(p))]);
+        }
+        Err(e) => vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&e), args[0])),
+    }
     Ok(())
 }
 
@@ -219,7 +226,10 @@ pub fn kill(_m: &mut Machine, vp: &mut VProc) -> PResult {
     // Nothing happens if the process has already been waited for (Popen.send_signal).
     let r = match p.poll() {
         Ok(Some(_)) => Ok(()),
+        #[cfg(unix)]
         _ => sys::send_signal(p.child.borrow().id() as i32, sig),
+        #[cfg(not(unix))]
+        _ => sys::proc_kill(p.host, sig),
     };
     match r {
         Ok(()) => vp.prim_return(vec![]),

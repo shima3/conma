@@ -2,7 +2,7 @@
 // browser (<script src="conma.js">), in Node.js (require) and in the
 // JavaScriptCore shell (load()).
 //
-//   const vm = ConMaVM.create(wasmModule, (fd, bytes) => ...);
+//   const vm = ConMaVM.create(wasmModule, (fd, bytes) => ..., { ...hooks });
 //   vm.start(moduleBytes, ["-m", "consh.module.se", ...]);  // 0 if started
 //   for (;;) {
 //     const r = vm.run(100000);
@@ -12,7 +12,8 @@
 //   }
 //
 // wasmModule is a compiled WebAssembly.Module; write(fd, bytes) receives the
-// bytes the VM writes to standard output (1) and standard error (2).
+// bytes the VM writes to standard output (1) and standard error (2). The
+// hooks, all optional, are these:
 // inputNeeded(vm), if given, is called when a read of standard input that
 // cannot wait (__OS_get_String__) finds it empty: it may call vm.input or
 // vm.inputEnd at once (a browser cannot, and such a read sees the end).
@@ -30,6 +31,17 @@
 //   stat(path)        1 for a directory, 2 for another file (links followed)
 //   realpath(path)    a string
 //   readdir(path)     an array of names
+// hostProc, if given, starts processes for __OS_spawn__ (the VM calls them):
+//   spawn(argv, env, cwd, stdio, detached)  argv an array of strings, env an
+//       object, stdio 3 pairs {kind, n} (see host_proc_spawn in wasm/src/sys.rs);
+//       the number of the process, or minus an errno
+//   poll(id)       the exit code (minus a signal number), or null while it runs
+//   kill(id, sig)  0, or minus an errno
+// trapInterrupt(vm), if given, is called when the VM traps SIGINT
+// (__OS_trap_interrupt__): from then on, the host calls vm.interrupt() for a
+// SIGINT (a browser does it for Ctrl-C anyway).
+// The host moves the data of the pipe ends of kinds 2 and 3 with vm.read,
+// vm.write and vm.close, and calls vm.childEvent() when a process exits.
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -286,7 +298,8 @@ var ConMaVM = (function () {
     return "(e " + sexpString(msg) + ")\n";
   }
 
-  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs) {
+  function create(wasmModule, write, hooks) {
+    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt } = hooks || {};
     let x = null;
     let vm = null;
     let jsPending = 0;
@@ -417,6 +430,27 @@ var ConMaVM = (function () {
           const r = hostFs.readdir(str(ptr, len));
           return give(typeof r === "number" ? r : r.map((n) => n + "\0").join(""), out, cap);
         },
+        host_proc_spawn: (argvPtr, argvLen, envPtr, envLen, cwdPtr, cwdLen, stdioPtr, detached) => {
+          if (!hostProc) return -38;
+          const argv = str(argvPtr, argvLen).split("\0").slice(0, -1);
+          const env = {};
+          for (const e of str(envPtr, envLen).split("\0").slice(0, -1)) {
+            const i = e.indexOf("=");
+            env[e.slice(0, i)] = e.slice(i + 1);
+          }
+          const nums = new Int32Array(x.memory.buffer, stdioPtr, 6);
+          const stdio = [0, 1, 2].map((i) => ({ kind: nums[2 * i], n: nums[2 * i + 1] }));
+          return hostProc.spawn(argv, env, str(cwdPtr, cwdLen), stdio, detached !== 0);
+        },
+        host_proc_poll: (id) => {
+          if (!hostProc) return 999;
+          const c = hostProc.poll(id);
+          return c === null ? 999 : c;
+        },
+        host_proc_kill: (id, sig) => (hostProc ? hostProc.kill(id, sig) : -3),
+        host_trap_sigint: () => {
+          if (trapInterrupt) trapInterrupt(vm);
+        },
         host_js_input: (id, ptr, len) => {
           const job = jobs.get(id);
           if (job) job.input(text(new Uint8Array(x.memory.buffer, ptr, len)));
@@ -477,6 +511,22 @@ var ConMaVM = (function () {
       // Take a directory on the way of a path that fileNeeded does not give to
       // exist (for a host that cannot tell directories).
       assumeDirs: () => x.conma_assume_dirs(),
+      // For the pipe ends that hostProc.spawn gets: read up to len bytes without
+      // waiting (a Uint8Array, empty at the end, or minus an errno: -35 when
+      // there is nothing yet), write bytes (0 or minus an errno), close.
+      read: (fd, len) => {
+        const ptr = x.conma_alloc(len);
+        try {
+          const n = x.conma_read(fd, ptr, len);
+          return n < 0 ? n : new Uint8Array(x.memory.buffer, ptr, n).slice();
+        } finally {
+          x.conma_free(ptr, len);
+        }
+      },
+      write: (fd, bytes) => pass(bytes, (p, n) => -x.conma_write(fd, p, n)),
+      close: (fd) => x.conma_close(fd),
+      // A process exited: the VM polls the processes again.
+      childEvent: () => x.conma_child_event(),
       // Use the file system of the host (hostFs) instead of the virtual one.
       useHostFs: () => x.conma_use_host_fs(),
       // A file whose contents fileNeeded gives when the VM opens it.

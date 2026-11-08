@@ -37,7 +37,10 @@
       // not in the real file system either, or a directory
     }
   };
-  const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), readInput, fetchFile);
+  const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), {
+    inputNeeded: readInput,
+    fileNeeded: fetchFile,
+  });
   // The shell cannot tell directories: a directory on the way of a path is taken to exist.
   vm.assumeDirs();
   vm.makeDirs(cwd);
