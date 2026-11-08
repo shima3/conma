@@ -53,7 +53,9 @@
 //
 // __JS_call__ code args: code is evaluated as an expression in the global
 // scope, where it also sees stdin; if its value is a function, it is called
-// with args (strings, and arrays of them), and the result (awaited if it is a
+// with args (strings, and arrays of them); code that is not an expression is
+// run as the body of an async function, whose result is the value of its
+// return (it sees stdin and args); the result (awaited if it is a
 // Promise) is written to the pipe of __JS_call__ as a line, an S-expression
 // that __Sexp_read__ reads (see 2.1 and 2.2 of consh/js/PLAN-ja.md); lines
 // before it say what else the call needs:
@@ -124,11 +126,30 @@ var ConMaVM = (function () {
     this.message = message;
   }
 
+  const AsyncFunction = async function () {}.constructor;
+
   // The code as an expression in the global scope (a Function, which is not
   // strict, so that an assignment to an undeclared name makes a global), with
-  // stdin as a parameter.
+  // stdin as a parameter; if its value is a function, it is called with args.
+  // Code that is not an expression is the body of an async function, whose
+  // result is the value of its return (it may await), and which sees stdin
+  // and args (an array). Code that is neither is the syntax error of the
+  // expression.
   function evaluate(code, args, stdin) {
-    const value = new Function("stdin", "return (" + code + "\n)")(stdin);
+    let expression;
+    try {
+      expression = new Function("stdin", "args", "return (" + code + "\n)");
+    } catch (e) {
+      if (!(e instanceof SyntaxError)) throw e;
+      let body;
+      try {
+        body = new AsyncFunction("stdin", "args", code);
+      } catch (e2) {
+        throw e;
+      }
+      return body(stdin, args);
+    }
+    const value = expression(stdin, args);
     if (typeof value === "function") return value(...args);
     if (args.length > 0) throw new HostError("arguments given to a value that is not a function");
     return value;

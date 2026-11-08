@@ -45,9 +45,13 @@ ConSh の PLAN-ja.md の 1.2 に、次の規則を加える。
       js r= $code                                        # 変数に入れたコードも使える
       ```
 3. コードは、JavaScript の式として評価する。
-    - 評価には `(0, eval)("(" + code + ")")` を使う。これは大域スコープでの評価で、ConSh の変数は見えない。
+    - 評価は大域スコープで行い（段階 5 からは `new Function("stdin", ...)`。strict でない）、ConSh の変数は見えない。
     - 式の値が関数なら、引数を渡して呼び、その戻り値を結果とする。
     - 関数でなければ、式の値を結果とする。このとき引数があればエラーとする（`js: arguments given to a value that is not a function`）。
+    - 式として読めないコードは、async 関数の本体として動かし、`return` の値を結果とする（`return` がなければ `undefined`、何も出さない）。`await` を書け、`stdin` と、引数の配列 `args` が見える。式として読めるコードは、文としても読めても式とする（`{a: 1}` はオブジェクト）。
+        - 例：`js 'let x = 1; return x + 1'`、`js 'const r = await fetch("data.txt"); return r.status'`
+        - 文の並びの最後の式の値（eval の完了値）は使わない。`stdin` と `args` を見せられず、また実行時の SyntaxError（`JSON.parse` など）と構文エラーを見分けられないので、コードを 2 度動かすおそれがあるからである。
+        - どちらとしても読めなければ、式としての構文エラーを出す。
 4. **引数の渡し方**
     - 文字列の引数は、JavaScript の文字列として渡す。
     - LazyList の引数（`${list}` を関数に渡す場合と同じく、1 つの値として渡したもの）は、配列として渡す。要素が LazyList なら、入れ子の配列にする。
@@ -290,8 +294,11 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - vm-node.js は、同じ wasm からもう 1 つ VM のインスタンスを作り、リポジトリの `vm/frontend.module.se` を `conma build` と同じ引数で最後まで動かして、その標準出力をモジュールにする（ファイルは同じ hostFs で読む）。ブラウザにはこれがないので、`__VProc_spawn__` は `includer failed` になる。
 - これで、`CONMA_VM=wasm test/run_all.sh` は、予定どおりの step40 のほかは、ネイティブ版と同じログになった。consh/test は、予定どおりの step17 と、step8（子の出力がソケットに見える）だけが違う。
 
+### 3.11. js のコードの文（2026/11/8）
+
+- 式として読めないコードを、async 関数の本体として動かすようにした（2.1 の 3）。テストは consh/js/test/step4（`return`、`args`、`stdin`、`await`、`console`、`return` のない本体、ジェネレータを返す本体、式が先になること、本体の中の例外と拒否、関数の結果）。
+
 ## 4. 未解決の点
 
-- 2.1 の 3 で、文（`let x = 1; x + 1`）をそのまま書けるようにするか。今の案では式だけなので、`(() => { ... })()` か、関数の `{ ... }` で書く。
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。
 - Rust 版 ConSh も wasm にして、`js` を使えるようにするか（1 の 2）。

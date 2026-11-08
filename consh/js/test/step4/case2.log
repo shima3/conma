@@ -1,0 +1,7 @@
+consh: case2.sh:2:1: js: Error: from a body
+status 1
+consh: case2.sh:4:1: js: TypeError: rejected
+status 1
+consh: case2.sh:7:1: js: the result is a function
+status 1
+exit: 0
