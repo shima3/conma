@@ -352,7 +352,15 @@ vm/README.md には、同じループが 0.61 秒、`echo hi` の起動が 0.06 
 
 ### 対応
 
-指摘のあと、4 と 5 を直した（1〜3 はまだ）。
+指摘のあと、2〜5 に対応した（1 はまだ）。
 
 * 4：`consh/rust/Cargo.toml` に `rust-version = "1.87"`、`vm/Cargo.toml` に `rust-version = "1.75"` を書いた。rustup で 1.75、1.86、1.87 を入れて確かめた。`vm/` は 1.75 でビルドでき、`consh/rust/` は 1.86 では `std::io::pipe` が安定していないのでビルドできず、1.87 でビルドできる。両方の `Cargo.lock` を version 3 にした（Cargo 1.78 より前でも読める。依存クレートがないので中身は同じで、新しい Cargo でビルドしても version 3 のまま）。vm/README.md と `bin/consh` の説明にも、必要なバージョンを書いた。
 * 5：step10 の case2 と case3 は、`od -c` の出力の行末の空白を `sed 's/ *$//'` で消し、期待ログの行末の空白も消した。BSD と GNU のどちらの `od` でも同じになるはずである（GNU の `od` では確かめていない）。`common.sh` に `require 道具 …` を足し、step13 と step14 の `test.sh` は、`lsof` がなければ `step13: lsof is needed for this test (install it)` を出して止める。ConMa 版（Python と Rust の両方の VM）と Rust 版で、step10、step13、step14 が通る。
+* 2：`bin/consh` の既定を Rust 版（consh/rust、`CONSH_IMPL=rust`）にした（d004283）。ConMa 版は仕様の参照実装として残し、`CONSH_IMPL=conma` で使う。指摘の 2 つのスクリプトの時間（Apple M4、user + sys、5 回の最小）は次のとおり。Rust 版は、起動もループも Bash と同じ程度か速い（ほかのスクリプトとの比較は PLAN-ja.md の段階 19 の段階 5 の表）。ConMa 版も、その後の改良（文と単純文のコンパイル、データの組み込み、変換した VM など。PLAN-ja.md、vm/README.md）で速くなったが、ループは Bash の約 16〜29 倍遅いままである（指摘のときは約 70 倍）。
+
+    | 項目 | Rust 版（既定） | ConMa 版（Rust 版の VM） | ConMa 版（変換した VM） | Bash |
+    |---|---|---|---|---|
+    | `examples/logsummary.sh`（起動と 1 回の実行） | 0.01 秒 | 0.06 秒 | 0.07 秒 | 0.01 秒 |
+    | `for i in $(seq 1 20000); do n=$i; done` | 0.01 秒 | 0.58 秒 | 0.33 秒 | 0.02 秒 |
+
+* 3：既定の Rust 版は、構文解析も Rust で行い（段階 19 の段階 4）、Python を使わない。consh-rs を作っておけば、ConSh は 1 つの実行形式として配れる（Rust 1.87 以降。4）。ConMa 版（`CONSH_IMPL=conma`）は、今も構文木を `consh_parse`（Python）で作り、モジュールを `bin/includer` と `bin/resolver`（Python）で作る。`--conma-parser` を付ければ、構文解析は ConMa 版（`consh_parser.se`）になる。作者の方針（memo.txt の 2026-11-06）では、VM は Python 版を基準、Rust 版を製品とし、フロントエンドは製品では ConMa 版を使い、Python 版を基準として残す。当面は Python なしで動かなくてもよい。ConMa 版の ConSh から Python をなくすことは、その方針の作業（ConMa のレビューの 8）として扱う。
