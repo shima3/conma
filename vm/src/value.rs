@@ -184,9 +184,50 @@ pub struct LazyInfo {
     pub thunk: Value,
 }
 
+/// A mutable sequence. Its items are those of `items` from `start` on: the
+/// rest that __MSeq_uncons__ returns shares the items of the MSeq it was
+/// taken from (one more start) instead of copying them, and an MSeq copies its
+/// items (from its start) before it changes them when another MSeq shares them
+/// (items_mut), so that each behaves as an MSeq of its own.
 pub struct MSeqObj {
     pub serial: usize,
-    pub items: RefCell<Vec<Value>>,
+    pub items: RefCell<Rc<Vec<Value>>>,
+    pub start: Cell<usize>,
+}
+
+impl MSeqObj {
+    pub fn new(serial: usize, items: Vec<Value>) -> MSeqObj {
+        MSeqObj { serial, items: RefCell::new(Rc::new(items)), start: Cell::new(0) }
+    }
+    /// The items, from start on.
+    pub fn to_vec(&self) -> Vec<Value> {
+        self.items.borrow()[self.start.get()..].to_vec()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.items.borrow().len() <= self.start.get()
+    }
+    /// The first item, if any.
+    pub fn head(&self) -> Option<Value> {
+        self.items.borrow().get(self.start.get()).cloned()
+    }
+    /// The MSeq of the items after the first, sharing them.
+    pub fn rest(&self, serial: usize) -> MSeqObj {
+        MSeqObj { serial, items: RefCell::new(self.items.borrow().clone()), start: Cell::new(self.start.get() + 1) }
+    }
+    /// The items to change, from index 0: copied first (from start on) if
+    /// another MSeq shares them or they do not start at 0.
+    pub fn items_mut(&self) -> std::cell::RefMut<'_, Vec<Value>> {
+        let mut items = self.items.borrow_mut();
+        let start = self.start.get();
+        if start > 0 && Rc::strong_count(&items) > 1 {
+            *items = Rc::new(items[start..].to_vec());
+            self.start.set(0);
+        } else if start > 0 {
+            Rc::make_mut(&mut items).drain(..start);
+            self.start.set(0);
+        }
+        std::cell::RefMut::map(items, Rc::make_mut)
+    }
 }
 
 /// A mapping in insertion order. Keys are compared with values_equal; the

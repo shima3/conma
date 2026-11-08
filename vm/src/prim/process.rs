@@ -34,7 +34,7 @@ fn do_spawn(m: &mut Machine, vp: &mut VProc, name: &str, detached: bool) -> PRes
     let command = a.pop().unwrap();
     let on_error = a.pop().unwrap();
     let items = match &command {
-        Value::MSeq(s) => s.items.borrow().clone(),
+        Value::MSeq(s) => s.to_vec(),
         other => {
             vp.prim_error(on_error, &format!("{}: expected MSeq command, got {}", name, value_type_name(other)));
             return Ok(());

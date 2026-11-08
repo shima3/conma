@@ -112,6 +112,8 @@ enum Node {
     Dict(Rc<DictObj>),
     VProc(Rc<VProcCell>),
     GV(Rc<GVEnv>),
+    /// The items of MSeqs, which the rests of __MSeq_uncons__ share.
+    Items(Rc<Vec<Value>>),
 }
 
 impl Node {
@@ -128,6 +130,7 @@ impl Node {
             Node::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::GV(r) => Rc::as_ptr(r) as *const u8 as usize,
+            Node::Items(r) => Rc::as_ptr(r) as *const u8 as usize,
         }
     }
 
@@ -144,6 +147,7 @@ impl Node {
             Node::Dict(r) => Rc::strong_count(r),
             Node::VProc(r) => Rc::strong_count(r),
             Node::GV(r) => Rc::strong_count(r),
+            Node::Items(r) => Rc::strong_count(r),
         }
     }
 
@@ -186,8 +190,9 @@ impl Node {
             }
             Node::MSeq(m) => {
                 let Ok(items) = m.items.try_borrow() else { return false };
-                items.iter().for_each(|v| value_child(v, f));
+                f(Node::Items(items.clone()));
             }
+            Node::Items(items) => items.iter().for_each(|v| value_child(v, f)),
             Node::Dict(d) => {
                 let Ok(entries) = d.entries.try_borrow() else { return false };
                 for (k, v) in entries.iter() {
@@ -226,7 +231,7 @@ impl Node {
     }
 
     /// Take the contents out of a container that is garbage.
-    fn clear(&self, trash: &mut Vec<Value>, lv_trash: &mut Vec<LVEnv>) {
+    fn clear(&self, trash: &mut Vec<Value>, lv_trash: &mut Vec<LVEnv>, items_trash: &mut Vec<Rc<Vec<Value>>>) {
         match self {
             Node::Ref(r) => {
                 trash.push(std::mem::replace(&mut *r.value.borrow_mut(), Value::Null));
@@ -235,7 +240,9 @@ impl Node {
                     trash.push(info.thunk);
                 }
             }
-            Node::MSeq(m) => trash.append(&mut m.items.borrow_mut()),
+            // The items go when no MSeq shares them any more (another garbage
+            // MSeq may still share them until it is cleared).
+            Node::MSeq(m) => items_trash.push(std::mem::take(&mut *m.items.borrow_mut())),
             Node::Dict(d) => {
                 for (k, v) in d.entries.borrow_mut().drain(..) {
                     trash.push(k);
@@ -366,10 +373,11 @@ pub fn collect() -> usize {
     }
     let mut trash: Vec<Value> = Vec::new();
     let mut lv_trash: Vec<LVEnv> = Vec::new();
+    let mut items_trash: Vec<Rc<Vec<Value>>> = Vec::new();
     let mut freed = 0;
     for (j, n) in nodes.iter().enumerate() {
         if !live[j] && n.is_container() {
-            n.clear(&mut trash, &mut lv_trash);
+            n.clear(&mut trash, &mut lv_trash, &mut items_trash);
             freed += 1;
         }
     }
@@ -378,7 +386,7 @@ pub fn collect() -> usize {
         let mut kinds: HashMap<&str, usize> = HashMap::new();
         for (n, &l) in nodes.iter().zip(&live) {
             if l {
-                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::VProc(_) => "VProc", Node::GV(_) => "GV" };
+                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::VProc(_) => "VProc", Node::GV(_) => "GV", Node::Items(_) => "Items" };
                 *kinds.entry(k).or_default() += 1;
             }
         }
@@ -389,6 +397,7 @@ pub fn collect() -> usize {
     drop(index);
     drop(trash);
     drop(lv_trash);
+    drop(items_trash);
     MADE.store(0, Relaxed);
     let next = FIXED.with(|f| *f).unwrap_or(survivors.max(MIN_THRESHOLD));
     THRESHOLD.store(next, Relaxed);

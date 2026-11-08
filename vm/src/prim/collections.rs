@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 fn new_mseq(m: &mut Machine, items: Vec<Value>) -> Value {
     m.serials.mseqs += 1;
-    Value::MSeq(crate::gc::new_mseq(MSeqObj { serial: m.serials.mseqs, items: RefCell::new(items) }))
+    Value::MSeq(crate::gc::new_mseq(MSeqObj::new(m.serials.mseqs, items)))
 }
 
 /// Take onError, an MSeq and count-2 more operands. None after applying
@@ -36,7 +36,7 @@ pub fn mseq_new(m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn mseq_is_empty(m: &mut Machine, vp: &mut VProc) -> PResult {
     if let Some((_, s, _)) = mseq_args(vp, "__MSeq_is_empty__", 2)? {
-        let b = if s.items.borrow().is_empty() { m.true_closure() } else { m.false_closure() };
+        let b = if s.is_empty() { m.true_closure() } else { m.false_closure() };
         vp.prim_return(vec![b]);
     }
     Ok(())
@@ -44,16 +44,13 @@ pub fn mseq_is_empty(m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn mseq_uncons(m: &mut Machine, vp: &mut VProc) -> PResult {
     if let Some((on_error, s, _)) = mseq_args(vp, "__MSeq_uncons__", 2)? {
-        let items = s.items.borrow();
-        if items.is_empty() {
-            drop(items);
+        let Some(head) = s.head() else {
             vp.prim_error(on_error, "__MSeq_uncons__: empty MSeq");
             return Ok(());
-        }
-        let head = items[0].clone();
-        let rest = items[1..].to_vec();
-        drop(items);
-        let tail = new_mseq(m, rest);
+        };
+        // The rest shares the items (an MSeq copies them before changing them).
+        m.serials.mseqs += 1;
+        let tail = Value::MSeq(crate::gc::new_mseq(s.rest(m.serials.mseqs)));
         vp.prim_return(vec![head, tail]);
     }
     Ok(())
@@ -62,11 +59,11 @@ pub fn mseq_uncons(m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn mseq_set_head(_m: &mut Machine, vp: &mut VProc) -> PResult {
     if let Some((on_error, s, mut rest)) = mseq_args(vp, "__MSeq_set_head__", 3)? {
         let value = rest.pop().unwrap();
-        if s.items.borrow().is_empty() {
+        if s.is_empty() {
             vp.prim_error(on_error, "__MSeq_set_head__: empty MSeq");
             return Ok(());
         }
-        s.items.borrow_mut()[0] = value;
+        s.items_mut()[0] = value;
         vp.prim_return(vec![]);
     }
     Ok(())
@@ -74,7 +71,7 @@ pub fn mseq_set_head(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn mseq_append(_m: &mut Machine, vp: &mut VProc) -> PResult {
     if let Some((_, s, mut rest)) = mseq_args(vp, "__MSeq_append__", 3)? {
-        s.items.borrow_mut().push(rest.pop().unwrap());
+        s.items_mut().push(rest.pop().unwrap());
         vp.prim_return(vec![]);
     }
     Ok(())
