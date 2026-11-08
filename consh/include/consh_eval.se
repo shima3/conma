@@ -6,6 +6,10 @@
 ;;     __is_null__、__String_equal__、__Number_is_zero__、__Number_is_negative__、__Number_is_positive__ で、
 ;;     引数が変数か文字列のものだけ。
 ;;   * Func_lookup を __Cont_get__ を使わない形にし、Sh_defined で普通の変数を先に調べるようにした。
+;;   * 外部コマンド 1 つだけの $( ) の値を、1 段の LazyList で作るようにした（Subst_lines_from。参照版の
+;;     Eval_subst_os は、util.se の __LazyList_lines__ を Subst_lines で包む）。
+;;   * Subst_settle_os で、値の先頭に Pipe_cap 個そろったことを記録（"full"）に覚え、コマンドのたびに
+;;     たどり直さないようにした。
 ;;
 ;; ConSh の実行（段階 3〜13）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
@@ -1791,8 +1795,8 @@
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
   Subst_watch vproc child ,()
   __Ref_new__ __FALSE__ ,(cancelled)
-  __LazyList_lines__ reader ,(raw)
-  Subst_lines raw reader cancelled ,(value)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Subst_lines_from reader cancelled "" zero "" ,(value)
   __Dict_new__ ,(record)
   __Dict_put__ record "vproc" vproc ,()
   __Dict_put__ record "child" child ,()
@@ -1822,6 +1826,91 @@
     Line_chomp line ,(line)
     Subst_lines rest reader cancelled ,(rest)
     __LazyList_cons__ line rest))
+
+;; 高速版：OS のパイプから読む $( ) の値（Subst_lines と同じもの）を、1 段の LazyList で作る。参照版は、
+;; util.se の __LazyList_lines__（改行を含む行の LazyList）を Subst_lines でもう一度包むので、要素ごとに LazyList を
+;; 2 つたどり、さらに __LazyList_lines_scan__ が、行を取り出すたびに読んだ塊の残り全体を写す（塊の長さと行の数の積の
+;; 時間がかかる）。ここでは、塊（buf）の中を位置（start）で進め、行の改行（と、その前の \r）を除いて要素にする。
+;; __String_find__ と __String_substring__ は、呼ぶたびに文字列全体の文字数を数える（位置は文字で数える）ので、
+;; 読んだ塊は、まず Subst_lines_chunk 文字ずつの断片に切り（more は、まだ切っていない残り）、断片の中で行を探す。
+;; 要素ごとに、参照版の Subst_lines と同じく、まず cancelled を見て、真ならそれ以上読まずに終える。
+;; 終わりまで読んだら、参照版と同じく、最後の要素の次をたどったときにパイプの読む側を閉じる
+(define Subst_lines_from ,(reader cancelled buf start more)
+  __LazyList_new__ (,() Subst_lines_next reader cancelled buf start more __NULL__))
+
+;; 断片の長さ（文字数）
+(define Subst_lines_chunk ,() __Number_fromString__ __print_exit_error__ "1024")
+
+;; buf の start から改行を探す。pieces は、前の断片から続く行の途中（逆順の LList。util.se の __Lines_join__）
+(define Subst_lines_next ,(reader cancelled buf start more pieces)
+  __Ref_get__ cancelled ,(stop)
+  __if_then_else__ stop
+    (,() __LazyList_empty__)
+    (,()
+      __String_find__ __print_exit_error__ buf "\n" start ,(pos)
+      __is_null__ pos ,(none)
+      __if_then_else__ none
+        (,()
+          __String_length__ buf ,(len)
+          __String_substring__ __print_exit_error__ buf start len ,(piece)
+          __Lines_add_piece__ pieces piece ,(pieces)
+          Subst_lines_cut reader cancelled more pieces)
+        (,()
+          __String_substring__ __print_exit_error__ buf start pos ,(head)
+          __Lines_join__ pieces head ,(line)
+          __String_strip_suffix__ line "\r" ,(line)
+          __Number_fromString__ __print_exit_error__ "1" ,(one)
+          __Number_add__ pos one ,(next)
+          Subst_lines_from reader cancelled buf next more ,(tail)
+          __LazyList_cons__ line tail)))
+
+;; 次の断片を more から切り出して探す。more がなければ塊を読み足す
+(define Subst_lines_cut ,(reader cancelled more pieces)
+  __String_length__ more ,(len)
+  __Number_is_zero__ len ,(empty)
+  __if_then_else__ empty
+    (,() Subst_lines_read reader cancelled pieces)
+    (,()
+      Subst_lines_chunk ,(chunk)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_subtract__ len chunk ,(over)
+      __Number_is_positive__ over ,(long)
+      __if_then_else__ long
+        (,()
+          __String_substring__ __print_exit_error__ more zero chunk ,(buf)
+          __String_substring__ __print_exit_error__ more chunk len ,(rest)
+          Subst_lines_next reader cancelled buf zero rest pieces)
+        (,() Subst_lines_next reader cancelled more zero "" pieces)))
+
+;; 塊を読み足して続きを探す。EOF なら、行の途中があれば最後の要素にし、その次で読む側を閉じる
+(define Subst_lines_read ,(reader cancelled pieces)
+  __OS_read__ __print_exit_error__ reader ,(data)
+  __is_null__ data ,(eof)
+  __if_then_else__ eof
+    (,()
+      __is_null__ pieces ,(none)
+      __if_then_else__ none
+        (,() Subst_lines_end reader)
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          __String_strip_suffix__ line "\r" ,(line)
+          __LazyList_new__ (,()
+            __Ref_get__ cancelled ,(stop)
+            __if_then_else__ stop (,() __LazyList_empty__) (,() Subst_lines_end reader)) ,(tail)
+          __LazyList_cons__ line tail))
+    (,()
+      __String_length__ data ,(dataLen)
+      __Number_is_zero__ dataLen ,(nothing)
+      __if_then_else__ nothing
+        (,()
+          __OS_wait_readable__ __print_exit_error__ reader ,()
+          Subst_lines_read reader cancelled pieces)
+        (,() Subst_lines_cut reader cancelled data pieces)))
+
+;; 終わりまで読んだ：読む側を閉じ、空の LazyList を返す（参照版の Subst_lines と同じ）
+(define Subst_lines_end ,(reader)
+  __OS_close__ (,(msg) __nop__) reader ,()
+  __LazyList_empty__)
 
 ;; 子の VProc が ConMa の実行時エラーで止まると、Sh_finish を通らず、状態が "running" のまま、
 ;; チャネルも開いたまま残り、文の終わりや値を読む側が待ち続ける。そのため、別の VProc で子の終わりを待ち、
@@ -1878,9 +1967,13 @@
   __Ref_get__ stateRef ,(state)
   __String_equal__ state "done" ,(done)
   __if__ done (,() Lazy_drain value ,() return "done") ,()
+  ;; 高速版：値の先頭に Pipe_cap 個そろったことが一度分かれば（"full"）、たどり直さない。値の LazyList の
+  ;; 先頭は変わらず、評価した要素は残るので、Lazy_ahead は何度呼んでも同じ偽になる
+  __Dict_lookup_or__ record "full" (,(key) __NULL__ __FALSE__) ,(full)
+  __if__ full (,() return "blocked") ,()
   Pipe_cap ,(cap)
   Lazy_ahead value cap ,(ended)
-  __unless__ ended (,() return "blocked") ,()
+  __unless__ ended (,() __Dict_put__ record "full" __TRUE__ ,() return "blocked") ,()
   Subst_wait_done stateRef)
 
 (define Subst_wait_done ,(stateRef)
