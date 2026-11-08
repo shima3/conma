@@ -327,8 +327,9 @@ def transpiled_call(funcs, prims, f, prim_index):
 # results are those of the VM.
 
 class Fuser:
-    def __init__(self, funcs, prims, tops, gfun):
+    def __init__(self, funcs, prims, tops, gfun, prim_index):
         self.funcs, self.prims, self.tops, self.gfun = funcs, prims, tops, gfun
+        self.prim_index = prim_index
         self.loop = None
         # the code being written: the Rust variable of its LVEnv, the number
         # of the Rust variable of its first chain variable (x{off}), and how
@@ -655,6 +656,11 @@ class Fuser:
         if not (retry or rare):
             self.nbail += 1
         self.push_joins(J, out)
+        if retry:
+            # the VM runs the Body (the code above would be this chain again
+            # when x is the first Body of a fused Function)
+            out.append(f"return deopt(vp, {x}, {self.mat(d, locals_)}, gv, t);")
+            return
         out.append(f"return bail(t, {x}, {self.mat(d, locals_)});")
 
     def sinfo(self, x):
@@ -710,7 +716,10 @@ class Fuser:
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None
         ckey = self.constant(x, d, key, 1, locals_) if key is not None else None
-        if (ckey is not None and "\\" not in ckey[2] and None not in args
+        # onMissing written as a function: a missing key is left to the code of
+        # this Body (a lookup only reads), which makes the Closure and applies it
+        fmissing = name == "__Dict_lookup_or__" and key is not None and b.olist[2][0] == "F"
+        if (ckey is not None and "\\" not in ckey[2] and (None not in args or (fmissing and None not in args[:2]))
                 and self.rref(x, d, b.olist[0], 0, locals_) is not None):
             # a String key written in place (or given to an inlined call): its
             # text, without escapes, and its hash in the Dict index (computed
@@ -720,7 +729,7 @@ class Fuser:
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
             if name == "__Dict_put__":
                 out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
-                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2, {{ static IC: Ic = Ic::new(); &IC }}){err};')
+                out.append(f'd_dict_put_str(cref(t, {ckey[0]}, {ckey[1]}), a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2, {{ static IC: Ic = Ic::new(); &IC }}){err};')
                 out.append("let o = Out::R0;")
                 return self.direct_result(x, d, locals_, lc, out, J)
             if one and self.use_kinds(lc, 0) == {"cond"}:
@@ -732,8 +741,23 @@ class Fuser:
                 out.append("} };")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
             # the value, or onMissing applied to the key (evaluated only then)
-            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}){err} {{ Some(v) => Out::R1(v), '
+            lookup = f'd_dict_lookup_str(cref(t, {ckey[0]}, {ckey[1]}), a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}){err}'
+            if args[2] is None:
+                out.append(f"let o = match {lookup} {{ Some(v) => Out::R1(v), None => {{")
+                self.bail(x, d, locals_, out, J, retry=True)
+                out.append("} };")
+                return self.direct_result(x, d, locals_, lc, out, J)
+            out.append(f'let o = match {lookup} {{ Some(v) => Out::R1(v), '
                        f'None => Out::Call({args[2]}, cref(t, {ckey[0]}, {ckey[1]}).clone()) }};')
+            return self.direct_result(x, d, locals_, lc, out, J)
+        if fmissing and None not in args[:2]:
+            # a key that is not written in place, onMissing a function
+            err = f".map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?"
+            out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
+            out.append(f"let a1: &Value = {self.rref(x, d, b.olist[1], 1, locals_)};")
+            out.append(f"let o = match d_dict_get(a0, a1){err} {{ Some(v) => Out::R1(v), None => {{")
+            self.bail(x, d, locals_, out, J, retry=True)
+            out.append("} };")
             return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
             fn = DIRECT[name][0]
@@ -743,7 +767,42 @@ class Fuser:
                 names.append(f"a{k}")
             out.append(f"let o = {fn}(m, {', '.join(names)}).map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?;")
             return self.direct_result(x, d, locals_, lc, out, J)
+        if name in CHAIN and None not in args and (lc is None or not self.funcs[lc].variadic):
+            return self.chain_prim(x, d, locals_, out, b, name, lc, J)
         return self.emit_rest(x, d, locals_, out, b, op, name, args, lc, J)
+
+    def chain_prim(self, x, d, locals_, out, b, name, lc, J):
+        """Another primitive of CHAIN: called with its operands in the OList
+        (d_prim); its results are bound from the OList, and when it applies
+        onError, the VM goes on (after_prim)."""
+        after = self.after(lc, d, J)
+        args = self.margs(x, d, locals_, b, after)
+        lm = self.mark(locals_, after)
+        E = self.ctx["env"]
+        jpush = []
+        self.push_joins(J, jpush)
+        jpush = " ".join(jpush)
+        lcs = "None" if lc is None else f"Some({lc})"
+        mat = self.mat(d, lm) if lc is not None else f"{E}.clone()"
+        out.append(f"let v = [{', '.join(args)}];")
+        out.append(f"if !d_prim(m, vp, t, {x}, {self.prim_index(name)}, v)? {{ {jpush} return after_prim(vp, {mat}, gv, t, {lcs}); }}")
+        if lc is None:
+            if J:
+                j = J[-1]
+                rs = [f"r{k}" for k in range(j["p"])]
+                binds = " ".join(f"let r{k} = v.next().unwrap();" for k in range(j["p"]))
+                out.append(f"if vp.olist.len() == {j['p']} {{ let mut v = vp.olist.drain(..); {binds} drop(v); "
+                           f"break '{j['label']} ({''.join(r + ', ' for r in rs)}); }}")
+            out.append(f"{jpush} return olist_return(m, vp, {E});")
+            return
+        g = self.funcs[lc]
+        out.append(f"if vp.olist.len() != {g.params} {{ {jpush} return fused_pass(vp, gv, t, {lc}, {mat}); }}")
+        if g.params:
+            out.append("let mut v = vp.olist.drain(..);")
+            for j in range(g.params):
+                out.append(f"let {self.xn(d + j)} = v.next().unwrap();")
+            out.append("drop(v);")
+        return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out, J)
 
     def direct_result(self, x, d, locals_, lc, out, J):
         """After `let o = d_...(...)`: bind the results to the LCont lc (or,
@@ -1059,7 +1118,7 @@ def translate(index, path, prim_names, out):
         return used.index(name)
     calls = [transpiled_call(funcs, prims, f, prim_index) for f in funcs]
     directs = {}
-    Fuser(funcs, prims, tops, gfun).apply(calls, directs)
+    Fuser(funcs, prims, tops, gfun, prim_index).apply(calls, directs)
     p = f"m{index}"
     out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in calls)} with transpiled code, "
                f"{len(directs)} with a direct entry")

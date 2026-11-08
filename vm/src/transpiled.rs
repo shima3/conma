@@ -854,7 +854,7 @@ fn pass_results(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Optio
 /// After a primitive called with the LCont set to a mark (Null): if it
 /// returned its results, pass them on; otherwise (onError, a Closure to
 /// apply) put the real LCont back and go on as the VM would.
-fn after_prim(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> NResult {
+pub fn after_prim(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<usize>) -> NResult {
     if vp.operator.is_null() && vp.lcont.is_none() {
         return pass_results(vp, env, gv, t, lc);
     }
@@ -863,6 +863,31 @@ fn after_prim(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<
     }
     vp.lvenv = env;
     Ok(Next::Apply)
+}
+
+/// A primitive of CHAIN (index p into Table::prims) called from a fused
+/// chain at the Body of fid, with its operands in the OList and a mark (Null)
+/// as the LCont: true if it returned its results (in the OList), false if it
+/// applies a value (onError; then after_prim goes on as the VM would).
+#[inline]
+pub fn d_prim<const N: usize>(m: &mut Machine, vp: &mut VProc, t: &Table, fid: usize, p: usize, args: [Value; N]) -> Result<bool, VmError> {
+    vp.olist.clear();
+    vp.olist.extend(args);
+    let prim = t.prims[p];
+    vp.sinfo = body(t, fid).sinfo.clone();
+    vp.operator = Value::Prim(prim);
+    vp.lcont = Some(Value::Null);
+    (prim.f)(m, vp)?;
+    Ok(vp.operator.is_null() && vp.lcont.is_none())
+}
+
+/// Values in the OList, returned by a fused chain without an LCont (as
+/// fused_return, for values a primitive put there).
+pub fn olist_return(m: &Machine, vp: &mut VProc, env: LVEnv) -> NResult {
+    vp.operator = Value::Null;
+    vp.lcont = None;
+    vp.lvenv = env;
+    Ok(to_caller(m, vp))
 }
 
 /// `prim a ... [,(x ...) ...]`: the Body of fid calls primitive p (an index
@@ -1087,6 +1112,11 @@ pub fn d_llist_uncons(_m: &mut Machine, on_error: &Value, lst: &Value) -> Result
         Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
     })
 }
+/// The value of key in d, or None (__Dict_lookup_or__ without onMissing).
+#[inline]
+pub fn d_dict_get(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
+    collections::dict_lookup_core(d, key)
+}
 pub fn d_dict_lookup_or(_m: &mut Machine, d: &Value, key: &Value, on_missing: &Value) -> Result<Out, VmError> {
     Ok(match collections::dict_lookup_core(d, key)? {
         Some(v) => Out::R1(v),
@@ -1267,8 +1297,8 @@ fn chk_error(vp: &mut VProc, t: &Table, fid: usize, name: &str, v: &Value) -> Re
 /// the value, or None if the key is missing (the chain then applies
 /// onMissing, which it evaluates only then).
 #[inline]
-pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, ic: &Ic) -> Result<Option<Value>, VmError> {
-    let Value::Dict(o) = d else { return collections::dict_lookup_core(d, cref(t, fid, 1)) };
+pub fn d_dict_lookup_str(key: &Value, d: &Value, text: &str, hash: u64, ic: &Ic) -> Result<Option<Value>, VmError> {
+    let Value::Dict(o) = d else { return collections::dict_lookup_core(d, key) };
     Ok(o.find_str_cached(text, hash, ic).map(|i| o.entries.borrow()[i].1.clone()))
 }
 
@@ -1286,12 +1316,12 @@ pub fn d_dict_lookup_bool_str(d: &Value, text: &str, hash: u64, ic: &Ic) -> Opti
 /// __Dict_put__ with a String key written in place (operand 1 of the Body of
 /// Function fid).
 #[inline]
-pub fn d_dict_put_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, value: &Value, ic: &Ic) -> Result<(), VmError> {
-    let Value::Dict(o) = d else { return collections::dict_put_core(d, cref(t, fid, 1).clone(), value.clone()) };
+pub fn d_dict_put_str(key: &Value, d: &Value, text: &str, hash: u64, value: &Value, ic: &Ic) -> Result<(), VmError> {
+    let Value::Dict(o) = d else { return collections::dict_put_core(d, key.clone(), value.clone()) };
     let found = o.find_str_cached(text, hash, ic);
     match found {
         Some(i) => o.entries.borrow_mut()[i].1 = value.clone(),
-        None => o.append(cref(t, fid, 1).clone(), value.clone()).map_err(VmError::Error)?,
+        None => o.append(key.clone(), value.clone()).map_err(VmError::Error)?,
     }
     Ok(())
 }

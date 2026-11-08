@@ -1,0 +1,66 @@
+;; Transpiled code (vm/conma2rust): inlined calls, primitives called from fused chains through the
+;; OList, and __Dict_lookup_or__ whose onMissing is a function. Run on the transpiled VM after
+;; bench/build.sh (which builds this file in), it tests that code; on the other VMs, the results to match.
+(include "util.se")
+
+;; inlined, with a String written in place as the key: a new key put, a key found, a missing key whose
+;; onMissing is a function (left to the VM at the first Body of the Function)
+(define setk ,(d k v) __Dict_put__ d k v)
+(define getk ,(d k) __Dict_lookup_or__ d k (,(key) __NULL__ "missing"))
+(define getk2 ,(d k) __Dict_lookup_or__ d k __print_exit_error__)
+
+;; a key that is not written in place, onMissing a function
+(define lookup ,(d k)
+  __Dict_lookup_or__ d k (,(key) __String_concat__ "no " key) ,(v)
+  __NULL__ v)
+
+;; primitives of CHAIN that are not called directly: results, onError applied, other numbers of values
+(define num ,(s) __Number_fromString__ __print_exit_error__ s)
+
+(define cut ,(s from to)
+  num from ,(start)
+  num to ,(end)
+  __String_substring__ (,(msg) __NULL__ "(bad range)") s start end ,(part)
+  __NULL__ part)
+
+(define lengths ,(a b)
+  __String_length__ a ,(n)
+  __String_length__ b ,(m)
+  __Number_add__ n m)
+
+(define line ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+(define main ,(args)
+  __Dict_new__ ,(d)
+  setk d "alpha" "1" ,()
+  setk d "beta" "2" ,()
+  setk d "alpha" "3" ,()
+  getk2 d "beta" ,(b)
+  line b ,()
+  getk2 d "alpha" ,(a)
+  line a ,()
+  getk d "gamma" ,(g)
+  line g ,()
+  getk d "beta" ,(b2)
+  line b2 ,()
+  lookup d "alpha" ,(v1)
+  line v1 ,()
+  lookup d "delta" ,(v2)
+  line v2 ,()
+  cut "abcdef" "1" "3" ,(c1)
+  line c1 ,()
+  cut "abc" "2" "9" ,(c2)
+  line c2 ,()
+  lengths "abc" "de" ,(n)
+  __Number_toString__ n ,(ns)
+  line ns ,()
+  __Ref_new__ "r0" ,(r)
+  __Ref_get__ r ,(r0)
+  line r0 ,()
+  __LList_cons__ "x" __NULL__ ,(l1)
+  __LList_append__ l1 l1 ,(l)
+  __LList_length__ l ,(len)
+  __Number_toString__ len ,(ls)
+  line ls)
