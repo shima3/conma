@@ -12,12 +12,12 @@ consh/
 ├── FOR-BASH-USERS.md    Bash を使う人向けの使い方の説明（英語）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bin/
-│   ├── consh            ConSh を起動する（consh_parse --pos か consh_parser.se で構文木を作り、ConMa 版に渡す）
+│   ├── consh            ConSh を起動する（Rust 版か、consh_parser.se で読む ConMa 版。--python-parser なら consh_parse --pos の構文木を渡す）
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
 ├── include/
 │   ├── consh_main.se    main：ConSh の入口
 │   ├── consh_ast.se     consh_parse の構文木の読み込み（__Sexp_read__ と、ConMa で読む Sexp_read）と書き戻し
-│   ├── consh_parser.se  構文解析（consh --conma-parser で使う。consh_parse と同じ構文木を作る）
+│   ├── consh_parser.se  構文解析（ConMa 版の既定。consh_parse と同じ構文木を作る）
 │   ├── consh_glob.se    glob
 │   ├── consh_repl.se    対話モード
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
@@ -41,7 +41,7 @@ consh/
 ## 実行
 
 ```
-bin/consh [--conma-parser] [--dump] スクリプト [引数 ...]
+bin/consh [--conma-parser | --python-parser] [--dump] スクリプト [引数 ...]
 bin/consh
 ```
 
@@ -52,14 +52,15 @@ ConSh には 2 つの版があり、環境変数 `CONSH_IMPL` で選ぶ。
 | `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版で実行する |
 | `conma` | ConMa 版（仕様の参照実装）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
 
-`--conma-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` に関係なく ConMa 版で実行する。
+`--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` に関係なく ConMa 版で実行する。
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）が使える。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
-ConMa 版は、既定では構文解析をせず、Python の `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)）。
-`--conma-parser` を付けると、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読み、Python を使わずに動く。
-構文木は `consh_parse --pos` と同じで、構文エラーのメッセージは `consh_parse:` の代わりに `consh:` で始まる。
+ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読む（`--conma-parser` は、それを明示するだけ）。構文木は `consh_parse --pos` と同じで（`test/parse3`）、構文エラーのメッセージは Rust 版と同じく `consh:` で始まる。
+`--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)。構文エラーは `consh_parse:` で始まる）。
+ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）があれば、その `conma build`（ConMa 版のフロントエンド、vm/README.md）で作り、なければ `bin/includer` と `bin/resolver`（Python）で作る。
+そのため、Rust 版の VM を作っておき、`CONMA_VM=rust`（か `transpiled`）で起動すれば、ConMa 版も Python を使わずに動く（既定の VM は、基準の Python 版のまま）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。作るディレクトリは環境変数 `CONSH_MODULE_DIR` で変えられる（既定は `/tmp`）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 

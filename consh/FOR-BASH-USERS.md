@@ -27,13 +27,13 @@ These come at a cost: ConSh is much slower for loops (see below), has no `while`
 ```
 bin/consh script.sh [arg ...]     # run a script
 bin/consh                         # interactive mode
-bin/consh --conma-parser script.sh  # parse with the ConMa parser instead of Python
+bin/consh --python-parser script.sh  # the ConMa version with the syntax tree of the Python reference parser
 bin/consh --dump script.sh        # print the syntax tree without running
 ```
 
 * In interactive mode the prompts are `PS1` and `PS2` (default `$ ` and `> `). An error does not end the shell; it prints a message, sets `$?` to 1 and shows the next prompt. Ctrl-C stops only the running command (`$?` is 130), and Ctrl-D ends the shell.
 * If [rlwrap](https://github.com/hanslub42/rlwrap) is installed and standard input is a terminal, `bin/consh` uses it for line editing and history (`~/.consh_history`). Set `CONSH_NO_RLWRAP=1` to turn this off.
-* `bin/consh` runs the Rust version (`consh/rust`; build it with `cargo build --release` there, Rust 1.87 or later), which runs about as fast as Bash. `CONSH_IMPL=conma` runs the ConMa version, the reference implementation, on the VM chosen by `CONMA_VM` (the Python VM by default; `rust` for the Rust VM); `--conma-parser` and `CONSH_CONMA_DATA` always use it. If the Rust version is not built, `bin/consh` says so and runs the ConMa version.
+* `bin/consh` runs the Rust version (`consh/rust`; build it with `cargo build --release` there, Rust 1.87 or later), which runs about as fast as Bash. `CONSH_IMPL=conma` runs the ConMa version, the reference implementation, on the VM chosen by `CONMA_VM` (the Python VM by default; `rust` for the Rust VM), and reads scripts with its own parser; with the Rust VM built and `CONMA_VM=rust`, it runs without Python (the module is made with `conma build`). `--conma-parser`, `--python-parser` and `CONSH_CONMA_DATA` always use it. If the Rust version is not built, `bin/consh` says so and runs the ConMa version.
 * In the ConMa version, each simple statement takes thousands of ConMa steps, so loops are slow: on the Python VM, a loop of 1000 `echo` commands takes 5 to 10 seconds. External commands connected by pipes run at full speed.
 
 ## What stays the same
