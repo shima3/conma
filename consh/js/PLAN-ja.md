@@ -14,6 +14,7 @@ JavaScript 版 ConSh は、ConMa の VM を WebAssembly（wasm32）にして Jav
 2. **何を wasm にするか**
     - (推奨・決定) ConMa の VM（vm/）を wasm にし、ConMa 版 ConSh（consh/include）を動かす。memo の「先に ConMa の VM を wasm32 向けにビルドできるようにする」に従う。ConMa の VM が OS 以外の環境でも動くことの確認にもなる。
     - Rust 版 ConSh（consh/rust）を wasm にするのは別の案である。速いが、ConMa 言語を使わない。また std::process と std::io::pipe に深く依存している。
+    - Rust 版 ConSh は wasm にしないことにした（2026/11/8）。ネイティブでは ConMa 版より 8〜30 倍速いが、パイプライン、`$( )`、`&` を OS のスレッドと `Condvar` で動かしているので、スレッドがなく、メインスレッドで待てないブラウザのために、並行の仕組みを作り直す必要がある。ブラウザで ConSh と JavaScript を組み合わせるには ConMa 版の速さで足り、ConMa を中間言語として確かめる意味もある。
 3. **JavaScript の処理系**
     - (推奨・決定) wasm を読み込んだホスト（ブラウザ）の処理系をそのまま使う。`js` のコードは、ホストの JavaScript から間接 eval で評価する。
     - QuickJS などを wasm に組み込む案は取らない。ページの DOM や `fetch` が使えなくなるからである。
@@ -301,4 +302,3 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 ## 4. 未解決の点
 
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。
-- Rust 版 ConSh も wasm にして、`js` を使えるようにするか（1 の 2）。
