@@ -7,7 +7,17 @@ set -e
 js="$(cd "$(dirname "$0")"; pwd)"
 consh="${js%/*}"
 root="${consh%/*}"
-(cd "$js/wasm" && cargo build --release)
+# cargo は PATH から探す。なければ rustup の既定の場所（~/.cargo/bin）を使う
+cargo="$(command -v cargo || true)"
+if [ -z "$cargo" ] && [ -x "$HOME/.cargo/bin/cargo" ]; then
+  cargo="$HOME/.cargo/bin/cargo"
+  export PATH="$HOME/.cargo/bin:$PATH"  # cargo が呼ぶ rustc なども
+fi
+if [ -z "$cargo" ]; then
+  echo "build.sh: cargo is not found (install Rust with rustup, or add ~/.cargo/bin to PATH)" >&2
+  exit 1
+fi
+(cd "$js/wasm" && "$cargo" build --release)
 cp "$js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" "$js/web/conma.wasm"
 cp "$js/conma.js" "$js/web/conma.js"
 module="$js/web/consh.module.se"
