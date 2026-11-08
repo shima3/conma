@@ -74,7 +74,7 @@ fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
 fi
-# ConMa のモジュールは、ソースが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
+# ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
 # ConSh の include ディレクトリ：高速版は consh/include を consh/reference より先に探す（同じ名前のファイルの代わりになる）。
 # 参照版は consh/reference だけ。最初のファイル consh_main.se も、高速版は consh/include にあればそれを使う
@@ -104,8 +104,13 @@ conma="$root/vm/target/release/conma"
 above="$(cd "$root/.."; pwd -P)"
 incs=()
 for d in "${dirs[@]}" "$root/include"; do incs+=(--include "$d"); done
+# モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
+# （フロントエンドが変わると、同じソースから違うモジュールができる。インクルードディレクトリを探す順など）
+if [ -x "$conma" ]; then frontend=("$conma"); else frontend=("$root/bin"); fi
+# ソースかフロントエンドがモジュールより新しければ、作り直す
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ]; then
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+   [ -n "$(find "${frontend[@]}" -type f -newer "$module")" ]; then
   ast_tmp=$(mktemp "${module%.module.se}.ast.XXXXXX") || exit 1
   module_tmp=$(mktemp "$module.XXXXXX") || { rm -f "$ast_tmp"; exit 1; }
   if [ -x "$conma" ]; then

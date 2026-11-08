@@ -7,7 +7,8 @@
   (304 when it has not changed), and a file changed on the disk is seen at once.
 
 It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is
-missing or older than its sources (conma.js, conma.wasm, consh.module.se), as after git pull.
+missing or older than its sources (conma.js, conma.wasm, consh.module.se, whose sources include
+the frontend in bin/), as after git pull.
 
 Usage: consh/js/serve.py [port]   (8765 by default; only on 127.0.0.1)
 """
@@ -75,11 +76,15 @@ def stale():
         found.append(built)
     sources = {
         "conma.wasm": newest(os.path.join(ROOT, "vm", "src"), os.path.join(JS, "wasm")),
-        "consh.module.se": newest(
-            os.path.join(ROOT, "include"),
-            os.path.join(ROOT, "consh", "include"),
-            os.path.join(ROOT, "consh", "reference"),
-            suffixes=(".se",),
+        # the sources of ConSh, and the frontend that makes the module (bin/includer and the others)
+        "consh.module.se": max(
+            newest(
+                os.path.join(ROOT, "include"),
+                os.path.join(ROOT, "consh", "include"),
+                os.path.join(ROOT, "consh", "reference"),
+                suffixes=(".se",),
+            ),
+            newest(os.path.join(ROOT, "bin"), suffixes=("",)),
         ),
     }
     for name, source_time in sources.items():

@@ -2,7 +2,7 @@
 # ConMa の VM を wasm32 でビルドし（consh/js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm）、
 # ブラウザの画面（web/）に、その wasm と ConSh のモジュール（consh.module.se）を置く。
 # rustup target add wasm32-unknown-unknown で、wasm32 のターゲットを入れておく。
-# モジュールは bin/consh と同じく bin/includer と bin/resolver で作り、ソースが変わったときだけ作り直す
+# モジュールは bin/consh と同じく bin/includer と bin/resolver で作り、ソースかフロントエンド（bin/）が変わったときだけ作り直す
 set -e
 js="$(cd "$(dirname "$0")"; pwd)"
 consh="${js%/*}"
@@ -31,7 +31,8 @@ module="$js/web/consh.module.se"
 main="$consh/reference/consh_main.se"
 [ -f "$consh/include/consh_main.se" ] && main="$consh/include/consh_main.se"
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" "$consh/reference" \( -name '*.se' -o -type d \) -newer "$module")" ]; then
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" "$consh/reference" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+   [ -n "$(find "$root/bin" -type f -newer "$module")" ]; then
   ast_tmp=$(mktemp "$js/web/consh.ast.XXXXXX")
   module_tmp=$(mktemp "$module.XXXXXX")
   trap 'rm -f "$ast_tmp" "$module_tmp"' EXIT
