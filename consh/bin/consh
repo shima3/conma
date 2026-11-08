@@ -5,7 +5,7 @@
 # 環境変数 CONSH_IMPL で版を選ぶ。
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
-#                 作っていなければ、そう出して ConMa 版で実行する
+#                 作っていなければ、そう出して ConMa 版で実行する。ソースより古ければ、警告を出してから、それで実行する
 #   conma         ConMa 版の高速版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
 #                 （test/vm.sh。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
@@ -61,6 +61,11 @@ fi
 if [ $impl = rust ] && [ ! -x "$rust" ]; then
   echo "consh: $rust is not built (cargo build --release in consh/rust, Rust 1.87 or later); running the ConMa version" >&2
   impl=conma
+fi
+# 実行ファイルがソースより古ければ（git pull の後など）、警告してから、それを使う
+# （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
+if [ $impl = rust ] && [ -n "$(find "$consh/rust/src" "$consh/rust/Cargo.toml" "$consh/rust/Cargo.lock" \( -name '*.rs' -o -name 'Cargo.*' -o -type d \) -newer "$rust" 2>/dev/null)" ]; then
+  echo "consh: warning: $rust is older than its sources (cargo build --release in consh/rust)" >&2
 fi
 [ $impl = rust ] || rust=
 if [ -n "$rust" ] && [ -z "$interactive" ]; then
