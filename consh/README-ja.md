@@ -55,7 +55,7 @@ ConSh には 2 つの版があり、環境変数 `CONSH_IMPL` で選ぶ。
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` に関係なく ConMa 版で実行する。
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
-標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）が使える。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
+標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）と、Tab によるファイル名の補完（`rlwrap -c`）が使える。補完はプロセスのカレントディレクトリからの相対パスなので、Rust 版は `cd` した先をプロセスのカレントディレクトリにもする（ConMa 版は、起動したディレクトリからのまま）。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
 ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読む（`--conma-parser` は、それを明示するだけ）。構文木は `consh_parse --pos` と同じで（`test/parse3`）、構文エラーのメッセージは Rust 版と同じく `consh:` で始まる。
 `--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)。構文エラーは `consh_parse:` で始まる）。

@@ -239,5 +239,12 @@ fn run(sh: &Ctx, state: &Shared, lines: Vec<Sexp>) {
         os::print_error("\n");
         return;
     }
-    *sh.cwd.lock().unwrap() = ctx.cwd();
+    let cwd = ctx.cwd();
+    // The process goes there too: rlwrap completes file names relative to
+    // the directory of the process (bin/consh, rlwrap -c). Nothing else uses
+    // it: every thread gives its own directory to what it opens and starts.
+    if cwd != sh.cwd() {
+        let _ = std::env::set_current_dir(&cwd);
+    }
+    *sh.cwd.lock().unwrap() = cwd;
 }

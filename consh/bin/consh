@@ -12,6 +12,7 @@
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
 # --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL に関係なく ConMa 版で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
+# Tab でファイル名を補完する（rlwrap -c。Rust 版は cd した先を、rlwrap が見るプロセスのカレントディレクトリにもする）
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
 # --dump を付けると、実行せず、読んだ構文木を S 式に書き戻して出す。
 # ConMa 版は、スクリプトを ConMa 版の構文解析（consh_parser.se）で読む（--conma-parser は、その既定を明示するだけ）。
@@ -66,7 +67,7 @@ fi
 if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED" ] && [ -t 0 ] && command -v rlwrap > /dev/null; then
   # rlwrap が起動する consh は、もう一度 rlwrap を通さない。CONSH_RLWRAPPED は、ConSh が起動時に環境変数から除くので、
   # 中で起動するコマンドには渡らない（中で対話モードの consh を起動すれば、それも rlwrap を使う）
-  CONSH_RLWRAPPED=1 exec rlwrap -C consh "$0"
+  CONSH_RLWRAPPED=1 exec rlwrap -c -C consh "$0"
 fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
