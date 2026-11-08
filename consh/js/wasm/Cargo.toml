@@ -1,0 +1,16 @@
+[package]
+name = "conma-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "The ConMa VM of vm/ built for wasm32-unknown-unknown, with a virtual OS (see consh/js/PLAN-ja.md)"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+debug = false

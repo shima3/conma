@@ -1,0 +1,7 @@
+[build]
+target = "wasm32-unknown-unknown"
+
+[target.wasm32-unknown-unknown]
+# Modules are deeply nested, and values are dropped and written recursively
+# (the native VM runs in a thread with a stack of 1 GB).
+rustflags = ["-C", "link-arg=-zstack-size=268435456"]

@@ -129,9 +129,14 @@ impl OSProcObj {
         if let Some(c) = self.code.get() {
             return Ok(Some(c));
         }
-        use std::os::unix::process::ExitStatusExt;
         let st = self.child.borrow_mut().try_wait()?;
-        let code = st.map(|s| s.code().unwrap_or_else(|| -s.signal().unwrap_or(0)));
+        #[cfg(unix)]
+        let code = {
+            use std::os::unix::process::ExitStatusExt;
+            st.map(|s| s.code().unwrap_or_else(|| -s.signal().unwrap_or(0)))
+        };
+        #[cfg(not(unix))]
+        let code = st.map(|s| s.code().unwrap_or(0));
         self.code.set(code);
         Ok(code)
     }

@@ -7,9 +7,13 @@ use crate::sys;
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
+#[cfg(unix)]
 use std::cell::{Cell, RefCell};
+#[cfg(unix)]
 use std::os::fd::{FromRawFd, OwnedFd};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 
@@ -74,6 +78,38 @@ fn do_spawn(m: &mut Machine, vp: &mut VProc, name: &str, detached: bool) -> PRes
         }
         env.push((value_to_display(k).map_err(VmError::Error)?, value_to_display(v).map_err(VmError::Error)?));
     }
+    start_process(m, vp, name, detached, on_error, args, fds, env)
+}
+
+/// Without processes (wasm32): every start fails.
+#[cfg(not(unix))]
+#[allow(clippy::too_many_arguments)]
+fn start_process(
+    _m: &mut Machine,
+    vp: &mut VProc,
+    name: &str,
+    _detached: bool,
+    on_error: Value,
+    args: Vec<String>,
+    _fds: Vec<Option<i32>>,
+    _env: Vec<(String, String)>,
+) -> PResult {
+    vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&sys::unsupported()), args[0]));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
+fn start_process(
+    m: &mut Machine,
+    vp: &mut VProc,
+    name: &str,
+    detached: bool,
+    on_error: Value,
+    args: Vec<String>,
+    fds: Vec<Option<i32>>,
+    env: Vec<(String, String)>,
+) -> PResult {
     let mut cmd = Command::new(&args[0]);
     cmd.args(&args[1..]).env_clear().envs(env).current_dir(&vp.cwd);
     let mut stdio = Vec::new();

@@ -4,23 +4,23 @@ JavaScript 版 ConSh は、ConMa の VM を WebAssembly（wasm32）にして Jav
 
 この文書は、memo.txt の 2026/11/8 の「JavaScript 版 ConSh の方針」を計画にしたものである。関係するファイルは consh/js に置く（VM 自体の変更は vm/ に入る。2.3 を参照）。
 
-## 1. 決めること
+## 1. 決めたこと
 
-次の 3 点は、まだ決まっていない。以下では、それぞれ (推奨) の案で計画を書く。
+次の 3 点は、それぞれ (推奨) の案に決めた（2026/11/8）。
 
 1. **実行環境**
-    - (推奨) まずブラウザで動かす。memo の例（`location.href`、`fetch`）はブラウザを想定している。
-    - Node.js は後回しにする（段階 7）。外部コマンドとファイルが使える代わりに、OS 層の作り直しが大きい。また、この Mac の /usr/local/bin/node は Intel 版で動かない（`Bad CPU type in executable`）。テストのために arm64 版を入れ直す必要がある（2.4）。
+    - (推奨・決定) まずブラウザで動かす。memo の例（`location.href`、`fetch`）はブラウザを想定している。
+    - Node.js は後回しにする（段階 7）。外部コマンドとファイルが使える代わりに、OS 層の作り直しが大きい。テストは、Node.js の代わりに macOS の JavaScriptCore のシェル（jsc）で動かす（2.4）。
 2. **何を wasm にするか**
-    - (推奨) ConMa の VM（vm/）を wasm にし、ConMa 版 ConSh（consh/include）を動かす。memo の「先に ConMa の VM を wasm32 向けにビルドできるようにする」に従う。ConMa の VM が OS 以外の環境でも動くことの確認にもなる。
+    - (推奨・決定) ConMa の VM（vm/）を wasm にし、ConMa 版 ConSh（consh/include）を動かす。memo の「先に ConMa の VM を wasm32 向けにビルドできるようにする」に従う。ConMa の VM が OS 以外の環境でも動くことの確認にもなる。
     - Rust 版 ConSh（consh/rust）を wasm にするのは別の案である。速いが、ConMa 言語を使わない。また std::process と std::io::pipe に深く依存している。
 3. **JavaScript の処理系**
-    - (推奨) wasm を読み込んだホスト（ブラウザ）の処理系をそのまま使う。`js` のコードは、ホストの JavaScript から間接 eval で評価する。
+    - (推奨・決定) wasm を読み込んだホスト（ブラウザ）の処理系をそのまま使う。`js` のコードは、ホストの JavaScript から間接 eval で評価する。
     - QuickJS などを wasm に組み込む案は取らない。ページの DOM や `fetch` が使えなくなるからである。
 
 ## 2. 方針
 
-### 2.1. js の仕様（案）
+### 2.1. js の仕様
 
 ConSh の PLAN-ja.md の 1.2 に、次の規則を加える。
 
@@ -97,31 +97,32 @@ ConSh の PLAN-ja.md の 1.2 に、次の規則を加える。
 
 VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けにもビルドできるようにする。
 
-1. **依存するクレート**
+1. **crate とクレート**
+    - wasm 版は、consh/js/wasm の crate（conma-wasm、cdylib）でビルドする。vm/src のファイルを `#[path]` でそのまま使い、sys だけを consh/js/wasm/src/sys.rs に替える。vm/Cargo.toml とネイティブ版のビルドは変わらない。
     - vm/ はクレートを使わない方針なので、wasm-bindgen も使わない。
     - 次の 2 つで、ホストの JavaScript とつなぐ。
         - `extern "C"` の import（JavaScript から渡す関数）
         - `#[no_mangle] pub extern "C"` の export
     - 文字列は、wasm のメモリ上のバイト列（UTF-8）と長さで受け渡す。
-    - つなぐための JavaScript（consh/js/web/conma.js）は手で書く。
+    - つなぐための JavaScript（consh/js/conma.js）は手で書く。ブラウザでも、macOS の JavaScriptCore のシェル（jsc）でも動く。
 2. **OS 層**
-    - sys.rs と、prim の os.rs、process.rs、stream.rs が使う OS の機能を、`cfg(target_arch = "wasm32")` で分ける。
-    - wasm 版は、次のようにする。
-        - **標準入出力**：標準入力は、ホストから入った行を溜める。標準出力と標準エラーは、ホストの関数に書く。
+    - prim の os.rs、stream.rs が直接使っていたファイル、環境変数、標準出力は、vm/src/sys.rs の関数（`open_file`、`is_dir`、`canonicalize`、`read_dir`、`env_vars`、`getpid`、`write_std`）を通す。process.rs と value.rs の Unix にしかないところは `cfg(unix)` で分ける。
+    - wasm 版の sys.rs は、同じ関数を、メモリ上の仮想の OS で作る。何も待たない（データのない読み込みは EAGAIN）。
+        - **標準入出力**：標準入力は、ホストから入ったバイト列を溜める。標準出力と標準エラーは、ホストの関数 `host_write` に書く。
+            - `__OS_read__` は、データがなければ `""` を返すので、待たずに読み直すプログラムでは、VM が止まらない。そこで、VProc が空の標準入力を見たら印を立て（`conma_wants_input`）、ホストはそれを見て入力を渡す。
         - **ファイル**：`__OS_open__`、`__OS_listdir__`、`__OS_chdir__`、`__OS_getcwd__` は、メモリ上の仮想ファイルシステムを使う（パスからバイト列への表）。ページから初期のファイルを置ける。
-        - **パイプ**：`__OS_pipe__`、`__OS_dup__`、`__OS_close__` は、VM の中のバッファで作る。
-        - **プロセス**：`__OS_spawn__`、`__OS_spawn_detached__`、`__OS_kill__`、`__OS_wait__` は onError に進む（`not supported`）。ConSh は、外部コマンドを `command not found` と同じように扱う。
+        - **パイプ**：`__OS_pipe__`、`__OS_dup__`、`__OS_close__` は、VM の中のバッファで作る。大きさに上限がないので、書き込みは待たない。
+        - **プロセス**：`__OS_spawn__`、`__OS_spawn_detached__` は onError に進む（`__OS_spawn__: not supported: <コマンド>`）。`__VProc_spawn__` も、bin/includer を起動できないので onError に進む。ConSh は、外部コマンドを `command not found` と同じように扱う。
         - **環境変数**：`__OS_get_envDict__` は、ホストが渡す小さな Dict を返す（`HOME=/`、`PWD=/` など）。
         - **シグナル**：`__OS_trap_interrupt__` は、ホストが Ctrl-C で立てる印を見る。
 3. **スケジューラ**
     - ブラウザのメインスレッドでは、待つ間に止まることができない（OS の `poll()` に当たるものがない）。
-    - そこで VM は `conma_run(budget)` を export する。これは、ステップを最大 budget 回進めて、次のいずれかの状態を返す。
-        - まだ動ける
-        - 入力待ち
-        - JavaScript 待ち
-        - 終了（終了コード付き）
-    - ホストは、この状態を見て `setTimeout` か入力のイベントで再び呼ぶ。
-    - ネイティブ版のスケジューラの動作（ステップの順と、テストの結果）は変えない。
+    - そこで VM は `conma_run(budget)` を export する。これは、ステップを約 budget 回進めて、次のいずれかを返す。
+        - -1：まだ動ける VProc がある（`Slice::Paused`）
+        - -2：どの VProc も外（標準入力、Ctrl-C、段階 4 からは JavaScript）を待っている（`Slice::Idle`）
+        - 0 以上：終了コード
+    - ホストは、この値を見て `setTimeout` か入力のイベントで再び呼ぶ。
+    - vm/src/sched.rs の `Machine::run` は `run_slice(budget)` を呼ぶ形にした。`Machine::blocking` が真（ネイティブ版）なら、今までどおり OS で待つ。偽（wasm 版）なら、待つ代わりに `Slice::Idle` を返す。ネイティブ版のステップの順とテストの結果は変わらない。
 4. **js のプリミティブ**
     - プリミティブ `__JS_call__ onError code argLList inputLazyList ,(job)` を足す。
         - JavaScript の評価を始め、job（新しい型 JSJob）を返す。
@@ -141,17 +142,21 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
 consh/js/
   PLAN-ja.md        この文書
   README-ja.md      使い方（段階 4 で書く）
-  build.sh          VM を wasm32 でビルドし、ConSh のモジュールを作って web/ に置く
-  web/
+  build.sh          VM を wasm32 でビルドする（段階 2 で、ConSh のモジュールも作るようにする）
+  conma.js          wasm の読み込み、import する関数、conma_run の駆動（ブラウザと jsc で共通）
+  vm-jsc.js         jsc で VM を動かす（vm/target/release/conma と同じ引数）
+  vm-wasm.sh        vm-jsc.js を起動し、標準入出力と終了コードをつなぐ。test/vm.sh が CONMA_VM=wasm で使う
+  wasm/
+    Cargo.toml      crate conma-wasm（2.2 の 1）
+    src/lib.rs      export する関数（conma_start、conma_run など）
+    src/sys.rs      仮想の OS（2.2 の 2）
+  web/              （段階 3）
     index.html      端末の画面（入力欄と出力）
-    conma.js        wasm の読み込み、import する関数、conma_run の駆動
     consh.js        ConSh の起動、仮想ファイルシステム、js の評価
-  test/
-    run.mjs         Node.js でテストを動かす（ページの代わりに conma.js と consh.js を読む）
-    stepN/          ConSh の test/stepN と同じ形のテスト（スクリプトと期待するログ）
+  test/             （段階 4）ConSh の test/stepN と同じ形の js のテスト
 ```
 
-VM の Rust のコード（wasm 用の OS 層とプリミティブ）は、ネイティブ版と同じ crate に入れる必要があるので、vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se と consh/rust/src/eval.rs に置く（2.1 の 10）。
+VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se と consh/rust/src/eval.rs に置く（2.1 の 10）。
 
 ### 2.4. 当面の制限
 
@@ -159,8 +164,8 @@ VM の Rust のコード（wasm 用の OS 層とプリミティブ）は、ネ�
 - ファイルはページを閉じると消える。
 - 行の編集と履歴は、ブラウザの入力欄のものだけである。
 - 2.1 の 8 の、同時に動く `js` の `console.log` の区別（結果は変数名を書けば区別できる）。
-- テストを Node.js で動かすには、arm64 版の Node.js が必要である。今の /usr/local/bin/node は Intel 版で動かない（Rosetta を入れるか、arm64 版を入れ直す）。
-- wasm32 のターゲットも必要である（`rustup target add wasm32-unknown-unknown`）。
+- テストは、Node.js の代わりに、macOS に入っている JavaScriptCore のシェル（jsc）で動かす。今の /usr/local/bin/node は Intel 版で動かないからである。jsc にはバイト列の入出力も終了コードもないので、vm-wasm.sh が 16 進数の行に直してつなぐ。標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
+- wasm32 のターゲットが必要である（`rustup target add wasm32-unknown-unknown`）。
 
 ## 3. 段階
 
@@ -168,8 +173,8 @@ VM の Rust のコード（wasm 用の OS 層とプリミティブ）は、ネ�
 
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
-| 1 | VM を wasm32 でビルドする。OS 層を 2.2 の 2 のように分け、`conma_run` を export する | test/step1〜8 など OS を使わないテストを Node.js で動かし、ネイティブ版と同じ出力になる。ConSh のモジュールを読み込めて、メモリが足りる |
-| 2 | ConSh を wasm 版の VM で動かす。仮想ファイルシステム、パイプ、標準入出力、`--conma-parser` の経路 | consh/test のうち外部コマンドを使わないケースが、Node.js で同じログになる |
+| 1 | VM を wasm32 でビルドする。OS 層を 2.2 の 2 のように分け、`conma_run` を export する | `CONMA_VM=wasm test/run_all.sh` で、OS のプロセスとファイルを使わないテストが、ネイティブ版と同じログになる。ConSh のモジュールを読み込めて、メモリが足りる |
+| 2 | ConSh を wasm 版の VM で動かす。仮想ファイルシステム、パイプ、標準入出力、`--conma-parser` の経路 | consh/test のうち外部コマンドを使わないケースが、jsc で同じログになる |
 | 3 | ブラウザの画面（web/index.html）。対話モード、Ctrl-C、スクリプトの読み込み | ブラウザで `echo`、関数、パイプ、`$( )`、`&` の関数のジョブが動く |
 | 4 | `js` の組み込みコマンド（2.1 の 1〜6、9、10。`js [変数名=] コード {引数}` の見分け方と、変数に入れる値を含む）と `__JS_call__`、`__JS_next__`。Promise を待つ間、ほかの VProc が動く | consh/js/test に `js` のテスト。変数名のある形とない形、`js sum=` だけのエラー、`js 'x=1'` が代入式になることを確かめる。ネイティブ版では 2.1 の 10 のエラーになるテストを consh/test に足し、ConMa 版と Rust 版の両方で通る |
 | 5 | `stdin` と `console`（2.1 の 7、8） | `cmd \| js '...'`、変数名がある場合とない場合の `console.log` のテスト |
@@ -177,6 +182,16 @@ VM の Rust のコード（wasm 用の OS 層とプリミティブ）は、ネ�
 | 7 | （後回し）Node.js のホスト。`node:fs` でファイル、`node:child_process` で外部コマンド | consh/test の全ケース |
 
 段階 4 で、ConSh の PLAN-ja.md（1.2 の組み込みコマンド）、README-ja.md、FOR-BASH-USERS.md に `js` を書く。
+
+### 3.1. 段階 1 の結果（2026/11/8）
+
+- `consh/js/build.sh` で VM を wasm32 にビルドできる（約 700 KB）。vm/ の変更は 2.2 の 2 と 3 のとおりである。
+- `CONMA_VM=wasm test/run_all.sh` で、test/ の 39 のステップのうち、次の 17 と selfhost3〜7 は、ネイティブ版と同じログにならない。どれも、wasm 版にないもの（OS のプロセス、実際のファイル、bin/includer を起動する `__VProc_spawn__`）を使うケースで、エラーのメッセージ（`__OS_spawn__: not supported: ...`、`No such file or directory`、`__VProc_spawn__: file not found: ...`）で止まる。
+    - プロセス：step10、step11、step13 の case7、step15、step26、step31、step32
+    - ファイル：step14、step16、step29、step33、step37、selfhost3〜7（ソースを読む）
+    - `__VProc_spawn__`：step17、step20、step21、step22、step23、step24
+- そのほかのケースは、すべてネイティブ版と同じログになる（標準入力を読む step9 の case5、step13 の case2、case3、step20 の case6 を含む）。
+- ConSh のモジュール（約 5.8 MB）を読み込み、対話モード（`interactive - stdin`）で、関数、`$( )`、`for` が動く。jsc の最大メモリは約 140 MB で、足りる。
 
 ## 4. 未解決の点
 

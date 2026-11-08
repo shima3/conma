@@ -7,8 +7,6 @@ use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
 use std::cell::RefCell;
-use std::os::fd::IntoRawFd;
-use std::os::unix::fs::OpenOptionsExt;
 use std::rc::Rc;
 
 pub fn new_stream(m: &mut Machine, fd: i32, mode: char) -> Rc<StreamObj> {
@@ -257,36 +255,17 @@ fn open_with(m: &mut Machine, vp: &mut VProc, name: &str, tracked: bool) -> PRes
     }
     let path = value_to_display(&path).map_err(VmError::Error)?;
     let mode = value_to_display(&mode).map_err(VmError::Error)?;
-    let mut opts = std::fs::OpenOptions::new();
     let smode = match mode.as_str() {
-        "r" => {
-            opts.read(true);
-            'r'
-        }
-        "w" => {
-            opts.write(true).create(true).truncate(true);
-            'w'
-        }
-        "a" => {
-            opts.append(true).create(true);
-            'w'
-        }
+        "r" => 'r',
+        "w" | "a" => 'w',
         _ => {
             vp.prim_error(on_error, &format!("{}: invalid mode: \"{}\"", name, mode));
             return Ok(());
         }
     };
-    opts.mode(0o666);
-    let r = opts.open(vproc_path(vp, &path)).and_then(|f| {
-        if f.metadata()?.is_dir() {
-            Err(io_error(21)) // EISDIR
-        } else {
-            Ok(f)
-        }
-    });
-    match r {
-        Ok(f) => {
-            let s = Value::Stream(new_stream(m, f.into_raw_fd(), smode));
+    match sys::open_file(&vproc_path(vp, &path), &mode) {
+        Ok(fd) => {
+            let s = Value::Stream(new_stream(m, fd, smode));
             if let Some(r) = track {
                 let tail = std::mem::replace(&mut *r.value.borrow_mut(), Value::Null);
                 *r.value.borrow_mut() = Value::LList(Rc::new(LList { head: s.clone(), tail }));
@@ -306,18 +285,18 @@ pub fn chdir(_m: &mut Machine, vp: &mut VProc) -> PResult {
         None => return Ok(()),
     };
     let target = vproc_path(vp, &path);
-    let r = std::fs::metadata(&target).and_then(|st| {
-        if !st.is_dir() {
+    let r = sys::is_dir(&target).and_then(|dir| {
+        if !dir {
             Err(io_error(20)) // ENOTDIR
         } else if !sys::can_search(&target) {
             Err(io_error(13)) // EACCES
         } else {
-            std::fs::canonicalize(&target)
+            sys::canonicalize(&target)
         }
     });
     match r {
         Ok(real) => {
-            vp.cwd = real.to_string_lossy().into_owned();
+            vp.cwd = real;
             vp.prim_return(vec![]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&e), path)),
@@ -338,8 +317,8 @@ pub fn realpath(_m: &mut Machine, vp: &mut VProc) -> PResult {
         None => return Ok(()),
     };
     let target = vproc_path(vp, &path);
-    match std::fs::metadata(&target).and_then(|_| std::fs::canonicalize(&target)) {
-        Ok(real) => vp.prim_return(vec![string_value(&real.to_string_lossy())]),
+    match sys::is_dir(&target).and_then(|_| sys::canonicalize(&target)) {
+        Ok(real) => vp.prim_return(vec![string_value(&real)]),
         Err(e) => vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&e), path)),
     }
     Ok(())
@@ -351,8 +330,7 @@ pub fn listdir(_m: &mut Machine, vp: &mut VProc) -> PResult {
         Some(x) => x,
         None => return Ok(()),
     };
-    let r = std::fs::read_dir(vproc_path(vp, &path))
-        .and_then(|it| it.map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned())).collect::<Result<Vec<_>, _>>());
+    let r = sys::read_dir(&vproc_path(vp, &path));
     match r {
         Ok(mut names) => {
             names.sort();
@@ -372,9 +350,9 @@ pub fn listdir(_m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn get_env_dict(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.dicts += 1;
     let d = DictObj { serial: m.serials.dicts, entries: RefCell::new(Vec::new()), index: RefCell::new(DictIndex::default()), shape: std::cell::Cell::new(SHAPE_EMPTY) };
-    for (k, v) in std::env::vars_os() {
-        let k = string_value(&k.to_string_lossy());
-        let v = string_value(&v.to_string_lossy());
+    for (k, v) in sys::env_vars() {
+        let k = string_value(&k);
+        let v = string_value(&v);
         d.append(k, v).map_err(VmError::Error)?;
     }
     vp.prim_return(vec![Value::Dict(crate::gc::new_dict(d))]);
@@ -382,7 +360,7 @@ pub fn get_env_dict(m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 pub fn getpid(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    vp.prim_return(vec![num(std::process::id() as f64)]);
+    vp.prim_return(vec![num(sys::getpid() as f64)]);
     Ok(())
 }
 

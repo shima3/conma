@@ -4,7 +4,6 @@ use super::{take_args, PResult, VmError};
 use crate::sched::Machine;
 use crate::trace::value_to_display;
 use crate::vproc::VProc;
-use std::io::Write;
 
 pub fn exit_normal(_m: &mut Machine, _vp: &mut VProc) -> PResult {
     Err(VmError::Exit(0))
@@ -17,19 +16,7 @@ pub fn exit_error(_m: &mut Machine, _vp: &mut VProc) -> PResult {
 /// Write text to fd 1 or 2 at once, so that the order of standard output and
 /// standard error is kept when both go to the same file.
 pub fn write_std(fd: i32, text: &str) {
-    let r = if fd == 2 {
-        let mut e = std::io::stderr().lock();
-        e.write_all(text.as_bytes()).and_then(|_| e.flush())
-    } else {
-        let mut o = std::io::stdout().lock();
-        o.write_all(text.as_bytes()).and_then(|_| o.flush())
-    };
-    // Like a process killed by SIGPIPE: stop when the reader has gone.
-    if let Err(e) = r {
-        if e.kind() == std::io::ErrorKind::BrokenPipe {
-            std::process::exit(141);
-        }
-    }
+    crate::sys::write_std(fd, text);
 }
 
 pub fn print(_m: &mut Machine, vp: &mut VProc) -> PResult {

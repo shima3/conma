@@ -175,6 +175,78 @@ pub fn sysconf_name(name: &str) -> Option<c_int> {
     table.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
 }
 
+// ── Files, the environment and standard output ──────────────────────────────
+// The primitives reach the file system and the interpreter's process only
+// through these, so that the VM for wasm32 (consh/js/wasm) can give its own.
+
+/// Open path with mode "r", "w" (create, truncate) or "a" (create, append);
+/// a directory is EISDIR. Returns the fd.
+pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
+    use std::os::fd::IntoRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut opts = std::fs::OpenOptions::new();
+    match mode {
+        "r" => opts.read(true),
+        "w" => opts.write(true).create(true).truncate(true),
+        _ => opts.append(true).create(true),
+    };
+    opts.mode(0o666);
+    let f = opts.open(path)?;
+    if f.metadata()?.is_dir() {
+        return Err(io::Error::from_raw_os_error(21)); // EISDIR
+    }
+    Ok(f.into_raw_fd())
+}
+
+/// Whether path is a directory; an error if it does not exist.
+pub fn is_dir(path: &str) -> io::Result<bool> {
+    Ok(std::fs::metadata(path)?.is_dir())
+}
+
+/// The absolute path without symbolic links, . and ..
+pub fn canonicalize(path: &str) -> io::Result<String> {
+    Ok(std::fs::canonicalize(path)?.to_string_lossy().into_owned())
+}
+
+/// The names in the directory path (in no particular order).
+pub fn read_dir(path: &str) -> io::Result<Vec<String>> {
+    std::fs::read_dir(path)?.map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned())).collect()
+}
+
+/// The environment variables of the interpreter.
+pub fn env_vars() -> Vec<(String, String)> {
+    std::env::vars_os().map(|(k, v)| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned())).collect()
+}
+
+pub fn getpid() -> u32 {
+    std::process::id()
+}
+
+/// The error of what this system cannot do (starting a process on wasm32).
+#[allow(dead_code)]
+pub fn unsupported() -> io::Error {
+    io::Error::new(io::ErrorKind::Unsupported, "not supported")
+}
+
+/// Write text to fd 1 or 2 at once, so that the order of standard output and
+/// standard error is kept when both go to the same file.
+pub fn write_std(fd: c_int, text: &str) {
+    use std::io::Write;
+    let r = if fd == 2 {
+        let mut e = std::io::stderr().lock();
+        e.write_all(text.as_bytes()).and_then(|_| e.flush())
+    } else {
+        let mut o = std::io::stdout().lock();
+        o.write_all(text.as_bytes()).and_then(|_| o.flush())
+    };
+    // Like a process killed by SIGPIPE: stop when the reader has gone.
+    if let Err(e) = r {
+        if e.kind() == io::ErrorKind::BrokenPipe {
+            std::process::exit(141);
+        }
+    }
+}
+
 // ── Signals ─────────────────────────────────────────────────────────────────
 
 /// Write end of the pipe that signals write to, so that a wait for fds wakes up.

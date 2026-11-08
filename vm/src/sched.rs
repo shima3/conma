@@ -77,6 +77,20 @@ pub struct Machine {
     nop_closure: Value,
     /// CONMA_SEED: choose the next VProc at random.
     rng: Option<SplitMix64>,
+    /// Sleep in the OS while every VProc waits for it. False in the VM for
+    /// wasm32, where run_slice returns Slice::Idle instead.
+    pub blocking: bool,
+}
+
+/// How run_slice ended.
+pub enum Slice {
+    /// Every VProc has finished, or the exit code (as run returns it).
+    Done(Option<i32>),
+    /// The budget of steps was used up; some VProc can still run.
+    Paused,
+    /// No VProc can run until the outside changes something (input, a
+    /// signal): the VM for wasm32 returns to its host.
+    Idle,
 }
 
 /// The pseudo-random numbers of CONMA_SEED (the same as SplitMix64 in
@@ -221,6 +235,7 @@ impl Machine {
             ref_changed: false,
             serials: Serials::default(),
             rng: None,
+            blocking: true,
             next_serial: 0,
             true_closure: bool_closure("t"),
             false_closure: bool_closure("f"),
@@ -539,8 +554,27 @@ impl Machine {
     /// Run until every VProc has finished. Returns the exit code when a
     /// primitive exits the interpreter, or on deadlock.
     pub fn run(&mut self) -> Option<i32> {
+        self.seed();
+        match self.run_slice(u64::MAX) {
+            Slice::Done(code) => code,
+            // Only without blocking, or after u64::MAX steps.
+            Slice::Paused | Slice::Idle => None,
+        }
+    }
+
+    /// Take CONMA_SEED (before the first step).
+    pub fn seed(&mut self) {
         self.rng = seed_from_env();
+    }
+
+    /// Run at most about budget steps (the steps of the VProc running when
+    /// the budget ends are not cut short in the middle of a step).
+    pub fn run_slice(&mut self, budget: u64) -> Slice {
+        let limit = self.steps.saturating_add(budget);
         loop {
+            if self.steps >= limit {
+                return Slice::Paused;
+            }
             if crate::gc::due() {
                 // Between two steps no RefCell is borrowed.
                 self.vprocs.retain(|v| v.state.get() != State::Finished);
@@ -570,8 +604,11 @@ impl Machine {
                 if self.ready.is_empty() {
                     // Without a ready VProc, sleep in the OS instead of busy waiting.
                     self.unpolled = 0;
-                    self.check_waiting(true);
+                    self.check_waiting(self.blocking);
                     if self.ready.is_empty() {
+                        if !self.blocking {
+                            return Slice::Idle;
+                        }
                         continue;
                     }
                 } else if self.unpolled >= POLL_INTERVAL {
@@ -584,6 +621,9 @@ impl Machine {
             if self.ready.is_empty() && self.trap.is_some() && !self.changes.is_empty() {
                 // A VProc may wait for the Ref of __OS_trap_interrupt__:
                 // sleep until a signal arrives instead of reporting a deadlock.
+                if !self.blocking {
+                    return Slice::Idle;
+                }
                 self.check_waiting(true);
                 continue;
             }
@@ -602,10 +642,10 @@ impl Machine {
                     .map(|v| v.serial.to_string())
                     .collect();
                 if blocked.is_empty() {
-                    return None;
+                    return Slice::Done(None);
                 }
                 write_std(2, &format!("Deadlock: no VProc is ready; blocked VProc(s): {}\n", blocked.join(", ")));
-                return Some(2);
+                return Slice::Done(Some(2));
             }
             if let Some(rng) = &mut self.rng {
                 if self.ready.len() > 1 {
@@ -650,7 +690,7 @@ impl Machine {
                     }
                     Err(VmError::Exit(code)) => {
                         self.current = None;
-                        return Some(code);
+                        return Slice::Done(Some(code));
                     }
                 }
                 if cell.kill_pending.get() && cell.state.get() != State::Finished && !evaluating_lazy(&cell, &mut vp) {
@@ -664,7 +704,7 @@ impl Machine {
                     self.finished_any = true;
                     break;
                 }
-                if !self.runs_alone(&cell) {
+                if !self.runs_alone(&cell) || self.steps >= limit {
                     requeue = true;
                     break;
                 }
