@@ -19,7 +19,7 @@ consh/js/build.sh
 consh/js/serve.py          # http://localhost:8765/（ポートは引数で変えられる）
 ```
 
-http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。`serve.py` は `python3 -m http.server` と同じくファイルを出すほか、ディレクトリの一覧（`?consh-ls`）を返し、ブラウザにファイルを毎回確かめさせる（`Cache-Control: no-cache`）。ほかの Web サーバーでも動くが、`index.html` のあるディレクトリ（ページのディレクトリ）の一覧が取れないので、`ls` や `*` にはそのディレクトリのファイルが出ない。
+http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。`serve.py` は `python3 -m http.server` と同じくファイルを出すほか、ディレクトリの一覧（`?consh-ls`）を返し、ブラウザにファイルを毎回確かめさせる（`Cache-Control: no-cache`）。`build.sh` が `web/` に作るファイル（`conma.js`、`conma.wasm`、`consh.module.se`）がないか、ソースより古いとき（`git pull` の後など。これらはリポジトリにないので pull では変わらない）は、`build.sh` を実行するように言って起動しない。ほかの Web サーバーでも動くが、`index.html` のあるディレクトリ（ページのディレクトリ）の一覧が取れないので、`ls` や `*` にはそのディレクトリのファイルが出ない。
 
 * 外部コマンドはない。JavaScript で作った `cat`、`pwd`、`ls`（`web/consh.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、ConSh の PLAN-ja.md の 1.2）。`cat` は、引数のファイルか標準入力を、標準出力に書く。`pwd` は、カレントディレクトリを出す（`-L` と `-P` は同じ）。`ls [-1AadF] [file ...]` は、名前を 1 行に 1 つ出す。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。
 * `cat` などが端末から読んでいる間は、入力欄の行はそのコマンドに渡り、Ctrl+D はそのコマンドの入力だけを終える（`cat > hoge.txt` で書いて Ctrl+D、ConSh は続く）。Ctrl+C はそのコマンドを止める（`$?` は 130）。ConSh 自身が入力を読んでいるときの Ctrl+D は、ネイティブ版と同じく ConSh の標準入力を終えるので、ConSh も終わる。

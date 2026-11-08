@@ -6,6 +6,9 @@
 * Cache-Control: no-cache, so that the browser checks a file with the server each time it is read
   (304 when it has not changed), and a file changed on the disk is seen at once.
 
+It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is
+missing or older than its sources (conma.js, conma.wasm, consh.module.se), as after git pull.
+
 Usage: consh/js/serve.py [port]   (8765 by default; only on 127.0.0.1)
 """
 import functools
@@ -41,8 +44,59 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
 
+JS = os.path.dirname(WEB)
+ROOT = os.path.dirname(os.path.dirname(JS))
+
+
+def newest(*dirs, suffixes=(".rs", ".se", ".toml")):
+    """The newest time of the files with the suffixes, and of the folders (a file added, removed or
+    moved changes the time of its folder, as build.sh sees it), under dirs."""
+    t = 0.0
+    for d in dirs:
+        for top, subdirs, files in os.walk(d):
+            subdirs[:] = [s for s in subdirs if s != "target"]
+            t = max(t, os.path.getmtime(top))
+            for f in files:
+                if f.endswith(suffixes):
+                    t = max(t, os.path.getmtime(os.path.join(top, f)))
+    return t
+
+
+def stale():
+    """The files of web/ that consh/js/build.sh makes and that are missing or older than their
+    sources (git pull does not change them, since they are not in the repository)."""
+    found = []
+    built = os.path.join(WEB, "conma.js")
+    try:
+        with open(built, "rb") as a, open(os.path.join(JS, "conma.js"), "rb") as b:
+            if a.read() != b.read():
+                found.append(built)
+    except FileNotFoundError:
+        found.append(built)
+    sources = {
+        "conma.wasm": newest(os.path.join(ROOT, "vm", "src"), os.path.join(JS, "wasm")),
+        "consh.module.se": newest(
+            os.path.join(ROOT, "include"),
+            os.path.join(ROOT, "consh", "include"),
+            os.path.join(ROOT, "consh", "reference"),
+            suffixes=(".se",),
+        ),
+    }
+    for name, source_time in sources.items():
+        path = os.path.join(WEB, name)
+        if not os.path.exists(path) or os.path.getmtime(path) < source_time:
+            found.append(path)
+    return found
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    old = stale()
+    if old:
+        for path in old:
+            print(f"serve.py: {os.path.relpath(path)} is missing or older than its sources", file=sys.stderr)
+        print("serve.py: run consh/js/build.sh first", file=sys.stderr)
+        sys.exit(1)
     handler = functools.partial(Handler, directory=WEB)
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
         print(f"Serving {WEB} on http://localhost:{port}/", flush=True)
