@@ -2144,6 +2144,7 @@ fn builtin_lookup(name: &str) -> Option<Builtin> {
         "stdin" => builtin_stdin,
         "wait" => builtin_wait,
         "kill" => builtin_kill,
+        "js" => builtin_js,
         _ => return None,
     })
 }
@@ -2269,6 +2270,62 @@ fn builtin_echo(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, out: Targ
     target_write(sh, pos, &out, &line)?;
     sh.set_status("0");
     Ok(())
+}
+
+/// js [name=] code {arg}: evaluate JavaScript (consh/js/PLAN-ja.md 2.1).
+/// This version has no JavaScript: after the checks of the ConMa version
+/// (code, the name, arguments that are not functions), it writes
+/// "js: JavaScript is not available" and sets $? to 127.
+fn builtin_js(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, _out: Target, _err: Target) -> R<()> {
+    let fail = |msg: &str, status: &str| {
+        sh.warn(pos, &format!("js: {}", msg));
+        sh.set_status(status);
+    };
+    let mut it = args.into_iter();
+    let first = match it.next() {
+        None => {
+            fail("no code", "1");
+            return Ok(());
+        }
+        Some(v) => arg_string(sh, pos, "js", v)?,
+    };
+    let named = first.len() > 1 && first.ends_with('=') && {
+        let name = &first[..first.len() - 1];
+        let mut cs = name.chars();
+        cs.next().map_or(false, |c| c == '_' || c.is_ascii_alphabetic())
+            && cs.all(|c| c == '_' || c.is_ascii_alphanumeric())
+    };
+    if named {
+        match it.next() {
+            None => {
+                fail("no code", "1");
+                return Ok(());
+            }
+            Some(v) => {
+                arg_string(sh, pos, "js", v)?;
+            }
+        }
+    }
+    for v in it {
+        js_arg_check(sh, pos, &v)?;
+    }
+    fail("JavaScript is not available", "127");
+    Ok(())
+}
+
+/// An argument of js: a String, or a LazyList of them (read to its end);
+/// a function value is an error.
+fn js_arg_check(sh: &Ctx, pos: Pos, v: &Value) -> R<()> {
+    match v {
+        Value::Str(_) => Ok(()),
+        Value::Func(_) => Err(sh.error(pos, expand::FUNC_STRING)),
+        Value::List(l) => {
+            for item in l.to_vec()? {
+                js_arg_check(sh, pos, &item)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// cd [dir]: change the current directory (HOME without an argument).

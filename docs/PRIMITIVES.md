@@ -166,6 +166,12 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 * **Behavior**: A relative `path` is relative to the current directory of the current VProc (see `__OS_chdir__`). Two paths name the same file if their real paths are equal, so this can be used to find a file that is given twice under different names.
 * **Error**: If `path` is not a String, or does not exist (including the empty String and a path that goes through a missing directory, such as `none/..`), invokes `onError` with an error message string.
 
+### **`__JS_call__ onError code args ,(inputStream)`**
+* **Description**: Has the host of the VM evaluate the JavaScript `code` (a String) with `args` (an LList whose elements are Strings and LLists of the same kind), and returns an input Stream from which the result is read.
+* **Behavior**: Only the VM for wasm32 (`consh/js`) has JavaScript. It makes a pipe, gives its write end to the host and returns its read end. The host evaluates `code` as an expression in its global scope; if the value is a function, it calls it with `args` (Strings, and arrays for LLists); it waits for a Promise. It then writes the result as one line, an S-expression that `__Sexp_read__` reads, and closes the pipe: `(r s "text")` for a string (a number, a boolean, a BigInt or another object is made into one with `String()` or `JSON.stringify`), `(r l (...))` for an array (an element that is an array is a list; `null` and `undefined` are `""`), `(r n)` for `undefined` and `null`, and `(e "message")` for an exception (`"Name: message"` for an Error). The VProc reads the Stream as any other, so it waits for the result while the other VProcs run (see 2.1 and 2.2 of consh/js/PLAN-ja.md).
+* **Usage**: The builtin `js` of ConSh.
+* **Error**: If `code` is not a String, or `args` is not an LList of Strings and LLists, invokes `onError` with an error message string. The native VMs (`test/vproc_step.py` and `vm/`) have no JavaScript: with correct arguments, they invoke `onError` with `"__JS_call__: JavaScript is not available"`.
+
 ---
 
 ## 2. Number Primitives

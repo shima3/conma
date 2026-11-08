@@ -1,0 +1,21 @@
+consh: case4.sh:2:1: js: ReferenceError: nosuch is not defined
+status 1
+consh: case4.sh:4:1: js: SyntaxError: Unexpected token ')'
+status 1
+consh: case4.sh:6:1: js: arguments given to a value that is not a function
+status 1
+consh: case4.sh:8:1: js: the result is a function
+status 1
+consh: case4.sh:10:1: js: RangeError: Maximum call stack size exceeded
+status 1
+consh: case4.sh:12:1: js: plain
+status 1
+consh: case4.sh:14:1: js: no code
+status 1
+consh: case4.sh:16:1: js: no code
+status 1
+consh: case4.sh:20:1: js: ReferenceError: nosuch is not defined
+v=old
+my js
+builtin
+exit: 0

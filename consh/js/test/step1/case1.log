@@ -1,0 +1,13 @@
+3
+text with spaces
+p=a q=b
+r: c
+r: d
+a=1 b=[] c=[] d=true
+{"a":1,"b":[true,"x"]}
+100000000000000000000
+日本語	と
+タブと改行
+5
+10
+exit: 0

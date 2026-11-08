@@ -251,6 +251,28 @@ pub extern "C" fn conma_input_end() {
     sys::end_input();
 }
 
+/// Write len bytes at ptr to the fd (the pipe of __JS_call__). Returns 0, or
+/// the errno of the error (EPIPE when the reader has closed it).
+///
+/// # Safety
+/// ptr must point to len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn conma_write(fd: i32, ptr: *const u8, len: usize) -> i32 {
+    match sys::write_fd(fd, bytes(ptr, len)) {
+        Ok(_) => 0,
+        Err(e) => e.raw_os_error().unwrap_or(-1),
+    }
+}
+
+/// Close the fd (the pipe of __JS_call__). Returns 0, or the errno.
+#[no_mangle]
+pub extern "C" fn conma_close(fd: i32) -> i32 {
+    match sys::close_fd(fd) {
+        Ok(()) => 0,
+        Err(e) => e.raw_os_error().unwrap_or(-1),
+    }
+}
+
 /// From now on, a directory on the way of a path that the host does not give
 /// is taken to exist (for a host that cannot tell directories).
 #[no_mangle]

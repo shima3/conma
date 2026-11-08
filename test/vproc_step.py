@@ -1031,6 +1031,42 @@ def prim_OS_getpid(vp, gvenv):
     _prim_return(vp, [Number(os.getpid())])
 
 
+def _js_args_bad(v):
+    """The type name of the first value of the LList v that is neither a
+    String nor an LList (null or an LList), or None if there is none."""
+    while not is_null_value(v):
+        if not isinstance(v, LList):
+            return value_type_name(v)
+        h = v.head
+        if is_null_value(h) or isinstance(h, LList):
+            bad = _js_args_bad(h)
+            if bad is not None:
+                return bad
+        elif value_type_name(h) != "String":
+            return value_type_name(h)
+        v = v.tail
+    return None
+
+def prim_JS_call(vp, gvenv):
+    """__JS_call__ onError code args ,(inputStream)
+    Evaluate the JavaScript code with args in the host of the VM for wasm32
+    (consh/js). This VM has no JavaScript: after checking the arguments, it
+    goes to onError."""
+    name  = "__JS_call__"
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    code     = olist.pop(0)
+    args     = olist.pop(0)
+    if value_type_name(code) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String code, got {value_type_name(code)}")
+        return
+    bad = _js_args_bad(args)
+    if bad is not None:
+        _prim_error(vp, on_error, f"{name}: expected an LList of Strings and LLists, got {bad}")
+        return
+    _prim_error(vp, on_error, f"{name}: JavaScript is not available")
+
 def prim_OS_sysconf(vp, gvenv):
     """__OS_sysconf__ onError name ,(Number)
     The value of the system configuration variable name (a String such as
@@ -2894,6 +2930,7 @@ PRIMITIVES = {
     "__LazyList_hold__":       prim_LazyList_hold,
     "__LazyList_publish__":    prim_LazyList_publish,
     "__Ref_wait_change__":     prim_Ref_wait_change,
+    "__JS_call__":             prim_JS_call,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

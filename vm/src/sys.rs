@@ -222,6 +222,13 @@ pub fn getpid() -> u32 {
     std::process::id()
 }
 
+/// __JS_call__: start evaluating code with args (a JSON array) in the host,
+/// and return the read end of the pipe that the host writes the result to.
+/// The native VM has no JavaScript.
+pub fn js_call(_code: &str, _args_json: &str) -> io::Result<c_int> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
+}
+
 /// The error of what this system cannot do (starting a process on wasm32).
 #[allow(dead_code)]
 pub fn unsupported() -> io::Error {

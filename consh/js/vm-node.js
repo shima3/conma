@@ -4,6 +4,7 @@
 // variables of the process, and sees the real file system through its virtual one: a file is read when
 // the VM opens it, and a directory is listed when the VM lists it (host_file_needed, host_dir_needed).
 // What the VM writes to files stays in memory. Standard input is read when a VProc waits for it.
+// The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -88,9 +89,19 @@ function listDir(vm, p) {
   }
 }
 
-function main() {
+// Resolves when a call of JavaScript has given its result to the VM.
+let wake = null;
+function jsDone() {
+  if (wake) {
+    const w = wake;
+    wake = null;
+    w();
+  }
+}
+
+async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
-  const vm = ConMaVM.create(wasm, writeAll, readInput, fetchFile, listDir);
+  const vm = ConMaVM.create(wasm, writeAll, readInput, fetchFile, listDir, jsDone);
   const cwd = process.cwd();
   vm.makeDirs(cwd);
   vm.setCwd(cwd);
@@ -109,11 +120,23 @@ function main() {
   }
   let code = vm.start(module, argv);
   if (code !== 0) return code;
+  let slices = 0;
   for (;;) {
     code = vm.run(100000);
+    if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) return code;
+    if (vm.jsPending() > 0) {
+      // Let the Promises of JavaScript run: wait for one when nothing else can run, and
+      // now and then while other VProcs run.
+      if (code === ConMaVM.IDLE) {
+        await new Promise((resolve) => {
+          wake = resolve;
+        });
+        continue;
+      }
+      if (++slices % 8 === 0) await new Promise((resolve) => setImmediate(resolve));
+    }
     // A program may poll standard input instead of waiting for it: give it input when it found none.
     if (code === ConMaVM.RUNNING && !(vm.wantsInput() && !inputEnded)) continue;
-    if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) return code;
     if (!inputEnded) {
       readInput(vm);
       continue;
@@ -127,4 +150,6 @@ function main() {
   }
 }
 
-process.exitCode = main();
+main().then((code) => {
+  process.exitCode = code;
+});

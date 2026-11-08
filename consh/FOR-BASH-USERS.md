@@ -63,7 +63,7 @@ ConSh has a small grammar. These Bash features are syntax errors or are not spec
 | `` `cmd` ``, `$*`, `~` | not special: they stay as they are |
 | `local`, `read`, `set`, `shift`, `source`, `test`/`[` as builtins, aliases, arrays | not builtins; `[` and `test` work as the external commands |
 
-The builtin commands are `echo`, `cd`, `defined`, `builtin`, `command`, `stdin`, `wait`, `kill` and `exit`. `echo` takes no options.
+The builtin commands are `echo`, `cd`, `defined`, `builtin`, `command`, `stdin`, `wait`, `kill`, `exit` and `js`. `echo` takes no options. `js [name=] code {arg}` evaluates JavaScript, but only when ConSh runs on the ConMa VM built for WebAssembly (`consh/js`, in a browser or Node.js); elsewhere it says `js: JavaScript is not available` and sets `$?` to 127.
 
 ## Variables
 

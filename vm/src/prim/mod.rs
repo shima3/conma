@@ -10,6 +10,7 @@ pub mod basic;
 mod cchain;
 pub mod collections;
 pub mod control;
+mod js;
 pub mod lazy;
 pub mod llist;
 pub mod number;
@@ -143,6 +144,7 @@ prims! {
     "__OS_wait__"          => "prim_OS_wait", process::wait;
     "__OS_kill__"          => "prim_OS_kill", process::kill;
     "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
+    "__JS_call__"          => "prim_JS_call", js::call;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

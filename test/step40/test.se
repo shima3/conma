@@ -1,0 +1,34 @@
+;; Step40: __JS_call__ onError code args ,(inputStream)。JavaScript を評価する（consh/js の wasm 版の VM）。
+;; ネイティブの VM には JavaScript がないので、引数を確かめた後、onError に進む
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; __JS_call__ を呼び、onError のメッセージか、Stream を得たことを出す
+(define try ,(code args)
+  __Cont_get__ ,(return)
+  __JS_call__ (,(msg) println msg ,() return) code args ,(stream)
+  println "got a Stream" ,()
+  __OS_close__ __print_exit_error__ stream)
+
+;; case1: 正しい引数（String と、String の入れ子の LList）
+(define case1 ,()
+  try "1 + 2" __NULL__ ,()
+  __LList_cons__ "c" __NULL__ ,(inner)
+  __LList_cons__ __NULL__ __NULL__ ,(empty)
+  __LList_cons__ inner empty ,(rest)
+  __LList_cons__ "a" rest ,(args)
+  try "(a, b, c) => a" args)
+
+;; case2: 誤った引数：code が String でない、args が LList でない、要素が String でも LList でもない
+(define case2 ,()
+  __Number_fromString__ __print_exit_error__ "4" ,(four)
+  try four __NULL__ ,()
+  try "x" "y" ,()
+  __LList_cons__ four __NULL__ ,(inner)
+  __LList_cons__ "a" inner ,(args)
+  try "x" args ,()
+  __LList_cons__ args __NULL__ ,(nested)
+  try "x" nested)

@@ -30,7 +30,7 @@ consh/
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── parse3/          ConMa 版の構文解析のテスト：parse1 と parse2 の各スクリプトで、consh_parse --pos と同じ構文木とエラーになるか
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）
+    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）、step17 は JavaScript のない版の js
     └── examples/        examples/ のデモのテスト：ConSh 版と Bash 版を実行し、NAME.log、NAME.bash.log と比べる
 ```
 
@@ -75,7 +75,8 @@ ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソー�
     * 関数と組み込みコマンドには、`${list}` を LazyList のまま渡す。外部コマンドには葉ごとの語にして渡す
     * 前置の変数定義は、同じ文の語の展開にも反映する（`OFS=, echo "$list"`）
     * 先頭の語が `${list}` なら、要素を順に引数にする（先頭の要素だけは再帰的に展開してコマンド名を取る）。先頭の語の LazyList が空ならエラー
-* 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`、`stdin`、`wait`、`kill`、`exit`
+* 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`、`stdin`、`wait`、`kill`、`exit`、`js`
+    * `js [変数名=] コード {引数}` は JavaScript を評価する（js/PLAN-ja.md）。JavaScript が動くのは ConMa の VM の wasm32 版（js/。ブラウザと Node.js）だけで、ほかの版では `$?` を 127 にする（test/step17、js/test/step1）
 * if 文（`elif`、`else`、`fi` の後のリダイレクト）
 * リストfor文、`break [変数名]`、`continue [変数名]`（`done` の後のリダイレクト）
     * 語は関数の引数と同じ規則で展開し、LazyList の値は1階層だけ開いて要素ごとに回す

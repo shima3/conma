@@ -40,7 +40,14 @@
     );
     const wasm = await WebAssembly.compile(wasmBytes);
     const decoders = { 1: new TextDecoder(), 2: new TextDecoder() };
-    vm = ConMaVM.create(wasm, (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""));
+    vm = ConMaVM.create(
+      wasm,
+      (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""),
+      null,
+      null,
+      null,
+      () => pump()
+    );
     vm.makeDirs(HOME);
     vm.setCwd(HOME);
     for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
@@ -85,7 +92,8 @@
     }
     pumping = false;
     if (r === ConMaVM.IDLE) {
-      status.textContent = "入力待ち";
+      // pump runs again when input comes, or when JavaScript gives a result (jsDone)
+      status.textContent = vm.jsPending() > 0 ? "JavaScript 待ち" : "入力待ち";
       return;
     }
     finish(r);

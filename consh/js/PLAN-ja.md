@@ -123,14 +123,14 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
         - 0 以上：終了コード
     - ホストは、この値を見て `setTimeout` か入力のイベントで再び呼ぶ。
     - vm/src/sched.rs の `Machine::run` は `run_slice(budget)` を呼ぶ形にした。`Machine::blocking` が真（ネイティブ版）なら、今までどおり OS で待つ。偽（wasm 版）なら、待つ代わりに `Slice::Idle` を返す。ネイティブ版のステップの順とテストの結果は変わらない。
-4. **js のプリミティブ**
-    - プリミティブ `__JS_call__ onError code argLList inputLazyList ,(job)` を足す。
-        - JavaScript の評価を始め、job（新しい型 JSJob）を返す。
-    - プリミティブ `__JS_next__ onError job ,(more value)` を足す。
-        - 次の出力値が出るまで、VProc を Blocked にして待つ。
-        - `more` が `__FALSE__` なら終わりで、value は終了状態とメッセージである。
-    - 標準入力は、JavaScript が `stdin` を読むと、ホストが VM に要求する。VM はそれを入力の LazyList から 1 つ読む仕事として扱い、その VProc の中で値を作って返す。
-    - 新しいプリミティブは、docs/PRIMITIVES.md と docs/ROADMAP.md に書く。Python の VM（test/vproc_step.py）にも、onError に進むだけの版を足して、両方の VM の結果をそろえる。
+4. **js のプリミティブ**（段階 4 で作った形。docs/PRIMITIVES.md、docs/ROADMAP.md の Step 40）
+    - プリミティブは `__JS_call__ onError code args ,(inputStream)` の 1 つだけにした。新しい型も、スケジューラの変更もいらない。
+        - VM は、仮想の OS の中にパイプを作り、書く端の fd と code、args（String と LList の入れ子を JSON の配列にしたもの）をホストの `host_js_call` に渡して、読む端の Stream を返す。
+        - ホスト（conma.js）は、code を評価し、結果を 1 行の S 式にして、`conma_run` が戻った後に `conma_write` で書き、`conma_close` で閉じる：`(r s "文字列")`、`(r l (リスト))`、`(r n)`、`(e "メッセージ")`。
+        - VProc は、ほかの Stream と同じく読めるまで待つ。その間、ほかの VProc は動き、`conma_run` は IDLE を返す。ホストは、結果を書いたら（`jsDone`）VM を動かし直す。Node.js の vm-node.js は、IDLE で JavaScript を待つ間と、動いている間にも時々、イベントループを回す。
+        - ConSh の `Builtin_js` は、Stream を行の LazyList にして `__Sexp_read__` で読み、出力するか変数に入れる。
+    - 段階 5 の標準入力（`stdin`）と段階 6 のイテレータでは、同じ Stream に複数の行を書く形に広げる予定である（`__JS_next__` は作らない）。
+    - ネイティブ版（Python と Rust の VM）の `__JS_call__` は、引数を確かめた後、`onError` に進む（`__JS_call__: JavaScript is not available`）。
 5. **モジュールの読み込み**
     - ConSh のモジュール（約 5 MB）は、ネイティブで bin/includer と bin/resolver（または ConMa の front end）で作っておき、静的なファイルとしてページと一緒に置く。
     - スクリプトの構文解析は、Python の consh_parse がないので、ConMa 版の構文解析（consh_parser.se、`--conma-parser` と同じ）を使う。
@@ -141,7 +141,7 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
 ```
 consh/js/
   PLAN-ja.md        この文書
-  README-ja.md      使い方（段階 4 で書く）
+  README-ja.md      使い方
   build.sh          VM を wasm32 でビルドし、web/ に wasm、conma.js、ConSh のモジュールを置く
   conma.js          wasm の読み込み、import する関数、conma_run の駆動（ブラウザ、Node.js、jsc で共通）
   vm-node.js        Node.js で VM を動かす（vm/target/release/conma と同じ引数）。実際のファイルとディレクトリを、
@@ -158,7 +158,8 @@ consh/js/
     index.html      端末の画面（出力と入力の行、「ファイルを置く」「スクリプトを実行」「中断」）
     consh.js        ConSh の起動（対話モード）、入力、Ctrl-C、ファイル。段階 4 から js の評価
     conma.wasm、conma.js、consh.module.se   build.sh が置く（リポジトリには入れない）
-  test/             （段階 4）ConSh の test/stepN と同じ形の js のテスト
+  test/             （段階 4）ConSh の test/stepN と同じ形の js のテスト。stepN/test.sh は、CONMA_VM=wasm で
+                    consh/test/common.sh の run を使う。run_all.sh ですべて実行する
 ```
 
 VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se と consh/rust/src/eval.rs に置く（2.1 の 10）。
@@ -223,6 +224,15 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
     - シンボリックリンク（step16 の work/up、step23、selfhost6 と selfhost7 の link.se）
     - jsc だけ：途中のディレクトリをあるものとするので、step16 の `work/none/..` がエラーにならない
 - ブラウザの画面も、作り直した wasm で動く。
+
+### 3.4. 段階 4 の結果（2026/11/8）
+
+- `js [変数名=] コード {引数}` を、ConMa 版の ConSh（consh/include/consh_eval.se の `Builtin_js`）に足した。2.1 の 1〜6、9、10 のとおりに動く。Rust 版の ConSh（consh/rust）の `js` は、同じ順に引数を確かめた後、`js: JavaScript is not available` を出して `$?` を 127 にする。
+- テスト
+    - consh/js/test/step1（wasm 版の VM、Node.js）：case1 は結果の出し方（値、配列、入れ子、`undefined`、`null`、オブジェクト、BigInt、改行とタブを含む文字列、代入式のコード）、case2 は変数に入れる形と引数（`$list` と `${list}`）、関数の中の変数、case3 は Promise と、待つ間にほかの VProc が動くこと、case4 はエラー（例外、構文エラー、関数でない値への引数、関数の結果、循環する配列、`js sum=`、`js` だけ）と、エラーのときに変数を変えないこと、`builtin js`。
+    - consh/test/step17（JavaScript のない版）：ConMa 版（Python 版と Rust 版の VM）と Rust 版の ConSh で同じログになる。
+    - test/step40（`__JS_call__`）：Python 版と Rust 版の VM で同じログになる。wasm 版では case1 が Stream を得るので違う。
+- 構文エラーのメッセージ（`SyntaxError: Unexpected token ')'` など）は JavaScript の処理系によって違う。consh/js/test/step1 の case4 のログは Node.js v26 のものである。
 
 ## 4. 未解決の点
 

@@ -1,0 +1,16 @@
+consh: case1.sh:2:1: js: no code
+status 1
+consh: case1.sh:4:1: js: no code
+status 1
+consh: case1.sh:6:1: js: JavaScript is not available
+status 127
+consh: case1.sh:9:1: js: JavaScript is not available
+status 127
+defined sum: 1
+consh: case1.sh:15:1: js: JavaScript is not available
+status 127
+consh: case1.sh:18:1: js: JavaScript is not available
+status 127
+consh: case1.sh:20:1: js: JavaScript is not available
+status 127
+exit: 0

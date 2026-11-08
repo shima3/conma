@@ -1,5 +1,6 @@
 // The host side of the ConMa VM for wasm32 (consh/js/wasm). It works in a
-// browser (<script src="conma.js">) and in the JavaScriptCore shell (load()).
+// browser (<script src="conma.js">), in Node.js (require) and in the
+// JavaScriptCore shell (load()).
 //
 //   const vm = ConMaVM.create(wasmModule, (fd, bytes) => ...);
 //   vm.start(moduleBytes, ["-m", "consh.module.se", ...]);  // 0 if started
@@ -20,6 +21,22 @@
 // vm.putFile (or vm.makeDirs for a directory) at once. dirNeeded(vm, path),
 // if given, is called when the VM lists a directory for the first time: it
 // may call vm.makeDirs and vm.putUnread for its entries at once.
+// jsDone(vm), if given, is called when the result of a call of JavaScript
+// (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
+// should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
+// must let its event loop run (Promises) when the VM is IDLE.
+//
+// __JS_call__ code args: code is evaluated as an expression in the global
+// scope; if its value is a function, it is called with args (strings, and
+// arrays of them), and the result (awaited if it is a Promise) is written to
+// the pipe of __JS_call__ as one line, an S-expression that __Sexp_read__
+// reads (see 2.1 and 2.2 of consh/js/PLAN-ja.md):
+//   (r s "text")       a string, or a number, boolean, BigInt or object made
+//                      into one (String(), JSON.stringify)
+//   (r l ("a" ("b")))  an array: its elements, an array as a list, null and
+//                      undefined as ""
+//   (r n)              undefined or null: nothing
+//   (e "message")      an exception: "Name: message" for an Error
 
 var ConMaVM = (function () {
   "use strict";
@@ -57,9 +74,54 @@ var ConMaVM = (function () {
     }
   }
 
-  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded) {
+  // ── JavaScript of __JS_call__ ──
+
+  // An error that the host finds, written without the name of an Error.
+  function HostError(message) {
+    this.message = message;
+  }
+
+  function evaluate(code, args) {
+    const value = (0, eval)("(" + code + "\n)");
+    if (typeof value === "function") return value(...args);
+    if (args.length > 0) throw new HostError("arguments given to a value that is not a function");
+    return value;
+  }
+
+  function sexpString(s) {
+    return '"' + s.replace(/[\\"\n\r\t]/g, (c) => ({ "\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t" })[c]) + '"';
+  }
+
+  // A value that is not an array, as a string.
+  function scalar(v) {
+    if (typeof v === "string") return v;
+    if (typeof v === "function") throw new HostError("the result is a function");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function sexpList(a) {
+    return "(" + a.map((e) => (Array.isArray(e) ? sexpList(e) : sexpString(e == null ? "" : scalar(e)))).join(" ") + ")";
+  }
+
+  function resultLine(v) {
+    if (v === undefined || v === null) return "(r n)\n";
+    if (Array.isArray(v)) return "(r l " + sexpList(v) + ")\n";
+    return "(r s " + sexpString(scalar(v)) + ")\n";
+  }
+
+  function errorLine(e) {
+    let msg;
+    if (e instanceof HostError) msg = e.message;
+    else if (e instanceof Error || (e && typeof e === "object" && "message" in e && "name" in e)) msg = e.name + ": " + e.message;
+    else msg = String(e);
+    return "(e " + sexpString(msg) + ")\n";
+  }
+
+  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded, jsDone) {
     let x = null;
     let vm = null;
+    let jsPending = 0;
     const instance = new WebAssembly.Instance(wasmModule, {
       env: {
         host_write: (fd, ptr, len) => write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()),
@@ -71,6 +133,27 @@ var ConMaVM = (function () {
         },
         host_dir_needed: (ptr, len) => {
           if (dirNeeded) dirNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
+        },
+        host_js_call: (fd, codePtr, codeLen, argsPtr, argsLen) => {
+          const code = text(new Uint8Array(x.memory.buffer, codePtr, codeLen));
+          const args = JSON.parse(text(new Uint8Array(x.memory.buffer, argsPtr, argsLen)));
+          jsPending++;
+          // The result is given to the VM later (never inside conma_run, which is running now).
+          let result;
+          try {
+            result = Promise.resolve(evaluate(code, args));
+          } catch (e) {
+            result = Promise.reject(e);
+          }
+          result
+            .then(resultLine)
+            .catch(errorLine)
+            .then((line) => {
+              pass(line, (p, n) => x.conma_write(fd, p, n));
+              x.conma_close(fd);
+              jsPending--;
+              if (jsDone) jsDone(vm);
+            });
         },
       },
     });
@@ -101,6 +184,8 @@ var ConMaVM = (function () {
       run: (budget) => x.conma_run(budget),
       input: (data) => pass(data, x.conma_input),
       inputEnd: () => x.conma_input_end(),
+      // The number of calls of JavaScript whose results the VM has not got yet.
+      jsPending: () => jsPending,
       // Whether a VProc found standard input empty since the last call.
       wantsInput: () => x.conma_wants_input() !== 0,
       interrupt: () => x.conma_interrupt(),

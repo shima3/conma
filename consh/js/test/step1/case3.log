@@ -1,0 +1,9 @@
+resolved
+w=waited
+tick 1
+tick 2
+tick 3
+late
+consh: case3.sh:9:1: js: RangeError: no
+status 1
+exit: 0

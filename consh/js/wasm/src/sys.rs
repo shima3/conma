@@ -39,6 +39,10 @@ extern "C" {
     /// time: the host may put its entries there now (conma_make_dirs,
     /// conma_put_unread), as Node.js does with the real file system.
     fn host_dir_needed(ptr: *const u8, len: usize);
+    /// Start evaluating the JavaScript code with args (a JSON array of
+    /// strings and arrays); the host writes the result to the pipe fd as lines
+    /// of S-expressions (conma_write) and closes it (conma_close).
+    fn host_js_call(fd: i32, code_ptr: *const u8, code_len: usize, args_ptr: *const u8, args_len: usize);
 }
 
 /// Ask the host for the file path if it is missing or unread. An unread
@@ -306,6 +310,12 @@ pub fn writable(fd: c_int) -> io::Result<bool> {
 
 pub fn send_signal(_pid: c_int, _sig: c_int) -> io::Result<()> {
     Err(err(ESRCH))
+}
+
+pub fn js_call(code: &str, args_json: &str) -> io::Result<c_int> {
+    let (r, w) = make_pipe()?;
+    unsafe { host_js_call(w, code.as_ptr(), code.len(), args_json.as_ptr(), args_json.len()) };
+    Ok(r)
 }
 
 pub fn setsid() -> c_int {

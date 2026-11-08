@@ -806,3 +806,18 @@ No new primitive.
 |---|---|
 | case1 | the roots of 4, 2, 0, -0, 1e300, infinity and NaN |
 | case2 | a negative Number goes to `onError` |
+
+## Step 40: JavaScript in the VM for wasm32
+
+| Primitive | Status |
+|---|---|
+| `__JS_call__` | implemented (JavaScript only in the VM for wasm32; the native VMs go to `onError`) |
+
+* Goal: The builtin `js` of ConSh evaluates JavaScript in the browser (or Node.js) that runs the ConMa VM built for wasm32 (stage 4 of consh/js/PLAN-ja.md).
+* `__JS_call__ onError code args ,(inputStream)` hands `code` and `args` to the host, which writes the result to a pipe as a line of an S-expression (see PRIMITIVES.md). Waiting for the result is waiting for a Stream, so the scheduler is unchanged, and a Promise that takes time does not stop the other VProcs. In the VM for wasm32, `sys::js_call` (consh/js/wasm/src/sys.rs) calls the host's `host_js_call`, and the host gives the result with `conma_write` and `conma_close` after `conma_run` returns (consh/js/conma.js); in the native VMs, `sys::js_call` fails, and `__JS_call__` goes to `onError` after checking its arguments.
+* Tests (`test/step40`; the logs are those of the native VMs: on the VM for wasm32, the calls of case1 get a Stream):
+
+| Case | What it checks |
+|---|---|
+| case1 | correct arguments (Strings and nested LLists): `JavaScript is not available` |
+| case2 | code that is not a String, args that are not an LList, and an element that is neither a String nor an LList, also inside a nested LList, go to `onError` |

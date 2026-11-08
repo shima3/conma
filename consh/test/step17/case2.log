@@ -1,0 +1,2 @@
+consh: case2.sh:4:1: a function value cannot be made into a string
+exit: 1
