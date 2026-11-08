@@ -7,14 +7,20 @@ set -e
 js="$(cd "$(dirname "$0")"; pwd)"
 consh="${js%/*}"
 root="${consh%/*}"
-# cargo は PATH から探す。なければ rustup の既定の場所（~/.cargo/bin）を使う
+# cargo は PATH から探す。なければ rustup の既定の場所（~/.cargo/bin）と、Homebrew の rustup の場所
+# （keg-only で PATH に入らない。/opt/homebrew/opt/rustup/bin、Intel の Mac では /usr/local/opt/rustup/bin）を使う
 cargo="$(command -v cargo || true)"
-if [ -z "$cargo" ] && [ -x "$HOME/.cargo/bin/cargo" ]; then
-  cargo="$HOME/.cargo/bin/cargo"
-  export PATH="$HOME/.cargo/bin:$PATH"  # cargo が呼ぶ rustc なども
+if [ -z "$cargo" ]; then
+  for d in "$HOME/.cargo/bin" /opt/homebrew/opt/rustup/bin /usr/local/opt/rustup/bin; do
+    if [ -x "$d/cargo" ]; then
+      cargo="$d/cargo"
+      export PATH="$d:$PATH"  # cargo が呼ぶ rustc なども
+      break
+    fi
+  done
 fi
 if [ -z "$cargo" ]; then
-  echo "build.sh: cargo is not found (install Rust with rustup, or add ~/.cargo/bin to PATH)" >&2
+  echo "build.sh: cargo is not found (install Rust with rustup, or add the directory of cargo to PATH)" >&2
   exit 1
 fi
 (cd "$js/wasm" && "$cargo" build --release)
