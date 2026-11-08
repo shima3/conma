@@ -330,7 +330,7 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case6 | `recover`: the value of `onError` is the value of `__Parser_main__`, also for an error deep in the recursion, and the program goes on after it |
 | case7 | a String that is only `"` at the end of a line (`quote_eol.se`; the AST differs as described above), at the end of the file (`quote_eof.se`) and in an `SInfo` (`quote_sinfo.se`); a message with a full-width space (`err_space.se`) |
 
-`test/selfhost6` tests the includer. `test.se` takes a source file and include directories, and writes each `Program` on one line; an error is written to standard error and ends the program with exit code 1. `test.sh` runs it and `bin/includer --include <dir>... <source>` and prints the exit codes, the result of `selfhost_compare.py ast` when both succeed, the files in the order the ConMa includer processed them, and the standard error of both sides, sorted, with the test directory written as `<dir>`. Before the cases it makes `link.se`, a symbolic link to `a.se`, and `work/abs.se` and `work/abs_missing.se`, which include files by absolute paths; it removes them at the end. The whole test takes about 30 seconds.
+`test/selfhost6` tests the includer. `test.se` takes a source file and include directories, and writes each `Program` on one line; an error is written to standard error and ends the program with exit code 1. `test.sh` runs it and `bin/includer --include <dir>... <source>` and prints the exit codes, the result of `selfhost_compare.py ast` when both succeed, the files in the order the ConMa includer processed them, and the standard error of both sides, sorted, with the test directory written as `<dir>`. `link.se` is a symbolic link to `a.se` in the repository; before the cases it makes `$tmp/work/abs.se` and `$tmp/work/abs_missing.se`, which include files by absolute paths, in its temporary directory (written as `<tmp>` in the logs). The whole test takes about 30 seconds.
 
 `main.se` includes `a.se`, `b.se`, `link.se` and `only2.se`; `a.se` includes `sub/c.se` and `lib.se`; `b.se` includes `a.se` and `lib.se`; `sub/c.se` includes `../b.se` and `c2.se`. `c2.se` is in `sub/` and in `lib/`, `lib.se` in `lib/` and `lib2/`, `only2.se` only in `lib2/`.
 
@@ -349,8 +349,14 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 | case1 | `scope.se`: de Bruijn indexes with several parameters in a `Head`, nested functions, shadowing, the same name twice in a `Head`, an LCont and a FuncExp; a free variable; `variadic.se`: variadic Heads |
 | case2 | `globals.se`: a name defined twice, a reference before its definition, `__NULL__` as a global, as a parameter and as the name of a Definition, an `SInfo` without Strings, an empty Body |
 | case3 | `empty.se`: a `Module` with only `F` |
-| case4 | several files: the includes of `selfhost6/main.se` (it makes `selfhost6/link.se` as `selfhost6/test.sh` does) |
+| case4 | several files: the includes of `selfhost6/main.se` (with `selfhost6/link.se`, a symbolic link to `a.se` in the repository) |
 | case5 | `test/step14/test.se` with the standard library |
+
+## The frontend in the repository
+
+`include/frontend.se` is the ConMa frontend as a program: `frontend.se [--warn-arity] [--include <dir>]... <source>` writes the `Module` of the source on one line, as `bin/includer` and `bin/resolver --warn-arity` do (an error: its message and exit code 1). Its module, `vm/frontend.module.se`, is kept in the repository, so that the Rust VM can embed it and run ConMa programs without Python (`conma build`, `conma run` and `__VProc_spawn__`, vm/README.md). `bin/update-frontend` makes it again in two stages: the Python frontend makes a module of `frontend.se`, and that module, run on a VM, makes the module of `frontend.se` that is written (file names relative to the directory above the repository, `conma/include/...`). `.gitattributes` marks the file as generated, so that `git diff` does not show it.
+
+`test/frontend` checks that the file is not out of date: case1, that the module in the repository makes itself byte for byte (on the VM of `CONMA_VM`); case2, that the Python frontend makes the same module (`selfhost_compare.py ast`, layout ignored), which fails when a file of the frontend was changed without `bin/update-frontend`; case3, that `conma build` makes the same module as `bin/includer` and `bin/resolver`, and that `conma run` runs a program (it needs the Rust VM built).
 
 ---
 

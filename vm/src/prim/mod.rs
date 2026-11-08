@@ -18,7 +18,7 @@ pub mod stream;
 pub mod os;
 mod refs;
 pub mod string;
-mod vprocs;
+pub mod vprocs;
 
 pub enum VmError {
     /// An error that finishes the VProc (VProcError).

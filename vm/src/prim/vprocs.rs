@@ -7,7 +7,6 @@ use crate::sexp::{self, Sexp};
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::{State, VProc, VProcRef};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
@@ -141,48 +140,50 @@ pub fn spawn(m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 /// The repository: the directory above vm/target/release/conma.
-fn root_dir() -> PathBuf {
+pub fn root_dir() -> PathBuf {
     let exe = std::env::current_exe().and_then(|p| p.canonicalize()).unwrap_or_default();
     exe.ancestors().nth(4).map(Path::to_path_buf).unwrap_or_default()
 }
 
-/// Run bin/includer and bin/resolver on source_file (relative to cwd) and
-/// load the result, as load_program in test/vproc_step.py.
+/// The directory of the standard library (include/): CONMA_INCLUDE, or the
+/// include/ of the repository the VM is in.
+pub fn include_dir() -> PathBuf {
+    match std::env::var_os("CONMA_INCLUDE") {
+        Some(d) => PathBuf::from(d),
+        None => root_dir().join("include"),
+    }
+}
+
+/// Make the module of source_file (relative to cwd) with the ConMa frontend
+/// that this VM embeds (conma build, in another process of this executable),
+/// and load it, as load_program in test/vproc_step.py does with bin/includer
+/// and bin/resolver. On an error, the first line of what the frontend wrote.
 pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), String> {
     if !Path::new(cwd).join(source_file).is_file() {
         return Err(format!("file not found: {}", source_file));
     }
     let root = root_dir();
-    let inc = Command::new(root.join("bin/includer"))
+    let exe = std::env::current_exe().map_err(|e| format!("cannot run the frontend: {}", crate::sys::errno_str(&e)))?;
+    let res = Command::new(exe)
+        .arg("build")
         .arg("--include")
-        .arg(root.join("include"))
+        .arg(include_dir())
         .arg(source_file)
         .current_dir(cwd)
         .stdin(Stdio::null())
+        .env_remove("CONMA_TRANSPILED_REPORT")
+        .env_remove("CONMA_PROFILE")
         .output()
-        .map_err(|e| format!("cannot run includer: {}", crate::sys::errno_str(&e)))?;
-    if !inc.status.success() {
-        return Err(format!("includer failed: {}", String::from_utf8_lossy(&inc.stderr).trim()));
+        .map_err(|e| format!("cannot run the frontend: {}", crate::sys::errno_str(&e)))?;
+    if !res.status.success() {
+        let err = String::from_utf8_lossy(&res.stderr);
+        let first = err.trim().lines().next().unwrap_or("").trim().to_string();
+        return Err(format!("includer failed: {}", first));
     }
     // File names in SInfo relative to the directory above the repository.
     let parent = root.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let ast = String::from_utf8_lossy(&inc.stdout).replace(&format!("\"{}/", parent), "\"");
-    let mut child = Command::new(root.join("bin/resolver"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("cannot run resolver: {}", crate::sys::errno_str(&e)))?;
-    let mut stdin = child.stdin.take().unwrap();
-    let writer = std::thread::spawn(move || {
-        let _ = stdin.write_all(ast.as_bytes());
-    });
-    let res = child.wait_with_output().map_err(|e| format!("cannot run resolver: {}", crate::sys::errno_str(&e)))?;
-    let _ = writer.join();
-    if !res.status.success() {
-        return Err(format!("resolver failed: {}", String::from_utf8_lossy(&res.stderr).trim()));
-    }
-    let module = sexp::parse(&String::from_utf8_lossy(&res.stdout))?;
+    let text = String::from_utf8_lossy(&res.stdout).replace(&format!("\"{}/", parent), "\"");
+    let module = sexp::parse(&text)?;
     let gvenv = load_module(&module)?;
     Ok((module, gvenv))
 }

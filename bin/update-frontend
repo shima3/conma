@@ -1,0 +1,22 @@
+#!/bin/bash
+# Make vm/frontend.module.se, the module of the ConMa frontend (include/frontend.se). The Rust VM embeds
+# this file (conma build, conma run, __VProc_spawn__), so run this after changing include/frontend.se or a
+# file it includes (includer.se, resolver.se, lexer.se, parser.se ...), and rebuild the VM.
+#   bin/update-frontend [out]    (out: vm/frontend.module.se)
+# It is made in two stages: the Python frontend (bin/includer and bin/resolver, the reference) makes a
+# module of the ConMa frontend, and that module, run on a VM (the Rust VM if it is built, else the Python
+# one), makes the module of the ConMa frontend again, which is written. test/frontend checks that the file in
+# the repository is what the ConMa frontend in it makes of itself (byte for byte), and that it is the same
+# module as the one the Python frontend makes (selfhost_compare.py, layout ignored).
+# File names in the module are relative to the directory above the repository ("conma/include/..."),
+# so that the file does not depend on where the repository is.
+set -e -o pipefail
+root="$(cd "$(dirname "$0")/.."; pwd -P)"
+out="${1:-$root/vm/frontend.module.se}"
+tmp="$(mktemp -d /tmp/conma-frontend.XXXXXX)"
+trap 'rm -rf "$tmp"' EXIT
+relative() { sed -e "s|\"$root/|\"conma/|g"; }
+"$root/bin/includer" --include "$root/include" "$root/include/frontend.se" | relative | "$root/bin/resolver" > "$tmp/stage1.se"
+if [ -x "$root/vm/target/release/conma" ]; then vm=("$root/vm/target/release/conma"); else vm=(python3 "$root/test/vproc_run.py"); fi
+(cd "$root" && "${vm[@]}" --main -- "$tmp/stage1.se" --include include include/frontend.se) | relative > "$tmp/stage2.se"
+mv "$tmp/stage2.se" "$out"

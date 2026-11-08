@@ -1,0 +1,8 @@
+build: 0
+compare: 0
+a
+b c
+end
+run: 0
+Error: source file not found: 'missing.se'
+run: 1

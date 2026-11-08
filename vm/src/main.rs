@@ -3,6 +3,16 @@
 //! Usage:
 //!     conma [-t|--trace] <module_file> <func_name>
 //!     conma [-t|--trace] -m|--main <module_file> [<arg> ...]
+//!     conma build [--warn-arity] [--include <dir>]... <source>
+//!     conma run [--include <dir>]... <source> [<arg> ...]
+//!
+//! build makes the module of a ConMa source file (and the files it includes)
+//! with the ConMa frontend that this executable embeds (vm/frontend.module.se,
+//! include/frontend.se), and writes it to standard output, as bin/includer
+//! and bin/resolver do; the standard library (CONMA_INCLUDE, or include/ of
+//! the repository) is searched after the --include directories. run makes the
+//! module and runs it with __start__ and the arguments, as --main does.
+//! Neither needs Python.
 //!
 //! --trace prints the VProc state to standard error before the first step and
 //! after each step. --main starts the program with __start__ and passes the
@@ -38,7 +48,76 @@ fn usage_error(msg: &str) -> ! {
     exit(2);
 }
 
+/// The module of the ConMa frontend (include/frontend.se), made by
+/// bin/update-frontend and kept in the repository.
+const FRONTEND: &str = include_str!("../frontend.module.se");
+
+/// conma build: run the embedded frontend with the options and the source,
+/// the standard library last among the include directories.
+fn build(args: Vec<String>) -> i32 {
+    let mut a = args;
+    let source = match a.pop() {
+        Some(s) if !s.starts_with("--") => s,
+        _ => usage_error("build: a source file is needed"),
+    };
+    a.push("--include".into());
+    a.push(prim::vprocs::include_dir().to_string_lossy().into_owned());
+    a.push(source);
+    run_text(FRONTEND.to_string(), "conma/vm/frontend.module.se", "__start__".into(), Some(a), false)
+}
+
+/// conma run: make the module with conma build (another process of this
+/// executable, whose standard error is this one's) and run it.
+fn run_source(args: Vec<String>) -> i32 {
+    let mut opts = Vec::new();
+    let mut it = args.into_iter();
+    let source = loop {
+        match it.next() {
+            Some(o) if o == "--include" => {
+                opts.push(o);
+                match it.next() {
+                    Some(d) => opts.push(d),
+                    None => usage_error("run: --include needs a directory"),
+                }
+            }
+            Some(s) => break s,
+            None => usage_error("run: a source file is needed"),
+        }
+    };
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return 1;
+        }
+    };
+    let out = std::process::Command::new(exe)
+        .arg("build")
+        .args(&opts)
+        .arg(&source)
+        .stderr(std::process::Stdio::inherit())
+        .env_remove("CONMA_TRANSPILED_REPORT")
+        .env_remove("CONMA_PROFILE")
+        .output();
+    let out = match out {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return 1;
+        }
+    };
+    if !out.status.success() {
+        return out.status.code().unwrap_or(1);
+    }
+    run_text(String::from_utf8_lossy(&out.stdout).into_owned(), &source, "__start__".into(), Some(it.collect()), false)
+}
+
 fn run(args: Vec<String>) -> i32 {
+    match args.first().map(|s| s.as_str()) {
+        Some("build") => return build(args[1..].to_vec()),
+        Some("run") => return run_source(args[1..].to_vec()),
+        _ => {}
+    }
     let mut trace = false;
     let mut main = false;
     let mut rest = Vec::new();
@@ -82,6 +161,12 @@ fn run(args: Vec<String>) -> i32 {
             return 1;
         }
     };
+    run_text(text, &module_file, func_name, program_args, trace)
+}
+
+/// Run the function func_name of the module text (module_file: its name for
+/// the VProc), with program_args as a Seq of Strings if given.
+fn run_text(text: String, module_file: &str, func_name: String, program_args: Option<Vec<String>>, trace: bool) -> i32 {
     let module_sexp = match sexp::parse(&text) {
         Ok(s) => s,
         Err(e) => {
@@ -129,7 +214,7 @@ fn run(args: Vec<String>) -> i32 {
     let mut m = sched::Machine::new(trace);
     m.transpiled_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_TRANSPILED_OFF").is_none();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let vp = m.make_vproc(closure, olist, Some(&module_file), gvenv, cwd);
+    let vp = m.make_vproc(closure, olist, Some(module_file), gvenv, cwd);
     m.add(vp.clone());
     if trace {
         m.print_trace(&vp.vp.borrow(), 0);

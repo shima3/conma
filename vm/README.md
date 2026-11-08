@@ -1,6 +1,6 @@
 # ConMa VM in Rust
 
-A second implementation of the ConMa VM. It reads the same modules (the output of `bin/resolver`) and takes the same arguments as `test/vproc_run.py`. The goal is to give the same output, traces and error messages as `test/vproc_step.py`, step by step, and to be much faster.
+A second implementation of the ConMa VM. It reads the same modules (the output of `bin/resolver`) and takes the same arguments as `test/vproc_run.py`. The goal is to give the same output, traces and error messages as `test/vproc_step.py`, step by step, and to be much faster. It is the product, the Python VM the reference; with the ConMa frontend it embeds, it runs ConMa source files without Python.
 
 ## Build and run
 
@@ -9,6 +9,8 @@ cd vm && cargo build --release
 vm/target/release/conma [--trace] <module_file> <func_name>
 vm/target/release/conma [--trace] --main <module_file> [<arg> ...]
 ```
+
+`conma build [--warn-arity] [--include <dir>]... <source>` writes the module of a source file, as `bin/includer` and `bin/resolver` do, and `conma run [--include <dir>]... <source> [<arg> ...]` makes it and runs it with `__start__` and the arguments, as `--main` does. Both use the ConMa frontend (`include/frontend.se`), whose module `vm/frontend.module.se` is in the repository and embedded in the executable (`include_str!`), so they need no Python; the standard library is `include/` of the repository (or `CONMA_INCLUDE`), searched after the `--include` directories. `__VProc_spawn__` uses it too (in another process of the executable). After changing a file of the frontend in `include/`, run `bin/update-frontend` and build again; `test/frontend` fails until then (docs/SELFHOST.md, "The frontend in the repository"). The ConMa frontend makes the module of ConSh in 3.7 s, `bin/includer` and `bin/resolver` in 1.2 s.
 
 It needs Rust 1.75 or later (`rust-version` in `Cargo.toml`), and no crates. ConSh run directly in Rust (`consh/rust`, `CONSH_IMPL=rust`) needs Rust 1.87 or later, for `std::io::pipe`. Both `Cargo.lock` files are in version 3, which Cargo before 1.78 can read.
 

@@ -2468,6 +2468,11 @@ def build_name_index(module_sexp):
         if name: index[name] = int(item[1])
     return index
 
+def first_line(text):
+    """The first line of the error output of a tool (stripped)."""
+    lines = text.strip().splitlines()
+    return lines[0].strip() if lines else ""
+
 def load_program(source_file, cwd=None):
     """Run bin/includer and bin/resolver on source_file (relative to the
     directory cwd, the interpreter's if None) and load the result.
@@ -2481,7 +2486,9 @@ def load_program(source_file, cwd=None):
     except OSError as e:
         raise LoadError(f"cannot run includer: {e}")
     if inc.returncode != 0:
-        raise LoadError(f"includer failed: {inc.stderr.strip()}")
+        # the first line: the error itself (bin/includer then says which of its tools failed,
+        # which the ConMa frontend, used by the Rust VM, does not)
+        raise LoadError(f"includer failed: {first_line(inc.stderr)}")
     # Make file names in SInfo relative to the directory above the
     # repository, as test/resolver.sh does, so that logs do not depend on
     # where the repository is.
@@ -2491,7 +2498,7 @@ def load_program(source_file, cwd=None):
     except OSError as e:
         raise LoadError(f"cannot run resolver: {e}")
     if res.returncode != 0:
-        raise LoadError(f"resolver failed: {res.stderr.strip()}")
+        raise LoadError(f"resolver failed: {first_line(res.stderr)}")
     module_sexp = parse_sexp(res.stdout)
     return module_sexp, load_module(module_sexp)
 

@@ -11,7 +11,7 @@
 cd "$(dirname "$0")"
 n=${1:-10}
 shift
-dirs=${*:-$(echo step*/ module*/ selfhost*/ | tr -d /)}
+dirs=${*:-$(echo step*/ module*/ selfhost*/ frontend/ | tr -d /)}
 export CONMA_VM=${CONMA_VM:-rust}
 filter="$(mktemp /tmp/conma-stress.XXXXXX)" || exit 1
 trap 'rm -f "$filter"' EXIT

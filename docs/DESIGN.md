@@ -51,7 +51,7 @@ For debugging purposes, when a VProc is represented as an S-expression, the GVEn
 ### One GVEnv per program
 
 Each program has its own GVEnv: the first program run by `test/vproc_run.py` (with or without `--main`), and each program loaded by `__VProc_spawn__`.
-`__VProc_spawn__` loads `sourceFileName` (relative to the current directory of the VProc that calls it; each VProc has its own, which `__OS_chdir__` changes) by running `bin/includer --include include/` and `bin/resolver` as external commands; `bin/` and `include/` are found relative to `test/vproc_step.py`.
+`__VProc_spawn__` loads `sourceFileName` (relative to the current directory of the VProc that calls it; each VProc has its own, which `__OS_chdir__` changes) by running `bin/includer --include include/` and `bin/resolver` as external commands in the Python VM (the reference), with `bin/` and `include/` found relative to `test/vproc_step.py`, and with the ConMa frontend that it embeds (`conma build`, `include/frontend.se`, `vm/frontend.module.se`, in another process of the VM) in the Rust VM, which so needs no Python; both give the same module. If the frontend fails, the message given to `onError` is `includer failed: ` and the first line of what it wrote (the error itself; `bin/includer` then says which of its tools failed, which the ConMa frontend does not).
 File names in the SInfo are made relative to the directory above the repository (for example `"conma/test/step10/child.se"`), as `test/resolver.sh` does, so that output does not depend on where the repository is.
 
 A closure keeps the GVEnv of the module in which it was created, and global variables in its body are looked up in that GVEnv, not in the GVEnv of the VProc that runs it.

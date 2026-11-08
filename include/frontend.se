@@ -1,0 +1,72 @@
+;; frontend: ConMa 版のフロントエンドのプログラム（bin/includer と bin/resolver を続けたものと同じ）。
+;;   frontend.se [--warn-arity] [--include <dir>]... <source>
+;; source とそれが include するファイルを解析し（includer.se）、Module にして（resolver.se）、
+;; 1行の S式で標準出力に書く。--warn-arity を付けると、bin/resolver --warn-arity と同じく、
+;; 大域の関数を少ない引数で呼ぶ所の警告を標準エラー出力に書く。
+;; エラー（ファイルがない、字句や構文のエラーなど）は、メッセージを標準エラー出力に書き、終了コード 1 で終わる。
+;; このプログラムのモジュール vm/frontend.module.se はリポジトリに入れてあり、Rust 版の VM が埋め込んで、
+;; conma build、conma run と __VProc_spawn__ で使う（bin/update-frontend で作り直す。vm/README.md）
+(include "includer.se")
+(include "resolver.se")
+
+;; エラーメッセージを標準エラー出力に書き、終了コード 1 で終わる
+(define frontendError ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+(define frontendUsage ,()
+  frontendError "usage: frontend.se [--warn-arity] [--include <dir>]... <source>")
+
+;; 引数を LList に集める Sink。null を渡すと LList を返す
+(define frontendArgs ,(acc)
+  __NULL__ (,(arg)
+    __if_then_else__ (,() __is_null__ arg)
+      (,() __Parser_reverse__ acc __NULL__)
+      (,()
+        __LList_cons__ arg acc ,(acc)
+        frontendArgs acc)))
+
+;; 引数の LList から、警告を書くか、include ディレクトリの LList（順のまま）、ソースファイルを返す
+(define frontendOptions ,(args warn dirs source)
+  __Cont_get__ ,(return)
+  __if__ (,() __is_null__ args)
+    (,()
+      __if__ (,() __is_null__ source) frontendUsage ,()
+      __Parser_reverse__ dirs __NULL__ ,(dirs)
+      return warn dirs source) ,()
+  __LList_uncons__ __print_exit_error__ args ,(arg rest)
+  __if__ (,() __String_equal__ arg "--warn-arity")
+    (,() frontendOptions rest __TRUE__ dirs source ,(w d s) return w d s) ,()
+  __if__ (,() __String_equal__ arg "--include")
+    (,()
+      __LList_uncons__ (,(msg) frontendUsage) rest ,(dir more)
+      __LList_cons__ dir dirs ,(dirs)
+      frontendOptions more warn dirs source ,(w d s)
+      return w d s) ,()
+  __unless__ (,() __is_null__ source) frontendUsage ,()
+  frontendOptions rest warn dirs arg)
+
+;; 各メッセージを1行ずつ標準エラー出力に書く
+(define frontendLines ,(lines)
+  __unless__ (,() __is_null__ lines)
+    (,()
+      __LList_uncons__ __print_exit_error__ lines ,(line rest)
+      __OS_print_error__ line ,()
+      __OS_print_error__ "\n" ,()
+      frontendLines rest))
+
+(define main ,(args)
+  frontendArgs __NULL__ ,(sink)
+  args sink ,(sink)
+  sink __NULL__ ,(list)
+  frontendOptions list __FALSE__ __NULL__ __NULL__ ,(warn dirs source)
+  __Includer_main__ frontendError source dirs ,(programs)
+  __Resolver_main__ programs ,(module)
+  __AST_toSexp__ module ,(str)
+  __OS_print__ str ,()
+  __OS_print__ "\n" ,()
+  __if__ warn
+    (,()
+      __Resolver_warnings__ module ,(warnings)
+      frontendLines warnings) ,())

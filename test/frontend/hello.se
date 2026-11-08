@@ -1,0 +1,9 @@
+;; conma run で動かすプログラム：引数を1行ずつ書く
+(include "util.se")
+(define printArgs ,(args)
+  __Seq_get__ (,() __OS_print__ "end\n") args ,(a rest)
+  __OS_print__ a ,()
+  __OS_print__ "\n" ,()
+  printArgs rest)
+(define main ,(args)
+  printArgs args)
