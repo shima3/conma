@@ -59,7 +59,7 @@
 ;; str の i 文字目以降をエスケープして acc の後ろにつなげる
 (define __Token_escape_loop__ ,(str len i acc)
   __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ acc)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)

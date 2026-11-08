@@ -25,7 +25,7 @@
 
 (define __Lexer_line_sink__ ,(handlers symbols sink line depth buf bufLine bufCol)
   __NULL__ (,(text)
-    __if_then_else__ (,() __is_null__ text)
+    __is_null__ text ,(test__) __if_then_else__ test__
       (,() __Lexer_finish__ sink depth buf bufLine bufCol)
       (,()
         __String_length__ text ,(len)
@@ -34,7 +34,7 @@
 
 (define __Lexer_finish__ ,(sink depth buf bufLine bufCol)
   __Lexer_flush__ sink buf bufLine bufCol ,(sink)
-  __if_then_else__ (,() __Number_is_zero__ depth)
+  __Number_is_zero__ depth ,(test__) __if_then_else__ test__
     (,() __NULL__ sink)
     (,()
       __OS_print_error__ "Error: Unterminated block comment at end of file\n" ,()
@@ -45,7 +45,7 @@
 
 (define __Lexer_scan__ ,(handlers symbols sink text len i line start depth buf bufLine bufCol)
   __Number_subtract__ len i ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __Lexer_line_sink__ handlers symbols sink line depth buf bufLine bufCol)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -54,7 +54,7 @@
       __Lexer_two__ text len i ,(two)
       __Number_subtract__ i start ,(col)
       __Number_add__ col one ,(col)
-      __if_then_else__ (,() __Number_is_zero__ depth)
+      __Number_is_zero__ depth ,(test__) __if_then_else__ test__
         (,()
           __Dict_lookup_or__ handlers ch (,(key) __NULL__ __Lexer_on_other__) ,(handler)
           handler handlers symbols sink text len i line start ch two col)
@@ -65,7 +65,7 @@
   __Number_fromString__ __print_exit_error__ "2" ,(two)
   __Number_add__ i two ,(end)
   __Number_subtract__ len end ,(rest)
-  __if_then_else__ (,() __Number_is_negative__ rest)
+  __Number_is_negative__ rest ,(test__) __if_then_else__ test__
     (,() __String_substring__ __print_exit_error__ text i len)
     (,() __String_substring__ __print_exit_error__ text i end))
 
@@ -113,7 +113,7 @@
 ;; chars の各文字をキーにして value を登録する
 (define __Lexer_put_all__ ,(dict chars value)
   __String_length__ chars ,(len)
-  __if_then_else__ (,() __Number_is_zero__ len)
+  __Number_is_zero__ len ,(test__) __if_then_else__ test__
     __nop__
     (,()
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -125,7 +125,7 @@
 
 ;; "#|" ブロックコメントの始まり、"#;" S式コメントの始まり。それ以外の "#" はエラー
 (define __Lexer_on_hash__ ,(handlers symbols sink text len i line start ch two col)
-  __if_then_else__ (,() __String_equal__ two "#|")
+  __String_equal__ two "#|" ,(test__) __if_then_else__ test__
     (,()
       __Lexer_emit__ sink "BLOCK_COMMENT_BEGIN" "#|" line col ,(sink)
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -133,7 +133,7 @@
       __Number_fromString__ __print_exit_error__ "2" ,(n)
       __Number_add__ i n ,(i)
       __Lexer_scan__ handlers symbols sink text len i line start one "" zero zero) (,()
-  __if_then_else__ (,() __String_equal__ two "#;")
+  __String_equal__ two "#;" ,(test__) __if_then_else__ test__
     (,()
       __Lexer_emit__ sink "SEXP_COMMENT_BEGIN" "#;" line col ,(sink)
       __Lexer_skip__ handlers symbols sink text len i line start "2")
@@ -141,7 +141,7 @@
 
 ;; "|#" は対応のないブロックコメントの終わり。それ以外の "|" は Symbol
 (define __Lexer_on_bar__ ,(handlers symbols sink text len i line start ch two col)
-  __if_then_else__ (,() __String_equal__ two "|#")
+  __String_equal__ two "|#" ,(test__) __if_then_else__ test__
     (,()
       __Lexer_emit__ sink "BLOCK_COMMENT_END" "|#" line col ,(sink)
       __Lexer_skip__ handlers symbols sink text len i line start "2")
@@ -186,7 +186,7 @@
   __Number_add__ i one ,(begin)
   __Lexer_line_end__ text len begin ,(end)
   __Number_subtract__ end begin ,(size)
-  __if_then_else__ (,() __Number_is_zero__ size)
+  __Number_is_zero__ size ,(test__) __if_then_else__ test__
     (,() __NULL__ sink)
     (,()
       __String_substring__ __print_exit_error__ text begin end ,(content)
@@ -197,7 +197,7 @@
 ;; j 文字目から、最初の改行（"\n" または "\r"）の位置。なければ len
 (define __Lexer_line_end__ ,(text len j)
   __Number_subtract__ len j ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ j)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -235,7 +235,7 @@
 ;; "\" の次の文字は読み飛ばす。ただし改行の前の "\" では、"\" までで閉じていないとする
 (define __Lexer_string_end__ ,(text len j)
   __Number_subtract__ len j ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ j __FALSE__)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -253,7 +253,7 @@
 ;; "\" の次の文字（next 文字目）を読み飛ばす
 (define __Lexer_string_escape__ ,(text len next)
   __Number_subtract__ len next ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ next __FALSE__)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -275,16 +275,18 @@
 
 (define __Lexer_symbol_end__ ,(symbols text len j)
   __Number_subtract__ len j ,(rest)
-  __if_then_else__ (,() __Number_is_zero__ rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ j)
     (,()
-      __Lexer_two__ text len j ,(two)
-      __if_then_else__ (,() __String_equal__ two "|#")
+      ;; "|#"（ブロックコメントの終わり）は、1 文字目が "|" のときだけ確かめる
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ j one ,(next)
+      __String_substring__ __print_exit_error__ text j next ,(c)
+      __String_equal__ c "|" ,(bar)
+      __if_then_else__ bar (,() __Lexer_two__ text len j) (,() __NULL__ "") ,(two)
+      __String_equal__ two "|#" ,(test__) __if_then_else__ test__
         (,() __NULL__ j)
         (,()
-          __Number_fromString__ __print_exit_error__ "1" ,(one)
-          __Number_add__ j one ,(next)
-          __String_substring__ __print_exit_error__ text j next ,(c)
           __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
           __if_then_else__ isSymbol
             (,() __Lexer_symbol_end__ symbols text len next)
@@ -310,14 +312,14 @@
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_fromString__ __print_exit_error__ "2" ,(n2)
-  __if_then_else__ (,() __String_equal__ two "#|")
+  __String_equal__ two "#|" ,(test__) __if_then_else__ test__
     (,()
       __Lexer_flush__ sink buf bufLine bufCol ,(sink)
       __Lexer_emit__ sink "BLOCK_COMMENT_BEGIN" "#|" line col ,(sink)
       __Number_add__ depth one ,(depth)
       __Number_add__ i n2 ,(i)
       __Lexer_scan__ handlers symbols sink text len i line start depth "" zero zero) (,()
-  __if_then_else__ (,() __String_equal__ two "|#")
+  __String_equal__ two "|#" ,(test__) __if_then_else__ test__
     (,()
       __Lexer_flush__ sink buf bufLine bufCol ,(sink)
       __Lexer_emit__ sink "BLOCK_COMMENT_END" "|#" line col ,(sink)
@@ -344,7 +346,7 @@
 
 ;; コメント本文に ch を加える。空のバッファに加えるときは、その位置を本文の開始位置にする
 (define __Lexer_accum__ ,(buf bufLine bufCol ch line col)
-  __if_then_else__ (,() __String_equal__ buf "")
+  __String_equal__ buf "" ,(test__) __if_then_else__ test__
     (,() __NULL__ ch line col)
     (,()
       __String_concat__ buf ch ,(buf)
@@ -352,6 +354,6 @@
 
 ;; コメント本文が空でなければ BLOCK_COMMENT_TEXT として出力する
 (define __Lexer_flush__ ,(sink buf bufLine bufCol)
-  __if_then_else__ (,() __String_equal__ buf "")
+  __String_equal__ buf "" ,(test__) __if_then_else__ test__
     (,() __NULL__ sink)
     (,() __Lexer_emit__ sink "BLOCK_COMMENT_TEXT" buf bufLine bufCol))

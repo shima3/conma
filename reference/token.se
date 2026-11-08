@@ -1,0 +1,78 @@
+;; Token: lexer、comment_remover、parser の間で受け渡す字句（SELFHOST.md）
+;; Token は (kind value line col) の LList。
+;; kind と value は String、line と col は Number
+(include "util.se")
+
+(define __Token_new__ ,(kind value line col)
+  __LList_cons__ col __NULL__ ,(list)
+  __LList_cons__ line list ,(list)
+  __LList_cons__ value list ,(list)
+  __LList_cons__ kind list)
+
+(define __Token_get_kind__ ,(token)
+  __LList_uncons__ __print_exit_error__ token ,(kind rest)
+  __NULL__ kind)
+
+(define __Token_get_value__ ,(token)
+  __LList_uncons__ __print_exit_error__ token ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(value rest)
+  __NULL__ value)
+
+(define __Token_get_line__ ,(token)
+  __LList_uncons__ __print_exit_error__ token ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(value rest)
+  __LList_uncons__ __print_exit_error__ rest ,(line rest)
+  __NULL__ line)
+
+(define __Token_get_col__ ,(token)
+  __LList_uncons__ __print_exit_error__ token ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(value rest)
+  __LList_uncons__ __print_exit_error__ rest ,(line rest)
+  __LList_uncons__ __print_exit_error__ rest ,(col rest)
+  __NULL__ col)
+
+;; (Token (line col) KIND "value") の形の String を返す。
+;; value はコメント本文などの任意の文字列なので、String リテラルと同じようにエスケープする
+(define __Token_toSexp__ ,(token)
+  __Token_get_kind__ token ,(kind)
+  __Token_get_value__ token ,(value)
+  __Token_get_line__ token ,(line)
+  __Token_get_col__ token ,(col)
+  __Number_toString__ line ,(line)
+  __Number_toString__ col ,(col)
+  __Token_escape__ value ,(value)
+  __String_concat__ "(Token (" line ,(s)
+  __String_concat__ s " " ,(s)
+  __String_concat__ s col ,(s)
+  __String_concat__ s ") " ,(s)
+  __String_concat__ s kind ,(s)
+  __String_concat__ s " \"" ,(s)
+  __String_concat__ s value ,(s)
+  __String_concat__ s "\")")
+
+;; str の \ " 改行 タブ 復帰 をエスケープシーケンスにした String を返す
+(define __Token_escape__ ,(str)
+  __String_length__ str ,(len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Token_escape_loop__ str len zero "")
+
+;; str の i 文字目以降をエスケープして acc の後ろにつなげる
+(define __Token_escape_loop__ ,(str len i acc)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ acc)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ str i next ,(ch)
+      __Token_escape_char__ ch ,(ch)
+      __String_concat__ acc ch ,(acc)
+      __Token_escape_loop__ str len next acc))
+
+(define __Token_escape_char__ ,(ch)
+  __if_then_else__ (,() __String_equal__ ch "\\") (,() __NULL__ "\\\\") (,()
+  __if_then_else__ (,() __String_equal__ ch "\"") (,() __NULL__ "\\\"") (,()
+  __if_then_else__ (,() __String_equal__ ch "\n") (,() __NULL__ "\\n") (,()
+  __if_then_else__ (,() __String_equal__ ch "\t") (,() __NULL__ "\\t") (,()
+  __if_then_else__ (,() __String_equal__ ch "\r") (,() __NULL__ "\\r") (,()
+  __NULL__ ch))))))

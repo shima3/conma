@@ -30,14 +30,14 @@
 ;; Token を list の前に加える Sink。null を渡すと list を返す
 (define __Parser_cons_sink__ ,(list)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,() __NULL__ list)
       (,()
         __LList_cons__ token list ,(list)
         __Parser_cons_sink__ list)))
 
 (define __Parser_reverse__ ,(list acc)
-  __if_then_else__ (,() __is_null__ list)
+  __is_null__ list ,(test__) __if_then_else__ test__
     (,() __NULL__ acc)
     (,()
       __LList_uncons__ __print_exit_error__ list ,(head rest)
@@ -46,7 +46,7 @@
 
 ;; toks の先頭の Token の kind。toks が空なら null
 (define __Parser_peek_kind__ ,(toks)
-  __if_then_else__ (,() __is_null__ toks)
+  __is_null__ toks ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,()
       __LList_uncons__ __print_exit_error__ toks ,(tok rest)
@@ -55,14 +55,14 @@
 ;; toks の先頭の kind が kind なら __TRUE__
 (define __Parser_next_is__ ,(toks kind)
   __Parser_peek_kind__ toks ,(k)
-  __if_then_else__ (,() __is_null__ k)
+  __is_null__ k ,(test__) __if_then_else__ test__
     (,() __NULL__ __FALSE__)
     (,() __String_equal__ k kind))
 
 ;; 先頭の Token が kind（value が null でなければ、その値も）であることを確かめて読む。
 ;; repr はエラーメッセージを作るときだけ求める（どの Token でも呼ばれるので）
 (define __Parser_expect__ ,(fail toks kind value)
-  __if_then_else__ (,() __is_null__ toks)
+  __is_null__ toks ,(test__) __if_then_else__ test__
     (,()
       __String_repr__ kind ,(kindRepr)
       __String_concat__ "Unexpected end of input; expected " kindRepr ,(msg)
@@ -72,12 +72,12 @@
       __Token_get_kind__ tok ,(k)
       __Token_get_value__ tok ,(v)
       __Parser_where__ tok ,(where)
-      __if_then_else__ (,() __String_equal__ k kind)
+      __String_equal__ k kind ,(test__) __if_then_else__ test__
         (,()
-          __if_then_else__ (,() __is_null__ value)
+          __is_null__ value ,(test__) __if_then_else__ test__
             (,() __NULL__ tok rest)
             (,()
-              __if_then_else__ (,() __String_equal__ v value)
+              __String_equal__ v value ,(test__) __if_then_else__ test__
                 (,() __NULL__ tok rest)
                 (,()
                   __String_repr__ value ,(valueRepr)
@@ -144,7 +144,7 @@
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ len one ,(end)
   ;; 閉じていない String が " だけのとき（長さ 1）は空の String にする
-  __if_then_else__ (,() __Number_is_zero__ end)
+  __Number_is_zero__ end ,(test__) __if_then_else__ test__
     (,() __NULL__ "")
     (,() __String_substring__ __print_exit_error__ value one end))
 
@@ -159,10 +159,10 @@
       __Token_get_value__ fileTok ,(fileValue)
       __NULL__ fileValue rest)
     (,() __NULL__ __NULL__ toks) ,(fileValue toks)
-  __if_then_else__ (,() __is_null__ fileName)
+  __is_null__ fileName ,(test__) __if_then_else__ test__
     (,() __NULL__ fileValue)
     (,() __NULL__ fileName) ,(name)
-  __if_then_else__ (,() __is_null__ toks)
+  __is_null__ toks ,(test__) __if_then_else__ test__
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __NULL__ one one)
@@ -171,7 +171,7 @@
       __Token_get_line__ first ,(line)
       __Token_get_col__ first ,(col)
       __NULL__ line col) ,(line col)
-  __if_then_else__ (,() __is_null__ name)
+  __is_null__ name ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,() __Parser_list1__ name) ,(pos)
   __LList_cons__ col pos ,(pos)
@@ -181,7 +181,7 @@
 
 ;; Token がなくなるまで Statement を読み、ノードの LList を返す
 (define __Parser_statements__ ,(fail fileName toks acc)
-  __if_then_else__ (,() __is_null__ toks)
+  __is_null__ toks ,(test__) __if_then_else__ test__
     (,() __Parser_reverse__ acc __NULL__)
     (,()
       __Parser_statement__ fail fileName toks ,(node toks)
@@ -193,7 +193,7 @@
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
   __Parser_where__ tok ,(where)
   __Token_get_kind__ tok ,(kind)
-  __if_then_else__ (,() __String_equal__ kind "LPAREN")
+  __String_equal__ kind "LPAREN" ,(test__) __if_then_else__ test__
     __nop__
     (,()
       __String_concat__ where "expected '(' to start a statement" ,(msg)
@@ -206,9 +206,9 @@
       fail msg) ,()
   __LList_uncons__ __print_exit_error__ rest ,(kw rest2)
   __Token_get_value__ kw ,(keyword)
-  __if_then_else__ (,() __String_equal__ keyword "include")
+  __String_equal__ keyword "include" ,(test__) __if_then_else__ test__
     (,() __Parser_includer__ fail toks) (,()
-  __if_then_else__ (,() __String_equal__ keyword "define")
+  __String_equal__ keyword "define" ,(test__) __if_then_else__ test__
     (,() __Parser_definition__ fail fileName toks)
     (,()
       __Parser_where__ kw ,(where)
@@ -275,7 +275,7 @@
 ;; ")" か Token の終わりまで、パラメータの Variable を読む
 (define __Parser_params__ ,(fail toks acc)
   __Parser_peek_kind__ toks ,(kind)
-  __if_then_else__ (,() __is_null__ kind)
+  __is_null__ kind ,(test__) __if_then_else__ test__
     (,() __NULL__ __TRUE__)
     (,() __String_equal__ kind "RPAREN") ,(atEnd)
   __if_then_else__ atEnd
@@ -291,7 +291,7 @@
 ;; 式を始められる Token（SYMBOL、STRING、LPAREN）なら __TRUE__
 (define __Parser_expression_start__ ,(toks)
   __Parser_peek_kind__ toks ,(kind)
-  __if_then_else__ (,() __is_null__ kind)
+  __is_null__ kind ,(test__) __if_then_else__ test__
     (,() __NULL__ __FALSE__)
     (,()
       __String_equal__ kind "SYMBOL" ,(isSymbol)
@@ -302,7 +302,7 @@
 
 ;; 先頭の Token の位置。Token がなければ dLine dCol
 (define __Parser_next_pos__ ,(toks dLine dCol)
-  __if_then_else__ (,() __is_null__ toks)
+  __is_null__ toks ,(test__) __if_then_else__ test__
     (,() __NULL__ dLine dCol)
     (,()
       __LList_uncons__ __print_exit_error__ toks ,(tok rest)
@@ -322,7 +322,7 @@
   __if_then_else__ hasOperator
     (,()
       __Parser_operator__ fail fileName toks ,(inner toks last)
-      __AST_get_pos__ inner ,(pos)
+      __LList_uncons__ __print_exit_error__ inner ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(pos ast_children__)
       __LList_uncons__ __print_exit_error__ pos ,(opLine rest)
       __LList_uncons__ __print_exit_error__ rest ,(opCol rest)
       __NULL__ inner opLine opCol toks)
@@ -332,17 +332,17 @@
       __NULL__ inner opLine opCol toks) ,(inner opLine opCol toks)
   __Parser_list1__ inner ,(children)
   __Parser_node_at__ "Operator" opLine opCol children ,(operator)
-  __if_then_else__ (,() __is_null__ sinfo)
+  __is_null__ sinfo ,(test__) __if_then_else__ test__
     (,() __Parser_auto_sinfo__ fileName opLine opCol)
     (,() __NULL__ sinfo) ,(sinfo)
   __if_then_else__ hasOperator
     (,() __Parser_olist__ fail fileName toks __NULL__ __NULL__)
     (,() __NULL__ __NULL__ __NULL__ toks) ,(items last toks)
-  __if_then_else__ (,() __is_null__ items)
+  __is_null__ items ,(test__) __if_then_else__ test__
     (,() __Parser_next_pos__ toks opLine opCol)
     (,()
       __LList_uncons__ __print_exit_error__ items ,(first rest)
-      __AST_get_pos__ first ,(pos)
+      __LList_uncons__ __print_exit_error__ first ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(pos ast_children__)
       __LList_uncons__ __print_exit_error__ pos ,(line rest)
       __LList_uncons__ __print_exit_error__ rest ,(col rest)
       __NULL__ line col) ,(olLine olCol)
@@ -350,7 +350,7 @@
   __Parser_lcont__ fail fileName toks last olLine olCol ,(lcont toks)
   __Parser_list2__ olist lcont ,(children)
   __LList_cons__ operator children ,(children)
-  __if_then_else__ (,() __is_null__ sinfo)
+  __is_null__ sinfo ,(test__) __if_then_else__ test__
     (,() __NULL__ children)
     (,() __LList_cons__ sinfo children) ,(children)
   __if_then_else__ hasSInfo
@@ -363,7 +363,7 @@
 
 ;; fileName があれば、Operator の位置の SInfo を作る。なければ null
 (define __Parser_auto_sinfo__ ,(fileName line col)
-  __if_then_else__ (,() __is_null__ fileName)
+  __is_null__ fileName ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,()
       __Number_toString__ line ,(lineStr)
@@ -413,11 +413,11 @@
 (define __Parser_operator__ ,(fail fileName toks)
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
   __Token_get_kind__ tok ,(kind)
-  __if_then_else__ (,() __String_equal__ kind "SYMBOL")
+  __String_equal__ kind "SYMBOL" ,(test__) __if_then_else__ test__
     (,()
       __Parser_variable__ tok ,(var)
       __NULL__ var rest tok) (,()
-  __if_then_else__ (,() __String_equal__ kind "LPAREN")
+  __String_equal__ kind "LPAREN" ,(test__) __if_then_else__ test__
     (,() __Parser_funcexp__ fail fileName toks)
     (,()
       __Parser_where__ tok ,(where)
@@ -431,7 +431,7 @@
 (define __Parser_expression__ ,(fail fileName toks)
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
   __Token_get_kind__ tok ,(kind)
-  __if_then_else__ (,() __String_equal__ kind "STRING")
+  __String_equal__ kind "STRING" ,(test__) __if_then_else__ test__
     (,()
       __Parser_string__ tok ,(str)
       __NULL__ str rest tok)
@@ -455,12 +455,12 @@
   __if_then_else__ isComma
     (,()
       __Parser_function__ fail fileName toks ,(func toks)
-      __AST_get_pos__ func ,(pos)
+      __LList_uncons__ __print_exit_error__ func ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(pos ast_children__)
       __Parser_list1__ func ,(children)
       __AST_new__ "LCont" pos children ,(node)
       __NULL__ node toks)
     (,()
-      __if_then_else__ (,() __is_null__ last)
+      __is_null__ last ,(test__) __if_then_else__ test__
         (,() __Parser_next_pos__ toks olLine olCol)
         (,()
           __Token_get_line__ last ,(line)

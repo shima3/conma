@@ -31,7 +31,7 @@
 
 ;; include ディレクトリを realpath で正規化する。存在しなければエラー
 (define __Includer_dirs__ ,(fail dirs)
-  __if_then_else__ (,() __is_null__ dirs)
+  __is_null__ dirs ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,()
       __LList_uncons__ __print_exit_error__ dirs ,(dir rest)
@@ -46,13 +46,13 @@
 
 ;; queue の先頭のファイルを解析し、Program を acc に加えて続ける。queue が空なら Program の LList を返す
 (define __Includer_loop__ ,(fail dirs seen queue acc)
-  __if_then_else__ (,() __is_null__ queue)
+  __is_null__ queue ,(test__) __if_then_else__ test__
     (,() __Parser_reverse__ acc __NULL__)
     (,()
       __LList_uncons__ __print_exit_error__ queue ,(file queue)
       __Includer_parse__ fail file ,(program)
       __Includer_dirname__ file ,(baseDir)
-      __AST_get_children__ program ,(statements)
+      __LList_uncons__ __print_exit_error__ program ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ statements)
       __Includer_statements__ fail dirs seen file baseDir statements queue ,(queue)
       __LList_cons__ program acc ,(acc)
       __Includer_loop__ fail dirs seen queue acc))
@@ -73,12 +73,12 @@
 
 ;; Program の子のうち Includer のファイルを解決し、新しいものを queue の末尾に加えた queue を返す
 (define __Includer_statements__ ,(fail dirs seen file baseDir statements queue)
-  __if_then_else__ (,() __is_null__ statements)
+  __is_null__ statements ,(test__) __if_then_else__ test__
     (,() __NULL__ queue)
     (,()
       __LList_uncons__ __print_exit_error__ statements ,(statement rest)
-      __AST_get_kind__ statement ,(kind)
-      __if_then_else__ (,() __String_equal__ kind "Includer")
+      __LList_uncons__ __print_exit_error__ statement ,(kind ast_rest__)
+      __String_equal__ kind "Includer" ,(test__) __if_then_else__ test__
         (,() __Includer_add__ fail dirs seen file baseDir statement queue)
         (,() __NULL__ queue) ,(queue)
       __Includer_statements__ fail dirs seen file baseDir rest queue))
@@ -86,9 +86,9 @@
 ;; Includer の String の値（ファイル名）を解決し、一覧になければ queue の末尾に加える。
 ;; 一覧にあれば（2度目の include や循環した include）、何も出力せずに読み飛ばす
 (define __Includer_add__ ,(fail dirs seen file baseDir includer queue)
-  __AST_get_children__ includer ,(children)
+  __LList_uncons__ __print_exit_error__ includer ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
   __LList_uncons__ __print_exit_error__ children ,(str rest)
-  __AST_get_children__ str ,(values)
+  __LList_uncons__ __print_exit_error__ str ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ values)
   __LList_uncons__ __print_exit_error__ values ,(name rest)
   __Includer_resolve__ fail dirs file baseDir name ,(path)
   __Dict_lookup_or__ seen path (,(key) __NULL__ __FALSE__) ,(found)
@@ -115,7 +115,7 @@
 
 ;; dirs のディレクトリに name があれば、その正規化した絶対パスを返す
 (define __Includer_search__ ,(fail dirs file name)
-  __if_then_else__ (,() __is_null__ dirs)
+  __is_null__ dirs ,(test__) __if_then_else__ test__
     (,() __Includer_not_found__ fail file name)
     (,()
       __LList_uncons__ __print_exit_error__ dirs ,(dir rest)
@@ -132,7 +132,7 @@
 
 (define __Includer_is_absolute__ ,(path)
   __String_length__ path ,(len)
-  __if_then_else__ (,() __Number_is_zero__ len)
+  __Number_is_zero__ len ,(test__) __if_then_else__ test__
     (,() __NULL__ __FALSE__)
     (,()
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -146,7 +146,7 @@
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ len one ,(last)
   __String_substring__ __print_exit_error__ dir last len ,(end)
-  __if_then_else__ (,() __String_equal__ end "/")
+  __String_equal__ end "/" ,(test__) __if_then_else__ test__
     (,() __NULL__ dir)
     (,() __String_concat__ dir "/") ,(dir)
   __String_concat__ dir name)
@@ -155,7 +155,7 @@
 (define __Includer_dirname__ ,(path)
   __String_length__ path ,(len)
   __Includer_last_slash__ path len ,(i)
-  __if_then_else__ (,() __Number_is_zero__ i)
+  __Number_is_zero__ i ,(test__) __if_then_else__ test__
     (,() __NULL__ "/")
     (,()
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -163,12 +163,12 @@
 
 ;; path の i 文字目より前で、最後の "/" の位置
 (define __Includer_last_slash__ ,(path i)
-  __if_then_else__ (,() __Number_is_zero__ i)
+  __Number_is_zero__ i ,(test__) __if_then_else__ test__
     (,() __NULL__ i)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __Number_subtract__ i one ,(j)
       __String_substring__ __print_exit_error__ path j i ,(c)
-      __if_then_else__ (,() __String_equal__ c "/")
+      __String_equal__ c "/" ,(test__) __if_then_else__ test__
         (,() __NULL__ j)
         (,() __Includer_last_slash__ path j)))

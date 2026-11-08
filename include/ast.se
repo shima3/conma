@@ -26,16 +26,16 @@
 ;; String は "..." で囲むだけでエスケープしない（ソースのエスケープをそのまま持っているため）。
 ;; 位置も子ノードもないノードは、kind だけを書く（resolver の Undefined）
 (define __AST_toSexp__ ,(node)
-  __AST_get_kind__ node ,(kind)
-  __AST_get_pos__ node ,(pos)
-  __AST_get_children__ node ,(children)
+  __LList_uncons__ __print_exit_error__ node ,(kind ast_rest__)
+  __LList_uncons__ __print_exit_error__ node ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(pos ast_children__)
+  __LList_uncons__ __print_exit_error__ node ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
   __is_null__ pos ,(noPos)
   __is_null__ children ,(noChildren)
-  __if_then_else__ (,() __and__ noPos noChildren)
+  __and__ noPos noChildren ,(test__) __if_then_else__ test__
     (,() __NULL__ kind)
     (,()
       __String_concat__ "(" kind ,(s)
-      __if_then_else__ (,() __is_null__ pos)
+      __is_null__ pos ,(test__) __if_then_else__ test__
         (,() __NULL__ s)
         (,()
           __AST_list_toSexp__ pos "(" ,(posStr)
@@ -54,7 +54,7 @@
 
 ;; children の各要素を、空白に続けて acc の後ろにつなげる
 (define __AST_children_toSexp__ ,(children acc)
-  __if_then_else__ (,() __is_null__ children)
+  __is_null__ children ,(test__) __if_then_else__ test__
     (,() __NULL__ acc)
     (,()
       __LList_uncons__ __print_exit_error__ children ,(child rest)
@@ -66,13 +66,13 @@
 ;; String、Number、ノードを S式の String にする。それ以外の値はエラー
 (define __AST_value_toSexp__ ,(value)
   __type_name__ value ,(type)
-  __if_then_else__ (,() __String_equal__ type "String")
+  __String_equal__ type "String" ,(test__) __if_then_else__ test__
     (,()
       __String_concat__ "\"" value ,(s)
       __String_concat__ s "\"") (,()
-  __if_then_else__ (,() __String_equal__ type "Number")
+  __String_equal__ type "Number" ,(test__) __if_then_else__ test__
     (,() __Number_toString__ value) (,()
-  __if_then_else__ (,() __String_equal__ type "LList")
+  __String_equal__ type "LList" ,(test__) __if_then_else__ test__
     (,() __AST_toSexp__ value)
     (,()
       __String_concat__ "__AST_toSexp__: unexpected value of type " type ,(msg)

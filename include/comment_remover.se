@@ -21,24 +21,24 @@
 
 (define __CommentRemover_normal__ ,(sink)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,() __NULL__ sink)
       (,() __CommentRemover_step__ sink token)))
 
 ;; コメントの外で token を処理し、次の状態 Sink を返す
 (define __CommentRemover_step__ ,(sink token)
   __Token_get_kind__ token ,(kind)
-  __if_then_else__ (,() __String_equal__ kind "NEWLINE")
+  __String_equal__ kind "NEWLINE" ,(test__) __if_then_else__ test__
     (,() __CommentRemover_normal__ sink) (,()
-  __if_then_else__ (,() __String_equal__ kind "LINE_COMMENT_BEGIN")
+  __String_equal__ kind "LINE_COMMENT_BEGIN" ,(test__) __if_then_else__ test__
     (,() __CommentRemover_after_line__ sink) (,()
-  __if_then_else__ (,() __String_equal__ kind "BLOCK_COMMENT_BEGIN")
+  __String_equal__ kind "BLOCK_COMMENT_BEGIN" ,(test__) __if_then_else__ test__
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __CommentRemover_block__ sink one) (,()
   __String_equal__ kind "BLOCK_COMMENT_END" ,(isEnd)
   __String_equal__ kind "BLOCK_COMMENT_TEXT" ,(isText)
-  __if_then_else__ (,() __or__ isEnd isText)
+  __or__ isEnd isText ,(test__) __if_then_else__ test__
     (,()
       __CommentRemover_position__ token ,(pos)
       __String_concat__ "Error: Unexpected " kind ,(msg)
@@ -47,7 +47,7 @@
       __String_concat__ msg "\n" ,(msg)
       __OS_print_error__ msg ,()
       __CommentRemover_normal__ sink) (,()
-  __if_then_else__ (,() __String_equal__ kind "SEXP_COMMENT_BEGIN")
+  __String_equal__ kind "SEXP_COMMENT_BEGIN" ,(test__) __if_then_else__ test__
     (,() __CommentRemover_after_sexp__ sink token)
     (,()
       sink token ,(sink)
@@ -56,32 +56,32 @@
 ;; LINE_COMMENT_BEGIN の直後の LINE_COMMENT_CONTENT を取り除く
 (define __CommentRemover_after_line__ ,(sink)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,() __NULL__ sink)
       (,()
         __Token_get_kind__ token ,(kind)
-        __if_then_else__ (,() __String_equal__ kind "LINE_COMMENT_CONTENT")
+        __String_equal__ kind "LINE_COMMENT_CONTENT" ,(test__) __if_then_else__ test__
           (,() __CommentRemover_normal__ sink)
           (,() __CommentRemover_step__ sink token))))
 
 ;; ブロックコメントの中の Token はすべて取り除く。深さが 0 になったら外に戻る
 (define __CommentRemover_block__ ,(sink depth)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,()
         __OS_print_error__ "Error: Unterminated block comment\n" ,()
         __NULL__ sink)
       (,()
         __Number_fromString__ __print_exit_error__ "1" ,(one)
         __Token_get_kind__ token ,(kind)
-        __if_then_else__ (,() __String_equal__ kind "BLOCK_COMMENT_BEGIN")
+        __String_equal__ kind "BLOCK_COMMENT_BEGIN" ,(test__) __if_then_else__ test__
           (,()
             __Number_add__ depth one ,(depth)
             __CommentRemover_block__ sink depth) (,()
-        __if_then_else__ (,() __String_equal__ kind "BLOCK_COMMENT_END")
+        __String_equal__ kind "BLOCK_COMMENT_END" ,(test__) __if_then_else__ test__
           (,()
             __Number_subtract__ depth one ,(depth)
-            __if_then_else__ (,() __Number_is_zero__ depth)
+            __Number_is_zero__ depth ,(test__) __if_then_else__ test__
               (,() __CommentRemover_normal__ sink)
               (,() __CommentRemover_block__ sink depth))
           (,() __CommentRemover_block__ sink depth)))))
@@ -90,7 +90,7 @@
 ;; LPAREN なら対応する RPAREN までを取り除く。それ以外はエラーにして、その Token を処理する
 (define __CommentRemover_after_sexp__ ,(sink begin)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,()
         __CommentRemover_sexp_error__ begin ,()
         __NULL__ sink)
@@ -98,9 +98,9 @@
         __Token_get_kind__ token ,(kind)
         __String_equal__ kind "SYMBOL" ,(isSymbol)
         __String_equal__ kind "STRING" ,(isString)
-        __if_then_else__ (,() __or__ isSymbol isString)
+        __or__ isSymbol isString ,(test__) __if_then_else__ test__
           (,() __CommentRemover_normal__ sink) (,()
-        __if_then_else__ (,() __String_equal__ kind "LPAREN")
+        __String_equal__ kind "LPAREN" ,(test__) __if_then_else__ test__
           (,()
             __Number_fromString__ __print_exit_error__ "1" ,(one)
             __CommentRemover_sexp__ sink one)
@@ -111,19 +111,19 @@
 ;; S式コメントの括弧の中の Token はすべて取り除く。深さが 0 になったら外に戻る
 (define __CommentRemover_sexp__ ,(sink depth)
   __NULL__ (,(token)
-    __if_then_else__ (,() __is_null__ token)
+    __is_null__ token ,(test__) __if_then_else__ test__
       (,() __NULL__ sink)
       (,()
         __Number_fromString__ __print_exit_error__ "1" ,(one)
         __Token_get_kind__ token ,(kind)
-        __if_then_else__ (,() __String_equal__ kind "LPAREN")
+        __String_equal__ kind "LPAREN" ,(test__) __if_then_else__ test__
           (,()
             __Number_add__ depth one ,(depth)
             __CommentRemover_sexp__ sink depth) (,()
-        __if_then_else__ (,() __String_equal__ kind "RPAREN")
+        __String_equal__ kind "RPAREN" ,(test__) __if_then_else__ test__
           (,()
             __Number_subtract__ depth one ,(depth)
-            __if_then_else__ (,() __Number_is_zero__ depth)
+            __Number_is_zero__ depth ,(test__) __if_then_else__ test__
               (,() __CommentRemover_normal__ sink)
               (,() __CommentRemover_sexp__ sink depth))
           (,() __CommentRemover_sexp__ sink depth)))))
