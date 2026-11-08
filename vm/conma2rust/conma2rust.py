@@ -652,11 +652,11 @@ class Fuser:
         would have. With retry, x is fused, and its code above is for a case
         the chain leaves to it (not a Body it cannot run). rare: a case that
         is not expected (a condition that is not a Boolean)."""
-        (self.retries if retry else self.bails).add(x)
+        (self.retries if retry or rare else self.bails).add(x)
         if not (retry or rare):
             self.nbail += 1
         self.push_joins(J, out)
-        if retry:
+        if retry or rare:
             # the VM runs the Body (the code above would be this chain again
             # when x is the first Body of a fused Function)
             out.append(f"return deopt(vp, {x}, {self.mat(d, locals_)}, gv, t);")
@@ -856,6 +856,17 @@ class Fuser:
             return clause(1), "nop"
         return "nop", clause(1)
 
+    def value_clause(self, x, d, locals_, vref, out, J):
+        """The chosen clause of an __if__ (Function x's Body) is the value of
+        a variable or a global (vref): a continuation is applied to no
+        values, as the VM applies it (the LCont and the CFrames of the clauses
+        are dropped with the CChain); anything else (__nop__, a Closure) is
+        left to the VM, which runs the Body."""
+        out.append(f"let f = {vref};")
+        out.append(f"if matches!(f, Value::Cont(_)) {{ let v: [Value; 0] = []; "
+                   f"return fused_tail_call(vp, {self.ctx['env']}, {self.sinfo(x)}, f, v); }}")
+        self.bail(x, d, locals_, out, J, rare=True)
+
     def margs(self, x, d, locals_, b, after):
         """The operands, the last use of a variable not in after moved."""
         mv = self.moves(d, locals_, b.olist, after)
@@ -895,18 +906,25 @@ class Fuser:
         if name in IFS and len(b.olist) == IFS[name] and args[0] is not None:
             then, els = self.clauses(b, name)
             g = self.funcs[lc] if isinstance(lc, int) else None
-            if "value" in (then, els) or (g is not None and g.variadic):
+            # a clause that is not written in place: a variable or a global
+            # (a continuation, `__if__ c return`)
+            cidx = {"__if_then_else__": (1, 2), "__if__": (1, None), "__unless__": (None, 1)}[name]
+            vrefs = [self.ref(x, d, b.olist[k], f"olist[{k}]", locals_) if k is not None and cl == "value" else ""
+                     for k, cl in zip(cidx, (then, els))]
+            if None in vrefs or (g is not None and g.variadic):
                 return self.bail(x, d, locals_, out, J)
             if g is None:
                 # no LCont: the clauses end the chain (or the clause it is in)
                 out.append(f"match {self.cond(x, d, b.olist[0], locals_)} {{")
-                for label, cl in (("Some(true)", then), ("Some(false)", els)):
+                for label, cl, vr in (("Some(true)", then, vrefs[0]), ("Some(false)", els, vrefs[1])):
                     out.append(f"{label} => {{")
                     if cl == "nop":
                         if J:
                             self.to_join(J, [], x, out)
                         else:
                             out.append(f"return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, []);")
+                    elif cl == "value":
+                        self.value_clause(x, d, locals_, vr, out, J)
                     else:
                         self.emit(cl, d, locals_, out, J)
                     out.append("}")
@@ -925,10 +943,12 @@ class Fuser:
             tup = "(" + "".join(v + ", " for v in vs) + ")"
             out.append(f"let {tup} = '{label}: {{")
             out.append(f"match {self.cond(x, d, b.olist[0], locals_)} {{")
-            for arm, cl in (("Some(true)", then), ("Some(false)", els)):
+            for arm, cl, vr in (("Some(true)", then, vrefs[0]), ("Some(false)", els, vrefs[1])):
                 out.append(f"{arm} => {{")
                 if cl == "nop":
                     self.to_join(jn, [], x, out)
+                elif cl == "value":
+                    self.value_clause(x, d, locals_, vr, out, J)
                 else:
                     self.emit(cl, d, locals_, out, jn)
                 out.append("}")

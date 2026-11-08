@@ -987,6 +987,16 @@ pub fn if_call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &
         Clause::Nop => true,
         Clause::Value(i) => {
             let v = eval(&b.olist[i], &env, gv)?;
+            if matches!(v, Value::Cont(_)) {
+                // A continuation (`__if__ c return`): applied to no values, as
+                // the VM applies it (the LCont is dropped).
+                vp.olist.clear();
+                vp.sinfo = b.sinfo.clone();
+                vp.operator = v;
+                vp.lcont = None;
+                vp.lvenv = env;
+                return Ok(Next::Apply);
+            }
             if !m.is_nop(&v) {
                 return deopt(vp, fid, env, gv, t);
             }

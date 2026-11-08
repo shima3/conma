@@ -1,5 +1,6 @@
 ;; Transpiled code (vm/conma2rust): inlined calls, primitives called from fused chains through the
-;; OList, and __Dict_lookup_or__ whose onMissing is a function. Run on the transpiled VM after
+;; OList, __Dict_lookup_or__ whose onMissing is a function, and clauses of __if__ that are not written in
+;; place (a continuation, a Closure in a variable). Run on the transpiled VM after
 ;; bench/build.sh (which builds this file in), it tests that code; on the other VMs, the results to match.
 (include "util.se")
 
@@ -27,6 +28,30 @@
   __String_length__ a ,(n)
   __String_length__ b ,(m)
   __Number_add__ n m)
+
+;; a clause that is a continuation: return early
+(define first_nonempty ,(a b)
+  __Cont_get__ ,(return)
+  __String_equal__ a "" ,(empty)
+  __unless__ empty (,() return a) ,()
+  __String_length__ b ,(n)
+  __Number_is_zero__ n ,(zero)
+  __if__ zero return ,()
+  __NULL__ b)
+
+(define classify ,(s)
+  __Cont_get__ ,(return)
+  __String_equal__ s "" ,(empty)
+  __if_then_else__ empty (,() return "empty") (,() __NULL__) ,()
+  __String_equal__ s "x" ,(isx)
+  __unless__ isx return ,()
+  __NULL__ "x")
+
+;; a clause that is a Closure in a variable (left to the VM)
+(define choose ,(c)
+  __NULL__ (,() __NULL__ "then") ,(then)
+  __if_then_else__ c then (,() __NULL__ "else") ,(v)
+  __NULL__ v)
 
 (define line ,(s)
   __OS_print__ s ,()
@@ -63,4 +88,22 @@
   __LList_append__ l1 l1 ,(l)
   __LList_length__ l ,(len)
   __Number_toString__ len ,(ls)
-  line ls)
+  line ls ,()
+  first_nonempty "a" "b" ,(f1)
+  line f1 ,()
+  first_nonempty "" "b" ,(f2)
+  line f2 ,()
+  first_nonempty "" "" ,()
+  line "(none)" ,()
+  classify "" ,(k1)
+  line k1 ,()
+  classify "x" ,(k2)
+  line k2 ,()
+  classify "y" ,()
+  line "(not x)" ,()
+  __String_equal__ "a" "a" ,(yes)
+  __String_equal__ "a" "b" ,(no)
+  choose yes ,(c1)
+  line c1 ,()
+  choose no ,(c2)
+  line c2)
