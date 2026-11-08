@@ -16,7 +16,15 @@ if [ -z "$host" ]; then
   if node -e 0 > /dev/null 2>&1; then host=node; else host=jsc; fi
 fi
 case "$host" in
-  node) exec node "$dir/vm-node.js" "$@" ;;
+  node)
+    # 長い LList の解放などが深く再帰するので、スタックを大きくする（ネイティブ版は 1 GB のスタックのスレッドで動く）。
+    # Node.js のスタック（--stack-size、KB）は、OS のスタックの上限（ulimit -s）より小さくする
+    want=$(ulimit -Hs)
+    [ "$want" = unlimited ] && want=1048576
+    ulimit -s "$want" 2>/dev/null
+    have=$(ulimit -s)
+    [ "$have" = unlimited ] && have=1048576
+    exec node --stack-size=$((have * 9 / 10)) "$dir/vm-node.js" "$@" ;;
   jsc) ;;
   *) echo "vm-wasm.sh: CONMA_WASM_HOST must be node or jsc, not \"$host\"" >&2; exit 2 ;;
 esac

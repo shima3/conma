@@ -2,11 +2,15 @@
 //   node vm-node.js [-t] [-m] <module_file> <func_name | arg ...>
 // vm-wasm.sh uses it when node is found. The VM starts in the current directory, with the environment
 // variables of the process, and uses the files of this process (hostFs, conma_use_host_fs): it reads
-// and writes them as the native VM does. Standard input is read when a VProc waits for it.
-// The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
+// and writes them as the native VM does. __OS_spawn__ starts processes (hostProc, child_process): a
+// file or the interpreter's own standard input, output or error goes to the process as it is, and this
+// process moves the data between a pipe of the VM and the process. Standard input is read when a VProc
+// waits for it. The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const childProcess = require("child_process");
+const os = require("os");
 const ConMaVM = require("./conma.js");
 
 const argv = process.argv.slice(2);
@@ -118,9 +122,12 @@ const hostFs = {
   },
 };
 
-// Resolves when a call of JavaScript has given its result to the VM.
+// ── Waking the loop of main ──
+// Something happened outside the VM (a result of JavaScript, data of a process, an exit, input).
 let wake = null;
-function jsDone() {
+let dirty = false;
+function notify() {
+  dirty = true;
   if (wake) {
     const w = wake;
     wake = null;
@@ -128,9 +135,193 @@ function jsDone() {
   }
 }
 
+// Standard input read without blocking the loop, while a VProc waits for it.
+let reading = false;
+function readInputAsync(vm) {
+  if (reading || inputEnded) return;
+  reading = true;
+  fs.read(0, inbuf, 0, inbuf.length, null, (e, n) => {
+    reading = false;
+    if (inputEnded) return;
+    if (e && e.code === "EAGAIN") {
+      setTimeout(() => readInputAsync(vm), 5);
+      return;
+    }
+    if (!e && n > 0) {
+      vm.input(inbuf.subarray(0, n));
+    } else {
+      vm.inputEnd();
+      inputEnded = true;
+    }
+    notify();
+  });
+}
+
+// ── Processes (hostProc of conma.js) ──
+const procs = new Map(); // id -> {child, code}
+let nextProc = 0;
+// Pipes of the VM that feed the standard input of a process: {fd, stream}
+let feeds = [];
+// Output of processes not yet given to the VM (ends of pipes still open)
+let openOutputs = 0;
+
+// The file to run for name, as execvp finds it in PATH; or minus an errno.
+function findCommand(name, env) {
+  const check = (p) => {
+    try {
+      if (fs.statSync(p).isDirectory()) return -13;
+      fs.accessSync(p, fs.constants.X_OK);
+      return 0;
+    } catch (e) {
+      return e.code === "EACCES" ? -13 : -2;
+    }
+  };
+  if (name.includes("/")) {
+    const r = check(name);
+    return r === 0 ? name : r;
+  }
+  let found = -2;
+  for (const dir of (env.PATH || "").split(":")) {
+    const p = path.join(dir || ".", name);
+    const r = check(p);
+    if (r === 0) return p;
+    if (r === -13) found = -13;
+  }
+  return found;
+}
+
+function makeHostProc(getVm) {
+  return {
+    spawn(argv, env, cwd, stdio, detached) {
+      const vm = getVm();
+      const file = findCommand(argv[0], env);
+      if (typeof file === "number") return file;
+      const spec = stdio.map((s) => (s.kind === 0 || s.kind === 1 ? s.n : s.kind === 4 ? "ignore" : "pipe"));
+      let child;
+      try {
+        child = childProcess.spawn(file, argv.slice(1), { argv0: argv[0], cwd, env, stdio: spec, detached });
+      } catch (e) {
+        return typeof e.errno === "number" && e.errno < 0 ? e.errno : -5;
+      }
+      const id = ++nextProc;
+      const rec = { child, code: null };
+      procs.set(id, rec);
+      child.on("error", () => {
+        if (rec.code === null) rec.code = 127;
+        vm.childEvent();
+        notify();
+      });
+      child.on("exit", (code, signal) => {
+        rec.code = code !== null ? code : -(os.constants.signals[signal] || 0);
+        vm.childEvent();
+        notify();
+      });
+      [child.stdin, child.stdout, child.stderr].forEach((stream, i) => {
+        const s = stdio[i];
+        if (s.kind === 2) {
+          stream.on("error", () => {}); // EPIPE when the process has gone
+          feeds.push({ fd: s.n, stream, child });
+        } else if (s.kind === 3) {
+          openOutputs++;
+          let closed = false;
+          const close = () => {
+            if (closed) return;
+            closed = true;
+            openOutputs--;
+            vm.close(s.n);
+            vm.childEvent();
+            notify();
+          };
+          stream.on("data", (d) => {
+            if (closed) return;
+            if (vm.write(s.n, d) === -32) {
+              // The reader in the VM has gone. A process of the native VM gets SIGPIPE when it
+              // writes to such a pipe; this one writes to a socket of Node.js, which would give
+              // it an error instead: send it SIGPIPE.
+              if (rec.code === null) {
+                try {
+                  child.kill("SIGPIPE");
+                } catch (e) {
+                  // it has just exited
+                }
+              }
+              stream.destroy();
+              close();
+            }
+            notify();
+          });
+          stream.on("end", close);
+          stream.on("close", close);
+          stream.on("error", close);
+        }
+      });
+      return id;
+    },
+    poll(id) {
+      const rec = procs.get(id);
+      return rec ? rec.code : -10; // ECHILD-like: should not happen
+    },
+    kill(id, sig) {
+      const rec = procs.get(id);
+      if (!rec || rec.code !== null) return 0;
+      try {
+        rec.child.kill(sig);
+        return 0;
+      } catch (e) {
+        return typeof e.errno === "number" && e.errno < 0 ? e.errno : -3;
+      }
+    },
+  };
+}
+
+// Move what the VM wrote to the pipes for the standard input of processes.
+function feedProcesses(vm) {
+  feeds = feeds.filter((f) => {
+    for (;;) {
+      if (f.child.exitCode !== null || f.child.signalCode !== null || f.stream.destroyed) {
+        vm.close(f.fd); // the writers in the VM get EPIPE
+        return false;
+      }
+      const r = vm.read(f.fd, 65536);
+      if (typeof r === "number") {
+        if (r === -35) return true; // nothing yet
+        vm.close(f.fd);
+        f.stream.end();
+        return false;
+      }
+      if (r.length === 0) {
+        vm.close(f.fd);
+        f.stream.end();
+        return false;
+      }
+      f.stream.write(r);
+    }
+  });
+}
+
+function processesActive() {
+  if (feeds.length > 0 || openOutputs > 0) return true;
+  for (const rec of procs.values()) if (rec.code === null) return true;
+  return false;
+}
+
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
-  const vm = ConMaVM.create(wasm, writeAll, { inputNeeded: readInput, jsDone, hostFs });
+  let vm = null;
+  vm = ConMaVM.create(wasm, writeAll, {
+    inputNeeded: readInput,
+    jsDone: notify,
+    hostFs,
+    hostProc: makeHostProc(() => vm),
+    // As the native VM: SIGINT ends this process until the VM traps it.
+    trapInterrupt: (v) => {
+      if (process.listenerCount("SIGINT") > 0) return;
+      process.on("SIGINT", () => {
+        v.interrupt();
+        notify();
+      });
+    },
+  });
   vm.useHostFs();
   vm.setCwd(process.cwd());
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);
@@ -152,34 +343,32 @@ async function main() {
   if (code !== 0) return code;
   let slices = 0;
   for (;;) {
+    dirty = false;
     code = vm.run(100000);
     if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) return code;
-    if (vm.jsPending() > 0) {
-      // Let the Promises of JavaScript run: wait for one when nothing else can run, and
-      // now and then while other VProcs run.
-      if (code === ConMaVM.IDLE) {
-        await new Promise((resolve) => {
-          wake = resolve;
-        });
-        continue;
-      }
-      if (++slices % 8 === 0) await new Promise((resolve) => setImmediate(resolve));
-    }
-    // A program may poll standard input instead of waiting for it: give it input when it found none.
-    if (code === ConMaVM.RUNNING && !(vm.wantsInput() && !inputEnded)) continue;
-    if (!inputEnded) {
-      readInput(vm);
+    feedProcesses(vm);
+    // A program may poll standard input instead of waiting for it: read it when it found none.
+    if (vm.wantsInput()) readInputAsync(vm);
+    const outside = vm.jsPending() > 0 || processesActive() || reading;
+    if (code === ConMaVM.RUNNING) {
+      // Let events (JavaScript, processes, input) come now and then.
+      if (outside && ++slices % 4 === 0) await new Promise((resolve) => setImmediate(resolve));
       continue;
     }
-    if (code === ConMaVM.IDLE) {
-      // Input has ended and there are no processes: nothing can wake the VM
+    // IDLE: every VProc waits for something outside the VM.
+    if (dirty) continue;
+    if (!outside && !inputEnded) readInputAsync(vm);
+    if (!outside && !reading) {
+      // Input has ended, and no process or JavaScript can wake the VM
       // (the native VM would wait for ever).
       writeAll(2, ConMaVM.utf8("vm-node: every VProc waits, and nothing can wake them\n"));
       return 2;
     }
+    await new Promise((resolve) => {
+      wake = resolve;
+    });
   }
 }
 
-main().then((code) => {
-  process.exitCode = code;
-});
+// Exit without waiting for processes that are still running (the native VM leaves them).
+main().then((code) => process.exit(code));

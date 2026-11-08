@@ -34,7 +34,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 ```
 
-VM は、ネイティブ版と同じく、実際のファイルを読み書きする。外部コマンドはまだない。
+VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（PLAN-ja.md の 3.8）。
 
 ## js
 

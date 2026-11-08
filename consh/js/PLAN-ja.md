@@ -199,7 +199,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 | 4 | `js` の組み込みコマンド（2.1 の 1〜6、9、10。`js [変数名=] コード {引数}` の見分け方と、変数に入れる値を含む）と `__JS_call__`、`__JS_next__`。Promise を待つ間、ほかの VProc が動く | consh/js/test に `js` のテスト。変数名のある形とない形、`js sum=` だけのエラー、`js 'x=1'` が代入式になることを確かめる。ネイティブ版では 2.1 の 10 のエラーになるテストを consh/test に足し、ConMa 版と Rust 版の両方で通る |
 | 5 | `stdin` と `console`（2.1 の 7、8） | `cmd \| js '...'`、変数名がある場合とない場合の `console.log` のテスト |
 | 6 | イテレータの結果を 1 つずつ出す（2.1 の 5 の最後と、6 の遅延の LazyList） | 無限のジェネレータを `head` 相当の関数で途中まで読むテスト |
-| 7 | Node.js のホストで、(1) ファイルを実際のファイルシステムで読み書きする（済み）、(2)（後回し）`node:child_process` で外部コマンドを起動する | (1) test/ のファイルとシンボリックリンクのケース。(2) consh/test の全ケース |
+| 7 | Node.js のホストで、(1) ファイルを実際のファイルシステムで読み書きする、(2) `node:child_process` で外部コマンドを起動する（どちらも済み） | (1) test/ のファイルとシンボリックリンクのケース。(2) consh/test の全ケース |
 
 段階 4 で、ConSh の PLAN-ja.md（1.2 の組み込みコマンド）、README-ja.md、FOR-BASH-USERS.md に `js` を書く。
 
@@ -259,6 +259,21 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - 仮想 OS に、ファイルをホストに任せる形（`Fd::Host`、`host_fs_*` の import、`conma_use_host_fs`）を足し、vm-node.js がそれを `fs.*Sync` で作った。ブラウザは今までどおり仮想ファイルシステムを使う。
 - `CONMA_VM=wasm test/run_all.sh` で、selfhost6、selfhost7（シンボリックリンク、`../../include`）も通るようになった。ネイティブ版と違うのは、プロセスと `__VProc_spawn__` を使うケースと、予定どおりの step40 だけである。consh/test は、外部コマンドを使うところと、予定どおりの step17 だけが違う。
 - ファイルを本当に書くようになったので、consh/js/test/step2 の case1 は、テストのディレクトリでなく一時ディレクトリにファイルを作るようにした。
+
+### 3.8. 段階 7 の 2：外部コマンド（2026/11/8）
+
+- VM：wasm 版の `OSProcObj` は、`std::process::Child` の代わりにホストのプロセスの番号を持つ（`cfg(not(unix))`。ネイティブ版は変わらない）。`__OS_spawn__`、`__OS_poll__`、`__OS_kill__` は、仮想 OS の `spawn`、`proc_poll`、`proc_kill` から、ホストの `host_proc_spawn`、`host_proc_poll`、`host_proc_kill` を呼ぶ。
+    - 子の標準入出力は、種類で渡す：ホスト自身の fd（0、1、2）、ホストのファイルの fd、VM のパイプの読む端と書く端（ホストは自分用に dup した VM の fd を `conma_read` と `conma_write` で読み書きし、閉じる）、`/dev/null`。
+    - ホストは、プロセスが終わると `conma_child_event` を呼ぶ。スケジューラは、プロセスだけを待つ間、シグナルの数が変わらなければプロセスを調べ直さないので、この数をシグナルに加える。
+    - `__OS_trap_interrupt__` は `host_trap_sigint` を呼び、ホストはそれから SIGINT を `conma_interrupt` に替える。それまでは、ネイティブ版と同じく SIGINT で終わる。
+- Node.js（vm-node.js）：`child_process.spawn` で起動する。コマンドは、execvp と同じく、渡された環境変数の PATH から探す（見つからなければ ENOENT、実行できなければ EACCES を `onError` に渡す）。
+    - VM のパイプと子の間は、ホストが写す：子の出力は `data` のたびに VM のパイプに書き、子の入力は `conma_run` の後ごとに VM のパイプから読んで書く。VM の読み手がいなくなったら（EPIPE）、ネイティブ版で書き手が受ける SIGPIPE を、その子に送る。
+    - main のループは、プロセス、JavaScript、標準入力のどれかを待つ間、イベントループを回す（標準入力も、待つ間は非同期に読む）。終わるときは、動いているプロセスを待たない（ネイティブ版と同じ）。
+    - 長い LList の解放などで再帰が深くなるので、vm-wasm.sh は、`ulimit -s` を上限まで上げ、`node --stack-size` をその 9 割にする（consh/test/step14 の case1）。
+- `CONMA_VM=wasm` で test/ と consh/test を流すと、ネイティブ版と違うのは次だけになった。
+    - test/：`__VProc_spawn__`（bin/includer を起動する。step10、11、14、15、17、20〜23）と、予定どおりの step40。
+    - consh/test：予定どおりの step17 と、step8（子の標準出力がパイプかを調べるケース。Node.js は子の標準入出力を UNIX ドメインソケットでつなぐので、パイプでなくソケットに見える。Node.js では名前のないパイプを作れないので、当面の制限とする）。
+- 当面の制限：Node.js のホストでは、対話モードの端末とプロセスグループ（`__OS_spawn_detached__` の前景との区別、Ctrl-C を子だけに送ること）は、ネイティブ版と同じにはならない。
 
 ## 4. 未解決の点
 
