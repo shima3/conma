@@ -10,6 +10,7 @@
 ;;     Eval_subst_os は、util.se の __LazyList_lines__ を Subst_lines で包む）。Stream から作る標準入力
 ;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）と、外部コマンドの出力を行ごとに
 ;;     ターゲットに書く Target_pump も、同じ読み方にした（Stream は閉じない）。
+;;   * List_fromMSeq と LazyList_prepend を、要素の数だけ深く再帰しない形（前から裏返しに集めて裏返す）にした。
 ;;   * Subst_settle_os で、値の先頭に Pipe_cap 個そろったことを記録（"full"）に覚え、コマンドのたびに
 ;;     たどり直さないようにした。
 ;;
@@ -1718,21 +1719,35 @@
   Capture_assign_names vars rest more)
 
 ;; LList items の後に LazyList tail を続けた LazyList
+;; 高速版：再帰ではなく、items を裏返してから、後ろの要素から順に tail の前に付ける（参照版は、要素の数だけ深く
+;; 再帰し、その間 CChain が要素の数だけ伸びる）
 (define LazyList_prepend ,(items tail)
-  __Cont_get__ ,(return)
-  __is_null__ items ,(test__) __if__ test__ (,() return tail) ,()
-  __LList_uncons__ __print_exit_error__ items ,(item rest)
-  LazyList_prepend rest tail ,(more)
-  __LazyList_cons__ item more)
+  List_reverse items ,(reversed)
+  LazyList_prepend_reversed reversed tail)
+
+(define LazyList_prepend_reversed ,(reversed tail)
+  __is_null__ reversed ,(done)
+  __if_then_else__ done
+    (,() __NULL__ tail)
+    (,()
+      __LList_uncons__ __print_exit_error__ reversed ,(item rest)
+      __LazyList_cons__ item tail ,(tail)
+      LazyList_prepend_reversed rest tail))
 
 ;; MSeq の要素の LList
+;; 高速版：再帰ではなく、前から順に裏返しの LList に集めてから裏返す（参照版は、要素の数だけ深く再帰する）
 (define List_fromMSeq ,(mseq)
-  __Cont_get__ ,(return)
+  List_fromMSeq_onto mseq __NULL__ ,(reversed)
+  List_reverse reversed)
+
+(define List_fromMSeq_onto ,(mseq acc)
   __MSeq_is_empty__ __print_exit_error__ mseq ,(empty)
-  __if__ empty (,() return __NULL__) ,()
-  __MSeq_uncons__ __print_exit_error__ mseq ,(item rest)
-  List_fromMSeq rest ,(more)
-  __LList_cons__ item more)
+  __if_then_else__ empty
+    (,() __NULL__ acc)
+    (,()
+      __MSeq_uncons__ __print_exit_error__ mseq ,(item rest)
+      __LList_cons__ item acc ,(acc)
+      List_fromMSeq_onto rest acc))
 
 ;; ── コマンド置換 ──
 
