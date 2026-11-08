@@ -352,7 +352,7 @@ vm/README.md には、同じループが 0.61 秒、`echo hi` の起動が 0.06 
 
 ### 対応
 
-指摘のあと、2〜5 に対応した（1 はまだ）。
+指摘のあと、1〜5 に対応した（1 は、変えないことにした）。
 
 * 4：`consh/rust/Cargo.toml` に `rust-version = "1.87"`、`vm/Cargo.toml` に `rust-version = "1.75"` を書いた。rustup で 1.75、1.86、1.87 を入れて確かめた。`vm/` は 1.75 でビルドでき、`consh/rust/` は 1.86 では `std::io::pipe` が安定していないのでビルドできず、1.87 でビルドできる。両方の `Cargo.lock` を version 3 にした（Cargo 1.78 より前でも読める。依存クレートがないので中身は同じで、新しい Cargo でビルドしても version 3 のまま）。vm/README.md と `bin/consh` の説明にも、必要なバージョンを書いた。
 * 5：step10 の case2 と case3 は、`od -c` の出力の行末の空白を `sed 's/ *$//'` で消し、期待ログの行末の空白も消した。BSD と GNU のどちらの `od` でも同じになるはずである（GNU の `od` では確かめていない）。`common.sh` に `require 道具 …` を足し、step13 と step14 の `test.sh` は、`lsof` がなければ `step13: lsof is needed for this test (install it)` を出して止める。ConMa 版（Python と Rust の両方の VM）と Rust 版で、step10、step13、step14 が通る。
@@ -364,3 +364,4 @@ vm/README.md には、同じループが 0.61 秒、`echo hi` の起動が 0.06 
     | `for i in $(seq 1 20000); do n=$i; done` | 0.01 秒 | 0.58 秒 | 0.33 秒 | 0.02 秒 |
 
 * 3：既定の Rust 版は、構文解析も Rust で行い（段階 19 の段階 4）、Python を使わない。consh-rs を作っておけば、ConSh は 1 つの実行形式として配れる（Rust 1.87 以降。4）。ConMa 版（`CONSH_IMPL=conma`）は、今も構文木を `consh_parse`（Python）で作り、モジュールを `bin/includer` と `bin/resolver`（Python）で作る。`--conma-parser` を付ければ、構文解析は ConMa 版（`consh_parser.se`）になる。作者の方針（memo.txt の 2026-11-06）では、VM は Python 版を基準、Rust 版を製品とし、フロントエンドは製品では ConMa 版を使い、Python 版を基準として残す。当面は Python なしで動かなくてもよい。ConMa 版の ConSh から Python をなくすことは、その方針の作業（ConMa のレビューの 8）として扱う。
+* 1：作者の判断で、ConMa 版の `sh` のキーは当面このままにする。ConMa は、ほかの言語から生成することを前提とする中間言語なので、キーやフィールドの名前は、生成ツールの中の 1 か所（構造体の宣言など）から出てくる。名前の誤りは、手で書く人ではなく生成ツールの側で防ぐもので、生成ツールのテストで確かめる（レコードは、言語に足さずに ConMa から Rust への変換器の側で作った。REVIEW-ja.md の 6）。ConMa 版 ConSh は、仕様の参照実装として手で書いた例外で、製品の Rust 版は `Ctx` を構造体にしているので、名前は Rust のコンパイラが調べる。参照実装の誤りは、consh/test と、両方の版の出力の比較で見つける（段階 19 の段階 5 のエラーの照合でも、そうして違いを見つけた）。Bash も、実行の状態を C の大域変数と構造体に持ち、名前はコンパイラが調べる。文字列のキーの表を使うのは、利用者の変数名をキーにする変数の表だけで、ConSh の `"vars"` の Dict と同じである。
