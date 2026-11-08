@@ -1098,9 +1098,9 @@ fn chk_error(vp: &mut VProc, t: &Table, fid: usize, name: &str, v: &Value) -> Re
 /// the value, or None if the key is missing (the chain then applies
 /// onMissing, which it evaluates only then).
 #[inline]
-pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64) -> Result<Option<Value>, VmError> {
+pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, ic: &Ic) -> Result<Option<Value>, VmError> {
     let Value::Dict(o) = d else { return collections::dict_lookup_core(d, cref(t, fid, 1)) };
-    Ok(o.find_str_hashed(text, hash).map(|i| o.entries.borrow()[i].1.clone()))
+    Ok(o.find_str_cached(text, hash, ic).map(|i| o.entries.borrow()[i].1.clone()))
 }
 
 /// __Dict_lookup_or__ with a String key written in place, for a value that the
@@ -1108,18 +1108,18 @@ pub fn d_dict_lookup_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64
 /// without cloning it. None if d is not a Dict, the key is missing or the
 /// value is not a Boolean (the code of the Body does the lookup then).
 #[inline]
-pub fn d_dict_lookup_bool_str(d: &Value, text: &str, hash: u64) -> Option<bool> {
+pub fn d_dict_lookup_bool_str(d: &Value, text: &str, hash: u64, ic: &Ic) -> Option<bool> {
     let Value::Dict(o) = d else { return None };
-    let i = o.find_str_hashed(text, hash)?;
+    let i = o.find_str_cached(text, hash, ic)?;
     boolean_choice(&o.entries.borrow()[i].1)
 }
 
 /// __Dict_put__ with a String key written in place (operand 1 of the Body of
 /// Function fid).
 #[inline]
-pub fn d_dict_put_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, value: &Value) -> Result<(), VmError> {
+pub fn d_dict_put_str(t: &Table, fid: usize, d: &Value, text: &str, hash: u64, value: &Value, ic: &Ic) -> Result<(), VmError> {
     let Value::Dict(o) = d else { return collections::dict_put_core(d, cref(t, fid, 1).clone(), value.clone()) };
-    let found = o.find_str_hashed(text, hash);
+    let found = o.find_str_cached(text, hash, ic);
     match found {
         Some(i) => o.entries.borrow_mut()[i].1 = value.clone(),
         None => o.append(cref(t, fid, 1).clone(), value.clone()).map_err(VmError::Error)?,

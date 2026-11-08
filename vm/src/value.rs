@@ -186,6 +186,102 @@ pub struct DictObj {
     pub serial: usize,
     pub entries: RefCell<Vec<(Value, Value)>>,
     pub index: RefCell<DictIndex>,
+    /// The shape of its keys (SHAPE_EMPTY for a new Dict, SHAPE_NONE for one
+    /// that has no shape): see shape_after.
+    pub shape: Cell<u32>,
+}
+
+// ── Shapes ──
+// A Dict whose keys are all Strings, put in one after another and never
+// removed, has the shape of that sequence of keys: Dicts with the same shape
+// have each key at the same position. Transpiled code keeps, at each place
+// where it reads or writes a Dict with a String key written in place, the
+// last shape and position it found there (Ic), and finds the key without the
+// index when the shape is the same. Shapes do not change what a program does.
+
+/// No shape: a key was removed, a key is not a String, or there are too many.
+pub const SHAPE_NONE: u32 = 0;
+/// The shape of a Dict without keys.
+pub const SHAPE_EMPTY: u32 = 1;
+/// A Dict with more keys than this has no shape (a Dict used as a table).
+const SHAPE_MAX_KEYS: u32 = 64;
+/// The shapes made at most (a program that makes many tables of keys).
+const SHAPE_MAX: usize = 1 << 16;
+
+/// A shape: its number of keys, and the shape after putting in each next key
+/// (by the str_hash and the text of the key).
+struct ShapeNode {
+    keys: u32,
+    next: HashMap<u64, Vec<(Box<str>, u32)>, FxBuild>,
+}
+
+thread_local! {
+    static SHAPES: RefCell<Vec<ShapeNode>> = RefCell::new(vec![
+        ShapeNode { keys: 0, next: HashMap::default() },
+        ShapeNode { keys: 0, next: HashMap::default() },
+    ]);
+}
+
+/// The shape of a Dict of shape `shape` after a new String key `text` is put in.
+pub fn shape_after(shape: u32, text: &str, hash: u64) -> u32 {
+    if shape == SHAPE_NONE {
+        return SHAPE_NONE;
+    }
+    SHAPES.with(|shapes| {
+        let mut shapes = shapes.borrow_mut();
+        let n = shapes.len();
+        let node = &mut shapes[shape as usize];
+        if let Some(v) = node.next.get(&hash) {
+            if let Some((_, s)) = v.iter().find(|(t, _)| same_text(t, text)) {
+                return *s;
+            }
+        }
+        if node.keys >= SHAPE_MAX_KEYS || n >= SHAPE_MAX {
+            return SHAPE_NONE;
+        }
+        let keys = node.keys + 1;
+        node.next.entry(hash).or_default().push((text.into(), n as u32));
+        shapes.push(ShapeNode { keys, next: HashMap::default() });
+        n as u32
+    })
+}
+
+/// The cache of a place in transpiled code that reads or writes a Dict with a
+/// String key written in place: the last shape (high 32 bits) and the
+/// position of the key in a Dict of that shape (low 32 bits).
+pub struct Ic(Cell<u64>);
+
+// The VM runs in one thread (its values are Rc).
+unsafe impl Sync for Ic {}
+
+impl Ic {
+    pub const fn new() -> Ic {
+        Ic(Cell::new(0))
+    }
+}
+
+impl Default for Ic {
+    fn default() -> Ic {
+        Ic::new()
+    }
+}
+
+impl DictObj {
+    /// find_str_hashed through the cache of a place: the position of the key
+    /// in a Dict of the cached shape, without the index.
+    #[inline]
+    pub fn find_str_cached(&self, text: &str, hash: u64, ic: &Ic) -> Option<usize> {
+        let shape = self.shape.get();
+        let c = ic.0.get();
+        if shape != SHAPE_NONE && (c >> 32) as u32 == shape {
+            return Some(c as u32 as usize);
+        }
+        let found = self.find_str_hashed(text, hash);
+        if let (Some(i), true) = (found, shape != SHAPE_NONE) {
+            ic.0.set(((shape as u64) << 32) | i as u64);
+        }
+        found
+    }
 }
 
 /// A fast hash for the index of a Dict (Fx, as in rustc): Dicts do not need
@@ -522,11 +618,18 @@ impl DictObj {
     }
     pub fn append(&self, key: Value, value: Value) -> Result<(), String> {
         let n = self.entries.borrow().len();
-        self.index.borrow_mut().insert(index_key(&key)?, n);
+        let k = index_key(&key)?;
+        let shape = match &k {
+            IndexKey::Str(t) => shape_after(self.shape.get(), t, str_hash(t)),
+            _ => SHAPE_NONE,
+        };
+        self.shape.set(shape);
+        self.index.borrow_mut().insert(k, n);
         self.entries.borrow_mut().push((key, value));
         Ok(())
     }
     pub fn remove(&self, i: usize) -> Result<(), String> {
+        self.shape.set(SHAPE_NONE);
         self.entries.borrow_mut().remove(i);
         let mut index = DictIndex::default();
         for (i, (k, _)) in self.entries.borrow().iter().enumerate() {

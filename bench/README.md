@@ -56,6 +56,7 @@ The transpiled VM after each change, built with the transpiled code of the bench
 | a Rust call ended without `drive` and, with no continuation made in it, without looking for CFrames | 2026-11-08 | 0.29 s | 0.82 s | 0.31 s | 0.06 s | 0.81 s |
 | a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 2026-11-08 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
 | String keys in the index of a Dict by their hash, a short text compared without `memcmp` | 2026-11-08 | 0.25 s | 0.77 s | 0.31 s | 0.06 s | 0.80 s |
+| shapes of Dicts and a cache of the shape and the position of the key at each lookup with a String key written in place (records without adding them to the language) | 2026-11-08 | 0.25 s | 0.69 s | 0.32 s | 0.07 s | 0.81 s |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
 So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards (slightly faster), whose idle task computes its bit operations with arithmetic (ConMa has none).

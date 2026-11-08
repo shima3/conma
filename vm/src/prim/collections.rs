@@ -96,6 +96,7 @@ pub fn dict_new(m: &mut Machine, vp: &mut VProc) -> PResult {
         serial: m.serials.dicts,
         entries: RefCell::new(Vec::new()),
         index: RefCell::new(DictIndex::default()),
+        shape: std::cell::Cell::new(SHAPE_EMPTY),
     }));
     vp.prim_return(vec![d]);
     Ok(())
@@ -169,6 +170,7 @@ pub fn dict_copy(m: &mut Machine, vp: &mut VProc) -> PResult {
         serial: m.serials.dicts,
         entries: RefCell::new(d.entries.borrow().clone()),
         index: RefCell::new(d.index.borrow().clone()),
+        shape: std::cell::Cell::new(d.shape.get()),
     }));
     vp.prim_return(vec![c]);
     Ok(())

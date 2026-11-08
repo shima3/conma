@@ -670,19 +670,19 @@ class Fuser:
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
             if name == "__Dict_put__":
                 out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
-                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2){err};')
+                out.append(f'd_dict_put_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, a2, {{ static IC: Ic = Ic::new(); &IC }}){err};')
                 out.append("let o = Out::R0;")
                 return self.direct_result(x, d, locals_, lc, out, J)
             if one and self.use_kinds(lc, 0) == {"cond"}:
                 # a value used only as conditions: a bool, the value tested in
                 # the Dict; a missing key or a value that is not a Boolean is
                 # left to the code of this Body
-                out.append(f'let x{d}: bool = match d_dict_lookup_bool_str(a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}) {{ Some(b) => b, None => {{')
+                out.append(f'let x{d}: bool = match d_dict_lookup_bool_str(a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}) {{ Some(b) => b, None => {{')
                 self.bail(x, d, locals_, out, J, retry=True)
                 out.append("} };")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
             # the value, or onMissing applied to the key (evaluated only then)
-            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}){err} {{ Some(v) => Out::R1(v), '
+            out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}){err} {{ Some(v) => Out::R1(v), '
                        f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
             return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
