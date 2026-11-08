@@ -14,8 +14,8 @@
 //!   Ctrl-C), or the exit code when the VM has ended.
 //! * conma_input, conma_input_end, conma_interrupt: standard input and Ctrl-C;
 //!   conma_wants_input says whether a VProc found standard input empty.
-//! * conma_put_file, conma_put_unread, conma_make_dirs, conma_get_file, conma_setenv,
-//!   conma_set_cwd: the virtual file system and the environment; the VM asks
+//! * conma_put_file, conma_put_unread, conma_make_dirs, conma_get_file,
+//!   conma_list_dir, conma_setenv, conma_set_cwd: the virtual file system and the environment; the VM asks
 //!   the host for a file it lacks (host_file_needed) and for the entries of
 //!   a directory it lists for the first time (host_dir_needed).
 
@@ -369,6 +369,40 @@ pub unsafe extern "C" fn conma_get_file(ptr: *const u8, len: usize) -> i32 {
         }
         None => -1,
     }
+}
+
+/// The entries of the directory path (absolute) at conma_result_ptr, each
+/// as 'd' (a directory) or 'f' (anything else), its name and a NUL, sorted
+/// by name; or, when path is not a directory, its kind alone ('f').
+/// Returns the length, or minus the errno (ENOENT, ENOTDIR on the way).
+///
+/// # Safety
+/// ptr must point to len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn conma_list_dir(ptr: *const u8, len: usize) -> i32 {
+    let path = text(ptr, len);
+    let errno = |e: std::io::Error| -e.raw_os_error().unwrap_or(1);
+    let out = match sys::is_dir(&path) {
+        Err(e) => return errno(e),
+        Ok(false) => b"f".to_vec(),
+        Ok(true) => {
+            let names = match sys::read_dir(&path) {
+                Ok(n) => n,
+                Err(e) => return errno(e),
+            };
+            let base = if path.ends_with('/') { path.clone() } else { format!("{}/", path) };
+            let mut out = Vec::new();
+            for n in names {
+                out.push(if sys::is_dir(&format!("{}{}", base, n)).unwrap_or(false) { b'd' } else { b'f' });
+                out.extend_from_slice(n.as_bytes());
+                out.push(0);
+            }
+            out
+        }
+    };
+    let n = out.len() as i32;
+    RESULT.with(|r| *r.borrow_mut() = out);
+    n
 }
 
 #[no_mangle]

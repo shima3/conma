@@ -21,7 +21,7 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory consh/js/web
 
 http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。
 
-* 外部コマンドはない。JavaScript で作った `cat`（`web/consh.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、ConSh の PLAN-ja.md の 1.2）。`cat` は、引数のファイル（仮想ファイルシステム）か標準入力を、標準出力に書く。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。
+* 外部コマンドはない。JavaScript で作った `cat`、`pwd`、`ls`（`web/consh.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、ConSh の PLAN-ja.md の 1.2）。`cat` は、引数のファイル（仮想ファイルシステム）か標準入力を、標準出力に書く。`pwd` は、カレントディレクトリを出す（`-L` と `-P` は同じ）。`ls [-1AadF] [file ...]` は、名前を 1 行に 1 つ出す。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。
 * `cat` などが端末から読んでいる間は、入力欄の行はそのコマンドに渡り、Ctrl+D はそのコマンドの入力だけを終える（`cat > hoge.txt` で書いて Ctrl+D、ConSh は続く）。Ctrl+C はそのコマンドを止める（`$?` は 130）。ConSh 自身が入力を読んでいるときの Ctrl+D は、ネイティブ版と同じく ConSh の標準入力を終えるので、ConSh も終わる。
 * カレントディレクトリは `/home/user` で、ファイルはメモリ上の仮想ファイルシステムにある（ページを閉じると消える）。ページを開くと、`web/` の `names.txt`（`web/consh.js` の `HOME_FILES` に書いたファイル）をそこに置く。「ファイルを置く」で手元のファイルも置ける。
 * 「スクリプトを実行」は、スクリプトの各行を入力として渡す（ConMa 版には `source` がない）。

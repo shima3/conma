@@ -7,7 +7,7 @@
 // "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
 // standard input, as if they were typed (the ConMa version of ConSh has no source).
 //
-// The commands of COMMANDS, written in JavaScript (cat), are builtin commands of ConSh: the page
+// The commands of COMMANDS, written in JavaScript (cat, pwd, ls), are builtin commands of ConSh: the page
 // names them in CONSH_HOST_BUILTINS, and ConSh starts each as the process builtin:<name> (hostProc),
 // which reads and writes the standard input, output and error that ConSh gives it, as a real process
 // does. There are no external commands. While one reads the terminal, the lines typed go to it instead of
@@ -68,6 +68,66 @@
         }
         if (!io.write(1, data)) return -13;
       }
+      return status;
+    },
+    // pwd [-L | -P]: the current directory (that of ConSh) to standard output; the virtual file
+    // system has no symbolic links, so -L and -P give the same
+    pwd: async (io, args) => {
+      for (const a of args) {
+        if (a !== "-L" && a !== "-P") {
+          const msg = a.startsWith("-") ? "pwd: illegal option -- " + a.slice(1, 2) + "\n" : "pwd: too many arguments\n";
+          io.write(2, ConMaVM.utf8(msg + "usage: pwd [-L | -P]\n"));
+          return 1;
+        }
+      }
+      return io.write(1, ConMaVM.utf8(io.cwd + "\n")) ? 0 : -13;
+    },
+    // ls [-1AadF] [file ...]: the names of the files, and the entries of the directories (of the current
+    // directory with no file), one in a line (as ls does when its output is not a terminal), sorted
+    // by name; -a also . and .. and the names beginning with ., -A those names alone, -d the
+    // directories themselves, -F a / after directories
+    ls: async (io, args) => {
+      const opt = { a: false, A: false, d: false, F: false };
+      let i = 0;
+      for (; i < args.length && args[i].startsWith("-") && args[i] !== "-"; i++) {
+        if (args[i] === "--") {
+          i++;
+          break;
+        }
+        for (const c of args[i].slice(1)) {
+          if (c in opt) opt[c] = true;
+          else if (c !== "1") {
+            io.write(2, ConMaVM.utf8("ls: invalid option -- " + c + "\nusage: ls [-1AadF] [file ...]\n"));
+            return 1;
+          }
+        }
+      }
+      const names = args.length > i ? args.slice(i) : ["."];
+      const mark = (name, dir) => (opt.F && dir ? name + "/" : name);
+      let status = 0;
+      const files = [];
+      const dirs = [];
+      for (const name of names) {
+        const r = vm.listDir(name.startsWith("/") ? name : io.cwd + "/" + name);
+        if (typeof r === "number") {
+          const msg = r === -20 ? "Not a directory" : "No such file or directory";
+          io.write(2, ConMaVM.utf8("ls: " + name + ": " + msg + "\n"));
+          status = 1;
+        } else if (r.dir && !opt.d) dirs.push([name, r.entries]);
+        else files.push(mark(name, r.dir));
+      }
+      const byName = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+      const lines = files.sort(byName);
+      dirs.sort((x, y) => byName(x[0], y[0]));
+      for (const [name, entries] of dirs) {
+        if (names.length > 1) {
+          if (lines.length > 0) lines.push("");
+          lines.push(name + ":");
+        }
+        if (opt.a) lines.push(mark(".", true), mark("..", true));
+        for (const e of entries) if (opt.a || opt.A || !e.name.startsWith(".")) lines.push(mark(e.name, e.dir));
+      }
+      if (lines.length > 0 && !io.write(1, ConMaVM.utf8(lines.join("\n") + "\n"))) return -13;
       return status;
     },
   };
@@ -218,7 +278,7 @@
   }
   status.textContent = "動作中";
   show(
-    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。cat は JavaScript で作った組み込みコマンドです。例:\n" +
+    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。cat、pwd、ls は JavaScript で作った組み込みコマンドです。例:\n" +
       '  function greet (. names) { for n in $names; do echo "hello, $n"; done }\n' +
       "  greet $(cat < names.txt)\n",
     "n"
