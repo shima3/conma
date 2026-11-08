@@ -1,25 +1,24 @@
-# consh/include：ConMa 版 ConSh の高速版
+# consh/include：ConMa 版 ConSh（高速版）
 
 ConMa 版の ConSh には、2 つの版がある。
 
-* **参照版**（`consh/reference`）：仕様の参照実装。読みやすさを優先して書く。
-* **高速版**（このフォルダ）：参照版のうち、速くするために書き直したファイルだけを置く。
+* **高速版**（このフォルダ）：ConMa 版のすべてのファイル。ふだん使い（`CONSH_IMPL=conma`）、機能もここに足す。
+* **参照版**：仕様の参照実装。速くするために書き直したファイルについては、書き直す前のもの（読みやすさを優先したもの）を `consh/reference` に残す（`consh/reference/README-ja.md`）。
 
-高速版は、このフォルダ、`consh/reference` の順に include ディレクトリを指定して作る（`--include consh/include --include consh/reference`）。
-include は、include ディレクトリを指定の順に探すので（docs/INCLUDER.md）、このフォルダにあるファイルは、どのファイルから include されても、`consh/reference` の同じ名前のファイルの代わりになる。
-ここにないファイルは `consh/reference` のものを使う。最初のファイル（`consh_main.se`）も、ここになければ `consh/reference` のものを使う。
+参照版は、`consh/reference`、このフォルダの順に include ディレクトリを指定して作る（`--include consh/reference --include consh/include`）。
+include は、include ディレクトリを指定の順に探すので（docs/INCLUDER.md）、`consh/reference` にあるファイルは、どのファイルから include されても、このフォルダの同じ名前のファイルの代わりになる。
+標準ライブラリも同じ形で、参照版は、リポジトリのルートの `reference`（書き直す前の `util.se` など）を `include` より先に探す。
 
 `bin/consh` は、`CONSH_IMPL=conma` で高速版、`CONSH_IMPL=reference` で参照版を動かす（既定は Rust 版）。
 
-* 機能を足したり変えたりしたときは、参照版を直し、ここにあるファイルにも同じ変更をして、両方でテストする
-  （`CONSH_IMPL=conma` と `CONSH_IMPL=reference` で `consh/test/run_all.sh`）。
-* 速くしただけ（動きは変えない）なら、高速版のテストだけでよい。
+* 機能を足したり変えたりしたときは、このフォルダのファイルを直し、`consh/reference` に同じ名前のファイルがあれば、それにも同じ変更をして、両方でテストする（`CONSH_IMPL=conma` と `CONSH_IMPL=reference` で `consh/test/run_all.sh`）。
+* 速くしただけ（動きは変えない）なら、高速版のテストだけでよい。そのファイルが `consh/reference` になければ、書き直す前のものをそこに写しておく。
 
-ここにファイルを書き写すときは、参照版のどの部分をどう速くしたかを、そのファイルの先頭に書く。
+速くするために書き直したファイルには、どの部分をどう速くしたかを、その先頭に書く。
 
 ## 今の高速版
 
-`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（各ファイルの先頭にも書いてある）。動きは変えていない（consh/test が高速版と参照版の両方で通り、下のスクリプトの出力も同じ）。
+`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（書き直す前のものは `consh/reference` にある）（各ファイルの先頭にも書いてある）。動きは変えていない（consh/test が高速版と参照版の両方で通り、下のスクリプトの出力も同じ）。
 
 * `Sh_get sh "key"` を `__Dict_lookup_or__ sh "key" __print_exit_error__` に、`num s` を `__Number_fromString__ __print_exit_error__ s` にした（関数の呼び出しを 1 つ減らす）。
 * 条件が組み込み 1 つの関数（`__if__ (,() __is_null__ x) ...`）を、先に計算して渡す形（`__is_null__ x ,(test__) __if__ test__ ...`）にした（条件の関数を作って呼ぶ分を減らす）。

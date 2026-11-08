@@ -6,12 +6,13 @@
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
 #                 作っていなければ、そう出して ConMa 版で実行する
-#   conma         ConMa 版の高速版：consh/include のファイルを consh/reference の同じ名前のファイルの代わりに使う
-#                 （consh/include/README-ja.md）。スクリプトは ConMa 版の構文解析（consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
+#   conma         ConMa 版の高速版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
+#                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
 #                 （test/vm.sh。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
-#   reference     ConMa 版の参照版（仕様の参照実装、consh/reference だけ）。ほかは conma と同じ
+#   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
+#                 reference）を、高速版の同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。ほかは conma と同じ
 # --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（高速版）で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
 # Tab でファイル名を補完する（rlwrap -c。Rust 版は cd した先を、rlwrap が見るプロセスのカレントディレクトリにもする）
@@ -76,19 +77,20 @@ if [ -n "$interactive" ] && [ -n "$rust" ]; then
 fi
 # ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
-# ConSh の include ディレクトリ：高速版は consh/include を consh/reference より先に探す（同じ名前のファイルの代わりになる）。
-# 参照版は consh/reference だけ。最初のファイル consh_main.se も、高速版は consh/include にあればそれを使う
+# include ディレクトリ：高速版は consh/include と標準ライブラリの include。参照版は、consh/reference と標準ライブラリの
+# reference を先に探す（そこにある、書き直す前のファイルが、同じ名前のファイルの代わりになる）。
+# 最初のファイル consh_main.se も、参照版は consh/reference にあればそれを使う
 dir="${CONSH_MODULE_DIR:-/tmp}"
 if [ $impl = reference ]; then
-  dirs=("$consh/reference")
+  dirs=("$consh/reference" "$consh/include" "$root/reference" "$root/include")
   name=consh.reference
 else
-  dirs=("$consh/include" "$consh/reference")
+  dirs=("$consh/include" "$root/include")
   name=consh
 fi
 module="$dir/$name.module.se"
-main="$consh/reference/consh_main.se"
-[ $impl != reference ] && [ -f "$consh/include/consh_main.se" ] && main="$consh/include/consh_main.se"
+main="$consh/include/consh_main.se"
+[ $impl = reference ] && [ -f "$consh/reference/consh_main.se" ] && main="$consh/reference/consh_main.se"
 if [ -n "$CONSH_CONMA_DATA" ]; then
   module="$dir/$name.data.module.se"
   main="$dir/${name}_data_main.se"
@@ -103,13 +105,13 @@ conma="$root/vm/target/release/conma"
 # リポジトリの上のディレクトリ（実際のパス。フロントエンドはファイル名を実際のパスで書く）
 above="$(cd "$root/.."; pwd -P)"
 incs=()
-for d in "${dirs[@]}" "$root/include"; do incs+=(--include "$d"); done
+for d in "${dirs[@]}"; do incs+=(--include "$d"); done
 # モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
 # （フロントエンドが変わると、同じソースから違うモジュールができる。インクルードディレクトリを探す順など）
 if [ -x "$conma" ]; then frontend=("$conma"); else frontend=("$root/bin"); fi
 # ソースかフロントエンドがモジュールより新しければ、作り直す
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    [ -n "$(find "${frontend[@]}" -type f -newer "$module")" ]; then
   ast_tmp=$(mktemp "${module%.module.se}.ast.XXXXXX") || exit 1
   module_tmp=$(mktemp "$module.XXXXXX") || { rm -f "$ast_tmp"; exit 1; }

@@ -1,0 +1,659 @@
+(include "pure.se")
+
+(define __PDict_lookup_or_error__ ,(key)
+  __PDict_lookup_or__ key (,(key)
+    __OS_print_error__ "not found key: " ,()
+    __OS_print_error__ key ,()
+    __OS_print_error__ "\n" ,()
+    __OS_exit_error__))
+
+(define __exit__ ,(String)
+  __PDict_lookup_or_error__ "__EXIT__" ,(exit)
+  exit String)
+
+;; 標準入力の、まだ読んでいない行の LazyList。読み出し位置は進めない
+(define stdin ,()
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position)
+
+;; 標準入力の次の行を返し、読み出し位置を進める。読んだ行は、ほかから参照されていなければ回収される。
+;; 残りがなければ onEmpty を呼ぶ（__LazyList_uncons__ と同じく、__stdin_read__ の中の継続で）
+(define __stdin_read__ ,(onEmpty)
+  __PDict_lookup_or_error__ "__STD_IN__" ,(position)
+  __Ref_get__ position ,(lazyList)
+  __LazyList_uncons__ onEmpty lazyList ,(line rest)
+  __Ref_set__ position rest ,()
+  __NULL__ line)
+
+(define stdout ,()
+  __PDict_lookup_or_error__ "__STD_OUT__")
+
+(define stderr ,()
+  __PDict_lookup_or_error__ "__STD_ERR__")
+
+(define __CChain_pop_LCont__ ,()
+  __CChain_pop_CFrame__ ,(cf)
+  __CChain_pop_CFrame__ ,(cf2)
+  __CFrame_get_Closure__ cf ,(lc)
+  __CFrame_get_Closure__ cf2 ,(lc2)
+  lc lc2)
+
+;; __nop__ と同様に何も実行しない関数
+;; LCont を明示的に取得し、呼び出す点が __nop__ と異なる。
+(define __noop__ ,()
+  __CChain_pop_LCont__ ,(lc)
+  lc)
+
+(define __print__ ,(str)
+  __CChain_pop_LCont__ ,(lc)
+  stdout str "\n" ,(out)
+  lc)
+
+(define __print_exit_error__ ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_exit_error__)
+
+;; __Cont_get__ は VM の組み込み（PRIMITIVES.md）。同じ働きの ConMa 版は control.se にあり、
+;; control.se を include すると、組み込みの代わりにそれが使われる
+
+;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
+;; in は標準入力の行の LazyList。PDict には、その読み出し位置の Ref を置く。
+;; __main__ の継続が in を参照し続けると、読み終えた行が回収されないので、
+;; Ref を作ったら、in を受け取らない __main_run__ に移る
+(define __main__ ,(err args in out)
+  __Ref_new__ in ,(position)
+  __main_run__ err args position out)
+
+;; err, 標準入力の読み出し位置, out と終了用の継続を PDict に登録してから、利用者が定義する main を args に適用する。
+(define __main_run__ ,(err args position out)
+  __Cont_get__ ,(exit)
+  __PDict_put__ "__EXIT__" exit ,()
+  __PDict_put__ "__STD_IN__" position ,()
+  __PDict_put__ "__STD_OUT__" out ,()
+  __PDict_put__ "__STD_ERR__" err ,()
+  main args ,()
+  exit "")
+
+;; ── 標準入出力 ──
+
+;; output Stream に value を書き込み、続けて書き込む Sink を返す
+(define __Stream_sink__ ,(stream value)
+  __OS_write__ __print_exit_error__ stream value ,()
+  __NULL__ (,(value) __Stream_sink__ stream value))
+
+;; 行の読み込み（__Stream_lines__ と __LazyList_lines__）。
+;; buf は読んだがまだ行にしていない文字列で、その前には改行がない。改行が来ていない行の途中は、
+;; 読んだ塊ごとの断片の逆順の LList（pieces）に持ち、改行が来たときに1回だけつなぐ（__Lines_join__）。
+;; ConMa の String は、__String_find__ なども長さに比例する時間がかかるので、改行は新しく読んだ塊の中だけで探す。
+;; 塊を読むたびに行の途中全体をつないで探すと、長い1行で長さの2乗の時間がかかる
+
+;; input Stream を EOF まで読み、1行ずつ（改行を含めて）sink に渡す Seq。
+;; 最後の行に改行がなければ、改行なしで渡す。最後の Sink を返す。
+;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
+(define __Stream_lines__ ,(stream sink)
+  __Stream_lines_read__ stream __NULL__ sink)
+
+;; 塊を読み、行に分ける。pieces は、改行が来ていない行の途中の断片
+(define __Stream_lines_read__ ,(stream pieces sink)
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __if_then_else__ (,() __is_null__ data)
+    (,()
+      __if_then_else__ (,() __is_null__ pieces)
+        (,() __NULL__ sink)
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          sink line))
+    (,()
+      __String_length__ data ,(dataLen)
+      __if_then_else__ (,() __Number_is_zero__ dataLen)
+        (,()
+          __OS_wait_readable__ __print_exit_error__ stream ,()
+          __Stream_lines_read__ stream pieces sink)
+        (,() __Stream_lines_scan__ stream data pieces sink)))
+
+;; buf から改行を探し、見つかれば行を sink に渡して続きを探す。なければ buf を断片に加えて読み足す
+(define __Stream_lines_scan__ ,(stream buf pieces sink)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ buf "\n" zero ,(pos)
+  __if_then_else__ (,() __is_null__ pos)
+    (,()
+      __Lines_add_piece__ pieces buf ,(pieces)
+      __Stream_lines_read__ stream pieces sink)
+    (,()
+      __String_length__ buf ,(len)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ pos one ,(next)
+      __String_substring__ __print_exit_error__ buf zero next ,(head)
+      __String_substring__ __print_exit_error__ buf next len ,(rest)
+      __Lines_join__ pieces head ,(line)
+      sink line ,(sink)
+      __Stream_lines_scan__ stream rest __NULL__ sink))
+
+;; input Stream の行（改行を含む）の LazyList。最後の行に改行がなければ、改行なしの要素にする。
+;; Stream は、LazyList をたどったときに必要な分だけ読む。
+;; データがまだ来ていなければ、来るまで待つ（ほかの VProc は動き続ける）
+(define __LazyList_lines__ ,(stream)
+  __LazyList_lines_from__ stream "")
+
+;; buf は、読んだがまだ要素にしていない文字列
+(define __LazyList_lines_from__ ,(stream buf)
+  __LazyList_new__ (,() __LazyList_lines_scan__ stream buf __NULL__))
+
+;; buf から改行を探す。見つかれば、断片とそこまでを最初の要素にし、残りを tail の buf にする。
+;; 見つからなければ、buf を断片に加えて読み足す
+(define __LazyList_lines_scan__ ,(stream buf pieces)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ buf "\n" zero ,(pos)
+  __is_null__ pos ,(condition)
+  __if_then_else__ condition
+    (,()
+      __Lines_add_piece__ pieces buf ,(pieces)
+      __LazyList_lines_read__ stream pieces)
+    (,()
+      __String_length__ buf ,(len)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ pos one ,(next)
+      __String_substring__ __print_exit_error__ buf zero next ,(head)
+      __String_substring__ __print_exit_error__ buf next len ,(rest)
+      __Lines_join__ pieces head ,(line)
+      __LazyList_lines_from__ stream rest ,(tail)
+      __LazyList_cons__ line tail))
+
+;; Stream から塊を読み足して続きを探す。EOF なら、行の途中があれば最後の要素にする
+(define __LazyList_lines_read__ ,(stream pieces)
+  __OS_read__ __print_exit_error__ stream ,(data)
+  __is_null__ data ,(condition)
+  __if_then_else__ condition
+    (,()
+      __LazyList_empty__ ,(empty)
+      __is_null__ pieces ,(condition)
+      __if_then_else__ condition
+        (,() __NULL__ empty)
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          __LazyList_cons__ line empty))
+    (,()
+      __String_length__ data ,(dataLen)
+      __Number_is_zero__ dataLen ,(condition)
+      __if_then_else__ condition
+        (,()
+          __OS_wait_readable__ __print_exit_error__ stream ,()
+          __LazyList_lines_read__ stream pieces)
+        (,() __LazyList_lines_scan__ stream data pieces)))
+
+;; 空でない断片を、逆順の LList の先頭に加える
+(define __Lines_add_piece__ ,(pieces piece)
+  __String_length__ piece ,(len)
+  __Number_is_zero__ len ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ pieces)
+    (,() __LList_cons__ piece pieces))
+
+;; 逆順の断片 pieces の後ろに last をつないだ String。断片がなければ last のまま。
+;; 半分ずつつなぐので、つなぐ手間は全体の長さ × log(断片の数) になる
+(define __Lines_join__ ,(pieces last)
+  __is_null__ pieces ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ last)
+    (,()
+      __LList_cons__ last pieces ,(all)
+      __Lines_reverse__ all __NULL__ ,(ordered)
+      __Lines_concat__ ordered))
+
+(define __Lines_reverse__ ,(list acc)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(head tail)
+      __LList_cons__ head acc ,(acc)
+      __Lines_reverse__ tail acc))
+
+;; String の LList をつなぐ。2つずつつなぐことを、1つになるまで繰り返す
+(define __Lines_concat__ ,(list)
+  __LList_uncons__ __print_exit_error__ list ,(head tail)
+  __is_null__ tail ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ head)
+    (,()
+      __Lines_pairs__ list ,(paired)
+      __Lines_concat__ paired))
+
+(define __Lines_pairs__ ,(list)
+  __is_null__ list ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ list ,(a rest)
+      __is_null__ rest ,(condition)
+      __if_then_else__ condition
+        (,() __LList_cons__ a __NULL__)
+        (,()
+          __LList_uncons__ __print_exit_error__ rest ,(b more)
+          __String_concat__ a b ,(ab)
+          __Lines_pairs__ more ,(paired)
+          __LList_cons__ ab paired)))
+
+;; output Stream に書き込む Sink。Closure は stream だけを参照する
+(define __Stream_newSink__ ,(stream)
+  __NULL__ (,(value) __Stream_sink__ stream value))
+
+;; インタプリタが最初の VProc を起動する入口（vproc_run.py --main）。
+;; 標準入出力の Stream から err, in, out を作り、__main__ を呼ぶ。in は標準入力の行の LazyList。
+;; err と out の Sink は __Stream_newSink__ で作る。ここで Closure を作ると、その LVEnv が in を参照し、
+;; PDict に置いた Sink を通して、読み終えた行が回収されなくなる
+(define __start__ ,(args)
+  __OS_get_stderr__ ,(errStream)
+  __OS_get_stdin__ ,(inStream)
+  __OS_get_stdout__ ,(outStream)
+  __Stream_newSink__ errStream ,(err)
+  __Stream_newSink__ outStream ,(out)
+  __LazyList_lines__ inStream ,(in)
+  __main__ err args in out)
+
+;; ── Seq ──
+
+;; Seq の最初の要素 first と、残りの Seq rest を返す。Seq が空なら onEmpty を呼ぶ。
+;; sink が first を受け取ったとき、Seq の残りの処理は、CChain のうち Seq の適用の LCont（下の ,(sink) ...）より上にある。
+;;   ・余ったオペランドとして積まれた Seq Closure（要素をまとめて渡す Seq）
+;;   ・sink の適用の LCont（要素を1つずつ渡す Seq の続き）
+;;   ・その下に、Seq の中で LCont を付けて呼ばれた関数の LCont（Seq を組み合わせて作ったとき）
+;; これらの CFrame をすべて取り出しておき、rest を sink に適用したときに、そのときの CChain の上に積み直す。
+;; 積み直した CChain の先頭の LCont に sink を返すと、Seq の続きが新しい sink で動き、最後に rest の呼び出し元に戻る。
+;; 最後の要素の後は取り出す CFrame がないので、rest は sink をそのまま返し、空の Seq として働く。
+;; Seq が空なら sink は呼ばれず、Seq は sink をそのまま LCont に返すので onEmpty を呼ぶ
+(define __Seq_get__ ,(onEmpty Seq)
+  __Cont_get__ ,(return)
+  __CChain_get__ ,(outer)
+  __LList_length__ outer ,(outerLen)
+  Seq (,(first)
+        __CChain_get__ ,(inner)
+        __LList_length__ inner ,(innerLen)
+        __Number_subtract__ innerLen outerLen ,(n)
+        __Number_fromString__ __print_exit_error__ "1" ,(one)
+        __Number_subtract__ n one ,(n)
+        __Seq_take_CFrames__ n inner __NULL__ ,(frames)
+        return first (,(sink)
+          __CChain_get__ ,(chain)
+          __Seq_push_CFrames__ frames chain ,(chain)
+          __CChain_set__ chain ,()
+          __NULL__ sink)) ,(sink)
+  onEmpty)
+
+;; chain の先頭から n 個の CFrame を取り出し、逆順にして acc の前に積んだ LList を返す
+(define __Seq_take_CFrames__ ,(n chain acc)
+  __Number_is_zero__ n ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ chain ,(cf chain)
+      __LList_cons__ cf acc ,(acc)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_subtract__ n one ,(n)
+      __Seq_take_CFrames__ n chain acc))
+
+;; __Seq_take_CFrames__ が返した frames を chain の上に積み直す（最後の CFrame が先頭になる）
+(define __Seq_push_CFrames__ ,(frames chain)
+  __is_null__ frames ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ chain)
+    (,()
+      __LList_uncons__ __print_exit_error__ frames ,(cf frames)
+      __LList_cons__ cf chain ,(chain)
+      __Seq_push_CFrames__ frames chain))
+
+;; Seq の要素を順に __OS_print__ で出力する
+(define __Seq_print__ ,(seq)
+  __Cont_get__ ,(return)
+  __Seq_get__ return seq ,(str rest)
+  __OS_print__ str ,()
+  __Seq_print__ rest)
+
+;; ── LazyList ──
+
+;; LazyList は、要素を必要になったときに1度だけ計算するリスト。Ref で表し、中身は次のどれか。
+;;   ・Closure: まだ評価していないサンク。引数なしで適用すると LazyList を返す
+;;   ・null: 評価済みの空リスト
+;;   ・LList: 評価済みのセル。head が要素、tail が残りの LazyList
+;;   ・VProc: その VProc が評価中であること（または値をまだ持たないこと）の印
+;; 評価した結果を Ref に書き戻す（メモ化）ので、何度たどってもサンクは1度しか実行されない。
+;; 印の読み書きはプリミティブ __LazyList_claim__ と __LazyList_publish__ が1ステップで行うので、
+;; 同じ LazyList を複数の VProc から評価してもよい。ほかの VProc が評価中なら、それが終わるまで待つ。
+;; サンクの途中で継続によって評価を抜けた LazyList は、次に評価するときにサンクをもう一度実行する
+
+;; サンク thunk の LazyList。thunk は最初に評価されるときに1度だけ適用される
+(define __LazyList_new__ ,(thunk)
+  __Ref_new__ thunk)
+
+;; 評価済みの空の LazyList
+(define __LazyList_empty__ ,()
+  __Ref_new__ __NULL__)
+
+;; 評価済みのセル。head が最初の要素、tail（LazyList）が残り
+(define __LazyList_cons__ ,(head tail)
+  __LList_cons__ head tail ,(cell)
+  __Ref_new__ cell)
+
+;; LazyList を評価し、セル（空なら null、そうでなければ LList）を返す。
+;; __LazyList_claim__ がサンクを返したら、それを適用し、サンクが返した LazyList も評価して、
+;; そのセルを __LazyList_publish__ で書き戻す。
+;; 自分自身に依存する LazyList や、評価中の VProc が評価せずに終わった LazyList は、エラーで終える。
+;; claim は __LazyList_force_claim__ の中で行い、その LCont が CChain に残っている間を評価中とする
+;; （CChain が空のときに claim しても、評価を抜けたことがわかるように）
+(define __LazyList_force__ ,(lazyList)
+  __LazyList_force_claim__ lazyList ,(cell)
+  __NULL__ cell)
+
+(define __LazyList_force_claim__ ,(lazyList)
+  __LazyList_claim__ __LazyList_error__ lazyList ,(thunk cell)
+  __is_null__ thunk ,(condition)
+  __if_then_else__ condition
+    (,() __NULL__ cell)
+    (,()
+      thunk ,(result)
+      __LazyList_force__ result ,(cell)
+      __LazyList_publish__ lazyList cell ,()
+      __NULL__ cell))
+
+(define __LazyList_error__ ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)
+
+;; LazyList の最初の要素 head と、残りの LazyList tail を返す。
+;; 空なら onEmpty を呼ぶ（__Seq_get__ と同じく、__LazyList_uncons__ の継続で）
+(define __LazyList_uncons__ ,(onEmpty lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __is_null__ cell ,(condition)
+  __if_then_else__ condition
+    onEmpty
+    (,() __LList_uncons__ __print_exit_error__ cell))
+
+;; LazyList が空なら __TRUE__
+(define __LazyList_is_empty__ ,(lazyList)
+  __LazyList_force__ lazyList ,(cell)
+  __is_null__ cell)
+
+;; Seq の要素の LazyList。Seq の要素は、LazyList をたどったときに1つずつ取り出す
+(define __LazyList_fromSeq__ ,(seq)
+  __LazyList_new__ (,()
+    __Cont_get__ ,(return)
+    __Seq_get__ (,() __LazyList_empty__ ,(empty) return empty) seq ,(first rest)
+    __LazyList_fromSeq__ rest ,(tail)
+    __LazyList_cons__ first tail))
+
+;; LazyList の要素を順に Sink に渡す Seq
+(define __LazyList_toSeq__ ,(lazyList)
+  __NULL__ (,(sink) __LazyList_toSeq_loop__ lazyList sink))
+
+(define __LazyList_toSeq_loop__ ,(lazyList sink)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return sink) lazyList ,(head tail)
+  sink head ,(sink)
+  __LazyList_toSeq_loop__ tail sink)
+
+;; Sink に書いた値が、書いた順に要素として届く LazyList（パイプ）。
+;; lazyList と、値を書く sink と、終わりを書く close と、読み手が使う cancel を返す。
+;;
+;; 書き手は、読み手がまだ求めていない要素を capacity 個まで先に書ける。
+;; それより先に書こうとすると、読み手が次の要素を求めるか cancel するまで sink の中で待つ。
+;; cancel した後に sink に書くと、LazyList をそこで終わらせ（close と同じ）、
+;; sink の継続で onClosed を呼ぶ（SIGPIPE に当たる）。
+;;
+;; 要素 k の位置の LazyList（outer）はサンクを持ち、読み手がそれを評価すると、
+;; 求められたことを書き手に知らせてから、書き手が __LazyList_hold__ で作った inner を返す。
+;; 書き手は値を書くたびに、inner に (値 . 次の outer) を __LazyList_publish__ する。close は inner に null を書く。
+;; このため、sink と close は __LazyList_pipe__ を呼んだ VProc で使う（ほかの VProc では publish がエラーになる）。
+;; close せずにこの VProc が終わると、末尾を評価しようとした VProc はエラーになる。
+;;
+;; 書き手の状態:
+;;   stateRef     読み手が要素を求めたり cancel したりするたびに、新しい値に変わる（書き手はこれを待つ）
+;;   cancelledRef cancel されたら __TRUE__
+;;   tailRef      次に publish する inner（close の後は null）
+;;   queueRef     まだ評価されていない outer の待ち行列の先頭のレコード（空なら null）
+;;   lastRef      待ち行列の末尾のレコード
+;;   countRef     待ち行列の outer の数
+;; レコードは LList で、head が outer、tail が次のレコードを入れる Ref
+(define __LazyList_pipe__ ,(capacity onClosed)
+  __Ref_new__ __NULL__ ,(stateRef)
+  __Ref_new__ __FALSE__ ,(cancelledRef)
+  __LazyList_hold__ ,(inner)
+  __Ref_new__ inner ,(tailRef)
+  __Ref_new__ __NULL__ ,(queueRef)
+  __Ref_new__ __NULL__ ,(lastRef)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(countRef)
+  __LazyList_pipe_outer__ stateRef inner queueRef lastRef countRef ,(lazyList)
+  __LazyList_pipe_sink__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef ,(sink)
+  __LazyList_pipe_closer__ tailRef ,(close)
+  __LazyList_pipe_canceller__ stateRef cancelledRef ,(cancel)
+  __NULL__ lazyList sink close cancel)
+
+;; inner の前の outer を作り、待ち行列の末尾に加える。
+;; サンクは、stateRef を新しい値にして書き手を起こしてから inner を返す
+(define __LazyList_pipe_outer__ ,(stateRef inner queueRef lastRef countRef)
+  __LazyList_new__ (,()
+    __Ref_new__ __NULL__ ,(token)
+    __Ref_set__ stateRef token ,()
+    __NULL__ inner) ,(outer)
+  __Ref_new__ __NULL__ ,(nextRef)
+  __LList_cons__ outer nextRef ,(record)
+  __Ref_get__ queueRef ,(first)
+  __if_then_else__ (,() __is_null__ first)
+    (,() __Ref_set__ queueRef record)
+    (,()
+      __Ref_get__ lastRef ,(last)
+      __LList_uncons__ __print_exit_error__ last ,(lastOuter lastNextRef)
+      __Ref_set__ lastNextRef record) ,()
+  __Ref_set__ lastRef record ,()
+  __Ref_get__ countRef ,(count)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ count one ,(count)
+  __Ref_set__ countRef count ,()
+  __NULL__ outer)
+
+;; Closure は、それぞれ必要な Ref だけを参照する（lazyList を参照すると、読んだ要素が回収されない）
+(define __LazyList_pipe_sink__ ,(capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef)
+  __NULL__ (,(value)
+    __LazyList_pipe_write__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef value))
+
+(define __LazyList_pipe_closer__ ,(tailRef)
+  __NULL__ (,() __LazyList_pipe_close__ tailRef))
+
+(define __LazyList_pipe_canceller__ ,(stateRef cancelledRef)
+  __NULL__ (,()
+    __Ref_set__ cancelledRef __TRUE__ ,()
+    __Ref_new__ __NULL__ ,(token)
+    __Ref_set__ stateRef token))
+
+;; 書けるようになるまで待ってから value を書き、次の Sink を返す。cancel されていれば onClosed
+(define __LazyList_pipe_write__ ,(capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef value)
+  __LazyList_pipe_wait__ capacity stateRef cancelledRef queueRef countRef ,(cancelled)
+  __if_then_else__ cancelled
+    (,()
+      __LazyList_pipe_close__ tailRef ,()
+      onClosed)
+    (,()
+      __Ref_get__ tailRef ,(tail)
+      __LazyList_hold__ ,(inner)
+      __Ref_set__ tailRef inner ,()
+      __LazyList_pipe_outer__ stateRef inner queueRef lastRef countRef ,(outer)
+      __LList_cons__ value outer ,(cell)
+      __LazyList_publish__ tail cell ,()
+      __LazyList_pipe_sink__ capacity onClosed stateRef cancelledRef tailRef queueRef lastRef countRef))
+
+;; 待ち行列の outer が capacity 個以下になるまで待つ。評価され始めた outer は先頭から取り除く。
+;; cancel されていれば __TRUE__、書けるようになったら __FALSE__ を返す。
+;; stateRef を先に読むので、読んだ後に要素が求められても、__Ref_wait_change__ はすぐに戻る
+(define __LazyList_pipe_wait__ ,(capacity stateRef cancelledRef queueRef countRef)
+  __Ref_get__ stateRef ,(state)
+  __Ref_get__ cancelledRef ,(cancelled)
+  __Ref_get__ countRef ,(count)
+  __Number_subtract__ capacity count ,(room)
+  __Number_is_negative__ room ,(full)
+  __if_then_else__ cancelled
+    (,() __NULL__ __TRUE__) (,()
+  __if_then_else__ full
+    (,()
+      __Ref_get__ queueRef ,(record)
+      __LList_uncons__ __print_exit_error__ record ,(outer nextRef)
+      __Ref_get__ outer ,(content)
+      __type_name__ content ,(type)
+      __if_then_else__ (,() __String_equal__ type "Closure")
+        (,() __Ref_wait_change__ stateRef state)
+        (,()
+          __Ref_get__ nextRef ,(next)
+          __Ref_set__ queueRef next ,()
+          __Number_fromString__ __print_exit_error__ "1" ,(one)
+          __Number_subtract__ count one ,(count)
+          __Ref_set__ countRef count) ,()
+      __LazyList_pipe_wait__ capacity stateRef cancelledRef queueRef countRef)
+    (,() __NULL__ __FALSE__)))
+
+;; LazyList を終わらせる。close した後や cancel で終わった後は何もしない
+(define __LazyList_pipe_close__ ,(tailRef)
+  __Ref_get__ tailRef ,(tail)
+  __unless__ (,() __is_null__ tail)
+    (,()
+      __Ref_set__ tailRef __NULL__ ,()
+      __LazyList_publish__ tail __NULL__))
+
+;; ── String ──
+
+;; Python の repr と同じく、str を引用符で囲む。
+;; ' を含み " を含まなければ "..."、それ以外は '...'。
+;; \ と囲む引用符、改行、タブ、復帰はエスケープし、表示できない文字は \xNN、\uNNNN、\UNNNNNNNN にする
+(define __String_repr__ ,(str)
+  __String_repr_contains__ str "'" ,(hasSingle)
+  __String_repr_contains__ str "\"" ,(hasDouble)
+  __not__ hasDouble ,(noDouble)
+  __if_then_else__ (,() __and__ hasSingle noDouble)
+    (,() __NULL__ "\"")
+    (,() __NULL__ "'") ,(quote)
+  __String_length__ str ,(len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_repr_loop__ str len zero quote quote ,(s)
+  __String_concat__ s quote)
+
+(define __String_repr_loop__ ,(str len i quote acc)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ acc)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ str i next ,(ch)
+      __String_repr_char__ ch quote ,(ch)
+      __String_concat__ acc ch ,(acc)
+      __String_repr_loop__ str len next quote acc))
+
+;; repr の中の1文字
+(define __String_repr_char__ ,(ch quote)
+  __if_then_else__ (,() __String_equal__ ch "\\") (,() __NULL__ "\\\\") (,()
+  __if_then_else__ (,() __String_equal__ ch quote) (,() __String_concat__ "\\" ch) (,()
+  __if_then_else__ (,() __String_equal__ ch "\n") (,() __NULL__ "\\n") (,()
+  __if_then_else__ (,() __String_equal__ ch "\t") (,() __NULL__ "\\t") (,()
+  __if_then_else__ (,() __String_equal__ ch "\r") (,() __NULL__ "\\r") (,()
+  __String_toCode__ __print_exit_error__ ch ,(code)
+  __String_repr_is_printable__ code ,(printable)
+  __if_then_else__ printable
+    (,() __NULL__ ch)
+    (,() __String_repr_escape__ code)))))))
+
+;; 表示できない文字のエスケープ。256 未満は \xNN、65536 未満は \uNNNN、それ以外は \UNNNNNNNN
+(define __String_repr_escape__ ,(code)
+  __Number_fromString__ __print_exit_error__ "256" ,(n256)
+  __Number_fromString__ __print_exit_error__ "65536" ,(n65536)
+  __Number_subtract__ code n256 ,(d256)
+  __Number_subtract__ code n65536 ,(d65536)
+  __if_then_else__ (,() __Number_is_negative__ d256)
+    (,() __NULL__ "\\x" "2")
+    (,()
+      __if_then_else__ (,() __Number_is_negative__ d65536)
+        (,() __NULL__ "\\u" "4")
+        (,() __NULL__ "\\U" "8")) ,(prefix widthStr)
+  __Number_fromString__ __print_exit_error__ widthStr ,(width)
+  __String_repr_hex__ code width "" ,(hex)
+  __String_concat__ prefix hex)
+
+;; code を width 桁の小文字の16進数にして、acc の前に付ける
+(define __String_repr_hex__ ,(code width acc)
+  __if_then_else__ (,() __Number_is_zero__ width)
+    (,() __NULL__ acc)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_fromString__ __print_exit_error__ "16" ,(sixteen)
+      __Number_divide__ __print_exit_error__ code sixteen ,(q)
+      __Number_floor__ q ,(q)
+      __Number_multiply__ q sixteen ,(m)
+      __Number_subtract__ code m ,(digit)
+      __Number_add__ digit one ,(digitEnd)
+      __String_substring__ __print_exit_error__ "0123456789abcdef" digit digitEnd ,(ch)
+      __String_concat__ ch acc ,(acc)
+      __Number_subtract__ width one ,(width)
+      __String_repr_hex__ q width acc))
+
+;; Python の str.isprintable と同じく、表示できる文字なら __TRUE__。
+;; 空白（32）以外の Cc、Cf、Zs、Zl、Zp、Co、Cs の文字（Unicode 15.1）が表示できない。
+;; 割り当てのない文字（Cn）は表示できるとする（Python はエスケープする）。
+;; ASCII の 32〜126 は範囲の表を調べずに __TRUE__ にする（ほとんどの文字はこれなので）
+(define __String_repr_is_printable__ ,(code)
+  __Number_fromString__ __print_exit_error__ "32" ,(n32)
+  __Number_fromString__ __print_exit_error__ "126" ,(n126)
+  __Number_subtract__ code n32 ,(belowSpace)
+  __Number_subtract__ n126 code ,(aboveTilde)
+  __Number_is_negative__ belowSpace ,(isBelow)
+  __Number_is_negative__ aboveTilde ,(isAbove)
+  __if_then_else__ (,() __or__ isBelow isAbove)
+    (,()
+      __String_repr_in_ranges__ code __String_repr_nonprintable__ ,(inRange)
+      __not__ inRange)
+    (,() __NULL__ __TRUE__))
+
+;; 表示できない文字の範囲。下限と上限の組を昇順に並べた Seq
+(define __String_repr_nonprintable__ ,(sink)
+  sink "0" "31" "127" "160" "173" "173" "1536" "1541" "1564" "1564" "1757" "1757"
+    "1807" "1807" "2192" "2193" "2274" "2274" "5760" "5760" "6158" "6158"
+    "8192" "8207" "8232" "8239" "8287" "8292" "8294" "8303" "12288" "12288"
+    "55296" "63743" "65279" "65279" "65529" "65531" "69821" "69821" "69837" "69837"
+    "78896" "78911" "113824" "113827" "119155" "119162" "917505" "917505"
+    "917536" "917631" "983040" "1048573" "1048576" "1114109")
+
+;; code が ranges（下限と上限の組の昇順の Seq）のどれかに入れば __TRUE__
+(define __String_repr_in_ranges__ ,(code ranges)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() return __FALSE__) ranges ,(lowStr ranges)
+  __Seq_get__ (,() return __FALSE__) ranges ,(highStr ranges)
+  __Number_fromString__ __print_exit_error__ lowStr ,(low)
+  __Number_fromString__ __print_exit_error__ highStr ,(high)
+  __Number_subtract__ code low ,(belowLow)
+  __Number_subtract__ high code ,(aboveHigh)
+  __if_then_else__ (,() __Number_is_negative__ belowLow)
+    (,() return __FALSE__)
+    (,()
+      __if_then_else__ (,() __Number_is_negative__ aboveHigh)
+        (,() __String_repr_in_ranges__ code ranges)
+        (,() return __TRUE__)))
+
+;; str が ch（1文字）を含めば __TRUE__
+(define __String_repr_contains__ ,(str ch)
+  __String_length__ str ,(len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_repr_contains_loop__ str len zero ch)
+
+(define __String_repr_contains_loop__ ,(str len i ch)
+  __Number_subtract__ len i ,(rest)
+  __if_then_else__ (,() __Number_is_zero__ rest)
+    (,() __NULL__ __FALSE__)
+    (,()
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ str i next ,(c)
+      __if_then_else__ (,() __String_equal__ c ch)
+        (,() __NULL__ __TRUE__)
+        (,() __String_repr_contains_loop__ str len next ch)))
+
+;; 引数をすべて続けて出力し、改行する（可変長引数）
+(define __println__ , args
+  __Seq_print__ args ,()
+  __OS_print__ "\n")

@@ -176,7 +176,7 @@ consh/js/
                     consh/test/common.sh の run を使う。run_all.sh ですべて実行する
 ```
 
-VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/reference/consh_eval.se（当時は consh/include）と consh/rust/src/eval.rs に置く（2.1 の 10）。
+VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se（参照版は consh/reference/consh_eval.se）と consh/rust/src/eval.rs に置く（2.1 の 10）。
 
 ### 2.4. 当面の制限
 
@@ -241,7 +241,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 
 ### 3.4. 段階 4 の結果（2026/11/8）
 
-- `js [変数名=] コード {引数}` を、ConMa 版の ConSh（consh/reference/consh_eval.se の `Builtin_js`。当時は consh/include）に足した。2.1 の 1〜6、9、10 のとおりに動く。Rust 版の ConSh（consh/rust）の `js` は、同じ順に引数を確かめた後、`js: JavaScript is not available` を出して `$?` を 127 にする。
+- `js [変数名=] コード {引数}` を、ConMa 版の ConSh（consh/include/consh_eval.se の `Builtin_js`。参照版は consh/reference/consh_eval.se）に足した。2.1 の 1〜6、9、10 のとおりに動く。Rust 版の ConSh（consh/rust）の `js` は、同じ順に引数を確かめた後、`js: JavaScript is not available` を出して `$?` を 127 にする。
 - テスト
     - consh/js/test/step1（wasm 版の VM、Node.js）：case1 は結果の出し方（値、配列、入れ子、`undefined`、`null`、オブジェクト、BigInt、改行とタブを含む文字列、代入式のコード）、case2 は変数に入れる形と引数（`$list` と `${list}`）、関数の中の変数、case3 は Promise と、待つ間にほかの VProc が動くこと、case4 はエラー（例外、構文エラー、関数でない値への引数、関数の結果、循環する配列、`js sum=`、`js` だけ）と、エラーのときに変数を変えないこと、`builtin js`。
     - consh/test/step17（JavaScript のない版）：ConMa 版（Python 版と Rust 版の VM）と Rust 版の ConSh で同じログになる。
@@ -315,7 +315,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
     - ディレクトリかどうか：`/` のない名前のディレクトリは `/` のある名前にリダイレクトされる（`python3 -m http.server` などと同じ）ので、HEAD の `responseURL` で見分ける。
     - ディレクトリの一覧：`consh/js/serve.py` が `?consh-ls` に JSON で答える（ディレクトリの名前は `/` で終わる）。ほかのサーバーでは、ディレクトリの一覧の HTML のリンクを読む。`python3 -m http.server` は `index.html` のあるディレクトリには一覧を出さないので、serve.py を足した。serve.py は `Cache-Control: no-cache` も付けるので、ブラウザは毎回サーバーに確かめ（変わっていなければ 304）、ディスクで書き換えたファイルがすぐ見える。
     - 書き込み：サーバーには書けないので、書いたファイルはメモリに置き、同じ名前のサーバーのファイルより先に見せる（ユーザーの選択）。`>>` は、サーバーのファイルの中身に足す。「ファイルを置く」もメモリに置く。`/home/user` の外は、`/`、`/home`、`/dev`、`/dev/null` などのメモリのものだけである。
-- serve.py は、`build.sh` が `web/` に作るファイルがないか古いときは、`build.sh` を実行するように言って起動しない（終了コード 1）。`web/conma.js` は `consh/js/conma.js` と中身を比べ、`conma.wasm` は vm/src と consh/js/wasm の、`consh.module.se` は include、consh/include、consh/reference の、ファイルとフォルダの時刻と比べる。git pull で新しい `consh.js` と古い `conma.js` になり、ページが `TypeError: vm.useHostFs is not a function` で止まったためである。
+- serve.py は、`build.sh` が `web/` に作るファイルがないか古いときは、`build.sh` を実行するように言って起動しない（終了コード 1）。`web/conma.js` は `consh/js/conma.js` と中身を比べ、`conma.wasm` は vm/src と consh/js/wasm の、`consh.module.se` は include と consh/include の、ファイルとフォルダの時刻と比べる。git pull で新しい `consh.js` と古い `conma.js` になり、ページが `TypeError: vm.useHostFs is not a function` で止まったためである。
 - ページのディレクトリを置く場所（`/home/user`）は、ページの URL の `?home=絶対パス` で変えられる（ConSh の `HOME` とカレントディレクトリもそこになる）。`/home/user` にしたのは、前の仮想ファイルシステムのホームの名残であり、`/dev` などのメモリのものとサーバーのファイルがぶつからないためである。`?home=/` では、`/dev` と `/dev/null` が同じ名前のサーバーのファイルより先に見える（書いたファイルと同じ規則）。ブラウザで、`?home=/`（`ls -F`、`cd ..`、`/dev/null`、書き込み）、`?home=/work/site/`（途中のディレクトリはメモリにある）、絶対パスでない値（`/home/user` になる）を確かめた。
 - ファイルを ConSh の組み込みコマンド（`cat < file` など、子の標準入出力）に渡すときは、hostFs の fd（`host_proc_spawn` の kind 1）になるので、ページの `hostProc` は、それを `dup` してプロセスが終わるまで持ち、読み書きする。`cat` と `ls` も hostFs を使い、`HOME_FILES` と `conma_list_dir` はなくした。
 - ブラウザで、`ls`（ページのファイルがすべて出る）、`ls -F /`、`cat`、`*.txt`、`>`、`>>`（サーバーのファイルに足す）、`cd` でのサブディレクトリ、エラー（ない名前、ディレクトリを `cat`、ファイルの下、ないディレクトリへの `>`）、`/dev/null`、ディスクでのファイルの書き換えと追加がページを読み直さずに見えること、2 回目からの読み込みが 304 になることを確かめた。

@@ -81,7 +81,6 @@ def stale():
             newest(
                 os.path.join(ROOT, "include"),
                 os.path.join(ROOT, "consh", "include"),
-                os.path.join(ROOT, "consh", "reference"),
                 suffixes=(".se",),
             ),
             newest(os.path.join(ROOT, "bin"), suffixes=("",)),
