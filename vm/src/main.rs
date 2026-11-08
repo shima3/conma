@@ -98,6 +98,7 @@ fn run_source(args: Vec<String>) -> i32 {
         .stderr(std::process::Stdio::inherit())
         .env_remove("CONMA_TRANSPILED_REPORT")
         .env_remove("CONMA_PROFILE")
+        .env_remove("CONMA_TRANSPILED_COUNTS")
         .output();
     let out = match out {
         Ok(o) => o,
@@ -211,6 +212,7 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
         }))],
         None => Vec::new(),
     };
+    transpiled::counts_from_env();
     let mut m = sched::Machine::new(trace);
     m.transpiled_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_TRANSPILED_OFF").is_none();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
@@ -223,6 +225,7 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
     if let Some(p) = &m.profile {
         p.write();
     }
+    transpiled::write_counts();
     if trace && code.is_none() {
         eprintln!("[done] normal termination after {} step(s).", m.steps);
     }

@@ -242,6 +242,138 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     Some(Rc::new(Table { funcs, fns: m.fns, dfns: m.dfns, prims, safe, rust_calls }))
 }
 
+// ── Counts (CONMA_TRANSPILED_COUNTS=<file>) ──
+//
+// Where the transpiled code hands the VProc back, by Body, to find the code
+// that could be transpiled better: "bail" where a fused chain enters the code
+// of a Body above (vm/conma2rust/conma2rust.py, Fuser.bail), "enter" each
+// time the code of a Body is entered (a bail, the code of a Body going on
+// with the next one, a Closure applied without a direct entry), "deopt" each
+// time a Body is loaded for the VM (the code of the Body cannot run it),
+// "run" each time the VM enters transpiled code, and "leave" each time a
+// step is left to the VM, by what it applies. Written to the file as
+// `count<TAB>kind<TAB>file<TAB>line<TAB>column` (by Body) and
+// `count<TAB>leave<TAB>what` when the VM ends; test/transpiled_counts.py sums
+// them by function. Counting does not change what the program does.
+
+static COUNTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+struct Counts {
+    path: String,
+    /// By kind and Body (the address of its SInfo).
+    bodies: std::collections::HashMap<(&'static str, usize), (Option<SInfo>, u64)>,
+    leaves: std::collections::HashMap<String, u64>,
+}
+
+thread_local! {
+    static COUNTS: std::cell::RefCell<Option<Counts>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Start counting if CONMA_TRANSPILED_COUNTS names a file.
+pub fn counts_from_env() {
+    if let Some(path) = std::env::var("CONMA_TRANSPILED_COUNTS").ok().filter(|p| !p.is_empty()) {
+        COUNTS.with(|c| *c.borrow_mut() = Some(Counts { path, bodies: Default::default(), leaves: Default::default() }));
+        COUNTING.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+#[inline(always)]
+fn counting() -> bool {
+    COUNTING.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cold]
+fn count_body(kind: &'static str, t: &Table, fid: usize) {
+    let sinfo = t.funcs[fid].body.as_ref().and_then(|b| b.sinfo.clone());
+    let key = sinfo.as_ref().map(|s| Rc::as_ptr(s) as usize).unwrap_or(0);
+    COUNTS.with(|c| {
+        if let Some(c) = c.borrow_mut().as_mut() {
+            c.bodies.entry((kind, key)).or_insert_with(|| (sinfo, 0)).1 += 1;
+        }
+    });
+}
+
+#[cold]
+fn count_leave(m: &Machine, vp: &VProc, gv: &Rc<GVEnv>, t: &Table) {
+    let what = match &vp.operator {
+        Value::Prim(p) => format!("primitive {}", p.name),
+        Value::Closure(c) => {
+            let same_module = match &c.gvenv {
+                Some(g) => Rc::ptr_eq(g, gv),
+                None => Rc::ptr_eq(&vp.gvenv, gv),
+            };
+            match c.body.as_ref().and_then(|b| b.func_id) {
+                _ if c.variadic => "a variadic Closure".to_string(),
+                _ if c.params().len() != vp.olist.len() => {
+                    format!("a Closure with {} parameters applied to {} values", c.params().len(), vp.olist.len())
+                }
+                None => "a Closure without a Function number (not a Boolean)".to_string(),
+                Some(_) if !same_module => "a Closure of another module".to_string(),
+                Some(fid) => format!("a Closure of Function {} ({})", fid, where_of(t, fid)),
+            }
+        }
+        Value::Null => "values with no CFrame".to_string(),
+        Value::Cont(_) => "a continuation".to_string(),
+        v => format!("a {}", value_type_name(v)),
+    };
+    let _ = m;
+    COUNTS.with(|c| {
+        if let Some(c) = c.borrow_mut().as_mut() {
+            *c.leaves.entry(what).or_insert(0) += 1;
+        }
+    });
+}
+
+fn where_of(t: &Table, fid: usize) -> String {
+    match t.funcs[fid].body.as_ref().and_then(|b| b.sinfo.as_ref()) {
+        Some(s) => s.iter().filter_map(|x| x.as_atom()).map(|a| unquote(a).to_string()).collect::<Vec<_>>().join(":"),
+        None => "-".to_string(),
+    }
+}
+
+#[cold]
+fn count_budget() {
+    COUNTS.with(|c| {
+        if let Some(c) = c.borrow_mut().as_mut() {
+            *c.leaves.entry("the budget of steps (to let the other VProcs run)".to_string()).or_insert(0) += 1;
+        }
+    });
+}
+
+/// Write the counts (when the VM ends).
+pub fn write_counts() {
+    COUNTS.with(|c| {
+        let Some(c) = c.borrow_mut().take() else { return };
+        let mut merged: std::collections::HashMap<(&'static str, String), u64> = Default::default();
+        for ((kind, _), (s, n)) in &c.bodies {
+            let at = match s {
+                Some(s) => s.iter().filter_map(|x| x.as_atom()).map(|a| unquote(a).to_string()).collect::<Vec<_>>().join("\t"),
+                None => "-".to_string(),
+            };
+            *merged.entry((kind, at)).or_insert(0) += n;
+        }
+        let mut out = String::new();
+        for ((kind, at), n) in merged {
+            out.push_str(&format!("{}\t{}\t{}\n", n, kind, at));
+        }
+        for (what, n) in &c.leaves {
+            out.push_str(&format!("{}\tleave\t{}\n", n, what));
+        }
+        if let Err(e) = std::fs::write(&c.path, out) {
+            eprintln!("CONMA_TRANSPILED_COUNTS: {}: {}", c.path, e);
+        }
+    });
+}
+
+/// A fused chain enters the code of Body fid above (Fuser.bail).
+#[inline]
+pub fn bail(t: &Table, fid: usize, env: LVEnv) -> NResult {
+    if counting() {
+        count_body("bail", t, fid);
+    }
+    Ok(Next::Enter(fid, env))
+}
+
 // ── The loop ──
 
 /// Run the Body of Function fid in env (load_body calls this instead of
@@ -254,6 +386,9 @@ pub fn run(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEn
         }
     });
     m.nctx.budget = BUDGET;
+    if counting() {
+        count_body("run", t, fid);
+    }
     drive(m, vp, Next::Enter(fid, env), gv, t)?;
     Ok(())
 }
@@ -291,18 +426,31 @@ fn drive(m: &mut Machine, vp: &mut VProc, mut next: Next, gv: &Rc<GVEnv>, t: &Ta
     let in_frame = !m.nctx.frames.is_empty();
     loop {
         next = match next {
-            Next::Enter(fid, env) => match t.fns[fid] {
-                Some(f) => f(m, vp, env, gv, t)?,
-                None => deopt(vp, fid, env, gv, t)?,
-            },
+            Next::Enter(fid, env) => {
+                if counting() {
+                    count_body("enter", t, fid);
+                }
+                match t.fns[fid] {
+                    Some(f) => f(m, vp, env, gv, t)?,
+                    None => deopt(vp, fid, env, gv, t)?,
+                }
+            }
             Next::Apply => {
                 if m.nctx.budget == 0 {
+                    if counting() {
+                        count_budget();
+                    }
                     return Ok(Ret::Leave);
                 }
                 m.nctx.budget -= 1;
                 match apply(m, vp, gv, t)? {
                     Some(n) => n,
-                    None => return Ok(Ret::Leave),
+                    None => {
+                        if counting() {
+                            count_leave(m, vp, gv, t);
+                        }
+                        return Ok(Ret::Leave);
+                    }
                 }
             }
             Next::Return => return Ok(Ret::Values),
@@ -655,6 +803,9 @@ fn body(t: &Table, fid: usize) -> &crate::module::BodyDef {
 /// Load the Body of Function fid for the VM, without its transpiled code; `run`
 /// goes on with the step after it.
 pub fn deopt(vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GVEnv>, t: &Table) -> NResult {
+    if counting() {
+        count_body("deopt", t, fid);
+    }
     load_body_interp(vp, body(t, fid), env, gv)?;
     Ok(Next::Apply)
 }

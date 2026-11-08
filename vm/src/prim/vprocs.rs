@@ -173,6 +173,7 @@ pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), S
         .stdin(Stdio::null())
         .env_remove("CONMA_TRANSPILED_REPORT")
         .env_remove("CONMA_PROFILE")
+        .env_remove("CONMA_TRANSPILED_COUNTS")
         .output()
         .map_err(|e| format!("cannot run the frontend: {}", crate::sys::errno_str(&e)))?;
     if !res.status.success() {

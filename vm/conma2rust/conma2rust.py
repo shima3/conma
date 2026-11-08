@@ -655,7 +655,7 @@ class Fuser:
         if not (retry or rare):
             self.nbail += 1
         self.push_joins(J, out)
-        out.append(f"return Ok(Next::Enter({x}, {self.mat(d, locals_)}));")
+        out.append(f"return bail(t, {x}, {self.mat(d, locals_)});")
 
     def sinfo(self, x):
         return f"&body_of(t, {x}).sinfo"
