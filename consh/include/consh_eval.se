@@ -104,6 +104,10 @@
   __Ref_new__ __NULL__ ,(meta)
   __Dict_put__ sh "meta" meta ,()
   __Dict_put__ sh "redirected" __FALSE__ ,()
+  ;; ジョブの番号（$!）の数。シェル全体（すべての VProc）で共有し、2 から順に付ける
+  num "1" ,(one)
+  __Ref_new__ one ,(jobNo)
+  __Dict_put__ sh "jobNo" jobNo ,()
   Target_new_id global ,(outId)
   Target_make "top" outId (,(line) Top_write sh line) ,(out)
   __Dict_put__ sh "out" out ,()
@@ -1283,6 +1287,7 @@
   __Dict_put__ child "abort" __NULL__ ,()
   __Dict_put__ child "cancelIn" __NULL__ ,()
   __Dict_put__ child "bgCaptures" __NULL__ ,()
+  __Dict_put__ child "bgSpecs" __NULL__ ,()
   __Dict_put__ child "owned" __NULL__ ,()
   __Dict_put__ child "pipeEnds" __NULL__ ,()
   __Dict_put__ child "exitTo" __NULL__ ,()
@@ -1358,9 +1363,12 @@
   body child ,()
   __nop__)
 
-;; 終わるときに、この VProc で起動した $( ) を終わらせてから、出力の書き手を閉じる
+;; 終わるときに、この VProc で起動した $( ) を終わらせてから、出力の書き手を閉じる。
+;; & のジョブの単純文の変数リスト（"bgSpecs"）で、まだ値のない変数には空文字列を入れる（エラーで終わったときも）
 (define Sh_finish ,(child)
   Subst_finish child ,()
+  __Dict_lookup_or__ child "bgSpecs" (,(key) __NULL__ __NULL__) ,(specs)
+  Bg_specs_finish specs ,()
   Sh_release child ,()
   Pipe_ends_close child ,()
   Sh_get child "finished" ,(finished)
@@ -2438,10 +2446,14 @@
   Sh_set_status sh "0")
 
 ;; ── ジョブ ──
-;; ジョブは Dict で、"id"（$! の String）、"vproc"、"child"（その VProc の文脈）、"killed"（kill したか）を持つ
+;; ジョブは Dict で、"id"（$! の String。シェル全体で 2 から順に付ける番号、文脈の "jobNo"）、"vproc"、"child"（その VProc の文脈）、"killed"（kill したか）を持つ
 
 (define Job_add ,(sh vproc child members)
-  __VProc_id__ vproc ,(n)
+  Sh_get sh "jobNo" ,(jobNo)
+  __Ref_get__ jobNo ,(n)
+  num "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Ref_set__ jobNo n ,()
   __Number_toString__ n ,(id)
   __Dict_new__ ,(job)
   __Dict_put__ job "id" id ,()

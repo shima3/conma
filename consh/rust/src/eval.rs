@@ -599,24 +599,64 @@ impl Chain {
     }
 }
 
+/// The chain given to a statement, with the frame of the rest of its script
+/// not made yet (next: the context, the script and the next statement). A
+/// statement that does not use the chain (most do not: an assignment, a
+/// builtin, an external command) finishes without it, and the script goes
+/// on in the same step (step_lines); one that pushes frames, or takes the
+/// chain as a continuation, makes it first.
+pub struct K<'a> {
+    chain: &'a mut Chain,
+    next: Option<(&'a Sh, &'a Sexp, usize, usize)>,
+}
+
+impl<'a> K<'a> {
+    fn new(chain: &'a mut Chain) -> K<'a> {
+        K { chain, next: None }
+    }
+    /// Make the frame of the rest of the script, if it is not made yet.
+    fn fix(&mut self) {
+        if let Some((sh, script, line, stmt)) = self.next.take() {
+            self.chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line, stmt, settle: true });
+        }
+    }
+    fn push(&mut self, frame: Frame) {
+        self.fix();
+        self.chain.push(frame);
+    }
+    /// The whole rest of the computation (for a continuation).
+    fn snapshot(&mut self) -> Chain {
+        self.fix();
+        self.chain.clone()
+    }
+    /// Go on with another chain instead (a shift, the call of a continuation).
+    fn set(&mut self, c: Chain) {
+        self.fix();
+        *self.chain = c;
+    }
+}
+
+/// The context of a frame, shared by the frames of the same context.
+type Sh = Arc<Ctx>;
+
 #[derive(Clone)]
 enum Frame {
     /// The statements of a script from line, stmt. settle: Subst_settle first
     /// (the statement before has ended).
-    Lines { sh: Ctx, script: Sexp, line: usize, stmt: usize, settle: bool },
+    Lines { sh: Sh, script: Sexp, line: usize, stmt: usize, settle: bool },
     /// The clauses of an if from clause; test: the condition of clause has
     /// been run, look at $?.
-    If { sh: Ctx, node: Sexp, clause: usize, test: bool },
+    If { sh: Sh, node: Sexp, clause: usize, test: bool },
     /// The next item of a for loop: values[index..], and the rest of the
     /// LazyList being read.
-    For { sh: Ctx, name: Arc<str>, values: Arc<Vec<Value>>, index: usize, cur: Option<LazyList>, body: Sexp, id: u64 },
+    For { sh: Sh, name: Arc<str>, values: Arc<Vec<Value>>, index: usize, cur: Option<LazyList>, body: Sexp, id: u64 },
     /// The elements of a command list (list Element ...) from index.
-    List { sh: Ctx, node: Sexp, index: usize },
+    List { sh: Sh, node: Sexp, index: usize },
     /// The end of a function call: return with this id ends here.
     Call { id: u64 },
     /// The end of the body of a reset: go on where the innermost reset (or
     /// call of a continuation) of the thread goes on.
-    ResetEnd { sh: Ctx },
+    ResetEnd { sh: Sh },
 }
 
 /// Run a chain to its end.
@@ -658,9 +698,9 @@ fn unwind(mut chain: Chain, flow: Flow) -> R<Chain> {
 fn step(frame: &Frame, chain: &mut Chain) -> R<()> {
     match frame {
         Frame::Lines { sh, script, line, stmt, settle } => step_lines(sh, script, *line, *stmt, *settle, chain),
-        Frame::If { sh, node, clause, test } => step_if(sh, node, *clause, *test, chain),
-        Frame::For { sh, name, values, index, cur, body, id } => step_for(sh, name, values, *index, cur.clone(), body, *id, chain),
-        Frame::List { sh, node, index } => step_list(sh, node, *index, chain),
+        Frame::If { sh, node, clause, test } => step_if(sh, node, *clause, *test, &mut K::new(chain)),
+        Frame::For { sh, name, values, index, cur, body, id } => step_for(sh, name, values, *index, cur.clone(), body, *id, &mut K::new(chain)),
+        Frame::List { sh, node, index } => step_list(sh, node, *index, &mut K::new(chain)),
         Frame::Call { .. } => Ok(()),
         Frame::ResetEnd { sh } => {
             let info = sh.meta.lock().unwrap().pop().expect("the end of a reset without its frame");
@@ -685,19 +725,19 @@ pub fn eval_lines(sh: &Ctx, lines: &[Sexp]) -> R<()> {
 /// Run the command lines of a script node.
 fn run_script(sh: &Ctx, script: &Sexp) -> R<()> {
     let mut chain = Chain::default();
-    chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line: 0, stmt: 0, settle: false });
+    chain.push(Frame::Lines { sh: Arc::new(sh.clone()), script: script.clone(), line: 0, stmt: 0, settle: false });
     run(chain)
 }
 
 /// Run one statement to its end (the element of a pipeline, a job).
 fn run_stmt(sh: &Ctx, stmt: &Sexp) -> R<()> {
     let mut chain = Chain::default();
-    exec_stmt(sh, stmt, &mut chain)?;
+    exec_stmt(&Arc::new(sh.clone()), stmt, &mut K::new(&mut chain))?;
     run(chain)
 }
 
 /// Push the frames that run a script; an empty one sets $? to 0 (if and for).
-fn push_script(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
+fn push_script(sh: &Sh, script: &Sexp, chain: &mut K) {
     if script.children().is_empty() {
         sh.set_status("0");
         return;
@@ -705,34 +745,45 @@ fn push_script(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
     chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line: 0, stmt: 0, settle: false });
 }
 
-fn step_lines(sh: &Ctx, script: &Sexp, mut line: usize, mut stmt: usize, settle: bool, chain: &mut Chain) -> R<()> {
+/// Run the statements of a script from line, stmt. The statements that
+/// finish without using the chain run one after another here; at the first
+/// one that pushes frames, the frame of the rest of the script goes under
+/// them (K::fix), and this step ends.
+fn step_lines(sh: &Sh, script: &Sexp, mut line: usize, mut stmt: usize, settle: bool, chain: &mut Chain) -> R<()> {
     if settle {
         subst_settle(sh);
     }
     let lines = script.children();
-    let s = loop {
-        let l = match lines.get(line) {
-            None => return Ok(()),
-            Some(l) => l,
-        };
-        match l.children().get(stmt) {
-            Some(s) => break s,
-            None => {
-                line += 1;
-                stmt = 0;
+    loop {
+        let s = loop {
+            let l = match lines.get(line) {
+                None => return Ok(()),
+                Some(l) => l,
+            };
+            match l.children().get(stmt) {
+                Some(s) => break s,
+                None => {
+                    line += 1;
+                    stmt = 0;
+                }
             }
+        };
+        os::jitter();
+        if sh.killed.load(Ordering::SeqCst) {
+            return Err(Flow::Killed);
         }
-    };
-    os::jitter();
-    if sh.killed.load(Ordering::SeqCst) {
-        return Err(Flow::Killed);
+        let mut k = K { chain: &mut *chain, next: Some((sh, script, line, stmt + 1)) };
+        exec_stmt(sh, s, &mut k)?;
+        if k.next.is_none() {
+            return Ok(());
+        }
+        subst_settle(sh);
+        stmt += 1;
     }
-    chain.push(Frame::Lines { sh: sh.clone(), script: script.clone(), line, stmt: stmt + 1, settle: true });
-    exec_stmt(sh, s, chain)
 }
 
 /// Run a statement, or push the frames that run it.
-fn exec_stmt(sh: &Ctx, stmt: &Sexp, chain: &mut Chain) -> R<()> {
+fn exec_stmt(sh: &Sh, stmt: &Sexp, chain: &mut K) -> R<()> {
     let pos = stmt.pos();
     let children = stmt.children();
     match stmt.tag() {
@@ -771,7 +822,7 @@ fn exec_stmt(sh: &Ctx, stmt: &Sexp, chain: &mut Chain) -> R<()> {
 }
 
 /// A command list: the jobs start at once, the other elements run in turn.
-fn step_list(sh: &Ctx, node: &Sexp, index: usize, chain: &mut Chain) -> R<()> {
+fn step_list(sh: &Sh, node: &Sexp, index: usize, chain: &mut K) -> R<()> {
     let elems = node.children();
     for (i, elem) in elems.iter().enumerate().skip(index) {
         if elem.tag() == "bg" {
@@ -878,7 +929,7 @@ fn arity_check(sh: &Ctx, pos: Pos, names: usize, rest: bool, args: usize) -> R<(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn func_push(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+fn func_push(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut K) -> R<()> {
     arity_check(sh, pos, f.names.len(), !f.rest.is_empty(), args.len())?;
     let mut vars = f.vars.clone();
     let mut it = args.into_iter();
@@ -903,7 +954,7 @@ fn func_push(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Inp
     };
     sh.set_status("0");
     chain.push(Frame::Call { id });
-    chain.push(Frame::Lines { sh: callee, script: f.body.clone(), line: 0, stmt: 0, settle: false });
+    chain.push(Frame::Lines { sh: Arc::new(callee), script: f.body.clone(), line: 0, stmt: 0, settle: false });
     Ok(())
 }
 
@@ -945,7 +996,7 @@ fn func_make(sh: &Ctx, params: &Sexp, body: &Sexp) -> Func {
 
 /// Call a function value, going on in chain.
 #[allow(clippy::too_many_arguments)]
-fn call_value(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+fn call_value(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut K) -> R<()> {
     match &**f {
         FuncValue::Func(func) => {
             let (out, err) = body_targets(sh, pos, &out, &err);
@@ -964,7 +1015,7 @@ fn call_value(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: A
 #[allow(clippy::too_many_arguments)]
 fn call_value_direct(sh: &Ctx, pos: Pos, f: &Arc<FuncValue>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
     let mut chain = Chain::default();
-    call_value(sh, pos, f, args, input, out, err, &mut chain)?;
+    call_value(sh, pos, f, args, input, out, err, &mut K::new(&mut chain))?;
     run(chain)
 }
 
@@ -985,7 +1036,7 @@ fn builtin_bind(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, out: Targ
 }
 
 #[allow(clippy::too_many_arguments)]
-fn bind_call(sh: &Ctx, scope: &Arc<Scope>, pos: Pos, target: &Value, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+fn bind_call(sh: &Ctx, scope: &Arc<Scope>, pos: Pos, target: &Value, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut K) -> R<()> {
     let name = match target {
         Value::Func(f) => return call_value(sh, pos, f, args, input, out, err, chain),
         Value::Str(s) => s.to_string(),
@@ -1009,7 +1060,7 @@ fn bind_call(sh: &Ctx, scope: &Arc<Scope>, pos: Pos, target: &Value, args: Vec<V
 
 /// (reset script [redirs]): run the script; a shift in it takes the rest of
 /// it as a continuation. return, break and continue cannot leave it.
-fn exec_reset(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
+fn exec_reset(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut K) -> R<()> {
     let script = &children[0];
     let redirs = children.get(1).map(|r| r.children()).unwrap_or(&[]);
     if redirs.is_empty() {
@@ -1018,14 +1069,15 @@ fn exec_reset(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()>
     }
     eval_redirected(sh, pos, redirs, |inner| {
         let mut chain = Chain::default();
-        reset_push(inner, script, &mut chain);
+        reset_push(inner, script, &mut K::new(&mut chain));
         run(chain)
     })
 }
 
-fn reset_push(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
+fn reset_push(sh: &Ctx, script: &Sexp, chain: &mut K) {
     let body = Ctx { redirected: false, loops: None, no_return: Some(Arc::from("return in reset")), ..sh.clone() };
-    sh.meta.lock().unwrap().push(ResetInfo { k: chain.clone(), sh: sh.clone(), input: sh.input.clone(), out: sh.out.clone(), err: sh.err.clone() });
+    sh.meta.lock().unwrap().push(ResetInfo { k: chain.snapshot(), sh: sh.clone(), input: sh.input.clone(), out: sh.out.clone(), err: sh.err.clone() });
+    let body = Arc::new(body);
     chain.push(Frame::ResetEnd { sh: body.clone() });
     chain.push(Frame::Lines { sh: body, script: script.clone(), line: 0, stmt: 0, settle: false });
 }
@@ -1034,7 +1086,7 @@ fn reset_push(sh: &Ctx, script: &Sexp, chain: &mut Chain) {
 /// the innermost reset becomes a function value in k; the rest of the reset
 /// is dropped and the script runs in its place, like a function value made
 /// here and called there.
-fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
+fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut K) -> R<()> {
     let name = children[0].str();
     let (params, script) = if children.len() == 3 { (Some(children[1].clone()), &children[2]) } else { (None, &children[1]) };
     let info = {
@@ -1050,7 +1102,7 @@ fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()>
         meta.pop().unwrap()
     };
     let k = Value::Func(Arc::new(FuncValue::Cont(Cont {
-        resume: chain.clone(),
+        resume: chain.snapshot(),
         thread: std::thread::current().id(),
         vars: sh.vars.clone(),
         params,
@@ -1061,8 +1113,8 @@ fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()>
     let body = Arc::new(Func { names: Vec::new(), rest: String::new(), body: script.clone(), scope: sh.scope.clone(), vars });
     let (out, err) = body_targets(&info.sh, pos, &info.out, &info.err);
     let mut next = info.k.clone();
-    func_push(&info.sh, pos, &body, Vec::new(), info.input.clone(), out, err, &mut next)?;
-    *chain = next;
+    func_push(&info.sh, pos, &body, Vec::new(), info.input.clone(), out, err, &mut K::new(&mut next))?;
+    chain.set(next);
     Ok(())
 }
 
@@ -1071,12 +1123,12 @@ fn exec_shift(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()>
 /// call, the values go to the variable list of the shift, and the rest after
 /// the shift goes on.
 #[allow(clippy::too_many_arguments)]
-fn cont_call(sh: &Ctx, pos: Pos, c: &Cont, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut Chain) -> R<()> {
+fn cont_call(sh: &Ctx, pos: Pos, c: &Cont, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target, chain: &mut K) -> R<()> {
     if std::thread::current().id() != c.thread {
         return Err(sh.error(pos, "a continuation called in another VProc"));
     }
     let (out, err) = body_targets(sh, pos, &out, &err);
-    c.meta.lock().unwrap().push(ResetInfo { k: chain.clone(), sh: sh.clone(), input: input.clone(), out: out.clone(), err: err.clone() });
+    c.meta.lock().unwrap().push(ResetInfo { k: chain.snapshot(), sh: sh.clone(), input: input.clone(), out: out.clone(), err: err.clone() });
     let resume = retarget(&c.resume, &input, &out, &err);
     if let Some(p) = &c.params {
         let pc = p.children();
@@ -1093,14 +1145,14 @@ fn cont_call(sh: &Ctx, pos: Pos, c: &Cont, args: Vec<Value>, input: Arc<Input>, 
         }
     }
     sh.set_status("0");
-    *chain = resume;
+    chain.set(resume);
     Ok(())
 }
 
 /// The frames of a continuation up to the end of its reset, with the standard
 /// input and outputs of their contexts replaced.
 fn retarget(chain: &Chain, input: &Arc<Input>, out: &Target, err: &Target) -> Chain {
-    let set = |sh: &Ctx| Ctx { input: input.clone(), out: out.clone(), err: err.clone(), ..sh.clone() };
+    let set = |sh: &Sh| Arc::new(Ctx { input: input.clone(), out: out.clone(), err: err.clone(), ..(**sh).clone() });
     let mut frames = Vec::new();
     let mut cur = chain.0.clone();
     while let Some(node) = cur {
@@ -1130,7 +1182,7 @@ fn retarget(chain: &Chain, input: &Arc<Input>, out: &Target, err: &Target) -> Ch
 /// Call a function and wait for it (a command with redirections).
 fn func_call(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Input>, out: Target, err: Target) -> R<()> {
     let mut chain = Chain::default();
-    func_push(sh, pos, f, args, input, out, err, &mut chain)?;
+    func_push(sh, pos, f, args, input, out, err, &mut K::new(&mut chain))?;
     run(chain)
 }
 
@@ -1141,7 +1193,7 @@ fn func_call(sh: &Ctx, pos: Pos, f: &Arc<Func>, args: Vec<Value>, input: Arc<Inp
 /// first word is expanded first to find the command; the others are
 /// expanded as words of an external command or, for functions and
 /// builtins, by the rules of the other words.
-fn exec_cmd(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut Chain) -> R<()> {
+fn exec_cmd(sh: &Ctx, pos: Pos, children: &[Sexp], chain: &mut K) -> R<()> {
     let (mut defs, mut words, mut redirs): (&[Sexp], &[Sexp], &[Sexp]) = (&[], &[], &[]);
     for c in children {
         match c.tag() {
@@ -1325,7 +1377,7 @@ fn eval_redirected(sh: &Ctx, pos: Pos, redirs: &[Sexp], run: impl FnOnce(&Ctx) -
 
 /// if: run the conditions in turn and the body of the first one whose $?
 /// is 0, or else the else part. Without it, $? is 0.
-fn exec_if(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut Chain) -> R<()> {
+fn exec_if(sh: &Sh, pos: Pos, node: &Sexp, chain: &mut K) -> R<()> {
     let redirs = node.children().iter().find(|c| c.tag() == "redirs").map(|r| r.children()).unwrap_or(&[]);
     if redirs.is_empty() {
         chain.push(Frame::If { sh: sh.clone(), node: node.clone(), clause: 0, test: false });
@@ -1333,12 +1385,12 @@ fn exec_if(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut Chain) -> R<()> {
     }
     eval_redirected(sh, pos, redirs, |inner| {
         let mut chain = Chain::default();
-        chain.push(Frame::If { sh: inner.clone(), node: node.clone(), clause: 0, test: false });
+        chain.push(Frame::If { sh: Arc::new(inner.clone()), node: node.clone(), clause: 0, test: false });
         run(chain)
     })
 }
 
-fn step_if(sh: &Ctx, node: &Sexp, mut clause: usize, test: bool, chain: &mut Chain) -> R<()> {
+fn step_if(sh: &Sh, node: &Sexp, mut clause: usize, test: bool, chain: &mut K) -> R<()> {
     let children = node.children();
     let clauses: Vec<&Sexp> = children.iter().filter(|c| c.tag() == "clause").collect();
     if test {
@@ -1362,19 +1414,19 @@ fn step_if(sh: &Ctx, node: &Sexp, mut clause: usize, test: bool, chain: &mut Cha
 
 /// for name in words; do script; done. break leaves the loop and continue
 /// the iteration. $? is 0 at the end.
-fn exec_for(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut Chain) -> R<()> {
+fn exec_for(sh: &Ctx, pos: Pos, node: &Sexp, chain: &mut K) -> R<()> {
     let redirs = node.children().get(3).map(|r| r.children()).unwrap_or(&[]);
     if redirs.is_empty() {
         return for_start(sh, node, chain);
     }
     eval_redirected(sh, pos, redirs, |inner| {
         let mut chain = Chain::default();
-        for_start(inner, node, &mut chain)?;
+        for_start(inner, node, &mut K::new(&mut chain))?;
         run(chain)
     })
 }
 
-fn for_start(sh: &Ctx, node: &Sexp, chain: &mut Chain) -> R<()> {
+fn for_start(sh: &Ctx, node: &Sexp, chain: &mut K) -> R<()> {
     let children = node.children();
     let name: Arc<str> = Arc::from(children[0].str());
     let mut values = Vec::new();
@@ -1383,13 +1435,13 @@ fn for_start(sh: &Ctx, node: &Sexp, chain: &mut Chain) -> R<()> {
     }
     let id = new_id();
     let looped = Ctx { loops: Some(Arc::new(LoopNode { name: name.to_string(), id, next: sh.loops.clone() })), ..sh.clone() };
-    chain.push(Frame::For { sh: looped, name, values: Arc::new(values), index: 0, cur: None, body: children[2].clone(), id });
+    chain.push(Frame::For { sh: Arc::new(looped), name, values: Arc::new(values), index: 0, cur: None, body: children[2].clone(), id });
     Ok(())
 }
 
 /// The next item: a String value, or the next element of a LazyList value.
 #[allow(clippy::too_many_arguments)]
-fn step_for(sh: &Ctx, name: &Arc<str>, values: &Arc<Vec<Value>>, mut index: usize, mut cur: Option<LazyList>, body: &Sexp, id: u64, chain: &mut Chain) -> R<()> {
+fn step_for(sh: &Sh, name: &Arc<str>, values: &Arc<Vec<Value>>, mut index: usize, mut cur: Option<LazyList>, body: &Sexp, id: u64, chain: &mut K) -> R<()> {
     let item = loop {
         if let Some(l) = cur.take() {
             if let Some((item, rest)) = l.uncons()? {
@@ -1719,11 +1771,18 @@ fn eval_bg(sh: &Ctx, pipeline: &Sexp) -> R<()> {
         let specs = bg_captures(sh, stmt_redirs(pipeline));
         child.bg_captures = Some(Arc::new(Mutex::new(specs.iter().cloned().collect())));
         let p = pipeline.clone();
+        // When the job ends (also with an error), the variables of its
+        // variable lists without a value get "".
+        let ended = specs.clone();
         let m = sh_start(child, Vec::new(), move |c| {
             let r = run_stmt(c, &p);
             subst_settle(c);
             r
-        }, || {});
+        }, move || {
+            for s in &ended {
+                s.finish();
+            }
+        });
         let last = m.ctx.clone();
         (vec![m], last, specs)
     };
@@ -2298,8 +2357,10 @@ fn external_run(sh: &Ctx, pos: Pos, name: &str, args: Vec<String>, input: &Arc<I
     if bytes > max {
         return Err(sh.error(pos, &expand::over_message(max)));
     }
-    let mut cmd = Command::new(name);
-    cmd.args(&args).env_clear().envs(sh.env.dict()).current_dir(sh.cwd());
+    let env = sh.env.dict();
+    let cwd = sh.cwd();
+    let mut cmd = Command::new(command_path(name, env.get("PATH"), &cwd));
+    cmd.args(&args).env_clear().envs(env).current_dir(cwd);
     // Standard output and error: the Stream itself, or a pipe to read.
     let mut pumps: Vec<(std::io::PipeReader, Target)> = Vec::new();
     let out_os = os_stream(out);
@@ -2472,6 +2533,32 @@ fn stdio_of(fd: &Arc<Fd>) -> Stdio {
         Ok(o) => Stdio::from(o),
         Err(_) => Stdio::null(),
     }
+}
+
+/// The file of a command name: a name with a / as it is, otherwise the first
+/// executable file of that name in the directories of PATH (relative ones
+/// from the current directory). Given an absolute path, the standard
+/// library starts the command with posix_spawn instead of fork and exec,
+/// which in a process with threads is much slower. If none is found, the
+/// name as it is (the standard library looks for it, and gives the same
+/// error as before).
+fn command_path(name: &str, path: Option<&String>, cwd: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    if name.contains('/') || name.is_empty() {
+        return name.into();
+    }
+    if let Some(path) = path {
+        for dir in path.split(':') {
+            let dir = if dir.is_empty() { "." } else { dir };
+            let file = cwd.join(dir).join(name);
+            if let Ok(m) = std::fs::metadata(&file) {
+                if m.is_file() && m.permissions().mode() & 0o111 != 0 {
+                    return file;
+                }
+            }
+        }
+    }
+    name.into()
 }
 
 /// The Stream of a target that an external command can write to as it is,

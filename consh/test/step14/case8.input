@@ -1,0 +1,6 @@
+function e1 () { echo $u1; }
+e1 > (a) & wait $!; echo "waited $? a=[$a]"
+function e2 () { echo 1; echo $u2; }
+e2 > (a b . r) & wait $!; echo "a=[$a] b=[$b] r=[${r}]"
+function g () { x=$(echo inner); echo "got $x"; echo two; }
+g > (a b) & wait $!; echo "a=[$a] b=[$b]"

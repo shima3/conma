@@ -103,6 +103,9 @@ pub fn fields(sh: &Ctx, word: &Sexp) -> R<Vec<Value>> {
 }
 
 pub fn fields_in(sh: &Ctx, word: &Sexp, limit: &mut Limit) -> R<Vec<Value>> {
+    if let Some(v) = quick(sh, word, false)? {
+        return Ok(v);
+    }
     let parts = parts(sh, word_elems(word))?;
     parts_fields_in(sh, &parts, limit, false)
 }
@@ -178,6 +181,29 @@ pub fn parts_fields_in(sh: &Ctx, parts: &[Part], limit: &mut Limit, null_glob: b
     Ok(strings(out))
 }
 
+/// The words of the commonest words without making their parts (as
+/// Literal_fields and Var_fields of the ConMa version): a literal word, a
+/// quoted one, and $x or ${x} whose value is a String without glob
+/// characters or a function value; the String is shared, not copied. As an
+/// argument (arg), an empty ${x} is an empty argument. None for the others.
+fn quick(sh: &Ctx, word: &Sexp, arg: bool) -> R<Option<Vec<Value>>> {
+    let e = match word_elems(word) {
+        [e] => e,
+        _ => return Ok(None),
+    };
+    Ok(match (e.tag(), e.children()) {
+        ("lit", [Sexp::Str(t)]) if !t.is_empty() && !glob::has_meta(t) => Some(vec![Value::Str(t.clone())]),
+        ("sq" | "esc", [Sexp::Str(t)]) => Some(vec![Value::Str(t.clone())]),
+        (k @ ("var" | "bvar"), [n]) => match sh.lookup(e.pos(), n.str())? {
+            Value::Str(s) if s.is_empty() => Some(if arg && k == "bvar" { vec![Value::Str(s)] } else { Vec::new() }),
+            Value::Str(s) if !glob::has_meta(&s) => Some(vec![Value::Str(s)]),
+            v @ Value::Func(_) => Some(vec![v]),
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
 /// The function value if it is the only part.
 fn single_func(parts: &[Part]) -> Option<Vec<Value>> {
     match parts {
@@ -217,6 +243,9 @@ fn single_fields(kind: Kind, value: &str) -> Option<Vec<String>> {
 /// LazyList; otherwise a word with quotes or ${x} is one String, and other
 /// words disappear when empty.
 pub fn args(sh: &Ctx, word: &Sexp) -> R<Vec<Value>> {
+    if let Some(v) = quick(sh, word, true)? {
+        return Ok(v);
+    }
     let parts = parts(sh, word_elems(word))?;
     let guard = &mut Limit::guard(word.pos());
     if let Some(f) = single_func(&parts) {
@@ -273,6 +302,17 @@ pub fn def_value(sh: &Ctx, values: &[Sexp]) -> R<Value> {
 /// $x, its one leaf word ("" if none, an error if more); otherwise with a
 /// LazyList of ${x}, a LazyList; otherwise a String.
 pub fn value(sh: &Ctx, word: &Sexp) -> R<Value> {
+    if let [e] = word_elems(word) {
+        match (e.tag(), e.children()) {
+            ("lit" | "sq" | "esc", [Sexp::Str(t)]) => return Ok(Value::Str(t.clone())),
+            ("var", [n]) => match sh.lookup(e.pos(), n.str())? {
+                v @ (Value::Str(_) | Value::Func(_)) => return Ok(v),
+                Value::List(_) => {}
+            },
+            ("bvar", [n]) => return sh.lookup(e.pos(), n.str()),
+            _ => {}
+        }
+    }
     let parts = parts(sh, word_elems(word))?;
     value_parts(sh, word.pos(), &parts)
 }
@@ -512,6 +552,13 @@ pub fn value_head(sh: &Ctx, pos: Pos, v: &Value) -> R<(Value, Vec<Value>)> {
 /// becomes empty is an error. None if every word disappears.
 pub fn cmd_head(sh: &Ctx, words: &[Sexp], limit: &mut Limit) -> R<Option<(Value, Vec<Value>, usize)>> {
     for (i, word) in words.iter().enumerate() {
+        if let Some(f) = quick(sh, word, false)? {
+            let mut it = f.into_iter();
+            match it.next() {
+                None => continue,
+                Some(name) => return Ok(Some((name, it.collect(), i + 1))),
+            }
+        }
         let parts = parts(sh, word_elems(word))?;
         if let Some(mut f) = single_func(&parts) {
             return Ok(Some((f.pop().unwrap(), Vec::new(), i + 1)));

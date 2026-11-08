@@ -1,0 +1,6 @@
+$ $ consh: stdin:1:23: undefined variable: u1
+waited 1 a=[]
+$ $ consh: stdin:3:31: undefined variable: u2
+a=[1] b=[] r=[]
+$ $ a=[got inner] b=[two]
+$ exit: 0
