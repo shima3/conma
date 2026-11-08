@@ -212,9 +212,9 @@
   }
   status.textContent = "動作中";
   show(
-    "ConSh (ConMa VM on WebAssembly). 外部コマンドは cat だけです（JavaScript で作ったもの）。例:\n" +
+    "ConSh (ConMa VM on WebAssembly). 組込コマンドは cat だけです（JavaScript で作ったもの）。例:\n" +
       '  function greet (. names) { for n in $names; do echo "hello, $n"; done }\n' +
-      "  greet $(stdin < names.txt)\n",
+      "  greet $(cat < names.txt)\n",
     "n"
   );
   line.disabled = false;
