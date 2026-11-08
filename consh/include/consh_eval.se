@@ -8,7 +8,8 @@
 ;;   * Func_lookup を __Cont_get__ を使わない形にし、Sh_defined で普通の変数を先に調べるようにした。
 ;;   * 外部コマンド 1 つだけの $( ) の値を、1 段の LazyList で作るようにした（Subst_lines_from。参照版の
 ;;     Eval_subst_os は、util.se の __LazyList_lines__ を Subst_lines で包む）。Stream から作る標準入力
-;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）も、同じ読み方にした（Stream は閉じない）。
+;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）と、外部コマンドの出力を行ごとに
+;;     ターゲットに書く Target_pump も、同じ読み方にした（Stream は閉じない）。
 ;;   * Subst_settle_os で、値の先頭に Pipe_cap 個そろったことを記録（"full"）に覚え、コマンドのたびに
 ;;     たどり直さないようにした。
 ;;
@@ -509,14 +510,17 @@
     (,() Value_toString sh pos line))
 
 ;; input Stream を EOF まで読み、行ごとにターゲットに書く
+;; 高速版：行は、参照版の __LazyList_lines__ の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で読む。
+;; 改行はそこで除くので、Line_chomp は呼ばない。Stream は呼び出し側が閉じるので、ここでは閉じない（close が偽）
 (define Target_pump ,(sh target stream)
-  __LazyList_lines__ stream ,(lines)
+  __Ref_new__ __FALSE__ ,(never)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Subst_lines_from stream never __FALSE__ "" zero "" ,(lines)
   Target_pump_lines sh target lines)
 
 (define Target_pump_lines ,(sh target lines)
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return) lines ,(line rest)
-  Line_chomp line ,(line)
   Target_write sh __NULL__ target line ,()
   Target_pump_lines sh target rest)
 
