@@ -5,8 +5,12 @@
 // The files of the page are in the virtual file system of the VM, from /home/user (the current
 // directory), where the page puts the files of HOME_FILES (from consh/js/web) when it opens;
 // "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
-// standard input, as if they were typed (the ConMa version of ConSh has no source). There are no
-// external commands.
+// standard input, as if they were typed (the ConMa version of ConSh has no source).
+//
+// The external commands are the ones of COMMANDS, written in JavaScript (cat), which the VM starts
+// as processes (hostProc): they read and write the standard input, output and error that ConSh gives
+// them, as a real process does. While one reads the terminal, the lines typed go to it instead of
+// ConSh, Ctrl+D ends only its input, and Ctrl+C stops it (and ConSh gets the interrupt).
 (async function () {
   "use strict";
   const out = document.getElementById("out");
@@ -31,6 +35,146 @@
     term.scrollTop = term.scrollHeight;
   }
 
+  // ── Processes written in JavaScript (hostProc of conma.js) ──
+  // A command is an async function (io, args) that returns the exit status; io.read() gives the next
+  // bytes of standard input (null at the end), io.write(i, bytes) writes to standard output (1) or
+  // error (2) and returns false when the reader has gone (the command then returns -13, SIGPIPE).
+  const COMMANDS = {
+    // cat [-u] [file ...]: the files, or standard input for - and with no file, to standard output
+    cat: async (io, args) => {
+      let files = args;
+      while (files.length > 0 && files[0] === "-u") files = files.slice(1);
+      if (files.length > 0 && files[0].startsWith("-") && files[0] !== "-") {
+        io.write(2, ConMaVM.utf8("cat: illegal option -- " + files[0].slice(1, 2) + "\nusage: cat [-u] [file ...]\n"));
+        return 1;
+      }
+      if (files.length === 0) files = ["-"];
+      let status = 0;
+      for (const name of files) {
+        if (name === "-") {
+          for (;;) {
+            const data = await io.read();
+            if (data === null) break;
+            if (!io.write(1, data)) return -13;
+          }
+          continue;
+        }
+        const data = vm.getFile(name.startsWith("/") ? name : io.cwd + "/" + name);
+        if (data === null) {
+          io.write(2, ConMaVM.utf8("cat: " + name + ": No such file or directory\n"));
+          status = 1;
+          continue;
+        }
+        if (!io.write(1, data)) return -13;
+      }
+      return status;
+    },
+  };
+
+  const procs = new Map(); // id -> process
+  let nextProc = 0;
+  let tickWaiters = []; // processes waiting for the VM to run (data in its pipes)
+  const termDecoders = { 1: new TextDecoder(), 2: new TextDecoder() };
+
+  // After each slice of the VM: wake the processes that wait for its pipes.
+  function procTick() {
+    const ws = tickWaiters;
+    tickWaiters = [];
+    for (const w of ws) w();
+  }
+
+  // The running process that reads the terminal (the last started), or null.
+  function terminalProcess() {
+    let found = null;
+    for (const p of procs.values()) if (p.code === null && p.terminal) found = p;
+    return found;
+  }
+
+  function spawnProcess(argv, env, cwd, stdio) {
+    const command = COMMANDS[argv[0]] || (argv[0].includes("/") ? COMMANDS[argv[0].split("/").pop()] : null);
+    if (!command) return -2; // ENOENT: ConSh says "No such file or directory" and sets $? to 127
+    const id = ++nextProc;
+    const p = {
+      code: null,
+      terminal: stdio[0].kind === 0 && stdio[0].n === 0,
+      termData: [],
+      termEof: false,
+      termWaiter: null,
+      // A line typed, or Ctrl+D (an end of input for this read only, as a terminal gives it)
+      fromTerminal(data) {
+        if (data === null) this.termEof = true;
+        else this.termData.push(data);
+        if (this.termWaiter) {
+          const w = this.termWaiter;
+          this.termWaiter = null;
+          w();
+        }
+      },
+    };
+    procs.set(id, p);
+    const ownFds = stdio.filter((s) => s.kind === 2 || s.kind === 3).map((s) => s.n);
+    const io = {
+      cwd,
+      env,
+      async read() {
+        const s = stdio[0];
+        for (;;) {
+          if (p.code !== null) return null;
+          if (s.kind === 0 && s.n === 0) {
+            if (p.termData.length > 0) return p.termData.shift();
+            if (p.termEof) {
+              p.termEof = false;
+              return null;
+            }
+            await new Promise((resolve) => (p.termWaiter = resolve));
+            continue;
+          }
+          if (s.kind !== 2) return null;
+          const r = vm.read(s.n, 65536);
+          if (typeof r === "number") {
+            if (r !== -35) return null;
+            await new Promise((resolve) => tickWaiters.push(resolve));
+            continue;
+          }
+          return r.length === 0 ? null : r;
+        }
+      },
+      write(i, bytes) {
+        if (p.code !== null) return false;
+        const s = stdio[i];
+        if (s.kind === 0) show(termDecoders[s.n === 2 ? 2 : 1].decode(bytes, { stream: true }), s.n === 2 ? "e" : "");
+        else if (s.kind === 3) {
+          if (vm.write(s.n, bytes) === -32) return false;
+          pump();
+        }
+        return true;
+      },
+    };
+    const end = (code) => {
+      if (p.code !== null) return;
+      p.code = code;
+      for (const fd of ownFds) vm.close(fd);
+      vm.childEvent();
+      pump();
+    };
+    p.kill = (sig) => end(-sig);
+    command(io, argv.slice(1)).then(end, (e) => {
+      io.write(2, ConMaVM.utf8(argv[0] + ": " + e + "\n"));
+      end(1);
+    });
+    return id;
+  }
+
+  const hostProc = {
+    spawn: (argv, env, cwd, stdio) => spawnProcess(argv, env, cwd, stdio),
+    poll: (id) => (procs.has(id) ? procs.get(id).code : -10),
+    kill: (id, sig) => {
+      const p = procs.get(id);
+      if (p && p.code === null) p.kill(sig);
+      return 0;
+    },
+  };
+
   let vm;
   try {
     const [wasmBytes, moduleBytes] = await Promise.all(
@@ -46,7 +190,7 @@
     vm = ConMaVM.create(
       wasm,
       (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""),
-      { jsDone: () => pump() }
+      { jsDone: () => pump(), hostProc }
     );
     vm.makeDirs(HOME);
     vm.setCwd(HOME);
@@ -68,7 +212,7 @@
   }
   status.textContent = "動作中";
   show(
-    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。例:\n" +
+    "ConSh (ConMa VM on WebAssembly). 外部コマンドは cat だけです（JavaScript で作ったもの）。例:\n" +
       '  function greet (. names) { for n in $names; do echo "hello, $n"; done }\n' +
       "  greet $(stdin < names.txt)\n",
     "n"
@@ -90,6 +234,7 @@
     do {
       r = vm.run(20000);
     } while (r === ConMaVM.RUNNING && performance.now() - t0 < 25);
+    procTick();
     if (r === ConMaVM.RUNNING) {
       setTimeout(slice, 0);
       return;
@@ -97,7 +242,8 @@
     pumping = false;
     if (r === ConMaVM.IDLE) {
       // pump runs again when input comes, or when JavaScript gives a result (jsDone)
-      status.textContent = vm.jsPending() > 0 ? "JavaScript 待ち" : "入力待ち";
+      const tp = terminalProcess();
+      status.textContent = vm.jsPending() > 0 ? "JavaScript 待ち" : tp ? "入力待ち (cat など)" : "入力待ち";
       return;
     }
     finish(r);
@@ -116,9 +262,12 @@
     vm.input(text);
     pump();
   }
+  // Ctrl+C: the process reading the terminal, if any, is stopped (SIGINT, 2), and ConSh gets the interrupt
   function interrupt() {
     if (done) return;
     show("^C\n", "n");
+    const tp = terminalProcess();
+    if (tp) tp.kill(2);
     vm.interrupt();
     pump();
   }
@@ -129,7 +278,9 @@
       show(text + "\n");
       if (text !== "") history.push(text);
       hpos = history.length;
-      send(text + "\n");
+      const tp = terminalProcess();
+      if (tp) tp.fromTerminal(ConMaVM.utf8(text + "\n"));
+      else send(text + "\n");
       ev.preventDefault();
     } else if (ev.key === "c" && ev.ctrlKey) {
       line.value = "";
@@ -137,8 +288,13 @@
       ev.preventDefault();
     } else if (ev.key === "d" && ev.ctrlKey && line.value === "") {
       show("^D\n", "n");
-      vm.inputEnd();
-      pump();
+      // The end of input of the process that reads the terminal, or else of ConSh (which then ends)
+      const tp = terminalProcess();
+      if (tp) tp.fromTerminal(null);
+      else {
+        vm.inputEnd();
+        pump();
+      }
       ev.preventDefault();
     } else if (ev.key === "ArrowUp" && hpos > 0) {
       line.value = history[--hpos];

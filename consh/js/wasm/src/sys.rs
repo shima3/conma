@@ -77,7 +77,7 @@ extern "C" {
     /// host (its fd), 2 the read end of a pipe of the VM (an fd of the VM that
     /// the host reads, conma_read, and closes), 3 the write end of a pipe of the
     /// VM (an fd of the VM that the host writes, conma_write, and closes), 4
-    /// /dev/null. detached: in a new session. Returns the number of the
+    /// /dev/null; a file of the virtual file system is given as 2 or 3. detached: in a new session. Returns the number of the
     /// process, or minus an errno (-38, ENOSYS, if the host cannot start one).
     fn host_proc_spawn(
         argv_ptr: *const u8,
@@ -456,6 +456,13 @@ pub fn spawn(args: &[String], fds: &[Option<i32>], env: &[(String, String)], cwd
                         (3, d)
                     }
                     Fd::Null => (4, 0),
+                    // A file of the virtual file system: as a pipe end, which the host reads or writes
+                    f @ Fd::File { .. } => {
+                        let reading = matches!(f, Fd::File { mode: 'r', .. });
+                        let d = os.add(f);
+                        taken.push(d);
+                        (if reading { 2 } else { 3 }, d)
+                    }
                     _ => return Err(err(EBADF)),
                 },
             };
