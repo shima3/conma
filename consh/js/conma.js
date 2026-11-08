@@ -36,13 +36,22 @@
 //   (x "text")         console.error (and warn): an element of standard error
 //   (i)                stdin is read: the VM writes the next element of the
 //                      standard input to the second Stream of __JS_call__ as
-//                      a line, a String in double quotes, or closes it at the end
+//                      a line, a String in double quotes, or the line end
 //   (r s "text")       a string, or a number, boolean, BigInt or object made
 //                      into one (String(), JSON.stringify)
 //   (r l ("a" ("b")))  an array: its elements, an array as a list, null and
 //                      undefined as ""
 //   (r n)              undefined or null: nothing
 //   (e "message")      an exception: "Name: message" for an Error
+//   (r t)              an iterator (any iterable object but an array or a
+//                      string, a generator too): then, for each line n that
+//                      the VM writes to the second Stream, the host takes the
+//                      next element and writes (t "text") or (t (...)) (an
+//                      element as one of an array), or (d) at the end, or
+//                      (e "message")
+// When the VM closes the second Stream (its reader has gone), the host stops
+// the call (and the iterator, with its return(); what its finally writes with
+// console goes to the host's standard output and error).
 // console goes to the call whose code runs now, or, while it awaits, to the
 // only call that has not ended; when two or more have not ended, to the
 // host's standard output and error (write), and when none, to the console.
@@ -146,7 +155,17 @@ var ConMaVM = (function () {
   Job.prototype.input = function (data) {
     const lines = (this.partial + data).split("\n");
     this.partial = lines.pop();
-    for (const l of lines) this.give(unquote(l));
+    for (const l of lines) {
+      if (l === "end") this.inputEnd();
+      else if (l === "n") {
+        if (this.onNext) this.onNext();
+      } else this.give(unquote(l));
+    }
+  };
+  // The VM closed the second Stream: the end of standard input, and no reader.
+  Job.prototype.closed = function () {
+    this.inputEnd();
+    if (this.onClosed) this.onClosed();
   };
   Job.prototype.inputEnd = function () {
     this.inputEnded = true;
@@ -206,7 +225,8 @@ var ConMaVM = (function () {
       console[name] = function (...args) {
         if (liveJobs.size === 0) return original.apply(console, args);
         const text = args.map(inspect).join(" ");
-        const job = consoleJob || (liveJobs.size === 1 ? liveJobs.values().next().value : null);
+        let job = consoleJob || (liveJobs.size === 1 ? liveJobs.values().next().value : null);
+        if (job && job.closing) job = null; // its reader has gone (a finally of a generator that is stopped)
         if (job) job.emit("(" + tag + " " + sexpString(text) + ")\n");
         else consoleFallback(tag === "o" ? 1 : 2, utf8(text + "\n"));
       };
@@ -227,6 +247,20 @@ var ConMaVM = (function () {
 
   function sexpList(a) {
     return "(" + a.map((e) => (Array.isArray(e) ? sexpList(e) : sexpString(e == null ? "" : scalar(e)))).join(" ") + ")";
+  }
+
+  function isIterator(v) {
+    return (
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      (typeof v[Symbol.asyncIterator] === "function" || typeof v[Symbol.iterator] === "function")
+    );
+  }
+
+  // An element of an iterator, as one of an array.
+  function elementSexp(e) {
+    return Array.isArray(e) ? sexpList(e) : sexpString(e == null ? "" : scalar(e));
   }
 
   function resultLine(v) {
@@ -273,9 +307,68 @@ var ConMaVM = (function () {
           // runs again after them.
           const job = new Job(fd, (line) => {
             if (job.ended) return;
-            pass(line, (p, n) => x.conma_write(fd, p, n));
+            const errno = pass(line, (p, n) => x.conma_write(fd, p, n));
             wake();
+            if (errno === 32 && job.onClosed) job.onClosed(); // EPIPE: the reader has gone
           });
+          // End the call, writing line (if not null) as its last.
+          const finish = (line) => {
+            if (job.ended) return;
+            if (line !== null) job.emit(line);
+            job.ended = true;
+            liveJobs.delete(job);
+            jobs.delete(id);
+            x.conma_close(fd);
+            jsPending--;
+            for (const w of job.waiters.splice(0)) w(END);
+            wake();
+          };
+          // Give the elements of an iterator one at a time, on the requests of the VM.
+          const iterate = (v) => {
+            const it = typeof v[Symbol.asyncIterator] === "function" ? v[Symbol.asyncIterator]() : v[Symbol.iterator]();
+            let requested = 0;
+            let busy = false;
+            job.onClosed = () => {
+              if (job.ended || job.closing) return;
+              job.closing = true;
+              try {
+                if (typeof it.return === "function") Promise.resolve(it.return()).catch(() => {});
+              } catch (e) {
+                // a return() that throws: the call ends anyway
+              }
+              finish(null);
+            };
+            job.onNext = async () => {
+              requested++;
+              if (busy) return;
+              busy = true;
+              while (requested > 0 && !job.ended) {
+                requested--;
+                let line;
+                try {
+                  let step;
+                  consoleJob = job;
+                  try {
+                    step = it.next();
+                  } finally {
+                    consoleJob = null;
+                  }
+                  const r = await step;
+                  if (r.done) {
+                    finish("(d)\n");
+                    break;
+                  }
+                  line = "(t " + elementSexp(await r.value) + ")\n";
+                } catch (e) {
+                  finish(errorLine(e));
+                  break;
+                }
+                job.emit(line);
+              }
+              busy = false;
+            };
+            job.emit("(r t)\n");
+          };
           jobs.set(id, job);
           liveJobs.add(job);
           let result;
@@ -288,17 +381,14 @@ var ConMaVM = (function () {
             consoleJob = null;
           }
           result
-            .then(resultLine)
+            .then((v) => {
+              if (!isIterator(v)) return resultLine(v);
+              iterate(v);
+              return undefined;
+            })
             .catch(errorLine)
             .then((line) => {
-              job.emit(line);
-              job.ended = true;
-              liveJobs.delete(job);
-              jobs.delete(id);
-              x.conma_close(fd);
-              jsPending--;
-              for (const w of job.waiters.splice(0)) w(END);
-              wake();
+              if (line !== undefined) finish(line);
             });
         },
         host_js_input: (id, ptr, len) => {
@@ -307,7 +397,7 @@ var ConMaVM = (function () {
         },
         host_js_input_end: (id) => {
           const job = jobs.get(id);
-          if (job) job.inputEnd();
+          if (job) job.closed();
         },
       },
     });

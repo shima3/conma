@@ -46,6 +46,7 @@ js [変数名=] コード {引数}
 * 最初の語が「識別子 `=`」だけ（スペースの前に `=`）なら、結果をその局所変数に入れる。そうでなければ、結果を標準出力に出す。
 * 引数の String は文字列、LazyList（`${list}`）は配列として渡す。
 * 結果の文字列は値 1 つ、配列は要素ごとの値（変数には LazyList）、`undefined` と `null` は何も出さない（変数には空文字列）。そのほかの値は `String()` か `JSON.stringify` で文字列にする。
+* 結果がイテレータ（ジェネレータ、Set、Map など、配列と文字列以外の反復可能なもの）なら、要素ごとの値にする。要素は読まれる分だけ作るので、終わらないジェネレータも `| 関数` や `> (a b)` で使える。変数に入れると、読んだときに要素を作る遅延の LazyList になる（`${nat}` で 1 つずつたどる）。
 * 例外のときは `js: 名前: メッセージ` を出して `$?` を 1 にする。
 * コードの中では、`stdin` が標準入力の要素（文字列）の非同期のイテレータになる。`stdin.lines()` は全部の配列の Promise。`stdin` を読まないコードは、標準入力を読まない。
 * `console.log`（`info`、`debug`）は標準出力に、`console.error`（`warn`）は標準エラー出力に、1 回で 1 つの要素を出す。変数名を書いたときは、標準出力には `console.log` の出力だけが出る。
@@ -56,6 +57,7 @@ js sum= '(a, b) => Number(a) + Number(b)' $x $y     # sum に入れる
 js '["a", "b"]' > (first . rest)
 js text= 'fetch("data.txt").then(r => r.text())'    # ブラウザ
 cmd | js 'async () => { let n = 0; for await (const l of stdin) n++; return n }'
+js nat= '(function* () { let i = 0; while (true) yield i++ })()'     # 遅延の LazyList
 ```
 
 ネイティブの VM（Python 版、Rust 版）と Rust 版の ConSh では、`js` は `js: JavaScript is not available` を出して `$?` を 127 にする。

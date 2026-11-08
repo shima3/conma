@@ -1,0 +1,12 @@
+made the list
+make 0
+e=0
+again e=0
+three: x
+three: y
+three: z
+three as a string: x y z
+bad: 1
+consh: case3.sh:11:1: js: Error: lazy error
+status 0
+exit: 0

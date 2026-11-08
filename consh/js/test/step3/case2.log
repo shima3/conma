@@ -1,0 +1,9 @@
+a=make 0 b=0 c=make 1
+first: n0
+first: 0
+finally ran
+after the pipes
+ONE
+TWO
+THREE
+exit: 0

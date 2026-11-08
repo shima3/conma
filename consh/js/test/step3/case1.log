@@ -1,0 +1,18 @@
+a
+b c
+3
+
+line 1
+line 2
+line 3
+s1
+s2
+k1 v1
+k2 v2
+after 40
+after 10
+1
+consh: case1.sh:11:1: js: Error: in the middle
+status 1
+status 0
+exit: 0
