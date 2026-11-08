@@ -596,8 +596,13 @@ class Fuser:
             return {"f": f"num({x})", "b": f"bool_value({x})", "d": "Value::Null"}.get(kind, f"{x}.clone()")
 
         def pushes(items):
-            return "".join(f"let e = lv_push(&e, t.funcs[{l[0]}].params[{l[1]}].clone(), {val(i, l)}); "
-                           for i, l in items)
+            # one call that pushes them all (lv_build): the names as a table, the values in an array,
+            # instead of a call of lv_push for each (most of the code, on paths that are seldom taken)
+            if not items:
+                return ""
+            names = ", ".join(f"({l[0]}, {l[1]})" for i, l in items)
+            vals = ", ".join(val(i, l) for i, l in items)
+            return f"let e = lv_build(t, e, &[{names}], [{vals}]); "
         hp = ctx["hp"]
         items = list(enumerate(locals_))
         if hp == 0:

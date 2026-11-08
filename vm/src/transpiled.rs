@@ -1181,6 +1181,19 @@ pub fn lget(env: &LVEnv, i: usize) -> Result<Value, VmError> {
 
 /// The LVEnv env without its first n nodes (the parameters of the Function
 /// it was made for): the LVEnv of the Closure.
+/// e with the values pushed in order, each under the name of parameter j of
+/// Function f (names[k] = (f, j)): the LVEnv the VM would have, made where a
+/// fused chain hands the VProc back (one call instead of a call of lv_push
+/// for each value, which made most of the generated code).
+#[inline(never)]
+pub fn lv_build<const N: usize>(t: &Table, mut e: LVEnv, names: &[(usize, usize); N], vals: [Value; N]) -> LVEnv {
+    for (k, v) in vals.into_iter().enumerate() {
+        let (f, j) = names[k];
+        e = lv_push(&e, t.funcs[f].params[j].clone(), v);
+    }
+    e
+}
+
 pub fn lv_skip(env: &LVEnv, n: usize) -> LVEnv {
     let mut e = env;
     for _ in 0..n {
