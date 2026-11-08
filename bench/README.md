@@ -57,9 +57,10 @@ The transpiled VM after each change, built with the transpiled code of the bench
 | a value read from a Dict with a String key written in place and used only as conditions: a Rust `bool`, tested in the Dict without cloning it | 2026-11-08 | 0.29 s | 0.78 s | 0.32 s | 0.06 s | 0.79 s |
 | String keys in the index of a Dict by their hash, a short text compared without `memcmp` | 2026-11-08 | 0.25 s | 0.77 s | 0.31 s | 0.06 s | 0.80 s |
 | shapes of Dicts and a cache of the shape and the position of the key at each lookup with a String key written in place (records without adding them to the language) | 2026-11-08 | 0.25 s | 0.69 s | 0.32 s | 0.07 s | 0.81 s |
+| small top-level Functions called with an LCont written in place (inlined), with Strings written in place passed as constants (ConSh 0.67 s before, measured again with its current module) | 2026-11-08 | 0.26 s | 0.60 s | 0.33 s | 0.07 s | 0.59 s |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
-So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and as fast for richards (slightly faster), whose idle task computes its bit operations with arithmetic (ConMa has none).
+So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and for richards, whose idle task computes its bit operations with arithmetic (ConMa has none).
 
 What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).
 

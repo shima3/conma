@@ -72,6 +72,11 @@ PURE = {
 
 IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
 
+# Inlining (Fuser.inline): the most Bodies of a Function written in place,
+# and the most calls written in place one in another.
+INLINE_SIZE = 8
+INLINE_DEPTH = 2
+
 # All the variables (Fuser.uses of a Function whose uses are not known).
 ALL = None
 
@@ -222,6 +227,7 @@ def load(module, prim_names):
     comp = Compiler()
     prims = {}
     comp.tops = []
+    gfun = {}
     for item in module[2:]:
         if tag(item) != "G":
             continue
@@ -232,8 +238,9 @@ def load(module, prim_names):
             if name in prim_names:
                 prims[gid] = name
         elif tag(value) == "Function":
-            comp.tops.append(comp.function(value))
-    return comp.funcs, prims, comp.tops
+            gfun[gid] = comp.function(value)
+            comp.tops.append(gfun[gid])
+    return comp.funcs, prims, comp.tops, gfun
 
 
 # ── Code ──
@@ -320,11 +327,15 @@ def transpiled_call(funcs, prims, f, prim_index):
 # results are those of the VM.
 
 class Fuser:
-    def __init__(self, funcs, prims, tops):
-        self.funcs, self.prims, self.tops = funcs, prims, tops
+    def __init__(self, funcs, prims, tops, gfun):
+        self.funcs, self.prims, self.tops, self.gfun = funcs, prims, tops, gfun
         self.loop = None
-        self.head_p = 0
+        # the code being written: the Rust variable of its LVEnv, the number
+        # of the Rust variable of its first chain variable (x{off}), and how
+        # many of its first variables are parameters of the head (full)
+        self.ctx = {"env": "env", "off": 0, "hp": 0}
         self.bails, self.retries, self.labels = set(), set(), 0
+        self.nbail, self.inlining, self.envs = 0, [], 0
 
     def apply(self, calls, directs):
         heads = list(self.tops)
@@ -347,7 +358,8 @@ class Fuser:
             # has it; a call of itself without an LCont goes back to the top
             # of a loop
             p = f.params
-            self.bails, self.labels, self.loop, self.head_p = set(), 0, {"fid": fid, "p": p, "used": False}, p
+            self.bails, self.labels, self.loop = set(), 0, {"fid": fid, "p": p, "used": False}
+            self.ctx, self.envs = {"env": "env", "off": 0, "hp": p}, 0
             self.retries = set()
             out = []
             self.emit(fid, p, [(fid, j, "v") for j in range(p)], out)
@@ -453,6 +465,8 @@ class Fuser:
                 return None
             s |= {dx - 1 - i for i in u if i < dx}
         for j in J:
+            if j["ctx"] is not self.ctx:
+                continue   # a call inlined around it: its variables are not these
             u = self.uses(j["lc"])
             if u is ALL:
                 return None
@@ -485,9 +499,25 @@ class Fuser:
 
     def local(self, d, locals_, i):
         """The Rust variable of the variable with de Bruijn index i (< d), and
-        its kind: "v" a Value, "f" an f64, "b" a bool."""
+        its kind: "v" a Value, "f" an f64, "b" a bool, "c" a String written in
+        place (no Rust variable: cref of its Body and operand, constant)."""
         idx = d - 1 - i
-        return f"x{idx}", locals_[idx][2]
+        return self.xn(idx), locals_[idx][2]
+
+    def xn(self, idx):
+        """The Rust variable of the chain variable idx of the code being written."""
+        return f"x{self.ctx['off'] + idx}"
+
+    def constant(self, x, d, e, k, locals_):
+        """For a String written in place (operand k of Function x's Body, or a
+        variable bound to one): (Function, operand, its atom); else None."""
+        if e[0] == "C" and e[1]:
+            return (x, k, e[1])
+        if e[0] == "L" and e[1] < d:
+            l = locals_[d - 1 - e[1]]
+            if l[2] == "c":
+                return l[3]
+        return None
 
     def ref(self, x, d, e, where, locals_, move=False):
         """Rust code for the value of expression e of Function x's Body at
@@ -495,6 +525,7 @@ class Fuser:
         "operator". None if it needs the LVEnv (a function expression). With
         move, a variable's value is moved out of it."""
         k = e[0]
+        E = self.ctx["env"]
         if k == "L":
             i = e[1]
             if i < d:
@@ -503,31 +534,38 @@ class Fuser:
                     return f"num({v})"
                 if kind == "b":
                     return f"bool_value({v})"
+                if kind == "c":
+                    cx, ck, _ = locals_[d - 1 - i][3]
+                    return f"cref(t, {cx}, {ck}).clone()"
                 return v if move else f"{v}.clone()"
-            return f"lget(&env, {i - d})?"
+            return f"lget(&{E}, {i - d})?"
         if k == "Null":
             return "Value::Null"
         if k in ("G", "C"):
             src = "b.operator.as_ref().unwrap()" if where == "operator" else f"&b.{where}"
-            return f"{{ let b = body_of(t, {x}); eval({src}, &env, gv)? }}"
+            return f"{{ let b = body_of(t, {x}); eval({src}, &{E}, gv)? }}"
         return None
 
     def rref(self, x, d, e, k, locals_):
         """Rust code for a reference to the value of operand k (expression e)
         of Function x's Body at depth d, for a primitive of DIRECT."""
         kind = e[0]
+        E = self.ctx["env"]
         if kind == "L":
             i = e[1]
             if i < d:
                 v, vk = self.local(d, locals_, i)
+                if vk == "c":
+                    cx, ck, _ = locals_[d - 1 - i][3]
+                    return f"cref(t, {cx}, {ck})"
                 return {"f": f"&num({v})", "b": f"&bool_value({v})"}.get(vk, f"&{v}")
-            return f"&lget(&env, {i - d})?"
+            return f"&lget(&{E}, {i - d})?"
         if kind == "Null":
             return "&Value::Null"
         if kind == "C":
             return f"cref(t, {x}, {k})"
         if kind == "G":
-            return f"&{{ let b = body_of(t, {x}); eval(&b.olist[{k}], &env, gv)? }}"
+            return f"&{{ let b = body_of(t, {x}); eval(&b.olist[{k}], &{E}, gv)? }}"
         return None
 
     def fnum(self, x, d, e, k, name, locals_):
@@ -539,24 +577,31 @@ class Fuser:
         r = self.rref(x, d, e, k, locals_)
         return None if r is None else f'chk(vp, t, {x}, "{name}", {r})?'
 
-    def mat(self, d, locals_):
+    def mat(self, d, locals_, ctx=None):
         """Rust code for the LVEnv the VM would have: env with the variables
-        of the chain. The parameters of the head (the first head_p) are taken
-        from full when it is there."""
+        of the chain. The parameters of the head (the first hp) are taken
+        from full when it is there. ctx: the code the variables are of (the
+        code being written if None)."""
+        ctx = ctx or self.ctx
+        E, off = ctx["env"], ctx["off"]
         if d == 0:
-            return "env.clone()"
+            return f"{E}.clone()"
 
-        def val(i, kind):
-            return {"f": f"num(x{i})", "b": f"bool_value(x{i})", "d": "Value::Null"}.get(kind, f"x{i}.clone()")
+        def val(i, l):
+            kind = l[2]
+            if kind == "c":
+                return f"cref(t, {l[3][0]}, {l[3][1]}).clone()"
+            x = f"x{off + i}"
+            return {"f": f"num({x})", "b": f"bool_value({x})", "d": "Value::Null"}.get(kind, f"{x}.clone()")
 
         def pushes(items):
-            return "".join(f"let e = lv_push(&e, t.funcs[{lc}].params[{j}].clone(), {val(i, kind)}); "
-                           for i, (lc, j, kind) in items)
-        hp = self.head_p
+            return "".join(f"let e = lv_push(&e, t.funcs[{l[0]}].params[{l[1]}].clone(), {val(i, l)}); "
+                           for i, l in items)
+        hp = ctx["hp"]
         items = list(enumerate(locals_))
         if hp == 0:
-            return f"{{ let e = env.clone(); {pushes(items)}e }}"
-        return (f"{{ let e = match &full {{ Some(f) => f.clone(), None => {{ let e = env.clone(); {pushes(items[:hp])}e }} }}; "
+            return f"{{ let e = {E}.clone(); {pushes(items)}e }}"
+        return (f"{{ let e = match &full {{ Some(f) => f.clone(), None => {{ let e = {E}.clone(); {pushes(items[:hp])}e }} }}; "
                 f"{pushes(items[hp:])}e }}")
 
     # J, the clauses the code is in: for each __if__ (or __unless__,
@@ -573,7 +618,7 @@ class Fuser:
         """Rust code for the CChain base with the CFrames of the clauses J on
         top (the innermost on top)."""
         for j in J:
-            base = (f"cframe_on(t, gv, {j['lc']}, {self.mat(j['d'], j['locals'])}, "
+            base = (f"cframe_on(t, gv, {j['lc']}, {self.mat(j['d'], j['locals'], j['ctx'])}, "
                     f"&body_of(t, {j['x']}).sinfo, {base})")
         return base
 
@@ -599,13 +644,16 @@ class Fuser:
         else:
             out.append(f"let v = [{', '.join(vals)}];")
             self.push_joins(J, out)
-            out.append(f"return fused_return(m, vp, env, {self.sinfo(x)}, v);")
+            out.append(f"return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, v);")
 
-    def bail(self, x, d, locals_, out, J=(), retry=False):
+    def bail(self, x, d, locals_, out, J=(), retry=False, rare=False):
         """Enter the code of Function x's Body above, with the LVEnv the VM
         would have. With retry, x is fused, and its code above is for a case
-        the chain leaves to it (not a Body it cannot run)."""
+        the chain leaves to it (not a Body it cannot run). rare: a case that
+        is not expected (a condition that is not a Boolean)."""
         (self.retries if retry else self.bails).add(x)
+        if not (retry or rare):
+            self.nbail += 1
         self.push_joins(J, out)
         out.append(f"return Ok(Next::Enter({x}, {self.mat(d, locals_)}));")
 
@@ -629,11 +677,11 @@ class Fuser:
         if name == "__Cont_get__" and one and not b.olist and not J:
             # the escape continuation, in a Rust variable (made in a clause, it
             # would lack the CFrames of the clauses: left to the VM)
-            out.append(f"let x{d} = make_cont(m, vp);")
+            out.append(f"let {self.xn(d)} = make_cont(m, vp);")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
         if one and name == "__is_null__" and len(b.olist) == 1 and self.rref(x, d, b.olist[0], 0, locals_) is not None:
             # a bool in a Rust variable
-            out.append(f"let x{d}: bool = matches!({self.rref(x, d, b.olist[0], 0, locals_)}, Value::Null);")
+            out.append(f"let {self.xn(d)}: bool = matches!({self.rref(x, d, b.olist[0], 0, locals_)}, Value::Null);")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
         if one and name in NUM_OPS and len(b.olist) == NUM_OPS[name][1]:
             kind, n = NUM_OPS[name]
@@ -654,18 +702,20 @@ class Fuser:
                     out.append(f"if {bad} {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); let oe = {oe}; {' '.join(inner)} "
                                f"return finish(vp, {self.mat(d, locals_)}, gv, t, Some({lc}), Out::Call(oe, string_value({msg!r}))); }}".replace("'", '"'))
                 if kind == "pred":
-                    out.append(f"let x{d}: bool = n0 {NUM_PRED[name]};")
+                    out.append(f"let {self.xn(d)}: bool = n0 {NUM_PRED[name]};")
                     return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
                 expr = {"bin": f"n0 {NUM_BIN.get(name)} n1", "div": "n0 / n1", "sqrt": "n0.sqrt()",
                         "floor": "if n0.is_finite() { n0.floor() } else { n0 }"}[kind]
-                out.append(f"let x{d}: f64 = {expr};")
+                out.append(f"let {self.xn(d)}: f64 = {expr};")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None
-        if (key is not None and key[0] == "C" and key[1] and "\\" not in key[1] and None not in args
+        ckey = self.constant(x, d, key, 1, locals_) if key is not None else None
+        if (ckey is not None and "\\" not in ckey[2] and None not in args
                 and self.rref(x, d, b.olist[0], 0, locals_) is not None):
-            # a String key written in place: its text, without escapes, and
-            # its hash in the Dict index (computed by the Rust compiler)
-            text = key[1][1:-1]
+            # a String key written in place (or given to an inlined call): its
+            # text, without escapes, and its hash in the Dict index (computed
+            # by the Rust compiler)
+            text = ckey[2][1:-1]
             err = f".map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?"
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
             if name == "__Dict_put__":
@@ -677,13 +727,13 @@ class Fuser:
                 # a value used only as conditions: a bool, the value tested in
                 # the Dict; a missing key or a value that is not a Boolean is
                 # left to the code of this Body
-                out.append(f'let x{d}: bool = match d_dict_lookup_bool_str(a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}) {{ Some(b) => b, None => {{')
+                out.append(f'let {self.xn(d)}: bool = match d_dict_lookup_bool_str(a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}) {{ Some(b) => b, None => {{')
                 self.bail(x, d, locals_, out, J, retry=True)
                 out.append("} };")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
             # the value, or onMissing applied to the key (evaluated only then)
             out.append(f'let o = match d_dict_lookup_str(t, {x}, a0, "{text}", {{ const H: u64 = str_hash("{text}"); H }}, {{ static IC: Ic = Ic::new(); &IC }}){err} {{ Some(v) => Out::R1(v), '
-                       f'None => Out::Call({args[2]}, cref(t, {x}, 1).clone()) }};')
+                       f'None => Out::Call({args[2]}, cref(t, {ckey[0]}, {ckey[1]}).clone()) }};')
             return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
             fn = DIRECT[name][0]
@@ -704,7 +754,7 @@ class Fuser:
         jpush = " ".join(jpush)
         if lc is None:
             if not J:
-                out.append(f"{sinfo_set} return finish_return(m, vp, env.clone(), gv, t, o);")
+                out.append(f"{sinfo_set} return finish_return(m, vp, {self.ctx['env']}.clone(), gv, t, o);")
                 return
             p = J[-1]["p"]
             if p <= 2:
@@ -712,16 +762,16 @@ class Fuser:
                 pat = ["Out::R0", "Out::R1({})", "Out::R2({}, {})"][p].format(*vs)
                 tup = "(" + "".join(v + ", " for v in vs) + ")"
                 out.append(f"match o {{ {pat} => break '{J[-1]['label']} {tup}, "
-                           f"o => {{ {sinfo_set} {jpush} return finish(vp, env.clone(), gv, t, None, o); }} }}")
+                           f"o => {{ {sinfo_set} {jpush} return finish(vp, {self.ctx['env']}.clone(), gv, t, None, o); }} }}")
             else:
-                out.append(f"{sinfo_set} {jpush} return finish(vp, env.clone(), gv, t, None, o);")
+                out.append(f"{sinfo_set} {jpush} return finish(vp, {self.ctx['env']}.clone(), gv, t, None, o);")
             return
         g = self.funcs[lc]
         fallback = f"o => {{ {sinfo_set} {jpush} return finish(vp, {self.mat(d, locals_)}, gv, t, Some({lc}), o); }}"
         if g.variadic or g.params > 2:
             out.append(f"match o {{ {fallback} }}")
             return
-        vs = [f"x{d + j}" for j in range(g.params)]
+        vs = [self.xn(d + j) for j in range(g.params)]
         pat = ["Out::R0", "Out::R1({})", "Out::R2({}, {})"][g.params].format(*vs)
         tup = "(" + "".join(v + ", " for v in vs) + ")"
         out.append(f"let {tup} = match o {{ {pat} => {tup}, {fallback} }};")
@@ -765,21 +815,24 @@ class Fuser:
             if lc is None:
                 if J:
                     return self.to_join(J, args, x, out)
-                out.append(f"let v = [{', '.join(args)}]; return fused_return(m, vp, env, {self.sinfo(x)}, v);")
+                out.append(f"let v = [{', '.join(args)}]; return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, v);")
                 return
             g = self.funcs[lc]
             if g.variadic or g.params != len(args):
                 return self.bail(x, d, locals_, out, J)
-            kinds = []
+            news = []
             for j, (a, e) in enumerate(zip(args, b.olist)):
                 vk = self.local(d, locals_, e[1])[1] if e[0] == "L" and e[1] < d else "v"
-                if vk in ("f", "b"):
-                    out.append(f"let x{d + j}: {'f64' if vk == 'f' else 'bool'} = {self.local(d, locals_, e[1])[0]};")
-                    kinds.append(vk)
+                c = self.constant(x, d, e, j, locals_)
+                if c is not None:
+                    news.append((lc, j, "c", c))   # no Rust variable
+                elif vk in ("f", "b"):
+                    out.append(f"let {self.xn(d + j)}: {'f64' if vk == 'f' else 'bool'} = {self.local(d, locals_, e[1])[0]};")
+                    news.append((lc, j, vk))
                 else:
-                    out.append(f"let x{d + j} = {a};")
-                    kinds.append("v")
-            return self.emit(lc, d + g.params, locals_ + [(lc, j, kinds[j]) for j in range(g.params)], out, J)
+                    out.append(f"let {self.xn(d + j)} = {a};")
+                    news.append((lc, j, "v"))
+            return self.emit(lc, d + g.params, locals_ + news, out, J)
         if name in IFS and len(b.olist) == IFS[name] and args[0] is not None:
             then, els = self.clauses(b, name)
             g = self.funcs[lc] if isinstance(lc, int) else None
@@ -794,12 +847,12 @@ class Fuser:
                         if J:
                             self.to_join(J, [], x, out)
                         else:
-                            out.append(f"return fused_return(m, vp, env, {self.sinfo(x)}, []);")
+                            out.append(f"return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, []);")
                     else:
                         self.emit(cl, d, locals_, out, J)
                     out.append("}")
                 out.append("None => {")
-                self.bail(x, d, locals_, out, J)
+                self.bail(x, d, locals_, out, J, rare=True)
                 out.append("}")
                 out.append("}")
                 return
@@ -808,8 +861,8 @@ class Fuser:
             self.labels += 1
             label = f"j{self.labels}"
             jl = self.mark(locals_, self.after(lc, d, J))
-            jn = J + ({"lc": lc, "d": d, "locals": jl, "x": x, "label": label, "p": g.params},)
-            vs = [f"x{d + k}" for k in range(g.params)]
+            jn = J + ({"lc": lc, "d": d, "locals": jl, "x": x, "label": label, "p": g.params, "ctx": self.ctx},)
+            vs = [self.xn(d + k) for k in range(g.params)]
             tup = "(" + "".join(v + ", " for v in vs) + ")"
             out.append(f"let {tup} = '{label}: {{")
             out.append(f"match {self.cond(x, d, b.olist[0], locals_)} {{")
@@ -821,7 +874,7 @@ class Fuser:
                     self.emit(cl, d, locals_, out, jn)
                 out.append("}")
             out.append("None => {")
-            self.bail(x, d, locals_, out, J)
+            self.bail(x, d, locals_, out, J, rare=True)
             out.append("}")
             out.append("}")
             out.append("};")
@@ -830,6 +883,9 @@ class Fuser:
         f_ref = self.ref(x, d, op, "operator", locals_) if callable_op else None
         if callable_op and isinstance(lc, int) and None not in args and f_ref is not None:
             # a call with an LCont: a Rust call, whose values the chain binds
+            # (or the code of the Function called, written in place)
+            if op[0] == "G" and op[1] in self.gfun and self.inline(x, d, locals_, b, f_ref, lc, J, self.gfun[op[1]], out):
+                return
             g = self.funcs[lc]
             after = self.after(lc, d, J)
             args = self.margs(x, d, locals_, b, after)
@@ -851,7 +907,7 @@ class Fuser:
             if g.params:
                 out.append("let mut v = vp.olist.drain(..);")
                 for j in range(g.params):
-                    out.append(f"let x{d + j} = v.next().unwrap();")
+                    out.append(f"let {self.xn(d + j)} = v.next().unwrap();")
                 out.append("drop(v);")
             return self.emit(lc, d + g.params, locals_ + [(lc, j, "v") for j in range(g.params)], out, J)
         if callable_op and lc is None and None not in args:
@@ -864,9 +920,9 @@ class Fuser:
                     # arguments in the parameters' variables, and again
                     lp["used"] = True
                     news = "".join(f"let v{j} = {a}; " for j, a in enumerate(args))
-                    sets = "".join(f"x{j} = v{j}; " for j in range(len(args)))
-                    out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &env, gv) {{ {news}{sets}full = None; continue 'l0; }}")
-                out.append(f"let v = [{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v);")
+                    sets = "".join(f"{self.xn(j)} = v{j}; " for j in range(len(args)))
+                    out.append(f"if self_call(m, vp, &f, {lp['fid']}, {lp['p']}, &{self.ctx['env']}, gv) {{ {news}{sets}full = None; continue 'l0; }}")
+                out.append(f"let v = [{', '.join(args)}]; return fused_tail_call(vp, {self.ctx['env']}, {self.sinfo(x)}, f, v);")
                 return
             # in a clause: the call's LCont is the clause's. A continuation
             # (return) drops the LCont: left to apply as it is.
@@ -874,16 +930,119 @@ class Fuser:
             outer = []
             self.push_joins(J[:-1], outer)
             outer = " ".join(outer)
-            out.append(f"if matches!(f, Value::Cont(_)) {{ let v = [{', '.join(args)}]; return fused_tail_call(vp, env, {self.sinfo(x)}, f, v); }}")
+            out.append(f"if matches!(f, Value::Cont(_)) {{ let v = [{', '.join(args)}]; return fused_tail_call(vp, {self.ctx['env']}, {self.sinfo(x)}, f, v); }}")
             out.append(f"let v = [{', '.join(args)}];")
             out.append(f"let o = fused_call(m, vp, f, v, gv, t, {self.node(None, d, self.mark(locals_, self.after(None, d, J)), x, J)}, &body_of(t, {j['x']}).sinfo)?;")
             vs = [f"r{k}" for k in range(j["p"])]
             tup = "(" + "".join(v + ", " for v in vs) + ")"
             binds = " ".join(f"let r{k} = v.next().unwrap();" for k in range(j["p"]))
             out.append(f"match o {{ Called::Values if vp.olist.len() == {j['p']} => {{ let mut v = vp.olist.drain(..); {binds} drop(v); break '{j['label']} {tup}; }}, "
-                       f"Called::Values => {{ {outer} return fused_pass(vp, gv, t, {j['lc']}, {self.mat(j['d'], j['locals'])}); }}, Called::Next(n) => return Ok(n) }}")
+                       f"Called::Values => {{ {outer} return fused_pass(vp, gv, t, {j['lc']}, {self.mat(j['d'], j['locals'], j['ctx'])}); }}, Called::Next(n) => return Ok(n) }}")
             return
         return self.bail(x, d, locals_, out, J)
+
+    # ── Inlining ──
+    #
+    # A call with an LCont of a global variable whose value is a small
+    # top-level Function (INLINE_SIZE Bodies at most, without __Cont_get__,
+    # not itself or one it is written in) is written as the code of that
+    # Function in a labeled block, as a clause with an LCont is: what the
+    # Function returns is the value of the block, and the LCont goes on after
+    # it. The code runs in the LVEnv of the Closure (checked to be one of
+    # that Function, inline_env, as the global variable could hold another
+    # value; if not, the call is made as above), its parameters in Rust
+    # variables numbered after those of the caller, and a String written in
+    # place given to it stays a constant (so that a Dict lookup with it as
+    # the key is one with a String key written in place). Where it hands the
+    # VProc back, the CFrame of the caller's LCont is put on the CChain, as
+    # for a clause. A Function whose code would hand the VProc back on its
+    # usual path (a bail that is not for a rare case) is not inlined.
+
+    def size(self, fid):
+        b = self.funcs[fid].body
+        if b is None:
+            return 1
+        n = 1 + (self.size(b.lcont) if isinstance(b.lcont, int) else 0)
+        return n + sum(self.size(e[1]) for e in b.olist if e[0] == "F")
+
+    def has_cont_get(self, fid):
+        b = self.funcs[fid].body
+        if b is None:
+            return False
+        if b.operator is not None and b.operator[0] == "G" and self.prims.get(b.operator[1]) == "__Cont_get__":
+            return True
+        fs = ([b.lcont] if isinstance(b.lcont, int) else []) + [e[1] for e in b.olist if e[0] == "F"]
+        return any(self.has_cont_get(f) for f in fs)
+
+    def inline(self, x, d, locals_, b, f_ref, lc, J, gf, out):
+        """Write the call (Body of Function x, with the LCont lc) of the
+        global Function gf in place, if it can be; whether it was."""
+        g, L = self.funcs[gf], self.funcs[lc]
+        if (g.body is None or g.variadic or g.params != len(b.olist) or L.variadic
+                or len(self.inlining) >= INLINE_DEPTH or gf in self.inlining or gf == self.loop["fid"]
+                or self.size(gf) > INLINE_SIZE or self.has_cont_get(gf)):
+            return False
+        after = self.after(lc, d, J)
+        lm = self.mark(locals_, after)
+        mv = self.moves(d, locals_, b.olist, after)
+        caller = self.ctx
+        callee = {"env": None, "off": caller["off"] + d, "hp": 0}
+        # its parameters: constants, or Rust variables (moved at their last use)
+        binds, entries = [], []
+        for k, e in enumerate(b.olist):
+            c = self.constant(x, d, e, k, locals_)
+            vk = self.local(d, locals_, e[1])[1] if e[0] == "L" and e[1] < d else "v"
+            name = f"x{callee['off'] + k}"
+            if c is not None:
+                entries.append((gf, k, "c", c))
+            elif vk in ("f", "b"):
+                binds.append(f"let {name}: {'f64' if vk == 'f' else 'bool'} = {self.local(d, locals_, e[1])[0]};")
+                entries.append((gf, k, vk))
+            else:
+                a = self.ref(x, d, e, f"olist[{k}]", locals_, move=mv[k])
+                if a is None:
+                    return False
+                binds.append(f"let {name} = {a};")
+                entries.append((gf, k, "v"))
+        saved = (set(self.bails), set(self.retries), self.nbail, self.labels, self.envs)
+        self.envs += 1
+        callee["env"] = f"e{self.envs}"
+        self.labels += 1
+        label = f"j{self.labels}"
+        jn = J + ({"lc": lc, "d": d, "locals": lm, "x": x, "label": label, "p": L.params, "ctx": caller},)
+        inner = []
+        self.ctx = callee
+        self.inlining.append(gf)
+        try:
+            self.emit(gf, g.params, entries, inner, jn)
+        finally:
+            self.ctx = caller
+            self.inlining.pop()
+        if self.nbail != saved[2]:
+            self.bails, self.retries, self.nbail, self.labels, self.envs = saved
+            return False
+        vs = [self.xn(d + k) for k in range(L.params)]
+        tup = "(" + "".join(v + ", " for v in vs) + ")"
+        out.append(f"let f = {f_ref};")
+        out.append(f"let {tup} = '{label}: {{")
+        out.append(f"if let Some({callee['env']}) = inline_env(vp, &f, {gf}, {g.params}, gv) {{")
+        out.extend(binds)
+        out.extend(inner)
+        out.append("}")
+        # not that Function: the call, as above
+        args = self.margs(x, d, locals_, b, after)
+        jpush = []
+        self.push_joins(J, jpush)
+        rs = [f"r{k}" for k in range(L.params)]
+        rtup = "(" + "".join(v + ", " for v in rs) + ")"
+        binds = " ".join(f"let r{k} = v.next().unwrap();" for k in range(L.params))
+        out.append(f"let v = [{', '.join(args)}];")
+        out.append(f"let o = fused_call(m, vp, f, v, gv, t, {self.node(lc, d, lm, x, J)}, {self.sinfo(x)})?;")
+        out.append(f"match o {{ Called::Values if vp.olist.len() == {L.params} => {{ let mut v = vp.olist.drain(..); {binds} drop(v); break '{label} {rtup}; }}, "
+                   f"Called::Values => {{ {' '.join(jpush)} return fused_pass(vp, gv, t, {lc}, {self.mat(d, lm)}); }}, Called::Next(n) => return Ok(n) }}")
+        out.append("};")
+        self.emit(lc, d + L.params, locals_ + [(lc, k, "v") for k in range(L.params)], out, J)
+        return True
 
 
 def translate(index, path, prim_names, out):
@@ -891,7 +1050,7 @@ def translate(index, path, prim_names, out):
     module = parse(data.decode("utf-8"))
     if tag(module) != "Module":
         raise ValueError("no Module")
-    funcs, prims, tops = load(module, prim_names)
+    funcs, prims, tops, gfun = load(module, prim_names)
     used = []
 
     def prim_index(name):
@@ -900,7 +1059,7 @@ def translate(index, path, prim_names, out):
         return used.index(name)
     calls = [transpiled_call(funcs, prims, f, prim_index) for f in funcs]
     directs = {}
-    Fuser(funcs, prims, tops).apply(calls, directs)
+    Fuser(funcs, prims, tops, gfun).apply(calls, directs)
     p = f"m{index}"
     out.append(f"// {path}: {len(funcs)} Functions, {sum(n is not None for n in calls)} with transpiled code, "
                f"{len(directs)} with a direct entry")

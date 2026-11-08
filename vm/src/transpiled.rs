@@ -1029,6 +1029,24 @@ pub fn self_call(m: &mut Machine, vp: &VProc, f: &Value, fid: usize, n: usize, b
     ok
 }
 
+/// The LVEnv of f if it is a Closure of Function fid of this module with n
+/// parameters (none bound): a call of it from a fused chain then runs the
+/// code of fid written in place (inlined), in that LVEnv. None: the call is
+/// made as it would be without inlining.
+#[inline]
+pub fn inline_env(vp: &VProc, f: &Value, fid: usize, n: usize, gv: &Rc<GVEnv>) -> Option<LVEnv> {
+    let Value::Closure(c) = f else { return None };
+    let same_module = match &c.gvenv {
+        Some(g) => Rc::ptr_eq(g, gv),
+        None => Rc::ptr_eq(&vp.gvenv, gv),
+    };
+    if same_module && !c.variadic && c.skip == 0 && c.params.len() == n && c.body.as_ref().and_then(|b| b.func_id) == Some(fid) {
+        Some(c.lvenv.clone())
+    } else {
+        None
+    }
+}
+
 /// Return the values to the LCont or CChain, as the VM does for a Body
 /// without an LCont (`__NULL__ a ...`, or a Boolean clause that is missing).
 /// Values for the Rust call that is running go back to it at once (as
