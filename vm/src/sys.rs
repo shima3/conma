@@ -223,9 +223,10 @@ pub fn getpid() -> u32 {
 }
 
 /// __JS_call__: start evaluating code with args (a JSON array) in the host,
-/// and return the read end of the pipe that the host writes the result to.
-/// The native VM has no JavaScript.
-pub fn js_call(_code: &str, _args_json: &str) -> io::Result<c_int> {
+/// and return the read end of the pipe that the host writes the result to,
+/// and an fd whose writes go to the host (standard input of the code). The
+/// native VM has no JavaScript.
+pub fn js_call(_code: &str, _args_json: &str) -> io::Result<(c_int, c_int)> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
 }
 

@@ -1048,7 +1048,7 @@ def _js_args_bad(v):
     return None
 
 def prim_JS_call(vp, gvenv):
-    """__JS_call__ onError code args ,(inputStream)
+    """__JS_call__ onError code args ,(inputStream outputStream)
     Evaluate the JavaScript code with args in the host of the VM for wasm32
     (consh/js). This VM has no JavaScript: after checking the arguments, it
     goes to onError."""

@@ -42,7 +42,12 @@ extern "C" {
     /// Start evaluating the JavaScript code with args (a JSON array of
     /// strings and arrays); the host writes the result to the pipe fd as lines
     /// of S-expressions (conma_write) and closes it (conma_close).
-    fn host_js_call(fd: i32, code_ptr: *const u8, code_len: usize, args_ptr: *const u8, args_len: usize);
+    fn host_js_call(fd: i32, job: i32, code_ptr: *const u8, code_len: usize, args_ptr: *const u8, args_len: usize);
+    /// The VM wrote len bytes at ptr to the fd for the call job (the standard
+    /// input of the code).
+    fn host_js_input(job: i32, ptr: *const u8, len: usize);
+    /// The VM closed the fd for the call job (the end of standard input).
+    fn host_js_input_end(job: i32);
 }
 
 /// Ask the host for the file path if it is missing or unread. An unread
@@ -99,6 +104,9 @@ enum Fd {
     File { data: Rc<RefCell<Vec<u8>>>, pos: Rc<Cell<usize>>, mode: char },
     /// /dev/null
     Null,
+    /// The write end of the standard input of a call of JavaScript, whose
+    /// writes and close go to the host (host_js_input, host_js_input_end).
+    ToHost(i32),
 }
 
 enum Node {
@@ -125,6 +133,8 @@ struct Os {
     /// taken to exist (for a host that cannot tell directories, see
     /// assume_dirs).
     assume_dirs: bool,
+    /// The number of the last call of JavaScript.
+    js_jobs: i32,
 }
 
 thread_local! {
@@ -140,6 +150,7 @@ thread_local! {
         wants_input: false,
         listed: std::collections::HashSet::new(),
         assume_dirs: false,
+        js_jobs: 0,
     });
 }
 
@@ -200,16 +211,20 @@ pub fn dup(fd: c_int) -> io::Result<c_int> {
 }
 
 pub fn close_fd(fd: c_int) -> io::Result<()> {
-    with(|os| {
+    let f = with(|os| {
         let f = os.get(fd)?;
-        match f {
+        match &f {
             Fd::PipeRead(p) => p.readers.set(p.readers.get() - 1),
             Fd::PipeWrite(p) => p.writers.set(p.writers.get() - 1),
             _ => {}
         }
         os.fds[fd as usize] = None;
-        Ok(())
-    })
+        Ok::<Fd, io::Error>(f)
+    })?;
+    if let Fd::ToHost(job) = f {
+        unsafe { host_js_input_end(job) };
+    }
+    Ok(())
 }
 
 pub fn read_fd(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
@@ -262,6 +277,10 @@ pub fn write_fd(fd: c_int, buf: &[u8]) -> io::Result<usize> {
             Ok(buf.len())
         }
         Fd::Null => Ok(buf.len()),
+        Fd::ToHost(job) => {
+            unsafe { host_js_input(job, buf.as_ptr(), buf.len()) };
+            Ok(buf.len())
+        }
         Fd::PipeWrite(p) => {
             if p.readers.get() == 0 {
                 return Err(err(EPIPE));
@@ -312,10 +331,15 @@ pub fn send_signal(_pid: c_int, _sig: c_int) -> io::Result<()> {
     Err(err(ESRCH))
 }
 
-pub fn js_call(code: &str, args_json: &str) -> io::Result<c_int> {
+pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
     let (r, w) = make_pipe()?;
-    unsafe { host_js_call(w, code.as_ptr(), code.len(), args_json.as_ptr(), args_json.len()) };
-    Ok(r)
+    let (job, to_host) = with(|os| {
+        os.js_jobs += 1;
+        let job = os.js_jobs;
+        (job, os.add(Fd::ToHost(job)))
+    });
+    unsafe { host_js_call(w, job, code.as_ptr(), code.len(), args_json.as_ptr(), args_json.len()) };
+    Ok((r, to_host))
 }
 
 pub fn setsid() -> c_int {

@@ -9,10 +9,11 @@ use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
 
-/// __JS_call__ onError code args ,(inputStream): the host evaluates the
-/// String code with args (an LList of Strings and LLists of them), and
-/// writes the result to the Stream as lines of S-expressions (see 2.2 of
-/// consh/js/PLAN-ja.md).
+/// __JS_call__ onError code args ,(inputStream outputStream): the host
+/// evaluates the String code with args (an LList of Strings and LLists of
+/// them), and writes the result to inputStream as lines of S-expressions;
+/// what is written to outputStream goes to the host (the standard input of
+/// the code). See 2.2 of consh/js/PLAN-ja.md.
 pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__JS_call__";
     let mut a = take_n(vp, name, 3)?;
@@ -30,9 +31,10 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
     let code = value_to_display(&code).map_err(VmError::Error)?;
     match sys::js_call(&code, &json) {
-        Ok(fd) => {
-            let s = Value::Stream(new_stream(m, fd, 'r'));
-            vp.prim_return(vec![s]);
+        Ok((r, w)) => {
+            let input = Value::Stream(new_stream(m, r, 'r'));
+            let output = Value::Stream(new_stream(m, w, 'w'));
+            vp.prim_return(vec![input, output]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, sys::strerror(&e))),
     }

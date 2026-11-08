@@ -27,16 +27,25 @@
 // must let its event loop run (Promises) when the VM is IDLE.
 //
 // __JS_call__ code args: code is evaluated as an expression in the global
-// scope; if its value is a function, it is called with args (strings, and
-// arrays of them), and the result (awaited if it is a Promise) is written to
-// the pipe of __JS_call__ as one line, an S-expression that __Sexp_read__
-// reads (see 2.1 and 2.2 of consh/js/PLAN-ja.md):
+// scope, where it also sees stdin; if its value is a function, it is called
+// with args (strings, and arrays of them), and the result (awaited if it is a
+// Promise) is written to the pipe of __JS_call__ as a line, an S-expression
+// that __Sexp_read__ reads (see 2.1 and 2.2 of consh/js/PLAN-ja.md); lines
+// before it say what else the call needs:
+//   (o "text")         console.log (and info, debug): an element of standard output
+//   (x "text")         console.error (and warn): an element of standard error
+//   (i)                stdin is read: the VM writes the next element of the
+//                      standard input to the second Stream of __JS_call__ as
+//                      a line, a String in double quotes, or closes it at the end
 //   (r s "text")       a string, or a number, boolean, BigInt or object made
 //                      into one (String(), JSON.stringify)
 //   (r l ("a" ("b")))  an array: its elements, an array as a list, null and
 //                      undefined as ""
 //   (r n)              undefined or null: nothing
 //   (e "message")      an exception: "Name: message" for an Error
+// console goes to the call whose code runs now, or, while it awaits, to the
+// only call that has not ended; when two or more have not ended, to the
+// host's standard output and error (write), and when none, to the console.
 
 var ConMaVM = (function () {
   "use strict";
@@ -81,11 +90,127 @@ var ConMaVM = (function () {
     this.message = message;
   }
 
-  function evaluate(code, args) {
-    const value = (0, eval)("(" + code + "\n)");
+  // The code as an expression in the global scope (a Function, which is not
+  // strict, so that an assignment to an undeclared name makes a global), with
+  // stdin as a parameter.
+  function evaluate(code, args, stdin) {
+    const value = new Function("stdin", "return (" + code + "\n)")(stdin);
     if (typeof value === "function") return value(...args);
     if (args.length > 0) throw new HostError("arguments given to a value that is not a function");
     return value;
+  }
+
+  // A String in double quotes, as the VM writes the elements of standard input.
+  function unquote(line) {
+    const m = /^\s*"((?:[^"\\]|\\.)*)"\s*$/s.exec(line);
+    if (!m) return line;
+    return m[1].replace(/\\(.)/gs, (_, c) => ({ n: "\n", t: "\t", r: "\r" })[c] || c);
+  }
+
+  const END = {};
+
+  // A call of JavaScript: the pipe fd its lines go to, and its standard input.
+  function Job(fd, emit) {
+    this.fd = fd;
+    this.emit = emit; // write a line to the pipe
+    this.ended = false;
+    this.items = []; // elements of standard input not read yet
+    this.inputEnded = false;
+    this.partial = "";
+    this.waiters = [];
+    this.asked = false;
+  }
+  // The next element of standard input (a string), or END.
+  Job.prototype.read = function () {
+    if (this.items.length > 0) return Promise.resolve(this.items.shift());
+    if (this.inputEnded || this.ended) return Promise.resolve(END);
+    if (!this.asked) {
+      this.asked = true;
+      this.emit("(i)\n");
+    }
+    return new Promise((resolve) => this.waiters.push(resolve));
+  };
+  Job.prototype.give = function (item) {
+    this.asked = false;
+    if (this.waiters.length > 0) {
+      this.waiters.shift()(item);
+      if (this.waiters.length > 0 && item !== END) {
+        this.asked = true;
+        this.emit("(i)\n");
+      }
+    } else if (item !== END) {
+      this.items.push(item);
+    }
+    if (item === END) for (const w of this.waiters.splice(0)) w(END);
+  };
+  Job.prototype.input = function (data) {
+    const lines = (this.partial + data).split("\n");
+    this.partial = lines.pop();
+    for (const l of lines) this.give(unquote(l));
+  };
+  Job.prototype.inputEnd = function () {
+    this.inputEnded = true;
+    this.give(END);
+  };
+
+  // stdin of the code: an async iterator of the elements of standard input
+  // (strings), and lines(), a Promise of all of them.
+  function makeStdin(job) {
+    const iterator = {
+      next: () => job.read().then((v) => (v === END ? { done: true, value: undefined } : { done: false, value: v })),
+      return: () => Promise.resolve({ done: true, value: undefined }),
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+    return {
+      [Symbol.asyncIterator]: () => iterator,
+      lines: async () => {
+        const all = [];
+        for (;;) {
+          const v = await job.read();
+          if (v === END) return all;
+          all.push(v);
+        }
+      },
+    };
+  }
+
+  // ── console ──
+
+  let consoleJob = null; // the call whose code runs now
+  const liveJobs = new Set();
+  let consoleFallback = null; // write(fd, bytes) of the host
+  let consoleOriginal = null;
+
+  function inspect(v) {
+    if (typeof v === "string") return v;
+    if (typeof v === "object" && v !== null) {
+      try {
+        const j = JSON.stringify(v);
+        if (j !== undefined) return j;
+      } catch (e) {
+        // a cycle: as String() makes it
+      }
+    }
+    return String(v);
+  }
+
+  function installConsole(write) {
+    consoleFallback = write;
+    if (consoleOriginal || typeof console === "undefined") return;
+    consoleOriginal = {};
+    for (const [name, tag] of [["log", "o"], ["info", "o"], ["debug", "o"], ["error", "x"], ["warn", "x"]]) {
+      const original = console[name];
+      consoleOriginal[name] = original;
+      console[name] = function (...args) {
+        if (liveJobs.size === 0) return original.apply(console, args);
+        const text = args.map(inspect).join(" ");
+        const job = consoleJob || (liveJobs.size === 1 ? liveJobs.values().next().value : null);
+        if (job) job.emit("(" + tag + " " + sexpString(text) + ")\n");
+        else consoleFallback(tag === "o" ? 1 : 2, utf8(text + "\n"));
+      };
+    }
   }
 
   function sexpString(s) {
@@ -122,6 +247,12 @@ var ConMaVM = (function () {
     let x = null;
     let vm = null;
     let jsPending = 0;
+    const jobs = new Map();
+    installConsole(write);
+    // Run the VM again (later: this may be inside conma_run).
+    const wake = () => {
+      if (jsDone) Promise.resolve().then(() => jsDone(vm));
+    };
     const instance = new WebAssembly.Instance(wasmModule, {
       env: {
         host_write: (fd, ptr, len) => write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()),
@@ -134,26 +265,49 @@ var ConMaVM = (function () {
         host_dir_needed: (ptr, len) => {
           if (dirNeeded) dirNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
         },
-        host_js_call: (fd, codePtr, codeLen, argsPtr, argsLen) => {
+        host_js_call: (fd, id, codePtr, codeLen, argsPtr, argsLen) => {
           const code = text(new Uint8Array(x.memory.buffer, codePtr, codeLen));
           const args = JSON.parse(text(new Uint8Array(x.memory.buffer, argsPtr, argsLen)));
           jsPending++;
-          // The result is given to the VM later (never inside conma_run, which is running now).
+          // Lines go to the pipe at once (the virtual OS may be used inside conma_run), and the VM
+          // runs again after them.
+          const job = new Job(fd, (line) => {
+            if (job.ended) return;
+            pass(line, (p, n) => x.conma_write(fd, p, n));
+            wake();
+          });
+          jobs.set(id, job);
+          liveJobs.add(job);
           let result;
+          consoleJob = job;
           try {
-            result = Promise.resolve(evaluate(code, args));
+            result = Promise.resolve(evaluate(code, args, makeStdin(job)));
           } catch (e) {
             result = Promise.reject(e);
+          } finally {
+            consoleJob = null;
           }
           result
             .then(resultLine)
             .catch(errorLine)
             .then((line) => {
-              pass(line, (p, n) => x.conma_write(fd, p, n));
+              job.emit(line);
+              job.ended = true;
+              liveJobs.delete(job);
+              jobs.delete(id);
               x.conma_close(fd);
               jsPending--;
-              if (jsDone) jsDone(vm);
+              for (const w of job.waiters.splice(0)) w(END);
+              wake();
             });
+        },
+        host_js_input: (id, ptr, len) => {
+          const job = jobs.get(id);
+          if (job) job.input(text(new Uint8Array(x.memory.buffer, ptr, len)));
+        },
+        host_js_input_end: (id) => {
+          const job = jobs.get(id);
+          if (job) job.inputEnd();
         },
       },
     });

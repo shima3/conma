@@ -2877,6 +2877,10 @@
 ;; 最初の語が「識別子 =」だけなら、結果をその局所変数に入れ、そうでなければ標準出力に出す。
 ;; 引数は String と LazyList（JavaScript の配列にする）。結果は、__JS_call__ の Stream から1行の S 式で受け取る：
 ;;   (r s 文字列)、(r l リスト)、(r n)（何もない）、(e メッセージ)（例外。$? を 1 にする）
+;; その前に、次の行が来ることがある（段階 5）：
+;;   (o 文字列) console.log の出力。標準出力に出す。(x 文字列) console.error の出力。標準エラー出力に出す
+;;   (i) コードが stdin を読む。標準入力の次の要素を文字列にして、__JS_call__ のもう1つの Stream に1行で書く。
+;;       終わりなら、その Stream を閉じる
 ;; JavaScript のない版（__JS_call__ が onError に進む）では、メッセージを出して $? を 127 にする
 (define Builtin_js ,(sh pos args in out err)
   __Cont_get__ ,(return)
@@ -2897,13 +2901,13 @@
       Arg_string sh pos "js" code ,(code)
       __NULL__ code more) ,(code jsArgs)
   Js_args sh pos jsArgs ,(list)
-  __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code list ,(stream)
+  __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code list ,(stream toHost)
+  __Ref_new__ toHost ,(toHostRef)
   __LazyList_lines__ stream ,(lines)
-  List_fromLazyList lines ,(lines)
+  Js_lines sh pos in out err toHostRef lines ,(result)
   __OS_close__ __print_exit_error__ stream ,()
-  __if__ (,() __is_null__ lines) (,() fail "no result" "1") ,()
-  List_first lines ,(line)
-  __Sexp_read__ (,(msg) fail msg "1") line ,(result)
+  Js_input_close toHostRef ,()
+  __if__ (,() __is_null__ result) (,() fail "no result" "1") ,()
   __LList_uncons__ __print_exit_error__ result ,(tag fields)
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
   __if__ (,() __String_equal__ tag "e") (,() fail kind "1") ,()
@@ -2915,6 +2919,54 @@
       Sh_get sh "vars" ,(vars)
       __Dict_put__ vars name value) ,()
   Sh_set_status sh "0")
+
+;; __JS_call__ の Stream の行を読み、(o) と (x) を出力し、(i) に標準入力の要素を渡す。
+;; 結果の行 (r ...) か (e ...) を S 式の LList で返す。行が尽きたら null
+(define Js_lines ,(sh pos in out err toHostRef lines)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return __NULL__) lines ,(line rest)
+  __Sexp_read__ (,(msg)
+    __LList_cons__ msg __NULL__ ,(fields)
+    __LList_cons__ "e" fields ,(result)
+    return result) line ,(result)
+  __LList_uncons__ __print_exit_error__ result ,(tag fields)
+  __String_equal__ tag "o" ,(isOut)
+  __String_equal__ tag "x" ,(isErr)
+  __String_equal__ tag "i" ,(isIn)
+  __or__ isOut isErr ,(isConsole)
+  __unless__ (,() __or__ isConsole isIn) (,() return result) ,()
+  __if_then_else__ isIn
+    (,() Js_input sh pos in toHostRef)
+    (,()
+      List_first fields ,(text)
+      __if_then_else__ isOut (,() __NULL__ out) (,() __NULL__ err) ,(target)
+      Target_write sh pos target text) ,()
+  Js_lines sh pos in out err toHostRef rest)
+
+;; 標準入力の次の要素を、文字列にして S 式の1行で toHost に書く。終わりなら閉じる。
+;; 読み出し位置（Input の "list"）は、組み込みコマンド stdin と同じく進める
+(define Js_input ,(sh pos in toHostRef)
+  __Cont_get__ ,(return)
+  __Ref_get__ toHostRef ,(toHost)
+  __if__ (,() __is_null__ toHost) return ,()
+  Sh_get in "touched" ,(touched)
+  __Ref_set__ touched __TRUE__ ,()
+  Sh_get in "list" ,(listRef)
+  __Ref_get__ listRef ,(list)
+  __LazyList_uncons__ (,() Js_input_close toHostRef ,() return) list ,(item rest)
+  __Ref_set__ listRef rest ,()
+  Line_toString sh pos item ,(item)
+  Sexp_quote item ,(quoted)
+  __String_concat__ quoted "\n" ,(quoted)
+  ;; JavaScript がもう読まなくなっていれば（ホストが閉じた）、書けなくても構わない
+  __OS_write__ (,(msg) __nop__) toHost quoted)
+
+(define Js_input_close ,(toHostRef)
+  __Cont_get__ ,(return)
+  __Ref_get__ toHostRef ,(toHost)
+  __if__ (,() __is_null__ toHost) return ,()
+  __Ref_set__ toHostRef __NULL__ ,()
+  __OS_close__ (,(msg) __nop__) toHost)
 
 ;; 語が「識別子 =」だけなら識別子、そうでなければ null
 (define Js_var_name ,(word)

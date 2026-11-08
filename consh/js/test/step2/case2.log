@@ -1,0 +1,17 @@
+log 1
+info
+debug
+error
+warn
+result
+{"a":[1,"x"]} null undefined true () => 1
+0
+only the log
+v=the value
+in a timer
+resolved
+e1=to e1 o1=to o1
+then throw
+consh: case2.sh:14:1: js: ReferenceError: nosuch is not defined
+status 1
+exit: 0

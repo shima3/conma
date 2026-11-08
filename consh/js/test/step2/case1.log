@@ -1,0 +1,15 @@
+3
+all: one
+all: two
+all: three four
+p x y
+empty: 0
+one+two
+rest: three four
+no read
+one
+two
+three four
+LINE 1
+LINE 2
+exit: 0

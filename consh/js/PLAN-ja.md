@@ -129,7 +129,12 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
         - ホスト（conma.js）は、code を評価し、結果を 1 行の S 式にして、`conma_run` が戻った後に `conma_write` で書き、`conma_close` で閉じる：`(r s "文字列")`、`(r l (リスト))`、`(r n)`、`(e "メッセージ")`。
         - VProc は、ほかの Stream と同じく読めるまで待つ。その間、ほかの VProc は動き、`conma_run` は IDLE を返す。ホストは、結果を書いたら（`jsDone`）VM を動かし直す。Node.js の vm-node.js は、IDLE で JavaScript を待つ間と、動いている間にも時々、イベントループを回す。
         - ConSh の `Builtin_js` は、Stream を行の LazyList にして `__Sexp_read__` で読み、出力するか変数に入れる。
-    - 段階 5 の標準入力（`stdin`）と段階 6 のイテレータでは、同じ Stream に複数の行を書く形に広げる予定である（`__JS_next__` は作らない）。
+    - 段階 5 で、`__JS_call__ onError code args ,(inputStream outputStream)` にした。結果の行の前に、ホストは次の行を書く。
+        - `(o "...")`、`(x "...")`：`console.log`（`info`、`debug`）と `console.error`（`warn`）の出力。ConSh は、1 回の呼び出しを 1 つの要素として、標準出力と標準エラー出力に書く。
+        - `(i)`：コードが `stdin` を読んだ。ConSh は、標準入力の次の要素を文字列にして（LazyList は OFS でつなぐ）、`outputStream` に二重引用符の 1 行で書く。終わりなら閉じる。読み出し位置は、組み込みコマンド `stdin` と同じく進む。
+        - wasm 版の `outputStream` は、書くとホストの `host_js_input` に、閉じると `host_js_input_end` に届く fd である。
+        - コードは `new Function("stdin", "return (" + code + ")")` で評価する（大域スコープで、strict でない）。
+    - 段階 6 のイテレータも、同じ Stream に複数の行を書く形にする予定である（`__JS_next__` は作らない）。
     - ネイティブ版（Python と Rust の VM）の `__JS_call__` は、引数を確かめた後、`onError` に進む（`__JS_call__: JavaScript is not available`）。
 5. **モジュールの読み込み**
     - ConSh のモジュール（約 5 MB）は、ネイティブで bin/includer と bin/resolver（または ConMa の front end）で作っておき、静的なファイルとしてページと一緒に置く。
@@ -233,6 +238,12 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
     - consh/test/step17（JavaScript のない版）：ConMa 版（Python 版と Rust 版の VM）と Rust 版の ConSh で同じログになる。
     - test/step40（`__JS_call__`）：Python 版と Rust 版の VM で同じログになる。wasm 版では case1 が Stream を得るので違う。
 - 構文エラーのメッセージ（`SyntaxError: Unexpected token ')'` など）は JavaScript の処理系によって違う。consh/js/test/step1 の case4 のログは Node.js v26 のものである。
+
+### 3.5. 段階 5 の結果（2026/11/8）
+
+- `stdin`（2.1 の 7）と `console`（2.1 の 8）を足した。`stdin` は非同期のイテレータで、`stdin.lines()` は全部の配列の Promise である。
+- `console` の出力は、そのとき同期に動いているコードの呼び出しのものにする。Promise を待つ間などでそれがなければ、終わっていない呼び出しが 1 つだけならそれのものにする。2 つ以上ならホストの標準出力と標準エラー出力に直接書き、1 つもなければ元の `console` に渡す。
+- テスト：consh/js/test/step2（Node.js）。case1 は `stdin`（数える、`lines()`、変数リストとファイルからの入力、空の入力、途中で `break` したときに残りを次のコマンドが読むこと、`stdin` を読まないコードは入力を読まないこと）、case2 は `console`（各メソッド、文字列でない引数、変数に入れる形、Promise を待つ間の出力、リダイレクトと変数リスト、例外の前の出力）、case3 は同時に動く 2 つの呼び出し。
 
 ## 4. 未解決の点
 
