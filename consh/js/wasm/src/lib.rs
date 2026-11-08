@@ -280,6 +280,13 @@ pub extern "C" fn conma_assume_dirs() {
     sys::assume_dirs();
 }
 
+/// From now on, files are those of the host (the host_fs_ functions), not the
+/// virtual file system (for a host that has a file system).
+#[no_mangle]
+pub extern "C" fn conma_use_host_fs() {
+    sys::use_host_fs();
+}
+
 #[no_mangle]
 pub extern "C" fn conma_interrupt() {
     sys::interrupt();

@@ -21,6 +21,15 @@
 // vm.putFile (or vm.makeDirs for a directory) at once. dirNeeded(vm, path),
 // if given, is called when the VM lists a directory for the first time: it
 // may call vm.makeDirs and vm.putUnread for its entries at once.
+// hostFs, if given, is the file system of the host, for vm.useHostFs(), as
+// functions of absolute paths that return minus an errno on an error:
+//   open(path, mode)  mode "r", "w" or "a"; a file descriptor (-21 for a directory)
+//   read(fd, len)     a Uint8Array (empty at the end)
+//   write(fd, bytes)  the number written
+//   close(fd)
+//   stat(path)        1 for a directory, 2 for another file (links followed)
+//   realpath(path)    a string
+//   readdir(path)     an array of names
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -277,7 +286,7 @@ var ConMaVM = (function () {
     return "(e " + sexpString(msg) + ")\n";
   }
 
-  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded, jsDone) {
+  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs) {
     let x = null;
     let vm = null;
     let jsPending = 0;
@@ -391,6 +400,23 @@ var ConMaVM = (function () {
               if (line !== undefined) finish(line);
             });
         },
+        host_fs_open: (ptr, len, mode) => (hostFs ? hostFs.open(str(ptr, len), String.fromCharCode(mode)) : -38),
+        host_fs_read: (fd, ptr, len) => {
+          if (!hostFs) return -38;
+          const r = hostFs.read(fd, len);
+          if (typeof r === "number") return r;
+          new Uint8Array(x.memory.buffer).set(r, ptr);
+          return r.length;
+        },
+        host_fs_write: (fd, ptr, len) => (hostFs ? hostFs.write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()) : -38),
+        host_fs_close: (fd) => (hostFs ? hostFs.close(fd) : -38),
+        host_fs_stat: (ptr, len) => (hostFs ? hostFs.stat(str(ptr, len)) : -38),
+        host_fs_realpath: (ptr, len, out, cap) => (hostFs ? give(hostFs.realpath(str(ptr, len)), out, cap) : -38),
+        host_fs_readdir: (ptr, len, out, cap) => {
+          if (!hostFs) return -38;
+          const r = hostFs.readdir(str(ptr, len));
+          return give(typeof r === "number" ? r : r.map((n) => n + "\0").join(""), out, cap);
+        },
         host_js_input: (id, ptr, len) => {
           const job = jobs.get(id);
           if (job) job.input(text(new Uint8Array(x.memory.buffer, ptr, len)));
@@ -402,6 +428,18 @@ var ConMaVM = (function () {
       },
     });
     x = instance.exports;
+
+    // The string at ptr in the memory of the VM.
+    function str(ptr, len) {
+      return text(new Uint8Array(x.memory.buffer, ptr, len));
+    }
+    // Write the string s (UTF-8) to out if it fits in cap bytes; its length, or a negative errno.
+    function give(s, out, cap) {
+      if (typeof s === "number") return s;
+      const bytes = utf8(s);
+      if (bytes.length <= cap) new Uint8Array(x.memory.buffer).set(bytes, out);
+      return bytes.length;
+    }
 
     // Copy bytes (or a string as UTF-8) into the memory of the VM for f(ptr, len).
     function pass(data, f) {
@@ -439,6 +477,8 @@ var ConMaVM = (function () {
       // Take a directory on the way of a path that fileNeeded does not give to
       // exist (for a host that cannot tell directories).
       assumeDirs: () => x.conma_assume_dirs(),
+      // Use the file system of the host (hostFs) instead of the virtual one.
+      useHostFs: () => x.conma_use_host_fs(),
       // A file whose contents fileNeeded gives when the VM opens it.
       putUnread: (path) => pass(path, x.conma_put_unread),
       setCwd: (path) => pass(path, x.conma_set_cwd),

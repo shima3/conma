@@ -48,6 +48,63 @@ extern "C" {
     fn host_js_input(job: i32, ptr: *const u8, len: usize);
     /// The VM closed the fd for the call job (the end of standard input).
     fn host_js_input_end(job: i32);
+
+    // Files of the host (after conma_use_host_fs): paths are absolute and as
+    // the VM has them (the host resolves . and .. and symbolic links), and a
+    // negative result is minus an errno.
+    /// Open the file path with mode b'r', b'w' (create, truncate) or b'a'
+    /// (create, append); a directory is -EISDIR. Returns a file descriptor of
+    /// the host.
+    fn host_fs_open(path_ptr: *const u8, path_len: usize, mode: i32) -> i32;
+    /// Read up to len bytes into ptr; 0 at the end.
+    fn host_fs_read(fd: i32, ptr: *mut u8, len: usize) -> i32;
+    /// Write len bytes from ptr; returns how many were written.
+    fn host_fs_write(fd: i32, ptr: *const u8, len: usize) -> i32;
+    fn host_fs_close(fd: i32) -> i32;
+    /// 1 for a directory, 2 for another file (symbolic links followed).
+    fn host_fs_stat(path_ptr: *const u8, path_len: usize) -> i32;
+    /// Write the real path of path (UTF-8) to out, up to cap bytes; returns
+    /// its length (which may be more than cap: then the call is made again).
+    fn host_fs_realpath(path_ptr: *const u8, path_len: usize, out: *mut u8, cap: usize) -> i32;
+    /// Write the names in the directory path, each followed by NUL, to out, as
+    /// host_fs_realpath writes.
+    fn host_fs_readdir(path_ptr: *const u8, path_len: usize, out: *mut u8, cap: usize) -> i32;
+}
+
+/// A result of a host_fs_ function: the value, or the error of minus it.
+fn host_result(r: i32) -> io::Result<i32> {
+    if r < 0 {
+        Err(err(-r))
+    } else {
+        Ok(r)
+    }
+}
+
+/// The text that a host_fs_ function writes to a buffer (realpath, readdir).
+fn host_text(f: impl Fn(*mut u8, usize) -> i32) -> io::Result<String> {
+    let mut cap = 4096;
+    loop {
+        let mut buf = vec![0u8; cap];
+        let n = host_result(f(buf.as_mut_ptr(), cap))? as usize;
+        if n <= cap {
+            buf.truncate(n);
+            return Ok(String::from_utf8_lossy(&buf).into_owned());
+        }
+        cap = n;
+    }
+}
+
+/// A file of the host, closed when its last fd in the VM is closed.
+struct HostFile(i32);
+
+impl Drop for HostFile {
+    fn drop(&mut self) {
+        unsafe { host_fs_close(self.0) };
+    }
+}
+
+fn host_fs() -> bool {
+    with(|os| os.host_fs)
 }
 
 /// Ask the host for the file path if it is missing or unread. An unread
@@ -107,6 +164,9 @@ enum Fd {
     /// The write end of the standard input of a call of JavaScript, whose
     /// writes and close go to the host (host_js_input, host_js_input_end).
     ToHost(i32),
+    /// A file of the host (conma_use_host_fs), and whether it was opened for
+    /// reading.
+    Host(Rc<HostFile>, bool),
 }
 
 enum Node {
@@ -135,6 +195,9 @@ struct Os {
     assume_dirs: bool,
     /// The number of the last call of JavaScript.
     js_jobs: i32,
+    /// Files are those of the host (conma_use_host_fs): open_file, is_dir,
+    /// canonicalize and read_dir go to the host_fs_ functions.
+    host_fs: bool,
 }
 
 thread_local! {
@@ -151,6 +214,7 @@ thread_local! {
         listed: std::collections::HashSet::new(),
         assume_dirs: false,
         js_jobs: 0,
+        host_fs: false,
     });
 }
 
@@ -190,7 +254,7 @@ impl Os {
                 ok
             }
             Fd::PipeRead(p) => !p.buf.borrow().is_empty() || p.writers.get() == 0,
-            Fd::File { .. } | Fd::Null => true,
+            Fd::File { .. } | Fd::Null | Fd::Host(..) => true,
             _ => false,
         })
     }
@@ -257,6 +321,7 @@ pub fn read_fd(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
             Ok(n)
         }
         Fd::Null => Ok(0),
+        Fd::Host(f, true) => host_result(unsafe { host_fs_read(f.0, buf.as_mut_ptr(), buf.len()) }).map(|n| n as usize),
         Fd::File { data, pos, mode: 'r' } => {
             let d = data.borrow();
             let start = pos.get().min(d.len());
@@ -277,6 +342,7 @@ pub fn write_fd(fd: c_int, buf: &[u8]) -> io::Result<usize> {
             Ok(buf.len())
         }
         Fd::Null => Ok(buf.len()),
+        Fd::Host(f, false) => host_result(unsafe { host_fs_write(f.0, buf.as_ptr(), buf.len()) }).map(|n| n as usize),
         Fd::ToHost(job) => {
             unsafe { host_js_input(job, buf.as_ptr(), buf.len()) };
             Ok(buf.len())
@@ -444,6 +510,11 @@ fn check_parent(os: &Os, path: &str) -> io::Result<()> {
 }
 
 pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
+    if host_fs() {
+        let m = mode.bytes().next().unwrap_or(b'r') as i32;
+        let fd = host_result(unsafe { host_fs_open(path.as_ptr(), path.len(), m) })?;
+        return Ok(with(|os| os.add(Fd::Host(Rc::new(HostFile(fd)), mode == "r"))));
+    }
     let path = resolve(path)?;
     if mode != "w" {
         fetch(&path);
@@ -480,6 +551,12 @@ pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
 }
 
 pub fn is_dir(path: &str) -> io::Result<bool> {
+    if host_fs() {
+        if path.is_empty() {
+            return Err(err(ENOENT));
+        }
+        return host_result(unsafe { host_fs_stat(path.as_ptr(), path.len()) }).map(|k| k == 1);
+    }
     let path = resolve(path)?;
     fetch(&path);
     with(|os| match os.files.get(&path) {
@@ -490,12 +567,25 @@ pub fn is_dir(path: &str) -> io::Result<bool> {
 }
 
 pub fn canonicalize(path: &str) -> io::Result<String> {
+    if host_fs() {
+        if path.is_empty() {
+            return Err(err(ENOENT));
+        }
+        return host_text(|out, cap| unsafe { host_fs_realpath(path.as_ptr(), path.len(), out, cap) });
+    }
     let p = resolve(path)?;
     is_dir(&p)?;
     Ok(p)
 }
 
 pub fn read_dir(path: &str) -> io::Result<Vec<String>> {
+    if host_fs() {
+        if path.is_empty() {
+            return Err(err(ENOENT));
+        }
+        let names = host_text(|out, cap| unsafe { host_fs_readdir(path.as_ptr(), path.len(), out, cap) })?;
+        return Ok(names.split('\0').filter(|n| !n.is_empty()).map(String::from).collect());
+    }
     let path = resolve(path)?;
     fetch(&path);
     if with(|os| matches!(os.files.get(&path), Some(Node::Dir)) && os.listed.insert(path.clone())) {
@@ -602,6 +692,12 @@ pub fn end_input() {
 /// directories (the JavaScriptCore shell).
 pub fn assume_dirs() {
     with(|os| os.assume_dirs = true);
+}
+
+/// From now on, files are those of the host (the host_fs_ functions), not
+/// the virtual file system: for a host that has a file system (Node.js).
+pub fn use_host_fs() {
+    with(|os| os.host_fs = true);
 }
 
 pub fn interrupt() {
