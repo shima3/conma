@@ -11,6 +11,7 @@ consh/
 ├── AST.md               consh_parse が出力する構文木の形式（英語）
 ├── FOR-BASH-USERS.md    Bash を使う人向けの使い方の説明（英語）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
+├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
 ├── bin/
 │   ├── consh            ConSh を起動する（Rust 版か、consh_parser.se で読む ConMa 版。--python-parser なら consh_parse --pos の構文木を渡す）
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
@@ -155,3 +156,12 @@ test/run_all.sh -j 8
 ```
 
 diff の出力がなければ成功である。テストは、`CONSH_IMPL` がなければ ConMa 版の高速版をテストする（`common.sh`）。参照版をテストするには `CONSH_IMPL=reference`、Rust 版をテストするには `CONSH_IMPL=rust` を付ける。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。
+
+## 処理時間
+
+```
+bench/run.py                                   # Rust 版と、高速版＋変換版 VM
+bench/run.py -v rust,conma:rust,reference:rust # 版と VM を選ぶ
+```
+
+`bench/` のスクリプトを、版と VM の組み合わせごとに 3 回ずつ実行し、user + sys の最小を表にする（出力が同じことも確かめる）。使い方と測った結果は [bench/README-ja.md](bench/README-ja.md) にある。
