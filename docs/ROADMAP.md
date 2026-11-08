@@ -633,7 +633,7 @@ No new primitive.
 |---|---|
 | `__Sexp_read__` | implemented |
 
-* Goal: Start ConSh scripts fast. ConSh reads the syntax tree that `consh_parse --pos` writes, one S-expression per line; reading it in ConMa one character at a time (`Sexp_read` in `consh/reference/consh_ast.se`, then `consh/include`) took about 3 seconds for a script of 850 characters.
+* Goal: Start ConSh scripts fast. ConSh reads the syntax tree that `consh_parse --pos` writes, one S-expression per line; reading it in ConMa one character at a time (`Sexp_read` in `consh/include/consh_ast.se`) took about 3 seconds for a script of 850 characters.
 * `__Sexp_read__ onError String ,(value)` reads one S-expression in the interpreter, with the same values and error messages as `Sexp_read`. ConSh now reads the tree in no measurable time; `Sexp_read` stays, and the ConSh test `step1` checks that both give the same results.
 * Tests (`test/step30`):
 

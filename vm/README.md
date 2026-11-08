@@ -40,8 +40,8 @@ The VM is written in the order of the steps of [docs/ROADMAP.md](../docs/ROADMAP
 
 Measured on an Apple M4, with the ConSh module already built:
 
-* `consh` runs `echo hi` in 0.06 s, of which `consh_parse` (Python) takes 0.02 s; with `--conma-parser` it takes 0.03 s. Loading the ConSh module (5 MB) takes about 0.02 s and 130 MB.
-* Building the ConSh module, when its sources have changed, takes 1.2 s with `bin/includer` and `bin/resolver`. The ConMa front end (`test/selfhost7/test.se`) gives the same module in 3.7 s with the Rust VM (9.9 s before stage 7).
+* The ConMa version of ConSh starts in about 0.018 s (`consh/bench/00_start.sh`, 2026-11-09), most of it loading the ConSh module (2.2 MB, about 86 MB of memory); the Rust version of ConSh in 0.002 s.
+* Building the ConSh module, when its sources have changed, takes 2.78 s with `conma build` (the ConMa frontend, which `bin/consh` uses when the Rust VM is built; 3.58 s before its files in `include/` were made faster, `reference/README-ja.md`) and 1.32 s with `bin/includer` and `bin/resolver` (Python).
 
 ## Speed
 

@@ -355,6 +355,8 @@ for t in selfhost1 selfhost2 selfhost3 selfhost4 selfhost5 selfhost6 selfhost7; 
 
 `include/frontend.se` is the ConMa frontend as a program: `frontend.se [--warn-arity] [--include <dir>]... <source>` writes the `Module` of the source on one line, as `bin/includer` and `bin/resolver --warn-arity` do (an error: its message and exit code 1). Its module, `vm/frontend.module.se`, is kept in the repository, so that the Rust VM can embed it and run ConMa programs without Python (`conma build`, `conma run` and `__VProc_spawn__`, vm/README.md). `bin/update-frontend` makes it again in two stages: the Python frontend makes a module of `frontend.se`, and that module, run on a VM, makes the module of `frontend.se` that is written (file names relative to the directory above the repository, `conma/include/...`). `.gitattributes` marks the file as generated, so that `git diff` does not show it.
 
+The files of the frontend in `include/` (`lexer.se`, `parser.se`, `resolver.se` and the others) have been rewritten to run faster, without changing what they do; the files as they were before are kept in `reference/` (`reference/README-ja.md`), which is searched before `include/` to use them (`--include reference --include include`). The module is made from the files in `include/`.
+
 `test/frontend` checks that the file is not out of date: case1, that the module in the repository makes itself byte for byte (on the VM of `CONMA_VM`); case2, that the Python frontend makes the same module (`selfhost_compare.py ast`, layout ignored), which fails when a file of the frontend was changed without `bin/update-frontend`; case3, that `conma build` makes the same module as `bin/includer` and `bin/resolver`, and that `conma run` runs a program (it needs the Rust VM built).
 
 ---
