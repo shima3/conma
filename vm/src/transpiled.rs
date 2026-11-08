@@ -1330,7 +1330,7 @@ pub fn d_dict_put_str(key: &Value, d: &Value, text: &str, hash: u64, value: &Val
     let Value::Dict(o) = d else { return collections::dict_put_core(d, key.clone(), value.clone()) };
     let found = o.find_str_cached(text, hash, ic);
     match found {
-        Some(i) => o.entries.borrow_mut()[i].1 = value.clone(),
+        Some(i) => o.entries_mut()[i].1 = value.clone(),
         None => o.append(key.clone(), value.clone()).map_err(VmError::Error)?,
     }
     Ok(())

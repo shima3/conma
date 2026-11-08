@@ -71,7 +71,7 @@ fn do_spawn(m: &mut Machine, vp: &mut VProc, name: &str, detached: bool) -> PRes
         }
     };
     let mut env = Vec::new();
-    for (k, v) in &entries {
+    for (k, v) in entries.iter() {
         if value_type_name(k) != "String" || value_type_name(v) != "String" {
             vp.prim_error(on_error, &format!("{}: envDict keys and values must be Strings", name));
             return Ok(());

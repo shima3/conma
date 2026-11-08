@@ -6,7 +6,6 @@ use crate::sys;
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn new_stream(m: &mut Machine, fd: i32, mode: char) -> Rc<StreamObj> {
@@ -349,7 +348,7 @@ pub fn listdir(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn get_env_dict(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.dicts += 1;
-    let d = DictObj { serial: m.serials.dicts, entries: RefCell::new(Vec::new()), index: RefCell::new(DictIndex::default()), shape: std::cell::Cell::new(SHAPE_EMPTY) };
+    let d = DictObj::new(m.serials.dicts);
     for (k, v) in sys::env_vars() {
         let k = string_value(&k);
         let v = string_value(&v);

@@ -114,6 +114,8 @@ enum Node {
     GV(Rc<GVEnv>),
     /// The items of MSeqs, which the rests of __MSeq_uncons__ share.
     Items(Rc<Vec<Value>>),
+    /// The entries of Dicts, which copies share (DictObj::copy).
+    Entries(Rc<Vec<(Value, Value)>>),
 }
 
 impl Node {
@@ -131,6 +133,7 @@ impl Node {
             Node::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::GV(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::Items(r) => Rc::as_ptr(r) as *const u8 as usize,
+            Node::Entries(r) => Rc::as_ptr(r) as *const u8 as usize,
         }
     }
 
@@ -148,6 +151,7 @@ impl Node {
             Node::VProc(r) => Rc::strong_count(r),
             Node::GV(r) => Rc::strong_count(r),
             Node::Items(r) => Rc::strong_count(r),
+            Node::Entries(r) => Rc::strong_count(r),
         }
     }
 
@@ -195,7 +199,10 @@ impl Node {
             Node::Items(items) => items.iter().for_each(|v| value_child(v, f)),
             Node::Dict(d) => {
                 let Ok(entries) = d.entries.try_borrow() else { return false };
-                for (k, v) in entries.iter() {
+                f(Node::Entries(entries.clone()));
+            }
+            Node::Entries(e) => {
+                for (k, v) in e.iter() {
                     value_child(k, f);
                     value_child(v, f);
                 }
@@ -231,7 +238,7 @@ impl Node {
     }
 
     /// Take the contents out of a container that is garbage.
-    fn clear(&self, trash: &mut Vec<Value>, lv_trash: &mut Vec<LVEnv>, items_trash: &mut Vec<Rc<Vec<Value>>>) {
+    fn clear(&self, trash: &mut Vec<Value>, lv_trash: &mut Vec<LVEnv>, entries_trash: &mut Vec<Rc<Vec<(Value, Value)>>>, items_trash: &mut Vec<Rc<Vec<Value>>>) {
         match self {
             Node::Ref(r) => {
                 trash.push(std::mem::replace(&mut *r.value.borrow_mut(), Value::Null));
@@ -244,11 +251,10 @@ impl Node {
             // MSeq may still share them until it is cleared).
             Node::MSeq(m) => items_trash.push(std::mem::take(&mut *m.items.borrow_mut())),
             Node::Dict(d) => {
-                for (k, v) in d.entries.borrow_mut().drain(..) {
-                    trash.push(k);
-                    trash.push(v);
-                }
-                d.index.borrow_mut().clear();
+                // The entries go when no Dict shares them any more (another
+                // garbage Dict may still share them until it is cleared).
+                entries_trash.push(std::mem::take(&mut *d.entries.borrow_mut()));
+                *d.index.borrow_mut() = Rc::default();
             }
             Node::VProc(cell) => {
                 let mut vp = cell.vp.borrow_mut();
@@ -373,11 +379,12 @@ pub fn collect() -> usize {
     }
     let mut trash: Vec<Value> = Vec::new();
     let mut lv_trash: Vec<LVEnv> = Vec::new();
+    let mut entries_trash: Vec<Rc<Vec<(Value, Value)>>> = Vec::new();
     let mut items_trash: Vec<Rc<Vec<Value>>> = Vec::new();
     let mut freed = 0;
     for (j, n) in nodes.iter().enumerate() {
         if !live[j] && n.is_container() {
-            n.clear(&mut trash, &mut lv_trash, &mut items_trash);
+            n.clear(&mut trash, &mut lv_trash, &mut entries_trash, &mut items_trash);
             freed += 1;
         }
     }
@@ -386,7 +393,7 @@ pub fn collect() -> usize {
         let mut kinds: HashMap<&str, usize> = HashMap::new();
         for (n, &l) in nodes.iter().zip(&live) {
             if l {
-                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::VProc(_) => "VProc", Node::GV(_) => "GV", Node::Items(_) => "Items" };
+                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::VProc(_) => "VProc", Node::GV(_) => "GV", Node::Items(_) => "Items", Node::Entries(_) => "Entries" };
                 *kinds.entry(k).or_default() += 1;
             }
         }
@@ -398,6 +405,7 @@ pub fn collect() -> usize {
     drop(trash);
     drop(lv_trash);
     drop(items_trash);
+    drop(entries_trash);
     MADE.store(0, Relaxed);
     let next = FIXED.with(|f| *f).unwrap_or(survivors.max(MIN_THRESHOLD));
     THRESHOLD.store(next, Relaxed);

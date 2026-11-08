@@ -60,6 +60,7 @@ The transpiled VM after each change, built with the transpiled code of the bench
 | small top-level Functions called with an LCont written in place (inlined), with Strings written in place passed as constants (ConSh 0.67 s before, measured again with its current module) | 2026-11-08 | 0.26 s | 0.60 s | 0.33 s | 0.07 s | 0.59 s |
 | the other primitives of CHAIN called from fused chains through the OList, `__Dict_lookup_or__` whose onMissing is a function going on when the key is there | 2026-11-08 | 0.24 s | 0.54 s | 0.32 s | 0.07 s | 0.57 s (0.59 s before, with the current module) |
 | a clause of `__if__` that is a continuation applied in fused chains and `if_call`; rare cases and conditions that are not Booleans load the Body for the VM | 2026-11-08 | 0.24 s | 0.55 s | 0.32 s | 0.07 s | 0.53 s |
+| the entries and index of a Dict shared by its copies until one of them is changed (`__Dict_copy__`) | 2026-11-08 | 0.25 s | 0.55 s | 0.32 s | 0.07 s | 0.50–0.53 s (about 1% faster, within what runs vary) |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
 So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and for richards, whose idle task computes its bit operations with arithmetic (ConMa has none).

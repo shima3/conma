@@ -4,7 +4,6 @@ use super::{err, take_n as take_args, PResult, VmError};
 use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 fn new_mseq(m: &mut Machine, items: Vec<Value>) -> Value {
@@ -89,12 +88,7 @@ fn dict_args(vp: &mut VProc, name: &str, count: usize) -> Result<(Rc<DictObj>, V
 
 pub fn dict_new(m: &mut Machine, vp: &mut VProc) -> PResult {
     m.serials.dicts += 1;
-    let d = Value::Dict(crate::gc::new_dict(DictObj {
-        serial: m.serials.dicts,
-        entries: RefCell::new(Vec::new()),
-        index: RefCell::new(DictIndex::default()),
-        shape: std::cell::Cell::new(SHAPE_EMPTY),
-    }));
+    let d = Value::Dict(crate::gc::new_dict(DictObj::new(m.serials.dicts)));
     vp.prim_return(vec![d]);
     Ok(())
 }
@@ -105,7 +99,7 @@ pub fn dict_put(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let key = a.pop().unwrap();
     match d.find(&key).map_err(VmError::Error)? {
         None => d.append(key, value).map_err(VmError::Error)?,
-        Some(i) => d.entries.borrow_mut()[i].1 = value,
+        Some(i) => d.entries_mut()[i].1 = value,
     }
     vp.prim_return(vec![]);
     Ok(())
@@ -128,7 +122,7 @@ pub fn dict_put_core(d: &Value, key: Value, value: Value) -> Result<(), VmError>
     };
     match d.find(&key).map_err(VmError::Error)? {
         None => d.append(key, value).map_err(VmError::Error)?,
-        Some(i) => d.entries.borrow_mut()[i].1 = value,
+        Some(i) => d.entries_mut()[i].1 = value,
     }
     Ok(())
 }
@@ -163,12 +157,8 @@ pub fn dict_remove(_m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn dict_copy(m: &mut Machine, vp: &mut VProc) -> PResult {
     let (d, _) = dict_args(vp, "__Dict_copy__", 1)?;
     m.serials.dicts += 1;
-    let c = Value::Dict(crate::gc::new_dict(DictObj {
-        serial: m.serials.dicts,
-        entries: RefCell::new(d.entries.borrow().clone()),
-        index: RefCell::new(d.index.borrow().clone()),
-        shape: std::cell::Cell::new(d.shape.get()),
-    }));
+    // The entries and the index are shared until one of the two is changed.
+    let c = Value::Dict(crate::gc::new_dict(d.copy(m.serials.dicts)));
     vp.prim_return(vec![c]);
     Ok(())
 }

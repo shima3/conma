@@ -232,10 +232,12 @@ impl MSeqObj {
 
 /// A mapping in insertion order. Keys are compared with values_equal; the
 /// index finds a key that has a dict_key without comparing it with every key.
+/// A copy (__Dict_copy__) shares the entries and the index of the Dict it
+/// was copied from until one of them is changed (entries_mut, index_mut).
 pub struct DictObj {
     pub serial: usize,
-    pub entries: RefCell<Vec<(Value, Value)>>,
-    pub index: RefCell<DictIndex>,
+    pub entries: RefCell<Rc<Vec<(Value, Value)>>>,
+    pub index: RefCell<Rc<DictIndex>>,
     /// The shape of its keys (SHAPE_EMPTY for a new Dict, SHAPE_NONE for one
     /// that has no shape): see shape_after.
     pub shape: Cell<u32>,
@@ -544,10 +546,6 @@ impl DictIndex {
             IndexKey::None => {}
         }
     }
-    pub fn clear(&mut self) {
-        self.strs.clear();
-        self.others.clear();
-    }
 }
 
 /// The CChain of the caller of the function that called __Cont_get__.
@@ -655,6 +653,27 @@ pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
 }
 
 impl DictObj {
+    /// A new Dict without keys.
+    pub fn new(serial: usize) -> DictObj {
+        DictObj { serial, entries: RefCell::new(Rc::new(Vec::new())), index: RefCell::new(Rc::new(DictIndex::default())), shape: Cell::new(SHAPE_EMPTY) }
+    }
+    /// A copy that shares the entries and the index of this one.
+    pub fn copy(&self, serial: usize) -> DictObj {
+        DictObj {
+            serial,
+            entries: RefCell::new(Rc::clone(&self.entries.borrow())),
+            index: RefCell::new(Rc::clone(&self.index.borrow())),
+            shape: Cell::new(self.shape.get()),
+        }
+    }
+    /// The entries, to change them: copied first if another Dict shares them.
+    pub fn entries_mut(&self) -> std::cell::RefMut<'_, Vec<(Value, Value)>> {
+        std::cell::RefMut::map(self.entries.borrow_mut(), Rc::make_mut)
+    }
+    /// The index, to change it: copied first if another Dict shares it.
+    pub fn index_mut(&self) -> std::cell::RefMut<'_, DictIndex> {
+        std::cell::RefMut::map(self.index.borrow_mut(), Rc::make_mut)
+    }
     pub fn find(&self, key: &Value) -> Result<Option<usize>, String> {
         if let Ok(found) = self.index.borrow().get(&index_key(key)?) {
             return Ok(found);
@@ -674,18 +693,18 @@ impl DictObj {
             _ => SHAPE_NONE,
         };
         self.shape.set(shape);
-        self.index.borrow_mut().insert(k, n);
-        self.entries.borrow_mut().push((key, value));
+        self.index_mut().insert(k, n);
+        self.entries_mut().push((key, value));
         Ok(())
     }
     pub fn remove(&self, i: usize) -> Result<(), String> {
         self.shape.set(SHAPE_NONE);
-        self.entries.borrow_mut().remove(i);
+        self.entries_mut().remove(i);
         let mut index = DictIndex::default();
         for (i, (k, _)) in self.entries.borrow().iter().enumerate() {
             index.insert(index_key(k)?, i);
         }
-        *self.index.borrow_mut() = index;
+        *self.index.borrow_mut() = Rc::new(index);
         Ok(())
     }
 }
