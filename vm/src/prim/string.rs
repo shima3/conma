@@ -38,14 +38,73 @@ fn int_index(x: f64) -> Option<i128> {
     }
 }
 
-/// The byte offset of the code point at char index i (i <= length).
-fn byte_at(s: &str, i: usize) -> usize {
-    s.char_indices().nth(i).map(|(b, _)| b).unwrap_or(s.len())
+/// Take count Strings (checked in order) and return them as they are, so that
+/// their text can be read without copying it (text).
+fn string_values(vp: &mut VProc, name: &str, count: usize) -> Result<Vec<Value>, VmError> {
+    if vp.olist.len() < count {
+        return err(format!("{}: missing argument(s)", name));
+    }
+    let args: Vec<Value> = vp.olist.drain(..count).collect();
+    for a in &args {
+        if value_type_name(a) != "String" {
+            return err(format!("{}: expected String, got {}", name, value_type_name(a)));
+        }
+    }
+    Ok(args)
+}
+
+/// The text of a String, without copying a String made at run time.
+fn text(v: &Value) -> Result<std::borrow::Cow<'_, str>, VmError> {
+    match v {
+        Value::Str(s) => Ok(std::borrow::Cow::Borrowed(&**s)),
+        _ => Ok(std::borrow::Cow::Owned(value_to_display(v).map_err(VmError::Error)?)),
+    }
+}
+
+/// The number of code points of s (the length of a String).
+fn char_count(s: &str) -> usize {
+    if s.is_ascii() {
+        s.len()
+    } else {
+        s.chars().count()
+    }
+}
+
+/// The byte offset of the code point at char index i, or None if s has fewer
+/// than i code points (i == the length gives s.len()). When the first i bytes
+/// are ASCII, it is i, found without walking the string.
+fn char_to_byte(s: &str, i: usize) -> Option<usize> {
+    let b = s.as_bytes();
+    if i <= b.len() && b[..i].is_ascii() {
+        return Some(i);
+    }
+    let mut n = 0;
+    for (bi, _) in s.char_indices() {
+        if n == i {
+            return Some(bi);
+        }
+        n += 1;
+    }
+    if n == i {
+        Some(s.len())
+    } else {
+        None
+    }
+}
+
+/// The number of code points of a part of a string (ASCII: its length).
+fn chars_in(s: &str) -> usize {
+    if s.is_ascii() {
+        s.len()
+    } else {
+        s.chars().count()
+    }
 }
 
 pub fn length(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let s = string_args(vp, "__String_length__", 1)?;
-    vp.prim_return(vec![num(s[0].chars().count() as f64)]);
+    let s = string_values(vp, "__String_length__", 1)?;
+    let t = text(&s[0])?;
+    vp.prim_return(vec![num(char_count(&t) as f64)]);
     Ok(())
 }
 
@@ -101,7 +160,8 @@ pub fn substring(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_substring__";
     need(vp, name, 4)?;
     let on_error = vp.olist.remove(0);
-    let s = string_args(vp, name, 1)?.pop().unwrap();
+    let sv = string_values(vp, name, 1)?;
+    let s = text(&sv[0])?;
     let mut a = take_args(vp, name, 2)?;
     let end = a.pop().unwrap();
     let start = a.pop().unwrap();
@@ -118,12 +178,13 @@ pub fn substring(_m: &mut Machine, vp: &mut VProc) -> PResult {
         }
     }
     let (i, j) = (idx[0], idx[1]);
-    let len = s.chars().count() as i128;
-    if !(0 <= i && i <= j && j <= len) {
+    let bj = if 0 <= i && i <= j && j <= s.len() as i128 { char_to_byte(&s, j as usize) } else { None };
+    let Some(bj) = bj else {
+        let len = char_count(&s) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} {} (length {})", name, i, j, len));
         return Ok(());
-    }
-    let (bi, bj) = (byte_at(&s, i as usize), byte_at(&s, j as usize));
+    };
+    let bi = char_to_byte(&s, i as usize).expect("i <= j");
     vp.prim_return(vec![string_value(&s[bi..bj])]);
     Ok(())
 }
@@ -132,9 +193,9 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_find__";
     need(vp, name, 4)?;
     let on_error = vp.olist.remove(0);
-    let mut sp = string_args(vp, name, 2)?;
-    let pattern = sp.pop().unwrap();
-    let s = sp.pop().unwrap();
+    let sp = string_values(vp, name, 2)?;
+    let s = text(&sp[0])?;
+    let pattern = text(&sp[1])?;
     let start = take_args(vp, name, 1)?.pop().unwrap();
     let x = check_number(name, &start)?;
     let i = match int_index(x) {
@@ -144,15 +205,15 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
             return Ok(());
         }
     };
-    let len = s.chars().count() as i128;
-    if !(0 <= i && i <= len) {
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte(&s, i as usize) } else { None };
+    let Some(b) = b else {
+        let len = char_count(&s) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
         return Ok(());
-    }
-    let b = byte_at(&s, i as usize);
-    let r = match s[b..].find(pattern.as_str()) {
+    };
+    let r = match s[b..].find(&*pattern) {
         None => Value::Null,
-        Some(off) => num((i as usize + s[b..b + off].chars().count()) as f64),
+        Some(off) => num((i as usize + chars_in(&s[b..b + off])) as f64),
     };
     vp.prim_return(vec![r]);
     Ok(())
@@ -164,9 +225,9 @@ pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_find_any__";
     need(vp, name, 4)?;
     let on_error = vp.olist.remove(0);
-    let mut sp = string_args(vp, name, 2)?;
-    let chars = sp.pop().unwrap();
-    let s = sp.pop().unwrap();
+    let sp = string_values(vp, name, 2)?;
+    let s = text(&sp[0])?;
+    let chars = text(&sp[1])?;
     let start = take_args(vp, name, 1)?.pop().unwrap();
     let x = check_number(name, &start)?;
     let i = match int_index(x) {
@@ -176,12 +237,13 @@ pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
             return Ok(());
         }
     };
-    let len = s.chars().count() as i128;
-    if !(0 <= i && i <= len) {
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte(&s, i as usize) } else { None };
+    let Some(b) = b else {
+        let len = char_count(&s) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
         return Ok(());
-    }
-    let r = match s.chars().skip(i as usize).position(|c| chars.contains(c)) {
+    };
+    let r = match s[b..].chars().position(|c| chars.contains(c)) {
         None => Value::Null,
         Some(off) => num((i as usize + off) as f64),
     };
@@ -194,13 +256,12 @@ pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn strip_suffix(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_strip_suffix__";
     need(vp, name, 2)?;
-    let s0 = vp.olist[0].clone();
-    let mut sp = string_args(vp, name, 2)?;
-    let suffix = sp.pop().unwrap();
-    let s = sp.pop().unwrap();
-    let r = match s.strip_suffix(suffix.as_str()) {
+    let sp = string_values(vp, name, 2)?;
+    let s = text(&sp[0])?;
+    let suffix = text(&sp[1])?;
+    let r = match s.strip_suffix(&*suffix) {
         Some(t) if !suffix.is_empty() => string_value(t),
-        _ => s0,
+        _ => sp[0].clone(),
     };
     vp.prim_return(vec![r]);
     Ok(())
@@ -210,7 +271,8 @@ pub fn to_code(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__String_toCode__";
     need(vp, name, 2)?;
     let on_error = vp.olist.remove(0);
-    let s = string_args(vp, name, 1)?.pop().unwrap();
+    let sv = string_values(vp, name, 1)?;
+    let s = text(&sv[0])?;
     let mut it = s.chars();
     match (it.next(), it.next()) {
         (Some(c), None) => vp.prim_return(vec![num(c as u32 as f64)]),
