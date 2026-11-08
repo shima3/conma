@@ -167,7 +167,8 @@ consh/js/
     Cargo.toml      crate conma-wasm（2.2 の 1）
     src/lib.rs      export する関数（conma_start、conma_run など）
     src/sys.rs      仮想の OS（2.2 の 2）
-  web/              （段階 3）HTTP で開く（python3 -m http.server --directory consh/js/web など）
+  serve.py          web/ を出す HTTP サーバー（ディレクトリの一覧、Cache-Control: no-cache。3.14）
+  web/              （段階 3）HTTP で開く（serve.py）
     index.html      端末の画面（出力と入力の行、「ファイルを置く」「スクリプトを実行」「中断」）
     consh.js        ConSh の起動（対話モード）、入力、Ctrl-C、ファイル。段階 4 から js の評価
     conma.wasm、conma.js、consh.module.se   build.sh が置く（リポジトリには入れない）
@@ -306,7 +307,17 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 ### 3.13. ブラウザ版の ls（2026/11/8）
 
 - ブラウザの画面の `COMMANDS` に `ls` を足した（`ls [-1AadF] [file ...]`）。出力が端末でないときの ls と同じく、1 行に 1 つの名前を、名前の順に出す。ファイルの名前が先、ディレクトリの中身が後で、引数が 2 つ以上なら `名前:` の見出しを付ける。`-a` は `.` と `..` と `.` で始まる名前も、`-A` は `.` で始まる名前だけを足し、`-d` はディレクトリそのものを、`-F` はディレクトリの後に `/` を出す。ない名前は `No such file or directory`（`$?` は 1）。
-- 仮想ファイルシステムのディレクトリを JavaScript から読めるように、wasm に `conma_list_dir` を足した（conma.js の `listDir`）。エントリの名前と、ディレクトリかどうかを返す。
+- 仮想ファイルシステムのディレクトリを JavaScript から読めるように、wasm に `conma_list_dir` を足した（conma.js の `listDir`）。エントリの名前と、ディレクトリかどうかを返す（3.14 で、ファイルがサーバーのものになったので、なくした）。
+
+### 3.14. ブラウザ版のファイルをサーバーから読む（2026/11/8）
+
+- ブラウザ版も、Node.js 版と同じく、ファイルをホストに任せる（`conma_use_host_fs`）。hostFs は `web/serverfs.js` で、`/home/user` をページのディレクトリにし、その下のファイルを開くたびに、ディレクトリを一覧するたびに、サーバーから読む。VM はファイルを同期して開くので、同期の XMLHttpRequest を使う（バイト列のまま読むため `overrideMimeType` で x-user-defined にする）。キャッシュはブラウザに任せる。
+    - ディレクトリかどうか：`/` のない名前のディレクトリは `/` のある名前にリダイレクトされる（`python3 -m http.server` などと同じ）ので、HEAD の `responseURL` で見分ける。
+    - ディレクトリの一覧：`consh/js/serve.py` が `?consh-ls` に JSON で答える（ディレクトリの名前は `/` で終わる）。ほかのサーバーでは、ディレクトリの一覧の HTML のリンクを読む。`python3 -m http.server` は `index.html` のあるディレクトリには一覧を出さないので、serve.py を足した。serve.py は `Cache-Control: no-cache` も付けるので、ブラウザは毎回サーバーに確かめ（変わっていなければ 304）、ディスクで書き換えたファイルがすぐ見える。
+    - 書き込み：サーバーには書けないので、書いたファイルはメモリに置き、同じ名前のサーバーのファイルより先に見せる（ユーザーの選択）。`>>` は、サーバーのファイルの中身に足す。「ファイルを置く」もメモリに置く。`/home/user` の外は、`/`、`/home`、`/dev`、`/dev/null` などのメモリのものだけである。
+- ページのディレクトリを置く場所（`/home/user`）は、ページの URL の `?home=絶対パス` で変えられる（ConSh の `HOME` とカレントディレクトリもそこになる）。`/home/user` にしたのは、前の仮想ファイルシステムのホームの名残であり、`/dev` などのメモリのものとサーバーのファイルがぶつからないためである。`?home=/` では、`/dev` と `/dev/null` が同じ名前のサーバーのファイルより先に見える（書いたファイルと同じ規則）。ブラウザで、`?home=/`（`ls -F`、`cd ..`、`/dev/null`、書き込み）、`?home=/work/site/`（途中のディレクトリはメモリにある）、絶対パスでない値（`/home/user` になる）を確かめた。
+- ファイルを ConSh の組み込みコマンド（`cat < file` など、子の標準入出力）に渡すときは、hostFs の fd（`host_proc_spawn` の kind 1）になるので、ページの `hostProc` は、それを `dup` してプロセスが終わるまで持ち、読み書きする。`cat` と `ls` も hostFs を使い、`HOME_FILES` と `conma_list_dir` はなくした。
+- ブラウザで、`ls`（ページのファイルがすべて出る）、`ls -F /`、`cat`、`*.txt`、`>`、`>>`（サーバーのファイルに足す）、`cd` でのサブディレクトリ、エラー（ない名前、ディレクトリを `cat`、ファイルの下、ないディレクトリへの `>`）、`/dev/null`、ディスクでのファイルの書き換えと追加がページを読み直さずに見えること、2 回目からの読み込みが 304 になることを確かめた。
 
 ## 4. 未解決の点
 

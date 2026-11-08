@@ -2,10 +2,11 @@
 // version of ConSh (consh.module.se) in interactive mode, as `consh` with no arguments does. Each line
 // typed is given to its standard input; standard output and standard error are shown in the page.
 //
-// The files of the page are in the virtual file system of the VM, from /home/user (the current
-// directory), where the page puts the files of HOME_FILES (from consh/js/web) when it opens;
-// "ファイルを置く" puts files there, and "スクリプトを実行" gives the lines of a script to
-// standard input, as if they were typed (the ConMa version of ConSh has no source).
+// The files are those of the server (serverfs.js): /home/user, the current directory, is the
+// directory of the page (consh/js/web), whose files are read from the server each time, and the files
+// written (and those that "ファイルを置く" puts) are kept in memory over them until the page is closed.
+// "スクリプトを実行" gives the lines of a script to standard input, as if they were typed (the ConMa
+// version of ConSh has no source).
 //
 // The commands of COMMANDS, written in JavaScript (cat, pwd, ls), are builtin commands of ConSh: the page
 // names them in CONSH_HOST_BUILTINS, and ConSh starts each as the process builtin:<name> (hostProc),
@@ -18,9 +19,11 @@
   const term = document.getElementById("term");
   const line = document.getElementById("line");
   const status = document.getElementById("status");
-  const HOME = "/home/user";
-  // Files of consh/js/web that are put in HOME when the page opens
-  const HOME_FILES = ["names.txt"];
+  // The directory of the page is HOME, the home and current directory of ConSh: /home/user, or the
+  // absolute path given as ?home= (?home=/ makes it the root)
+  const HOME = ServerFS.normalize(new URLSearchParams(location.search).get("home") || "/home/user") || "/home/user";
+  const fs = ServerFS.create(HOME);
+  const pathOf = (cwd, name) => (name.startsWith("/") ? name : cwd.replace(/\/$/, "") + "/" + name);
 
   function show(text, cls) {
     if (text === "") return;
@@ -60,9 +63,9 @@
           }
           continue;
         }
-        const data = vm.getFile(name.startsWith("/") ? name : io.cwd + "/" + name);
-        if (data === null) {
-          io.write(2, ConMaVM.utf8("cat: " + name + ": No such file or directory\n"));
+        const data = fs.readFile(pathOf(io.cwd, name));
+        if (typeof data === "number") {
+          io.write(2, ConMaVM.utf8("cat: " + name + ": " + errorText(data) + "\n"));
           status = 1;
           continue;
         }
@@ -108,13 +111,17 @@
       const files = [];
       const dirs = [];
       for (const name of names) {
-        const r = vm.listDir(name.startsWith("/") ? name : io.cwd + "/" + name);
-        if (typeof r === "number") {
-          const msg = r === -20 ? "Not a directory" : "No such file or directory";
-          io.write(2, ConMaVM.utf8("ls: " + name + ": " + msg + "\n"));
+        const path = pathOf(io.cwd, name);
+        const k = fs.stat(path);
+        const entries = k === 1 && !opt.d ? fs.readdir(path) : null;
+        const r = typeof entries === "number" ? entries : k;
+        if (r < 0) {
+          io.write(2, ConMaVM.utf8("ls: " + name + ": " + errorText(r) + "\n"));
           status = 1;
-        } else if (r.dir && !opt.d) dirs.push([name, r.entries]);
-        else files.push(mark(name, r.dir));
+        } else if (entries) {
+          const prefix = path.endsWith("/") ? path : path + "/";
+          dirs.push([name, entries.map((e) => ({ name: e, dir: opt.F && fs.stat(prefix + e) === 1 }))]);
+        } else files.push(mark(name, k === 1));
       }
       const byName = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
       const lines = files.sort(byName);
@@ -131,6 +138,11 @@
       return status;
     },
   };
+
+  function errorText(errno) {
+    const texts = { "-2": "No such file or directory", "-20": "Not a directory", "-21": "Is a directory" };
+    return texts[errno] || "Input/output error";
+  }
 
   const procs = new Map(); // id -> process
   let nextProc = 0;
@@ -175,6 +187,9 @@
     };
     procs.set(id, p);
     const ownFds = stdio.filter((s) => s.kind === 2 || s.kind === 3).map((s) => s.n);
+    // A file (kind 1, an fd of serverfs.js) is the process's own until it ends
+    stdio = stdio.map((s) => (s.kind === 1 ? { kind: 1, n: fs.dup(s.n) } : s));
+    const fileFds = stdio.filter((s) => s.kind === 1 && s.n >= 0).map((s) => s.n);
     const io = {
       cwd,
       env,
@@ -191,6 +206,10 @@
             await new Promise((resolve) => (p.termWaiter = resolve));
             continue;
           }
+          if (s.kind === 1) {
+            const r = fs.read(s.n, 65536);
+            return typeof r === "number" || r.length === 0 ? null : r;
+          }
           if (s.kind !== 2) return null;
           const r = vm.read(s.n, 65536);
           if (typeof r === "number") {
@@ -205,6 +224,7 @@
         if (p.code !== null) return false;
         const s = stdio[i];
         if (s.kind === 0) show(termDecoders[s.n === 2 ? 2 : 1].decode(bytes, { stream: true }), s.n === 2 ? "e" : "");
+        else if (s.kind === 1) fs.write(s.n, bytes);
         else if (s.kind === 3) {
           if (vm.write(s.n, bytes) === -32) return false;
           pump();
@@ -216,6 +236,7 @@
       if (p.code !== null) return;
       p.code = code;
       for (const fd of ownFds) vm.close(fd);
+      for (const fd of fileFds) fs.close(fd);
       vm.childEvent();
       pump();
     };
@@ -254,18 +275,13 @@
     vm = ConMaVM.create(
       wasm,
       (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""),
-      { jsDone: () => pump(), hostProc }
+      { jsDone: () => pump(), hostProc, hostFs: fs }
     );
-    vm.makeDirs(HOME);
+    vm.useHostFs();
     vm.setCwd(HOME);
     for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
     // The commands of COMMANDS are builtin commands of ConSh
     vm.setenv("CONSH_HOST_BUILTINS", Object.keys(COMMANDS).join(" "));
-    // The files of the page that start in HOME (fetched from beside the page)
-    for (const name of HOME_FILES) {
-      const r = await fetch(name, { cache: "no-cache" });
-      if (r.ok) vm.putFile(HOME + "/" + name, new Uint8Array(await r.arrayBuffer()));
-    }
     const code = vm.start(new Uint8Array(moduleBytes), ["--main", "consh.module.se", "interactive", "-", "stdin"]);
     if (code !== 0) {
       finish(code);
@@ -278,7 +294,8 @@
   }
   status.textContent = "動作中";
   show(
-    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。cat、pwd、ls は JavaScript で作った組み込みコマンドです。例:\n" +
+    "ConSh (ConMa VM on WebAssembly). 外部コマンドはありません。cat、pwd、ls は JavaScript で作った組み込みコマンドです。\n" +
+      "ファイルはサーバーのもので (" + HOME + " がこのページのディレクトリ)、書いたファイルはページを閉じるまでメモリに置きます。例:\n" +
       '  function greet (. names) { for n in $names; do echo "hello, $n"; done }\n' +
       "  greet $(cat < names.txt)\n",
     "n"
@@ -390,8 +407,8 @@
   });
   document.getElementById("files").addEventListener("change", async (ev) => {
     for (const f of ev.target.files) {
-      const errno = vm.putFile(HOME + "/" + f.name, new Uint8Array(await f.arrayBuffer()));
-      show(errno === 0 ? "[" + HOME + "/" + f.name + " を置きました]\n" : "[" + f.name + ": errno " + errno + "]\n", "n");
+      const errno = fs.writeFile(pathOf(HOME, f.name), new Uint8Array(await f.arrayBuffer()));
+      show(errno === 0 ? "[" + pathOf(HOME, f.name) + " を置きました]\n" : "[" + f.name + ": " + errorText(errno) + "]\n", "n");
     }
     ev.target.value = "";
     line.focus();

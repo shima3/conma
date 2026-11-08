@@ -584,17 +584,6 @@ var ConMaVM = (function () {
         if (n < 0) return null;
         return new Uint8Array(x.memory.buffer, x.conma_result_ptr(), n).slice();
       },
-      // A path (absolute) of the virtual file system: {dir: false} for a file,
-      // {dir: true, entries: [{name, dir}, ...]} (sorted by name) for a
-      // directory, or minus the errno (-2 when there is no such file).
-      listDir: (path) => {
-        const n = pass(path, x.conma_list_dir);
-        if (n < 0) return n;
-        const t = text(new Uint8Array(x.memory.buffer, x.conma_result_ptr(), n).slice());
-        if (t === "f") return { dir: false };
-        const entries = t.split("\0").filter((e) => e !== "").map((e) => ({ name: e.slice(1), dir: e[0] === "d" }));
-        return { dir: true, entries };
-      },
     };
     return vm;
   }
