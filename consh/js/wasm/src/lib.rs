@@ -14,7 +14,7 @@
 //!   Ctrl-C), or the exit code when the VM has ended.
 //! * conma_input, conma_input_end, conma_interrupt: standard input and Ctrl-C;
 //!   conma_wants_input says whether a VProc found standard input empty.
-//! * conma_put_file, conma_make_dirs, conma_get_file, conma_setenv,
+//! * conma_put_file, conma_put_unread, conma_make_dirs, conma_get_file, conma_setenv,
 //!   conma_set_cwd: the virtual file system and the environment.
 
 // Parts of vm/src that only the native VM uses (processes, Machine::run).
@@ -273,6 +273,19 @@ pub unsafe extern "C" fn conma_put_file(path_ptr: *const u8, path_len: usize, da
 #[no_mangle]
 pub unsafe extern "C" fn conma_make_dirs(ptr: *const u8, len: usize) -> i32 {
     match sys::make_dirs(&text(ptr, len)) {
+        Ok(()) => 0,
+        Err(e) => e.raw_os_error().unwrap_or(-1),
+    }
+}
+
+/// A file whose contents the host gives (conma_put_file) when the VM opens
+/// it: the host lists files without reading them. Returns 0, or the errno.
+///
+/// # Safety
+/// ptr must point to len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn conma_put_unread(ptr: *const u8, len: usize) -> i32 {
+    match sys::put_unread(&text(ptr, len)) {
         Ok(()) => 0,
         Err(e) => e.raw_os_error().unwrap_or(-1),
     }

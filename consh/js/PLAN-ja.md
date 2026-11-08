@@ -142,17 +142,19 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
 consh/js/
   PLAN-ja.md        この文書
   README-ja.md      使い方（段階 4 で書く）
-  build.sh          VM を wasm32 でビルドする（段階 2 で、ConSh のモジュールも作るようにする）
+  build.sh          VM を wasm32 でビルドし、web/ に wasm、conma.js、ConSh のモジュールを置く
   conma.js          wasm の読み込み、import する関数、conma_run の駆動（ブラウザと jsc で共通）
   vm-jsc.js         jsc で VM を動かす（vm/target/release/conma と同じ引数）
-  vm-wasm.sh        vm-jsc.js を起動し、標準入出力と終了コードをつなぐ。test/vm.sh が CONMA_VM=wasm で使う
+  vm-wasm.sh        vm-jsc.js を起動し、標準入出力と終了コードをつなぐ。今のディレクトリの下と /tmp の下の
+                    ディレクトリとファイルの名前を渡す（中身は VM が開いたときに jsc が読む）。test/vm.sh が CONMA_VM=wasm で使う
   wasm/
     Cargo.toml      crate conma-wasm（2.2 の 1）
     src/lib.rs      export する関数（conma_start、conma_run など）
     src/sys.rs      仮想の OS（2.2 の 2）
-  web/              （段階 3）
-    index.html      端末の画面（入力欄と出力）
-    consh.js        ConSh の起動、仮想ファイルシステム、js の評価
+  web/              （段階 3）HTTP で開く（python3 -m http.server --directory consh/js/web など）
+    index.html      端末の画面（出力と入力の行、「ファイルを置く」「スクリプトを実行」「中断」）
+    consh.js        ConSh の起動（対話モード）、入力、Ctrl-C、ファイル。段階 4 から js の評価
+    conma.wasm、conma.js、consh.module.se   build.sh が置く（リポジトリには入れない）
   test/             （段階 4）ConSh の test/stepN と同じ形の js のテスト
 ```
 
@@ -165,6 +167,9 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - 行の編集と履歴は、ブラウザの入力欄のものだけである。
 - 2.1 の 8 の、同時に動く `js` の `console.log` の区別（結果は変数名を書けば区別できる）。
 - テストは、Node.js の代わりに、macOS に入っている JavaScriptCore のシェル（jsc）で動かす。今の /usr/local/bin/node は Intel 版で動かないからである。jsc にはバイト列の入出力も終了コードもないので、vm-wasm.sh が 16 進数の行に直してつなぐ。標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
+    - jsc はディレクトリを調べられないので、VM に見えるのは、vm-wasm.sh が渡す名前（今のディレクトリの下の深さ 3 までと、/tmp の下の深さ 2 までのディレクトリ）と、VM が開いたファイルだけである。VM が書いたファイルは、実際のファイルシステムには書かれない。
+    - 仮想ファイルシステムにはシンボリックリンクがない。
+- ConMa 版の ConSh には `source` がないので、ブラウザでは「スクリプトを実行」が、スクリプトの各行を入力として渡す。
 - wasm32 のターゲットが必要である（`rustup target add wasm32-unknown-unknown`）。
 
 ## 3. 段階
@@ -192,6 +197,16 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
     - `__VProc_spawn__`：step17、step20、step21、step22、step23、step24
 - そのほかのケースは、すべてネイティブ版と同じログになる（標準入力を読む step9 の case5、step13 の case2、case3、step20 の case6 を含む）。
 - ConSh のモジュール（約 5.8 MB）を読み込み、対話モード（`interactive - stdin`）で、関数、`$( )`、`for` が動く。jsc の最大メモリは約 140 MB で、足りる。
+
+### 3.2. 段階 2 と 3 の結果（2026/11/8）
+
+- 段階 2：仮想ファイルシステムに `/dev/null` を足した。VM が持っていないファイルを開くと、ホストに求める（`host_file_needed`。jsc は実際のファイルを読んで渡す）。
+    - `CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh` で、ネイティブ版と違うところは、どれも外部コマンド（`cat`、`printf`、`sh`、`sleep` など）を使うところで、`consh: ...: not supported: <コマンド>` で止まる。
+    - `--conma-parser`（Python の consh_parse を使わず、ConMa 版の構文解析で読む経路）でも、Rust 版の VM と同じ出力になる。
+    - `CONMA_VM=wasm test/run_all.sh` では、ファイルを読む step29、step37、selfhost3〜5 が通るようになり、step14 の差はプロセスを使うケースだけになった。残る差は、プロセス、`__VProc_spawn__`、シンボリックリンク（step16 の work/up、step23、selfhost6）、vm-wasm.sh が渡さないディレクトリ（selfhost6、selfhost7 の `../../include`）による。
+- 段階 3：`consh/js/build.sh` の後、consh/js/web を HTTP で開くと、ConSh の対話モードが動く。ブラウザで、関数の定義と呼び出し、`$(stdin < names.txt)`、パイプ、`&` の関数のジョブと `wait`、ファイルへのリダイレクト、終わらない関数を「中断」（Ctrl-C）で止めること（`$?` は 130）を確かめた。外部コマンドは `not supported` になる。
+    - VM は、ページが固まらないように、約 25 ms ずつ `setTimeout` で区切って動かす。入力を待つ間（`conma_run` が IDLE を返す間）は動かさない。
+    - 「スクリプトを実行」は、ファイルを選ぶ画面を自動では操作できないので、まだ確かめていない。
 
 ## 4. 未解決の点
 

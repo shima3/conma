@@ -28,7 +28,22 @@ while True:
         break
 ')
 feeder=$!
-"$jsc" "$dir/vm-jsc.js" -- "$dir" "$@" <&3 3<&- | python3 -c '
+# 環境変数（NUL で区切る）。VM は今のディレクトリで始まる
+envfile="$(mktemp "${TMPDIR:-/tmp}/conma-wasm-env.XXXXXX")"
+env -0 > "$envfile"
+# 今のディレクトリの下（深さ 3 まで）のディレクトリとファイルの名前。ファイルの中身は、VM が開いたときに読む。
+# jsc はディレクトリを調べられないので、ここで渡す
+dirs="$(mktemp "${TMPDIR:-/tmp}/conma-wasm-dirs.XXXXXX")"
+files="$(mktemp "${TMPDIR:-/tmp}/conma-wasm-files.XXXXXX")"
+trap 'rm -f "$envfile" "$dirs" "$files"' EXIT
+find . -maxdepth 3 -type d -print0 2>/dev/null > "$dirs"
+# 一時ファイルの置き場所の下のディレクトリも（テストが作ったものなど。中のファイルは、開いたときに読む）
+for t in /tmp "${TMPDIR%/}"; do
+  [ -d "$t" ] && find "$t/" -maxdepth 2 -type d -print0 2>/dev/null >> "$dirs"
+done
+find . -maxdepth 3 ! -type d -print0 2>/dev/null > "$files"
+# jsc が出す、見つからないファイルのメッセージ（ファイルを探したときのもの）は消す
+"$jsc" "$dir/vm-jsc.js" -- "$dir" "$(pwd -P)" "$envfile" "$dirs" "$files" "$@" <&3 3<&- 2> >(grep -v '^Could not open file: ' >&2) | python3 -c '
 import sys
 code = 2
 for line in sys.stdin.buffer:
@@ -44,4 +59,5 @@ sys.exit(code)
 code=$?
 exec 3<&-
 kill $feeder 2>/dev/null
+rm -f "$envfile" "$dirs" "$files"
 exit $code

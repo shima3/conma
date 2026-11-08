@@ -31,6 +31,30 @@ extern "C" {
     /// give input now (conma_input, conma_input_end), if it can without
     /// waiting for events (the JavaScriptCore shell can; a browser cannot).
     fn host_input_needed();
+    /// The file path (normalized, absolute) is not in the virtual file
+    /// system: the host may put it there now (conma_put_file), as the
+    /// JavaScriptCore shell does with the files of the real file system.
+    fn host_file_needed(ptr: *const u8, len: usize);
+}
+
+/// Ask the host for the file path if it is missing or unread. An unread
+/// file that the host does not give becomes empty.
+fn fetch(path: &str) {
+    let (missing, unread) = with(|os| match os.files.get(path) {
+        None => (true, false),
+        Some(Node::Unread) => (false, true),
+        Some(_) => (false, false),
+    });
+    if missing || unread {
+        unsafe { host_file_needed(path.as_ptr(), path.len()) };
+    }
+    if unread {
+        with(|os| {
+            if let Some(n @ Node::Unread) = os.files.get_mut(path) {
+                *n = Node::File(Rc::new(RefCell::new(Vec::new())));
+            }
+        });
+    }
 }
 
 pub const SIGINT: c_int = 2;
@@ -65,11 +89,17 @@ enum Fd {
     PipeWrite(Rc<Pipe>),
     /// A file open for reading ('r'), writing ('w') or appending ('a').
     File { data: Rc<RefCell<Vec<u8>>>, pos: Rc<Cell<usize>>, mode: char },
+    /// /dev/null
+    Null,
 }
 
 enum Node {
     Dir,
     File(Rc<RefCell<Vec<u8>>>),
+    /// A file whose contents the host gives when it is opened (see fetch).
+    Unread,
+    /// /dev/null: reads give nothing, writes are dropped.
+    Null,
 }
 
 struct Os {
@@ -88,7 +118,9 @@ thread_local! {
         fds: vec![Some(Fd::StdIn), Some(Fd::StdOut), Some(Fd::StdErr)],
         stdin: VecDeque::new(),
         stdin_end: false,
-        files: [("/".to_string(), Node::Dir)].into_iter().collect(),
+        files: [("/".to_string(), Node::Dir), ("/dev".to_string(), Node::Dir), ("/dev/null".to_string(), Node::Null)]
+            .into_iter()
+            .collect(),
         env: Vec::new(),
         interrupts: 0,
         wants_input: false,
@@ -131,7 +163,7 @@ impl Os {
                 ok
             }
             Fd::PipeRead(p) => !p.buf.borrow().is_empty() || p.writers.get() == 0,
-            Fd::File { .. } => true,
+            Fd::File { .. } | Fd::Null => true,
             _ => false,
         })
     }
@@ -193,6 +225,7 @@ pub fn read_fd(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
             }
             Ok(n)
         }
+        Fd::Null => Ok(0),
         Fd::File { data, pos, mode: 'r' } => {
             let d = data.borrow();
             let start = pos.get().min(d.len());
@@ -212,6 +245,7 @@ pub fn write_fd(fd: c_int, buf: &[u8]) -> io::Result<usize> {
             unsafe { host_write(fd, buf.as_ptr(), buf.len()) };
             Ok(buf.len())
         }
+        Fd::Null => Ok(buf.len()),
         Fd::PipeWrite(p) => {
             if p.readers.get() == 0 {
                 return Err(err(EPIPE));
@@ -325,16 +359,26 @@ fn parent(path: &str) -> String {
 fn check_parent(os: &Os, path: &str) -> io::Result<()> {
     match os.files.get(&parent(path)) {
         Some(Node::Dir) => Ok(()),
-        Some(Node::File(_)) => Err(err(ENOTDIR)),
+        Some(_) => Err(err(ENOTDIR)),
         None => Err(err(ENOENT)),
     }
 }
 
 pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
     let path = normalize(path);
+    if mode != "w" {
+        fetch(&path);
+    }
     with(|os| {
         let data = match os.files.get(&path) {
             Some(Node::Dir) => return Err(err(EISDIR)),
+            Some(Node::Null) => return Ok(os.add(Fd::Null)),
+            // Only "w" leaves a file unread (fetch reads it for "r" and "a"); it is emptied anyway.
+            Some(Node::Unread) => {
+                let d = Rc::new(RefCell::new(Vec::new()));
+                os.files.insert(path.clone(), Node::File(d.clone()));
+                d
+            }
             Some(Node::File(d)) => {
                 if mode == "w" {
                     d.borrow_mut().clear();
@@ -355,9 +399,11 @@ pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
 }
 
 pub fn is_dir(path: &str) -> io::Result<bool> {
-    with(|os| match os.files.get(&normalize(path)) {
+    let path = normalize(path);
+    fetch(&path);
+    with(|os| match os.files.get(&path) {
         Some(Node::Dir) => Ok(true),
-        Some(Node::File(_)) => Ok(false),
+        Some(_) => Ok(false),
         None => Err(err(ENOENT)),
     })
 }
@@ -373,7 +419,7 @@ pub fn read_dir(path: &str) -> io::Result<Vec<String>> {
     with(|os| {
         match os.files.get(&path) {
             Some(Node::Dir) => {}
-            Some(Node::File(_)) => return Err(err(ENOTDIR)),
+            Some(_) => return Err(err(ENOTDIR)),
             None => return Err(err(ENOENT)),
         }
         let prefix = if path == "/" { "/".to_string() } else { format!("{}/", path) };
@@ -487,7 +533,7 @@ pub fn make_dirs(path: &str) -> io::Result<()> {
             cur.push_str(part);
             match os.files.get(&cur) {
                 Some(Node::Dir) => {}
-                Some(Node::File(_)) => return Err(err(ENOTDIR)),
+                Some(_) => return Err(err(ENOTDIR)),
                 None => {
                     os.files.insert(cur.clone(), Node::Dir);
                 }
@@ -508,6 +554,17 @@ pub fn put_file(path: &str, data: &[u8]) -> io::Result<()> {
             Ok(())
         }
     })
+}
+
+/// Make the file path, whose contents the host gives when it is opened, and
+/// the directories above it (a file that is already there stays).
+pub fn put_unread(path: &str) -> io::Result<()> {
+    let path = normalize(path);
+    make_dirs(&parent(&path))?;
+    with(|os| {
+        os.files.entry(path).or_insert(Node::Unread);
+    });
+    Ok(())
 }
 
 /// The contents of the file path.

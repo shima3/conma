@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConSh</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --fg: #23211d;
+    --muted: #77736a;
+    --err: #b3412e;
+    --note: #2f6f8f;
+    --line: #dedad1;
+    --term: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1a18;
+      --fg: #e8e4da;
+      --muted: #9a958a;
+      --err: #f08a74;
+      --note: #7fc0dd;
+      --line: #36342f;
+      --term: #121110;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  #status { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  header label, header button {
+    font: inherit;
+    font-size: 13px;
+    color: var(--fg);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  header input[type=file] { display: none; }
+  #term {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--term);
+    padding: 12px 16px;
+    font: 13.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    cursor: text;
+  }
+  #out .e { color: var(--err); }
+  #out .n { color: var(--note); }
+  #out .s { color: var(--muted); }
+  #line {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    width: 70%;
+    min-width: 12ch;
+  }
+  #line:disabled { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ConSh</h1>
+  <span id="status">読み込み中…</span>
+  <span class="spacer"></span>
+  <label title="選んだファイルを /home/user に置く（リダイレクトで読める）">ファイルを置く<input id="files" type="file" multiple></label>
+  <label title="選んだスクリプトを、1 行ずつ入力したのと同じように実行する">スクリプトを実行<input id="script" type="file"></label>
+  <button id="intr" type="button" title="Ctrl-C と同じ">中断</button>
+</header>
+<div id="term"><span id="out"></span><input id="line" autocomplete="off" autocapitalize="off" spellcheck="false" disabled aria-label="ConSh への入力"></div>
+<script src="conma.js"></script>
+<script src="consh.js"></script>
+</body>
+</html>

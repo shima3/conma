@@ -1,12 +1,20 @@
 // Run the ConMa VM for wasm32 in the JavaScriptCore shell, as conma (vm/src/main.rs) runs:
-//   jsc vm-jsc.js -- <dir of consh/js> [-t] [-m] <module_file> <func_name | arg ...>
+//   jsc vm-jsc.js -- <dir of consh/js> <current directory> <file of `env -0`> <file of dirs> <file of files>
+//       [-t] [-m] <module_file> <func_name | arg ...>
+// The VM starts in the current directory, with the environment variables of the file. The virtual file
+// system has the directories and the files of the two files (paths separated by NUL, from `find -print0`
+// in the current directory); a file is read from the real file system when the VM opens it, also one
+// that is not listed (the shell cannot list directories).
 // The shell has no way to read or write bytes or to set the exit code, so vm-wasm.sh gives standard
 // input as lines "d <hex bytes>" and "e" at its end, read only when every VProc waits, and each
 // write is printed as a line "<fd> <hex bytes>", and the end as "x <exit code>", which vm-wasm.sh
 // turns back into bytes.
 (function () {
-  const [jsdir, ...argv] = arguments;
-  load(jsdir + "/conma.js");
+  load(arguments[0] + "/conma.js");
+  // The shell gives each byte of an argument as a character.
+  const [jsdir, cwd, envFile, dirsFile, filesFile, ...argv] = Array.from(arguments, (a) =>
+    ConMaVM.text(Uint8Array.from(a, (c) => c.charCodeAt(0)))
+  );
   const hex = (b) => Array.from(b, (c) => (c < 16 ? "0" : "") + c.toString(16)).join("");
   const wasm = new WebAssembly.Module(read(jsdir + "/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm", "binary"));
   const unhex = (h) => Uint8Array.from(h.match(/../g) || [], (b) => parseInt(b, 16));
@@ -22,7 +30,26 @@
       inputEnded = true;
     }
   }
-  const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), readInput);
+  const fetchFile = (vm, path) => {
+    try {
+      vm.putFile(path, read(path, "binary"));
+    } catch (e) {
+      // not in the real file system either, or a directory
+    }
+  };
+  const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), readInput, fetchFile);
+  vm.makeDirs(cwd);
+  const paths = (file) => (file === "" ? [] : ConMaVM.text(read(file, "binary")).split("\0").filter((p) => p !== ""));
+  const abs = (p) => (p.startsWith("/") ? p : cwd + "/" + p);
+  for (const p of paths(dirsFile)) vm.makeDirs(abs(p));
+  for (const p of paths(filesFile)) vm.putUnread(abs(p));
+  vm.setCwd(cwd);
+  if (envFile !== "") {
+    for (const entry of ConMaVM.text(read(envFile, "binary")).split("\0")) {
+      const i = entry.indexOf("=");
+      if (i > 0) vm.setenv(entry.slice(0, i), entry.slice(i + 1));
+    }
+  }
   // The module file named in argv, read here as the native VM reads it.
   let i = 0;
   while (i < argv.length && ["-t", "--trace", "-m", "--main"].includes(argv[i])) i++;
@@ -34,9 +61,7 @@
     print("x 1");
     return;
   }
-  // The shell gives each byte of an argument as a character: pass the bytes as they are.
-  const argBytes = Uint8Array.from(argv.join("\0"), (c) => c.charCodeAt(0));
-  let code = vm.start(module, argBytes);
+  let code = vm.start(module, argv);
   if (code === 0) {
     for (;;) {
       code = vm.run(100000);

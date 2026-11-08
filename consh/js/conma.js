@@ -15,6 +15,9 @@
 // inputNeeded(vm), if given, is called when a read of standard input that
 // cannot wait (__OS_get_String__) finds it empty: it may call vm.input or
 // vm.inputEnd at once (a browser cannot, and such a read sees the end).
+// fileNeeded(vm, path), if given, is called when the VM looks for a file
+// (an absolute path) that is not in the virtual file system: it may call
+// vm.putFile at once.
 
 var ConMaVM = (function () {
   "use strict";
@@ -35,7 +38,24 @@ var ConMaVM = (function () {
     return new Uint8Array(out);
   }
 
-  function create(wasmModule, write, inputNeeded) {
+  // A string with a character for each byte.
+  function latin1(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    return s;
+  }
+
+  // The string of UTF-8 bytes (TextDecoder is missing in the JavaScriptCore shell).
+  function text(bytes) {
+    if (typeof TextDecoder !== "undefined") return new TextDecoder().decode(bytes);
+    try {
+      return decodeURIComponent(escape(latin1(bytes)));
+    } catch (e) {
+      return latin1(bytes);
+    }
+  }
+
+  function create(wasmModule, write, inputNeeded, fileNeeded) {
     let x = null;
     let vm = null;
     const instance = new WebAssembly.Instance(wasmModule, {
@@ -43,6 +63,9 @@ var ConMaVM = (function () {
         host_write: (fd, ptr, len) => write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()),
         host_input_needed: () => {
           if (inputNeeded) inputNeeded(vm);
+        },
+        host_file_needed: (ptr, len) => {
+          if (fileNeeded) fileNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
         },
       },
     });
@@ -79,6 +102,8 @@ var ConMaVM = (function () {
       // These return 0, or the errno of the error.
       putFile: (path, data) => pass2(path, data, x.conma_put_file),
       makeDirs: (path) => pass(path, x.conma_make_dirs),
+      // A file whose contents fileNeeded gives when the VM opens it.
+      putUnread: (path) => pass(path, x.conma_put_unread),
       setCwd: (path) => pass(path, x.conma_set_cwd),
       setenv: (key, value) => pass2(key, value, x.conma_setenv),
       // The bytes of a file of the virtual file system, or null.
@@ -91,5 +116,5 @@ var ConMaVM = (function () {
     return vm;
   }
 
-  return { create, utf8, RUNNING: -1, IDLE: -2 };
+  return { create, utf8, text, latin1, RUNNING: -1, IDLE: -2 };
 })();
