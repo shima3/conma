@@ -97,6 +97,13 @@ extern "C" {
     /// __OS_trap_interrupt__: from now on, a SIGINT of the host (or its
     /// Ctrl-C) is counted (conma_interrupt) instead of ending it.
     fn host_trap_sigint();
+    /// __VProc_spawn__: make the module of the ConMa source file (relative to
+    /// cwd) as conma build does. Writes to out, up to cap bytes, "0" and the
+    /// module text, or "1" and the first line of the error; returns the
+    /// length, which may be more than cap: then the call is made again with
+    /// the same arguments, and the host gives the same text without making it
+    /// again.
+    fn host_build_module(src_ptr: *const u8, src_len: usize, cwd_ptr: *const u8, cwd_len: usize, out: *mut u8, cap: usize) -> i32;
 }
 
 /// A result of a host_fs_ function: the value, or the error of minus it.
@@ -499,6 +506,17 @@ pub fn spawn(args: &[String], fds: &[Option<i32>], env: &[(String, String)], cwd
         return Err(err(-id));
     }
     Ok(id)
+}
+
+/// __VProc_spawn__: the module text of the source file, made by the host, or
+/// the first line of the error.
+pub fn build_module(source: &str, cwd: &str) -> Result<String, String> {
+    let r = host_text(|out, cap| unsafe { host_build_module(source.as_ptr(), source.len(), cwd.as_ptr(), cwd.len(), out, cap) })
+        .map_err(|e| strerror(&e))?;
+    match r.split_at(r.len().min(1)) {
+        ("0", text) => Ok(text.to_string()),
+        (_, msg) => Err(msg.to_string()),
+    }
 }
 
 /// The exit code of a process of the host, or None while it runs.

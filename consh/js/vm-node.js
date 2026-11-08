@@ -6,6 +6,8 @@
 // file or the interpreter's own standard input, output or error goes to the process as it is, and this
 // process moves the data between a pipe of the VM and the process. Standard input is read when a VProc
 // waits for it. The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
+// __VProc_spawn__ makes the module of its source file as conma build does: another instance of the
+// VM runs the ConMa frontend in the repository (vm/frontend.module.se) to its end.
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -305,6 +307,37 @@ function processesActive() {
   return false;
 }
 
+// ── __VProc_spawn__ (buildModule of conma.js) ──
+const root = path.resolve(__dirname, "..", "..");
+const frontendFile = path.join(root, "vm", "frontend.module.se");
+let frontendBytes = null;
+
+// The module of the ConMa source file (relative to cwd), made by the frontend in another VM, as
+// conma build does (the standard library, CONMA_INCLUDE or include/ of the repository, among the
+// include directories); the file names in SInfo relative to the directory above the repository.
+function buildModule(wasm, source, cwd) {
+  if (frontendBytes === null) frontendBytes = fs.readFileSync(frontendFile);
+  const out = [];
+  const err = [];
+  const sub = ConMaVM.create(wasm, (fd, bytes) => (fd === 1 ? out : err).push(Buffer.from(bytes)), { hostFs });
+  sub.useHostFs();
+  sub.setCwd(cwd);
+  for (const [k, v] of Object.entries(process.env)) sub.setenv(k, v);
+  sub.inputEnd();
+  const include = process.env.CONMA_INCLUDE || path.join(root, "include");
+  let code = sub.start(frontendBytes, ["--main", "conma/vm/frontend.module.se", "--include", include, source]);
+  if (code === 0) {
+    do code = sub.run(1000000);
+    while (code === ConMaVM.RUNNING);
+  }
+  if (code !== 0) {
+    const text = Buffer.concat(err).toString().trim();
+    return { ok: false, message: code === ConMaVM.IDLE ? "the frontend waits" : (text.split("\n")[0] || "").trim() };
+  }
+  const prefix = '"' + path.dirname(root) + "/";
+  return { ok: true, text: Buffer.concat(out).toString().split(prefix).join('"') };
+}
+
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
   let vm = null;
@@ -313,6 +346,7 @@ async function main() {
     jsDone: notify,
     hostFs,
     hostProc: makeHostProc(() => vm),
+    buildModule: (source, cwd) => buildModule(wasm, source, cwd),
     // As the native VM: SIGINT ends this process until the VM traps it.
     trapInterrupt: (v) => {
       if (process.listenerCount("SIGINT") > 0) return;

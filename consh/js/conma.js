@@ -42,6 +42,10 @@
 // SIGINT (a browser does it for Ctrl-C anyway).
 // The host moves the data of the pipe ends of kinds 2 and 3 with vm.read,
 // vm.write and vm.close, and calls vm.childEvent() when a process exits.
+// buildModule(source, cwd), if given, makes the module of a ConMa source file
+// for __VProc_spawn__, as conma build does: {ok: true, text} with the file
+// names in SInfo relative to the directory above the repository, or
+// {ok: false, message} with the first line of the error.
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -299,7 +303,9 @@ var ConMaVM = (function () {
   }
 
   function create(wasmModule, write, hooks) {
-    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt } = hooks || {};
+    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule } = hooks || {};
+    // The last result of buildModule, until the VM has taken it all (host_build_module)
+    let lastBuild = null;
     let x = null;
     let vm = null;
     let jsPending = 0;
@@ -448,6 +454,24 @@ var ConMaVM = (function () {
           return c === null ? 999 : c;
         },
         host_proc_kill: (id, sig) => (hostProc ? hostProc.kill(id, sig) : -3),
+        host_build_module: (srcPtr, srcLen, cwdPtr, cwdLen, out, cap) => {
+          const key = str(srcPtr, srcLen) + "\0" + str(cwdPtr, cwdLen);
+          if (!lastBuild || lastBuild.key !== key) {
+            let r;
+            if (!buildModule) r = "1cannot make a module in this host";
+            else {
+              const b = buildModule(str(srcPtr, srcLen), str(cwdPtr, cwdLen));
+              r = b.ok ? "0" + b.text : "1" + b.message;
+            }
+            lastBuild = { key, bytes: utf8(r) };
+          }
+          const bytes = lastBuild.bytes;
+          if (bytes.length <= cap) {
+            new Uint8Array(x.memory.buffer).set(bytes, out);
+            lastBuild = null;
+          }
+          return bytes.length;
+        },
         host_trap_sigint: () => {
           if (trapInterrupt) trapInterrupt(vm);
         },

@@ -282,6 +282,12 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
     - 端末から読むプロセスが動いている間は、入力欄の行と Ctrl+D をそのプロセスに渡す。Ctrl+D は、端末と同じく、その 1 回の読み込みの終わりにする。Ctrl+C は、そのプロセスを止め（SIGINT）、ConSh にも割り込みを渡す。
 - ConSh 自身が端末から読んでいるときの Ctrl+D は、今までどおり、ConSh の標準入力の終わりになる（ネイティブ版の ConMa 版と Rust 版も、端末で `stdin > file` の後に Ctrl+D を押すと、シェルも終わる）。
 
+### 3.10. wasm 版の __VProc_spawn__（2026/11/8）
+
+- `__VProc_spawn__` は、ソースからモジュールを作るのに、ネイティブ版では `conma build`（VM に埋め込んだ ConMa の front end）を別のプロセスで動かす。wasm 版では、vm/src/prim/vprocs.rs の `load_program` のうち、モジュールの文字列を作るところ（`build_module`）を `cfg(not(unix))` で分け、ホストの `host_build_module` に頼む。ファイルがあるかの確認も、wasm 版では `sys::is_dir` で行う。ネイティブ版は変わらない。
+- vm-node.js は、同じ wasm からもう 1 つ VM のインスタンスを作り、リポジトリの `vm/frontend.module.se` を `conma build` と同じ引数で最後まで動かして、その標準出力をモジュールにする（ファイルは同じ hostFs で読む）。ブラウザにはこれがないので、`__VProc_spawn__` は `includer failed` になる。
+- これで、`CONMA_VM=wasm test/run_all.sh` は、予定どおりの step40 のほかは、ネイティブ版と同じログになった。consh/test は、予定どおりの step17 と、step8（子の出力がソケットに見える）だけが違う。
+
 ## 4. 未解決の点
 
 - 2.1 の 3 で、文（`let x = 1; x + 1`）をそのまま書けるようにするか。今の案では式だけなので、`(() => { ... })()` か、関数の `{ ... }` で書く。
