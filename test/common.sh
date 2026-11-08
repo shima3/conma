@@ -16,3 +16,10 @@ resolve() {
     "$test/resolver.sh" "$f" "$tmp" || exit 1
   done
 }
+
+# rundir: テストのディレクトリのファイル（ディレクトリは除く）を $tmp/run に写して、そこに移る（テストのディレクトリは $here）。
+# work/ などを作るテストは、そこで実行するので、同じテストを同時に実行しても壊しあわない
+rundir() {
+  here="$(pwd)"
+  mkdir "$tmp/run" && find . -maxdepth 1 -type f -exec cp {} "$tmp/run/" \; && cd "$tmp/run" || exit 1
+}

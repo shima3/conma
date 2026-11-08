@@ -23,7 +23,7 @@ exit: python 1, conma 1
 Error: --include directory not found: 'nodir'
 -- conma stderr
 Error: --include directory not found: 'nodir'
-== work/abs_missing.se
+== <tmp>/work/abs_missing.se
 exit: python 1, conma 1
 -- python stderr
     with open(filename, 'r', encoding='utf-8') as f:
@@ -32,4 +32,4 @@ Error: lexer exited with code 1
 FileNotFoundError: [Errno 2] No such file or directory: '<dir>/none.se'
 Traceback (most recent call last):
 -- conma stderr
-Error: included file not found: '<dir>/none.se' (from '<dir>/work/abs_missing.se')
+Error: included file not found: '<dir>/none.se' (from '<tmp>/work/abs_missing.se')

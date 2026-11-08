@@ -41,11 +41,9 @@ case3() {
   resolve empty.se
   sed -e "s|$dir|<dir>|g" $tmp/selfhost7.conma.txt
 }
-# case4: several files: the includes of selfhost6 (link.se is made as in selfhost6/test.sh)
+# case4: several files: the includes of selfhost6 (with its link.se, a symbolic link to a.se)
 case4() {
-  ln -sf a.se ../selfhost6/link.se
   resolve ../selfhost6/main.se ../selfhost6/lib ../selfhost6/lib2
-  rm -f ../selfhost6/link.se
 }
 # case5: a real program with the standard library
 case5() {

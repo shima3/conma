@@ -1,13 +1,19 @@
 #!/bin/bash
 # Compare the ConMa includer (include/includer.se) with bin/includer.
 # For each run, the exit codes, the result of selfhost_compare.py (when both succeed),
-# and the error messages of both sides (sorted, absolute paths written as <dir> in the test directory and <root> in the repository) are printed.
+# and the error messages of both sides (sorted, absolute paths written as <tmp> in the temporary directory,
+# <dir> in the test directory and <root> in the repository) are printed.
 . "$(dirname "$0")/../common.sh"
 resolve test.se
 dir="$(pwd -P)"
+tmpreal="$(cd "$tmp"; pwd -P)"
+# The absolute paths of the temporary directory, the test directory and the repository
+paths() {
+  sed -e "s|$tmpreal|<tmp>|g" -e "s|$tmp|<tmp>|g" -e "s|$dir|<dir>|g" -e "s|$root|<root>|g"
+}
 # include source include-dir...
 include() {
-  echo "== $*"
+  echo "== $*" | paths
   local source=$1
   shift
   local opts=""
@@ -21,24 +27,19 @@ include() {
     python3 ../selfhost_compare.py ast $tmp/selfhost6.py.txt $tmp/selfhost6.conma.txt
     echo "compare: $?"
     echo "-- files"
-    grep -o '^(Program ([0-9]* [0-9]* "[^"]*"' $tmp/selfhost6.conma.txt | sed -e 's/^(Program ([0-9]* [0-9]* "//' -e 's/"$//' -e "s|$dir|<dir>|g" -e "s|$root|<root>|g"
+    grep -o '^(Program ([0-9]* [0-9]* "[^"]*"' $tmp/selfhost6.conma.txt | sed -e 's/^(Program ([0-9]* [0-9]* "//' -e 's/"$//' | paths
   fi
   echo "-- python stderr"
-  sed -e "s|$dir|<dir>|g" -e "s|$root|<root>|g" $tmp/selfhost6.py.err | LC_ALL=C sort
+  paths < $tmp/selfhost6.py.err | LC_ALL=C sort
   echo "-- conma stderr"
-  sed -e "s|$dir|<dir>|g" -e "s|$root|<root>|g" $tmp/selfhost6.conma.err | LC_ALL=C sort
+  paths < $tmp/selfhost6.conma.err | LC_ALL=C sort
 }
-# link.se is a symbolic link to a.se, work/abs*.se include files by absolute paths
+# link.se is a symbolic link to a.se (in the repository); $tmp/work/abs*.se include files by absolute paths
 setup() {
-  ln -sf a.se link.se
-  rm -rf work
-  mkdir work
-  echo "(include \"$dir/lib/lib.se\")" > work/abs.se
-  echo "(include \"$dir/sub/../lib/./c2.se\")" >> work/abs.se
-  echo "(include \"$dir/none.se\")" > work/abs_missing.se
-}
-cleanup() {
-  rm -rf work link.se
+  mkdir $tmp/work
+  echo "(include \"$dir/lib/lib.se\")" > $tmp/work/abs.se
+  echo "(include \"$dir/sub/../lib/./c2.se\")" >> $tmp/work/abs.se
+  echo "(include \"$dir/none.se\")" > $tmp/work/abs_missing.se
 }
 # case1: breadth-first order; duplicates by name, by "../" and by a symbolic link;
 # the directory of the including file is searched before the include directories,
@@ -53,7 +54,7 @@ case2() {
 }
 # case3: absolute paths in include statements
 case3() {
-  include work/abs.se
+  include $tmp/work/abs.se
 }
 # case4: errors: an included file not found, a syntax error, a missing source file,
 # a missing include directory, an absolute path that does not exist
@@ -62,7 +63,7 @@ case4() {
   include syntax.se lib
   include none.se
   include main.se nodir
-  include work/abs_missing.se
+  include $tmp/work/abs_missing.se
 }
 # case5: lexical errors in an included file; a real source with the include directory
 case5() {
@@ -75,4 +76,3 @@ do
   $c > $tmp/$c.log 2>&1
   diff $c.log $tmp/$c.log
 done
-cleanup
