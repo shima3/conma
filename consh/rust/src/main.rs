@@ -1,4 +1,4 @@
-//! ConSh run directly in Rust. The ConMa version (consh/include) is the
+//! ConSh run directly in Rust. The ConMa version (consh/reference) is the
 //! reference: for the same input, the output and the exit status are the
 //! same.
 //!

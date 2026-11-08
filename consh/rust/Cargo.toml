@@ -3,7 +3,7 @@ name = "consh-rs"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.87"
-description = "ConSh run directly in Rust (the ConMa version in consh/include is the reference)"
+description = "ConSh run directly in Rust (the ConMa version in consh/reference is the reference)"
 
 [[bin]]
 name = "consh-rs"

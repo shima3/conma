@@ -27,11 +27,15 @@ fi
 cp "$js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" "$js/web/conma.wasm"
 cp "$js/conma.js" "$js/web/conma.js"
 module="$js/web/consh.module.se"
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.se' -newer "$module")" ]; then
+# ConSh は高速版（consh/include を consh/reference より先に探す。consh/include/README-ja.md）
+main="$consh/reference/consh_main.se"
+[ -f "$consh/include/consh_main.se" ] && main="$consh/include/consh_main.se"
+# （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" "$consh/reference" \( -name '*.se' -o -type d \) -newer "$module")" ]; then
   ast_tmp=$(mktemp "$js/web/consh.ast.XXXXXX")
   module_tmp=$(mktemp "$module.XXXXXX")
   trap 'rm -f "$ast_tmp" "$module_tmp"' EXIT
-  "$root/bin/includer" --include "$root/include" --include "$consh/include" "$consh/include/consh_main.se" \
+  "$root/bin/includer" --include "$consh/include" --include "$consh/reference" --include "$root/include" "$main" \
     | sed -e 's/"\/.*\/conma/"conma/' > "$ast_tmp"
   "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   mv -f "$module_tmp" "$module"

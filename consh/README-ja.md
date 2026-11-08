@@ -14,7 +14,8 @@ consh/
 ├── bin/
 │   ├── consh            ConSh を起動する（Rust 版か、consh_parser.se で読む ConMa 版。--python-parser なら consh_parse --pos の構文木を渡す）
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
-├── include/
+├── include/             ConMa 版の高速版：reference/ のうち、速くするために書き直したファイルだけを置く（README-ja.md）
+├── reference/           ConMa 版の参照版（仕様の参照実装）
 │   ├── consh_main.se    main：ConSh の入口
 │   ├── consh_ast.se     consh_parse の構文木の読み込み（__Sexp_read__ と、ConMa で読む Sexp_read）と書き戻し
 │   ├── consh_parser.se  構文解析（ConMa 版の既定。consh_parse と同じ構文木を作る）
@@ -35,7 +36,7 @@ consh/
 ```
 
 * ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
-* `include/` のファイルには、ルートの `include/` のファイルと名前がぶつからないよう、`consh_` を付ける。
+* `reference/` と `include/` のファイルには、ルートの `include/` のファイルと名前がぶつからないよう、`consh_` を付ける。
 * 大きくなったら、`consh_lexer.se`、`consh_expand.se`、`consh_builtin.se` などに分ける。
 
 ## 実行
@@ -45,14 +46,17 @@ bin/consh [--conma-parser | --python-parser] [--dump] スクリプト [引数 ..
 bin/consh
 ```
 
-ConSh には 2 つの版があり、環境変数 `CONSH_IMPL` で選ぶ。
+ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と高速版がある。環境変数 `CONSH_IMPL` で選ぶ。
 
 | `CONSH_IMPL` | 版 |
 |---|---|
-| `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版で実行する |
-| `conma` | ConMa 版（仕様の参照実装）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+| `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（高速版）で実行する |
+| `conma` | ConMa 版の高速版。`consh/include` のファイルを、`consh/reference` の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+| `reference` | ConMa 版の参照版（仕様の参照実装、`consh/reference` だけ）。ほかは `conma` と同じ |
 
-`--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` に関係なく ConMa 版で実行する。
+`--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（高速版）で実行する。
+
+機能を足したり変えたりしたときは、参照版と高速版の両方を直し、両方でテストする（`CONSH_IMPL=conma` と `CONSH_IMPL=reference`）。速くしただけなら、高速版のテストだけでよい。
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）と、Tab によるファイル名の補完（`rlwrap -c`）が使える。補完はプロセスのカレントディレクトリからの相対パスなので、Rust 版は `cd` した先をプロセスのカレントディレクトリにもする（ConMa 版は、起動したディレクトリからのまま）。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
@@ -150,4 +154,4 @@ test/run_all.sh
 test/run_all.sh -j 8
 ```
 
-diff の出力がなければ成功である。テストは、`CONSH_IMPL` がなければ ConMa 版をテストする（`common.sh`）。Rust 版をテストするには `CONSH_IMPL=rust` を付ける。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。
+diff の出力がなければ成功である。テストは、`CONSH_IMPL` がなければ ConMa 版の高速版をテストする（`common.sh`）。参照版をテストするには `CONSH_IMPL=reference`、Rust 版をテストするには `CONSH_IMPL=rust` を付ける。`-j N` を付けると、N 個ずつ並行に実行し、終わった後に、テストごとの出力を同じ順に出す。各テストは自分の一時ディレクトリ（`common.sh` の `$tmp`）を使うので、別のテストを同時に実行しても壊しあわない。

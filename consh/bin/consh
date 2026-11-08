@@ -6,11 +6,13 @@
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
 #                 作っていなければ、そう出して ConMa 版で実行する
-#   conma         ConMa 版（仕様の参照実装）。スクリプトは ConMa 版の構文解析（consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
+#   conma         ConMa 版の高速版：consh/include のファイルを consh/reference の同じ名前のファイルの代わりに使う
+#                 （consh/include/README-ja.md）。スクリプトは ConMa 版の構文解析（consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
 #                 （test/vm.sh。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
-# --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL に関係なく ConMa 版で実行する
+#   reference     ConMa 版の参照版（仕様の参照実装、consh/reference だけ）。ほかは conma と同じ
+# --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（高速版）で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
 # Tab でファイル名を補完する（rlwrap -c。Rust 版は cd した先を、rlwrap が見るプロセスのカレントディレクトリにもする）
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
@@ -48,8 +50,8 @@ elif [ $# -lt 1 ]; then
 fi
 impl="${CONSH_IMPL:-rust}"
 case "$impl" in
-  rust|conma) ;;
-  *) echo "consh: CONSH_IMPL must be rust or conma, not \"$impl\"" >&2; exit 2 ;;
+  rust|conma|reference) ;;
+  *) echo "consh: CONSH_IMPL must be rust, conma or reference, not \"$impl\"" >&2; exit 2 ;;
 esac
 rust="$consh/rust/target/release/consh-rs"
 if [ $impl = rust ] && { [ -n "$parser" ] || [ -n "$CONSH_CONMA_DATA" ]; }; then
@@ -74,12 +76,22 @@ if [ -n "$interactive" ] && [ -n "$rust" ]; then
 fi
 # ConMa のモジュールは、ソースが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
+# ConSh の include ディレクトリ：高速版は consh/include を consh/reference より先に探す（同じ名前のファイルの代わりになる）。
+# 参照版は consh/reference だけ。最初のファイル consh_main.se も、高速版は consh/include にあればそれを使う
 dir="${CONSH_MODULE_DIR:-/tmp}"
-module="$dir/consh.module.se"
-main="$consh/include/consh_main.se"
+if [ $impl = reference ]; then
+  dirs=("$consh/reference")
+  name=consh.reference
+else
+  dirs=("$consh/include" "$consh/reference")
+  name=consh
+fi
+module="$dir/$name.module.se"
+main="$consh/reference/consh_main.se"
+[ $impl != reference ] && [ -f "$consh/include/consh_main.se" ] && main="$consh/include/consh_main.se"
 if [ -n "$CONSH_CONMA_DATA" ]; then
-  module="$dir/consh.data.module.se"
-  main="$dir/consh_data_main.se"
+  module="$dir/$name.data.module.se"
+  main="$dir/${name}_data_main.se"
   if [ ! -s "$main" ]; then
     t=$(mktemp "$main.XXXXXX") || exit 1
     printf '(include "data.se")\n(include "consh_main.se")\n' > "$t" && mv -f "$t" "$main"
@@ -90,15 +102,18 @@ fi
 conma="$root/vm/target/release/conma"
 # リポジトリの上のディレクトリ（実際のパス。フロントエンドはファイル名を実際のパスで書く）
 above="$(cd "$root/.."; pwd -P)"
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" -name '*.se' -newer "$module")" ]; then
+incs=()
+for d in "${dirs[@]}" "$root/include"; do incs+=(--include "$d"); done
+# （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ]; then
   ast_tmp=$(mktemp "${module%.module.se}.ast.XXXXXX") || exit 1
   module_tmp=$(mktemp "$module.XXXXXX") || { rm -f "$ast_tmp"; exit 1; }
   if [ -x "$conma" ]; then
-    if ! "$conma" build --include "$root/include" --include "$consh/include" "$main" \
+    if ! "$conma" build "${incs[@]}" "$main" \
         | sed -e "s|\"$above/|\"|g" > "$module_tmp"
     then rm -f "$ast_tmp" "$module_tmp"; exit 1
     fi
-  elif ! "$root/bin/includer" --include "$root/include" --include "$consh/include" "$main" \
+  elif ! "$root/bin/includer" "${incs[@]}" "$main" \
       | sed -e "s|\"$above/|\"|g" > "$ast_tmp" ||
      ! "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   then rm -f "$ast_tmp" "$module_tmp"; exit 1

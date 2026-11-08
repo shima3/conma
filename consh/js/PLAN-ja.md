@@ -175,7 +175,7 @@ consh/js/
                     consh/test/common.sh の run を使う。run_all.sh ですべて実行する
 ```
 
-VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se と consh/rust/src/eval.rs に置く（2.1 の 10）。
+VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/reference/consh_eval.se（当時は consh/include）と consh/rust/src/eval.rs に置く（2.1 の 10）。
 
 ### 2.4. 当面の制限
 
@@ -240,7 +240,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 
 ### 3.4. 段階 4 の結果（2026/11/8）
 
-- `js [変数名=] コード {引数}` を、ConMa 版の ConSh（consh/include/consh_eval.se の `Builtin_js`）に足した。2.1 の 1〜6、9、10 のとおりに動く。Rust 版の ConSh（consh/rust）の `js` は、同じ順に引数を確かめた後、`js: JavaScript is not available` を出して `$?` を 127 にする。
+- `js [変数名=] コード {引数}` を、ConMa 版の ConSh（consh/reference/consh_eval.se の `Builtin_js`。当時は consh/include）に足した。2.1 の 1〜6、9、10 のとおりに動く。Rust 版の ConSh（consh/rust）の `js` は、同じ順に引数を確かめた後、`js: JavaScript is not available` を出して `$?` を 127 にする。
 - テスト
     - consh/js/test/step1（wasm 版の VM、Node.js）：case1 は結果の出し方（値、配列、入れ子、`undefined`、`null`、オブジェクト、BigInt、改行とタブを含む文字列、代入式のコード）、case2 は変数に入れる形と引数（`$list` と `${list}`）、関数の中の変数、case3 は Promise と、待つ間にほかの VProc が動くこと、case4 はエラー（例外、構文エラー、関数でない値への引数、関数の結果、循環する配列、`js sum=`、`js` だけ）と、エラーのときに変数を変えないこと、`builtin js`。
     - consh/test/step17（JavaScript のない版）：ConMa 版（Python 版と Rust 版の VM）と Rust 版の ConSh で同じログになる。
