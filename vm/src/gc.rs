@@ -389,6 +389,9 @@ pub fn collect() -> usize {
         }
     }
     let survivors = nodes.iter().zip(&live).filter(|(n, &l)| l && n.is_container()).count();
+    // Every value the collection went through, containers or not (LVEnv
+    // nodes, CFrames, LLists ...).
+    let visited = nodes.len();
     if std::env::var_os("CONMA_GC_STATS").is_some() {
         let mut kinds: HashMap<&str, usize> = HashMap::new();
         for (n, &l) in nodes.iter().zip(&live) {
@@ -407,7 +410,11 @@ pub fn collect() -> usize {
     drop(items_trash);
     drop(entries_trash);
     MADE.store(0, Relaxed);
-    let next = FIXED.with(|f| *f).unwrap_or(survivors.max(MIN_THRESHOLD));
+    // The next collection comes after as many containers as survived, and at
+    // least a quarter as many as the values this one went through, so that
+    // the time spent collecting stays proportional to the containers made
+    // even when few containers reach many other values (a deep CChain).
+    let next = FIXED.with(|f| *f).unwrap_or(survivors.max(MIN_THRESHOLD).max(visited / 4));
     THRESHOLD.store(next, Relaxed);
     freed
 }
