@@ -1,7 +1,8 @@
 #!/bin/bash
-# ConMa の VM の wasm32 版（consh/js/wasm）を JavaScriptCore のシェル（macOS の jsc）で動かす。
-# 引数は vm/target/release/conma と同じ（[--trace] [--main] <module_file> <func_name | arg ...>）。
+# ConMa の VM の wasm32 版（consh/js/wasm）を Node.js（vm-node.js）か、macOS の JavaScriptCore のシェル
+# （jsc、vm-jsc.js）で動かす。引数は vm/target/release/conma と同じ（[--trace] [--main] <module_file> <func_name | arg ...>）。
 # test/vm.sh が CONMA_VM=wasm のときに使う。wasm は consh/js/build.sh で作っておく。
+# 環境変数 CONMA_WASM_HOST が node なら Node.js、jsc なら jsc。なければ、node が動けば Node.js、動かなければ jsc
 # 標準入力は、VM がそれを待つときに、読めた分ずつ渡す。
 dir="$(cd "${0%/*}"; pwd)"
 jsc="${JSC:-/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc}"
@@ -10,6 +11,16 @@ if [ ! -f "$wasm" ]; then
   echo "vm-wasm.sh: $wasm is not built (consh/js/build.sh)" >&2
   exit 2
 fi
+host="$CONMA_WASM_HOST"
+if [ -z "$host" ]; then
+  if node -e 0 > /dev/null 2>&1; then host=node; else host=jsc; fi
+fi
+case "$host" in
+  node) exec node "$dir/vm-node.js" "$@" ;;
+  jsc) ;;
+  *) echo "vm-wasm.sh: CONMA_WASM_HOST must be node or jsc, not \"$host\"" >&2; exit 2 ;;
+esac
+# 以下は jsc。jsc はバイト列を読み書きできず、終了コードも返せないので、16 進数の行にしてつなぐ（vm-jsc.js）
 # 標準入力を "d <16進数>" の行（読めた分ずつ）と、終わりの "e" の行にして jsc に渡す。
 # jsc が終わったら、まだ読んでいれば止める（端末などの入力を、後のコマンドから取らないように）
 exec 3< <(python3 -c '

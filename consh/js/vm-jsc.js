@@ -38,6 +38,8 @@
     }
   };
   const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), readInput, fetchFile);
+  // The shell cannot tell directories: a directory on the way of a path is taken to exist.
+  vm.assumeDirs();
   vm.makeDirs(cwd);
   const paths = (file) => (file === "" ? [] : ConMaVM.text(read(file, "binary")).split("\0").filter((p) => p !== ""));
   const abs = (p) => (p.startsWith("/") ? p : cwd + "/" + p);

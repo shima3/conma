@@ -15,7 +15,9 @@
 //! * conma_input, conma_input_end, conma_interrupt: standard input and Ctrl-C;
 //!   conma_wants_input says whether a VProc found standard input empty.
 //! * conma_put_file, conma_put_unread, conma_make_dirs, conma_get_file, conma_setenv,
-//!   conma_set_cwd: the virtual file system and the environment.
+//!   conma_set_cwd: the virtual file system and the environment; the VM asks
+//!   the host for a file it lacks (host_file_needed) and for the entries of
+//!   a directory it lists for the first time (host_dir_needed).
 
 // Parts of vm/src that only the native VM uses (processes, Machine::run).
 #![allow(dead_code)]
@@ -247,6 +249,13 @@ pub extern "C" fn conma_wants_input() -> i32 {
 #[no_mangle]
 pub extern "C" fn conma_input_end() {
     sys::end_input();
+}
+
+/// From now on, a directory on the way of a path that the host does not give
+/// is taken to exist (for a host that cannot tell directories).
+#[no_mangle]
+pub extern "C" fn conma_assume_dirs() {
+    sys::assume_dirs();
 }
 
 #[no_mangle]

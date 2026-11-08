@@ -10,7 +10,7 @@ JavaScript 版 ConSh は、ConMa の VM を WebAssembly（wasm32）にして Jav
 
 1. **実行環境**
     - (推奨・決定) まずブラウザで動かす。memo の例（`location.href`、`fetch`）はブラウザを想定している。
-    - Node.js は後回しにする（段階 7）。外部コマンドとファイルが使える代わりに、OS 層の作り直しが大きい。テストは、Node.js の代わりに macOS の JavaScriptCore のシェル（jsc）で動かす（2.4）。
+    - Node.js のホストで外部コマンドを使えるようにするのは後回しにする（段階 7）。OS 層の作り直しが大きい。テストは、Node.js（vm-node.js）か、macOS の JavaScriptCore のシェル（jsc、vm-jsc.js）で動かす（2.4）。
 2. **何を wasm にするか**
     - (推奨・決定) ConMa の VM（vm/）を wasm にし、ConMa 版 ConSh（consh/include）を動かす。memo の「先に ConMa の VM を wasm32 向けにビルドできるようにする」に従う。ConMa の VM が OS 以外の環境でも動くことの確認にもなる。
     - Rust 版 ConSh（consh/rust）を wasm にするのは別の案である。速いが、ConMa 言語を使わない。また std::process と std::io::pipe に深く依存している。
@@ -104,7 +104,7 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
         - `extern "C"` の import（JavaScript から渡す関数）
         - `#[no_mangle] pub extern "C"` の export
     - 文字列は、wasm のメモリ上のバイト列（UTF-8）と長さで受け渡す。
-    - つなぐための JavaScript（consh/js/conma.js）は手で書く。ブラウザでも、macOS の JavaScriptCore のシェル（jsc）でも動く。
+    - つなぐための JavaScript（consh/js/conma.js）は手で書く。ブラウザでも、Node.js でも、macOS の JavaScriptCore のシェル（jsc）でも動く。
 2. **OS 層**
     - prim の os.rs、stream.rs が直接使っていたファイル、環境変数、標準出力は、vm/src/sys.rs の関数（`open_file`、`is_dir`、`canonicalize`、`read_dir`、`env_vars`、`getpid`、`write_std`）を通す。process.rs と value.rs の Unix にしかないところは `cfg(unix)` で分ける。
     - wasm 版の sys.rs は、同じ関数を、メモリ上の仮想の OS で作る。何も待たない（データのない読み込みは EAGAIN）。
@@ -143,9 +143,12 @@ consh/js/
   PLAN-ja.md        この文書
   README-ja.md      使い方（段階 4 で書く）
   build.sh          VM を wasm32 でビルドし、web/ に wasm、conma.js、ConSh のモジュールを置く
-  conma.js          wasm の読み込み、import する関数、conma_run の駆動（ブラウザと jsc で共通）
-  vm-jsc.js         jsc で VM を動かす（vm/target/release/conma と同じ引数）
-  vm-wasm.sh        vm-jsc.js を起動し、標準入出力と終了コードをつなぐ。今のディレクトリの下と /tmp の下の
+  conma.js          wasm の読み込み、import する関数、conma_run の駆動（ブラウザ、Node.js、jsc で共通）
+  vm-node.js        Node.js で VM を動かす（vm/target/release/conma と同じ引数）。実際のファイルとディレクトリを、
+                    VM が開いたとき、一覧したときに読む
+  vm-jsc.js         jsc で VM を動かす（同じ引数に、今のディレクトリ、環境変数、ディレクトリとファイルの名前のファイルを足す）
+  vm-wasm.sh        node が動けば vm-node.js、動かなければ vm-jsc.js を起動する（CONMA_WASM_HOST=node か jsc で選べる）。
+                    jsc では、標準入出力と終了コードをつなぎ、今のディレクトリの下と /tmp の下の
                     ディレクトリとファイルの名前を渡す（中身は VM が開いたときに jsc が読む）。test/vm.sh が CONMA_VM=wasm で使う
   wasm/
     Cargo.toml      crate conma-wasm（2.2 の 1）
@@ -166,9 +169,12 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - ファイルはページを閉じると消える。
 - 行の編集と履歴は、ブラウザの入力欄のものだけである。
 - 2.1 の 8 の、同時に動く `js` の `console.log` の区別（結果は変数名を書けば区別できる）。
-- テストは、Node.js の代わりに、macOS に入っている JavaScriptCore のシェル（jsc）で動かす。今の /usr/local/bin/node は Intel 版で動かないからである。jsc にはバイト列の入出力も終了コードもないので、vm-wasm.sh が 16 進数の行に直してつなぐ。標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
-    - jsc はディレクトリを調べられないので、VM に見えるのは、vm-wasm.sh が渡す名前（今のディレクトリの下の深さ 3 までと、/tmp の下の深さ 2 までのディレクトリ）と、VM が開いたファイルだけである。VM が書いたファイルは、実際のファイルシステムには書かれない。
-    - 仮想ファイルシステムにはシンボリックリンクがない。
+- テストは Node.js（vm-node.js）で動かす。vm-wasm.sh は、node が動けば Node.js を使い、動かなければ macOS の JavaScriptCore のシェル（jsc、vm-jsc.js）を使う。jsc でのテストは 3.3 の後は行わない（2026/11/8 から）。どちらでも、標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
+    - Node.js では、VM は実際のファイルシステムを、仮想ファイルシステムを通して読む（ファイルは開いたとき、ディレクトリは初めて一覧したときに、`host_file_needed` と `host_dir_needed` でホストに求める）。
+    - jsc にはバイト列の入出力も終了コードもないので、vm-wasm.sh が 16 進数の行に直してつなぐ。jsc はディレクトリを調べられないので、VM に見えるのは、vm-wasm.sh が渡す名前（今のディレクトリの下の深さ 3 までと、/tmp の下の深さ 2 までのディレクトリ）と、VM が開いたファイルだけである。
+    - どちらでも、VM が書いたファイルは、実際のファイルシステムには書かれない。
+    - パスは、ネイティブ版と同じく、途中のディレクトリを 1 つずつ確かめて解決する（`""` は ENOENT、`work/none/..` は `none` がなければ ENOENT、`file/x` は ENOTDIR）。ただし jsc では、途中のディレクトリがわからなければ、あるものとする（`conma_assume_dirs`）。
+    - 仮想ファイルシステムにはシンボリックリンクがない（Node.js では、リンクの先がディレクトリならディレクトリ、そうでなければファイルとして見え、`__OS_realpath__` はリンクの名前のままのパスを返す）。
 - ConMa 版の ConSh には `source` がないので、ブラウザでは「スクリプトを実行」が、スクリプトの各行を入力として渡す。
 - wasm32 のターゲットが必要である（`rustup target add wasm32-unknown-unknown`）。
 
@@ -184,7 +190,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 | 4 | `js` の組み込みコマンド（2.1 の 1〜6、9、10。`js [変数名=] コード {引数}` の見分け方と、変数に入れる値を含む）と `__JS_call__`、`__JS_next__`。Promise を待つ間、ほかの VProc が動く | consh/js/test に `js` のテスト。変数名のある形とない形、`js sum=` だけのエラー、`js 'x=1'` が代入式になることを確かめる。ネイティブ版では 2.1 の 10 のエラーになるテストを consh/test に足し、ConMa 版と Rust 版の両方で通る |
 | 5 | `stdin` と `console`（2.1 の 7、8） | `cmd \| js '...'`、変数名がある場合とない場合の `console.log` のテスト |
 | 6 | イテレータの結果を 1 つずつ出す（2.1 の 5 の最後と、6 の遅延の LazyList） | 無限のジェネレータを `head` 相当の関数で途中まで読むテスト |
-| 7 | （後回し）Node.js のホスト。`node:fs` でファイル、`node:child_process` で外部コマンド | consh/test の全ケース |
+| 7 | （後回し）Node.js のホストで、ファイルへの書き込みを実際のファイルシステムに反映し、`node:child_process` で外部コマンドを起動する | consh/test の全ケース |
 
 段階 4 で、ConSh の PLAN-ja.md（1.2 の組み込みコマンド）、README-ja.md、FOR-BASH-USERS.md に `js` を書く。
 
@@ -207,6 +213,16 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - 段階 3：`consh/js/build.sh` の後、consh/js/web を HTTP で開くと、ConSh の対話モードが動く。ブラウザで、関数の定義と呼び出し、`$(stdin < names.txt)`、パイプ、`&` の関数のジョブと `wait`、ファイルへのリダイレクト、終わらない関数を「中断」（Ctrl-C）で止めること（`$?` は 130）を確かめた。外部コマンドは `not supported` になる。
     - VM は、ページが固まらないように、約 25 ms ずつ `setTimeout` で区切って動かす。入力を待つ間（`conma_run` が IDLE を返す間）は動かさない。
     - 「スクリプトを実行」は、ファイルを選ぶ画面を自動では操作できないので、まだ確かめていない。
+
+### 3.3. Node.js のホスト（2026/11/8）
+
+- arm64 版の Node.js（v26.13.0、Homebrew）を入れたので、vm-node.js を足し、vm-wasm.sh は node が動けばそれを使うようにした。
+- 仮想 OS に、ディレクトリを初めて一覧するときにホストに求める `host_dir_needed` を足した。また、ファイルを書くときに親のディレクトリがなければホストに求め、パスは途中のディレクトリを確かめて解決するようにした（2.4）。
+- `CONMA_VM=wasm test/run_all.sh` と `CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh` を、Node.js と jsc（`CONMA_WASM_HOST=jsc`）の両方で流した。ネイティブ版と違うのは、どちらでも次のところだけである。
+    - 外部コマンドとプロセス（`not supported`）、`__VProc_spawn__`（`file not found`）
+    - シンボリックリンク（step16 の work/up、step23、selfhost6 と selfhost7 の link.se）
+    - jsc だけ：途中のディレクトリをあるものとするので、step16 の `work/none/..` がエラーにならない
+- ブラウザの画面も、作り直した wasm で動く。
 
 ## 4. 未解決の点
 

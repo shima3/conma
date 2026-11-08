@@ -35,6 +35,10 @@ extern "C" {
     /// system: the host may put it there now (conma_put_file), as the
     /// JavaScriptCore shell does with the files of the real file system.
     fn host_file_needed(ptr: *const u8, len: usize);
+    /// The directory path (normalized, absolute) is listed for the first
+    /// time: the host may put its entries there now (conma_make_dirs,
+    /// conma_put_unread), as Node.js does with the real file system.
+    fn host_dir_needed(ptr: *const u8, len: usize);
 }
 
 /// Ask the host for the file path if it is missing or unread. An unread
@@ -111,6 +115,12 @@ struct Os {
     interrupts: u64,
     /// Standard input was found empty before its end (see wants_input).
     wants_input: bool,
+    /// The directories that host_dir_needed was called for.
+    listed: std::collections::HashSet<String>,
+    /// A directory on the way of a path that the host does not give is
+    /// taken to exist (for a host that cannot tell directories, see
+    /// assume_dirs).
+    assume_dirs: bool,
 }
 
 thread_local! {
@@ -124,6 +134,8 @@ thread_local! {
         env: Vec::new(),
         interrupts: 0,
         wants_input: false,
+        listed: std::collections::HashSet::new(),
+        assume_dirs: false,
     });
 }
 
@@ -348,6 +360,39 @@ fn normalize(path: &str) -> String {
     format!("/{}", parts.join("/"))
 }
 
+/// path as the OS resolves it (made absolute from /): every directory on the
+/// way, also one that .. leaves, must exist (ENOENT) and be a directory
+/// (ENOTDIR); "" is ENOENT. The last name need not exist.
+fn resolve(path: &str) -> io::Result<String> {
+    if path.is_empty() {
+        return Err(err(ENOENT));
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    let mut first = true;
+    for c in path.split('/').filter(|c| !c.is_empty() && *c != ".") {
+        if !first {
+            require_dir(&format!("/{}", parts.join("/")))?;
+        }
+        first = false;
+        if c == ".." {
+            parts.pop();
+        } else {
+            parts.push(c);
+        }
+    }
+    Ok(format!("/{}", parts.join("/")))
+}
+
+fn require_dir(path: &str) -> io::Result<()> {
+    fetch(path);
+    with(|os| match os.files.get(path) {
+        Some(Node::Dir) => Ok(()),
+        Some(_) => Err(err(ENOTDIR)),
+        None if os.assume_dirs => Ok(()),
+        None => Err(err(ENOENT)),
+    })
+}
+
 fn parent(path: &str) -> String {
     match path.rfind('/') {
         Some(0) | None => "/".to_string(),
@@ -365,10 +410,12 @@ fn check_parent(os: &Os, path: &str) -> io::Result<()> {
 }
 
 pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
-    let path = normalize(path);
+    let path = resolve(path)?;
     if mode != "w" {
         fetch(&path);
     }
+    // A new file goes in a directory that the host may have.
+    fetch(&parent(&path));
     with(|os| {
         let data = match os.files.get(&path) {
             Some(Node::Dir) => return Err(err(EISDIR)),
@@ -399,7 +446,7 @@ pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
 }
 
 pub fn is_dir(path: &str) -> io::Result<bool> {
-    let path = normalize(path);
+    let path = resolve(path)?;
     fetch(&path);
     with(|os| match os.files.get(&path) {
         Some(Node::Dir) => Ok(true),
@@ -409,13 +456,17 @@ pub fn is_dir(path: &str) -> io::Result<bool> {
 }
 
 pub fn canonicalize(path: &str) -> io::Result<String> {
-    let p = normalize(path);
+    let p = resolve(path)?;
     is_dir(&p)?;
     Ok(p)
 }
 
 pub fn read_dir(path: &str) -> io::Result<Vec<String>> {
-    let path = normalize(path);
+    let path = resolve(path)?;
+    fetch(&path);
+    if with(|os| matches!(os.files.get(&path), Some(Node::Dir)) && os.listed.insert(path.clone())) {
+        unsafe { host_dir_needed(path.as_ptr(), path.len()) };
+    }
     with(|os| {
         match os.files.get(&path) {
             Some(Node::Dir) => {}
@@ -510,6 +561,13 @@ pub fn wants_input() -> bool {
 
 pub fn end_input() {
     with(|os| os.stdin_end = true);
+}
+
+/// From now on, a directory on the way of a path that the host does not
+/// give is taken to exist: for a host that can read files but cannot tell
+/// directories (the JavaScriptCore shell).
+pub fn assume_dirs() {
+    with(|os| os.assume_dirs = true);
 }
 
 pub fn interrupt() {

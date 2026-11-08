@@ -17,7 +17,9 @@
 // vm.inputEnd at once (a browser cannot, and such a read sees the end).
 // fileNeeded(vm, path), if given, is called when the VM looks for a file
 // (an absolute path) that is not in the virtual file system: it may call
-// vm.putFile at once.
+// vm.putFile (or vm.makeDirs for a directory) at once. dirNeeded(vm, path),
+// if given, is called when the VM lists a directory for the first time: it
+// may call vm.makeDirs and vm.putUnread for its entries at once.
 
 var ConMaVM = (function () {
   "use strict";
@@ -55,7 +57,7 @@ var ConMaVM = (function () {
     }
   }
 
-  function create(wasmModule, write, inputNeeded, fileNeeded) {
+  function create(wasmModule, write, inputNeeded, fileNeeded, dirNeeded) {
     let x = null;
     let vm = null;
     const instance = new WebAssembly.Instance(wasmModule, {
@@ -66,6 +68,9 @@ var ConMaVM = (function () {
         },
         host_file_needed: (ptr, len) => {
           if (fileNeeded) fileNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
+        },
+        host_dir_needed: (ptr, len) => {
+          if (dirNeeded) dirNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
         },
       },
     });
@@ -102,6 +107,9 @@ var ConMaVM = (function () {
       // These return 0, or the errno of the error.
       putFile: (path, data) => pass2(path, data, x.conma_put_file),
       makeDirs: (path) => pass(path, x.conma_make_dirs),
+      // Take a directory on the way of a path that fileNeeded does not give to
+      // exist (for a host that cannot tell directories).
+      assumeDirs: () => x.conma_assume_dirs(),
       // A file whose contents fileNeeded gives when the VM opens it.
       putUnread: (path) => pass(path, x.conma_put_unread),
       setCwd: (path) => pass(path, x.conma_set_cwd),
@@ -118,3 +126,6 @@ var ConMaVM = (function () {
 
   return { create, utf8, text, latin1, RUNNING: -1, IDLE: -2 };
 })();
+
+// Node.js (require) gets it as the module's value.
+if (typeof module !== "undefined" && module.exports) module.exports = ConMaVM;
