@@ -1,9 +1,8 @@
 // Run the ConMa VM for wasm32 in Node.js, as conma (vm/src/main.rs) runs:
 //   node vm-node.js [-t] [-m] <module_file> <func_name | arg ...>
 // vm-wasm.sh uses it when node is found. The VM starts in the current directory, with the environment
-// variables of the process, and sees the real file system through its virtual one: a file is read when
-// the VM opens it, and a directory is listed when the VM lists it (host_file_needed, host_dir_needed).
-// What the VM writes to files stays in memory. Standard input is read when a VProc waits for it.
+// variables of the process, and uses the files of this process (hostFs, conma_use_host_fs): it reads
+// and writes them as the native VM does. Standard input is read when a VProc waits for it.
 // The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
 "use strict";
 const fs = require("fs");
@@ -57,37 +56,67 @@ function readInput(vm) {
   }
 }
 
-function fetchFile(vm, p) {
-  try {
-    const st = fs.statSync(p);
-    if (st.isDirectory()) vm.makeDirs(p);
-    else vm.putFile(p, fs.readFileSync(p));
-  } catch (e) {
-    // not in the real file system either
-  }
-}
-
-function listDir(vm, p) {
-  let entries;
-  try {
-    entries = fs.readdirSync(p, { withFileTypes: true });
-  } catch (e) {
-    return;
-  }
-  for (const e of entries) {
-    const q = path.join(p, e.name);
-    let dir = e.isDirectory();
-    if (e.isSymbolicLink()) {
-      try {
-        dir = fs.statSync(q).isDirectory();
-      } catch (err) {
-        dir = false;
+// The file system of this process, for the VM (hostFs of conma.js): a negative
+// result is minus the errno.
+const errno = (e) => (typeof e.errno === "number" && e.errno < 0 ? e.errno : -5); // EIO
+const hostFs = {
+  open(p, mode) {
+    try {
+      const fd = fs.openSync(p, mode, 0o666);
+      if (fs.fstatSync(fd).isDirectory()) {
+        fs.closeSync(fd);
+        return -21; // EISDIR, as the native VM finds it
       }
+      return fd;
+    } catch (e) {
+      return errno(e);
     }
-    if (dir) vm.makeDirs(q);
-    else vm.putUnread(q);
-  }
-}
+  },
+  read(fd, len) {
+    const buf = Buffer.alloc(len);
+    try {
+      return buf.subarray(0, retry(() => fs.readSync(fd, buf, 0, len, null)));
+    } catch (e) {
+      return errno(e);
+    }
+  },
+  write(fd, bytes) {
+    try {
+      return retry(() => fs.writeSync(fd, bytes));
+    } catch (e) {
+      return errno(e);
+    }
+  },
+  close(fd) {
+    try {
+      fs.closeSync(fd);
+      return 0;
+    } catch (e) {
+      return errno(e);
+    }
+  },
+  stat(p) {
+    try {
+      return fs.statSync(p).isDirectory() ? 1 : 2;
+    } catch (e) {
+      return errno(e);
+    }
+  },
+  realpath(p) {
+    try {
+      return fs.realpathSync.native(p);
+    } catch (e) {
+      return errno(e);
+    }
+  },
+  readdir(p) {
+    try {
+      return fs.readdirSync(p);
+    } catch (e) {
+      return errno(e);
+    }
+  },
+};
 
 // Resolves when a call of JavaScript has given its result to the VM.
 let wake = null;
@@ -101,10 +130,9 @@ function jsDone() {
 
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
-  const vm = ConMaVM.create(wasm, writeAll, readInput, fetchFile, listDir, jsDone);
-  const cwd = process.cwd();
-  vm.makeDirs(cwd);
-  vm.setCwd(cwd);
+  const vm = ConMaVM.create(wasm, writeAll, readInput, null, null, jsDone, hostFs);
+  vm.useHostFs();
+  vm.setCwd(process.cwd());
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);
   // The module file named in argv, read here as the native VM reads it.
   let i = 0;

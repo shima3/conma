@@ -34,7 +34,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 ```
 
-VM は実際のファイルシステムを読めるが、書いたファイルはメモリの中にだけある。外部コマンドはない。
+VM は、ネイティブ版と同じく、実際のファイルを読み書きする。外部コマンドはまだない。
 
 ## js
 

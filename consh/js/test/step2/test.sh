@@ -6,5 +6,5 @@ export CONSH_IMPL=conma
 . ../../../test/common.sh
 for c in case1 case2 case3
 do
-  run $c $c.sh < /dev/null
+  run $c $c.sh "$tmp" < /dev/null
 done

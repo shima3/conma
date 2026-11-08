@@ -20,7 +20,7 @@ gen | firstTwo
 # stdin を読まないコードは、標準入力を読まない
 function noRead () { js '"no read"'; stdin }
 gen | noRead
-# 外部コマンドの出力（ここでは、ファイル）も行ごとの要素になる
-echo "line 1" > in.txt
-echo "line 2" >> in.txt
-js '(async () => (await stdin.lines()).map(s => s.toUpperCase()))()' < in.txt
+# ファイルも行ごとの要素になる（ファイルは、test.sh が引数で渡す一時ディレクトリに作る）
+echo "line 1" > $1/in.txt
+echo "line 2" >> $1/in.txt
+js '(async () => (await stdin.lines()).map(s => s.toUpperCase()))()' < $1/in.txt
