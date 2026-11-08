@@ -185,7 +185,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * `include/frontend.se`：ConMa 版のフロントエンドのプログラム（`[--warn-arity] [--include <dir>]... <source>`、`bin/includer` と `bin/resolver` を続けたものと同じ）。そのモジュール `vm/frontend.module.se`（520 KB、1 行）をリポジトリに入れた。
     * 欠点を抑えるため：`.gitattributes` で生成物の印を付け、`git diff` に中身を出さない。`bin/update-frontend` だけで作り直す（Python 版のフロントエンドでモジュールを作り、それを VM で動かして自分のモジュールを作る、2 段）。`test/frontend` が、リポジトリのモジュールが自分を 1 バイトも違わずに作ること（不動点）と、Python 版のフロントエンドと同じモジュールになること（`selfhost_compare.py`）を確かめるので、フロントエンドのソースを変えて作り直し忘れると、テストが落ちる。
     * Rust 版の VM はこのモジュールを埋め込み、`conma build <source>` でモジュールを書き、`conma run <source> [<arg>...]` で作って実行する。`__VProc_spawn__` も、`bin/includer` と `bin/resolver` の代わりにこれを使う（別のプロセスとして動かすので、ステップの外で、2 つの VM のトレースは同じまま）。起動に失敗したときの `onError` のメッセージは、2 つの VM とも、フロントエンドのエラーの最初の行にした（`bin/includer` が付け足す `Error: parser exited with code 1` は出さない。step10 の case5 の期待ログから、その行を除いた）。
-    * test/ の全テストが両方の VM で通る。基準（Python 版の VM とフロントエンド）は今までどおり Python を使う。変換器（`vm/conma2rust`）は、まだ Python を使う。
+    * test/ の全テストが両方の VM で通る。基準（Python 版の VM とフロントエンド）は今までどおり Python を使う。変換器（`vm/conma2rust`）は、作者の方針で、改良中のため当面は Python のままとし、将来は ConMa で書く（そのときは、フロントエンドと同じく、Python 版を基準として出力を比べる）。
     * ConMa 版 ConSh の起動からも Python をなくした。スクリプトは ConMa 版の構文解析（`consh_parser.se`）で読み（以前の `--conma-parser`。Python の `consh_parse` は `--python-parser` で使う）、モジュールは、Rust 版の VM があれば `conma build` で作る。`CONMA_VM=rust` なら、ConMa 版 ConSh も Python を使わない（`python3` を、呼ばれたら失敗するものに替えて確かめた）。構文エラーは、Rust 版と同じく `consh:` で始まる。consh/test は、ConMa 版（Rust 版の VM。モジュールを `conma build` で作り直して）と Rust 版で通る。
 * ほかはまだ。
 
