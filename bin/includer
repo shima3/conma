@@ -58,12 +58,17 @@ def resolve_file(name, base_dir, include_dirs):
     Resolve `name` to an absolute path.
 
     Search order:
-      1. base_dir (directory of the file that contains the Includer)
-      2. each directory in include_dirs, in order
+      1. each directory in include_dirs, in order
+      2. base_dir (directory of the file that contains the Includer)
+
+    A file in an include directory comes before a file of the same name
+    next to the including file, so that a directory given first can
+    replace files of a directory given after it, whichever file includes
+    them (docs/INCLUDER.md).
 
     Returns the realpath of the first match, or None if not found.
     """
-    for directory in [base_dir] + include_dirs:
+    for directory in include_dirs + [base_dir]:
         candidate = os.path.join(directory, name)
         if os.path.isfile(candidate):
             return os.path.realpath(candidate)

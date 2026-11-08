@@ -57,10 +57,12 @@ Given a filename string `name` extracted from an `Includer` node and the directo
 
 - If `name` is an absolute path, it is normalised with `os.path.realpath` and used directly.
 - If `name` is a relative path, the following directories are searched in order:
-  1. `base_dir` (the directory of the file that contains the `Includer`)
-  2. Each directory in the include directory list, in order
+  1. Each directory in the include directory list, in order
+  2. `base_dir` (the directory of the file that contains the `Includer`)
 
   The first directory in which `name` exists as a file is used. The result is normalised with `os.path.realpath`.
+
+  So a file in an include directory comes before a file of the same name next to the file that includes it, as a module on `sys.path` in Python or a class on the class path in Java (and unlike `#include "..."` in C, which looks next to the including file first). A directory given first can therefore replace some files of a directory given after it, whichever file includes them: with `--include fast --include reference`, every `(include "x.se")`, also one in a file of `reference`, reads `fast/x.se` if there is one and `reference/x.se` otherwise. A file that is in no include directory is still found next to the file that includes it.
 
   If `name` is not found in any of the above directories, the program writes an error to standard error and exits with code 1.
 

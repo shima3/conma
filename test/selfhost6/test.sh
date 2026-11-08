@@ -42,8 +42,8 @@ setup() {
   echo "(include \"$dir/none.se\")" > $tmp/work/abs_missing.se
 }
 # case1: breadth-first order; duplicates by name, by "../" and by a symbolic link;
-# the directory of the including file is searched before the include directories,
-# which are searched in order
+# the include directories are searched in order, before the directory of the including file
+# (sub/c.se includes "c2.se": lib/c2.se, not sub/c2.se next to it)
 case1() {
   include main.se lib lib2
 }

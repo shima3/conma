@@ -8,7 +8,7 @@ compare: 0
 <dir>/lib2/only2.se
 <dir>/sub/c.se
 <dir>/lib2/lib.se
-<dir>/sub/c2.se
+<dir>/lib/c2.se
 -- python stderr
 -- conma stderr
 == self.se

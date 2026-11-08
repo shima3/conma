@@ -101,13 +101,16 @@
       __Parser_reverse__ reversed last))
 
 ;; name を絶対パスにする。絶対パスはそのまま正規化する。
-;; 相対パスは、include 文のあるファイルのディレクトリ、include ディレクトリの順に探す
+;; 相対パスは、include ディレクトリ（指定の順）、include 文のあるファイルのディレクトリの順に探す。
+;; 先に指定した include ディレクトリのファイルが、どのファイルから include されても、後のディレクトリや
+;; include 文のあるファイルの隣にある同じ名前のファイルの代わりになる（docs/INCLUDER.md）
 (define __Includer_resolve__ ,(fail dirs file baseDir name)
   __Includer_is_absolute__ name ,(absolute)
   __if_then_else__ absolute
     (,() __OS_realpath__ (,(e) __Includer_not_found__ fail file name) name)
     (,()
-      __LList_cons__ baseDir dirs ,(dirs)
+      __LList_cons__ baseDir __NULL__ ,(last)
+      __LList_append__ dirs last ,(dirs)
       __Includer_search__ fail dirs file name))
 
 ;; dirs のディレクトリに name があれば、その正規化した絶対パスを返す

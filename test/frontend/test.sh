@@ -31,3 +31,15 @@ conma="$root/vm/target/release/conma"
   echo "run: $?"
 } > $tmp/case3.log 2>&1
 diff case3.log $tmp/case3.log
+# case4: the order in which include file names are searched: the include directories in the order given,
+# then the directory of the including file (docs/INCLUDER.md), with the Python frontend and conma run
+{
+  "$root/bin/includer" --include order/fast --include order/reference --include "$root/include" order/main.se \
+    | "$root/bin/resolver" > $tmp/order.se
+  echo "build: $?"
+  "$conma" --main $tmp/order.se
+  "$conma" run --include order/fast --include order/reference order/main.se
+  echo "run: $?"
+  "$conma" run --include order/reference order/main.se
+} > $tmp/case4.log 2>&1
+diff case4.log $tmp/case4.log

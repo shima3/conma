@@ -1,0 +1,14 @@
+;; The order in which include file names are searched (docs/INCLUDER.md): with
+;; --include fast --include reference, "piece.se" is the file of fast, also when a file of
+;; reference includes it (next to which reference/piece.se is); "local.se" is in no include
+;; directory and is found next to this file.
+(include "util.se")
+(include "whole.se")
+(include "local.se")
+(define main ,(args)
+  whole ,(w)
+  __OS_print__ w ,()
+  __OS_print__ "\n" ,()
+  local ,(l)
+  __OS_print__ l ,()
+  __OS_print__ "\n")

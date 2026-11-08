@@ -98,13 +98,13 @@ __Includer_main__ onError sourceName includeDirs ,(Programs)
 2. For each file in the file list, in order, it runs `lexer`, `comment_remover` and `parser` and makes a `Program`.
 3. Include statements are processed breadth first. For each include statement in the new `Program`:
    * An absolute path is normalized if it exists. Otherwise it is an error.
-   * A relative path is searched for in the directory of the file that contains the include statement, then in each include directory in order. The first file found is normalized to an absolute path. If none is found, it is an error.
+   * A relative path is searched for in each include directory in order, then in the directory of the file that contains the include statement (so an include directory given first replaces a file of the same name elsewhere; docs/INCLUDER.md). The first file found is normalized to an absolute path. If none is found, it is an error.
    * The normalized path is looked up in the file list. If it is already there (processed or not), the file is skipped without a warning. Otherwise it is added to the end of the file list.
 4. It returns the `Program`s as an LList, in the order they were made.
 
 The order matters: `resolver` numbers the global variables in the order of the `Program`s, so a different order would give a different module.
 
-If a directory with the name given in an include statement exists in a directory that is searched (the directory of the file that contains the include statement, or an include directory), the behavior is undefined.
+If a directory with the name given in an include statement exists in a directory that is searched (an include directory, or the directory of the file that contains the include statement), the behavior is undefined.
 
 * Each file is passed to `__Lexer_main__` and `__Parser_main__` by its normalized absolute path, as `bin/includer` passes it to `lexer` and `parser --file`. The value of each `Includer`'s `String` node is used as the file name as it is, without processing escape sequences.
 * The file list is a queue of paths, with a Dict of the paths in it for the duplicate check. A relative name is joined to each directory in turn (`__Includer_join__`), and the next directory is tried in the `onError` of `__OS_realpath__`.
