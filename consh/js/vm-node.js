@@ -108,7 +108,9 @@ async function main() {
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);
   // The module file named in argv, read here as the native VM reads it.
   let i = 0;
+  // As conma does: options before the module file, up to "--"
   while (i < argv.length && ["-t", "--trace", "-m", "--main"].includes(argv[i])) i++;
+  if (argv[i] === "--") i++;
   let module = new Uint8Array(0);
   if (i < argv.length) {
     try {

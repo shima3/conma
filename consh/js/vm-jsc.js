@@ -54,7 +54,9 @@
   }
   // The module file named in argv, read here as the native VM reads it.
   let i = 0;
+  // As conma does: options before the module file, up to "--"
   while (i < argv.length && ["-t", "--trace", "-m", "--main"].includes(argv[i])) i++;
+  if (argv[i] === "--") i++;
   let module = new Uint8Array(0);
   try {
     if (i < argv.length) module = read(argv[i], "binary");
