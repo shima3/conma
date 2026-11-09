@@ -163,6 +163,10 @@ const SAFE_PRIMS: &[&str] = &[
 /// The transpiled code of one module file, as the generated code gives it.
 pub struct Module {
     pub hash: u64,
+    /// The files of the module, as module::module_files gives them: the same for
+    /// each version of a program, so a module file with these files and another
+    /// hash is a version for which the code was not made (stale_for).
+    pub files: &'static str,
     /// The number of Functions in the module.
     pub nfuncs: usize,
     /// The primitives the transpiled code calls, by ConMa name; `prim_call`
@@ -240,6 +244,14 @@ pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     safe.sort();
     let rust_calls = (0..funcs.len()).map(|_| (Cell::new(0), Cell::new(0))).collect();
     Some(Rc::new(Table { funcs, fns: m.fns, dfns: m.dfns, prims, safe, rust_calls }))
+}
+
+/// Whether there is transpiled code for another version of the module with these
+/// files (made from a module file with other text): the code is not used, and the
+/// transpiled VM should be built again.
+pub fn stale_for(hash: u64, files: &str) -> bool {
+    !files.is_empty() && generated::MODULES.iter().any(|m| m.files == files && m.hash != hash)
+        && !generated::MODULES.iter().any(|m| m.hash == hash)
 }
 
 // ── Counts (CONMA_TRANSPILED_COUNTS=<file>) ──

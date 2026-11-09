@@ -226,12 +226,29 @@ pub fn load_module_transpiled(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVE
     if let Some(h) = hash {
         let funcs: Vec<Rc<FuncDef>> = funcs.into_iter().flatten().collect();
         let table = crate::transpiled::table_for(h, funcs);
+        if table.is_none() && crate::transpiled::stale_for(h, &module_files(module)) {
+            eprintln!(
+                "conma: warning: the transpiled code of this program was made from another version of its module, \
+                 so it is not used; build the transpiled VM again (vm/conma2rust/build.sh, bench/build.sh)"
+            );
+        }
         if std::env::var_os("CONMA_TRANSPILED_REPORT").is_some() {
             eprintln!("transpiled code: {}", if table.is_some() { "used" } else { "none for this module" });
         }
         *gvenv.transpiled.borrow_mut() = table;
     }
     Ok(gvenv)
+}
+
+/// The files of a module, the atoms of its (F ...) as written, separated by
+/// spaces (as module_files of vm/conma2rust/conma2rust.py makes them), or "".
+pub fn module_files(module: &Sexp) -> String {
+    let f = match module.as_list().and_then(|l| l.get(1)) {
+        Some(f) if f.tag() == Some("F") => f,
+        _ => return String::new(),
+    };
+    let atoms: Vec<&str> = f.as_list().unwrap().iter().skip(1).filter_map(|a| a.as_atom()).collect();
+    atoms.join(" ")
 }
 
 fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {

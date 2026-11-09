@@ -141,6 +141,14 @@ def tag(x):
     return x[0] if isinstance(x, list) and x and isinstance(x[0], str) else None
 
 
+def module_files(module):
+    """The files of a module, the atoms of its (F ...) as written, separated by spaces
+    (as vm/src/module.rs module_files makes them): the same for each version of a
+    program, unlike the hash of the text."""
+    f = module[1] if len(module) > 1 else None
+    return " ".join(a for a in f[1:] if isinstance(a, str)) if tag(f) == "F" else ""
+
+
 def fnv1a(data):
     h = 0xcbf29ce484222325
     for b in data:
@@ -1159,7 +1167,8 @@ def translate(index, path, prim_names, out):
     dentries = ", ".join(f"Some({p}_d{f.id} as DirectFn)" if f.id in directs else "None" for f in funcs)
     out.append(f"static {p.upper()}_DFNS: [Option<DirectFn>; {len(funcs)}] = [{dentries}];")
     names = ", ".join(f'"{n}"' for n in used)
-    return (f"Module {{ hash: 0x{fnv1a(data):016x}, nfuncs: {len(funcs)}, "
+    files = module_files(module).replace("\\", "\\\\").replace('"', '\\"')
+    return (f"Module {{ hash: 0x{fnv1a(data):016x}, files: \"{files}\", nfuncs: {len(funcs)}, "
             f"prims: &[{names}], fns: &{p.upper()}_FNS, dfns: &{p.upper()}_DFNS }}")
 
 
