@@ -2836,7 +2836,7 @@
   __unless__ condition (,() return value) ,()
   ;; JS の値の変数（consh_jsstmt.se）は、読むたびにホストに直してもらう
   __Dict_lookup_or__ value "js" (,(key) __NULL__ __NULL__) ,(id)
-  __is_null__ id ,(test__) __unless__ test__ (,() Js_force id ,(v) return v) ,()
+  __is_null__ id ,(test__) __unless__ test__ (,() Js_force value ,(v) return v) ,()
   __Dict_lookup_or__ value "ref" __print_exit_error__ ,(ref)
   Promise_wait ref)
 
@@ -3097,12 +3097,15 @@
       __Dict_put__ vars name lazy ,()
       Sh_set_status sh "0" ,()
       return) ,()
-  closeAll ,()
+  ;; JS の値（j）なら、toHost を閉じずに変数に持たせる（捨てられたら閉じ、ホストが値を表から消す。consh_jsstmt.se）
+  __Ref_get__ toHostRef ,(handle)
+  __String_equal__ kind "j" ,(keep)
+  Js_close_result keep stream toHostRef closeAll ,()
   List_first fields ,(value)
   __is_null__ name ,(test__) __if_then_else__ test__
     (,() Js_output sh pos out kind value)
     (,()
-      Js_value kind value ,(value)
+      Js_value_kept kind value handle ,(value)
       __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
       __Dict_put__ vars name value) ,()
   Sh_set_status sh "0")
@@ -3280,12 +3283,11 @@
   Target_write sh pos out item ,()
   Js_output_items sh pos out rest)
 
-;; 変数に入れる値。s は String、l は LazyList、j は JS の値（Js_wrap）、n は空文字列
+;; 変数に入れる値。s は String、l は LazyList、n は空文字列（j は Js_value_kept）
 (define Js_value ,(kind value)
   __Cont_get__ ,(return)
   __String_equal__ kind "s" ,(test__) __if__ test__ (,() return value) ,()
   __String_equal__ kind "l" ,(test__) __if__ test__ (,() Js_lazy value ,(v) return v) ,()
-  __String_equal__ kind "j" ,(test__) __if__ test__ (,() Js_wrap value ,(v) return v) ,()
   __NULL__ "")
 
 ;; リストの要素：String はそのまま、リスト（空なら null）は LazyList

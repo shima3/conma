@@ -14,7 +14,8 @@ use crate::vproc::VProc;
 /// evaluates the String code with args (an LList of Strings and LLists of
 /// them), and writes the result to inputStream as lines of S-expressions;
 /// what is written to outputStream goes to the host (the standard input of
-/// the code). See 2.2 of consh/js/PLAN-ja.md.
+/// the code), and it is closed when the last reference to it is dropped. See
+/// 2.2 of consh/js/PLAN-ja.md.
 pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__JS_call__";
     let mut a = take_n(vp, name, 3)?;
@@ -34,7 +35,9 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     match sys::js_call(&code, &json) {
         Ok((r, w)) => {
             let input = Value::Stream(new_stream(m, r, 'r'));
-            let output = Value::Stream(new_stream(m, w, 'w'));
+            let w = new_stream(m, w, 'w');
+            w.drop_close.set(true);
+            let output = Value::Stream(w);
             vp.prim_return(vec![input, output]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, sys::strerror(&e))),

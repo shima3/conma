@@ -53,11 +53,31 @@ pub struct StreamObj {
     pub std: bool,
     /// Bytes of a UTF-8 character split between reads.
     pub pending: RefCell<Vec<u8>>,
+    /// Close the fd when the last reference to the Stream is dropped (the
+    /// outputStream of __JS_call__: the host then knows that the program no
+    /// longer holds the values of that call; see 2.5 of consh/js/PLAN-ja.md).
+    pub drop_close: std::cell::Cell<bool>,
+}
+
+impl Drop for StreamObj {
+    fn drop(&mut self) {
+        if self.drop_close.get() {
+            let _ = self.close();
+        }
+    }
 }
 
 impl StreamObj {
     pub fn new(serial: usize, fd: i32, mode: char, std: bool) -> StreamObj {
-        StreamObj { serial, fd, mode, closed: std::cell::Cell::new(false), std, pending: RefCell::new(Vec::new()) }
+        StreamObj {
+            serial,
+            fd,
+            mode,
+            closed: std::cell::Cell::new(false),
+            std,
+            pending: RefCell::new(Vec::new()),
+            drop_close: std::cell::Cell::new(false),
+        }
     }
     pub fn kind(&self) -> &'static str {
         if self.mode == 'r' {

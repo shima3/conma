@@ -177,13 +177,25 @@ var ConMaVM = (function () {
   const KEEP = "//@consh-keep\n";
   const values = new Map(); // objects and functions of shell variables, by number
   let nextValue = 0;
-  // The id of a JS value (not a string).
-  function idOf(v) {
+  // The numbers of values that each call (__JS_call__, by its job) made. ConSh keeps the
+  // outputStream of the call with the variables that hold them, and the VM closes it when it is
+  // dropped (host_js_input_end): then no variable holds them and they are removed (releaseValues).
+  const owned = new Map();
+  // The id of a JS value (not a string), made by the call owner.
+  function idOf(v, owner) {
     if (v === undefined || v === null) return String(v);
     const t = typeof v;
     if (t === "number" || t === "boolean" || t === "bigint") return t + ":" + String(v);
     values.set(++nextValue, v);
+    if (!owned.has(owner)) owned.set(owner, []);
+    owned.get(owner).push(nextValue);
     return "#" + nextValue;
+  }
+  function releaseValues(owner) {
+    const ns = owned.get(owner);
+    if (!ns) return;
+    owned.delete(owner);
+    for (const n of ns) values.delete(n);
   }
   function valueOf(id) {
     id = String(id);
@@ -205,6 +217,8 @@ var ConMaVM = (function () {
   // A JS value of a shell variable: a function of one is called by ConSh with
   // __consh_value(id) as the code of js.
   globalThis.__consh_value = valueOf;
+  // The number of values in the table (for the tests).
+  globalThis.__consh_value.count = () => values.size;
 
   function Fallback(message) {
     this.message = message;
@@ -419,7 +433,7 @@ var ConMaVM = (function () {
 
   // Evaluate a JS statement (see above). emit writes a line to the pipe of the call. The result
   // is a Promise of the value to output (undefined for nothing), or of a Fallback.
-  function evaluateStatement(src, args, stdin, emit) {
+  function evaluateStatement(src, args, stdin, emit, owner) {
     const [names, kinds, vals] = args;
     const vars = Object.create(null);
     names.forEach((name, k) => {
@@ -470,7 +484,7 @@ var ConMaVM = (function () {
     const flush = () => {
       for (const name of written) {
         const v = vars[name];
-        emit("(w " + sexpString(name) + (typeof v === "string" ? " s " + sexpString(v) : ' j "' + idOf(v) + '"') + ")\n");
+        emit("(w " + sexpString(name) + (typeof v === "string" ? " s " + sexpString(v) : ' j "' + idOf(v, owner) + '"') + ")\n");
       }
     };
     const failed = (e) => {
@@ -771,7 +785,7 @@ var ConMaVM = (function () {
           try {
             result = Promise.resolve(
               code.startsWith(STMT)
-                ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line))
+                ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
                 : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
             );
           } catch (e) {
@@ -782,7 +796,7 @@ var ConMaVM = (function () {
           result
             .then((v) => {
               if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
-              if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v) + '")\n';
+              if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v, id) + '")\n';
               if (!isIterator(v)) return resultLine(v);
               iterate(v);
               return undefined;
@@ -855,6 +869,7 @@ var ConMaVM = (function () {
         host_js_input_end: (id) => {
           const job = jobs.get(id);
           if (job) job.closed();
+          releaseValues(id);
         },
       },
     });

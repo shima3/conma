@@ -3,6 +3,8 @@
 ;; コードに現れる名前のシェルの変数を、同じ名前の JavaScript の変数として渡し、コードが代入した変数を受け取る。
 ;; 文字列でない JavaScript の値は、シェルの変数に、その番号（オブジェクトと関数はホストの表の #n、プリミティブは
 ;; number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう（Js_store、Js_force）。
+;; JS の値の変数は、値を作った __JS_call__ の outputStream（toHost）も持つ。VM は、この Stream が捨てられたら閉じるので
+;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
 ;; consh_eval.se（参照版も）が include する
 
 ;; JavaScript が使えるか（__JS_call__ が onError に進まないか）。使えれば、"0" の結果を読み捨てる
@@ -44,6 +46,8 @@
     Sh_set_status sh status ,()
     return) ,(fail)
   Js_stmt_vars sh pos names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
+  ;; JS の値を変数に入れたら、toHost を閉じずに、その変数に持たせる
+  __Ref_new__ __FALSE__ ,(keptRef)
   __LList_cons__ vs __NULL__ ,(args)
   __LList_cons__ ks args ,(args)
   __LList_cons__ ns args ,(args)
@@ -52,9 +56,11 @@
   __Ref_new__ toHost ,(toHostRef)
   __LazyList_lines__ stream ,(lines)
   __NULL__ (,()
-    __OS_close__ __print_exit_error__ stream ,()
-    Js_input_close toHostRef) ,(closeAll)
-  Js_stmt_lines sh pos in out err toHostRef lines ,(result rest)
+    __Ref_get__ keptRef ,(kept)
+    Js_close_result kept stream toHostRef (,()
+      __OS_close__ __print_exit_error__ stream ,()
+      Js_input_close toHostRef)) ,(closeAll)
+  Js_stmt_lines sh pos in out err toHostRef keptRef lines ,(result rest)
   __is_null__ result ,(test__) __if__ test__ (,() closeAll ,() fail "no result" "1") ,()
   __LList_uncons__ __print_exit_error__ result ,(tag fields)
   __String_equal__ tag "f" ,(test__) __if__ test__
@@ -81,33 +87,52 @@
   Js_output sh pos out kind value ,()
   Sh_set_status sh "0")
 
-;; Js_lines と同じだが、(w ...) の行を読んで変数に入れる
-(define Js_stmt_lines ,(sh pos in out err toHostRef lines)
+;; Js_lines と同じだが、(w ...) の行を読んで変数に入れる。JS の値を入れたら keptRef を真にする
+(define Js_stmt_lines ,(sh pos in out err toHostRef keptRef lines)
   __Cont_get__ ,(return)
   Js_lines sh pos in out err toHostRef lines ,(result rest)
   __is_null__ result ,(test__) __if__ test__ (,() return result rest) ,()
   __LList_uncons__ __print_exit_error__ result ,(tag fields)
   __String_equal__ tag "w" ,(test__) __unless__ test__ (,() return result rest) ,()
-  Js_store sh pos fields ,()
-  Js_stmt_lines sh pos in out err toHostRef rest)
+  __Ref_get__ toHostRef ,(handle)
+  Js_store sh pos fields handle ,(isJs)
+  __if__ isJs (,() __Ref_set__ keptRef __TRUE__) ,()
+  Js_stmt_lines sh pos in out err toHostRef keptRef rest)
 
-;; (w 名前 s 文字列) なら String を、(w 名前 j 番号) なら JS の値を、名前の局所変数に入れる。
-;; JS の値は、"js" に番号を入れた Dict で、Value_force が読むたびに Js_force で直す
-(define Js_store ,(sh pos fields)
+;; 結果を読み終えたとき。keep なら、結果の Stream だけを閉じ、toHost は変数に持たせたまま閉じない（toHostRef は空にする）。
+;; そうでなければ closeAll
+(define Js_close_result ,(keep stream toHostRef closeAll)
+  __Cont_get__ ,(return)
+  __unless__ keep (,() closeAll ,() return) ,()
+  __OS_close__ __print_exit_error__ stream ,()
+  __Ref_set__ toHostRef __NULL__)
+
+;; (w 名前 s 文字列) なら String を、(w 名前 j 番号) なら JS の値を、名前の局所変数に入れる。JS の値なら真を返す。
+;; JS の値は、"js" に番号、"handle" に値を作った呼び出しの toHost を入れた Dict で、Value_force が読むたびに Js_force で直す
+(define Js_store ,(sh pos fields handle)
   __LList_uncons__ __print_exit_error__ fields ,(name fields)
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
   List_first fields ,(data)
-  __String_equal__ kind "s" ,(test__) __if_then_else__ test__
+  __String_equal__ kind "s" ,(isString)
+  __if_then_else__ isString
     (,() __NULL__ data)
-    (,() Js_wrap data) ,(value)
+    (,() Js_wrap data handle) ,(value)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
-  __Dict_put__ vars name value)
+  __Dict_put__ vars name value ,()
+  __not__ isString)
 
-;; JS の値の番号 id を入れた変数の値
-(define Js_wrap ,(id)
+;; JS の値の番号 id を入れた変数の値。handle は、値を作った呼び出しの toHost（捨てられたら閉じる）
+(define Js_wrap ,(id handle)
   __Dict_new__ ,(wrapped)
   __Dict_put__ wrapped "js" id ,()
+  __Dict_put__ wrapped "handle" handle ,()
   __NULL__ wrapped)
+
+;; js 変数名= の結果を変数に入れる値（Js_value）。j なら JS の値（Js_wrap）
+(define Js_value_kept ,(kind value handle)
+  __Cont_get__ ,(return)
+  __String_equal__ kind "j" ,(test__) __if__ test__ (,() Js_wrap value handle ,(v) return v) ,()
+  Js_value kind value)
 
 ;; js 変数名= のコード。変数名があれば、結果を JS の値のまま受け取る印の行を前に付ける
 (define Js_keep_code ,(name code)
@@ -115,11 +140,12 @@
   __is_null__ name ,(test__) __if__ test__ (,() return code) ,()
   __String_concat__ "//@consh-keep\n" code)
 
-;; JS の値の番号 id を、シェルの値にする。プリミティブ（number:3、boolean:true、bigint:5、undefined、null）は
+;; JS の値の変数 wrapped を、シェルの値にする。プリミティブ（number:3、boolean:true、bigint:5、undefined、null）は
 ;; ここで直し、オブジェクトと関数（#n）は、その時点の値をホストに直してもらう（__JS_value__）。
 ;; s は String、l は LazyList、n は空文字列、f は、呼ぶと js でその関数を呼ぶ関数値
-(define Js_force ,(id)
+(define Js_force ,(wrapped)
   __Cont_get__ ,(return)
+  __Dict_lookup_or__ wrapped "js" __print_exit_error__ ,(id)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __String_substring__ __print_exit_error__ id zero one ,(first)
@@ -138,7 +164,9 @@
     (,()
       __String_concat__ "__consh_value(\"" id ,(code)
       __String_concat__ code "\")" ,(code)
+      ;; 関数値は wrapped を持つ（その間、ホストは値を消さない）
       return (,(caller pos args in out err)
+        Js_hold wrapped ,()
         __LList_cons__ code args ,(args)
         Builtin_js caller pos args in out err)) ,()
   __is_null__ fields ,(test__) __if__ test__ (,() return "") ,()
@@ -175,3 +203,7 @@
   __String_equal__ type "Closure" ,(test__) __if__ test__ skip ,()
   Js_arg sh pos value ,(list)
   add "l" list)
+
+;; 値を持っておくための、何もしない関数
+(define Js_hold ,(value)
+  __nop__)
