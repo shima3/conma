@@ -174,7 +174,9 @@ consh/js/
   serve.py          web/ を出す HTTP サーバー（ディレクトリの一覧、Cache-Control: no-cache。3.14）
   web/              （段階 3）HTTP で開く（serve.py）
     index.html      端末の画面（出力と入力の行、「ファイルを置く」「スクリプトを実行」「中断」）
-    consh.js        ConSh の起動（対話モード）、入力、Ctrl-C、ファイル。段階 4 から js の評価
+    consh.js        画面、入力、Ctrl-C、js の評価（conma.js の JsEngine）。Worker を起動する（3.19）
+    consh-core.js   VM、ファイル（serverfs.js）、組み込みコマンド（COMMANDS）。Worker でもページでも動く
+    consh-worker.js Worker の入口。js の呼び出しをページに渡し、__JS_value__ は SharedArrayBuffer で待つ
     conma.wasm、conma.js、consh.module.se   build.sh が置く（リポジトリには入れない）
   test/             （段階 4）ConSh の test/stepN と同じ形の js のテスト。stepN/test.sh は、CONMA_VM=wasm で
                     consh/test/common.sh の run を使う。run_all.sh ですべて実行する
@@ -474,10 +476,19 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 - 確かめたこと：オブジェクトの変数をシェルで代入し直すと表から消え、関数の JS の値も消える。読まないまま捨てた遅延の LazyList（`xs=${nat}` の後に両方を代入し直す）は、ホストに閉じたことが届く。一方、`for e in ${nat}; do break; done` のように途中まで読んだものと、関数の局所変数の値は、VM の中の循環に残る。前者は、40 万回の関数の呼び出しで循環の回収を走らせても消えなかった（4）。
 - テスト：consh/js/test/step5 の case6（表の大きさ、`__consh_value.count()`）。ホストは、テストのために、表の大きさを返す `__consh_value.count` を置く。
 
+### 3.19. ブラウザ版の VM を Worker で動かす（2026/11/9）
+
+- ブラウザ版の VM を Worker で動かすようにした（REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
+- conma.js：JavaScript の評価を `JsEngine`（呼び出しを job の番号で扱い、行を `out.line`、終わりを `out.end` で返す）にまとめ、VM（`create`）から分けた。`create` は、`hooks.jsRemote` があれば、`host_js_call`、`host_js_input`、`host_js_input_end`、`host_js_value` をそれに渡し、行は `vm.jsLine`、終わりは `vm.jsEnd` で受け取る。なければ、今までどおり同じスレッドの `JsEngine` を使う（Node.js、ページの中で動かすとき）。
+- web/consh-core.js：VM、ファイル、`COMMANDS`、`hostProc`、VM を区切って動かすことを、consh.js から移した。Worker（consh-worker.js）でもページ（consh.js）でも動く。
+- web/consh-worker.js：ページとメッセージでつなぐ。js の呼び出しはページに渡し、ページの `JsEngine` が書く行を VM のパイプに書く。読み手がいなくなったら（EPIPE）ページに知らせる。`__JS_value__` は同期なので、ページに尋ねて、SharedArrayBuffer を `Atomics.wait` で待つ（1 MB ずつ受け取るので、大きな値も渡せる）。
+- web/consh.js：画面と JsEngine。ページが cross-origin isolated（`crossOriginIsolated`）なら Worker で、そうでなければページの中で consh-core.js を動かす。serve.py は COOP と COEP のヘッダを送る。
+- ブラウザ（serve.py）で、Worker で動くこと、JS の文から `document.title` を変えられること、`setTimeout` で後から変えたオブジェクトが `$o` に表れること（`__JS_value__`）、`cat < names.txt | js ...`、`ls | js ...` と `console.log`、イテレータを `for` で読むこと、打ち間違えたコマンドを確かめた。ヘッダのないサーバーでページの中で動く形は、ブラウザのペインから `python3 -m http.server` のページを開けなかったので、ブラウザでは確かめていない。Node.js の `consh/js/test`（同じスレッドの JsEngine）は通る。
+
 ## 4. 未解決の点
 
 - JS の値の関数を、`$f 1 2` だけでなく `f 1 2` でも呼べるようにするか。シェルの関数を JavaScript から呼ぶか（2.5 の 9）。
 - JS の値の表の解放と、イテレータの `return()` は、VM が値を捨てたときに行う（3.18）。`for` で途中まで読んだ遅延の LazyList は、VM が捨てず、循環の回収でも消えないので、ホストのイテレータと呼び出しが残る。関数の局所変数の JS の値も、循環の回収まで残る。VM の LazyList と循環の回収（vm/src/gc.rs）を調べる必要がある。
 - JS の文が SyntaxError でシェルの文になったとき、JS を書き間違えたのに「コマンドが見つからない」と出る。`CONSH_JS_DEBUG` などで JavaScript のエラーも出すか（REVIEW-ja.md の 2.1）。
-- ブラウザ版の serverfs.js は、同期の XMLHttpRequest でメインスレッドを止めるので、大きなファイルや遅いサーバーで画面が固まる。VM を Worker で動かすか（REVIEW-ja.md の 4）。
+- ブラウザ版は、cross-origin isolated でないサーバーでは、今までどおりページの中で VM を動かすので、ファイルを読む間は画面が止まる（3.19）。
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。

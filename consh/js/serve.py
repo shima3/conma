@@ -4,7 +4,9 @@
 * the entries of a directory for ?consh-ls, as JSON (the names of directories end with /), even when
   the directory has an index.html (ls of ConSh, web/serverfs.js);
 * Cache-Control: no-cache, so that the browser checks a file with the server each time it is read
-  (304 when it has not changed), and a file changed on the disk is seen at once.
+  (304 when it has not changed), and a file changed on the disk is seen at once;
+* Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy, so that the page is cross-origin isolated
+  and can run the VM in a Worker (web/consh.js).
 
 It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is
 missing or older than its sources (conma.js, conma.wasm, consh.module.se, whose sources include
@@ -25,6 +27,10 @@ WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache")
+        # Cross-origin isolated, so that the page can give the Worker of the VM a SharedArrayBuffer
+        # (web/consh.js); then a resource of another origin needs CORS or Cross-Origin-Resource-Policy
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
 
     def do_GET(self):

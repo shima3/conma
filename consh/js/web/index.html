@@ -94,7 +94,7 @@
 <div id="term"><span id="out"></span><input id="line" autocomplete="off" autocapitalize="off" spellcheck="false" disabled aria-label="ConSh への入力"></div>
 <script>
   // Load the scripts again each time, so that the cache never gives old ones after consh/js/build.sh
-  for (const name of ["conma.js", "serverfs.js", "consh.js"]) document.write('<script src="' + name + "?" + Date.now() + '"><\/script>');
+  for (const name of ["conma.js", "serverfs.js", "consh-core.js", "consh.js"]) document.write('<script src="' + name + "?" + Date.now() + '"><\/script>');
 </script>
 </body>
 </html>

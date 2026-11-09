@@ -515,8 +515,8 @@ var ConMaVM = (function () {
   const END = {};
 
   // A call of JavaScript: the pipe fd its lines go to, and its standard input.
-  function Job(fd, emit) {
-    this.fd = fd;
+  function Job(id, emit) {
+    this.id = id;
     this.emit = emit; // write a line to the pipe
     this.ended = false;
     this.items = []; // elements of standard input not read yet
@@ -673,19 +673,164 @@ var ConMaVM = (function () {
     return "(e " + sexpString(msg) + ")\n";
   }
 
+  // The JavaScript of __JS_call__, apart from the VM, so that it can run in another thread than the
+  // VM (the page, while the VM runs in a Worker: consh/js/web): calls are known by their job numbers.
+  // out.line(job, line) writes a line to the pipe of the call and returns 0 or an errno (32 when the
+  // reader has gone), and out.end(job) closes it. write(fd, bytes) is the standard output (1) and
+  // error (2) of the host, for console when no call can take it.
+  function JsEngine(out, write) {
+    const jobs = new Map();
+    installConsole(write);
+    function call(id, code, args) {
+      const keep = code.startsWith(KEEP);
+      // Lines go to the pipe of the call at once, and the VM runs again after them.
+      const job = new Job(id, (line) => {
+        if (job.ended) return;
+        const errno = out.line(id, line);
+        if (errno === 32 && job.onClosed) job.onClosed(); // EPIPE: the reader has gone
+      });
+      // End the call, writing line (if not null) as its last.
+      const finish = (line) => {
+        if (job.ended) return;
+        if (line !== null) job.emit(line);
+        job.ended = true;
+        liveJobs.delete(job);
+        jobs.delete(id);
+        out.end(id);
+        for (const w of job.waiters.splice(0)) w(END);
+      };
+      // Give the elements of an iterator one at a time, on the requests of the VM.
+      const iterate = (v) => {
+        const it = typeof v[Symbol.asyncIterator] === "function" ? v[Symbol.asyncIterator]() : v[Symbol.iterator]();
+        let requested = 0;
+        let busy = false;
+        job.onClosed = () => {
+          if (job.ended || job.closing) return;
+          job.closing = true;
+          try {
+            if (typeof it.return === "function") Promise.resolve(it.return()).catch(() => {});
+          } catch (e) {
+            // a return() that throws: the call ends anyway
+          }
+          finish(null);
+        };
+        job.onNext = async () => {
+          requested++;
+          if (busy) return;
+          busy = true;
+          while (requested > 0 && !job.ended) {
+            requested--;
+            let line;
+            try {
+              let step;
+              consoleJob = job;
+              try {
+                step = it.next();
+              } finally {
+                consoleJob = null;
+              }
+              const r = await step;
+              if (r.done) {
+                finish("(d)\n");
+                break;
+              }
+              line = "(t " + elementSexp(await r.value) + ")\n";
+            } catch (e) {
+              finish(errorLine(e));
+              break;
+            }
+            job.emit(line);
+          }
+          busy = false;
+        };
+        job.emit("(r t)\n");
+      };
+      jobs.set(id, job);
+      liveJobs.add(job);
+      let result;
+      consoleJob = job;
+      try {
+        result = Promise.resolve(
+          code.startsWith(STMT)
+            ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
+            : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
+        );
+      } catch (e) {
+        result = Promise.reject(e);
+      } finally {
+        consoleJob = null;
+      }
+      result
+        .then((v) => {
+          if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
+          if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v, id) + '")\n';
+          if (!isIterator(v)) return resultLine(v);
+          iterate(v);
+          return undefined;
+        })
+        .catch(errorLine)
+        .then((line) => {
+          if (line !== undefined) finish(line);
+        });
+    }
+
+    return {
+      // Start a call: evaluate code (a string) with args (from JSON)
+      call,
+      // The VM wrote to the call's standard input, or closed it (then the values of the call are
+      // forgotten, see owned)
+      input: (id, data) => {
+        const job = jobs.get(id);
+        if (job) job.input(data);
+      },
+      inputEnd: (id) => {
+        const job = jobs.get(id);
+        if (job) job.closed();
+        releaseValues(id);
+      },
+      // The reader of the call's pipe has gone (for a call in another thread than the VM)
+      readerGone: (id) => {
+        const job = jobs.get(id);
+        if (job && job.onClosed) job.onClosed();
+      },
+      // The value of id (__JS_value__) as the text of an S-expression; throws when there is none
+      value: (id) => "(" + shellValue(valueOf(id)) + ")",
+    };
+  }
+
   function create(wasmModule, write, hooks) {
-    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule } = hooks || {};
+    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote } = hooks || {};
     // The last result of buildModule, until the VM has taken it all (host_build_module)
     let lastBuild = null;
     let x = null;
     let vm = null;
     let jsPending = 0;
-    const jobs = new Map();
-    installConsole(write);
     // Run the VM again (later: this may be inside conma_run).
     const wake = () => {
       if (jsDone) Promise.resolve().then(() => jsDone(vm));
     };
+    // The calls of JavaScript (__JS_call__): the fd of the pipe of each job, and their lines
+    const jsFds = new Map();
+    const jsOut = {
+      line: (id, line) => {
+        const fd = jsFds.get(id);
+        if (fd === undefined) return 9; // EBADF: the call has ended
+        const errno = pass(line, (p, n) => x.conma_write(fd, p, n));
+        wake();
+        return errno;
+      },
+      end: (id) => {
+        const fd = jsFds.get(id);
+        if (fd === undefined) return;
+        jsFds.delete(id);
+        x.conma_close(fd);
+        jsPending--;
+        wake();
+      },
+    };
+    // The JavaScript of the calls: here (JsEngine), or jsRemote, which gives them to an engine in
+    // another thread ({call, input, inputEnd, value}: value returns the text at once, or an errno)
+    const js = jsRemote || JsEngine(jsOut, write);
     const instance = new WebAssembly.Instance(wasmModule, {
       env: {
         host_write: (fd, ptr, len) => write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()),
@@ -701,110 +846,18 @@ var ConMaVM = (function () {
         host_js_value: (idPtr, idLen, out, cap) => {
           let text;
           try {
-            text = "(" + shellValue(valueOf(str(idPtr, idLen))) + ")";
+            text = js.value(str(idPtr, idLen));
           } catch (e) {
             return -22; // EINVAL: no such value
           }
-          return give(text, out, cap);
+          return typeof text === "number" ? text : give(text, out, cap);
         },
         host_js_call: (fd, id, codePtr, codeLen, argsPtr, argsLen) => {
-          const code = text(new Uint8Array(x.memory.buffer, codePtr, codeLen));
-          const args = JSON.parse(text(new Uint8Array(x.memory.buffer, argsPtr, argsLen)));
-          const keep = code.startsWith(KEEP);
+          const code = str(codePtr, codeLen);
+          const args = JSON.parse(str(argsPtr, argsLen));
+          jsFds.set(id, fd);
           jsPending++;
-          // Lines go to the pipe at once (the virtual OS may be used inside conma_run), and the VM
-          // runs again after them.
-          const job = new Job(fd, (line) => {
-            if (job.ended) return;
-            const errno = pass(line, (p, n) => x.conma_write(fd, p, n));
-            wake();
-            if (errno === 32 && job.onClosed) job.onClosed(); // EPIPE: the reader has gone
-          });
-          // End the call, writing line (if not null) as its last.
-          const finish = (line) => {
-            if (job.ended) return;
-            if (line !== null) job.emit(line);
-            job.ended = true;
-            liveJobs.delete(job);
-            jobs.delete(id);
-            x.conma_close(fd);
-            jsPending--;
-            for (const w of job.waiters.splice(0)) w(END);
-            wake();
-          };
-          // Give the elements of an iterator one at a time, on the requests of the VM.
-          const iterate = (v) => {
-            const it = typeof v[Symbol.asyncIterator] === "function" ? v[Symbol.asyncIterator]() : v[Symbol.iterator]();
-            let requested = 0;
-            let busy = false;
-            job.onClosed = () => {
-              if (job.ended || job.closing) return;
-              job.closing = true;
-              try {
-                if (typeof it.return === "function") Promise.resolve(it.return()).catch(() => {});
-              } catch (e) {
-                // a return() that throws: the call ends anyway
-              }
-              finish(null);
-            };
-            job.onNext = async () => {
-              requested++;
-              if (busy) return;
-              busy = true;
-              while (requested > 0 && !job.ended) {
-                requested--;
-                let line;
-                try {
-                  let step;
-                  consoleJob = job;
-                  try {
-                    step = it.next();
-                  } finally {
-                    consoleJob = null;
-                  }
-                  const r = await step;
-                  if (r.done) {
-                    finish("(d)\n");
-                    break;
-                  }
-                  line = "(t " + elementSexp(await r.value) + ")\n";
-                } catch (e) {
-                  finish(errorLine(e));
-                  break;
-                }
-                job.emit(line);
-              }
-              busy = false;
-            };
-            job.emit("(r t)\n");
-          };
-          jobs.set(id, job);
-          liveJobs.add(job);
-          let result;
-          consoleJob = job;
-          try {
-            result = Promise.resolve(
-              code.startsWith(STMT)
-                ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
-                : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
-            );
-          } catch (e) {
-            result = Promise.reject(e);
-          } finally {
-            consoleJob = null;
-          }
-          result
-            .then((v) => {
-              if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
-              if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v, id) + '")\n';
-              if (!isIterator(v)) return resultLine(v);
-              iterate(v);
-              return undefined;
-            })
-            .catch(errorLine)
-            .then((line) => {
-              if (line !== undefined) finish(line);
-            });
+          js.call(id, code, args);
         },
         host_fs_open: (ptr, len, mode) => (hostFs ? hostFs.open(str(ptr, len), String.fromCharCode(mode)) : -38),
         host_fs_read: (fd, ptr, len) => {
@@ -862,15 +915,8 @@ var ConMaVM = (function () {
         host_trap_sigint: () => {
           if (trapInterrupt) trapInterrupt(vm);
         },
-        host_js_input: (id, ptr, len) => {
-          const job = jobs.get(id);
-          if (job) job.input(text(new Uint8Array(x.memory.buffer, ptr, len)));
-        },
-        host_js_input_end: (id) => {
-          const job = jobs.get(id);
-          if (job) job.closed();
-          releaseValues(id);
-        },
+        host_js_input: (id, ptr, len) => js.input(id, str(ptr, len)),
+        host_js_input_end: (id) => js.inputEnd(id),
       },
     });
     x = instance.exports;
@@ -914,6 +960,10 @@ var ConMaVM = (function () {
       inputEnd: () => x.conma_input_end(),
       // The number of calls of JavaScript whose results the VM has not got yet.
       jsPending: () => jsPending,
+      // For jsRemote: a line of a call from the engine (0 or an errno, 32 when the reader has gone),
+      // and the end of the call.
+      jsLine: (id, line) => jsOut.line(id, line),
+      jsEnd: (id) => jsOut.end(id),
       // Whether a VProc found standard input empty since the last call.
       wantsInput: () => x.conma_wants_input() !== 0,
       interrupt: () => x.conma_interrupt(),
@@ -955,7 +1005,7 @@ var ConMaVM = (function () {
     return vm;
   }
 
-  return { create, utf8, text, latin1, RUNNING: -1, IDLE: -2 };
+  return { create, JsEngine, utf8, text, latin1, RUNNING: -1, IDLE: -2 };
 })();
 
 // Node.js (require) gets it as the module's value.
