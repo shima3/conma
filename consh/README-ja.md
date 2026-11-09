@@ -10,6 +10,7 @@ consh/
 ├── PLAN-ja.md           仕様と設計
 ├── AST.md               consh_parse が出力する構文木の形式（英語）
 ├── FOR-BASH-USERS.md    Bash を使う人向けの使い方の説明（英語）
+├── SAFEJS-PLAN-ja.md    JavaScript の安全なサブセットを ConMa に変換して動かす計画（まだ作っていない）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
 ├── bin/
