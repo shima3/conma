@@ -406,16 +406,47 @@ var ConMaVM = (function () {
     let out = src;
     for (const [pos, text, len] of edits.sort((a, b) => b[0] - a[0])) out = out.slice(0, pos) + text + out.slice(pos + len);
     const outToks = jsTokens(out).filter((t) => t.type !== "ws" && t.type !== "comment");
-    const assigns = declared || outToks.some((t) => t.depth === 0 && t.type === "punct" && ASSIGNS.has(t.text));
-    // The names that are assigned (x = e, x += e, x++, ++x), not after . or ?.
+    // The index of the token that closes the bracket at outToks[k]
+    const closer = (k) => {
+      const d = outToks[k].depth;
+      for (let m = k + 1; m < outToks.length; m++) {
+        const u = outToks[m];
+        if (u.type === "punct" && u.depth === d && ")]}".includes(u.text)) return m;
+      }
+      return outToks.length;
+    };
+    // A top-level assignment gives no output, also inside parentheses around the whole code
+    // (({a} = o) is a destructuring assignment)
+    let outer = 0;
+    for (let b = 0, e = outToks.length - 1; b < e && outToks[b].text === "(" && closer(b) === e; b++, e--) outer++;
+    const assigns = declared || outToks.some((t) => t.depth === outer && t.type === "punct" && ASSIGNS.has(t.text));
+    // The names that are assigned, not after . or ?.: x = e, x += e, x++, ++x, and the names of a
+    // destructuring pattern ([a, ...b] = e, {a, b: c, d = 1} = e): those that the pattern binds, not
+    // the keys before : nor the default values after =
     const assigned = new Set();
+    const afterDot = (k) => k > 0 && (outToks[k - 1].text === "." || outToks[k - 1].text === "?.");
     outToks.forEach((t, k) => {
-      if (t.type !== "ident") return;
+      if (t.type !== "ident" || afterDot(k)) return;
       const before = outToks[k - 1];
       const after = outToks[k + 1];
-      if (before && (before.text === "." || before.text === "?.")) return;
       const step = (u) => u && (u.text === "++" || u.text === "--");
       if ((after && after.type === "punct" && ASSIGNS.has(after.text)) || step(after) || step(before)) assigned.add(t.text);
+    });
+    outToks.forEach((t, k) => {
+      if (t.type !== "punct" || (t.text !== "[" && t.text !== "{")) return;
+      const c = closer(k);
+      const after = outToks[c + 1];
+      // A pattern is followed by =; [ after a name or ) is an index (a[i] = e), not a pattern
+      if (!after || after.text !== "=" || (k > 0 && t.text === "[" && (outToks[k - 1].type === "ident" || outToks[k - 1].text === ")" || outToks[k - 1].text === "]"))) return;
+      for (let m = k + 1; m < c; m++) {
+        const u = outToks[m];
+        if (u.type !== "ident" || afterDot(m)) continue;
+        const next = outToks[m + 1];
+        const prev = outToks[m - 1];
+        if (next && next.text === ":") continue; // a key
+        if (prev && prev.text === "=") continue; // a default value
+        assigned.add(u.text);
+      }
     });
     return { code: out, assigns, assigned };
   }

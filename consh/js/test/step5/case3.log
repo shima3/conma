@@ -13,4 +13,7 @@ o2={"v":2}
 number
 process=5
 object
+performance=2
+object
+status=3 kk=4 others={"x":5,"y":6}
 exit: 0

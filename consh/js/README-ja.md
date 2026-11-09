@@ -2,6 +2,8 @@
 
 ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
 
+**セキュリティの注意**：`js` と JS の文は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+
 ## 作る
 
 ```
@@ -21,7 +23,7 @@ consh/js/serve.py          # http://localhost:8765/（ポートは引数で変�
 
 http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。`serve.py` は `python3 -m http.server` と同じくファイルを出すほか、ディレクトリの一覧（`?consh-ls`）を返し、ブラウザにファイルを毎回確かめさせる（`Cache-Control: no-cache`）。`build.sh` が `web/` に作るファイル（`conma.js`、`conma.wasm`、`consh.module.se`）がないか、ソースより古いとき（`git pull` の後など。これらはリポジトリにないので pull では変わらない）は、`build.sh` を実行するように言って起動しない。ほかの Web サーバーでも動くが、`index.html` のあるディレクトリ（ページのディレクトリ）の一覧が取れないので、`ls` や `*` にはそのディレクトリのファイルが出ない。
 
-* VM、ファイル、`cat` などの組み込みコマンドは Worker（`web/consh-worker.js`、`web/consh-core.js`）で動き、ページは画面と JavaScript（`js` と JS の文）を受け持つ。そのため、ファイルを読む間や長い処理の間も画面は固まらず、JavaScript からは今までどおり `document` や `window` が使える。Worker に JS の値を同期して渡すために SharedArrayBuffer を使うので、ページが cross-origin isolated である必要がある。`serve.py` は、そのためのヘッダ（`Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp`）を送る。そのため、JavaScript から読む別のオリジンのもの（画像など）は、CORS か `Cross-Origin-Resource-Policy` を付けて出されている必要がある（`fetch` は CORS で読める）。
+* VM、ファイル、`cat` などの組み込みコマンドは Worker（`web/consh-worker.js`、`web/consh-core.js`）で動き、ページは画面と JavaScript（`js` と JS の文）を受け持つ。そのため、ファイルを読む間や長い処理の間も画面は固まらず、JavaScript からは今までどおり `document` や `window` が使える。Worker に JS の値を同期して渡すために SharedArrayBuffer を使うので、ページが cross-origin isolated である必要がある。`serve.py` は、そのためのヘッダ（`Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp`）を送る。そのため、ページから別のオリジンのものを no-cors で読む（`<img>`、`<script>`、`fetch` の `mode: "no-cors"`）と、相手が `Cross-Origin-Resource-Policy` を付けて出していなければ止められる。CORS で読む `fetch`（既定）は、相手が CORS を許していれば動く。
 * このヘッダを送らないサーバーでは、ConSh はページの中で動く（Worker を使う前と同じ。ファイルを読む間は画面が止まる）。最初の案内に、どちらで動いているかが出る。
 
 * 外部コマンドはない。JavaScript で作った `cat`、`pwd`、`ls`（`web/consh-core.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、ConSh の PLAN-ja.md の 1.2）。`cat` は、引数のファイルか標準入力を、標準出力に書く。`pwd` は、カレントディレクトリを出す（`-L` と `-P` は同じ）。`ls [-1AadF] [file ...]` は、名前を 1 行に 1 つ出す。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。

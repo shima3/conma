@@ -37,3 +37,10 @@ typeof k3
 process = 5
 echo "process=$process"
 typeof globalThis.process
+# 分割代入の名前も、大域変数と同じ名前でもシェルの変数になる（キーと既定値の式は数えない）
+[performance] = [2]
+echo "performance=$performance"
+typeof globalThis.performance
+# 括弧で囲んだ分割代入も、代入なので何も出さない
+({ status, k: kk, ...others } = {status: 3, k: 4, x: 5, y: 6})
+echo "status=$status kk=$kk others=$others"
