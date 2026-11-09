@@ -99,12 +99,21 @@
   List_first fields ,(data)
   __String_equal__ kind "s" ,(test__) __if_then_else__ test__
     (,() __NULL__ data)
-    (,()
-      __Dict_new__ ,(wrapped)
-      __Dict_put__ wrapped "js" data ,()
-      __NULL__ wrapped) ,(value)
+    (,() Js_wrap data) ,(value)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_put__ vars name value)
+
+;; JS の値の番号 id を入れた変数の値
+(define Js_wrap ,(id)
+  __Dict_new__ ,(wrapped)
+  __Dict_put__ wrapped "js" id ,()
+  __NULL__ wrapped)
+
+;; js 変数名= のコード。変数名があれば、結果を JS の値のまま受け取る印の行を前に付ける
+(define Js_keep_code ,(name code)
+  __Cont_get__ ,(return)
+  __is_null__ name ,(test__) __if__ test__ (,() return code) ,()
+  __String_concat__ "//@consh-keep\n" code)
 
 ;; JS の値の番号 id を、シェルの値にする。プリミティブ（number:3、boolean:true、bigint:5、undefined、null）は
 ;; ここで直し、オブジェクトと関数（#n）は、その時点の値をホストに直してもらう（__JS_value__）。

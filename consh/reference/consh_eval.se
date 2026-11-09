@@ -2934,6 +2934,8 @@
       __LList_uncons__ __print_exit_error__ rest ,(code more)
       Arg_string sh pos "js" code ,(code)
       __NULL__ code more) ,(code jsArgs)
+  ;; 変数に入れるときは、結果を JS の値のまま受け取る（consh/js/PLAN-ja.md の 2.5 の 4。ホストは (r j 番号) を書く）
+  Js_keep_code name code ,(code)
   Js_args sh pos jsArgs ,(list)
   __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code list ,(stream toHost)
   __Ref_new__ toHost ,(toHostRef)
@@ -3147,11 +3149,12 @@
   Target_write sh pos out item ,()
   Js_output_items sh pos out rest)
 
-;; 変数に入れる値。s は String、l は LazyList、n は空文字列
+;; 変数に入れる値。s は String、l は LazyList、j は JS の値（Js_wrap）、n は空文字列
 (define Js_value ,(kind value)
   __Cont_get__ ,(return)
   __if__ (,() __String_equal__ kind "s") (,() return value) ,()
   __if__ (,() __String_equal__ kind "l") (,() Js_lazy value ,(v) return v) ,()
+  __if__ (,() __String_equal__ kind "j") (,() Js_wrap value ,(v) return v) ,()
   __NULL__ "")
 
 ;; リストの要素：String はそのまま、リスト（空なら null）は LazyList

@@ -12,9 +12,13 @@ q = 1
 function show () { echo "q=$q" }
 q = 2
 show
-# js 変数名= は、今までどおり
+# js 変数名= も、結果を JS の値のまま入れる（数は数のまま）。$ ではリスト
 js wv= '[1, 2]'
 JSON.stringify(wv)
+echo "wv=$wv"
+js ob= '({k: 1})'
+ob.k + 1
+echo "ob=$ob"
 # シェルで代入し直すと String になる
 o=plain
 typeof o

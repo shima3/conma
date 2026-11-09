@@ -172,6 +172,9 @@ var ConMaVM = (function () {
   // it as one.
 
   const STMT = "//@consh-stmt\n";
+  // js name= code: the result is given as a JS value, (r j "id"), unless it is a string or an
+  // iterator (2.5 of consh/js/PLAN-ja.md)
+  const KEEP = "//@consh-keep\n";
   const values = new Map(); // objects and functions of shell variables, by number
   let nextValue = 0;
   // The id of a JS value (not a string).
@@ -693,6 +696,7 @@ var ConMaVM = (function () {
         host_js_call: (fd, id, codePtr, codeLen, argsPtr, argsLen) => {
           const code = text(new Uint8Array(x.memory.buffer, codePtr, codeLen));
           const args = JSON.parse(text(new Uint8Array(x.memory.buffer, argsPtr, argsLen)));
+          const keep = code.startsWith(KEEP);
           jsPending++;
           // Lines go to the pipe at once (the virtual OS may be used inside conma_run), and the VM
           // runs again after them.
@@ -768,7 +772,7 @@ var ConMaVM = (function () {
             result = Promise.resolve(
               code.startsWith(STMT)
                 ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line))
-                : evaluate(code, args, makeStdin(job))
+                : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
             );
           } catch (e) {
             result = Promise.reject(e);
@@ -778,6 +782,7 @@ var ConMaVM = (function () {
           result
             .then((v) => {
               if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
+              if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v) + '")\n';
               if (!isIterator(v)) return resultLine(v);
               iterate(v);
               return undefined;
