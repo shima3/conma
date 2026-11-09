@@ -1,0 +1,9 @@
+n = 3
+n * 2
+f = (a) => {
+  return a + 1
+}
+f(n)
+function g () { echo "g" }
+g
+echo $n

@@ -24,7 +24,8 @@ consh/
 │   ├── consh_repl.se    対話モード
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
-│   └── consh_eval.se    文の実行
+│   ├── consh_eval.se    文の実行
+│   └── consh_jsstmt.se  JS の文（JavaScript のある wasm 版だけ。js/PLAN-ja.md の 2.5）
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数

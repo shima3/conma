@@ -33,6 +33,9 @@
   __Ref_new__ __FALSE__ ,(discard)
   __Dict_put__ r "discard" discard ,()
   __OS_trap_interrupt__ interrupt ,()
+  ;; JavaScript のある版では、JS の文を使う（consh/js/PLAN-ja.md の 2.5）
+  Js_probe ,(js)
+  __Dict_put__ r "js" js ,()
   __VProc_start__ (,() Repl_watch sh r) ,(watcher)
   num "1" ,(one)
   Repl_loop sh r one)
@@ -81,7 +84,7 @@
       __Ref_set__ discard __FALSE__ ,()
       __NULL__ "" lineNo)
     (,() __NULL__ text start) ,(text start)
-  __if__ (,() __is_null__ line) (,() Repl_end sh text start) ,()
+  __if__ (,() __is_null__ line) (,() Repl_end sh r text start) ,()
   __String_concat__ text line ,(text)
   __String_concat__ text "\n" ,(text)
   num "1" ,(one)
@@ -89,7 +92,7 @@
   ;; 行末の \ は行継続なので、続きを読む
   Str_ends text "\\\n" ,(continued)
   __if__ continued (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
-  Parse_text text "stdin" start ,(lines full msg)
+  Repl_parse sh r text start ,(lines full msg)
   __if__ (,() __is_null__ full) (,() return lines lineNo) ,()
   Parse_incomplete msg ,(incomplete)
   __if__ incomplete (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
@@ -100,11 +103,11 @@
   __NULL__ __NULL__ lineNo)
 
 ;; 入力が終わったとき。読みかけのコマンドがあれば構文エラーで終わり、なければ $? で終わる
-(define Repl_end ,(sh text start)
+(define Repl_end ,(sh r text start)
   __Cont_get__ ,(return)
   __unless__ (,() __String_equal__ text "")
     (,()
-      Parse_text text "stdin" start ,(lines full msg)
+      Repl_parse sh r text start ,(lines full msg)
       __unless__ (,() __is_null__ full)
         (,()
           __String_concat__ "consh: " full ,(s)
@@ -204,3 +207,10 @@
   __if__ (,() __Number_is_negative__ start) (,() return __FALSE__) ,()
   __String_substring__ __print_exit_error__ s start len ,(tail)
   __String_equal__ tail suffix)
+
+;; text を解析する（Parse_text_with）。JS の文の判定には、シェルに今定義されている関数も使う
+(define Repl_parse ,(sh r text start)
+  __Dict_lookup_or__ r "js" __print_exit_error__ ,(js)
+  __Dict_lookup_or__ sh "funcs" __print_exit_error__ ,(funcs)
+  Js_parse_opts js funcs ,(opts)
+  Parse_text_with text "stdin" start opts)

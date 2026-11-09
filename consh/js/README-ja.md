@@ -66,6 +66,32 @@ js nat= '(function* () { let i = 0; while (true) yield i++ })()'     # 遅延の
 
 ネイティブの VM（Python 版、Rust 版）と Rust 版の ConSh では、`js` は `js: JavaScript is not available` を出して `$?` を 127 にする。
 
+## JS の文
+
+JavaScript のある版（ブラウザと Node.js の wasm 版）では、先頭の語がコマンド（予約語、組み込みコマンド、関数、PATH にある外部コマンド）でない文を、行全体の JavaScript のコードとして評価する（PLAN-ja.md の 2.5）。
+
+```
+n = 3                          # シェルの変数 n に、JavaScript の数 3
+n * 2                          # 6
+echo $n                        # 3（$ では文字列やリストにする）
+let o = {a: 1, b: [1, 2]}      # let、const、var の宣言もシェルの変数になる
+echo $o                        # {"a":1,"b":[1,2]}
+xs = [1, 2, 3].map(i => i * n)
+for x in $xs; do echo $x; done
+name=world                     # 名前= で始まる文は、今までどおりシェルの変数定義（String）
+console.log(`hello ${name}`)   # シェルの変数も JavaScript の変数として見える
+add = (a, b) => Number(a) + Number(b)
+$add 1 2                       # JavaScript の関数は $ を付けて呼ぶ
+r = await fetch("names.txt").then(r => r.text())
+```
+
+* 括弧や文字列が閉じていなければ、次の行も続きとして読む（対話モードでは PS2 を出す）。
+* JS の文の中の `;`、`|`、`>` は JavaScript のもので、パイプやリダイレクトにはならない。シェルの関数の本体では、JS の文を 1 行に 1 つ書く。
+* 式の値は `js` と同じく標準出力に出す。代入と宣言は何も出さない。
+* JavaScript の `if`、`for`、`function` は、文の始めではシェルの構文になる。`{ for (...) ... }` のようにブロックにするか、`let f = function () {...}` と書く。`"..."`、`/.../`、`./` で始まる文もシェルの文である。
+* JavaScript としてコンパイルできないか、先頭の名前が定義されていなければ、打ち間違えたコマンドとみて、シェルの文として実行する（`nosuchcommand a b` は、今までどおりコマンドが見つからない）。
+* 判定はスクリプトを解析するときに行う。PATH にあるコマンドと同じ名前（macOS の `x`、`w` など）の変数は、文の始めでは JS にならない。
+
 ## テスト
 
 ```

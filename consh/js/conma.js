@@ -155,6 +155,301 @@ var ConMaVM = (function () {
     return value;
   }
 
+  // ── JS statements of ConSh (2.5 of consh/js/PLAN-ja.md) ──
+  // ConSh calls __JS_call__ with STMT and the code of a statement, and as args
+  // [names, kinds, values] of the shell variables that the code names: a kind
+  // is s (a string), l (an array) or j (a JS value: its value is the number
+  // of the value in the table below). Before the result, the host writes a
+  // line for each variable to set, (w "name" "id" s "text"|l (...)|n|f): its
+  // JS value (id, in the table) and that value as a shell value (n for
+  // undefined and null, f for a function). If the statement seems to be a
+  // mistyped shell command (it cannot be compiled, or its first name is not
+  // defined), the result is (f "message") instead, and ConSh runs it as one.
+
+  const STMT = "//@consh-stmt\n";
+  const values = new Map(); // JS values of shell variables, by number
+  let nextValue = 0;
+  function keep(v) {
+    values.set(++nextValue, v);
+    return nextValue;
+  }
+  // A JS value of a shell variable: a function of one is called by ConSh with
+  // __consh_value(id) as the code of js.
+  globalThis.__consh_value = (id) => values.get(Number(id));
+
+  function Fallback(message) {
+    this.message = message;
+  }
+
+  const REGEX_AFTER = new Set(
+    "return typeof instanceof in of new delete void throw case do else yield await".split(" ")
+  );
+  const PUNCTS = [">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "=>", "==", "!=",
+    "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "&&", "||", "??", "?.", "++", "--", "**", "<<", ">>"];
+  const ASSIGNS = new Set(["=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=",
+    "||=", "??="]);
+
+  // The tokens of JavaScript code: {type, text, start, end, depth}, type ws (with newlines),
+  // comment, ident, num, str, tmpl (a piece of a template), regex or punct. depth is that of
+  // the brackets around the token (an opening and its closing bracket have the depth outside).
+  function jsTokens(src) {
+    const toks = [];
+    const stack = [];
+    let i = 0;
+    let reOk = true;
+    const push = (type, start, depth) => toks.push({ type, text: src.slice(start, i), start, end: i, depth });
+    // From inside a template to its end or to a ${; true for a ${
+    const template = () => {
+      while (i < src.length) {
+        const c = src[i];
+        if (c === "\\") i += 2;
+        else if (c === "`") {
+          i++;
+          return false;
+        } else if (c === "$" && src[i + 1] === "{") {
+          i += 2;
+          return true;
+        } else i++;
+      }
+      return false;
+    };
+    while (i < src.length) {
+      const s = i;
+      const c = src[i];
+      const depth = stack.length;
+      if (/\s/.test(c)) {
+        while (i < src.length && /\s/.test(src[i])) i++;
+        push("ws", s, depth);
+      } else if (c === "/" && src[i + 1] === "/") {
+        while (i < src.length && src[i] !== "\n") i++;
+        push("comment", s, depth);
+      } else if (c === "/" && src[i + 1] === "*") {
+        const e = src.indexOf("*/", i + 2);
+        i = e < 0 ? src.length : e + 2;
+        push("comment", s, depth);
+      } else if (/[A-Za-z_$\u0080-￿]/.test(c)) {
+        while (i < src.length && /[\w$\u0080-￿]/.test(src[i])) i++;
+        push("ident", s, depth);
+        reOk = REGEX_AFTER.has(src.slice(s, i));
+      } else if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(src[i + 1] || ""))) {
+        i++;
+        while (i < src.length && /[\w.]/.test(src[i])) i++;
+        push("num", s, depth);
+        reOk = false;
+      } else if (c === "'" || c === '"') {
+        i++;
+        while (i < src.length && src[i] !== c && src[i] !== "\n") i += src[i] === "\\" ? 2 : 1;
+        if (src[i] === c) i++;
+        push("str", s, depth);
+        reOk = false;
+      } else if (c === "`") {
+        i++;
+        if (template()) stack.push("T");
+        push("tmpl", s, depth);
+        reOk = true;
+      } else if (c === "/" && reOk) {
+        i++;
+        let inClass = false;
+        while (i < src.length && src[i] !== "\n") {
+          const d = src[i];
+          if (d === "\\") i++;
+          else if (d === "[") inClass = true;
+          else if (d === "]") inClass = false;
+          else if (d === "/" && !inClass) break;
+          i++;
+        }
+        i++;
+        while (i < src.length && /[\w$]/.test(src[i])) i++;
+        push("regex", s, depth);
+        reOk = false;
+      } else if ("([{".includes(c)) {
+        i++;
+        stack.push(c);
+        push("punct", s, depth);
+        reOk = true;
+      } else if (")]}".includes(c)) {
+        i++;
+        const open = stack.pop();
+        if (open === "T") {
+          // The } of a ${ in a template: the rest of the template
+          if (template()) stack.push("T");
+          push("tmpl", s, stack.length);
+          reOk = false;
+        } else {
+          push("punct", s, stack.length);
+          reOk = c === "}";
+        }
+      } else {
+        const p = PUNCTS.find((q) => src.startsWith(q, i)) || c;
+        i += p.length;
+        push("punct", s, depth);
+        reOk = !(p === "++" || p === "--");
+      }
+    }
+    return toks;
+  }
+
+  // Top-level declarations of the code as assignments to (shell) variables: let x = e, const
+  // and var are x = e (x = undefined without e), let {a} = o is ({a} = o), function f () {...}
+  // is f = function f () {...}; (async and generator functions too), and class C {...} is
+  // C = class C {...};. Also whether there is a declaration or a top-level assignment (no output then).
+  function rewriteDeclarations(src) {
+    const toks = jsTokens(src);
+    const edits = []; // [position, text to insert, length to remove]
+    const sig = (k) => {
+      while (k < toks.length && (toks[k].type === "ws" || toks[k].type === "comment")) k++;
+      return k;
+    };
+    // The index of the token that closes the bracket at toks[k]
+    const closing = (k) => {
+      const d = toks[k].depth;
+      for (let m = k + 1; m < toks.length; m++) if (toks[m].type === "punct" && toks[m].depth === d && ")]}".includes(toks[m].text)) return m;
+      return toks.length - 1;
+    };
+    let atStart = true; // at the start of a statement
+    let declared = false;
+    for (let k = 0; k < toks.length; k++) {
+      const t = toks[k];
+      if (t.type === "ws" || t.type === "comment") {
+        if (t.depth === 0 && t.text.includes("\n")) atStart = true;
+        continue;
+      }
+      if (t.depth === 0 && atStart && t.type === "ident") {
+        const n = sig(k + 1);
+        const next = toks[n];
+        if ((t.text === "let" || t.text === "const" || t.text === "var") && next && (next.type === "ident" || next.text === "{" || next.text === "[")) {
+          declared = true;
+          if (next.type === "ident") {
+            edits.push([t.start, "", next.start - t.start]);
+            // Each declarator x without = e is x = undefined (declarators are separated by , at depth 0)
+            let d = n;
+            for (;;) {
+              const after = sig(d + 1);
+              const endsLine = toks[d + 1] && toks[d + 1].type === "ws" && toks[d + 1].text.includes("\n");
+              if (after >= toks.length || toks[after].text === ";" || toks[after].text === "," || endsLine)
+                edits.push([toks[d].end, " = undefined", 0]);
+              let m = after;
+              while (m < toks.length && !(toks[m].depth === 0 && (toks[m].text === "," || toks[m].text === ";" || (toks[m].type === "ws" && toks[m].text.includes("\n"))))) m++;
+              if (m >= toks.length || toks[m].text !== ",") break;
+              d = sig(m + 1);
+              if (d >= toks.length || toks[d].type !== "ident") break;
+            }
+          } else {
+            // A pattern: in parentheses up to the end of the statement (; or a newline at depth 0)
+            edits.push([t.start, next.text === "{" ? "(" : ";", next.start - t.start]);
+            let m = closing(n) + 1;
+            while (m < toks.length && !(toks[m].depth === 0 && (toks[m].text === ";" || (toks[m].type === "ws" && toks[m].text.includes("\n"))))) m++;
+            if (next.text === "{") edits.push([m < toks.length ? toks[m].start : src.length, ")", 0]);
+          }
+        } else {
+          let f = k;
+          if (t.text === "async" && next && next.text === "function") f = n;
+          const kw = toks[f];
+          if (kw.text === "function" || kw.text === "class") {
+            let m = sig(f + 1);
+            if (toks[m] && toks[m].text === "*") m = sig(m + 1);
+            if (toks[m] && toks[m].type === "ident") {
+              declared = true;
+              edits.push([t.start, toks[m].text + " = ", 0]);
+              let b = m;
+              while (b < toks.length && !(toks[b].text === "{" && toks[b].depth === 0)) b++;
+              if (b < toks.length) edits.push([toks[closing(b)].end, ";", 0]);
+            }
+          }
+        }
+      }
+      atStart = t.depth === 0 && (t.text === ";" || t.text === "}");
+    }
+    let out = src;
+    for (const [pos, text, len] of edits.sort((a, b) => b[0] - a[0])) out = out.slice(0, pos) + text + out.slice(pos + len);
+    const assigns = declared || jsTokens(out).some((t) => t.depth === 0 && t.type === "punct" && ASSIGNS.has(t.text));
+    return { code: out, assigns };
+  }
+
+  // A JS value as a shell value, for a (w ...) line.
+  function shellValue(v) {
+    if (v === undefined || v === null) return "n";
+    if (typeof v === "function") return "f";
+    try {
+      return Array.isArray(v) ? "l " + sexpList(v) : "s " + sexpString(scalar(v));
+    } catch (e) {
+      return "s " + sexpString(String(v));
+    }
+  }
+
+  // Evaluate a JS statement (see above). emit writes a line to the pipe of the call. The result
+  // is a Promise of the value to output (undefined for nothing), or of a Fallback.
+  function evaluateStatement(src, args, stdin, emit) {
+    const [names, kinds, vals] = args;
+    const vars = Object.create(null);
+    const ids = new Map();
+    names.forEach((name, k) => {
+      if (kinds[k] === "j") {
+        ids.set(name, Number(vals[k]));
+        vars[name] = values.get(Number(vals[k]));
+      } else vars[name] = vals[k];
+    });
+    const written = new Set();
+    const m = /^\s*([A-Za-z_$\u0080-￿][\w$\u0080-￿]*)/.exec(src);
+    const head = m ? m[1] : null;
+    const scope = new Proxy(vars, {
+      has: (t, k) => typeof k === "string" && (k in t || !(k === "stdin" || k === "args" || k === "__consh_scope" || k in globalThis)),
+      get: (t, k) => {
+        if (k in t) return t[k];
+        if (typeof k !== "string") return undefined;
+        const e = new ReferenceError(k + " is not defined");
+        e.conshName = k;
+        throw e;
+      },
+      set: (t, k, v) => {
+        t[k] = v;
+        written.add(k);
+        return true;
+      },
+    });
+    const { code, assigns } = rewriteDeclarations(src);
+    const expression = "with (__consh_scope) { return (" + code + "\n) }";
+    let fn;
+    let isExpression = true;
+    try {
+      fn = new Function("stdin", "args", "__consh_scope", expression);
+    } catch (e) {
+      if (!(e instanceof SyntaxError)) throw e;
+      try {
+        fn = new AsyncFunction("stdin", "args", "__consh_scope", expression);
+      } catch (e2) {
+        try {
+          fn = new AsyncFunction("stdin", "args", "__consh_scope", "with (__consh_scope) {\n" + code + "\n}");
+          isExpression = false;
+        } catch (e3) {
+          return Promise.resolve(new Fallback(e.name + ": " + e.message));
+        }
+      }
+    }
+    const flush = () => {
+      for (const name of new Set([...written, ...ids.keys()])) {
+        const v = vars[name];
+        const id = written.has(name) ? keep(v) : ids.get(name);
+        emit("(w " + sexpString(name) + ' "' + id + '" ' + shellValue(v) + ")\n");
+      }
+    };
+    const failed = (e) => {
+      flush();
+      if (e instanceof ReferenceError && e.conshName !== undefined && e.conshName === head) return new Fallback(e.name + ": " + e.message);
+      throw e;
+    };
+    let result;
+    try {
+      result = fn(stdin, [], scope);
+    } catch (e) {
+      return Promise.resolve().then(() => failed(e));
+    }
+    return Promise.resolve(result).then((v) => {
+      flush();
+      return isExpression && assigns ? undefined : v;
+    }, failed);
+  }
+
   // A String in double quotes, as the VM writes the elements of standard input.
   function unquote(line) {
     const m = /^\s*"((?:[^"\\]|\\.)*)"\s*$/s.exec(line);
@@ -423,7 +718,11 @@ var ConMaVM = (function () {
           let result;
           consoleJob = job;
           try {
-            result = Promise.resolve(evaluate(code, args, makeStdin(job)));
+            result = Promise.resolve(
+              code.startsWith(STMT)
+                ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line))
+                : evaluate(code, args, makeStdin(job))
+            );
           } catch (e) {
             result = Promise.reject(e);
           } finally {
@@ -431,6 +730,7 @@ var ConMaVM = (function () {
           }
           result
             .then((v) => {
+              if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
               if (!isIterator(v)) return resultLine(v);
               iterate(v);
               return undefined;

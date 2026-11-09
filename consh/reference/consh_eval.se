@@ -46,6 +46,7 @@
 (include "consh_ast.se")
 (include "consh_expand.se")
 (include "consh_chan.se")
+(include "consh_jsstmt.se")
 
 ;; ── 文脈 ──
 
@@ -627,6 +628,8 @@
   __if__ condition (,() return (,(sh) Eval_reset sh pos children)) ,()
   __String_equal__ tag "shift" ,(condition)
   __if__ condition (,() return (,(sh) Eval_shift sh pos children)) ,()
+  __String_equal__ tag "jsstmt" ,(condition)
+  __if__ condition (,() return (,(sh) Eval_jsstmt sh pos children)) ,()
   __NULL__ (,(sh) Eval_list sh children))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列。
