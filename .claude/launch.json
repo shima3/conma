@@ -4,8 +4,25 @@
     {
       "name": "consh-web",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["consh/js/serve.py", "8765"],
+      "runtimeArgs": [
+        "consh/js/serve.py",
+        "8765"
+      ],
       "port": 8765
+    },
+    {
+      "name": "consh-web-plain",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8766",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "consh/js/web"
+      ],
+      "port": 8766
     }
   ]
 }

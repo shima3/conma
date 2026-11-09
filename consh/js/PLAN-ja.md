@@ -484,7 +484,7 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 - web/consh-core.js：VM、ファイル、`COMMANDS`、`hostProc`、VM を区切って動かすことを、consh.js から移した。Worker（consh-worker.js）でもページ（consh.js）でも動く。
 - web/consh-worker.js：ページとメッセージでつなぐ。js の呼び出しはページに渡し、ページの `JsEngine` が書く行を VM のパイプに書く。読み手がいなくなったら（EPIPE）ページに知らせる。`__JS_value__` は同期なので、ページに尋ねて、SharedArrayBuffer を `Atomics.wait` で待つ（1 MB ずつ受け取るので、大きな値も渡せる）。
 - web/consh.js：画面と JsEngine。ページが cross-origin isolated（`crossOriginIsolated`）なら Worker で、そうでなければページの中で consh-core.js を動かす。serve.py は COOP と COEP のヘッダを送る。
-- ブラウザ（serve.py）で、Worker で動くこと、JS の文から `document.title` を変えられること、`setTimeout` で後から変えたオブジェクトが `$o` に表れること（`__JS_value__`）、`cat < names.txt | js ...`、`ls | js ...` と `console.log`、イテレータを `for` で読むこと、打ち間違えたコマンドを確かめた。ヘッダのないサーバーでページの中で動く形は、ブラウザのペインから `python3 -m http.server` のページを開けなかったので、ブラウザでは確かめていない。Node.js の `consh/js/test`（同じスレッドの JsEngine）は通る。
+- ブラウザ（serve.py）で、Worker で動くこと、JS の文から `document.title` を変えられること、`setTimeout` で後から変えたオブジェクトが `$o` に表れること（`__JS_value__`）、`cat < names.txt | js ...`、`ls | js ...` と `console.log`、イテレータを `for` で読むこと、打ち間違えたコマンドを確かめた。ヘッダのないサーバー（`python3 -m http.server`。`.claude/launch.json` の `consh-web-plain`）では、ページの中で動き、同じく `document.title`、`$o`、`cat < names.txt | js ...` が動くことを確かめた。Node.js の `consh/js/test`（同じスレッドの JsEngine）は通る。
 
 ### 3.20. CONSH_JS_DEBUG（2026/11/9）
 
