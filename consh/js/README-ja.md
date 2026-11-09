@@ -98,7 +98,7 @@ r = await fetch("names.txt").then(r => r.text())
 * 代入する名前は、JavaScript の大域変数と同じ名前（ブラウザの `name`、`status`、Node.js の `process` など）でもシェルの変数になる。大域変数を変えるときは `globalThis.name = ...` と書く。
 * JavaScript の `if`、`for`、`function` は、文の始めではシェルの構文になる。`{ for (...) ... }` のようにブロックにするか、`let f = function () {...}` と書く。`"..."`、`/.../`、`./` で始まる文もシェルの文である。
 * シェルの `if 文; then` の条件の文を JS の文にすると、`; then` まで JavaScript のコードになる。`then` を次の行に書くか、`js` を使う。
-* JavaScript としてコンパイルできないか、先頭の名前が定義されていなければ、打ち間違えたコマンドとみて、シェルの文として実行する（`nosuchcommand a b` は、今までどおりコマンドが見つからない）。
+* JavaScript としてコンパイルできないか、先頭の名前が定義されていなければ、打ち間違えたコマンドとみて、シェルの文として実行する（`nosuchcommand a b` は、今までどおりコマンドが見つからない）。JS を書き間違えたのに「コマンドが見つからない」と出るときは、変数 `CONSH_JS_DEBUG` を空でない値にすると（`CONSH_JS_DEBUG=1`、または環境変数）、JavaScript としてのエラーも `js: SyntaxError: ... (run as a shell statement)` と出る。
 * 判定はスクリプトを解析するときに行う。PATH にあるコマンドと同じ名前（macOS の `x`、`w` など）の変数は、文の始めでは JS にならない。マシンや PATH によらずに動かしたいスクリプトでは、JS の文でなく `js '...'` を使う。
 
 ## テスト

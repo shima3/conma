@@ -271,6 +271,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
     - JS の文が、JavaScript としてコンパイルできない（構文エラー。`sl -la`、`nosuch | wc -l`）か、先頭の名前がシェルの変数でも JavaScript の大域変数でもない（`nosuchcommand`、`no-such-file` の `no`。ReferenceError）ときは、打ち間違えたコマンドとみて、同じテキストをシェルの文として実行する。コマンドが見つからなければ、今までと同じメッセージ（`consh: ファイル:行:桁: 先頭の語: No such file or directory: 先頭の語`）を出し、`$?` を 127 にする。`nosuch | wc -l` のパイプラインも、今までと同じく動く。
         - シェルの文としての解析は、JS の文を解析するときに行っておく（構文木の節に、代わりのコマンド行として持つ）。シェルの文として解析できなければ、JavaScript のエラーを `js: 名前: メッセージ` で出し、`$?` を 1 にする（`z = )`）。
         - wasm 版で consh/test を流しても、打ち間違えたコマンドのケースは、今までと同じ出力になる。
+        - シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、シェルの文として実行する前に、JavaScript としてのエラーを `js: メッセージ (run as a shell statement)` で出す（3.20）。
     - そのほかの例外と、拒否された Promise は、`js` と同じく `js: 名前: メッセージ` を出し、`$?` を 1 にする。
     - そうでなければ、`$?` を 0 にする。
 8. **例**
@@ -485,10 +486,14 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 - web/consh.js：画面と JsEngine。ページが cross-origin isolated（`crossOriginIsolated`）なら Worker で、そうでなければページの中で consh-core.js を動かす。serve.py は COOP と COEP のヘッダを送る。
 - ブラウザ（serve.py）で、Worker で動くこと、JS の文から `document.title` を変えられること、`setTimeout` で後から変えたオブジェクトが `$o` に表れること（`__JS_value__`）、`cat < names.txt | js ...`、`ls | js ...` と `console.log`、イテレータを `for` で読むこと、打ち間違えたコマンドを確かめた。ヘッダのないサーバーでページの中で動く形は、ブラウザのペインから `python3 -m http.server` のページを開けなかったので、ブラウザでは確かめていない。Node.js の `consh/js/test`（同じスレッドの JsEngine）は通る。
 
+### 3.20. CONSH_JS_DEBUG（2026/11/9）
+
+- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
+- テスト：consh/js/test/step5 の case7。
+
 ## 4. 未解決の点
 
 - JS の値の関数を、`$f 1 2` だけでなく `f 1 2` でも呼べるようにするか。シェルの関数を JavaScript から呼ぶか（2.5 の 9）。
 - JS の値の表の解放と、イテレータの `return()` は、VM が値を捨てたときに行う（3.18）。`for` で途中まで読んだ遅延の LazyList は、VM が捨てず、循環の回収でも消えないので、ホストのイテレータと呼び出しが残る。関数の局所変数の JS の値も、循環の回収まで残る。VM の LazyList と循環の回収（vm/src/gc.rs）を調べる必要がある。
-- JS の文が SyntaxError でシェルの文になったとき、JS を書き間違えたのに「コマンドが見つからない」と出る。`CONSH_JS_DEBUG` などで JavaScript のエラーも出すか（REVIEW-ja.md の 2.1）。
 - ブラウザ版は、cross-origin isolated でないサーバーでは、今までどおりページの中で VM を動かすので、ファイルを読む間は画面が止まる（3.19）。
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。

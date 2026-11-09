@@ -66,7 +66,10 @@
   __String_equal__ tag "f" ,(test__) __if__ test__
     (,()
       closeAll ,()
-      __is_null__ fallback ,(test__) __if__ test__ (,() List_first fields ,(msg) fail msg "1") ,()
+      List_first fields ,(msg)
+      __is_null__ fallback ,(test__) __if__ test__ (,() fail msg "1") ,()
+      ;; CONSH_JS_DEBUG（シェルの変数か環境変数）が空でなければ、JavaScript のエラーも出す
+      Js_debug sh pos msg ,()
       Eval_lines sh fallback ,()
       return) ,()
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
@@ -207,3 +210,16 @@
 ;; 値を持っておくための、何もしない関数
 (define Js_hold ,(value)
   __nop__)
+
+;; JS の文をシェルの文として実行するとき、CONSH_JS_DEBUG が空でなければ、JavaScript としてのエラーを出す
+(define Js_debug ,(sh pos msg)
+  __Cont_get__ ,(return)
+  Sh_defined sh pos "CONSH_JS_DEBUG" ,(defined)
+  __unless__ defined return ,()
+  Sh_lookup sh pos "CONSH_JS_DEBUG" ,(value)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(test__) __if__ test__
+    (,() __String_equal__ value "" ,(empty) __if__ empty return ,()) ,()
+  __String_concat__ "js: " msg ,(m)
+  __String_concat__ m " (run as a shell statement)" ,(m)
+  Sh_warn sh pos m)

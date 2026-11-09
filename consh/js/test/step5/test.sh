@@ -4,7 +4,7 @@ cd ${0%/*}
 export CONMA_VM=wasm
 export CONSH_IMPL=conma
 . ../../../test/common.sh
-for c in case1 case2 case3 case4 case6
+for c in case1 case2 case3 case4 case6 case7
 do
   run $c $c.sh < /dev/null
 done
