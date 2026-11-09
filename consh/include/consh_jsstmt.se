@@ -1,7 +1,8 @@
 ;; JS の文（consh/js/PLAN-ja.md の 2.5）。JavaScript のある版（wasm 版の VM）では、先頭の語がコマンドでない文を
 ;; JavaScript のコードとして評価する（構文解析は consh_parser.se の Ps_js）。
 ;; コードに現れる名前のシェルの変数を、同じ名前の JavaScript の変数として渡し、コードが代入した変数を受け取る。
-;; JavaScript の値は、ホストの表に置き、シェルの変数には、その番号と、シェルの値に直したものを入れる（Js_store）。
+;; 文字列でない JavaScript の値は、シェルの変数に、その番号（オブジェクトと関数はホストの表の #n、プリミティブは
+;; number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう（Js_store、Js_force）。
 ;; consh_eval.se（参照版も）が include する
 
 ;; JavaScript が使えるか（__JS_call__ が onError に進まないか）。使えれば、"0" の結果を読み捨てる
@@ -27,7 +28,7 @@
   __NULL__ opts)
 
 ;; 文 (jsstmt 位置 コード 代わりのコマンド行 名前 ...)。ホストは、結果の前に、代入した変数ごとに
-;; (w 名前 番号 種類 [値]) の行を書く。種類は s（String）、l（リスト）、n（undefined と null）、f（関数）。
+;; (w 名前 s 文字列) か (w 名前 j 番号) の行を書く。
 ;; コードが打ち間違えたコマンドに見えるときは、結果の代わりに (f メッセージ) を書くので、代わりのコマンド行を実行する
 ;; （なければメッセージを出す）。そのほかは js（Builtin_js）の変数名のない形と同じ
 (define Eval_jsstmt ,(sh pos children)
@@ -43,7 +44,6 @@
     Sh_set_status sh status ,()
     return) ,(fail)
   Js_stmt_vars sh pos names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
-  Js_stmt_jsvars sh ns ks vs ,(ns ks vs)
   __LList_cons__ vs __NULL__ ,(args)
   __LList_cons__ ks args ,(args)
   __LList_cons__ ns args ,(args)
@@ -91,28 +91,44 @@
   Js_store sh pos fields ,()
   Js_stmt_lines sh pos in out err toHostRef rest)
 
-;; (w 名前 番号 種類 [値]) の、名前の局所変数に、JS の値を入れる。JS の値は、Promise の変数の値（Bg_promise）と
-;; 同じ形の Dict（Value_force が "ref" の値を取り出す）に、"js" にホストの表の番号を足したもの。
-;; 値は、s は String、l は LazyList、n は空文字列、f は、呼ぶと js でその関数を呼ぶ関数値
+;; (w 名前 s 文字列) なら String を、(w 名前 j 番号) なら JS の値を、名前の局所変数に入れる。
+;; JS の値は、"js" に番号を入れた Dict で、Value_force が読むたびに Js_force で直す
 (define Js_store ,(sh pos fields)
   __LList_uncons__ __print_exit_error__ fields ,(name fields)
-  __LList_uncons__ __print_exit_error__ fields ,(id fields)
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
-  Js_stored_value kind id fields ,(value)
-  __LList_cons__ value __NULL__ ,(cell)
-  __Ref_new__ cell ,(ref)
-  __Dict_new__ ,(wrapped)
-  __Dict_put__ wrapped "ref" ref ,()
-  __Dict_put__ wrapped "js" id ,()
+  List_first fields ,(data)
+  __String_equal__ kind "s" ,(test__) __if_then_else__ test__
+    (,() __NULL__ data)
+    (,()
+      __Dict_new__ ,(wrapped)
+      __Dict_put__ wrapped "js" data ,()
+      __NULL__ wrapped) ,(value)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
-  __Dict_put__ vars name wrapped)
+  __Dict_put__ vars name value)
 
-(define Js_stored_value ,(kind id fields)
+;; JS の値の番号 id を、シェルの値にする。プリミティブ（number:3、boolean:true、bigint:5、undefined、null）は
+;; ここで直し、オブジェクトと関数（#n）は、その時点の値をホストに直してもらう（__JS_value__）。
+;; s は String、l は LazyList、n は空文字列、f は、呼ぶと js でその関数を呼ぶ関数値
+(define Js_force ,(id)
   __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ id zero one ,(first)
+  __String_equal__ first "#" ,(test__) __unless__ test__
+    (,()
+      __String_find__ __print_exit_error__ id ":" zero ,(colon)
+      __is_null__ colon ,(test__) __if__ test__ (,() return "") ,()
+      __Number_add__ colon one ,(start)
+      __String_length__ id ,(len)
+      __String_substring__ __print_exit_error__ id start len ,(text)
+      return text) ,()
+  __JS_value__ __print_exit_error__ id ,(text)
+  __Sexp_read__ __print_exit_error__ text ,(sexp)
+  __LList_uncons__ __print_exit_error__ sexp ,(kind fields)
   __String_equal__ kind "f" ,(test__) __if__ test__
     (,()
-      __String_concat__ "__consh_value(" id ,(code)
-      __String_concat__ code ")" ,(code)
+      __String_concat__ "__consh_value(\"" id ,(code)
+      __String_concat__ code "\")" ,(code)
       return (,(caller pos args in out err)
         __LList_cons__ code args ,(args)
         Builtin_js caller pos args in out err)) ,()
@@ -150,37 +166,3 @@
   __String_equal__ type "Closure" ,(test__) __if__ test__ skip ,()
   Js_arg sh pos value ,(list)
   add "l" list)
-
-;; JS の値の変数は、コードに現れなくても渡す。ホストは、文が終わったときに、それらをシェルの値に直し直す
-;; （p = o; p.a = 1 で o のオブジェクトが変われば、$o にも表れる）
-(define Js_stmt_jsvars ,(sh ns ks vs)
-  __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
-  __Dict_keys__ vars ,(keys)
-  List_fromSeq keys ,(keys)
-  __Dict_new__ ,(seen)
-  Js_mark seen ns ,()
-  Js_add_jsvars vars keys seen ns ks vs)
-
-(define Js_mark ,(seen names)
-  __Cont_get__ ,(return)
-  __is_null__ names ,(test__) __if__ test__ return ,()
-  __LList_uncons__ __print_exit_error__ names ,(name rest)
-  __Dict_put__ seen name __TRUE__ ,()
-  Js_mark seen rest)
-
-(define Js_add_jsvars ,(vars keys seen ns ks vs)
-  __Cont_get__ ,(return)
-  __is_null__ keys ,(test__) __if__ test__ (,() return ns ks vs) ,()
-  __LList_uncons__ __print_exit_error__ keys ,(key rest)
-  __NULL__ (,() Js_add_jsvars vars rest seen ns ks vs ,(ns ks vs) return ns ks vs) ,(next)
-  __Dict_lookup_or__ seen key (,(k) __NULL__ __NULL__) ,(found)
-  __is_null__ found ,(test__) __unless__ test__ next ,()
-  __Dict_lookup_or__ vars key __print_exit_error__ ,(raw)
-  __type_name__ raw ,(type)
-  __String_equal__ type "Dict" ,(test__) __unless__ test__ next ,()
-  __Dict_lookup_or__ raw "js" (,(k) __NULL__ __NULL__) ,(id)
-  __is_null__ id ,(test__) __if__ test__ next ,()
-  __LList_cons__ key ns ,(ns)
-  __LList_cons__ "j" ks ,(ks)
-  __LList_cons__ id vs ,(vs)
-  Js_add_jsvars vars rest seen ns ks vs)

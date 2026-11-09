@@ -158,24 +158,50 @@ var ConMaVM = (function () {
   // ── JS statements of ConSh (2.5 of consh/js/PLAN-ja.md) ──
   // ConSh calls __JS_call__ with STMT and the code of a statement, and as args
   // [names, kinds, values] of the shell variables that the code names: a kind
-  // is s (a string), l (an array) or j (a JS value: its value is the number
-  // of the value in the table below). Before the result, the host writes a
-  // line for each variable to set, (w "name" "id" s "text"|l (...)|n|f): its
-  // JS value (id, in the table) and that value as a shell value (n for
-  // undefined and null, f for a function). If the statement seems to be a
-  // mistyped shell command (it cannot be compiled, or its first name is not
-  // defined), the result is (f "message") instead, and ConSh runs it as one.
+  // is s (a string), l (an array) or j (a JS value: its value is its id).
+  // Before the result, the host writes a line for each variable that the code
+  // assigned: (w "name" s "text") for a string, which becomes a String, and
+  // (w "name" j "id") for any other value. An id is #n for an object or a
+  // function, kept in the table below, or the value itself for a primitive
+  // (number:3, boolean:true, bigint:5, undefined, null), so that primitives
+  // do not fill the table. When the variable is read with $, ConSh asks the
+  // host for it as a shell value with __JS_value__ (host_js_value), so that a
+  // change of the object is seen. If the statement seems to be a mistyped
+  // shell command (it cannot be compiled, or its first name is not defined),
+  // the result is (f "message") instead, nothing is assigned, and ConSh runs
+  // it as one.
 
   const STMT = "//@consh-stmt\n";
-  const values = new Map(); // JS values of shell variables, by number
+  const values = new Map(); // objects and functions of shell variables, by number
   let nextValue = 0;
-  function keep(v) {
+  // The id of a JS value (not a string).
+  function idOf(v) {
+    if (v === undefined || v === null) return String(v);
+    const t = typeof v;
+    if (t === "number" || t === "boolean" || t === "bigint") return t + ":" + String(v);
     values.set(++nextValue, v);
-    return nextValue;
+    return "#" + nextValue;
+  }
+  function valueOf(id) {
+    id = String(id);
+    if (id.startsWith("#")) {
+      const n = Number(id.slice(1));
+      if (!values.has(n)) throw new HostError("no JS value " + id);
+      return values.get(n);
+    }
+    if (id === "undefined") return undefined;
+    if (id === "null") return null;
+    const i = id.indexOf(":");
+    const kind = id.slice(0, i);
+    const text = id.slice(i + 1);
+    if (kind === "number") return Number(text);
+    if (kind === "boolean") return text === "true";
+    if (kind === "bigint") return BigInt(text);
+    throw new HostError("no JS value " + id);
   }
   // A JS value of a shell variable: a function of one is called by ConSh with
   // __consh_value(id) as the code of js.
-  globalThis.__consh_value = (id) => values.get(Number(id));
+  globalThis.__consh_value = valueOf;
 
   function Fallback(message) {
     this.message = message;
@@ -227,8 +253,8 @@ var ConMaVM = (function () {
         const e = src.indexOf("*/", i + 2);
         i = e < 0 ? src.length : e + 2;
         push("comment", s, depth);
-      } else if (/[A-Za-z_$\u0080-￿]/.test(c)) {
-        while (i < src.length && /[\w$\u0080-￿]/.test(src[i])) i++;
+      } else if (/[A-Za-z_$\u0080-\uffff]/.test(c)) {
+        while (i < src.length && /[\w$\u0080-\uffff]/.test(src[i])) i++;
         push("ident", s, depth);
         reOk = REGEX_AFTER.has(src.slice(s, i));
       } else if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(src[i + 1] || ""))) {
@@ -362,11 +388,22 @@ var ConMaVM = (function () {
     }
     let out = src;
     for (const [pos, text, len] of edits.sort((a, b) => b[0] - a[0])) out = out.slice(0, pos) + text + out.slice(pos + len);
-    const assigns = declared || jsTokens(out).some((t) => t.depth === 0 && t.type === "punct" && ASSIGNS.has(t.text));
-    return { code: out, assigns };
+    const outToks = jsTokens(out).filter((t) => t.type !== "ws" && t.type !== "comment");
+    const assigns = declared || outToks.some((t) => t.depth === 0 && t.type === "punct" && ASSIGNS.has(t.text));
+    // The names that are assigned (x = e, x += e, x++, ++x), not after . or ?.
+    const assigned = new Set();
+    outToks.forEach((t, k) => {
+      if (t.type !== "ident") return;
+      const before = outToks[k - 1];
+      const after = outToks[k + 1];
+      if (before && (before.text === "." || before.text === "?.")) return;
+      const step = (u) => u && (u.text === "++" || u.text === "--");
+      if ((after && after.type === "punct" && ASSIGNS.has(after.text)) || step(after) || step(before)) assigned.add(t.text);
+    });
+    return { code: out, assigns, assigned };
   }
 
-  // A JS value as a shell value, for a (w ...) line.
+  // A JS value as a shell value (__JS_value__).
   function shellValue(v) {
     if (v === undefined || v === null) return "n";
     if (typeof v === "function") return "f";
@@ -382,15 +419,15 @@ var ConMaVM = (function () {
   function evaluateStatement(src, args, stdin, emit) {
     const [names, kinds, vals] = args;
     const vars = Object.create(null);
-    const ids = new Map();
     names.forEach((name, k) => {
-      if (kinds[k] === "j") {
-        ids.set(name, Number(vals[k]));
-        vars[name] = values.get(Number(vals[k]));
-      } else vars[name] = vals[k];
+      vars[name] = kinds[k] === "j" ? valueOf(vals[k]) : vals[k];
     });
+    const { code, assigns, assigned } = rewriteDeclarations(src);
+    // A name that the code assigns is a shell variable even if it is a global (name and status of
+    // a browser, process of Node.js): a global is changed only as globalThis.name = ...
+    for (const name of assigned) if (!(name in vars) && name in globalThis) vars[name] = globalThis[name];
     const written = new Set();
-    const m = /^\s*([A-Za-z_$\u0080-￿][\w$\u0080-￿]*)/.exec(src);
+    const m = /^\s*([A-Za-z_$\u0080-\uffff][\w$\u0080-\uffff]*)/.exec(src);
     const head = m ? m[1] : null;
     const scope = new Proxy(vars, {
       has: (t, k) => typeof k === "string" && (k in t || !(k === "stdin" || k === "args" || k === "__consh_scope" || k in globalThis)),
@@ -407,7 +444,6 @@ var ConMaVM = (function () {
         return true;
       },
     });
-    const { code, assigns } = rewriteDeclarations(src);
     const expression = "with (__consh_scope) { return (" + code + "\n) }";
     let fn;
     let isExpression = true;
@@ -426,16 +462,18 @@ var ConMaVM = (function () {
         }
       }
     }
+    // The variables that the code assigned (only these: a variable that it did not assign may have
+    // been assigned by another VProc meanwhile)
     const flush = () => {
-      for (const name of new Set([...written, ...ids.keys()])) {
+      for (const name of written) {
         const v = vars[name];
-        const id = written.has(name) ? keep(v) : ids.get(name);
-        emit("(w " + sexpString(name) + ' "' + id + '" ' + shellValue(v) + ")\n");
+        emit("(w " + sexpString(name) + (typeof v === "string" ? " s " + sexpString(v) : ' j "' + idOf(v) + '"') + ")\n");
       }
     };
     const failed = (e) => {
-      flush();
+      // A mistyped shell command: run as one, without the assignments
       if (e instanceof ReferenceError && e.conshName !== undefined && e.conshName === head) return new Fallback(e.name + ": " + e.message);
+      flush();
       throw e;
     };
     let result;
@@ -642,6 +680,15 @@ var ConMaVM = (function () {
         },
         host_dir_needed: (ptr, len) => {
           if (dirNeeded) dirNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
+        },
+        host_js_value: (idPtr, idLen, out, cap) => {
+          let text;
+          try {
+            text = "(" + shellValue(valueOf(str(idPtr, idLen))) + ")";
+          } catch (e) {
+            return -22; // EINVAL: no such value
+          }
+          return give(text, out, cap);
         },
         host_js_call: (fd, id, codePtr, codeLen, argsPtr, argsLen) => {
           const code = text(new Uint8Array(x.memory.buffer, codePtr, codeLen));

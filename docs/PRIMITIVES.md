@@ -172,6 +172,12 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 * **Usage**: The builtin `js` of ConSh.
 * **Error**: If `code` is not a String, or `args` is not an LList of Strings and LLists, invokes `onError` with an error message string. The native VMs (`test/vproc_step.py` and `vm/`) have no JavaScript: with correct arguments, they invoke `onError` with `"__JS_call__: JavaScript is not available"`.
 
+### **`__JS_value__ onError id ,(String)`**
+* **Description**: Returns the JavaScript value numbered `id` (a String) in the host of the VM, as the S-expression of a value of ConSh that `__Sexp_read__` reads: `(s "text")` for a string (a number, a boolean, a BigInt or another object is made into one with `String()` or `JSON.stringify`, or `String()` when that fails), `(l (...))` for an array (as in a result of `__JS_call__`), `(n)` for `undefined` and `null`, and `(f)` for a function.
+* **Behavior**: Only the VM for wasm32 (`consh/js`) has JavaScript. It asks the host at once and does not wait (wasm imports are synchronous), so the value is made from the object as it is now. The numbers are those that the host gives in the results of the JS statements of ConSh (see 2.5 of consh/js/PLAN-ja.md).
+* **Usage**: A shell variable of ConSh that holds a JavaScript value, when it is read with `$`.
+* **Error**: If `id` is not a String, or the host has no value of that number, invokes `onError` with an error message string. The native VMs (`test/vproc_step.py` and `vm/`) have no JavaScript: with a String, they invoke `onError` with `"__JS_value__: JavaScript is not available"`.
+
 ---
 
 ## 2. Number Primitives

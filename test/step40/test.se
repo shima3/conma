@@ -1,4 +1,5 @@
 ;; Step40: __JS_call__ onError code args ,(inputStream)。JavaScript を評価する（consh/js の wasm 版の VM）。
+;; __JS_value__ onError id ,(String)：ホストの JS の値を ConSh の値の S 式にする（case3）。
 ;; ネイティブの VM には JavaScript がないので、引数を確かめた後、onError に進む
 (include "util.se")
 
@@ -32,3 +33,15 @@
   try "x" args ,()
   __LList_cons__ args __NULL__ ,(nested)
   try "x" nested)
+
+;; __JS_value__ を呼び、onError のメッセージか、得た S 式を出す
+(define try_value ,(id)
+  __Cont_get__ ,(return)
+  __JS_value__ (,(msg) println msg ,() return) id ,(text)
+  println text)
+
+;; case3: __JS_value__。正しい引数（String）と、誤った引数（Number）
+(define case3 ,()
+  try_value "#1" ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  try_value one)

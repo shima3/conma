@@ -145,6 +145,7 @@ prims! {
     "__OS_kill__"          => "prim_OS_kill", process::kill;
     "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
     "__JS_call__"          => "prim_JS_call", js::call;
+    "__JS_value__"         => "prim_JS_value", js::value;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

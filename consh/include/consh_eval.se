@@ -2834,6 +2834,9 @@
   __type_name__ value ,(type)
   __String_equal__ type "Dict" ,(condition)
   __unless__ condition (,() return value) ,()
+  ;; JS の値の変数（consh_jsstmt.se）は、読むたびにホストに直してもらう
+  __Dict_lookup_or__ value "js" (,(key) __NULL__ __NULL__) ,(id)
+  __is_null__ id ,(test__) __unless__ test__ (,() Js_force id ,(v) return v) ,()
   __Dict_lookup_or__ value "ref" __print_exit_error__ ,(ref)
   Promise_wait ref)
 

@@ -48,6 +48,9 @@ extern "C" {
     fn host_js_input(job: i32, ptr: *const u8, len: usize);
     /// The VM closed the fd for the call job (the end of standard input).
     fn host_js_input_end(job: i32);
+    /// The JS value numbered id (__JS_value__) as an S-expression of a value
+    /// of ConSh, written to out (cap bytes); the length, or -errno.
+    fn host_js_value(id_ptr: *const u8, id_len: usize, out: *mut u8, cap: usize) -> i32;
 
     // Files of the host (after conma_use_host_fs): paths are absolute and as
     // the VM has them (the host resolves . and .. and symbolic links), and a
@@ -538,6 +541,10 @@ pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
     });
     unsafe { host_js_call(w, job, code.as_ptr(), code.len(), args_json.as_ptr(), args_json.len()) };
     Ok((r, to_host))
+}
+
+pub fn js_value(id: &str) -> io::Result<String> {
+    host_text(|out, cap| unsafe { host_js_value(id.as_ptr(), id.len(), out, cap) })
 }
 
 pub fn setsid() -> c_int {

@@ -9,7 +9,7 @@ rustup target add wasm32-unknown-unknown   # 初めてのときだけ
 consh/js/build.sh
 ```
 
-`build.sh` は、VM を wasm32 でビルドし（consh/js/wasm、約 700 KB）、`web/` に wasm、`conma.js`、ConSh のモジュール（`consh.module.se`、約 5.8 MB）を置く。
+`build.sh` は、VM を wasm32 でビルドし（consh/js/wasm、約 700 KB）、`web/` に wasm、`conma.js`、ConSh のモジュール（`consh.module.se`、bin/includer と bin/resolver で作る。約 7.0 MB）を置く。
 
 ## ブラウザで使う
 
@@ -72,6 +72,9 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、先頭
 
 ```
 n = 3                          # シェルの変数 n に、JavaScript の数 3
+n=3                            # 名前= で始まる文は、今までどおりシェルの変数定義（文字列の "3"）
+n=1+2                          # 文字列の "1+2"。JavaScript で計算するなら n = 1+2 か let n = 1+2
+n = 3
 n * 2                          # 6
 echo $n                        # 3（$ では文字列やリストにする）
 let o = {a: 1, b: [1, 2]}      # let、const、var の宣言もシェルの変数になる
@@ -88,9 +91,12 @@ r = await fetch("names.txt").then(r => r.text())
 * 括弧や文字列が閉じていなければ、次の行も続きとして読む（対話モードでは PS2 を出す）。
 * JS の文の中の `;`、`|`、`>` は JavaScript のもので、パイプやリダイレクトにはならない。シェルの関数の本体では、JS の文を 1 行に 1 つ書く。
 * 式の値は `js` と同じく標準出力に出す。代入と宣言は何も出さない。
+* 文字列でない値は、JavaScript の値のまま変数に入り、`$` で読むたびに、その時点の値を文字列やリストに直す（オブジェクトを後で変えれば、`$o` にも表れる）。
+* 代入する名前は、JavaScript の大域変数と同じ名前（ブラウザの `name`、`status`、Node.js の `process` など）でもシェルの変数になる。大域変数を変えるときは `globalThis.name = ...` と書く。
 * JavaScript の `if`、`for`、`function` は、文の始めではシェルの構文になる。`{ for (...) ... }` のようにブロックにするか、`let f = function () {...}` と書く。`"..."`、`/.../`、`./` で始まる文もシェルの文である。
+* シェルの `if 文; then` の条件の文を JS の文にすると、`; then` まで JavaScript のコードになる。`then` を次の行に書くか、`js` を使う。
 * JavaScript としてコンパイルできないか、先頭の名前が定義されていなければ、打ち間違えたコマンドとみて、シェルの文として実行する（`nosuchcommand a b` は、今までどおりコマンドが見つからない）。
-* 判定はスクリプトを解析するときに行う。PATH にあるコマンドと同じ名前（macOS の `x`、`w` など）の変数は、文の始めでは JS にならない。
+* 判定はスクリプトを解析するときに行う。PATH にあるコマンドと同じ名前（macOS の `x`、`w` など）の変数は、文の始めでは JS にならない。マシンや PATH によらずに動かしたいスクリプトでは、JS の文でなく `js '...'` を使う。
 
 ## テスト
 

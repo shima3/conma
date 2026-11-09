@@ -4,4 +4,10 @@ o={"a":3}
 q=1
 ["1","2"]
 string
+o2={"v":2}
+3.0000000000000004
+0.30000000000000004 true
+number
+process=5
+object
 exit: 0

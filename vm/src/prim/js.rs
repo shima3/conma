@@ -1,5 +1,6 @@
 //! __JS_call__: evaluate JavaScript in the host of the VM for wasm32
-//! (consh/js). The native VM has no JavaScript: the call goes to onError.
+//! (consh/js), and __JS_value__: a value of the host as a value of ConSh.
+//! The native VM has no JavaScript: both go to onError.
 
 use super::stream::new_stream;
 use super::{take_n, PResult, VmError};
@@ -36,6 +37,28 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
             let output = Value::Stream(new_stream(m, w, 'w'));
             vp.prim_return(vec![input, output]);
         }
+        Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, sys::strerror(&e))),
+    }
+    Ok(())
+}
+
+/// __JS_value__ onError id ,(String): the JS value numbered id in the host
+/// (a String that the host gave in a result of __JS_call__), as the
+/// S-expression of a value of ConSh: (s "text"), (l (...)), (n) or (f) for a
+/// function. The host makes it when it is asked, so a change of an object is
+/// seen. See 2.5 of consh/js/PLAN-ja.md.
+pub fn value(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__JS_value__";
+    let mut a = take_n(vp, name, 2)?;
+    let id = a.pop().unwrap();
+    let on_error = a.pop().unwrap();
+    if value_type_name(&id) != "String" {
+        vp.prim_error(on_error, &format!("{}: expected String id, got {}", name, value_type_name(&id)));
+        return Ok(());
+    }
+    let id = value_to_display(&id).map_err(VmError::Error)?;
+    match sys::js_value(&id) {
+        Ok(text) => vp.prim_return(vec![string_value(&text)]),
         Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, sys::strerror(&e))),
     }
     Ok(())

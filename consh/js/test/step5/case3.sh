@@ -18,3 +18,18 @@ JSON.stringify(wv)
 # シェルで代入し直すと String になる
 o=plain
 typeof o
+# $ は読むたびに今の値に直す（JS の文が終わった後に変えたものも）
+o2 = {v: 1}
+void setTimeout(() => { o2.v = 2 }, 0)
+sleep 0.1
+echo "o2=$o2"
+# 数や真偽値は、表に入れずに値のまま持つ。JS では数のまま
+k3 = 0.1 + 0.2
+k3 * 10
+t3 = true
+echo "$k3 $t3"
+typeof k3
+# 代入する名前は、大域変数と同じ名前でもシェルの変数になる（大域変数は globalThis.名前 で変える）
+process = 5
+echo "process=$process"
+typeof globalThis.process
