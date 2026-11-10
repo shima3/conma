@@ -285,8 +285,8 @@ var ConshCore = (function () {
       for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
       // The commands of COMMANDS are builtin commands of ConSh
       vm.setenv("CONSH_HOST_BUILTINS", Object.keys(COMMANDS).join(" "));
-      // (( )), js and JS statements run code in the page without a sandbox, so they are off unless the
-      // server has config.json with {"CONSH_ENABLE_JS": "sjs"} ((( )) only) or "js" (all of them)
+      // (( )) and js run code in the page without a sandbox, so they are off unless the
+      // server has config.json with {"CONSH_ENABLE_JS": "sjs"} ((( )) only) or "js" (both)
       // (consh/js/README-ja.md). A parameter of the URL is not used, since a link from someone else
       // could turn it on
       const jsMode = await jsModeOfServer();

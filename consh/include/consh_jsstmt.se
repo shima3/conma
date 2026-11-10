@@ -1,20 +1,14 @@
-;; JS の文（consh/js/PLAN-ja.md の 2.5）。JavaScript のある版（wasm 版の VM）では、先頭の語がコマンドでない文を
-;; JavaScript のコードとして評価する（構文解析は consh_parser.se の Ps_js）。
-;; コードに現れる名前のシェルの変数を、同じ名前の JavaScript の変数として渡し、コードが代入した変数を受け取る。
-;; 文字列でない JavaScript の値は、シェルの変数に、その番号（オブジェクトと関数はホストの表の #n、プリミティブは
-;; number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう（Js_store、Js_force）。
+;; ConSh の JavaScript：js の JS の値と、SJS の算術評価 (( )) と算術置換 $(( ))（consh/SAFEJS-PLAN-ja.md）。
+;; 文字列でない JavaScript の値は、シェルの変数（js 変数名=、v=$(( ... ))）と SJS変数に、その番号（オブジェクトと関数は
+;; ホストの表の #n、プリミティブは number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう
+;; （Js_store、Js_force。consh/js/PLAN-ja.md の 2.5 の 4）。
 ;; JS の値の変数は、値を作った __JS_call__ の outputStream（toHost）も持つ。VM は、この Stream が捨てられたら閉じるので
 ;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
+;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（consh/js/PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
-;; JS の文を使うか。JavaScript が使えて（Js_probe_host）、起動したときの環境変数 CONSH_ENABLE_JS が js のときだけ真。
-;; ブラウザ版では、サーバの config.json の "CONSH_ENABLE_JS" を、ホストがこの変数に設定する（consh-core.js）
-(define Js_probe ,()
-  Js_state ,(state)
-  __String_equal__ state "js")
-
 ;; JavaScript の状態（consh/js/PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
-;;   js なら "js"（js、JS の文、算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、
+;;   js なら "js"（js と算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、
 ;;   ないかほかの値なら "off"（どれも使えない）。JavaScript がない版は "none"。
 ;; 環境変数は、シェルの export でなく、VM のプロセスのものを見るので、起動した後には変わらない
 (define Js_state ,()
@@ -41,74 +35,6 @@
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return) lines ,(line rest)
   Js_drain rest)
-
-;; 構文解析の opts（Parse_file_with、Parse_text_with）。js は JavaScript が使えるか、funcs は定義されている関数の Dict か null
-(define Js_parse_opts ,(js funcs)
-  __Dict_new__ ,(opts)
-  __Dict_put__ opts "js" js ,()
-  __Dict_put__ opts "funcs" funcs ,()
-  __NULL__ opts)
-
-;; 文 (jsstmt 位置 コード 代わりのコマンド行 名前 ...)。ホストは、結果の前に、代入した変数ごとに
-;; (w 名前 s 文字列) か (w 名前 j 番号) の行を書く。
-;; コードが打ち間違えたコマンドに見えるときは、結果の代わりに (f メッセージ) を書くので、代わりのコマンド行を実行する
-;; （なければメッセージを出す）。そのほかは js（Builtin_js）の変数名のない形と同じ
-(define Eval_jsstmt ,(sh pos children)
-  __Cont_get__ ,(return)
-  __LList_uncons__ __print_exit_error__ children ,(code rest)
-  __LList_uncons__ __print_exit_error__ rest ,(fallback names)
-  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
-  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
-  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
-  __NULL__ (,(msg status)
-    __String_concat__ "js: " msg ,(m)
-    Sh_warn sh pos m ,()
-    Sh_set_status sh status ,()
-    return) ,(fail)
-  Js_stmt_vars sh pos names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
-  ;; JS の値を変数に入れたら、toHost を閉じずに、その変数に持たせる
-  __Ref_new__ __FALSE__ ,(keptRef)
-  __LList_cons__ vs __NULL__ ,(args)
-  __LList_cons__ ks args ,(args)
-  __LList_cons__ ns args ,(args)
-  __String_concat__ "//@consh-stmt\n" code ,(code)
-  __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code args ,(stream toHost)
-  __Ref_new__ toHost ,(toHostRef)
-  __LazyList_lines__ stream ,(lines)
-  __NULL__ (,()
-    __Ref_get__ keptRef ,(kept)
-    Js_close_result kept stream toHostRef (,()
-      __OS_close__ __print_exit_error__ stream ,()
-      Js_input_close toHostRef)) ,(closeAll)
-  Js_stmt_lines sh pos in out err toHostRef keptRef lines "vars" ,(result rest)
-  __is_null__ result ,(test__) __if__ test__ (,() closeAll ,() fail "no result" "1") ,()
-  __LList_uncons__ __print_exit_error__ result ,(tag fields)
-  __String_equal__ tag "f" ,(test__) __if__ test__
-    (,()
-      closeAll ,()
-      List_first fields ,(msg)
-      __is_null__ fallback ,(test__) __if__ test__ (,() fail msg "1") ,()
-      ;; CONSH_JS_DEBUG（シェルの変数か環境変数）が空でなければ、JavaScript のエラーも出す
-      Js_debug sh pos msg ,()
-      Eval_lines sh fallback ,()
-      return) ,()
-  __LList_uncons__ __print_exit_error__ fields ,(kind fields)
-  __String_equal__ tag "e" ,(test__) __if__ test__ (,() closeAll ,() fail kind "1") ,()
-  __String_equal__ kind "t" ,(test__) __if__ test__
-    (,()
-      __Ref_get__ toHostRef ,(toHost)
-      L2 stream toHost ,(opened)
-      Open_track sh opened ,(mark)
-      Js_iter_out sh pos in out err toHostRef rest ,(status msg)
-      Open_release sh mark ,()
-      __Ref_set__ toHostRef __NULL__ ,()
-      __is_null__ msg ,(test__) __unless__ test__ (,() fail msg status) ,()
-      Sh_set_status sh status ,()
-      return) ,()
-  closeAll ,()
-  List_first fields ,(value)
-  Js_output sh pos out kind value ,()
-  Sh_set_status sh "0")
 
 ;; Js_lines と同じだが、(w ...) の行を読んで、文脈の key（"vars" か、SJS変数の "sjsvars"）の Dict に入れる。
 ;; JS の値を入れたら keptRef を真にする
@@ -205,53 +131,9 @@
   List_first fields ,(value)
   Js_value kind value)
 
-;; JavaScript に渡す変数：names のうち局所変数にあるものの、名前、種類、値の LList。
-;; 種類は j（JS の値。値はホストの表の番号）、s（String）、l（リスト。LazyList は要素の LList にする）。
-;; 関数値の変数と、JavaScript の側の名前（stdin、args）は渡さない
-(define Js_stmt_vars ,(sh pos names ns ks vs)
-  __Cont_get__ ,(return)
-  __is_null__ names ,(test__) __if__ test__ (,() return ns ks vs) ,()
-  __LList_uncons__ __print_exit_error__ names ,(name rest)
-  __NULL__ (,() Js_stmt_vars sh pos rest ns ks vs ,(ns ks vs) return ns ks vs) ,(skip)
-  __String_equal__ name "stdin" ,(test__) __if__ test__ skip ,()
-  __String_equal__ name "args" ,(test__) __if__ test__ skip ,()
-  __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
-  __Dict_lookup_or__ vars name (,(key) skip) ,(raw)
-  __NULL__ (,(kind value)
-    __LList_cons__ name ns ,(ns)
-    __LList_cons__ kind ks ,(ks)
-    __LList_cons__ value vs ,(vs)
-    Js_stmt_vars sh pos rest ns ks vs ,(ns ks vs)
-    return ns ks vs) ,(add)
-  __type_name__ raw ,(type)
-  __String_equal__ type "Dict" ,(isDict)
-  __if__ isDict
-    (,()
-      __Dict_lookup_or__ raw "js" (,(key) __NULL__ __NULL__) ,(id)
-      __is_null__ id ,(test__) __unless__ test__ (,() add "j" id) ,()) ,()
-  Value_force raw ,(value)
-  __type_name__ value ,(type)
-  __String_equal__ type "String" ,(test__) __if__ test__ (,() add "s" value) ,()
-  __String_equal__ type "Closure" ,(test__) __if__ test__ skip ,()
-  Js_arg sh pos value ,(list)
-  add "l" list)
-
 ;; 値を持っておくための、何もしない関数
 (define Js_hold ,(value)
   __nop__)
-
-;; JS の文をシェルの文として実行するとき、CONSH_JS_DEBUG が空でなければ、JavaScript としてのエラーを出す
-(define Js_debug ,(sh pos msg)
-  __Cont_get__ ,(return)
-  Sh_defined sh pos "CONSH_JS_DEBUG" ,(defined)
-  __unless__ defined return ,()
-  Sh_lookup sh pos "CONSH_JS_DEBUG" ,(value)
-  __type_name__ value ,(type)
-  __String_equal__ type "String" ,(test__) __if__ test__
-    (,() __String_equal__ value "" ,(empty) __if__ empty return ,()) ,()
-  __String_concat__ "js: " msg ,(m)
-  __String_concat__ m " (run as a shell statement)" ,(m)
-  Sh_warn sh pos m)
 
 ;; ── SJS：算術評価 (( )) と算術置換 $(( ))（consh/SAFEJS-PLAN-ja.md の 2）──
 ;; SJS式は、当面（段階 A）ホストの JavaScript で評価する。ホストは、コードが SJS の範囲（SAFEJS-PLAN-ja.md の 3）に

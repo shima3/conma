@@ -1,19 +1,4 @@
-o={"a":2}
-o={"a":3}
-3
-q=1
-[1,2]
-wv=1 2
-2
-ob={"k":1}
-string
-o2={"v":2}
-3.0000000000000004
-0.30000000000000004 true
-number
-process=5
-object
-performance=2
-object
-status=3 kk=4 others={"x":5,"y":6}
+2 3
+1
+v={"s":"x2"}
 exit: 0

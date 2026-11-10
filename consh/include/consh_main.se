@@ -24,10 +24,7 @@
   __String_equal__ mode "dump-sexp" ,(dumpSexp)
   __if_then_else__ fromSrc
     (,()
-      ;; JavaScript のある版では、JS の文を使う（consh/js/PLAN-ja.md の 2.5）。dump-src は使わない
-      __if_then_else__ runSrc (,() Js_probe) (,() __NULL__ __FALSE__) ,(js)
-      Js_parse_opts js __NULL__ ,(opts)
-      Parse_file_with astFile script opts)
+      Parse_file astFile script)
     (,()
       __if_then_else__ dumpSexp
         (,() Ast_readFile_with main_error astFile Sexp_read)

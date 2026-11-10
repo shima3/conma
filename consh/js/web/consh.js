@@ -1,6 +1,6 @@
 // ConSh in a browser: the page shows the terminal, and runs the ConMa version of ConSh (consh-core.js)
 // in a Worker (consh-worker.js), so that the page stays responsive while the VM reads files with
-// synchronous requests and runs. JavaScript (js and JS statements) is evaluated here in the page, where
+// synchronous requests and runs. JavaScript (js and the SJS of (( ))) is evaluated here in the page, where
 // it can use document and window: the Worker gives the calls of JavaScript to the JsEngine of conma.js
 // here, and answers __JS_value__ synchronously through a SharedArrayBuffer (Atomics). A
 // SharedArrayBuffer needs a page that is cross-origin isolated (serve.py sends the headers

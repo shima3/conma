@@ -17,10 +17,6 @@
 ;; path のスクリプトを解析し、コマンド行の節の LList を返す（consh_parse --pos の各行と同じ）。
 ;; file はエラーに出す名前
 (define Parse_file ,(path file)
-  Parse_file_with path file __NULL__)
-
-;; opts は null（JS の文なし）か、JS の文の判定に使う Dict（Ps_js_opts）
-(define Parse_file_with ,(path file opts)
   __OS_open__ (,(msg) Parse_fail msg) path "r" ,(stream)
   __LazyList_lines__ stream ,(lines)
   Cells_from_lines lines ,(cells)
@@ -30,7 +26,6 @@
   num "0" ,(zero)
   __Dict_put__ p "sep" zero ,()
   __Dict_put__ p "file" file ,()
-  Ps_js_opts p cells opts ,()
   Ps_program p)
 
 (define Parse_fail ,(msg)
@@ -42,9 +37,6 @@
 ;; 構文木のコマンド行の LList と、エラーなら「file:行:桁: メッセージ」と、メッセージだけを返す（エラーでなければ null）。
 ;; エラーでは終わらない
 (define Parse_text ,(text file startLine)
-  Parse_text_with text file startLine __NULL__)
-
-(define Parse_text_with ,(text file startLine opts)
   __Cont_get__ ,(return)
   Text_lines text ,(lines)
   LazyList_fromList lines ,(lines)
@@ -55,7 +47,6 @@
   __Dict_put__ p "sep" zero ,()
   __Dict_put__ p "file" file ,()
   __Dict_put__ p "onError" (,(full msg) return __NULL__ full msg) ,()
-  Ps_js_opts p cells opts ,()
   Ps_program p ,(lines)
   __NULL__ lines __NULL__ __NULL__)
 
@@ -747,8 +738,6 @@
   __if__ isExport (,() Ps_export p pos ,(s) return s) ,()
   Is_kw kw "function" ,(isFunction)
   __if__ isFunction (,() Ps_function p pos ,(s) return s) ,()
-  Ps_at_js p ,(isJs)
-  __if__ isJs (,() Ps_js p pos term ,(s) return s) ,()
   Ps_defs p __NULL__ ,(defs)
   __unless__ (,() __is_null__ defs)
     (,()
@@ -1927,216 +1916,11 @@
   Utf8_continue rest need value)
 
 
-;; ── JS の文（consh/js/PLAN-ja.md の 2.5）──
-;; JavaScript のある版では、先頭の語がコマンドでない文を、行全体の JavaScript のコードとし、
-;; 節 (jsstmt 位置 コード 代わりのコマンド行 識別子 ...) にする。代わりのコマンド行は、同じテキストを
-;; シェルの文として解析したもの（解析できなければ null）で、コードが打ち間違えたコマンドに見えるとき
-;; （コンパイルできないか、先頭の名前が定義されていない）に実行する。識別子は、コードに現れる名前
-;; （文字列、コメントの外で、. の後ろでないもの）で、その名前のシェルの変数を JavaScript に渡す。
-
-;; opts（null でなければ、"js" に JavaScript が使えるか、"funcs" にシェルに定義されている関数の Dict か null）から、
-;; p に "js" と "funcs"（関数の名前の Dict の LList。テキストの中で function 名前 と定義している名前を含む）を置く
-(define Ps_js_opts ,(p cells opts)
-  __Cont_get__ ,(return)
-  __is_null__ opts ,(test__) __if__ test__ return ,()
-  __Dict_lookup_or__ opts "js" __print_exit_error__ ,(js)
-  __unless__ js return ,()
-  __Dict_put__ p "js" __TRUE__ ,()
-  __Dict_new__ ,(found)
-  Funcs_scan cells "" found ,()
-  __Dict_lookup_or__ opts "funcs" __print_exit_error__ ,(funcs)
-  __is_null__ funcs ,(test__) __if_then_else__ test__
-    (,() L1 found)
-    (,() L2 found funcs) ,(dicts)
-  __Dict_put__ p "funcs" dicts)
-
-;; セルの中の「function 名前」の名前を found に入れる。function の前は、入力の始めか、空白、; { } ( & |
-(define Funcs_scan ,(cur prev found)
-  __Cont_get__ ,(return)
-  Cur_char cur ,(c)
-  __String_equal__ c "" ,(test__) __if__ test__ return ,()
-  __String_equal__ c "f" ,(isF)
-  __String_equal__ prev "" ,(atStart)
-  Ch_in prev " \t\n;{}(&|" ,(after)
-  __or__ atStart after ,(boundary)
-  __and__ isF boundary ,(test__) __if__ test__ (,() Funcs_name cur found) ,()
-  Cur_next cur ,(next)
-  Funcs_scan next c found)
-
-(define Funcs_name ,(cur found)
-  __Cont_get__ ,(return)
-  num "8" ,(eight)
-  Cur_raw_str cur eight "" ,(word cur)
-  __String_equal__ word "function" ,(test__) __unless__ test__ return ,()
-  Cur_char cur ,(c)
-  Is_space c ,(test__) __unless__ test__ return ,()
-  Cur_skip_spaces cur ,(cur)
-  Cur_ident cur "" ,(name)
-  __String_equal__ name "" ,(test__) __if__ test__ return ,()
-  __Dict_put__ found name __TRUE__)
-
-;; 行継続を取り除かずに n 文字の String と、その後ろのカーソル
-(define Cur_raw_str ,(cur n acc)
-  __Cont_get__ ,(return)
-  __if__ (,() __Number_is_zero__ n) (,() return acc cur) ,()
-  Cur_char cur ,(c)
-  __String_equal__ c "" ,(test__) __if__ test__ (,() return acc cur) ,()
-  __String_concat__ acc c ,(acc)
-  Cur_next cur ,(cur)
-  num "1" ,(one)
-  __Number_subtract__ n one ,(n)
-  Cur_raw_str cur n acc)
-
-(define Cur_skip_spaces ,(cur)
-  __Cont_get__ ,(return)
-  Cur_char cur ,(c)
-  Is_space c ,(test__) __unless__ test__ (,() return cur) ,()
-  Cur_next cur ,(cur)
-  Cur_skip_spaces cur)
-
-(define Cur_ident ,(cur acc)
-  __Cont_get__ ,(return)
-  Cur_char cur ,(c)
-  Is_ident_char c ,(test__) __unless__ test__ (,() return acc) ,()
-  __String_concat__ acc c ,(acc)
-  Cur_next cur ,(cur)
-  Cur_ident cur acc)
-
-;; 文の先頭が JS の文か。p の "js" が真で、前置の変数定義でなく、先頭の語がコマンドでないとき
-(define Ps_at_js ,(p)
-  __Cont_get__ ,(return)
-  __Dict_lookup_or__ p "js" (,(key) return __FALSE__) ,(js)
-  Ps_at_arith p ,(isArith)
-  __if__ isArith (,() return __FALSE__) ,()
-  Ps_at_def p ,(isDef)
-  __if__ isDef (,() return __FALSE__) ,()
-  Ps_get p "skipped" ,(cur)
-  Js_head_word cur "" ,(word)
-  Js_is_command p word ,(isCommand)
-  __not__ isCommand)
-
-;; 先頭の語：空白、改行、; | & < > ) } の手前まで（$( ) の中の true) は true。) で始まる文は、シェルの構文エラーにする）
-(define Js_head_word ,(cur acc)
-  __Cont_get__ ,(return)
-  Cur_char cur ,(c)
-  __String_equal__ c "" ,(end)
-  Ch_in c " \t\r\n;|&<>)}" ,(stop)
-  __or__ end stop ,(test__) __if__ test__ (,() return acc) ,()
-  __String_concat__ acc c ,(acc)
-  Cur_next cur ,(cur)
-  Js_head_word cur acc)
-
-;; 先頭の語がシェルの文になるか：空、$ ' " \ で始まる、括弧などより前に / を含む、予約語、組み込みコマンド、関数、PATH にあるコマンド
-(define Js_is_command ,(p word)
-  __Cont_get__ ,(return)
-  __String_equal__ word "" ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  num "0" ,(zero)
-  num "1" ,(one)
-  __String_substring__ __print_exit_error__ word zero one ,(c)
-  Ch_in c "$'\"\\" ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  ;; / は、括弧、引用符、= より前にあるときだけ見る（console.log("a/b") は JS の文）
-  Js_name_part word zero "" ,(part)
-  __String_find__ __print_exit_error__ part "/" zero ,(slash)
-  __is_null__ slash ,(test__) __unless__ test__ (,() return __TRUE__) ,()
-  Kw_all ,(kws)
-  Ch_list_has kws word ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  __String_equal__ word "reset" ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  __String_equal__ word "shift" ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  Builtin_lookup word ,(builtin)
-  __is_null__ builtin ,(test__) __unless__ test__ (,() return __TRUE__) ,()
-  Ps_get p "funcs" ,(dicts)
-  Js_in_dicts dicts word ,(test__) __if__ test__ (,() return __TRUE__) ,()
-  Js_in_path word)
-
-;; 語の i 文字目からの、( [ { " ' ` = の手前までの部分
-(define Js_name_part ,(word i acc)
-  __Cont_get__ ,(return)
-  __String_length__ word ,(len)
-  __Number_subtract__ len i ,(left)
-  __Number_is_zero__ left ,(test__) __if__ test__ (,() return acc) ,()
-  num "1" ,(one)
-  __Number_add__ i one ,(next)
-  __String_substring__ __print_exit_error__ word i next ,(c)
-  Ch_in c "([{\"'`=" ,(test__) __if__ test__ (,() return acc) ,()
-  __String_concat__ acc c ,(acc)
-  Js_name_part word next acc)
-
-(define Js_in_dicts ,(dicts name)
-  __Cont_get__ ,(return)
-  __is_null__ dicts ,(test__) __if__ test__ (,() return __FALSE__) ,()
-  __LList_uncons__ __print_exit_error__ dicts ,(dict rest)
-  __Dict_lookup_or__ dict name (,(key) Js_in_dicts rest name ,(found) return found) ,(value)
-  __NULL__ __TRUE__)
-
-;; name が、インタプリタの環境変数 PATH のディレクトリにあるか（Node.js 版。ブラウザ版には PATH がない）
-(define Js_in_path ,(name)
-  __Cont_get__ ,(return)
-  __OS_get_envDict__ ,(env)
-  __Dict_lookup_or__ env "PATH" (,(key) return __FALSE__) ,(path)
-  num "0" ,(zero)
-  Js_in_dirs path zero name)
-
-(define Js_in_dirs ,(path start name)
-  __Cont_get__ ,(return)
-  __String_length__ path ,(len)
-  __Number_subtract__ len start ,(left)
-  __Number_is_negative__ left ,(test__) __if__ test__ (,() return __FALSE__) ,()
-  __String_find__ __print_exit_error__ path ":" start ,(colon)
-  __is_null__ colon ,(test__) __if_then_else__ test__ (,() __NULL__ len) (,() __NULL__ colon) ,(end)
-  __String_substring__ __print_exit_error__ path start end ,(dir)
-  __String_equal__ dir "" ,(test__) __if_then_else__ test__ (,() __NULL__ ".") (,() __NULL__ dir) ,(dir)
-  __String_concat__ dir "/" ,(file)
-  __String_concat__ file name ,(file)
-  __OS_realpath__ (,(msg)
-      num "1" ,(one)
-      __Number_add__ end one ,(next)
-      Js_in_dirs path next name ,(found)
-      return found) file ,(real)
-  __NULL__ __TRUE__)
-
-;; JS の文の節。今の位置（文の先頭）から、括弧、文字列、テンプレート、コメント、正規表現の外にある改行か、
-;; 対応する括弧のない term（関数の本体の }、$( ) の )）か、入力の終わりの手前までをコードとする
-(define Ps_js ,(p pos term)
-  Ps_skip p ,()
-  __Dict_new__ ,(st)
-  __Dict_put__ st "code" "" ,()
-  __Dict_put__ st "stack" __NULL__ ,()
-  __Dict_put__ st "re" __TRUE__ ,()
-  __Dict_put__ st "dot" __FALSE__ ,()
-  __Dict_new__ ,(seen)
-  __Dict_put__ st "seen" seen ,()
-  __Dict_put__ st "names" __NULL__ ,()
-  __Dict_put__ st "term" term ,()
-  __Dict_put__ st "lines" __FALSE__ ,()
-  Js_scan p st ,()
-  __Dict_lookup_or__ st "code" __print_exit_error__ ,(code)
-  __Dict_lookup_or__ st "names" __print_exit_error__ ,(names)
-  List_reverse names ,(names)
-  Js_fallback p pos code ,(fallback)
-  __LList_cons__ fallback names ,(children)
-  __LList_cons__ code children ,(children)
-  Node_make "jsstmt" pos children)
-
-;; 同じテキストをシェルの文として解析したコマンド行の LList。エラーなら null。
-;; 位置が元と同じになるように、最初の行の前に、桁の分の空白を置く
-(define Js_fallback ,(p pos code)
-  Pos_split pos ,(line col)
-  num "1" ,(one)
-  __Number_subtract__ col one ,(n)
-  Js_spaces n "" ,(pad)
-  __String_concat__ pad code ,(text)
-  __String_concat__ text "\n" ,(text)
-  Ps_get p "file" ,(file)
-  Parse_text text file line ,(lines full msg)
-  __NULL__ lines)
-
-(define Js_spaces ,(n acc)
-  __Cont_get__ ,(return)
-  __if__ (,() __Number_is_zero__ n) (,() return acc) ,()
-  __String_concat__ acc " " ,(acc)
-  num "1" ,(one)
-  __Number_subtract__ n one ,(n)
-  Js_spaces n acc)
+;; ── JavaScript の字句（算術評価 (( )) と算術置換 $(( )) の SJS式の範囲。consh/SAFEJS-PLAN-ja.md の 2.1）──
+;; Js_scan は、今の位置から、括弧、文字列、テンプレート、コメント、正規表現の外にある term（算術評価の )）の手前までを
+;; コードとして読み、コードに現れる名前（. の後ろでないもの）を集める（Ps_arith）。
+;; st は、"code"（読んだコード）、"stack"（開いている括弧）、"re"（次に正規表現を置けるか）、"dot"（. の後か）、
+;; "seen" と "names"（集めた名前）、"term"、"lines"（改行の後も読むか）を持つ Dict
 
 (define Js_put ,(st key value)
   __Dict_put__ st key value)

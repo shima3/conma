@@ -661,8 +661,6 @@
   __if__ condition (,() return (,(sh) Eval_reset sh pos children)) ,()
   __String_equal__ tag "shift" ,(condition)
   __if__ condition (,() return (,(sh) Eval_shift sh pos children)) ,()
-  __String_equal__ tag "jsstmt" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_jsstmt sh pos children)) ,()
   __String_equal__ tag "arith" ,(condition)
   __if__ condition (,() return (,(sh) Eval_arith sh pos children)) ,()
   __NULL__ (,(sh) Eval_list sh children))

@@ -155,23 +155,15 @@ var ConMaVM = (function () {
     return value;
   }
 
-  // ── JS statements of ConSh (2.5 of consh/js/PLAN-ja.md) ──
-  // ConSh calls __JS_call__ with STMT and the code of a statement, and as args
-  // [names, kinds, values] of the shell variables that the code names: a kind
-  // is s (a string), l (an array) or j (a JS value: its value is its id).
-  // Before the result, the host writes a line for each variable that the code
-  // assigned: (w "name" s "text") for a string, which becomes a String, and
-  // (w "name" j "id") for any other value. An id is #n for an object or a
-  // function, kept in the table below, or the value itself for a primitive
-  // (number:3, boolean:true, bigint:5, undefined, null), so that primitives
-  // do not fill the table. When the variable is read with $, ConSh asks the
-  // host for it as a shell value with __JS_value__ (host_js_value), so that a
-  // change of the object is seen. If the statement seems to be a mistyped
-  // shell command (it cannot be compiled, or its first name is not defined),
-  // the result is (f "message") instead, nothing is assigned, and ConSh runs
-  // it as one.
+  // ── JS values of shell variables (2.5.4 of consh/js/PLAN-ja.md) ──
+  // A shell variable (js name=, v=$(( ... ))) or an SJS variable holds a JS value that is not a
+  // string only as an id: #n for an object or a function, kept in the table below, or the value
+  // itself for a primitive (number:3, boolean:true, bigint:5, undefined, null), so that primitives
+  // do not fill the table. When the variable is read with $, ConSh asks the host for it as a shell
+  // value with __JS_value__ (host_js_value), so that a change of the object is seen. A line
+  // (w "name" s "text") or (w "name" j "id") gives the value of a variable that the code assigned.
+  // The JS statements of ConSh, which this served first, were removed in stage A3 of SJS (3.26).
 
-  const STMT = "//@consh-stmt\n";
   // js name= code: the result is given as a JS value, (r j "id"), unless it is a string or an
   // iterator (2.5 of consh/js/PLAN-ja.md)
   const KEEP = "//@consh-keep\n";
@@ -220,17 +212,11 @@ var ConMaVM = (function () {
   // The number of values in the table (for the tests).
   globalThis.__consh_value.count = () => values.size;
 
-  function Fallback(message) {
-    this.message = message;
-  }
-
   const REGEX_AFTER = new Set(
     "return typeof instanceof in of new delete void throw case do else yield await".split(" ")
   );
   const PUNCTS = [">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "=>", "==", "!=",
     "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "&&", "||", "??", "?.", "++", "--", "**", "<<", ">>"];
-  const ASSIGNS = new Set(["=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=",
-    "||=", "??="]);
 
   // The tokens of JavaScript code: {type, text, start, end, depth}, type ws (with newlines),
   // comment, ident, num, str, tmpl (a piece of a template), regex or punct. depth is that of
@@ -332,125 +318,6 @@ var ConMaVM = (function () {
     return toks;
   }
 
-  // Top-level declarations of the code as assignments to (shell) variables: let x = e, const
-  // and var are x = e (x = undefined without e), let {a} = o is ({a} = o), function f () {...}
-  // is f = function f () {...}; (async and generator functions too), and class C {...} is
-  // C = class C {...};. Also whether there is a declaration or a top-level assignment (no output then).
-  function rewriteDeclarations(src) {
-    const toks = jsTokens(src);
-    const edits = []; // [position, text to insert, length to remove]
-    const sig = (k) => {
-      while (k < toks.length && (toks[k].type === "ws" || toks[k].type === "comment")) k++;
-      return k;
-    };
-    // The index of the token that closes the bracket at toks[k]
-    const closing = (k) => {
-      const d = toks[k].depth;
-      for (let m = k + 1; m < toks.length; m++) if (toks[m].type === "punct" && toks[m].depth === d && ")]}".includes(toks[m].text)) return m;
-      return toks.length - 1;
-    };
-    let atStart = true; // at the start of a statement
-    let declared = false;
-    for (let k = 0; k < toks.length; k++) {
-      const t = toks[k];
-      if (t.type === "ws" || t.type === "comment") {
-        if (t.depth === 0 && t.text.includes("\n")) atStart = true;
-        continue;
-      }
-      if (t.depth === 0 && atStart && t.type === "ident") {
-        const n = sig(k + 1);
-        const next = toks[n];
-        if ((t.text === "let" || t.text === "const" || t.text === "var") && next && (next.type === "ident" || next.text === "{" || next.text === "[")) {
-          declared = true;
-          if (next.type === "ident") {
-            edits.push([t.start, "", next.start - t.start]);
-            // Each declarator x without = e is x = undefined (declarators are separated by , at depth 0)
-            let d = n;
-            for (;;) {
-              const after = sig(d + 1);
-              const endsLine = toks[d + 1] && toks[d + 1].type === "ws" && toks[d + 1].text.includes("\n");
-              if (after >= toks.length || toks[after].text === ";" || toks[after].text === "," || endsLine)
-                edits.push([toks[d].end, " = undefined", 0]);
-              let m = after;
-              while (m < toks.length && !(toks[m].depth === 0 && (toks[m].text === "," || toks[m].text === ";" || (toks[m].type === "ws" && toks[m].text.includes("\n"))))) m++;
-              if (m >= toks.length || toks[m].text !== ",") break;
-              d = sig(m + 1);
-              if (d >= toks.length || toks[d].type !== "ident") break;
-            }
-          } else {
-            // A pattern: in parentheses up to the end of the statement (; or a newline at depth 0)
-            edits.push([t.start, next.text === "{" ? "(" : ";", next.start - t.start]);
-            let m = closing(n) + 1;
-            while (m < toks.length && !(toks[m].depth === 0 && (toks[m].text === ";" || (toks[m].type === "ws" && toks[m].text.includes("\n"))))) m++;
-            if (next.text === "{") edits.push([m < toks.length ? toks[m].start : src.length, ")", 0]);
-          }
-        } else {
-          let f = k;
-          if (t.text === "async" && next && next.text === "function") f = n;
-          const kw = toks[f];
-          if (kw.text === "function" || kw.text === "class") {
-            let m = sig(f + 1);
-            if (toks[m] && toks[m].text === "*") m = sig(m + 1);
-            if (toks[m] && toks[m].type === "ident") {
-              declared = true;
-              edits.push([t.start, toks[m].text + " = ", 0]);
-              let b = m;
-              while (b < toks.length && !(toks[b].text === "{" && toks[b].depth === 0)) b++;
-              if (b < toks.length) edits.push([toks[closing(b)].end, ";", 0]);
-            }
-          }
-        }
-      }
-      atStart = t.depth === 0 && (t.text === ";" || t.text === "}");
-    }
-    let out = src;
-    for (const [pos, text, len] of edits.sort((a, b) => b[0] - a[0])) out = out.slice(0, pos) + text + out.slice(pos + len);
-    const outToks = jsTokens(out).filter((t) => t.type !== "ws" && t.type !== "comment");
-    // The index of the token that closes the bracket at outToks[k]
-    const closer = (k) => {
-      const d = outToks[k].depth;
-      for (let m = k + 1; m < outToks.length; m++) {
-        const u = outToks[m];
-        if (u.type === "punct" && u.depth === d && ")]}".includes(u.text)) return m;
-      }
-      return outToks.length;
-    };
-    // A top-level assignment gives no output, also inside parentheses around the whole code
-    // (({a} = o) is a destructuring assignment)
-    let outer = 0;
-    for (let b = 0, e = outToks.length - 1; b < e && outToks[b].text === "(" && closer(b) === e; b++, e--) outer++;
-    const assigns = declared || outToks.some((t) => t.depth === outer && t.type === "punct" && ASSIGNS.has(t.text));
-    // The names that are assigned, not after . or ?.: x = e, x += e, x++, ++x, and the names of a
-    // destructuring pattern ([a, ...b] = e, {a, b: c, d = 1} = e): those that the pattern binds, not
-    // the keys before : nor the default values after =
-    const assigned = new Set();
-    const afterDot = (k) => k > 0 && (outToks[k - 1].text === "." || outToks[k - 1].text === "?.");
-    outToks.forEach((t, k) => {
-      if (t.type !== "ident" || afterDot(k)) return;
-      const before = outToks[k - 1];
-      const after = outToks[k + 1];
-      const step = (u) => u && (u.text === "++" || u.text === "--");
-      if ((after && after.type === "punct" && ASSIGNS.has(after.text)) || step(after) || step(before)) assigned.add(t.text);
-    });
-    outToks.forEach((t, k) => {
-      if (t.type !== "punct" || (t.text !== "[" && t.text !== "{")) return;
-      const c = closer(k);
-      const after = outToks[c + 1];
-      // A pattern is followed by =; [ after a name or ) is an index (a[i] = e), not a pattern
-      if (!after || after.text !== "=" || (k > 0 && t.text === "[" && (outToks[k - 1].type === "ident" || outToks[k - 1].text === ")" || outToks[k - 1].text === "]"))) return;
-      for (let m = k + 1; m < c; m++) {
-        const u = outToks[m];
-        if (u.type !== "ident" || afterDot(m)) continue;
-        const next = outToks[m + 1];
-        const prev = outToks[m - 1];
-        if (next && next.text === ":") continue; // a key
-        if (prev && prev.text === "=") continue; // a default value
-        assigned.add(u.text);
-      }
-    });
-    return { code: out, assigns, assigned };
-  }
-
   // A JS value as a shell value (__JS_value__).
   function shellValue(v) {
     if (v === undefined || v === null) return "n";
@@ -462,86 +329,12 @@ var ConMaVM = (function () {
     }
   }
 
-  // Evaluate a JS statement (see above). emit writes a line to the pipe of the call. The result
-  // is a Promise of the value to output (undefined for nothing), or of a Fallback.
-  function evaluateStatement(src, args, stdin, emit, owner) {
-    const [names, kinds, vals] = args;
-    const vars = Object.create(null);
-    names.forEach((name, k) => {
-      vars[name] = kinds[k] === "j" ? valueOf(vals[k]) : vals[k];
-    });
-    const { code, assigns, assigned } = rewriteDeclarations(src);
-    // A name that the code assigns is a shell variable even if it is a global (name and status of
-    // a browser, process of Node.js): a global is changed only as globalThis.name = ...
-    for (const name of assigned) if (!(name in vars) && name in globalThis) vars[name] = globalThis[name];
-    const written = new Set();
-    const m = /^\s*([A-Za-z_$\u0080-\uffff][\w$\u0080-\uffff]*)/.exec(src);
-    const head = m ? m[1] : null;
-    const scope = new Proxy(vars, {
-      has: (t, k) => typeof k === "string" && (k in t || !(k === "stdin" || k === "args" || k === "__consh_scope" || k in globalThis)),
-      get: (t, k) => {
-        if (k in t) return t[k];
-        if (typeof k !== "string") return undefined;
-        const e = new ReferenceError(k + " is not defined");
-        e.conshName = k;
-        throw e;
-      },
-      set: (t, k, v) => {
-        t[k] = v;
-        written.add(k);
-        return true;
-      },
-    });
-    const expression = "with (__consh_scope) { return (" + code + "\n) }";
-    let fn;
-    let isExpression = true;
-    try {
-      fn = new Function("stdin", "args", "__consh_scope", expression);
-    } catch (e) {
-      if (!(e instanceof SyntaxError)) throw e;
-      try {
-        fn = new AsyncFunction("stdin", "args", "__consh_scope", expression);
-      } catch (e2) {
-        try {
-          fn = new AsyncFunction("stdin", "args", "__consh_scope", "with (__consh_scope) {\n" + code + "\n}");
-          isExpression = false;
-        } catch (e3) {
-          return Promise.resolve(new Fallback(e.name + ": " + e.message));
-        }
-      }
-    }
-    // The variables that the code assigned (only these: a variable that it did not assign may have
-    // been assigned by another VProc meanwhile)
-    const flush = () => {
-      for (const name of written) {
-        const v = vars[name];
-        emit("(w " + sexpString(name) + (typeof v === "string" ? " s " + sexpString(v) : ' j "' + idOf(v, owner) + '"') + ")\n");
-      }
-    };
-    const failed = (e) => {
-      // A mistyped shell command: run as one, without the assignments
-      if (e instanceof ReferenceError && e.conshName !== undefined && e.conshName === head) return new Fallback(e.name + ": " + e.message);
-      flush();
-      throw e;
-    };
-    let result;
-    try {
-      result = fn(stdin, [], scope);
-    } catch (e) {
-      return Promise.resolve().then(() => failed(e));
-    }
-    return Promise.resolve(result).then((v) => {
-      flush();
-      return isExpression && assigns ? undefined : v;
-    }, failed);
-  }
-
   // ── SJS: (( )) and $(( )) of ConSh (consh/SAFEJS-PLAN-ja.md) ──
   // ConSh calls __JS_call__ with SJS and the code of an SJS expression, and as args the SJS variables
-  // that the code names, [names, kinds, values] as for a JS statement (kinds s and j). The code is
+  // that the code names, [names, kinds, values] (kinds s and j). The code is
   // first checked to be in SJS and rewritten (sjsCheck), then evaluated with only the SJS variables
   // and the builtins of SJS_BUILTINS as global names (sjsScope). Before the result, the host writes
-  // (w ...) for each SJS variable that was assigned, as for a JS statement; the result is
+  // (w ...) for each SJS variable that was assigned; the result is
   // (r s "text") for a string and (r j "id") for any other value, a Promise too (not waited for).
   // This is not a sandbox: the check keeps the code in SJS, so that it can later be translated into
   // ConMa, and closes the known ways out to the host, but that is not proved (5 of SAFEJS-PLAN-ja.md).
@@ -1745,11 +1538,9 @@ var ConMaVM = (function () {
       consoleJob = job;
       try {
         result = Promise.resolve(
-          code.startsWith(STMT)
-            ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
-            : code.startsWith(SJS)
-              ? evaluateSjs(code.slice(SJS.length), args, (line) => job.emit(line), id)
-              : code.startsWith(SJSCALL)
+          code.startsWith(SJS)
+            ? evaluateSjs(code.slice(SJS.length), args, (line) => job.emit(line), id)
+            : code.startsWith(SJSCALL)
               ? callSjs(code.slice(SJSCALL.length), args, (line) => job.emit(line), id)
               : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
         );
@@ -1764,7 +1555,6 @@ var ConMaVM = (function () {
             const x = v.sjs;
             return typeof x === "string" ? "(r s " + sexpString(x) + ")\n" : '(r j "' + idOf(x, id) + '")\n';
           }
-          if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
           if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v, id) + '")\n';
           if (!isIterator(v)) return resultLine(v);
           iterate(v);

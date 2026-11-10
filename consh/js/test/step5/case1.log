@@ -1,19 +1,11 @@
-6
+o={"a":1}
+o={"a":2}
+wv=1 2
+[1]
+[2]
+0.30000000000000004 true
 3
-n=4
-m=14
-n=1+2
-"1+2"
-["2"]
-2
-o={"a":1,"b":[1,2]}
-x=2
-x=4
-x=6
-u=[]
-hello world
-p+q+r
-5
-const var []
-P1 P2
+o=plain
+consh: case1.sh:21:1: n: No such file or directory: n
+status 127
 exit: 0

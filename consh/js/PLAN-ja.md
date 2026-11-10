@@ -201,6 +201,8 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 
 ### 2.5. JS の文とシェルの変数の JS の値（2026/11/9 に決めた仕様。作った結果と、仕様から変えたところは 3.15 と 3.16）
 
+**2026/11/11 の注記**：JS の文（下の 1〜3、5〜9 の、先頭の語で JavaScript と判定する文）は、SJS の段階 A3 で消した（3.26）。計算は算術評価 `(( ))` と算術置換 `$(( ))`（consh/SAFEJS-PLAN-ja.md）で、ホストの JavaScript は `js` で書く。シェルの変数の JS の値（下の 4）は、`js 変数名=` と SJS（`v=$(( ... ))`、SJS変数）で、今も使っている。以下は、決めたときの記録として残す。
+
 JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` と書かなくても JavaScript を書けるようにする（2026/11/11 から、`js` と同じく、`CONSH_ENABLE_JS` で有効にしたときだけ。3.22）。先頭の語がコマンドでない文は、行全体を JavaScript のコード（**JS の文**）とする。また、シェルの変数に JavaScript の値をそのまま入れられるようにし、`$` で参照したときに文字列（かリスト）にする。
 
 決めたこと（ユーザーの選択）：
@@ -564,6 +566,17 @@ consh/SAFEJS-PLAN-ja.md の 3.1 の演算の型を作り、段階 A2 を終え�
 - **確認**（`sjsNeed`、`sjsCompare`）：`+` は数どうしだけ（ほかは `TypeError: + needs numbers, not the string "a" (join strings with a template literal)`）。ほかの演算子も数だけ。大小の比較は、数どうしか文字列どうし（SAFEJS-PLAN-ja.md の 2.4 の未決の点を、文字列どうしの辞書順の比較を許すことに決めた）。BigInt も数でないのでエラーになる。
 - **構文エラー**：ホストの `Function` より先に、この構文解析器がエラーにするので、メッセージは `SyntaxError: unexpected ')'` のように、Node.js やブラウザによらなくなった。
 - **テスト**：consh/js/test/step6 の case9（演算の型、複合の代入と `++`、関数の本体の文、パターン、メソッド、`?.` と `??`、構文エラー）。今までのテストの `"q))" + n`、`"constr" + "uctor"`、`(x) => x * 2`（引数は文字列）を、テンプレート文字列と `Number(x)` に直した。
+
+### 3.26. SJS の段階 A3：JS の文を消す（2026/11/11）
+
+consh/SAFEJS-PLAN-ja.md の段階 A3。先頭の語で JavaScript と判定する JS の文（2.5）を消した。計算は SJS の `(( ))` と `$(( ))` で、ホストの JavaScript（DOM など）は `js` で書く。
+
+- **構文解析**（consh_parser.se）：`Ps_at_js`、`Ps_js`、`Js_fallback`、先頭の語の判定（`Js_head_word`、`Js_is_command`、`Js_in_path` など）、関数の名前を前もって集める `Funcs_scan`、解析の opts（`Ps_js_opts`、`Parse_file_with`、`Parse_text_with`）を消した。JavaScript の字句解析（`Js_scan` など）は、SJS式の範囲に使うので残した。
+- **評価**：consh_jsstmt.se の `Js_probe`、`Js_parse_opts`、`Eval_jsstmt`、`Js_stmt_vars`、`Js_debug`（`CONSH_JS_DEBUG`）を、`Stmt_compile` の `jsstmt` の枝（参照版も）を、`consh_main.se` と対話モード（参照版も）の JS の文の判定を消した。JS の値（`Js_wrap`、`Js_force`、`Js_store` など）は、`js 変数名=` と SJS が使うので残した。
+- **ホスト**（conma.js）：`evaluateStatement`、`rewriteDeclarations`、`Fallback`、`(f ...)` の結果を消した。`jsTokens` は SJS が使う。
+- **`CONSH_ENABLE_JS`**：`js` は `js` を、`sjs` は算術評価だけを使えるようにする（JS の文がなくなったので、`js` は「算術評価と `js`」になった）。
+- **テスト**：consh/js/test/step5 を、JS の文のテストから、シェルの変数の JS の値のテストに書き直した。case1 は `js 変数名=` の値（後で変えたオブジェクトが `$` に表れること、数、`$f` の呼び出し、`n = 1` がコマンドとして探されること）、case2 は値の表の解放（前の case6 を `js` で書き直したもの）、case3 は `js` の値を SJS の `$名前` で値のまま読むこと。続きの行（前の case5）、打ち間違えたコマンドへの戻し（case4）、`CONSH_JS_DEBUG`（case7）、大域変数と同じ名前の代入（case3）のテストは、機能ごと消した。
+- ブラウザ版（serve.py、Worker）で、`config.json` が `{"CONSH_ENABLE_JS": "js"}` のとき、`js 'document.title = "from js"'` がページの題を変え、`n = 1` はコマンドとして探され、`(( n = 40 + 2 ))` の後の `$(( n ))` が 42 を出すことを確かめた。
 
 ## 4. 未解決の点
 

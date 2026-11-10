@@ -33,9 +33,6 @@
   __Ref_new__ __FALSE__ ,(discard)
   __Dict_put__ r "discard" discard ,()
   __OS_trap_interrupt__ interrupt ,()
-  ;; JavaScript のある版では、JS の文を使う（consh/js/PLAN-ja.md の 2.5）
-  Js_probe ,(js)
-  __Dict_put__ r "js" js ,()
   __VProc_start__ (,() Repl_watch sh r) ,(watcher)
   num "1" ,(one)
   Repl_loop sh r one)
@@ -208,9 +205,6 @@
   __String_substring__ __print_exit_error__ s start len ,(tail)
   __String_equal__ tail suffix)
 
-;; text を解析する（Parse_text_with）。JS の文の判定には、シェルに今定義されている関数も使う
+;; text を解析する（Parse_text）
 (define Repl_parse ,(sh r text start)
-  __Dict_lookup_or__ r "js" __print_exit_error__ ,(js)
-  __Dict_lookup_or__ sh "funcs" __print_exit_error__ ,(funcs)
-  Js_parse_opts js funcs ,(opts)
-  Parse_text_with text "stdin" start opts)
+  Parse_text text "stdin" start)
