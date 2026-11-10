@@ -93,6 +93,9 @@
   ;; SJS変数（consh_jsstmt.se）
   __Dict_new__ ,(sjsvars)
   __Dict_put__ sh "sjsvars" sjsvars ,()
+  ;; SJS式に現れた $名前（Sjs_register）。すべての VProc で共有する
+  __Dict_new__ ,(sjsShellNames)
+  __Dict_put__ global "sjsShellNames" sjsShellNames ,()
   __Dict_put__ sh "funcs" funcs ,()
   __Dict_put__ sh "parent" __NULL__ ,()
   __Dict_put__ sh "inFunction" __FALSE__ ,()
@@ -1054,6 +1057,9 @@
   __if__ condition (,() return __NULL__ __NULL__ __NULL__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
   Node_split word ,(tag pos elems)
+  ;; 先頭の語が SJS の値だけなら、関数でなければエラー（consh_jsstmt.se の Sjs_head）。算術置換の関数なら、それを呼ぶ
+  Sjs_head sh elems ,(fn)
+  __is_null__ fn ,(test__) __unless__ test__ (,() return fn __NULL__ rest) ,()
   Expand_parts_from sh elems ,(parts)
   ;; LazyList でない部分が1つだけなら（よくある語）、数えずに外部コマンドの語として展開する
   Parts_single parts ,(kind value)

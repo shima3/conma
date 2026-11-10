@@ -1,0 +1,2 @@
+consh: case8.sh:3:1: sjs: not a function: $v
+exit: 2

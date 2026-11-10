@@ -139,9 +139,10 @@
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
   List_first fields ,(data)
   __String_equal__ kind "s" ,(isString)
+  __String_equal__ key "sjsvars" ,(isSjs)
   __if_then_else__ isString
     (,() __NULL__ data)
-    (,() Js_wrap data handle) ,(value)
+    (,() __if_then_else__ isSjs (,() Sjs_wrap data handle) (,() Js_wrap data handle)) ,(value)
   __Dict_lookup_or__ sh key __print_exit_error__ ,(vars)
   __Dict_put__ vars name value ,()
   __not__ isString)
@@ -187,6 +188,12 @@
   __LList_uncons__ __print_exit_error__ sexp ,(kind fields)
   __String_equal__ kind "f" ,(test__) __if__ test__
     (,()
+      ;; SJS が作った関数は、SJS の規則で呼ぶ（Sjs_call。戻り値は標準エラー）
+      __Dict_lookup_or__ wrapped "sjs" (,(key) __NULL__ __FALSE__) ,(isSjs)
+      __if__ isSjs
+        (,() return (,(caller pos args in out err)
+          Js_hold wrapped ,()
+          Sjs_call caller pos wrapped args in out err)) ,()
       __String_concat__ "__consh_value(\"" id ,(code)
       __String_concat__ code "\")" ,(code)
       ;; 関数値は wrapped を持つ（その間、ホストは値を消さない）
@@ -307,6 +314,18 @@
 ;; SJS式 code を評価した値（String か、JS の値の Dict）。代入された SJS変数は "sjsvars" に入れる。
 ;; エラーなら fail にメッセージを渡す（fail は戻らない）
 (define Sjs_eval ,(sh pos code namesNode fail)
+  Node_split namesNode ,(ntag npos names)
+  __String_concat__ "//@consh-sjs\n" code ,(code)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  Sjs_run sh pos code names __NULL__ in out err fail)
+
+;; ホストに code（//@consh-sjs か //@consh-sjscall で始まる）を渡して評価し、値（String か、JS の値の Dict）を返す。
+;; ホストに渡す引数は、SJS変数の名前、種類、値の LList と、$名前 のシェル変数の名前、種類、値の LList の 6 つに、
+;; extra（SJS関数の呼び出しの引数など）を続けたもの。names は、コードに現れる名前（$ で始まるものを登録する）。
+;; エラーなら fail にメッセージを渡す（fail は戻らない）
+(define Sjs_run ,(sh pos code names extra in out err fail)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
   __Dict_lookup_or__ global "jsState" __print_exit_error__ ,(state)
@@ -317,19 +336,24 @@
   ;; 呼び出すコード（$(( g() ))）に現れない名前も要る
   __Dict_lookup_or__ sh "sjsvars" __print_exit_error__ ,(sjsvars)
   __Dict_keys__ sjsvars ,(keys)
-  List_fromSeq keys ,(names)
-  Sjs_vars sh names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
-  __LList_cons__ vs __NULL__ ,(args)
+  List_fromSeq keys ,(sjsNames)
+  Sjs_vars sh sjsNames __NULL__ __NULL__ __NULL__ ,(ns ks vs)
+  ;; $名前 のシェル変数も、同じ理由で、これまでに評価したコードに現れたものをすべて渡す（Sjs_register）
+  Sjs_register global names ,()
+  __Dict_lookup_or__ global "sjsShellNames" __print_exit_error__ ,(registry)
+  __Dict_keys__ registry ,(keys)
+  List_fromSeq keys ,(shellNames)
+  Sjs_shell_vars sh pos shellNames __NULL__ __NULL__ __NULL__ ,(sns sks svs)
+  __LList_cons__ svs extra ,(args)
+  __LList_cons__ sks args ,(args)
+  __LList_cons__ sns args ,(args)
+  __LList_cons__ vs args ,(args)
   __LList_cons__ ks args ,(args)
   __LList_cons__ ns args ,(args)
-  __String_concat__ "//@consh-sjs\n" code ,(code)
   __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg) code args ,(stream toHost)
   __Ref_new__ toHost ,(toHostRef)
   __Ref_new__ __FALSE__ ,(keptRef)
   __LazyList_lines__ stream ,(lines)
-  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
-  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
-  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
   Js_stmt_lines sh pos in out err toHostRef keptRef lines "sjsvars" ,(result rest)
   __NULL__ (,(keep)
     __Ref_get__ keptRef ,(kept)
@@ -344,9 +368,125 @@
   List_first fields ,(data)
   __String_equal__ kind "s" ,(test__) __if__ test__ (,() finish __FALSE__ ,() return data) ,()
   __Ref_get__ toHostRef ,(handle)
-  Js_wrap data handle ,(value)
+  Sjs_wrap data handle ,(value)
   finish __TRUE__ ,()
   __NULL__ value)
+
+;; SJS が作った JS の値。Js_wrap に "sjs" の印を付ける（関数なら、コマンドとして呼ぶと Sjs_call になる。Js_force）
+(define Sjs_wrap ,(id handle)
+  Js_wrap id handle ,(wrapped)
+  __Dict_put__ wrapped "sjs" __TRUE__ ,()
+  __NULL__ wrapped)
+
+;; names のうち $ で始まる名前を、文脈の global の "sjsShellNames" に登録する。global の Dict は、VProc の文脈の写しでも
+;; 同じ Dict を共有する（Sh_child は global を浅く写す）ので、パイプラインなどの中で登録した名前も見える
+(define Sjs_register ,(global names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __Dict_lookup_or__ global "sjsShellNames" __print_exit_error__ ,(registry)
+  Str_starts name "$" ,(isShell)
+  __if__ isShell (,() __Dict_put__ registry name __TRUE__) ,()
+  Sjs_register global rest)
+
+;; $名前 のシェル変数（names は $ の付いた名前）のうち定義されているものの、名前（$ 付き）、種類、値の LList。
+;; 種類は j（JS の値。値はホストの表の番号）、s（String）、l（リスト。要素の LList）。局所変数になければ環境変数を見る。
+;; 関数値の変数は渡さない（SJS で読むと、定義されていないエラーになる）
+(define Sjs_shell_vars ,(sh pos names ns ks vs)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return ns ks vs) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __NULL__ (,() Sjs_shell_vars sh pos rest ns ks vs ,(ns ks vs) return ns ks vs) ,(skip)
+  __NULL__ (,(kind value)
+    __LList_cons__ name ns ,(ns)
+    __LList_cons__ kind ks ,(ks)
+    __LList_cons__ value vs ,(vs)
+    Sjs_shell_vars sh pos rest ns ks vs ,(ns ks vs)
+    return ns ks vs) ,(add)
+  __String_length__ name ,(len)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ name one len ,(bare)
+  __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
+  __Dict_lookup_or__ vars bare (,(key)
+    __Dict_lookup_or__ sh "env" __print_exit_error__ ,(env)
+    Env_lookup env key (,(key) skip) ,(text)
+    add "s" text) ,(raw)
+  __type_name__ raw ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __if__ isDict
+    (,()
+      __Dict_lookup_or__ raw "js" (,(key) __NULL__ __NULL__) ,(id)
+      __is_null__ id ,(test__) __unless__ test__ (,() add "j" id) ,()) ,()
+  Value_force raw ,(value)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(test__) __if__ test__ (,() add "s" value) ,()
+  __String_equal__ type "Closure" ,(test__) __if__ test__ skip ,()
+  Js_arg sh pos value ,(list)
+  add "l" list)
+
+;; SJS関数 wrapped を、シェルのコマンドとして引数 args で呼ぶ（consh/SAFEJS-PLAN-ja.md の 2.2 の 3）。
+;; 戻り値は標準エラー err に出し（undefined と null は何も出さない）、$? は、エラーなら 2、そうでなければ戻り値の真偽
+(define Sjs_call ,(sh pos wrapped args in out err)
+  __Cont_get__ ,(return)
+  __NULL__ (,(msg)
+    __String_concat__ "sjs: " msg ,(m)
+    Sh_warn sh pos m ,()
+    Sh_set_status sh "2" ,()
+    return) ,(fail)
+  Js_args sh pos args ,(list)
+  __LList_cons__ list __NULL__ ,(extra)
+  __Dict_lookup_or__ wrapped "js" __print_exit_error__ ,(id)
+  __String_concat__ "//@consh-sjscall\n" id ,(code)
+  Sjs_run sh pos code __NULL__ extra in out err fail ,(value)
+  Sjs_truthy value ,(truth)
+  Sjs_output sh pos err value ,()
+  __if_then_else__ truth (,() __NULL__ "0") (,() __NULL__ "1") ,(status)
+  Sh_set_status sh status)
+
+;; コマンドの先頭の語の要素 elems（consh/SAFEJS-PLAN-ja.md の 2.2 の 3）。算術置換だけなら、評価して、関数ならその関数値
+;; （Sjs_call で呼ぶ Closure）を返し、関数でなければエラーにする。SJS が作った JS の値を持つ変数（$f、${f}）だけなら、
+;; 関数でなければエラーにし、関数なら null（ふつうに展開する）。そのほかは null
+(define Sjs_head ,(sh elems)
+  __Cont_get__ ,(return)
+  __LList_uncons__ (,(msg) return __NULL__) elems ,(elem more)
+  __is_null__ more ,(single)
+  __unless__ single (,() return __NULL__) ,()
+  Node_split elem ,(kind pos children)
+  __String_equal__ kind "arithsubst" ,(test__) __if__ test__
+    (,()
+      Sjs_subst sh pos children ,(raw)
+      Value_force raw ,(value)
+      __type_name__ value ,(type)
+      __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return value) ,()
+      Sjs_abort sh pos "not a function") ,()
+  __String_equal__ kind "var" ,(isVar)
+  __String_equal__ kind "bvar" ,(isBvar)
+  __or__ isVar isBvar ,(isRef)
+  __unless__ isRef (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __is_null__ rest ,(noDefault)
+  __unless__ noDefault (,() return __NULL__) ,()
+  __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
+  __Dict_lookup_or__ vars name (,(key) return __NULL__) ,(raw)
+  __type_name__ raw ,(type)
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __Dict_lookup_or__ raw "sjs" (,(key) return __NULL__) ,(isSjs)
+  Value_force raw ,(value)
+  __type_name__ value ,(type)
+  __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __String_concat__ "not a function: $" name ,(msg)
+  Sjs_abort sh pos msg)
+
+;; SJS の値を 1 つの要素として target に書く。undefined と null は書かない
+(define Sjs_output ,(sh pos target value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(test__) __if__ test__ (,() Target_write sh pos target value ,() return) ,()
+  __Dict_lookup_or__ value "js" __print_exit_error__ ,(id)
+  __String_equal__ id "undefined" ,(test__) __if__ test__ return ,()
+  __String_equal__ id "null" ,(test__) __if__ test__ return ,()
+  Value_force value ,(v)
+  Target_write sh pos target v)
 
 ;; SJS式に渡す SJS変数：names のうち "sjsvars" にあるものの、名前、種類（s か j）、値の LList
 (define Sjs_vars ,(sh names ns ks vs)

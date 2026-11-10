@@ -19,3 +19,6 @@ run case4 < case4.in
 (export CONSH_ENABLE_JS=yes; run case5bad case5.sh < /dev/null)
 # 語の中の $(( )) のエラーは、スクリプトを終了ステータス 2 で終える
 run case6 case6.sh < /dev/null
+# 段階 A2
+run case7 case7.sh < /dev/null
+run case8 case8.sh < /dev/null

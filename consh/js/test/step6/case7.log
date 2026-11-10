@@ -1,0 +1,29 @@
+a: 4
+b: 3x
+c: 8 007 14 -7
+lt status 0
+=== number status 0
+k: string
+len: 3
+env: env
+consh: case7.sh:15:1: sjs: TypeError: not a number: $s ("abc")
+not a number status 2
+consh: case7.sh:16:1: sjs: ReferenceError: undefined variable: undefinedvar
+undefined status 2
+consh: case7.sh:17:1: sjs: TypeError: cannot assign to the shell variable $n
+assign status 2
+consh: case7.sh:18:1: sjs: not in SJS: a declaration of $x (a name that begins with $ is a shell variable)
+declare status 2
+g: 6
+g in inner: 200
+status 0 c=3
+3
+42
+big
+small
+status 1 m: hello
+3
+3
+consh: case7.sh:38:1: sjs: x
+throw status 2
+exit: 0

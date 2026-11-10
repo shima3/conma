@@ -546,6 +546,9 @@ var ConMaVM = (function () {
   // This is not a sandbox: the check keeps the code in SJS, so that it can later be translated into
   // ConMa, and closes the known ways out to the host, but that is not proved (5 of SAFEJS-PLAN-ja.md).
   const SJS = "//@consh-sjs\n";
+  // An SJS function called as a command of ConSh: SJSCALL and its id, and the arguments after the
+  // variables (2.2.3 of SAFEJS-PLAN-ja.md)
+  const SJSCALL = "//@consh-sjscall\n";
   // A function of the host for SJS: its own frozen function, with the given static members, so that
   // SJS cannot change the host's (Number.parseInt = ...)
   function sjsFunction(f, statics) {
@@ -582,21 +585,27 @@ var ConMaVM = (function () {
       warn: (...a) => console.warn(...a),
     }),
   }));
-  // The SJS variables of the evaluation that runs now: {vars, written}. A function made by SJS reads
+  // The SJS variables of the evaluation that runs now: {vars, written, shell}; shell holds the shell
+  // variables of the $names (2.2.7 of SAFEJS-PLAN-ja.md), by their names with the $. A function made by SJS reads
   // and writes the SJS variables of the evaluation that calls it, not of the one that made it
   // (2.2 of SAFEJS-PLAN-ja.md), since its global names are looked up here when it runs
   let sjsCurrent = null;
   const sjsScope = new Proxy(Object.create(null), {
     // Every name is looked up here (no global of the host), except the parameter __sjs_key
-    has: (t, k) => typeof k === "string" && k !== "__sjs_key",
+    has: (t, k) => typeof k === "string" && k !== "__sjs_key" && k !== "__sjs_num",
     get: (t, k) => {
       if (typeof k !== "string") return undefined;
+      if (k.startsWith("$")) {
+        if (sjsCurrent && Object.prototype.hasOwnProperty.call(sjsCurrent.shell, k)) return sjsCurrent.shell[k];
+        throw new ReferenceError("undefined variable: " + k.slice(1));
+      }
       if (k in SJS_BUILTINS) return SJS_BUILTINS[k];
       if (sjsCurrent && Object.prototype.hasOwnProperty.call(sjsCurrent.vars, k)) return sjsCurrent.vars[k];
       throw new ReferenceError(k + " is not defined");
     },
     set: (t, k, v) => {
       if (k in SJS_BUILTINS) throw new TypeError("cannot assign to " + String(k));
+      if (String(k).startsWith("$")) throw new TypeError("cannot assign to the shell variable " + String(k));
       if (!sjsCurrent) throw new TypeError("an SJS variable assigned outside its evaluation: " + String(k));
       sjsCurrent.vars[k] = v;
       sjsCurrent.written.add(k);
@@ -621,6 +630,15 @@ var ConMaVM = (function () {
     if (sjsBadProperty(s)) throw new TypeError("the property " + s + " is not in SJS");
     return s;
   }
+  // The number of a shell variable $name next to an operator (2.2.7 of SAFEJS-PLAN-ja.md): a number
+  // as it is, or a string in the form of a decimal number; anything else is an error, not NaN
+  function sjsNumber(v, name) {
+    if (typeof v === "number") return v;
+    if (typeof v === "string" && /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v)) return Number(v);
+    throw new TypeError("not a number: " + name + (typeof v === "string" ? " (" + JSON.stringify(v) + ")" : ""));
+  }
+  // The operators next to which $name is a number (2.2.7 of SAFEJS-PLAN-ja.md)
+  const SJS_NUMERIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**", "<", "<=", ">", ">="]);
   const SJS_BEFORE_EXPRESSION = new Set(
     "return typeof instanceof in of new delete void throw case do else yield await".split(" ")
   );
@@ -628,15 +646,45 @@ var ConMaVM = (function () {
   // made a[__sjs_key(k)]; throws a HostError for code that is not in SJS
   function sjsCheck(src) {
     const toks = jsTokens(src);
+    // The index of the token before or after k that is not a space or a comment (-1 if none)
+    const near = (k, d) => {
+      for (let m = k + d; m >= 0 && m < toks.length; m += d) if (toks[m].type !== "ws" && toks[m].type !== "comment") return m;
+      return -1;
+    };
+    const isPunct = (m, texts) => m >= 0 && toks[m].type === "punct" && texts.includes(toks[m].text);
+    // Whether the $name at k is an operand of an arithmetic operator or an ordering comparison, or of
+    // === or !== with a number literal on the other side; brackets around it alone are passed through
+    const numericAt = (k) => {
+      let a = near(k, -1);
+      let b = near(k, 1);
+      while (isPunct(a, ["("]) && isPunct(b, [")"])) {
+        a = near(a, -1);
+        b = near(b, 1);
+      }
+      const op = (m) => m >= 0 && toks[m].type === "punct" && SJS_NUMERIC_OPERATORS.has(toks[m].text);
+      if (op(a) || op(b)) return true;
+      const num = (m) => m >= 0 && toks[m].type === "num";
+      if (isPunct(a, ["===", "!=="]) && num(near(a, -1))) return true;
+      if (isPunct(b, ["===", "!=="]) && num(near(b, 1))) return true;
+      return false;
+    };
     const out = [];
     const members = []; // for each [ not closed yet, whether it is a computed member
     let prev = null; // the last token that is not a space or a comment
-    for (const t of toks) {
+    for (let k = 0; k < toks.length; k++) {
+      const t = toks[k];
       let text = t.text;
       if (t.type === "ident") {
         const afterDot = prev !== null && prev.type === "punct" && (prev.text === "." || prev.text === "?.");
         if (afterDot ? sjsBadProperty(text) : SJS_NAMES.has(text) || text.startsWith("__")) {
           throw new HostError("not in SJS: " + (afterDot ? "." : "") + text);
+        }
+        if (!afterDot && text.startsWith("$")) {
+          // A shell variable: it cannot be declared, and next to an operator it is a number
+          if (prev !== null && prev.type === "ident" && ["let", "const", "var", "function"].includes(prev.text)) {
+            throw new HostError("not in SJS: a declaration of " + text + " (a name that begins with $ is a shell variable)");
+          }
+          if (numericAt(k)) text = "__sjs_num(" + text + ", " + JSON.stringify(text) + ")";
         }
       } else if (t.type === "regex") {
         throw new HostError("not in SJS: a regular expression");
@@ -661,24 +709,40 @@ var ConMaVM = (function () {
     return out.join("");
   }
   const sjsCompiled = new Map();
-  // Evaluate an SJS expression (see above). The result is {sjs: value}, so that a Promise is kept as a value.
+  // Evaluate an SJS expression (see above). The result is {sjs: value}, so that a value is never
+  // taken for a Promise.
   function evaluateSjs(src, args, emit, owner) {
     const code = sjsCheck(src);
-    const [names, kinds, vals] = args;
+    let fn = sjsCompiled.get(code);
+    if (!fn) {
+      fn = new Function("__sjs_scope", "__sjs_key", "__sjs_num", "with (__sjs_scope) { return (\n" + code + "\n) }");
+      sjsCompiled.set(code, fn);
+    }
+    return sjsRun(args, emit, owner, () => fn(sjsScope, sjsKey, sjsNumber));
+  }
+  // Call the SJS function of id with the arguments after the variables in args (SJSCALL).
+  function callSjs(id, args, emit, owner) {
+    const f = valueOf(id);
+    if (typeof f !== "function") throw new HostError("not a function");
+    return sjsRun(args, emit, owner, () => f(...args[6]));
+  }
+  // Run thunk with the SJS variables and the shell variables of args as those of the evaluation
+  // (sjsCurrent), then write (w ...) for the SJS variables that were assigned.
+  function sjsRun(args, emit, owner, thunk) {
+    const [names, kinds, vals, shellNames, shellKinds, shellVals] = args;
     const vars = Object.create(null);
     names.forEach((name, k) => {
       vars[name] = kinds[k] === "j" ? valueOf(vals[k]) : vals[k];
     });
-    let fn = sjsCompiled.get(code);
-    if (!fn) {
-      fn = new Function("__sjs_scope", "__sjs_key", "with (__sjs_scope) { return (\n" + code + "\n) }");
-      sjsCompiled.set(code, fn);
-    }
-    const frame = { vars, written: new Set() };
+    const shell = Object.create(null);
+    shellNames.forEach((name, k) => {
+      shell[name] = shellKinds[k] === "j" ? valueOf(shellVals[k]) : shellVals[k];
+    });
+    const frame = { vars, written: new Set(), shell };
     const outer = sjsCurrent;
     sjsCurrent = frame;
     try {
-      return { sjs: fn(sjsScope, sjsKey) };
+      return { sjs: thunk() };
     } finally {
       sjsCurrent = outer;
       // The variables assigned before an error are kept, as in a shell
@@ -867,7 +931,7 @@ var ConMaVM = (function () {
     installConsole(write);
     function call(id, code, args) {
       const keep = code.startsWith(KEEP);
-      const sjs = code.startsWith(SJS);
+      const sjs = code.startsWith(SJS) || code.startsWith(SJSCALL);
       // Lines go to the pipe of the call at once, and the VM runs again after them.
       const job = new Job(id, (line) => {
         if (job.ended) return;
@@ -938,8 +1002,10 @@ var ConMaVM = (function () {
         result = Promise.resolve(
           code.startsWith(STMT)
             ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
-            : sjs
+            : code.startsWith(SJS)
               ? evaluateSjs(code.slice(SJS.length), args, (line) => job.emit(line), id)
+              : code.startsWith(SJSCALL)
+              ? callSjs(code.slice(SJSCALL.length), args, (line) => job.emit(line), id)
               : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
         );
       } catch (e) {
