@@ -19,4 +19,8 @@ in a pipeline: 3
 m: 2
 log 3
 to a file
+g: 5
+g in callg: 50
+g after callg: 5
+k: 7
 exit: 0

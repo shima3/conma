@@ -603,7 +603,10 @@ var ConMaVM = (function () {
       return true;
     },
   });
-  const SJS_NAMES = new Set(("this new class super import export with eval arguments debugger yield " +
+  // async and await are left out in stage A: after an await, the global names of a function could be
+  // looked up in the SJS variables of another evaluation (sjsCurrent), and without them SJS makes no
+  // Promise (SAFEJS-REVIEW-ja.md 3.1.1)
+  const SJS_NAMES = new Set(("this new class super import export with eval arguments debugger yield async await " +
     "globalThis window self document Function").split(" "));
   const SJS_PROPERTIES = new Set(["constructor", "prototype", "caller", "callee", "arguments"]);
   function sjsBadProperty(s) {

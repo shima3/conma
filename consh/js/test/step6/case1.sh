@@ -41,3 +41,13 @@ echo "m: $(( m ))"
 (( console.log("log", n) ))
 (( console.log("to a file") )) > $1/out.txt
 cat $1/out.txt
+# SJS関数の中の大域の名前は、呼び出したときの SJS変数（呼ぶコードに現れない名前も）
+(( m = 5 ))
+(( g = () => m ))
+echo "g: $(( g() ))"
+function callg () { (( m = 50 )); echo "g in callg: $(( g() ))" }
+callg
+echo "g after callg: $(( g() ))"
+(( h = () => { k = 7 } ))
+(( h() ))
+echo "k: $(( k ))"

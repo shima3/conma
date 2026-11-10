@@ -28,3 +28,6 @@ echo "status $?"
 echo "status $?"
 (( eval ))
 echo "status $?"
+# 段階 A では async と await も範囲の外
+(( af = async () => 1 ))
+echo "status $?"

@@ -313,7 +313,11 @@
   __String_equal__ state "none" ,(test__) __if__ test__ (,() fail "JavaScript is not available") ,()
   __String_equal__ state "off" ,(test__) __if__ test__
     (,() fail "SJS is disabled (set CONSH_ENABLE_JS to sjs or js to enable it)") ,()
-  Node_split namesNode ,(ntag npos names)
+  ;; SJS変数は、コードに現れる名前だけでなく、すべて渡す。SJS関数の中の大域の名前は、呼び出した評価の SJS変数を読むので、
+  ;; 呼び出すコード（$(( g() ))）に現れない名前も要る
+  __Dict_lookup_or__ sh "sjsvars" __print_exit_error__ ,(sjsvars)
+  __Dict_keys__ sjsvars ,(keys)
+  List_fromSeq keys ,(names)
   Sjs_vars sh names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
   __LList_cons__ vs __NULL__ ,(args)
   __LList_cons__ ks args ,(args)

@@ -821,3 +821,18 @@ No new primitive.
 |---|---|
 | case1 | correct arguments (Strings and nested LLists): `JavaScript is not available` |
 | case2 | code that is not a String, args that are not an LList, and an element that is neither a String nor an LList, also inside a nested LList, go to `onError` |
+
+## Planned: returning without making the escape continuation
+
+Not built yet. Moved here from consh/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/SAFEJS-REVIEW-ja.md (3.1.4).
+
+* Goal: when a function takes its escape continuation with `__Cont_get__ ,(return)` at its start and uses `return` only to return from itself, return through the CChain as a normal return does, without making the value of `return` (a Closure that keeps the CChain). Most functions of ConSh have this form, and so would the functions that SJS is translated into.
+* Now (see `__Cont_get__` in PRIMITIVES.md): `__Cont_get__` makes `return`, which keeps the CChain at that time; applying it sets the CChain back to the kept one, then pops its top CFrame and applies its Closure. `return` is a value: it can be passed to other functions, put in a Ref, or called after the function has returned.
+* Conditions, decided from the syntax of the function:
+    1. `return` is bound by the `__Cont_get__ ,(return)` at the start of the body.
+    2. `return` appears only as the operator of an application (`return x`), never as an operand (`f return`, or inside a Closure given as an operand such as `(,(msg) ... return)`), nor stored in a Ref or a Dict.
+    3. Each application of `return` is in the body or in an LCont of the body (the `,(x) ...` at the end of an application), not in a Closure given as an operand, which another function might call when the CChain is deeper.
+    4. Nothing takes the CChain out while the function runs: no `__CChain_get__`, `__CChain_pop_LCont__` or `__CChain_set__` in the function or in what it calls. This does not follow from 1 to 3: the `shift` of ConSh takes an LCont out of the CChain and applies it later on another CChain (`$k`), and then the CChain at the time of `return` is not the one at the time of `__Cont_get__`, so that the present `return` (back to the kept CChain) and the optimized one (to the top of the current CChain) differ. Since what a function calls cannot be told from its syntax alone, the optimization is limited to code known not to take continuations out, for example code made by a translator (SJS) whose runtime does not use the CChain primitives, or functions marked so.
+* Under these conditions the CChain when `return` is applied is the one at `__Cont_get__` (after the callees have returned through their LConts), so `return x` can be "pop the top CFrame and apply it to x", as a function returns normally.
+* Where: a pass of the front end (the resolver or the compiler in include/) that rewrites such applications into a new instruction or into existing CChain primitives (`__CChain_pop_LCont__` and an application); a new instruction would go into every VM (the Python VM, the Rust VM, the transpiled VM and the VM for wasm32). Which one is to be decided by measuring.
+* What can be seen: traces no longer show `(__Cont__ "n")` for such functions, and the number of steps changes; tests of test/ whose logs show steps would need a switch to turn it off, or new logs.

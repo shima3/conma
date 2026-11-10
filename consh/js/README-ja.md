@@ -63,6 +63,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
 * JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は `sjs: JavaScript is not available`（`$?` は 2）になる。
+* この設定で守れるのは、主にブラウザ版である。Node.js 版の ConSh は、もともと外部コマンドを起動でき、ファイルも読み書きできるので、`js` を止めても、スクリプトにできることはほとんど減らない。Node.js 版では、信用できないスクリプトを ConSh で動かさないこと。
 
 ## Node.js で使う
 
@@ -94,11 +95,13 @@ echo $(( sum([1, 2, 3]) ))     # 6
 * SJS式の中の代入は、シェルの変数ではなく **SJS変数**を変える。SJS変数は、シェルの変数と同じ名前でも別のもので、シェルの変数と同じく、関数、パイプラインの要素、`$( )`、`&` では写しになる（シェルの関数の中で `(( n = 5 ))` としても、外の `n` は変わらない）。SJS変数の値をシェルの変数に入れるときは `v=$(( n ))` と書く。
 * 大域の名前は、SJS変数と、SJS の組み込み（`Math`、`JSON`、`Number`、`String`、`Boolean`、`Array`、`Object` の `keys` など、`parseInt`、`parseFloat`、`isNaN`、`isFinite`、`console`、`undefined`、`NaN`、`Infinity`）だけである。組み込みには代入できず（`TypeError`）、組み込みはホストのものの凍結した写しなので、変えてもホストには届かない。ホストの名前（`process`、`document`、`fetch` など）は `ReferenceError` になる。
 * 関数の本体のブロックには、`let`、`const`、`if`、`for`、`while`、`return`、`try` なども書ける（`(( ))` の中なので ConSh の構文と衝突しない）。
-* 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
+* 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`async`、`await`、`yield`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
 * `console.log` は標準出力に出る（リダイレクトできる）。
 * 文の `(( ))` でエラーになれば、メッセージを出して `$?` を 2 にし、次の文に進む。語の中の `$(( ))` でエラーになれば、変数が未定義のときと同じく、その文を止め（スクリプトなら終了ステータス 2 で終える。対話モードならそのコマンド行を止める）、`$?` を 2 にする。
 * SJS の関数をシェルのコマンドとして呼ぶこと（`$f 1 2`、`$(( ... )) 1 2`）は、段階 A2 で作る（まだない）。
-* 制限：`typeof` を定義されていない名前に使うと、`"undefined"` ではなく `ReferenceError` になる。`async` 関数の中で `await` の後に SJS変数を読み書きすると、どの評価の変数かが決まらないのでエラーになることがある。
+* SJS の関数の中の大域の名前は、**呼び出したときの** SJS変数を読み書きする（動的なスコープ）。シェルの関数の中で呼べば、その関数の中の写しを読む。SJS変数の写しは浅く、配列やオブジェクトの中身は写さない（シェルの関数の中で `(( o.a = 1 ))` とすると、外の `o` の中身も変わる）。
+* `async`、`await`、ジェネレータ（`yield`）は、今は SJS の範囲の外である（`await` の後で、別の評価の SJS変数を見てしまうため）。
+* 制限：`typeof` を定義されていない名前に使うと、`"undefined"` ではなく `ReferenceError` になる。
 
 ## js
 
