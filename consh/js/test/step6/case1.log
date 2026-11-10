@@ -1,0 +1,22 @@
+status 0
+status 1
+status 1
+status 1
+status 1
+status 0
+n is 3
+a6b
+q))3
+[3]
+[6]
+[three]
+o: {"a":3,"b":[1,2]}
+shell n: shell, SJS n: 3
+sum: 5
+in f: 100
+after f: 3
+in a pipeline: 3
+m: 2
+log 3
+to a file
+exit: 0

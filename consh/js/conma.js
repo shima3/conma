@@ -536,6 +536,156 @@ var ConMaVM = (function () {
     }, failed);
   }
 
+  // ── SJS: (( )) and $(( )) of ConSh (consh/SAFEJS-PLAN-ja.md) ──
+  // ConSh calls __JS_call__ with SJS and the code of an SJS expression, and as args the SJS variables
+  // that the code names, [names, kinds, values] as for a JS statement (kinds s and j). The code is
+  // first checked to be in SJS and rewritten (sjsCheck), then evaluated with only the SJS variables
+  // and the builtins of SJS_BUILTINS as global names (sjsScope). Before the result, the host writes
+  // (w ...) for each SJS variable that was assigned, as for a JS statement; the result is
+  // (r s "text") for a string and (r j "id") for any other value, a Promise too (not waited for).
+  // This is not a sandbox: the check keeps the code in SJS, so that it can later be translated into
+  // ConMa, and closes the known ways out to the host, but that is not proved (5 of SAFEJS-PLAN-ja.md).
+  const SJS = "//@consh-sjs\n";
+  // A function of the host for SJS: its own frozen function, with the given static members, so that
+  // SJS cannot change the host's (Number.parseInt = ...)
+  function sjsFunction(f, statics) {
+    const g = (...a) => f(...a);
+    for (const k of statics) g[k] = f[k];
+    return Object.freeze(g);
+  }
+  function sjsObject(o, keys) {
+    const r = Object.create(null);
+    for (const k of keys) r[k] = o[k];
+    return Object.freeze(r);
+  }
+  const SJS_BUILTINS = Object.freeze(Object.assign(Object.create(null), {
+    undefined: undefined,
+    NaN: NaN,
+    Infinity: Infinity,
+    Math: sjsObject(Math, Object.getOwnPropertyNames(Math)),
+    JSON: sjsObject(JSON, ["parse", "stringify"]),
+    Number: sjsFunction(Number, ["isInteger", "isFinite", "isNaN", "isSafeInteger", "parseFloat", "parseInt",
+      "MAX_SAFE_INTEGER", "MIN_SAFE_INTEGER", "MAX_VALUE", "MIN_VALUE", "EPSILON"]),
+    String: sjsFunction(String, ["fromCharCode", "fromCodePoint", "raw"]),
+    Boolean: sjsFunction(Boolean, []),
+    Array: sjsFunction(Array, ["from", "of", "isArray"]),
+    Object: sjsObject(Object, ["keys", "values", "entries", "fromEntries", "assign"]),
+    parseInt: parseInt,
+    parseFloat: parseFloat,
+    isNaN: isNaN,
+    isFinite: isFinite,
+    console: Object.freeze({
+      log: (...a) => console.log(...a),
+      info: (...a) => console.info(...a),
+      debug: (...a) => console.debug(...a),
+      error: (...a) => console.error(...a),
+      warn: (...a) => console.warn(...a),
+    }),
+  }));
+  // The SJS variables of the evaluation that runs now: {vars, written}. A function made by SJS reads
+  // and writes the SJS variables of the evaluation that calls it, not of the one that made it
+  // (2.2 of SAFEJS-PLAN-ja.md), since its global names are looked up here when it runs
+  let sjsCurrent = null;
+  const sjsScope = new Proxy(Object.create(null), {
+    // Every name is looked up here (no global of the host), except the parameter __sjs_key
+    has: (t, k) => typeof k === "string" && k !== "__sjs_key",
+    get: (t, k) => {
+      if (typeof k !== "string") return undefined;
+      if (k in SJS_BUILTINS) return SJS_BUILTINS[k];
+      if (sjsCurrent && Object.prototype.hasOwnProperty.call(sjsCurrent.vars, k)) return sjsCurrent.vars[k];
+      throw new ReferenceError(k + " is not defined");
+    },
+    set: (t, k, v) => {
+      if (k in SJS_BUILTINS) throw new TypeError("cannot assign to " + String(k));
+      if (!sjsCurrent) throw new TypeError("an SJS variable assigned outside its evaluation: " + String(k));
+      sjsCurrent.vars[k] = v;
+      sjsCurrent.written.add(k);
+      return true;
+    },
+  });
+  const SJS_NAMES = new Set(("this new class super import export with eval arguments debugger yield " +
+    "globalThis window self document Function").split(" "));
+  const SJS_PROPERTIES = new Set(["constructor", "prototype", "caller", "callee", "arguments"]);
+  function sjsBadProperty(s) {
+    return SJS_PROPERTIES.has(s) || s.startsWith("__");
+  }
+  // The key of a computed member (a[k]): a number, or the string of k if it is not a property that
+  // leads out of SJS (constructor ...). The string is returned, so that k is made a string only once.
+  function sjsKey(k) {
+    if (typeof k === "number") return k;
+    if (typeof k === "symbol") throw new TypeError("a symbol as a key is not in SJS");
+    const s = String(k);
+    if (sjsBadProperty(s)) throw new TypeError("the property " + s + " is not in SJS");
+    return s;
+  }
+  const SJS_BEFORE_EXPRESSION = new Set(
+    "return typeof instanceof in of new delete void throw case do else yield await".split(" ")
+  );
+  // The code, checked to be in SJS (3.2 of SAFEJS-PLAN-ja.md) and with each computed member a[k]
+  // made a[__sjs_key(k)]; throws a HostError for code that is not in SJS
+  function sjsCheck(src) {
+    const toks = jsTokens(src);
+    const out = [];
+    const members = []; // for each [ not closed yet, whether it is a computed member
+    let prev = null; // the last token that is not a space or a comment
+    for (const t of toks) {
+      let text = t.text;
+      if (t.type === "ident") {
+        const afterDot = prev !== null && prev.type === "punct" && (prev.text === "." || prev.text === "?.");
+        if (afterDot ? sjsBadProperty(text) : SJS_NAMES.has(text) || text.startsWith("__")) {
+          throw new HostError("not in SJS: " + (afterDot ? "." : "") + text);
+        }
+      } else if (t.type === "regex") {
+        throw new HostError("not in SJS: a regular expression");
+      } else if (t.type === "punct" && (t.text === "==" || t.text === "!=")) {
+        throw new HostError("not in SJS: " + t.text + " (use " + t.text + "=)");
+      } else if (t.type === "punct" && t.text === "[") {
+        const member =
+          prev !== null &&
+          ((prev.type === "ident" && !SJS_BEFORE_EXPRESSION.has(prev.text)) ||
+            prev.type === "num" ||
+            prev.type === "str" ||
+            (prev.type === "tmpl" && prev.text.endsWith("`")) ||
+            (prev.type === "punct" && (prev.text === ")" || prev.text === "]" || prev.text === "}" || prev.text === "?.")));
+        members.push(member);
+        if (member) text = "[__sjs_key(";
+      } else if (t.type === "punct" && t.text === "]") {
+        if (members.pop()) text = ")]";
+      }
+      out.push(text);
+      if (t.type !== "ws" && t.type !== "comment") prev = t;
+    }
+    return out.join("");
+  }
+  const sjsCompiled = new Map();
+  // Evaluate an SJS expression (see above). The result is {sjs: value}, so that a Promise is kept as a value.
+  function evaluateSjs(src, args, emit, owner) {
+    const code = sjsCheck(src);
+    const [names, kinds, vals] = args;
+    const vars = Object.create(null);
+    names.forEach((name, k) => {
+      vars[name] = kinds[k] === "j" ? valueOf(vals[k]) : vals[k];
+    });
+    let fn = sjsCompiled.get(code);
+    if (!fn) {
+      fn = new Function("__sjs_scope", "__sjs_key", "with (__sjs_scope) { return (\n" + code + "\n) }");
+      sjsCompiled.set(code, fn);
+    }
+    const frame = { vars, written: new Set() };
+    const outer = sjsCurrent;
+    sjsCurrent = frame;
+    try {
+      return { sjs: fn(sjsScope, sjsKey) };
+    } finally {
+      sjsCurrent = outer;
+      // The variables assigned before an error are kept, as in a shell
+      for (const name of frame.written) {
+        const v = vars[name];
+        emit("(w " + sexpString(name) + (typeof v === "string" ? " s " + sexpString(v) : ' j "' + idOf(v, owner) + '"') + ")\n");
+      }
+    }
+  }
+
   // A String in double quotes, as the VM writes the elements of standard input.
   function unquote(line) {
     const m = /^\s*"((?:[^"\\]|\\.)*)"\s*$/s.exec(line);
@@ -714,6 +864,7 @@ var ConMaVM = (function () {
     installConsole(write);
     function call(id, code, args) {
       const keep = code.startsWith(KEEP);
+      const sjs = code.startsWith(SJS);
       // Lines go to the pipe of the call at once, and the VM runs again after them.
       const job = new Job(id, (line) => {
         if (job.ended) return;
@@ -784,7 +935,9 @@ var ConMaVM = (function () {
         result = Promise.resolve(
           code.startsWith(STMT)
             ? evaluateStatement(code.slice(STMT.length), args, makeStdin(job), (line) => job.emit(line), id)
-            : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
+            : sjs
+              ? evaluateSjs(code.slice(SJS.length), args, (line) => job.emit(line), id)
+              : evaluate(keep ? code.slice(KEEP.length) : code, args, makeStdin(job))
         );
       } catch (e) {
         result = Promise.reject(e);
@@ -793,6 +946,10 @@ var ConMaVM = (function () {
       }
       result
         .then((v) => {
+          if (sjs) {
+            const x = v.sjs;
+            return typeof x === "string" ? "(r s " + sexpString(x) + ")\n" : '(r j "' + idOf(x, id) + '")\n';
+          }
           if (v instanceof Fallback) return "(f " + sexpString(v.message) + ")\n";
           if (keep && typeof v !== "string" && !isIterator(v)) return '(r j "' + idOf(v, id) + '")\n';
           if (!isIterator(v)) return resultLine(v);

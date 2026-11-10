@@ -74,6 +74,9 @@
   __Dict_put__ sh "script" script ,()
   __Dict_put__ sh "args" args ,()
   __Dict_put__ sh "vars" vars ,()
+  ;; SJS変数（consh_jsstmt.se）
+  __Dict_new__ ,(sjsvars)
+  __Dict_put__ sh "sjsvars" sjsvars ,()
   __Dict_put__ sh "funcs" funcs ,()
   __Dict_put__ sh "parent" __NULL__ ,()
   __Dict_put__ sh "inFunction" __FALSE__ ,()
@@ -633,6 +636,8 @@
   __if__ condition (,() return (,(sh) Eval_shift sh pos children)) ,()
   __String_equal__ tag "jsstmt" ,(condition)
   __if__ condition (,() return (,(sh) Eval_jsstmt sh pos children)) ,()
+  __String_equal__ tag "arith" ,(condition)
+  __if__ condition (,() return (,(sh) Eval_arith sh pos children)) ,()
   __NULL__ (,(sh) Eval_list sh children))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列。
@@ -728,6 +733,7 @@
   __Dict_put__ fn "body" body ,()
   __Dict_put__ fn "scope" sh ,()
   __Dict_put__ fn "vars" vars ,()
+  Sjs_copy_into sh fn ,()
   __NULL__ fn)
 
 ;; ── 関数値（段階 20）──
@@ -804,6 +810,7 @@
   __Dict_new__ ,(funcs)
   __Dict_copy__ sh ,(callee)
   __Dict_put__ callee "vars" vars ,()
+  Sjs_copy_into fn callee ,()
   __Dict_put__ callee "funcs" funcs ,()
   __Dict_put__ callee "parent" scope ,()
   __Dict_put__ callee "inFunction" __TRUE__ ,()
@@ -1281,6 +1288,7 @@
   __Dict_copy__ sh ,(child)
   __Dict_put__ child "global" global ,()
   __Dict_put__ child "vars" vars ,()
+  Sjs_copy_into sh child ,()
   __Dict_put__ child "env" env ,()
   __Dict_put__ child "funcs" funcs ,()
   __Dict_put__ child "parent" sh ,()
@@ -2940,11 +2948,13 @@
   ;; 変数に入れるときは、結果を JS の値のまま受け取る（consh/js/PLAN-ja.md の 2.5 の 4。ホストは (r j 番号) を書く）
   Js_keep_code name code ,(code)
   Js_args sh pos jsArgs ,(list)
-  ;; JavaScript があっても、CONSH_ENABLE_JS がなければ使わない（ない版は、__JS_call__ の onError で 127）
+  ;; JavaScript があっても、CONSH_ENABLE_JS が js でなければ使わない（ない版は、__JS_call__ の onError で 127）
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
   __Dict_lookup_or__ global "jsState" __print_exit_error__ ,(jsState)
   __String_equal__ jsState "off" ,(off)
-  __if__ off (,() fail "JavaScript is disabled (set CONSH_ENABLE_JS to enable it)" "2") ,()
+  __String_equal__ jsState "sjs" ,(sjsOnly)
+  __or__ off sjsOnly ,(disabled)
+  __if__ disabled (,() fail "JavaScript is disabled (set CONSH_ENABLE_JS to js to enable it)" "2") ,()
   __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code list ,(stream toHost)
   __Ref_new__ toHost ,(toHostRef)
   __LazyList_lines__ stream ,(lines)

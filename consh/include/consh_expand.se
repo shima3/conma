@@ -469,6 +469,9 @@
   __is_null__ more ,(single)
   __unless__ single (,() return (,(sh) Expand_value sh v)) ,()
   Node_split elem ,(kind epos children)
+  ;; 算術置換だけの語は、JS の値のまま変数に入れる（consh/SAFEJS-PLAN-ja.md の 2.2 の 2）
+  __String_equal__ kind "arithsubst" ,(isArith)
+  __if__ isArith (,() return (,(sh) Sjs_subst sh epos children)) ,()
   __String_equal__ kind "var" ,(isVar)
   __String_equal__ kind "bvar" ,(isBvar)
   __or__ isVar isBvar ,(isRef)
@@ -732,6 +735,13 @@
     (,()
       List_first children ,(script)
       Eval_subst sh pos script ,(value)
+      return value) ,()
+  ;; 算術置換 $(( ))（consh_jsstmt.se）。JS の値は、変数参照と同じく文字列かリストにする
+  __String_equal__ kind "arithsubst" ,(condition)
+  __if__ condition
+    (,()
+      Sjs_subst sh pos children ,(value)
+      Value_force value ,(value)
       return value) ,()
   __String_equal__ kind "glob" ,(condition)
   __if__ condition

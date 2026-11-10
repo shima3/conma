@@ -245,15 +245,17 @@ var ConshCore = (function () {
       },
     };
 
-    // Whether config.json of the server says {"js": true}; false without the file
-    async function jsEnabledByServer() {
+    // The value of "CONSH_ENABLE_JS" in config.json of the server ("sjs" or "js"), or null without
+    // the file or the key
+    async function jsModeOfServer() {
       try {
         const r = await fetch("config.json", { cache: "no-cache" });
-        if (!r.ok) return false;
+        if (!r.ok) return null;
         const config = await r.json();
-        return config !== null && config.js === true;
+        const mode = config !== null && typeof config === "object" ? config.CONSH_ENABLE_JS : null;
+        return typeof mode === "string" ? mode : null;
       } catch (e) {
-        return false;
+        return null;
       }
     }
 
@@ -283,10 +285,12 @@ var ConshCore = (function () {
       for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
       // The commands of COMMANDS are builtin commands of ConSh
       vm.setenv("CONSH_HOST_BUILTINS", Object.keys(COMMANDS).join(" "));
-      // js and JS statements run code in the page without a sandbox, so they are off unless the
-      // server has config.json with {"js": true} (consh/js/README-ja.md). A parameter of the URL is
-      // not used, since a link from someone else could turn it on
-      if (await jsEnabledByServer()) vm.setenv("CONSH_ENABLE_JS", "1");
+      // (( )), js and JS statements run code in the page without a sandbox, so they are off unless the
+      // server has config.json with {"CONSH_ENABLE_JS": "sjs"} ((( )) only) or "js" (all of them)
+      // (consh/js/README-ja.md). A parameter of the URL is not used, since a link from someone else
+      // could turn it on
+      const jsMode = await jsModeOfServer();
+      if (jsMode !== null) vm.setenv("CONSH_ENABLE_JS", jsMode);
       const code = vm.start(new Uint8Array(moduleBytes), ["--main", "consh.module.se", "interactive", "-", "stdin"]);
       if (code !== 0) {
         done = true;

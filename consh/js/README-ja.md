@@ -1,13 +1,13 @@
 # JavaScript 版 ConSh
 
-ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
+ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
 
-**セキュリティの注意**：`js` と JS の文は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+**セキュリティの注意**：`js` と JS の文は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS も、当面はホストの JavaScript で評価する。SJS の範囲の外のコードはエラーにするが、抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
-そのため、`js` と JS の文は、既定では使えない（`js` は `js: JavaScript is disabled (set CONSH_ENABLE_JS to enable it)` を出して `$?` を 2 にし、JS の文はシェルの文として読む）。使うときは、次のように有効にする（[「js と JS の文を有効にする」](#js-と-js-の文を有効にする)）。
+そのため、`(( ))`、`js`、JS の文は、既定では使えない（`(( ))` は `sjs: SJS is disabled ...`、`js` は `js: JavaScript is disabled ...` を出して `$?` を 2 にし、JS の文はシェルの文として読む）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`sjs` は `(( ))` だけ、`js` は `(( ))`、`js`、JS の文のすべてを使えるようにする。
 
-* Node.js 版：環境変数 `CONSH_ENABLE_JS` を空でない値にして起動する。
-* ブラウザ版：サーバーのページのディレクトリ（`consh/js/web`）に `config.json` を置き、`{"js": true}` と書く。
+* Node.js 版：環境変数 `CONSH_ENABLE_JS` を `sjs` か `js` にして起動する。
+* ブラウザ版：サーバーのページのディレクトリ（`consh/js/web`）に `config.json` を置き、`{"CONSH_ENABLE_JS": "sjs"}`（か `"js"`）と書く。
 
 ## 作る
 
@@ -39,24 +39,30 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 * 「スクリプトを実行」は、スクリプトの各行を入力として渡す（ConMa 版には `source` がない）。
 * Ctrl-C か「中断」で、動いているコマンドを止める。
 
-## js と JS の文を有効にする
+## JavaScript を有効にする
 
-`js` と JS の文は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。ConSh は起動したときに一度だけ、使ってよいかを決める（consh/include/consh_jsstmt.se の `Js_state`）。
+`(( ))`、`js`、JS の文は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。
 
-* **Node.js 版**：VM のプロセスの環境変数 `CONSH_ENABLE_JS` が空でなければ使える。起動した後にシェルで `export CONSH_ENABLE_JS=1` としても、今の ConSh では使えるようにならない（シェルの `export` は、起動するコマンドの環境だけを変える）。ただし、環境変数なので、その ConSh から起動した別の `consh` には引き継がれる。
+| `CONSH_ENABLE_JS` | `(( ))` と `$(( ))` | `js` と JS の文 |
+|---|---|---|
+| `sjs` | 使える | 使えない |
+| `js` | 使える | 使える |
+| ないか、ほかの値 | 使えない | 使えない |
+
+* **Node.js 版**：VM のプロセスの環境変数 `CONSH_ENABLE_JS` で決める。起動した後にシェルで `export CONSH_ENABLE_JS=js` としても、今の ConSh は変わらない（シェルの `export` は、起動するコマンドの環境だけを変える）。ただし、環境変数なので、その ConSh から起動した別の `consh` には引き継がれる。
 
   ```
-  CONSH_ENABLE_JS=1 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
+  CONSH_ENABLE_JS=sjs CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
   ```
 
-* **ブラウザ版**：ページは、起動するときにサーバーの `config.json`（ページと同じディレクトリ）を読み、`{"js": true}` なら、VM の環境変数 `CONSH_ENABLE_JS` を `1` にする。ファイルがない、読めない、`js` が `true` でないときは使えない。`config.json` はリポジトリに入れない（`.gitignore`）ので、使うサーバーで作る。
+* **ブラウザ版**：ページは、起動するときにサーバーの `config.json`（ページと同じディレクトリ）を読み、`"CONSH_ENABLE_JS"` の値（文字列）を、VM の環境変数 `CONSH_ENABLE_JS` にする。ファイルがない、読めない、その値がないときは、どれも使えない。`config.json` はリポジトリに入れない（`.gitignore`）ので、使うサーバーで作る。
 
   ```
-  echo '{"js": true}' > consh/js/web/config.json
+  echo '{"CONSH_ENABLE_JS": "sjs"}' > consh/js/web/config.json
   ```
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
-* JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。
+* JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は `sjs: JavaScript is not available`（`$?` は 2）になる。
 
 ## Node.js で使う
 
@@ -66,9 +72,33 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 ```
 
-引数なしで起動すると対話モードになる。`js` と JS の文を使うときは、`CONSH_ENABLE_JS=1` を付ける（上の「js と JS の文を有効にする」）。
+引数なしで起動すると対話モードになる。`(( ))` を使うときは `CONSH_ENABLE_JS=sjs`、`js` と JS の文も使うときは `CONSH_ENABLE_JS=js` を付ける（上の「JavaScript を有効にする」）。
 
 VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（PLAN-ja.md の 3.8）。
+
+## (( )) と $(( ))：SJS
+
+`CONSH_ENABLE_JS` が `sjs` か `js` のとき、算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。当面は、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。
+
+```
+(( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）
+if (( n > 2 )); then echo big; fi
+echo "n is $(( n ))"           # 算術置換。ほかの語要素とは文字列にして連結する（"..." の中でも使える）
+v=$(( [n, n * 2] ))            # 算術置換だけの語は、JS の値のまま変数に入れる
+for x in $v; do echo $x; done  # $ で読むと、JS の文の値と同じく文字列かリストになる
+(( sum = (a) => { let s = 0; for (const x of a) s += x; return s } ))
+echo $(( sum([1, 2, 3]) ))     # 6
+```
+
+* `((` の後と `))` の前には空白（改行も）が要る。SJS式の終わりは JavaScript の字句で決めるので、文字列の中の ` ))` では終わらない。閉じるまで次の行も読む（対話モードでは PS2 を出す）。
+* SJS式の中の代入は、シェルの変数ではなく **SJS変数**を変える。SJS変数は、シェルの変数と同じ名前でも別のもので、シェルの変数と同じく、関数、パイプラインの要素、`$( )`、`&` では写しになる（シェルの関数の中で `(( n = 5 ))` としても、外の `n` は変わらない）。SJS変数の値をシェルの変数に入れるときは `v=$(( n ))` と書く。
+* 大域の名前は、SJS変数と、SJS の組み込み（`Math`、`JSON`、`Number`、`String`、`Boolean`、`Array`、`Object` の `keys` など、`parseInt`、`parseFloat`、`isNaN`、`isFinite`、`console`、`undefined`、`NaN`、`Infinity`）だけである。組み込みには代入できず（`TypeError`）、組み込みはホストのものの凍結した写しなので、変えてもホストには届かない。ホストの名前（`process`、`document`、`fetch` など）は `ReferenceError` になる。
+* 関数の本体のブロックには、`let`、`const`、`if`、`for`、`while`、`return`、`try` なども書ける（`(( ))` の中なので ConSh の構文と衝突しない）。
+* 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
+* `console.log` は標準出力に出る（リダイレクトできる）。
+* 文の `(( ))` でエラーになれば、メッセージを出して `$?` を 2 にし、次の文に進む。語の中の `$(( ))` でエラーになれば、変数が未定義のときと同じく、その文を止め（スクリプトなら終了ステータス 2 で終える。対話モードならそのコマンド行を止める）、`$?` を 2 にする。
+* SJS の関数をシェルのコマンドとして呼ぶこと（`$f 1 2`、`$(( ... )) 1 2`）は、段階 A2 で作る（まだない）。
+* 制限：`typeof` を定義されていない名前に使うと、`"undefined"` ではなく `ReferenceError` になる。`async` 関数の中で `await` の後に SJS変数を読み書きすると、どの評価の変数かが決まらないのでエラーになることがある。
 
 ## js
 
@@ -99,7 +129,7 @@ js nat= '(function* () { let i = 0; while (true) yield i++ })()'     # 遅延の
 
 ## JS の文
 
-JavaScript のある版（ブラウザと Node.js の wasm 版）で、`js` を有効にしたとき（上の「js と JS の文を有効にする」）は、先頭の語がコマンド（予約語、組み込みコマンド、関数、PATH にある外部コマンド）でない文を、行全体の JavaScript のコードとして評価する（PLAN-ja.md の 2.5）。
+JavaScript のある版（ブラウザと Node.js の wasm 版）で、`CONSH_ENABLE_JS` が `js` のとき（上の「JavaScript を有効にする」）は、先頭の語がコマンド（予約語、組み込みコマンド、関数、PATH にある外部コマンド）でない文を、行全体の JavaScript のコードとして評価する（PLAN-ja.md の 2.5）。`((` で始まる文は算術評価である。JS の文は、SJS の算術評価に置き換えて消す予定である（consh/SAFEJS-PLAN-ja.md の 2.3）。
 
 ```
 n = 3                          # シェルの変数 n に、JavaScript の数 3
@@ -132,7 +162,7 @@ r = await fetch("names.txt").then(r => r.text())
 ## テスト
 
 ```
-consh/js/test/run_all.sh                   # js のテスト（Node.js。各 test.sh が CONSH_ENABLE_JS=1 にする）
+consh/js/test/run_all.sh                   # js と SJS のテスト（Node.js。各 test.sh が CONSH_ENABLE_JS を js か sjs にする）
 CONMA_VM=wasm test/run_all.sh              # ConMa のテストを wasm 版で
 CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh
 ```

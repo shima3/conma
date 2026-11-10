@@ -1,0 +1,5 @@
+consh: case5.sh:1:1: sjs: SJS is disabled (set CONSH_ENABLE_JS to sjs or js to enable it)
+status 2
+consh: case5.sh:3:1: js: JavaScript is disabled (set CONSH_ENABLE_JS to js to enable it)
+status 2
+exit: 0

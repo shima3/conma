@@ -512,6 +512,25 @@ consh/js/REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
 - Node.js 版は、環境変数で有効にする（起動時のオプションより、テストなどの変更が少ない。ユーザーの選択）。環境変数なので、その ConSh から起動した別の `consh` にも引き継がれるが、Node.js 版のスクリプトは外部コマンドを起動できるので、危険は増えない。
 - ブラウザ版には環境変数がないので、ページ（consh-core.js の `jsEnabledByServer`）が、起動するときにサーバーの `config.json` を読み、`{"js": true}` なら VM の環境変数 `CONSH_ENABLE_JS` を `1` にする。URL のパラメータは、他人のリンクから有効にできてしまうので使わない。`config.json` は `.gitignore` に入れた。
 - テスト：consh/js/test の各 test.sh は `CONSH_ENABLE_JS=1` を export する。step1 の case5 は、変数をなくして動かし、`js` が 2 になり、`n = 1 + 2` がシェルの文（コマンド `n`）になることを確かめる。ネイティブ版の consh/test の step17（JavaScript のない版の `js`）は変わらない。
+- 2026/11/11 の後の変更（3.23）：`CONSH_ENABLE_JS` は値で選ぶようにした（ユーザーの決定）。`sjs` なら算術評価 `(( ))` だけ、`js` なら算術評価、`js`、JS の文のすべてを使え、ないかほかの値ならどれも使えない。`Js_state` は `"js"`、`"sjs"`、`"off"`、`"none"` を返し、`js` は `"js"` のときだけ、JS の文も `"js"` のときだけ使う。ブラウザ版の `config.json` は `{"CONSH_ENABLE_JS": "sjs"}` か `"js"` と書き、その値を VM の環境変数にする（consh-core.js の `jsModeOfServer`）。consh/js/test の test.sh は `CONSH_ENABLE_JS=js` にした。
+
+### 3.23. SJS の段階 A1：(( )) と $(( ))（2026/11/11）
+
+consh/SAFEJS-PLAN-ja.md の段階 A1 を作った。仕様は SAFEJS-PLAN-ja.md の 2、作り方は 4.1 のとおりで、次のようにした。
+
+- **構文解析**（consh_parser.se）：文の始めの `((`（前置の変数定義の後は除く）を算術評価、語の中と `"..."` の中の `$((` を算術置換として読む（`Ps_at_arith`、`Ps_arith`）。`((` の後と `))` の前の空白を確かめ、SJS式の範囲は JS の文の字句解析（`Js_scan`）で、改行も含めて（`"lines"`）、括弧の外の `)` までとする。閉じないまま入力が終われば `unterminated ((`（対話モードでは続きを読む）。構文木は `(arith 位置 コード (names 位置 名前 ...) [(redirs …)])` と、語の要素の `(arithsubst 位置 コード (names …))`。`((` で始まる文は JS の文にしない（`Ps_at_js`）。
+- **評価**（consh_jsstmt.se）：`Eval_arith`（文。リダイレクトは if 文と同じく `Eval_redirected`）と `Sjs_subst`（語）が `Sjs_eval` を呼ぶ。`Sjs_eval` は、`"jsState"` が `"none"` か `"off"` ならエラーにし、コードに現れる名前の SJS変数を、JS の文と同じ形（名前、種類 s か j、値）で `__JS_call__` に渡す（コードの前に `//@consh-sjs`）。ホストが書く `(w ...)` は、`"vars"` でなく `"sjsvars"` に入れる（`Js_stmt_lines` と `Js_store` に入れ先の引数を足した）。結果は `(r s 文字列)` なら String、`(r j 番号)` なら JS の値（`Js_wrap`）。
+- **SJS変数**：文脈の `"sjsvars"` の Dict。`Ctx_top` で作り、`Func_make`（定義した時点の写し）、`Func_call`、`Sh_child` で、局所変数と同じく写す（`Sjs_copy_into`。参照版も同じ）。
+- **$?**：文の算術評価は、エラーなら 2、そうでなければ値の JavaScript の真偽（`Sjs_truthy`。`""`、`undefined`、`null`、`false`、`0`、`NaN`、`0n` が偽）で 0 か 1。値は出さない。
+- **語の値**：算術置換は、`Expand_ref` で値を `Value_force` し（JS の値の変数を `$` で読むのと同じく、文字列かリストになる）、ほかの語要素と連結する。変数定義の右辺が算術置換だけなら、`Def_value_code` が JS の値のまま変数に入れる（参照版も同じ）。エラーなら `Sjs_abort`：`Sh_error` と同じく、スクリプトなら ConSh を終え（終了ステータスは 2）、対話モードならそのコマンド行を止めて `$?` を 2 にする。仕様の「文を止める」を、スクリプトでは ConSh の今のエラー（未定義の変数など）と同じく終わることにした。文だけを止めるには、文ごとに止める先を持つ仕組みが要る。
+- **ホスト**（conma.js の `evaluateSjs`）：
+    - `sjsCheck` がコードを字句に分け、SJS の範囲の外（`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.caller`、`.callee`、`.arguments`、`.__` で始まるプロパティ、正規表現、`==`、`!=`）を `not in SJS: ...` のエラーにする。計算したキーのメンバー参照 `a[k]`（`[` の前が名前、数、文字列、テンプレートの終わり、`)`、`]`、`}`、`?.`）は `a[__sjs_key(k)]` に書き換え、`__sjs_key` が `constructor` などのキーを `TypeError` にする（キーは文字列にしてから確かめ、その文字列を使う）。`}` の後の `[` も参照とみるので、ブロックの直後の配列のリテラル（`{...} [a, b]`）は意味が変わる。
+    - コードは `with (__sjs_scope) { return (コード) }` の関数にする（コードごとに覚える）。`__sjs_scope` は 1 つの Proxy で、すべての名前を引き受け、SJS の組み込み（`SJS_BUILTINS`。`Math`、`JSON`、`Number`、`String`、`Boolean`、`Array`、`Object` の一部、`parseInt` など、`console`）か、今の評価の SJS変数（`sjsCurrent`）を返し、なければ `ReferenceError` にする。代入は今の評価の SJS変数に入れ（組み込みの名前なら `TypeError`）、評価の後で `(w ...)` を書く（エラーの前の代入も）。組み込みは、ホストのものを凍結した写し（関数は包んだもの）なので、SJS から変えてもホストのものは変わらない。
+    - SJS の関数の中の大域の名前も、呼ばれたときの `sjsCurrent` を引くので、呼び出したときのシェルの SJS変数を読み書きする（SAFEJS-PLAN-ja.md の 2.2 の 4）。ただし、`async` の関数で `await` の後は、どの評価の変数かが決まらない。
+    - 結果は Promise を待たずに `{sjs: 値}` で返し、文字列なら `(r s ...)`、それ以外は `(r j 番号)` にする。
+- **ブラウザ版**：SJS も JS の文と同じく、ページの JsEngine で評価する（Worker から jsRemote）。
+- **テスト**：consh/js/test/step6（`CONSH_ENABLE_JS=sjs`）。case1 は値、`$?`、連結、`"..."`、変数定義、シェルの変数との別、関数の本体の `if`/`for`/`return`、関数とパイプラインの写し、複数行、`console.log` とリダイレクト。case2 は範囲の外とエラー。case3 は空白のない `((`。case4 は対話モード。case5 は `CONSH_ENABLE_JS` の値（`js`、なし、ほかの値）。case6 は語の中のエラーで終了ステータス 2 になること。step1 の case5 の `js` のメッセージを変えた。
+- まだないもの（段階 A2）：SJS の関数をシェルのコマンドとして呼ぶこと（戻り値を標準エラーに出す）、引数の JS の値、Promise を文字列にするときに待つこと。
 
 ## 4. 未解決の点
 

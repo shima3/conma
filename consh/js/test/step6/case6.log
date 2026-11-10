@@ -1,0 +1,3 @@
+before
+consh: case6.sh:2:8: sjs: ReferenceError: nope is not defined
+exit: 2

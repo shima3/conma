@@ -7,13 +7,15 @@
 ;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
 ;; consh_eval.se（参照版も）が include する
 
-;; JavaScript を使ってよいか。使えて（Js_probe_host）、起動したときの環境変数 CONSH_ENABLE_JS が空でないときだけ真。
-;; ブラウザ版では、サーバの config.json が {"js": true} のときに、ホストがこの変数を設定する（consh-core.js）
+;; JS の文を使うか。JavaScript が使えて（Js_probe_host）、起動したときの環境変数 CONSH_ENABLE_JS が js のときだけ真。
+;; ブラウザ版では、サーバの config.json の "CONSH_ENABLE_JS" を、ホストがこの変数に設定する（consh-core.js）
 (define Js_probe ,()
   Js_state ,(state)
-  __String_equal__ state "on")
+  __String_equal__ state "js")
 
-;; JavaScript の状態。"on"（使ってよい）、"off"（使えるが CONSH_ENABLE_JS がない）、"none"（JavaScript がない版）。
+;; JavaScript の状態（consh/js/PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
+;;   js なら "js"（js、JS の文、算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、
+;;   ないかほかの値なら "off"（どれも使えない）。JavaScript がない版は "none"。
 ;; 環境変数は、シェルの export でなく、VM のプロセスのものを見るので、起動した後には変わらない
 (define Js_state ,()
   __Cont_get__ ,(return)
@@ -21,9 +23,9 @@
   __unless__ has (,() return "none") ,()
   __OS_get_envDict__ ,(env)
   __Dict_lookup_or__ env "CONSH_ENABLE_JS" (,(key) return "off") ,(value)
-  __String_equal__ value "" ,(empty)
-  __if__ empty (,() return "off") ,()
-  __NULL__ "on")
+  __String_equal__ value "js" ,(test__) __if__ test__ (,() return "js") ,()
+  __String_equal__ value "sjs" ,(test__) __if__ test__ (,() return "sjs") ,()
+  __NULL__ "off")
 
 ;; JavaScript が使えるか（__JS_call__ が onError に進まないか）。使えれば、"0" の結果を読み捨てる
 (define Js_probe_host ,()
@@ -78,7 +80,7 @@
     Js_close_result kept stream toHostRef (,()
       __OS_close__ __print_exit_error__ stream ,()
       Js_input_close toHostRef)) ,(closeAll)
-  Js_stmt_lines sh pos in out err toHostRef keptRef lines ,(result rest)
+  Js_stmt_lines sh pos in out err toHostRef keptRef lines "vars" ,(result rest)
   __is_null__ result ,(test__) __if__ test__ (,() closeAll ,() fail "no result" "1") ,()
   __LList_uncons__ __print_exit_error__ result ,(tag fields)
   __String_equal__ tag "f" ,(test__) __if__ test__
@@ -108,17 +110,18 @@
   Js_output sh pos out kind value ,()
   Sh_set_status sh "0")
 
-;; Js_lines と同じだが、(w ...) の行を読んで変数に入れる。JS の値を入れたら keptRef を真にする
-(define Js_stmt_lines ,(sh pos in out err toHostRef keptRef lines)
+;; Js_lines と同じだが、(w ...) の行を読んで、文脈の key（"vars" か、SJS変数の "sjsvars"）の Dict に入れる。
+;; JS の値を入れたら keptRef を真にする
+(define Js_stmt_lines ,(sh pos in out err toHostRef keptRef lines key)
   __Cont_get__ ,(return)
   Js_lines sh pos in out err toHostRef lines ,(result rest)
   __is_null__ result ,(test__) __if__ test__ (,() return result rest) ,()
   __LList_uncons__ __print_exit_error__ result ,(tag fields)
   __String_equal__ tag "w" ,(test__) __unless__ test__ (,() return result rest) ,()
   __Ref_get__ toHostRef ,(handle)
-  Js_store sh pos fields handle ,(isJs)
+  Js_store sh pos fields handle key ,(isJs)
   __if__ isJs (,() __Ref_set__ keptRef __TRUE__) ,()
-  Js_stmt_lines sh pos in out err toHostRef keptRef rest)
+  Js_stmt_lines sh pos in out err toHostRef keptRef rest key)
 
 ;; 結果を読み終えたとき。keep なら、結果の Stream だけを閉じ、toHost は変数に持たせたまま閉じない（toHostRef は空にする）。
 ;; そうでなければ closeAll
@@ -128,9 +131,10 @@
   __OS_close__ __print_exit_error__ stream ,()
   __Ref_set__ toHostRef __NULL__)
 
-;; (w 名前 s 文字列) なら String を、(w 名前 j 番号) なら JS の値を、名前の局所変数に入れる。JS の値なら真を返す。
+;; (w 名前 s 文字列) なら String を、(w 名前 j 番号) なら JS の値を、文脈の key の Dict（局所変数の "vars" か、
+;; SJS変数の "sjsvars"）の名前に入れる。JS の値なら真を返す。
 ;; JS の値は、"js" に番号、"handle" に値を作った呼び出しの toHost を入れた Dict で、Value_force が読むたびに Js_force で直す
-(define Js_store ,(sh pos fields handle)
+(define Js_store ,(sh pos fields handle key)
   __LList_uncons__ __print_exit_error__ fields ,(name fields)
   __LList_uncons__ __print_exit_error__ fields ,(kind fields)
   List_first fields ,(data)
@@ -138,7 +142,7 @@
   __if_then_else__ isString
     (,() __NULL__ data)
     (,() Js_wrap data handle) ,(value)
-  __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
+  __Dict_lookup_or__ sh key __print_exit_error__ ,(vars)
   __Dict_put__ vars name value ,()
   __not__ isString)
 
@@ -241,3 +245,139 @@
   __String_concat__ "js: " msg ,(m)
   __String_concat__ m " (run as a shell statement)" ,(m)
   Sh_warn sh pos m)
+
+;; ── SJS：算術評価 (( )) と算術置換 $(( ))（consh/SAFEJS-PLAN-ja.md の 2）──
+;; SJS式は、当面（段階 A）ホストの JavaScript で評価する。ホストは、コードが SJS の範囲（SAFEJS-PLAN-ja.md の 3）に
+;; あるかを確かめてから、SJS変数だけを大域の名前として評価する（conma.js の evaluateSjs）。
+;; SJS変数は、文脈の "sjsvars" の Dict に、局所変数（"vars"）と同じ形の値（String か、JS の値の Dict）で置き、
+;; 局所変数と同じ所で写す（Ctx_top、Func_make、Func_call、Sh_child の Sjs_copy_into）
+
+;; to の "sjsvars" に、from の "sjsvars" の写しを入れる（from になければ空の Dict）
+(define Sjs_copy_into ,(from to)
+  __Dict_lookup_or__ from "sjsvars" (,(key) __Dict_new__) ,(vars)
+  __Dict_copy__ vars ,(vars)
+  __Dict_put__ to "sjsvars" vars)
+
+;; 文の算術評価 (arith 位置 コード (names 位置 名前 ...) [(redirs …)])。値は出さず、エラーなら $? を 2、
+;; そうでなければ値の JavaScript の真偽で、真なら 0、偽なら 1 にする（SAFEJS-PLAN-ja.md の 2.2 の 1）
+(define Eval_arith ,(sh pos children)
+  __LList_uncons__ __print_exit_error__ children ,(code rest)
+  __LList_uncons__ __print_exit_error__ rest ,(namesNode rest)
+  __is_null__ rest ,(test__) __if_then_else__ test__
+    (,() __NULL__ __NULL__)
+    (,() List_first rest ,(node) Node_split node ,(rtag rpos items) __NULL__ items) ,(redirs)
+  Eval_redirected sh pos redirs (,(inner) Eval_arith_run inner pos code namesNode))
+
+(define Eval_arith_run ,(sh pos code namesNode)
+  __Cont_get__ ,(return)
+  Sjs_eval sh pos code namesNode (,(msg)
+    __String_concat__ "sjs: " msg ,(m)
+    Sh_warn sh pos m ,()
+    Sh_set_status sh "2" ,()
+    return) ,(value)
+  Sjs_truthy value ,(truth)
+  __if_then_else__ truth (,() __NULL__ "0") (,() __NULL__ "1") ,(status)
+  Sh_set_status sh status)
+
+;; 語の算術置換 (arithsubst 位置 コード (names 位置 名前 ...)) の値（String か、JS の値の Dict）。
+;; エラーなら、文を止めて $? を 2 にする（Sjs_abort）
+(define Sjs_subst ,(sh pos children)
+  __LList_uncons__ __print_exit_error__ children ,(code rest)
+  List_first rest ,(namesNode)
+  Sjs_eval sh pos code namesNode (,(msg) Sjs_abort sh pos msg))
+
+;; 算術置換のエラー。Sh_error と同じく止めるが、$? は 2。対話モードでなければ、ConSh を終了ステータス 2 で終える
+(define Sjs_abort ,(sh pos msg)
+  __String_concat__ "sjs: " msg ,(m)
+  Sh_message sh pos m ,(s)
+  __OS_print_error__ s ,()
+  Sh_set_status sh "2" ,()
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "interactive" (,(key) __NULL__ __FALSE__) ,(interactive)
+  __unless__ interactive
+    (,()
+      __Number_fromString__ __print_exit_error__ "2" ,(two)
+      __OS_exit__ __print_exit_error__ two) ,()
+  __Dict_lookup_or__ sh "exitTo" (,(key) __NULL__ __NULL__) ,(exitTo)
+  __is_null__ exitTo ,(test__) __unless__ test__ exitTo ,()
+  __Dict_lookup_or__ sh "recover" (,(key) __NULL__ __NULL__) ,(recover)
+  __is_null__ recover ,(test__) __unless__ test__ recover ,()
+  __OS_exit_error__)
+
+;; SJS式 code を評価した値（String か、JS の値の Dict）。代入された SJS変数は "sjsvars" に入れる。
+;; エラーなら fail にメッセージを渡す（fail は戻らない）
+(define Sjs_eval ,(sh pos code namesNode fail)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "jsState" __print_exit_error__ ,(state)
+  __String_equal__ state "none" ,(test__) __if__ test__ (,() fail "JavaScript is not available") ,()
+  __String_equal__ state "off" ,(test__) __if__ test__
+    (,() fail "SJS is disabled (set CONSH_ENABLE_JS to sjs or js to enable it)") ,()
+  Node_split namesNode ,(ntag npos names)
+  Sjs_vars sh names __NULL__ __NULL__ __NULL__ ,(ns ks vs)
+  __LList_cons__ vs __NULL__ ,(args)
+  __LList_cons__ ks args ,(args)
+  __LList_cons__ ns args ,(args)
+  __String_concat__ "//@consh-sjs\n" code ,(code)
+  __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg) code args ,(stream toHost)
+  __Ref_new__ toHost ,(toHostRef)
+  __Ref_new__ __FALSE__ ,(keptRef)
+  __LazyList_lines__ stream ,(lines)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  Js_stmt_lines sh pos in out err toHostRef keptRef lines "sjsvars" ,(result rest)
+  __NULL__ (,(keep)
+    __Ref_get__ keptRef ,(kept)
+    __or__ kept keep ,(keep)
+    Js_close_result keep stream toHostRef (,()
+      __OS_close__ __print_exit_error__ stream ,()
+      Js_input_close toHostRef)) ,(finish)
+  __is_null__ result ,(test__) __if__ test__ (,() finish __FALSE__ ,() fail "no result") ,()
+  __LList_uncons__ __print_exit_error__ result ,(tag fields)
+  __LList_uncons__ __print_exit_error__ fields ,(kind fields)
+  __String_equal__ tag "e" ,(test__) __if__ test__ (,() finish __FALSE__ ,() fail kind) ,()
+  List_first fields ,(data)
+  __String_equal__ kind "s" ,(test__) __if__ test__ (,() finish __FALSE__ ,() return data) ,()
+  __Ref_get__ toHostRef ,(handle)
+  Js_wrap data handle ,(value)
+  finish __TRUE__ ,()
+  __NULL__ value)
+
+;; SJS式に渡す SJS変数：names のうち "sjsvars" にあるものの、名前、種類（s か j）、値の LList
+(define Sjs_vars ,(sh names ns ks vs)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return ns ks vs) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __Dict_lookup_or__ sh "sjsvars" __print_exit_error__ ,(vars)
+  __Dict_lookup_or__ vars name (,(key) Sjs_vars sh rest ns ks vs ,(ns ks vs) return ns ks vs) ,(raw)
+  __type_name__ raw ,(type)
+  __String_equal__ type "String" ,(test__) __if_then_else__ test__
+    (,() __NULL__ "s" raw)
+    (,() __Dict_lookup_or__ raw "js" __print_exit_error__ ,(id) __NULL__ "j" id) ,(kind value)
+  __LList_cons__ name ns ,(ns)
+  __LList_cons__ kind ks ,(ks)
+  __LList_cons__ value vs ,(vs)
+  Sjs_vars sh rest ns ks vs)
+
+;; SJS の値（String か、JS の値の Dict）の JavaScript の真偽。偽は、""、undefined、null、false、0、-0、NaN、0n
+(define Sjs_truthy ,(value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(test__) __if__ test__
+    (,() __String_equal__ value "" ,(empty) __not__ empty ,(t) return t) ,()
+  __Dict_lookup_or__ value "js" __print_exit_error__ ,(id)
+  Sjs_falsy_id id ,(falsy)
+  __not__ falsy)
+
+(define Sjs_falsy_id ,(id)
+  __Cont_get__ ,(return)
+  __NULL__ (,(s) __String_equal__ id s ,(t) __if__ t (,() return __TRUE__)) ,(is)
+  is "undefined" ,()
+  is "null" ,()
+  is "boolean:false" ,()
+  is "number:0" ,()
+  is "number:-0" ,()
+  is "number:NaN" ,()
+  is "bigint:0" ,()
+  __NULL__ __FALSE__)

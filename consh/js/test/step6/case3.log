@@ -1,0 +1,2 @@
+consh: case3.sh:2:3: expected a space after '((', but found '1'
+exit: 1
