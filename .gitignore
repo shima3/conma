@@ -7,3 +7,5 @@ consh/js/wasm/target/
 consh/js/web/conma.wasm
 consh/js/web/conma.js
 consh/js/web/consh.module.se
+# 置いたサーバだけで js と JS の文を使う（consh/js/README-ja.md）
+consh/js/web/config.json

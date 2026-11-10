@@ -74,6 +74,9 @@
   __Dict_put__ global "lastBg" "" ,()
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Dict_put__ global "sinks" zero ,()
+  ;; js と JS の文を使ってよいか（Js_state。起動したときに一度だけ決める）
+  Js_state ,(jsState)
+  __Dict_put__ global "jsState" jsState ,()
   __OS_get_envDict__ ,(base)
   ;; bin/consh が rlwrap を通したときの印。シェルの中で起動するコマンドには渡さない
   __Dict_remove__ base "CONSH_RLWRAPPED" ,()
@@ -3068,6 +3071,11 @@
   ;; 変数に入れるときは、結果を JS の値のまま受け取る（consh/js/PLAN-ja.md の 2.5 の 4。ホストは (r j 番号) を書く）
   Js_keep_code name code ,(code)
   Js_args sh pos jsArgs ,(list)
+  ;; JavaScript があっても、CONSH_ENABLE_JS がなければ使わない（ない版は、__JS_call__ の onError で 127）
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "jsState" __print_exit_error__ ,(jsState)
+  __String_equal__ jsState "off" ,(off)
+  __if__ off (,() fail "JavaScript is disabled (set CONSH_ENABLE_JS to enable it)" "2") ,()
   __JS_call__ (,(msg) Msg_strip msg ,(msg) fail msg "127") code list ,(stream toHost)
   __Ref_new__ toHost ,(toHostRef)
   __LazyList_lines__ stream ,(lines)

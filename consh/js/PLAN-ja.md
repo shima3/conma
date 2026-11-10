@@ -201,7 +201,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 
 ### 2.5. JS の文とシェルの変数の JS の値（2026/11/9 に決めた仕様。作った結果と、仕様から変えたところは 3.15 と 3.16）
 
-JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` と書かなくても JavaScript を書けるようにする。先頭の語がコマンドでない文は、行全体を JavaScript のコード（**JS の文**）とする。また、シェルの変数に JavaScript の値をそのまま入れられるようにし、`$` で参照したときに文字列（かリスト）にする。
+JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` と書かなくても JavaScript を書けるようにする（2026/11/11 から、`js` と同じく、`CONSH_ENABLE_JS` で有効にしたときだけ。3.22）。先頭の語がコマンドでない文は、行全体を JavaScript のコード（**JS の文**）とする。また、シェルの変数に JavaScript の値をそのまま入れられるようにし、`$` で参照したときに文字列（かリスト）にする。
 
 決めたこと（ユーザーの選択）：
 
@@ -501,6 +501,17 @@ consh/js/REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
 - 5（COEP）：README に、no-cors の読み込み（`<img>`、`<script>`、`fetch` の no-cors）が止められることを書いた。
 - また、README の始めに、セキュリティの注意（コードはサンドボックスなしでホストの権限で動くので、当面はローカルで信用できるスクリプトだけに使う）を書いた。
 - テスト：consh/js/test/step5 の case3 に、`[performance] = [2]` と `({ status, k: kk, ...others } = {...})` を足した。
+
+### 3.22. js と JS の文を既定では使えなくする（2026/11/11）
+
+`js` と JS の文は、ホストの JavaScript をサンドボックスなしで動かすので、既定では使えないようにした（ユーザーの決定）。
+
+- ConSh は、起動したときに `Js_state`（consh_jsstmt.se）で、JavaScript の状態を `"on"`、`"off"`、`"none"` のどれかに決める。`"none"` は JavaScript のない版（`__JS_call__` が onError に進む）、`"off"` は JavaScript はあるが、VM のプロセスの環境変数 `CONSH_ENABLE_JS` がないか空のとき、`"on"` はそれ以外である。結果は、文脈の global の `"jsState"` に入れる（`Ctx_top`。参照版も同じ）。シェルの `export` は VM のプロセスの環境を変えないので、起動した後には変わらない。
+- `"on"` のときだけ、JS の文の判定（`Js_probe`。スクリプトの解析と対話モード）を行う。`"off"` のときは、2.5 の 2 の判定をせず、すべての文をシェルの文として読む。
+- `js` は、`"off"` のとき、引数を確かめた後で `js: JavaScript is disabled (set CONSH_ENABLE_JS to enable it)` を出し、`$?` を 2 にする（コマンドがない 127 とは分ける）。`"none"` のときは、今までどおり `js: JavaScript is not available`（127）になる。
+- Node.js 版は、環境変数で有効にする（起動時のオプションより、テストなどの変更が少ない。ユーザーの選択）。環境変数なので、その ConSh から起動した別の `consh` にも引き継がれるが、Node.js 版のスクリプトは外部コマンドを起動できるので、危険は増えない。
+- ブラウザ版には環境変数がないので、ページ（consh-core.js の `jsEnabledByServer`）が、起動するときにサーバーの `config.json` を読み、`{"js": true}` なら VM の環境変数 `CONSH_ENABLE_JS` を `1` にする。URL のパラメータは、他人のリンクから有効にできてしまうので使わない。`config.json` は `.gitignore` に入れた。
+- テスト：consh/js/test の各 test.sh は `CONSH_ENABLE_JS=1` を export する。step1 の case5 は、変数をなくして動かし、`js` が 2 になり、`n = 1 + 2` がシェルの文（コマンド `n`）になることを確かめる。ネイティブ版の consh/test の step17（JavaScript のない版の `js`）は変わらない。
 
 ## 4. 未解決の点
 

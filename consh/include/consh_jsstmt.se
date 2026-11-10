@@ -7,8 +7,26 @@
 ;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
 ;; consh_eval.se（参照版も）が include する
 
-;; JavaScript が使えるか（__JS_call__ が onError に進まないか）。使えれば、"0" の結果を読み捨てる
+;; JavaScript を使ってよいか。使えて（Js_probe_host）、起動したときの環境変数 CONSH_ENABLE_JS が空でないときだけ真。
+;; ブラウザ版では、サーバの config.json が {"js": true} のときに、ホストがこの変数を設定する（consh-core.js）
 (define Js_probe ,()
+  Js_state ,(state)
+  __String_equal__ state "on")
+
+;; JavaScript の状態。"on"（使ってよい）、"off"（使えるが CONSH_ENABLE_JS がない）、"none"（JavaScript がない版）。
+;; 環境変数は、シェルの export でなく、VM のプロセスのものを見るので、起動した後には変わらない
+(define Js_state ,()
+  __Cont_get__ ,(return)
+  Js_probe_host ,(has)
+  __unless__ has (,() return "none") ,()
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "CONSH_ENABLE_JS" (,(key) return "off") ,(value)
+  __String_equal__ value "" ,(empty)
+  __if__ empty (,() return "off") ,()
+  __NULL__ "on")
+
+;; JavaScript が使えるか（__JS_call__ が onError に進まないか）。使えれば、"0" の結果を読み捨てる
+(define Js_probe_host ,()
   __Cont_get__ ,(return)
   __JS_call__ (,(msg) return __FALSE__) "0" __NULL__ ,(stream toHost)
   __LazyList_lines__ stream ,(lines)

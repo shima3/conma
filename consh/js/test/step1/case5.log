@@ -1,0 +1,10 @@
+consh: case5.sh:2:1: js: no code
+status 1
+consh: case5.sh:4:1: js: JavaScript is disabled (set CONSH_ENABLE_JS to enable it)
+status 2
+consh: case5.sh:6:1: js: JavaScript is disabled (set CONSH_ENABLE_JS to enable it)
+status 2
+defined sum: 1
+consh: case5.sh:10:1: n: No such file or directory: n
+status 127
+exit: 0

@@ -4,6 +4,11 @@ ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.j
 
 **セキュリティの注意**：`js` と JS の文は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
+そのため、`js` と JS の文は、既定では使えない（`js` は `js: JavaScript is disabled (set CONSH_ENABLE_JS to enable it)` を出して `$?` を 2 にし、JS の文はシェルの文として読む）。使うときは、次のように有効にする（[「js と JS の文を有効にする」](#js-と-js-の文を有効にする)）。
+
+* Node.js 版：環境変数 `CONSH_ENABLE_JS` を空でない値にして起動する。
+* ブラウザ版：サーバーのページのディレクトリ（`consh/js/web`）に `config.json` を置き、`{"js": true}` と書く。
+
 ## 作る
 
 ```
@@ -34,6 +39,25 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 * 「スクリプトを実行」は、スクリプトの各行を入力として渡す（ConMa 版には `source` がない）。
 * Ctrl-C か「中断」で、動いているコマンドを止める。
 
+## js と JS の文を有効にする
+
+`js` と JS の文は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。ConSh は起動したときに一度だけ、使ってよいかを決める（consh/include/consh_jsstmt.se の `Js_state`）。
+
+* **Node.js 版**：VM のプロセスの環境変数 `CONSH_ENABLE_JS` が空でなければ使える。起動した後にシェルで `export CONSH_ENABLE_JS=1` としても、今の ConSh では使えるようにならない（シェルの `export` は、起動するコマンドの環境だけを変える）。ただし、環境変数なので、その ConSh から起動した別の `consh` には引き継がれる。
+
+  ```
+  CONSH_ENABLE_JS=1 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
+  ```
+
+* **ブラウザ版**：ページは、起動するときにサーバーの `config.json`（ページと同じディレクトリ）を読み、`{"js": true}` なら、VM の環境変数 `CONSH_ENABLE_JS` を `1` にする。ファイルがない、読めない、`js` が `true` でないときは使えない。`config.json` はリポジトリに入れない（`.gitignore`）ので、使うサーバーで作る。
+
+  ```
+  echo '{"js": true}' > consh/js/web/config.json
+  ```
+
+  URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
+* JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。
+
 ## Node.js で使う
 
 `test/vm.sh` は、`CONMA_VM=wasm` のとき wasm 版の VM を Node.js で動かす（`vm-wasm.sh`、`vm-node.js`）。ConSh も同じく動かせる。
@@ -41,6 +65,8 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 ```
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 ```
+
+引数なしで起動すると対話モードになる。`js` と JS の文を使うときは、`CONSH_ENABLE_JS=1` を付ける（上の「js と JS の文を有効にする」）。
 
 VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（PLAN-ja.md の 3.8）。
 
@@ -73,7 +99,7 @@ js nat= '(function* () { let i = 0; while (true) yield i++ })()'     # 遅延の
 
 ## JS の文
 
-JavaScript のある版（ブラウザと Node.js の wasm 版）では、先頭の語がコマンド（予約語、組み込みコマンド、関数、PATH にある外部コマンド）でない文を、行全体の JavaScript のコードとして評価する（PLAN-ja.md の 2.5）。
+JavaScript のある版（ブラウザと Node.js の wasm 版）で、`js` を有効にしたとき（上の「js と JS の文を有効にする」）は、先頭の語がコマンド（予約語、組み込みコマンド、関数、PATH にある外部コマンド）でない文を、行全体の JavaScript のコードとして評価する（PLAN-ja.md の 2.5）。
 
 ```
 n = 3                          # シェルの変数 n に、JavaScript の数 3
@@ -106,7 +132,7 @@ r = await fetch("names.txt").then(r => r.text())
 ## テスト
 
 ```
-consh/js/test/run_all.sh                   # js のテスト（Node.js）
+consh/js/test/run_all.sh                   # js のテスト（Node.js。各 test.sh が CONSH_ENABLE_JS=1 にする）
 CONMA_VM=wasm test/run_all.sh              # ConMa のテストを wasm 版で
 CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh
 ```
