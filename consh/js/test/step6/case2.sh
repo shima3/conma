@@ -15,7 +15,7 @@ echo "status $?"
 echo "status $?"
 (( []["constructor"] ))
 echo "status $?"
-(( k = "constr" + "uctor" ))
+(( k = `constr${"uctor"}` ))
 (( ({})[k] ))
 echo "status $?"
 (( a = {}; a.__proto__ ))

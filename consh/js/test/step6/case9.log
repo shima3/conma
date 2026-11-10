@@ -1,0 +1,30 @@
+1: 19
+consh: case9.sh:3:1: sjs: TypeError: + needs numbers, not the string "a" (join strings with a template literal)
+string + status 2
+consh: case9.sh:5:1: sjs: TypeError: + needs numbers, not the string "3" (join strings with a template literal)
+string var + status 2
+consh: case9.sh:6:1: sjs: TypeError: * needs numbers, not the string "3"
+string var * status 2
+consh: case9.sh:7:1: sjs: TypeError: - needs numbers, not the string "3"
+unary - status 2
+consh: case9.sh:8:1: sjs: TypeError: ++ needs numbers, not the string "3"
+++ status 2
+consh: case9.sh:9:1: sjs: TypeError: + needs numbers, not the string "3" (join strings with a template literal)
++= status 2
+consh: case9.sh:11:1: sjs: TypeError: + needs numbers, not the string "1" (join strings with a template literal)
+member += status 2
+join: a2b ab
+compare: true true
+consh: case9.sh:14:1: sjs: TypeError: < compares two numbers or two strings, not the string "b" and the number 1
+mixed < status 2
+consh: case9.sh:15:1: sjs: TypeError: | needs numbers, not null
+| status 2
+i: 1 o.n: 14
+3628800 20 one other caught e 3 xy12
+4 7
+3 6 8 none
+consh: case9.sh:34:1: sjs: SyntaxError: unexpected ')'
+syntax status 2
+consh: case9.sh:35:1: sjs: not in SJS: a getter or a setter
+getter status 2
+exit: 0

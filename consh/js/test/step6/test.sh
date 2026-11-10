@@ -22,3 +22,4 @@ run case6 case6.sh < /dev/null
 # 段階 A2
 run case7 case7.sh < /dev/null
 run case8 case8.sh < /dev/null
+run case9 case9.sh < /dev/null

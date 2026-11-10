@@ -591,8 +591,8 @@ var ConMaVM = (function () {
   // (2.2 of SAFEJS-PLAN-ja.md), since its global names are looked up here when it runs
   let sjsCurrent = null;
   const sjsScope = new Proxy(Object.create(null), {
-    // Every name is looked up here (no global of the host), except the parameter __sjs_key
-    has: (t, k) => typeof k === "string" && k !== "__sjs_key" && k !== "__sjs_num",
+    // Every name is looked up here (no global of the host), except the parameter __sjs
+    has: (t, k) => typeof k === "string" && k !== "__sjs",
     get: (t, k) => {
       if (typeof k !== "string") return undefined;
       if (k.startsWith("$")) {
@@ -637,77 +637,822 @@ var ConMaVM = (function () {
     if (typeof v === "string" && /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v)) return Number(v);
     throw new TypeError("not a number: " + name + (typeof v === "string" ? " (" + JSON.stringify(v) + ")" : ""));
   }
-  // The operators next to which $name is a number (2.2.7 of SAFEJS-PLAN-ja.md)
-  const SJS_NUMERIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**", "<", "<=", ">", ">="]);
-  const SJS_BEFORE_EXPRESSION = new Set(
-    "return typeof instanceof in of new delete void throw case do else yield await".split(" ")
-  );
-  // The code, checked to be in SJS (3.2 of SAFEJS-PLAN-ja.md) and with each computed member a[k]
-  // made a[__sjs_key(k)]; throws a HostError for code that is not in SJS
+  // The code, checked to be in SJS (3.2 of SAFEJS-PLAN-ja.md) and made again from its syntax tree
+  // (sjsParse, sjsGen), so that the operators that need numbers check their operands at run time
+  // (3.1), a computed member a[k] checks its key, and $name next to such an operator is a number
+  // (2.2.7). Throws a HostError for code that is not in SJS.
   function sjsCheck(src) {
-    const toks = jsTokens(src);
-    // The index of the token before or after k that is not a space or a comment (-1 if none)
-    const near = (k, d) => {
-      for (let m = k + d; m >= 0 && m < toks.length; m += d) if (toks[m].type !== "ws" && toks[m].type !== "comment") return m;
-      return -1;
-    };
-    const isPunct = (m, texts) => m >= 0 && toks[m].type === "punct" && texts.includes(toks[m].text);
-    // Whether the $name at k is an operand of an arithmetic operator or an ordering comparison, or of
-    // === or !== with a number literal on the other side; brackets around it alone are passed through
-    const numericAt = (k) => {
-      let a = near(k, -1);
-      let b = near(k, 1);
-      while (isPunct(a, ["("]) && isPunct(b, [")"])) {
-        a = near(a, -1);
-        b = near(b, 1);
+    const toks = [];
+    let nl = false;
+    let prev = null;
+    for (const t of jsTokens(src)) {
+      if (t.type === "ws" || t.type === "comment") {
+        if (t.text.includes("\n")) nl = true;
+        continue;
       }
-      const op = (m) => m >= 0 && toks[m].type === "punct" && SJS_NUMERIC_OPERATORS.has(toks[m].text);
-      if (op(a) || op(b)) return true;
-      const num = (m) => m >= 0 && toks[m].type === "num";
-      if (isPunct(a, ["===", "!=="]) && num(near(a, -1))) return true;
-      if (isPunct(b, ["===", "!=="]) && num(near(b, 1))) return true;
-      return false;
-    };
-    const out = [];
-    const members = []; // for each [ not closed yet, whether it is a computed member
-    let prev = null; // the last token that is not a space or a comment
-    for (let k = 0; k < toks.length; k++) {
-      const t = toks[k];
-      let text = t.text;
       if (t.type === "ident") {
         const afterDot = prev !== null && prev.type === "punct" && (prev.text === "." || prev.text === "?.");
-        if (afterDot ? sjsBadProperty(text) : SJS_NAMES.has(text) || text.startsWith("__")) {
-          throw new HostError("not in SJS: " + (afterDot ? "." : "") + text);
-        }
-        if (!afterDot && text.startsWith("$")) {
-          // A shell variable: it cannot be declared, and next to an operator it is a number
-          if (prev !== null && prev.type === "ident" && ["let", "const", "var", "function"].includes(prev.text)) {
-            throw new HostError("not in SJS: a declaration of " + text + " (a name that begins with $ is a shell variable)");
-          }
-          if (numericAt(k)) text = "__sjs_num(" + text + ", " + JSON.stringify(text) + ")";
+        if (afterDot ? sjsBadProperty(t.text) : SJS_NAMES.has(t.text) || t.text.startsWith("__")) {
+          throw new HostError("not in SJS: " + (afterDot ? "." : "") + t.text);
         }
       } else if (t.type === "regex") {
         throw new HostError("not in SJS: a regular expression");
       } else if (t.type === "punct" && (t.text === "==" || t.text === "!=")) {
         throw new HostError("not in SJS: " + t.text + " (use " + t.text + "=)");
-      } else if (t.type === "punct" && t.text === "[") {
-        const member =
-          prev !== null &&
-          ((prev.type === "ident" && !SJS_BEFORE_EXPRESSION.has(prev.text)) ||
-            prev.type === "num" ||
-            prev.type === "str" ||
-            (prev.type === "tmpl" && prev.text.endsWith("`")) ||
-            (prev.type === "punct" && (prev.text === ")" || prev.text === "]" || prev.text === "}" || prev.text === "?.")));
-        members.push(member);
-        if (member) text = "[__sjs_key(";
-      } else if (t.type === "punct" && t.text === "]") {
-        if (members.pop()) text = ")]";
       }
-      out.push(text);
-      if (t.type !== "ws" && t.type !== "comment") prev = t;
+      toks.push({ type: t.type, text: t.text, nl });
+      nl = false;
+      prev = t;
     }
-    return out.join("");
+    return sjsGen(sjsParse(toks));
   }
+
+  // ── The syntax of SJS ──
+  // A small recursive-descent parser of the expressions of JavaScript and of the statements in the
+  // bodies of functions, enough for SJS (3.1 of SAFEJS-PLAN-ja.md). A node is {t: kind, ...}.
+  const SJS_BINARY = new Map([
+    ["??", 1], ["||", 2], ["&&", 3], ["|", 4], ["^", 5], ["&", 6], ["===", 7], ["!==", 7],
+    ["<", 8], [">", 8], ["<=", 8], [">=", 8], ["in", 8], ["instanceof", 8],
+    ["<<", 9], [">>", 9], [">>>", 9], ["+", 10], ["-", 10], ["*", 11], ["/", 11], ["%", 11], ["**", 12],
+  ]);
+  const SJS_ASSIGN = new Set(["=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=",
+    "&&=", "||=", "??="]);
+  const SJS_KEYWORDS = new Set(("break case catch const continue default delete do else false finally for function if in " +
+    "instanceof let null return switch throw true try typeof var void while of").split(" "));
+  function sjsParse(toks) {
+    let i = 0;
+    const peek = (k = 0) => toks[i + k] || { type: "eof", text: "", nl: true };
+    const is = (text, k = 0) => {
+      const t = peek(k);
+      return (t.type === "punct" || t.type === "ident") && t.text === text;
+    };
+    const fail = (what) => {
+      const t = peek();
+      const msg = what || "unexpected " + (t.type === "eof" ? "end of the expression" : "'" + t.text + "'");
+      throw new HostError(msg.startsWith("not in SJS") ? msg : "SyntaxError: " + msg);
+    };
+    const next = () => {
+      const t = peek();
+      if (t.type === "eof") fail();
+      i++;
+      return t;
+    };
+    const expect = (text) => {
+      if (!is(text)) fail("expected '" + text + "' but found " + (peek().type === "eof" ? "the end" : "'" + peek().text + "'"));
+      return next();
+    };
+    const eat = (text) => (is(text) ? (i++, true) : false);
+    const isName = (t) => t.type === "ident" && !SJS_KEYWORDS.has(t.text);
+    const name = () => {
+      const t = peek();
+      if (!isName(t)) fail("expected a name but found " + (t.type === "eof" ? "the end" : "'" + t.text + "'"));
+      i++;
+      return t.text;
+    };
+    // The index of the bracket that closes the one at k
+    const closing = (k) => {
+      let depth = 0;
+      for (let m = k; m < toks.length; m++) {
+        const t = toks[m];
+        if (t.type === "punct" && "([{".includes(t.text)) depth++;
+        else if (t.type === "punct" && ")]}".includes(t.text)) {
+          depth--;
+          if (depth === 0) return m;
+        }
+      }
+      return -1;
+    };
+    // The end of a statement: ; or before }, the end, or a new line
+    const semi = () => {
+      if (eat(";")) return;
+      if (is("}") || peek().type === "eof" || peek().nl) return;
+      fail();
+    };
+
+    // Expressions
+    const expression = (noIn) => {
+      const e = assign(noIn);
+      if (!is(",")) return e;
+      const list = [e];
+      while (eat(",")) list.push(assign(noIn));
+      return { t: "seq", list };
+    };
+    const assign = (noIn) => {
+      if (isName(peek()) && is("=>", 1)) {
+        const p = { t: "id", name: next().text };
+        next();
+        return arrowBody([p]);
+      }
+      if (is("(")) {
+        const close = closing(i);
+        if (close >= 0 && toks[close + 1] && toks[close + 1].type === "punct" && toks[close + 1].text === "=>") {
+          next();
+          const params = paramList(")");
+          expect("=>");
+          return arrowBody(params);
+        }
+      }
+      const left = conditional(noIn);
+      const op = peek();
+      if (op.type === "punct" && SJS_ASSIGN.has(op.text)) {
+        next();
+        const target = op.text === "=" ? toPattern(left) : simpleTarget(left);
+        return { t: "assign", op: op.text, target, value: assign(noIn) };
+      }
+      return left;
+    };
+    const arrowBody = (params) => {
+      if (is("{")) return { t: "arrow", params, body: block() };
+      return { t: "arrow", params, expr: assign() };
+    };
+    const simpleTarget = (e) => {
+      if (e.t === "id" || (e.t === "member" && !e.optional)) return e;
+      fail("cannot assign to this expression");
+    };
+    // An expression on the left of = as a pattern
+    const toPattern = (e) => {
+      if (e.t === "id" || (e.t === "member" && !e.optional)) return e;
+      if (e.t === "array") {
+        return {
+          t: "arrayPattern",
+          items: e.items.map((x, k) => {
+            if (x === null) return null;
+            if (x.t === "spread") {
+              if (k !== e.items.length - 1) fail("a rest element must be the last");
+              return { t: "rest", target: toPattern(x.arg) };
+            }
+            return toPatternDefault(x);
+          }),
+        };
+      }
+      if (e.t === "object") {
+        return {
+          t: "objectPattern",
+          props: e.props.map((p, k) => {
+            if (p.t === "spread") {
+              if (k !== e.props.length - 1) fail("a rest property must be the last");
+              return { t: "rest", target: toPattern(p.arg) };
+            }
+            if (p.method) fail("a method in a pattern");
+            return { key: p.key, computed: p.computed, value: toPatternDefault(p.value) };
+          }),
+        };
+      }
+      if (e.t === "paren") return toPattern(e.expr);
+      fail("cannot assign to this expression");
+    };
+    const toPatternDefault = (x) => {
+      if (x.t === "assign" && x.op === "=") return { t: "default", target: x.target, value: x.value };
+      if (x.t === "shorthandDefault") return { t: "default", target: { t: "id", name: x.name }, value: x.value };
+      return toPattern(x);
+    };
+    const conditional = (noIn) => {
+      const test = binary(0, noIn);
+      if (!eat("?")) return test;
+      const yes = assign();
+      expect(":");
+      return { t: "cond", test, yes, no: assign(noIn) };
+    };
+    const binary = (min, noIn) => {
+      let left = unary();
+      for (;;) {
+        const t = peek();
+        if (t.type !== "punct" && t.type !== "ident") break;
+        const prec = SJS_BINARY.get(t.text);
+        if (prec === undefined || prec <= min || (noIn && t.text === "in")) break;
+        if (t.type === "ident" && t.text !== "in" && t.text !== "instanceof") break;
+        next();
+        // ** is right-associative
+        const right = t.text === "**" ? binary(prec - 1, noIn) : binary(prec, noIn);
+        left = { t: "binary", op: t.text, left, right };
+      }
+      return left;
+    };
+    const unary = () => {
+      const t = peek();
+      if ((t.type === "punct" && ["!", "-", "+", "~"].includes(t.text)) || (t.type === "ident" && ["typeof", "void", "delete"].includes(t.text))) {
+        next();
+        return { t: "unary", op: t.text, arg: unary() };
+      }
+      if (is("++") || is("--")) {
+        next();
+        return { t: "update", op: t.text, prefix: true, target: simpleTarget(unary()) };
+      }
+      const e = postfix();
+      if ((is("++") || is("--")) && !peek().nl) {
+        return { t: "update", op: next().text, prefix: false, target: simpleTarget(e) };
+      }
+      return e;
+    };
+    const postfix = () => {
+      let e = primary();
+      for (;;) {
+        if (eat(".")) {
+          const t = next();
+          if (t.type !== "ident") fail("expected a property name after '.'");
+          e = { t: "member", object: e, name: t.text };
+        } else if (eat("?.")) {
+          if (eat("[")) {
+            const key = expression();
+            expect("]");
+            e = { t: "member", object: e, key, optional: true };
+          } else if (eat("(")) {
+            e = { t: "call", callee: e, args: argList(), optional: true };
+          } else {
+            const t = next();
+            if (t.type !== "ident") fail("expected a property name after '?.'");
+            e = { t: "member", object: e, name: t.text, optional: true };
+          }
+        } else if (is("[")) {
+          next();
+          const key = expression();
+          expect("]");
+          e = { t: "member", object: e, key };
+        } else if (is("(")) {
+          next();
+          e = { t: "call", callee: e, args: argList() };
+        } else if (peek().type === "tmpl" && peek().text.startsWith("`")) {
+          e = { t: "tagged", tag: e, quasi: template() };
+        } else return e;
+      }
+    };
+    const argList = () => {
+      const args = [];
+      while (!is(")")) {
+        if (eat("...")) args.push({ t: "spread", arg: assign() });
+        else args.push(assign());
+        if (!eat(",")) break;
+      }
+      expect(")");
+      return args;
+    };
+    const template = () => {
+      const parts = [];
+      const exprs = [];
+      let t = next();
+      for (;;) {
+        const text = t.text;
+        // A piece begins with ` or with the } of a ${, and ends with ${ or `
+        if (text.endsWith("${")) {
+          parts.push(text.slice(1, -2));
+          exprs.push(expression());
+          t = next();
+          if (t.type !== "tmpl") fail("expected the rest of a template");
+          continue;
+        }
+        parts.push(text.slice(1, -1));
+        return { t: "template", parts, exprs };
+      }
+    };
+    const primary = () => {
+      const t = peek();
+      if (t.type === "num") return next(), { t: "num", text: t.text };
+      if (t.type === "str") return next(), { t: "str", text: t.text };
+      if (t.type === "tmpl") {
+        if (!t.text.startsWith("`")) fail();
+        return template();
+      }
+      if (t.type === "ident") {
+        if (["true", "false", "null"].includes(t.text)) return next(), { t: "lit", text: t.text };
+        if (t.text === "function") return functionExpr();
+        return { t: "id", name: name() };
+      }
+      if (eat("(")) {
+        const e = expression();
+        expect(")");
+        return { t: "paren", expr: e };
+      }
+      if (eat("[")) {
+        const items = [];
+        while (!is("]")) {
+          if (is(",")) {
+            next();
+            items.push(null);
+            continue;
+          }
+          items.push(eat("...") ? { t: "spread", arg: assign() } : assign());
+          if (!eat(",")) break;
+        }
+        expect("]");
+        return { t: "array", items };
+      }
+      if (eat("{")) {
+        const props = [];
+        while (!is("}")) {
+          props.push(property());
+          if (!eat(",")) break;
+        }
+        expect("}");
+        return { t: "object", props };
+      }
+      fail();
+    };
+    const propertyKey = () => {
+      const t = peek();
+      if (eat("[")) {
+        const key = assign();
+        expect("]");
+        return { computed: true, key };
+      }
+      if (t.type === "ident" || t.type === "str" || t.type === "num") {
+        next();
+        if (t.type === "str" && (t.text.slice(1, -1) === "__proto__")) fail("not in SJS: the property __proto__");
+        return { computed: false, key: t };
+      }
+      fail();
+    };
+    const property = () => {
+      if (eat("...")) return { t: "spread", arg: assign() };
+      const t = peek();
+      if (t.type === "ident" && (t.text === "get" || t.text === "set") && !is(",", 1) && !is(":", 1) && !is("(", 1) && !is("}", 1)) {
+        fail("not in SJS: a getter or a setter");
+      }
+      const { computed, key } = propertyKey();
+      if (eat(":")) return { computed, key, value: assign() };
+      if (is("(")) {
+        next();
+        const params = paramList(")");
+        return { computed, key, method: true, value: { t: "function", name: null, params, body: block() } };
+      }
+      if (computed || key.type !== "ident" || SJS_KEYWORDS.has(key.text)) fail();
+      if (eat("=")) return { computed, key, value: { t: "shorthandDefault", name: key.text, value: assign() } };
+      return { computed, key, value: { t: "id", name: key.text }, shorthand: true };
+    };
+    const functionExpr = () => {
+      expect("function");
+      if (is("*")) fail("not in SJS: a generator");
+      const fname = isName(peek()) ? name() : null;
+      expect("(");
+      const params = paramList(")");
+      return { t: "function", name: fname, params, body: block() };
+    };
+    // Parameters up to close (after the opening bracket)
+    const paramList = (close) => {
+      const params = [];
+      while (!is(close)) {
+        if (eat("...")) {
+          params.push({ t: "rest", target: bindingTarget() });
+          break;
+        }
+        params.push(bindingElement());
+        if (!eat(",")) break;
+      }
+      expect(close);
+      return params;
+    };
+    const bindingElement = () => {
+      const target = bindingTarget();
+      if (eat("=")) return { t: "default", target, value: assign() };
+      return target;
+    };
+    const bindingTarget = () => {
+      if (eat("[")) {
+        const items = [];
+        while (!is("]")) {
+          if (is(",")) {
+            next();
+            items.push(null);
+            continue;
+          }
+          if (eat("...")) {
+            items.push({ t: "rest", target: bindingTarget() });
+            break;
+          }
+          items.push(bindingElement());
+          if (!eat(",")) break;
+        }
+        expect("]");
+        return { t: "arrayPattern", items };
+      }
+      if (eat("{")) {
+        const props = [];
+        while (!is("}")) {
+          if (eat("...")) {
+            props.push({ t: "rest", target: { t: "id", name: name() } });
+            break;
+          }
+          const { computed, key } = propertyKey();
+          if (eat(":")) props.push({ key, computed, value: bindingElement() });
+          else {
+            if (computed || key.type !== "ident") fail();
+            const target = { t: "id", name: key.text };
+            props.push({ key, computed, value: eat("=") ? { t: "default", target, value: assign() } : target, shorthand: true });
+          }
+          if (!eat(",")) break;
+        }
+        expect("}");
+        return { t: "objectPattern", props };
+      }
+      const n = name();
+      if (n.startsWith("$")) fail("not in SJS: a declaration of " + n + " (a name that begins with $ is a shell variable)");
+      return { t: "id", name: n };
+    };
+
+    // Statements (in the bodies of functions)
+    const block = () => {
+      expect("{");
+      const body = [];
+      while (!is("}")) body.push(statement());
+      expect("}");
+      return { t: "block", body };
+    };
+    const declaration = (noIn) => {
+      const kind = next().text;
+      const decls = [];
+      do {
+        const target = bindingTarget();
+        decls.push({ target, init: eat("=") ? assign(noIn) : null });
+      } while (eat(","));
+      return { t: "decl", kind, decls };
+    };
+    const statement = () => {
+      const t = peek();
+      if (is("{")) return block();
+      if (eat(";")) return { t: "empty" };
+      if (t.type === "ident") {
+        switch (t.text) {
+          case "let":
+          case "const":
+          case "var": {
+            const d = declaration(false);
+            semi();
+            return d;
+          }
+          case "function": {
+            const f = functionExpr();
+            if (!f.name) fail("expected the name of a function");
+            return { t: "fundecl", fn: f };
+          }
+          case "if": {
+            next();
+            expect("(");
+            const test = expression();
+            expect(")");
+            const yes = statement();
+            return { t: "if", test, yes, no: eat("else") ? statement() : null };
+          }
+          case "while": {
+            next();
+            expect("(");
+            const test = expression();
+            expect(")");
+            return { t: "while", test, body: statement() };
+          }
+          case "do": {
+            next();
+            const body = statement();
+            expect("while");
+            expect("(");
+            const test = expression();
+            expect(")");
+            eat(";");
+            return { t: "dowhile", body, test };
+          }
+          case "for":
+            return forStatement();
+          case "break":
+          case "continue": {
+            next();
+            semi();
+            return { t: t.text };
+          }
+          case "return": {
+            next();
+            const value = is(";") || is("}") || peek().type === "eof" || peek().nl ? null : expression();
+            semi();
+            return { t: "return", value };
+          }
+          case "throw": {
+            next();
+            if (peek().nl) fail("a new line after throw");
+            const value = expression();
+            semi();
+            return { t: "throw", value };
+          }
+          case "try": {
+            next();
+            const body = block();
+            let param = null;
+            let handler = null;
+            let finalizer = null;
+            if (eat("catch")) {
+              if (eat("(")) {
+                param = bindingTarget();
+                expect(")");
+              }
+              handler = block();
+            }
+            if (eat("finally")) finalizer = block();
+            if (!handler && !finalizer) fail("expected catch or finally");
+            return { t: "try", body, param, handler, finalizer };
+          }
+          case "switch": {
+            next();
+            expect("(");
+            const disc = expression();
+            expect(")");
+            expect("{");
+            const cases = [];
+            while (!is("}")) {
+              let test = null;
+              if (eat("default")) expect(":");
+              else {
+                expect("case");
+                test = expression();
+                expect(":");
+              }
+              const body = [];
+              while (!is("case") && !is("default") && !is("}")) body.push(statement());
+              cases.push({ test, body });
+            }
+            expect("}");
+            return { t: "switch", disc, cases };
+          }
+        }
+      }
+      const e = expression();
+      semi();
+      return { t: "expr", expr: e };
+    };
+    const forStatement = () => {
+      expect("for");
+      expect("(");
+      let init = null;
+      if (is("let") || is("const") || is("var")) {
+        const kind = peek().text;
+        if ((is("of", 2) || is("in", 2)) && isName(peek(1))) {
+          next();
+          const target = bindingTarget();
+          const of = next().text;
+          const right = of === "of" ? assign() : expression();
+          expect(")");
+          return { t: "forof", of, kind, target, right, body: statement() };
+        }
+        // A pattern before of or in
+        if (is("[", 1) || is("{", 1)) {
+          const save = i;
+          next();
+          const target = bindingTarget();
+          if (is("of") || is("in")) {
+            const of = next().text;
+            const right = of === "of" ? assign() : expression();
+            expect(")");
+            return { t: "forof", of, kind, target, right, body: statement() };
+          }
+          i = save;
+        }
+        init = declaration(true);
+      } else if (!is(";")) {
+        if (isName(peek()) && (is("of", 1) || is("in", 1))) {
+          const target = { t: "id", name: next().text };
+          const of = next().text;
+          const right = of === "of" ? assign() : expression();
+          expect(")");
+          return { t: "forof", of, kind: null, target, right, body: statement() };
+        }
+        init = { t: "expr", expr: expression(true) };
+      }
+      expect(";");
+      const test = is(";") ? null : expression();
+      expect(";");
+      const update = is(")") ? null : expression();
+      expect(")");
+      return { t: "for", init, test, update, body: statement() };
+    };
+
+    const e = expression();
+    if (peek().type !== "eof") fail();
+    return e;
+  }
+
+  // ── Making the code again ──
+  // The operators that need numbers (2.2.7 and 3.1 of SAFEJS-PLAN-ja.md), by the names of the
+  // functions of __sjs (SJS_RUNTIME) that check them
+  const SJS_CHECKED = new Map([
+    ["+", "add"], ["-", "sub"], ["*", "mul"], ["/", "div"], ["%", "mod"], ["**", "pow"],
+    ["<<", "shl"], [">>", "shr"], [">>>", "ushr"], ["&", "band"], ["|", "bor"], ["^", "bxor"],
+    ["<", "lt"], ["<=", "le"], [">", "gt"], [">=", "ge"],
+  ]);
+  const SJS_CHECKED_UNARY = new Map([["-", "neg"], ["+", "pos"], ["~", "bnot"]]);
+  function sjsGen(node) {
+    const unparen = (e) => (e.t === "paren" ? unparen(e.expr) : e);
+    const isShell = (e) => {
+      const u = unparen(e);
+      return u.t === "id" && u.name.startsWith("$");
+    };
+    // An operand of an operator that needs numbers: $name is a number
+    const operand = (e) => {
+      if (isShell(e)) {
+        const n = unparen(e).name;
+        return "__sjs.num(" + n + ", " + JSON.stringify(n) + ")";
+      }
+      return gen(e);
+    };
+    const isNumLiteral = (e) => {
+      const u = unparen(e);
+      return u.t === "num" || (u.t === "unary" && u.op === "-" && unparen(u.arg).t === "num");
+    };
+    // A key of a member: a string literal for .name, or the checked key
+    const memberKey = (m) => (m.name !== undefined ? JSON.stringify(m.name) : "__sjs.key(" + gen(m.key) + ")");
+    const chain = (e) => (["member", "call", "id", "paren", "array", "object", "template", "str", "lit", "tagged"].includes(e.t) ? gen(e) : "(" + gen(e) + ")");
+    const params = (ps) => "(" + ps.map(pattern).join(", ") + ")";
+    const pattern = (p) => {
+      if (p === null) return "";
+      switch (p.t) {
+        case "id":
+          return p.name;
+        case "member":
+          return gen(p);
+        case "default":
+          return pattern(p.target) + " = " + gen(p.value);
+        case "rest":
+          return "..." + pattern(p.target);
+        case "arrayPattern":
+          return "[" + p.items.map(pattern).join(", ") + (p.items.length && p.items[p.items.length - 1] === null ? "," : "") + "]";
+        case "objectPattern":
+          return "{" + p.props.map((q) => (q.t === "rest" ? "..." + pattern(q.target) : propKey(q) + ": " + pattern(q.value))).join(", ") + "}";
+      }
+      throw new HostError("SJS: a pattern of " + p.t);
+    };
+    const propKey = (q) => (q.computed ? "[" + gen(q.key) + "]" : q.key.text);
+    const stmt = (s) => {
+      switch (s.t) {
+        case "block":
+          return "{" + s.body.map(stmt).join(" ") + "}";
+        case "empty":
+          return ";";
+        case "expr":
+          return "(" + gen(s.expr) + ");";
+        case "decl":
+          return s.kind + " " + s.decls.map((d) => pattern(d.target) + (d.init ? " = " + gen(d.init) : "")).join(", ") + ";";
+        case "fundecl":
+          return "function " + s.fn.name + params(s.fn.params) + " " + stmt(s.fn.body);
+        case "if":
+          return "if (" + gen(s.test) + ") " + stmt(s.yes) + (s.no ? " else " + stmt(s.no) : "");
+        case "while":
+          return "while (" + gen(s.test) + ") " + stmt(s.body);
+        case "dowhile":
+          return "do " + stmt(s.body) + " while (" + gen(s.test) + ");";
+        case "for":
+          return "for (" + (s.init ? (s.init.t === "decl" ? stmt(s.init).slice(0, -1) : gen(s.init.expr)) : "") + "; " +
+            (s.test ? gen(s.test) : "") + "; " + (s.update ? gen(s.update) : "") + ") " + stmt(s.body);
+        case "forof":
+          return "for (" + (s.kind ? s.kind + " " : "") + pattern(s.target) + " " + s.of + " " + gen(s.right) + ") " + stmt(s.body);
+        case "break":
+        case "continue":
+          return s.t + ";";
+        case "return":
+          return "return" + (s.value ? " (" + gen(s.value) + ")" : "") + ";";
+        case "throw":
+          return "throw (" + gen(s.value) + ");";
+        case "try":
+          return "try " + stmt(s.body) + (s.handler ? " catch" + (s.param ? " (" + pattern(s.param) + ")" : "") + " " + stmt(s.handler) : "") +
+            (s.finalizer ? " finally " + stmt(s.finalizer) : "");
+        case "switch":
+          return "switch (" + gen(s.disc) + ") {" + s.cases.map((c) => (c.test ? "case " + gen(c.test) + ":" : "default:") + " " + c.body.map(stmt).join(" ")).join(" ") + "}";
+      }
+      throw new HostError("SJS: a statement of " + s.t);
+    };
+    const gen = (e) => {
+      switch (e.t) {
+        case "num":
+          return "(" + e.text + ")";
+        case "str":
+        case "lit":
+          return e.text;
+        case "id":
+          return e.name;
+        case "paren":
+          return "(" + gen(e.expr) + ")";
+        case "seq":
+          return "(" + e.list.map(gen).join(", ") + ")";
+        case "template":
+          return "`" + e.parts.map((p, k) => p + (k < e.exprs.length ? "${" + gen(e.exprs[k]) + "}" : "")).join("") + "`";
+        case "tagged":
+          return chain(e.tag) + gen(e.quasi);
+        case "array":
+          return "[" + e.items.map((x) => (x === null ? "" : x.t === "spread" ? "..." + gen(x.arg) : gen(x))).join(", ") +
+            (e.items.length && e.items[e.items.length - 1] === null ? "," : "") + "]";
+        case "object":
+          return "({" + e.props.map((q) => {
+            if (q.t === "spread") return "..." + gen(q.arg);
+            if (q.method) return propKey(q) + params(q.value.params) + " " + stmt(q.value.body);
+            if (q.value.t === "shorthandDefault") throw new HostError("SJS: unexpected '=' in an object");
+            return propKey(q) + ": " + gen(q.value);
+          }).join(", ") + "})";
+        case "spread":
+          return "..." + gen(e.arg);
+        case "member":
+          return chain(e.object) + (e.optional ? "?." : "") + (e.name !== undefined ? (e.optional ? "" : ".") + e.name : "[" + memberKey(e) + "]");
+        case "call":
+          return chain(e.callee) + (e.optional ? "?.(" : "(") + e.args.map(gen).join(", ") + ")";
+        case "function":
+          return "(function " + (e.name || "") + params(e.params) + " " + stmt(e.body) + ")";
+        case "arrow":
+          return "(" + params(e.params) + " => " + (e.body ? stmt(e.body) : "(" + gen(e.expr) + ")") + ")";
+        case "cond":
+          return "(" + gen(e.test) + " ? " + gen(e.yes) + " : " + gen(e.no) + ")";
+        case "unary": {
+          const f = SJS_CHECKED_UNARY.get(e.op);
+          if (f) return "__sjs." + f + "(" + operand(e.arg) + ")";
+          if (e.op === "delete") return "(delete " + gen(e.arg) + ")";
+          return "(" + e.op + (/[a-z]/.test(e.op) ? " " : "") + gen(e.arg) + ")";
+        }
+        case "binary": {
+          const f = SJS_CHECKED.get(e.op);
+          if (f) return "__sjs." + f + "(" + operand(e.left) + ", " + operand(e.right) + ")";
+          if (e.op === "===" || e.op === "!==") {
+            // $name compared with a number literal is a number
+            const l = isShell(e.left) && isNumLiteral(e.right) ? operand(e.left) : gen(e.left);
+            const r = isShell(e.right) && isNumLiteral(e.left) ? operand(e.right) : gen(e.right);
+            return "(" + l + " " + e.op + " " + r + ")";
+          }
+          return "(" + gen(e.left) + " " + e.op + " " + gen(e.right) + ")";
+        }
+        case "assign": {
+          const f = SJS_CHECKED.get(e.op.slice(0, -1));
+          if (!f) return "(" + pattern(e.target) + " " + e.op + " " + gen(e.value) + ")";
+          // a op= v: the operator checks its operands; a member is read and written once
+          if (e.target.t === "id") return "(" + e.target.name + " = __sjs." + f + "(" + operand(e.target) + ", " + operand(e.value) + "))";
+          return "__sjs.setOp(" + chain(e.target.object) + ", " + memberKey(e.target) + ", " + JSON.stringify(f) + ", " + operand(e.value) + ")";
+        }
+        case "update": {
+          const d = e.op === "++" ? "1" : "-1";
+          if (e.target.t === "id") {
+            const n = e.target.name;
+            if (e.prefix) return "(" + n + " = __sjs.step(" + n + ", " + d + "))";
+            return "__sjs.post(" + n + ", (__sjs_v) => " + n + " = __sjs_v, " + d + ")";
+          }
+          return "__sjs.stepMember(" + chain(e.target.object) + ", " + memberKey(e.target) + ", " + d + ", " + e.prefix + ")";
+        }
+        case "shorthandDefault":
+          throw new HostError("SJS: unexpected '='");
+      }
+      throw new HostError("SJS: an expression of " + e.t);
+    };
+    return gen(node);
+  }
+  // The functions of __sjs, which the code made by sjsGen calls: the operators that need numbers
+  // (3.1 of SAFEJS-PLAN-ja.md). + adds only numbers, and the ordering comparisons take two numbers or
+  // two strings; anything else is an error, so that code that runs without an error in SJS gives the
+  // same result in JavaScript.
+  function sjsDescribe(v) {
+    if (typeof v === "string") return "the string " + JSON.stringify(v.length > 20 ? v.slice(0, 20) + "..." : v);
+    if (v === null) return "null";
+    if (Array.isArray(v)) return "an array";
+    if (typeof v === "object") return "an object";
+    if (typeof v === "function") return "a function";
+    return typeof v === "undefined" ? "undefined" : "the " + typeof v + " " + String(v);
+  }
+  function sjsNeed(op, a, b) {
+    for (const v of b === undefined && arguments.length < 3 ? [a] : [a, b]) {
+      if (typeof v !== "number") {
+        throw new TypeError(op + " needs numbers, not " + sjsDescribe(v) + (op === "+" || op === "+=" ? " (join strings with a template literal)" : ""));
+      }
+    }
+  }
+  function sjsCompare(op, a, b) {
+    if ((typeof a === "number" && typeof b === "number") || (typeof a === "string" && typeof b === "string")) return;
+    throw new TypeError(op + " compares two numbers or two strings, not " + sjsDescribe(a) + " and " + sjsDescribe(b));
+  }
+  const SJS_OPS = {
+    add: (a, b) => (sjsNeed("+", a, b), a + b),
+    sub: (a, b) => (sjsNeed("-", a, b), a - b),
+    mul: (a, b) => (sjsNeed("*", a, b), a * b),
+    div: (a, b) => (sjsNeed("/", a, b), a / b),
+    mod: (a, b) => (sjsNeed("%", a, b), a % b),
+    pow: (a, b) => (sjsNeed("**", a, b), a ** b),
+    shl: (a, b) => (sjsNeed("<<", a, b), a << b),
+    shr: (a, b) => (sjsNeed(">>", a, b), a >> b),
+    ushr: (a, b) => (sjsNeed(">>>", a, b), a >>> b),
+    band: (a, b) => (sjsNeed("&", a, b), a & b),
+    bor: (a, b) => (sjsNeed("|", a, b), a | b),
+    bxor: (a, b) => (sjsNeed("^", a, b), a ^ b),
+    lt: (a, b) => (sjsCompare("<", a, b), a < b),
+    le: (a, b) => (sjsCompare("<=", a, b), a <= b),
+    gt: (a, b) => (sjsCompare(">", a, b), a > b),
+    ge: (a, b) => (sjsCompare(">=", a, b), a >= b),
+    neg: (v) => (sjsNeed("-", v), -v),
+    pos: (v) => (sjsNeed("+", v), +v),
+    bnot: (v) => (sjsNeed("~", v), ~v),
+  };
+  const SJS_RUNTIME = Object.freeze(Object.assign(Object.create(null), SJS_OPS, {
+    key: sjsKey,
+    num: sjsNumber,
+    // ++x and --x of a variable
+    step: (v, d) => (sjsNeed(d > 0 ? "++" : "--", v), v + d),
+    // x++ and x-- of a variable: set is the assignment
+    post: (v, set, d) => (sjsNeed(d > 0 ? "++" : "--", v), set(v + d), v),
+    // o[k] op= v, reading and writing o[k] once
+    setOp: (o, k, f, v) => (o[k] = SJS_OPS[f](o[k], v)),
+    // ++o[k], o[k]++ and the same with --
+    stepMember: (o, k, d, prefix) => {
+      const v = o[k];
+      sjsNeed(d > 0 ? "++" : "--", v);
+      o[k] = v + d;
+      return prefix ? v + d : v;
+    },
+  }));
   const sjsCompiled = new Map();
   // Evaluate an SJS expression (see above). The result is {sjs: value}, so that a value is never
   // taken for a Promise.
@@ -715,10 +1460,10 @@ var ConMaVM = (function () {
     const code = sjsCheck(src);
     let fn = sjsCompiled.get(code);
     if (!fn) {
-      fn = new Function("__sjs_scope", "__sjs_key", "__sjs_num", "with (__sjs_scope) { return (\n" + code + "\n) }");
+      fn = new Function("__sjs_scope", "__sjs", "with (__sjs_scope) { return (\n" + code + "\n) }");
       sjsCompiled.set(code, fn);
     }
-    return sjsRun(args, emit, owner, () => fn(sjsScope, sjsKey, sjsNumber));
+    return sjsRun(args, emit, owner, () => fn(sjsScope, SJS_RUNTIME));
   }
   // Call the SJS function of id with the arguments after the variables in args (SJSCALL).
   function callSjs(id, args, emit, owner) {

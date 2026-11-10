@@ -1,6 +1,6 @@
 consh: case2.sh:2:1: sjs: ReferenceError: undefinedName is not defined
 status 2
-consh: case2.sh:4:1: sjs: SyntaxError: Unexpected token ')'
+consh: case2.sh:4:1: sjs: SyntaxError: unexpected end of the expression
 status 2
 consh: case2.sh:6:1: sjs: not in SJS: this
 status 2

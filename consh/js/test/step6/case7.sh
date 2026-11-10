@@ -26,7 +26,7 @@ add=$(( (a, b) => Number(a) + Number(b) ))
 $add 1 2 2> (c)
 echo "status $? c=$c"
 $add 1 2 2>&1 | cat
-$(( (x) => x * 2 )) 21 2>&1
+$(( (x) => Number(x) * 2 )) 21 2>&1
 (( isBig = (x) => Number(x) > 10 ))
 f=$(( isBig ))
 if $f 50 2>/dev/null; then echo big; fi
