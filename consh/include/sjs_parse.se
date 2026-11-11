@@ -10,7 +10,8 @@
 ;; 文：block（"body"）、empty、decl（"kind" "decls"。decls は "name" と "init" を持つ Dict の LList）、
 ;;   if（"test" "yes" "no"）、while（"test" "body"）、for（"init" "test" "update" "body"）、
 ;;   forof（"kind"（let、const、var か null）"name" "of"（of か in）"right" "body"）、break、continue、
-;;   return（"value"）、expr（"expr"）、program（"body"）
+;;   return（"value"）、throw（"value"）、try（"body" "param" "handler" "finalizer"）、expr（"expr"）、program（"body"）。
+;;   文の節は "line"（始まりの行の String）も持つ
 ;; まだ読まない書き方（分割代入、スプレッド、try、switch など）は、「not yet translated」のエラーにする。
 ;; sjs_lex.se を使う
 
@@ -112,7 +113,7 @@
   Sjs_throw "SyntaxError" msg)
 
 (define P_not_yet ,(what)
-  __String_concat__ "not yet translated (stage B2 of SJS): " what ,(msg)
+  __String_concat__ "not yet translated (stage B3 of SJS): " what ,(msg)
   Sjs_throw "SyntaxError" msg)
 
 ;; 名前（キーワードでない）
@@ -181,7 +182,15 @@
   __Dict_put__ n "body" body ,()
   __NULL__ n)
 
+;; 文。節の "line" に、文の始まりの行を入れる（実行時のエラーの位置。Sjs_line）
 (define P_statement ,(p)
+  P_peek p ,(tok)
+  Tok_line tok ,(line)
+  P_statement_body p ,(n)
+  __Dict_put__ n "line" line ,()
+  __NULL__ n)
+
+(define P_statement_body ,(p)
   __Cont_get__ ,(return)
   P_is p "{" ,(test__) __if__ test__ (,() P_block p ,(n) return n) ,()
   P_eat p ";" ,(test__) __if__ test__ (,() Sjs_node "empty" ,(n) return n) ,()
@@ -200,6 +209,18 @@
       __String_equal__ word "while" ,(test__) __if__ test__ (,() P_while p ,(n) return n) ,()
       __String_equal__ word "return" ,(test__) __if__ test__ (,() P_return p ,(n) return n) ,()
       __String_equal__ word "for" ,(test__) __if__ test__ (,() P_for p ,(n) return n) ,()
+      __String_equal__ word "throw" ,(test__) __if__ test__
+        (,()
+          P_next p ,(t)
+          P_peek p ,(next)
+          Tok_nl next ,(nl)
+          __if__ nl (,() Sjs_throw "SyntaxError" "a new line after throw") ,()
+          P_expression p ,(value)
+          P_semi p ,()
+          Sjs_node "throw" ,(n)
+          __Dict_put__ n "value" value ,()
+          return n) ,()
+      __String_equal__ word "try" ,(test__) __if__ test__ (,() P_try p ,(n) return n) ,()
       __String_equal__ word "break" ,(isBreak)
       __String_equal__ word "continue" ,(isContinue)
       __or__ isBreak isContinue ,(test__) __if__ test__
@@ -222,7 +243,7 @@
 
 (define P_unsupported_statement ,(word)
   __Cont_get__ ,(return)
-  Sjs_in_words word "do switch throw try function" ,(test__)
+  Sjs_in_words word "do switch function" ,(test__)
   __unless__ test__ return ,()
   __String_concat__ word " statements" ,(what)
   P_not_yet what)
@@ -771,6 +792,29 @@
   __Dict_put__ v "name" text ,()
   __Dict_put__ prop "value" v ,()
   __NULL__ prop)
+
+;; try 文：try { } [catch [(名前)] { }] [finally { }]
+(define P_try ,(p)
+  P_next p ,(t)
+  P_block p ,(body)
+  Sjs_node "try" ,(n)
+  __Dict_put__ n "body" body ,()
+  P_eat p "catch" ,(hasCatch)
+  __if_then_else__ hasCatch
+    (,()
+      P_eat p "(" ,(hasParam)
+      __if_then_else__ hasParam (,() P_name p ,(name) P_expect p ")" ,() __NULL__ name) (,() __NULL__ __NULL__) ,(param)
+      P_block p ,(handler)
+      __NULL__ param handler)
+    (,() __NULL__ __NULL__ __NULL__) ,(param handler)
+  P_eat p "finally" ,(hasFinally)
+  __if_then_else__ hasFinally (,() P_block p) (,() __NULL__ __NULL__) ,(finalizer)
+  __or__ hasCatch hasFinally ,(ok)
+  __unless__ ok (,() Sjs_throw "SyntaxError" "expected catch or finally after try") ,()
+  __Dict_put__ n "param" param ,()
+  __Dict_put__ n "handler" handler ,()
+  __Dict_put__ n "finalizer" finalizer ,()
+  __NULL__ n)
 
 ;; for 文
 (define P_for ,(p)

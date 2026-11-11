@@ -1,2 +1,2 @@
-sjs: SyntaxError: not yet translated (stage B2 of SJS): try statements
+sjs: SyntaxError: not yet translated (stage B3 of SJS): switch statements
 exit: 2

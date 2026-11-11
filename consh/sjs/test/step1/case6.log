@@ -1,2 +1,2 @@
-sjs: ReferenceError: nosuchname is not defined
+sjs: line 2: ReferenceError: nosuchname is not defined
 exit: 2

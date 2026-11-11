@@ -1,16 +1,19 @@
 ;; SJS の字句解析（consh/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の jsTokens と同じ区切り方。
 ;; sjs_rt.se（Sjs_chars）を使う
 
-;; 字句は LList (種類 テキスト 改行) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、
+;; 字句は LList (種類 テキスト 改行 行) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、
 ;; "punct"、"eof"、テンプレート文字列の部分（テキストは逃がしを解いた中身）の "template"（`...` 全体）、
 ;; "tmplhead"（` から ${ まで）、"tmplmid"（} から ${ まで）、"tmpltail"（} から ` まで）。改行は、前に改行
-;; （コメントの中も）があったか（真偽値）。正規表現は読まない（SJS の範囲の外）
+;; （コメントの中も）があったか（真偽値）、行は、字句の始まりの行の番号（String）。正規表現は読まない（SJS の範囲の外）
 (define Sjs_lex ,(text)
   Sjs_chars text ,(chars)
-  Sjs_lex_loop chars __NULL__ __FALSE__ __NULL__)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  Sjs_lex_loop chars __NULL__ __FALSE__ __NULL__ one)
 
-(define Sjs_tok ,(kind text nl)
-  __LList_cons__ nl __NULL__ ,(l)
+(define Sjs_tok ,(kind text nl line)
+  __Number_toString__ line ,(ls)
+  __LList_cons__ ls __NULL__ ,(l)
+  __LList_cons__ nl l ,(l)
   __LList_cons__ text l ,(l)
   __LList_cons__ kind l)
 
@@ -29,41 +32,53 @@
   __LList_uncons__ __print_exit_error__ rest ,(nl rest)
   __NULL__ nl)
 
+(define Tok_line ,(tok)
+  __LList_uncons__ __print_exit_error__ tok ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(text rest)
+  __LList_uncons__ __print_exit_error__ rest ,(nl rest)
+  __LList_uncons__ __print_exit_error__ rest ,(line rest)
+  __NULL__ line)
+
 (define Sjs_lex_error ,(msg)
   Sjs_throw "SyntaxError" msg)
 
 ;; acc は逆順の字句。nl は、次の字句の前に改行があったか。stack は、開いている { と、テンプレートの ${（"T"）の LList
-(define Sjs_lex_loop ,(chars acc nl stack)
+(define Sjs_lex_loop ,(chars acc nl stack line)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__
     (,()
       __is_null__ stack ,(test__) __unless__ test__ (,() Sjs_lex_error "unterminated template literal or block") ,()
-      Sjs_tok "eof" "" __TRUE__ ,(eof)
+      Sjs_tok "eof" "" __TRUE__ line ,(eof)
       __LList_cons__ eof acc ,(acc)
       Sjs_reverse acc ,(toks)
       return toks) ,()
   __LList_uncons__ __print_exit_error__ chars ,(c rest)
   Sjs_peek_char rest ,(d)
   ;; 1 つの字句を足して続ける
-  __NULL__ (,(kind text rest stack)
-    Sjs_tok kind text nl ,(tok)
+  ;; lines は、字句の中の改行の数（テンプレート文字列）
+  __NULL__ (,(kind text rest stack lines)
+    Sjs_tok kind text nl line ,(tok)
     __LList_cons__ tok acc ,(acc)
-    Sjs_lex_loop rest acc __FALSE__ stack ,(t)
+    __Number_add__ line lines ,(next)
+    Sjs_lex_loop rest acc __FALSE__ stack next ,(t)
     return t) ,(emit)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
   ;; 空白と改行
-  __String_equal__ c "\n" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc __TRUE__ stack ,(t) return t) ,()
-  Sjs_in c " \t\r" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc nl stack ,(t) return t) ,()
+  __String_equal__ c "\n" ,(test__) __if__ test__ (,() __Number_add__ line one ,(l) Sjs_lex_loop rest acc __TRUE__ stack l ,(t) return t) ,()
+  Sjs_in c " \t\r" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc nl stack line ,(t) return t) ,()
   ;; コメント
   __String_equal__ c "/" ,(slash)
   __String_equal__ d "/" ,(slash2)
   __and__ slash slash2 ,(test__) __if__ test__
-    (,() Sjs_skip_line rest ,(rest) Sjs_lex_loop rest acc nl stack ,(t) return t) ,()
+    (,() Sjs_skip_line rest ,(rest) Sjs_lex_loop rest acc nl stack line ,(t) return t) ,()
   __String_equal__ d "*" ,(star)
   __and__ slash star ,(test__) __if__ test__
     (,()
       Sjs_rest rest ,(rest)
-      Sjs_skip_block rest nl ,(rest nl)
-      Sjs_lex_loop rest acc nl stack ,(t)
+      Sjs_skip_block rest nl zero ,(rest nl lines)
+      __Number_add__ line lines ,(l)
+      Sjs_lex_loop rest acc nl stack l ,(t)
       return t) ,()
   ;; 数
   Sjs_is_digit c ,(digit)
@@ -71,57 +86,61 @@
   Sjs_is_digit d ,(digitNext)
   __and__ dot digitNext ,(dotNumber)
   __or__ digit dotNumber ,(test__) __if__ test__
-    (,() Sjs_lex_number chars "" ,(text rest) emit "num" text rest stack) ,()
+    (,() Sjs_lex_number chars "" ,(text rest) emit "num" text rest stack zero) ,()
   ;; 文字列
   Sjs_in c "'\"" ,(test__) __if__ test__
-    (,() Sjs_lex_string rest c "" ,(text rest) emit "str" text rest stack) ,()
+    (,() Sjs_lex_string rest c "" ,(text rest) emit "str" text rest stack zero) ,()
   ;; テンプレート文字列：` から、` か ${ まで
   __String_equal__ c "`" ,(test__) __if__ test__
     (,()
-      Sjs_lex_template rest "" ,(text open rest)
+      Sjs_lex_template rest "" zero ,(text open rest lines)
       __if_then_else__ open (,() __LList_cons__ "T" stack ,(s) __NULL__ "tmplhead" s) (,() __NULL__ "template" stack) ,(kind stack)
-      emit kind text rest stack) ,()
+      emit kind text rest stack lines) ,()
   ;; { と }。テンプレートの ${ を閉じる } なら、テンプレートの続きを読む
   __String_equal__ c "{" ,(test__) __if__ test__
-    (,() __LList_cons__ "{" stack ,(stack) emit "punct" "{" rest stack) ,()
+    (,() __LList_cons__ "{" stack ,(stack) emit "punct" "{" rest stack zero) ,()
   __String_equal__ c "}" ,(test__) __if__ test__
     (,()
-      __is_null__ stack ,(test__) __if__ test__ (,() emit "punct" "}" rest stack) ,()
+      __is_null__ stack ,(test__) __if__ test__ (,() emit "punct" "}" rest stack zero) ,()
       __LList_uncons__ __print_exit_error__ stack ,(top below)
       __String_equal__ top "T" ,(inTemplate)
-      __unless__ inTemplate (,() emit "punct" "}" rest below) ,()
-      Sjs_lex_template rest "" ,(text open rest)
+      __unless__ inTemplate (,() emit "punct" "}" rest below zero) ,()
+      Sjs_lex_template rest "" zero ,(text open rest lines)
       __if_then_else__ open (,() __NULL__ "tmplmid" stack) (,() __NULL__ "tmpltail" below) ,(kind stack)
-      emit kind text rest stack) ,()
+      emit kind text rest stack lines) ,()
   ;; 名前
   Sjs_is_ident_start c ,(test__) __if__ test__
-    (,() Sjs_lex_ident chars "" ,(text rest) emit "id" text rest stack) ,()
+    (,() Sjs_lex_ident chars "" ,(text rest) emit "id" text rest stack zero) ,()
   ;; 記号（長いものから）
   Sjs_lex_punct chars ,(text rest)
   __is_null__ text ,(test__) __if__ test__
     (,() __String_concat__ "unexpected character: " c ,(msg) Sjs_lex_error msg) ,()
-  emit "punct" text rest stack)
+  emit "punct" text rest stack zero)
 
-;; テンプレート文字列の部分：` か } の後から、` の後か ${ の後まで。中身（逃がしを解いたもの）、${ で終わったか、残り
-(define Sjs_lex_template ,(chars acc)
+;; テンプレート文字列の部分：` か } の後から、` の後か ${ の後まで。中身（逃がしを解いたもの）、${ で終わったか、残り、
+;; 中の改行の数（lines に足していく）
+(define Sjs_lex_template ,(chars acc lines)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__ (,() Sjs_lex_error "unterminated template literal") ,()
   __LList_uncons__ __print_exit_error__ chars ,(c rest)
-  __String_equal__ c "`" ,(test__) __if__ test__ (,() return acc __FALSE__ rest) ,()
+  __String_equal__ c "`" ,(test__) __if__ test__ (,() return acc __FALSE__ rest lines) ,()
   Sjs_peek_char rest ,(d)
   __String_equal__ c "$" ,(dollar)
   __String_equal__ d "{" ,(brace)
-  __and__ dollar brace ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return acc __TRUE__ rest) ,()
+  __and__ dollar brace ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return acc __TRUE__ rest lines) ,()
   __String_equal__ c "\\" ,(test__) __if__ test__
     (,()
       __is_null__ rest ,(test__) __if__ test__ (,() Sjs_lex_error "unterminated template literal") ,()
       __LList_uncons__ __print_exit_error__ rest ,(e rest)
       Sjs_escape e rest ,(s rest)
       __String_concat__ acc s ,(acc)
-      Sjs_lex_template rest acc ,(t o r)
-      return t o r) ,()
+      Sjs_lex_template rest acc lines ,(t o r n)
+      return t o r n) ,()
   __String_concat__ acc c ,(acc)
-  Sjs_lex_template rest acc)
+  __String_equal__ c "\n" ,(newline)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __if_then_else__ newline (,() __Number_add__ lines one) (,() __NULL__ lines) ,(lines)
+  Sjs_lex_template rest acc lines)
 
 (define Sjs_reverse ,(list)
   Sjs_reverse_onto list __NULL__)
@@ -193,18 +212,20 @@
   __String_equal__ c "\n" ,(test__) __if__ test__ (,() return chars) ,()
   Sjs_skip_line rest)
 
-;; /* の後から */ の後まで。中に改行があれば nl を真にする
-(define Sjs_skip_block ,(chars nl)
+;; /* の後から */ の後まで。中に改行があれば nl を真にする。lines は中の改行の数
+(define Sjs_skip_block ,(chars nl lines)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__ (,() Sjs_lex_error "unterminated comment") ,()
   __LList_uncons__ __print_exit_error__ chars ,(c rest)
   Sjs_peek_char rest ,(d)
   __String_equal__ c "*" ,(star)
   __String_equal__ d "/" ,(slash)
-  __and__ star slash ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return rest nl) ,()
+  __and__ star slash ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return rest nl lines) ,()
   __String_equal__ c "\n" ,(newline)
   __or__ nl newline ,(nl)
-  Sjs_skip_block rest nl)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __if_then_else__ newline (,() __Number_add__ lines one) (,() __NULL__ lines) ,(lines)
+  Sjs_skip_block rest nl lines)
 
 ;; 数：数字、小数点、指数（e、E、その後の + か -）
 (define Sjs_lex_number ,(chars acc)

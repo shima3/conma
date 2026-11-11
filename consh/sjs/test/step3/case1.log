@@ -1,0 +1,11 @@
+caught boom
+7 {"code":7}
+TypeError + needs numbers, not the string "a" (join strings with a template literal) TypeError: + needs numbers, not the string "a" (join strings with a template literal) {} []
+Cannot read properties of null (reading 'x')
+ReferenceError: nosuch is not defined
+no param
+deep bottom
+bad 2
+[1,"two",3]
+re-inner
+exit: 0

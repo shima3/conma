@@ -30,19 +30,41 @@
   __String_concat__ ";; SJS を変換したもの（consh/include/sjs_gen.se）\n(include \"util.se\")\n(include \"sjs_rt.se\")\n(define main ,(args)\n  Sjs_init ,(G)\n" code ,(s)
   __String_concat__ s "\n  __nop__)\n")
 
-;; 文の文脈 cx：関数の中か（"fn"）と、break と continue で呼ぶ継続の変数名（"brk" と "cnt"。ループの外では ""）
+;; 文の文脈 cx：関数の中か（"fn"）と、return、break、continue で呼ぶ継続の変数名（"ret"、"brk"、"cnt"。使えなければ ""）、
+;; その継続を呼ぶ前に戻す、例外の受け手のスタックの変数名（"retH"、"brkH"、"cntH"。継続が try の finally を通す
+;; Closure なら ""。その Closure が戻す）
 (define Gen_cx ,(fn brk cnt)
   __Dict_new__ ,(cx)
   __Dict_put__ cx "fn" fn ,()
   __Dict_put__ cx "brk" brk ,()
   __Dict_put__ cx "cnt" cnt ,()
+  __Dict_put__ cx "ret" "" ,()
+  __Dict_put__ cx "retH" "" ,()
+  __Dict_put__ cx "brkH" "" ,()
+  __Dict_put__ cx "cntH" "" ,()
   __NULL__ cx)
+
+;; cx の写しの key を value にしたもの
+(define Gen_cx_with ,(cx key value)
+  __Dict_copy__ cx ,(c)
+  __Dict_put__ c key value ,()
+  __NULL__ c)
+
+;; return、break、continue（kind は "ret"、"brk"、"cnt"）の手順。val は return の値（なければ ""）
+(define Gen_jump ,(cx kind val)
+  __Cont_get__ ,(return)
+  Sjs_get cx kind ,(k)
+  __String_concat__ kind "H" ,(hk)
+  Sjs_get cx hk ,(h)
+  __String_equal__ h "" ,(noRestore)
+  __if_then_else__ noRestore (,() __NULL__ "") (,() Cat3 "Sjs_set_handlers " h " ,() ") ,(restore)
+  Cat5 restore k " " val " ,() ")
 
 (define Gen_error ,(msg)
   Sjs_throw "SyntaxError" msg)
 
 (define Gen_not_yet ,(what)
-  __String_concat__ "not yet translated (stage B2 of SJS): " what ,(msg)
+  __String_concat__ "not yet translated (stage B3 of SJS): " what ,(msg)
   Gen_error msg)
 
 ;; 新しい一時変数の名前（prefix に番号を付ける）
@@ -136,7 +158,19 @@
   __String_concat__ acc code ,(acc)
   Gen_stmts g scope rest cx acc)
 
+;; 文。最初に、文の行を記録する（Sjs_line。受け手のない例外のメッセージに出す）
 (define Gen_stmt ,(g scope s cx)
+  __Cont_get__ ,(return)
+  Sjs_get s "t" ,(t)
+  __String_equal__ t "block" ,(isBlock)
+  __String_equal__ t "empty" ,(isEmpty)
+  __or__ isBlock isEmpty ,(test__) __if__ test__ (,() Gen_stmt_body g scope s cx ,(c) return c) ,()
+  __Dict_lookup_or__ s "line" (,(k) __NULL__ "") ,(line)
+  Gen_quote line ,(q)
+  Gen_stmt_body g scope s cx ,(c)
+  Cat4 "Sjs_line " q " ,() " c)
+
+(define Gen_stmt_body ,(g scope s cx)
   __Cont_get__ ,(return)
   Sjs_get s "t" ,(t)
   __String_equal__ t "expr" ,(test__) __if__ test__
@@ -164,10 +198,11 @@
   __String_equal__ t "continue" ,(isContinue)
   __or__ isBreak isContinue ,(test__) __if__ test__
     (,()
-      __if_then_else__ isBreak (,() Sjs_get cx "brk") (,() Sjs_get cx "cnt") ,(k)
+      __if_then_else__ isBreak (,() __NULL__ "brk") (,() __NULL__ "cnt") ,(kind)
+      Sjs_get cx kind ,(k)
       __String_equal__ k "" ,(outside)
       __if__ outside (,() __String_concat__ t " outside a loop" ,(msg) Gen_error msg) ,()
-      __String_concat__ k " ,() " ,(c)
+      Gen_jump cx kind "" ,(c)
       return c) ,()
   __String_equal__ t "return" ,(test__) __if__ test__
     (,()
@@ -175,10 +210,18 @@
       __unless__ inFn (,() Gen_error "return outside a function") ,()
       Sjs_get s "value" ,(value)
       __is_null__ value ,(none)
-      __if__ none (,() return "return __NULL__ ,() ") ,()
+      __if__ none (,() Gen_jump cx "ret" "__NULL__" ,(c) return c) ,()
       Gen_expr g scope value ,(code val)
-      Cat4 code "return " val " ,() " ,(c)
+      Gen_jump cx "ret" val ,(j)
+      __String_concat__ code j ,(c)
       return c) ,()
+  __String_equal__ t "throw" ,(test__) __if__ test__
+    (,()
+      Sjs_get s "value" ,(value)
+      Gen_expr g scope value ,(code val)
+      Cat4 code "Sjs_raise " val " ,() " ,(c)
+      return c) ,()
+  __String_equal__ t "try" ,(test__) __if__ test__ (,() Gen_try g scope s cx ,(code) return code) ,()
   __String_concat__ "a statement of " t ,(what)
   Gen_not_yet what)
 
@@ -230,10 +273,13 @@
   Gen_temp g "loop" ,(loop)
   Gen_temp g "b" ,(b)
   Gen_temp g "l" ,(l)
-  Sjs_get cx "fn" ,(fn)
-  Gen_cx fn brk cnt ,(inner)
+  Gen_temp g "h" ,(h)
+  Gen_cx_with cx "brk" brk ,(inner)
+  Gen_cx_with inner "cnt" cnt ,(inner)
+  Gen_cx_with inner "brkH" h ,(inner)
+  Gen_cx_with inner "cntH" h ,(inner)
   body inner ,(bodyCode)
-  Cat3 "(,() __Cont_get__ ,(" brk ") __Ref_new__ __NULL__ ,(" ,(c)
+  Cat5 "(,() __Cont_get__ ,(" brk ") Sjs_handlers ,(" h ") __Ref_new__ __NULL__ ,(" ,(c)
   Cat4 c loop ") __Ref_set__ " loop ,(c)
   Cat3 c " (,() " testCode ,(c)
   __is_null__ testVal ,(always)
@@ -349,6 +395,76 @@
     Gen_branch g iscope body inner ,(bodyCode)
     Cat3 take bind bodyCode) "" ,(loopCode)
   __String_concat__ c loopCode)
+
+;; try 文。catch は Sjs_try（受け手の継続を積む）。finally は、本体と catch を、例外を受けて finally を実行してから
+;; 投げ直す Sjs_try で包み、ふつうに終わった後にも finally を実行する。本体の中の return、break、continue は、
+;; finally を実行してから外へ出る Closure（fin を呼ぶ）に置き換える：
+;;   Sjs_handlers ,(hT) __NULL__ (,() finally の文 __nop__) ,(fin)
+;;   __NULL__ (,(v) Sjs_set_handlers hT ,() fin ,() 外の return v) ,(retW) ...（break、continue も）
+;;   Sjs_try (,() 本体と catch __nop__) (,(exc) fin ,() Sjs_raise exc) ,() fin ,()
+(define Gen_try ,(g scope s cx)
+  __Cont_get__ ,(return)
+  Sjs_get s "body" ,(body)
+  Sjs_get s "param" ,(param)
+  Sjs_get s "handler" ,(handler)
+  Sjs_get s "finalizer" ,(finalizer)
+  __is_null__ finalizer ,(noFinally)
+  __if__ noFinally (,() Gen_try_catch g scope body param handler cx ,(c) return c) ,()
+  Gen_temp g "h" ,(hT)
+  Gen_temp g "fin" ,(fin)
+  Sjs_get finalizer "body" ,(fstmts)
+  __Dict_new__ ,(fdict)
+  __LList_cons__ fdict scope ,(fscope)
+  Gen_block_code g fscope fstmts cx ,(finCode)
+  Cat4 "Sjs_handlers ,(" hT ") __NULL__ (,() " finCode ,(c)
+  Cat3 c "__nop__) ,(" fin ,(c)
+  __String_concat__ c ") " ,(c)
+  ;; return、break、continue を、finally を通すものにする
+  __NULL__ (,(cx kind c)
+    __Cont_get__ ,(ret)
+    Sjs_get cx kind ,(k)
+    __String_equal__ k "" ,(none)
+    __if__ none (,() ret cx c) ,()
+    Gen_temp g "w" ,(w)
+    __String_equal__ kind "ret" ,(isRet)
+    __if_then_else__ isRet (,() __NULL__ "v" "v") (,() __NULL__ "" "") ,(param arg)
+    __String_concat__ "w" w ,(wv)
+    Gen_jump cx kind arg ,(jump)
+    Cat4 c "__NULL__ (,(" param ") Sjs_set_handlers " ,(c)
+    Cat5 c hT " ,() " fin " ,() " ,(c)
+    Cat5 c jump ") ,(" w ") " ,(c)
+    Gen_cx_with cx kind w ,(cx)
+    __String_concat__ kind "H" ,(hk)
+    Gen_cx_with cx hk "" ,(cx)
+    __NULL__ cx c) ,(wrap)
+  wrap cx "ret" c ,(icx c)
+  wrap icx "brk" c ,(icx c)
+  wrap icx "cnt" c ,(icx c)
+  __is_null__ handler ,(noCatch)
+  __if_then_else__ noCatch
+    (,() Sjs_get body "body" ,(stmts) __Dict_new__ ,(d) __LList_cons__ d scope ,(bscope) Gen_block_code g bscope stmts icx)
+    (,() Gen_try_catch g scope body param handler icx) ,(inner)
+  Cat4 c "Sjs_try (,() " inner "__nop__) (,(exc) " ,(c)
+  Cat4 c fin " ,() Sjs_raise exc) ,() " fin ,(c)
+  __String_concat__ c " ,() ")
+
+;; try { body } catch (param) { handler }
+(define Gen_try_catch ,(g scope body param handler cx)
+  Sjs_get body "body" ,(bstmts)
+  __Dict_new__ ,(bdict)
+  __LList_cons__ bdict scope ,(bscope)
+  Gen_block_code g bscope bstmts cx ,(bodyCode)
+  __Dict_new__ ,(hdict)
+  __LList_cons__ hdict scope ,(hscope)
+  Gen_temp g "exc" ,(exc)
+  __is_null__ param ,(noParam)
+  __if_then_else__ noParam
+    (,() __NULL__ "")
+    (,() Gen_declare g hscope param __FALSE__ ,(var) Cat5 "__Ref_new__ " exc " ,(" var ") ") ,(bind)
+  Sjs_get handler "body" ,(hstmts)
+  Gen_block_code g hscope hstmts cx ,(handlerCode)
+  Cat5 "Sjs_try (,() " bodyCode "__nop__) (,(" exc ") " ,(c)
+  Cat4 c bind handlerCode "__nop__) ,() ")
 
 ;; ブロックの文の並び stmts（scope の最初の Dict が、このブロックのスコープ）。JavaScript と同じく、ブロックで
 ;; 宣言した名前（let、const、var）は、ブロックの始めから見えるように、先に Ref を作っておく（宣言の文は、その Ref に
@@ -855,7 +971,14 @@
   __is_null__ body ,(concise)
   __if_then_else__ concise
     (,() Gen_expr g inner expr ,(c v) Cat4 c "return " v " ,() ")
-    (,() Sjs_get body "body" ,(stmts) Gen_cx __TRUE__ "" "" ,(fcx) Gen_block_code g inner stmts fcx) ,(bodyCode)
+    (,()
+      Sjs_get body "body" ,(stmts)
+      Gen_temp g "h" ,(h)
+      Gen_cx __TRUE__ "" "" ,(fcx)
+      Gen_cx_with fcx "ret" "return" ,(fcx)
+      Gen_cx_with fcx "retH" h ,(fcx)
+      Gen_block_code g inner stmts fcx ,(code)
+      Cat4 "Sjs_handlers ,(" h ") " code) ,(bodyCode)
   Gen_temp g "t" ,(v)
   Gen_quote name ,(qn)
   Cat5 "Sjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)

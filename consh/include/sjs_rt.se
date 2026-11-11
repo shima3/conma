@@ -13,7 +13,10 @@
 ;;             （プロトタイプはない。キーの順は、足した順だけ。JavaScript の整数のキーを先にする規則はない）
 ;; 大域の名前（SJS変数）は、文脈 G（Dict）に名前で置く。G の "" には、関数の番号を数える Ref を置く
 ;; （"" は SJS の名前にならない）。
-;; エラーは、メッセージを "sjs: " を付けて標準エラーに出し、終了ステータス 2 で終える（try と catch は段階 B3）。
+;; 例外（段階 B3）：受け手の継続のスタックを PDict の "sjs_handlers" に置く（Sjs_try が積み、Sjs_raise が取り出して
+;; 呼ぶ）。受け手がなければ、"sjs: " を付けてメッセージを標準エラーに出し、終了ステータス 2 で終える。
+;; 実行時のエラー（TypeError など）は、隠した name と message を持つオブジェクト（"error" の印。JSON では {}、
+;; String では "TypeError: メッセージ"。段階 A の Error と同じ見え方）にして投げる。文脈 G は PDict の "sjs_G" にも置く
 
 ;; ── 文脈と大域の名前 ──
 
@@ -23,6 +26,7 @@
   __Ref_new__ zero ,(counter)
   __Dict_put__ G "" counter ,()
   Sjs_builtins G ,()
+  __PDict_put__ "sjs_G" G ,()
   __NULL__ G)
 
 ;; 大域の名前 name の値。なければ ReferenceError
@@ -35,13 +39,70 @@
 ;; ── エラー ──
 
 (define Sjs_throw ,(name msg)
-  __String_concat__ "sjs: " name ,(s)
-  __String_concat__ s ": " ,(s)
-  __String_concat__ s msg ,(s)
+  ;; 変換するとき（G がない）は、そのまま出して終える
+  __PDict_lookup_or__ "sjs_G" (,(k) __String_concat__ name ": " ,(s) __String_concat__ s msg ,(s) Sjs_uncaught s) ,(G)
+  Sjs_error_object G name msg ,(e)
+  Sjs_raise e)
+
+;; 受け手のない例外：メッセージ text と、最後に実行した文の行（Sjs_line）を出して、終了ステータス 2 で終える
+(define Sjs_uncaught ,(text)
+  __PDict_lookup_or__ "sjs_line" (,(k) __NULL__ "") ,(line)
+  __String_equal__ line "" ,(noLine)
+  __if_then_else__ noLine (,() __NULL__ "sjs: ") (,() __String_concat__ "sjs: line " line ,(s) __String_concat__ s ": ") ,(s)
+  __String_concat__ s text ,(s)
   __String_concat__ s "\n" ,(s)
   __OS_print_error__ s ,()
   __Number_fromString__ __print_exit_error__ "2" ,(two)
   __OS_exit__ __print_exit_error__ two)
+
+;; 文の行（変換したコードが、文ごとに呼ぶ）
+(define Sjs_line ,(line)
+  __PDict_put__ "sjs_line" line)
+
+;; ── 例外 ──
+
+(define Sjs_handlers ,()
+  __PDict_lookup_or__ "sjs_handlers" (,(k) __NULL__ __NULL__))
+
+(define Sjs_set_handlers ,(hs)
+  __PDict_put__ "sjs_handlers" hs)
+
+;; 値 v を投げる。いちばん内側の受け手を取り除いて、それに v を渡す。受け手がなければ終える
+(define Sjs_raise ,(v)
+  Sjs_handlers ,(hs)
+  __is_null__ hs ,(none)
+  __if__ none (,() Sjs_error_text v ,(t) Sjs_uncaught t) ,()
+  __LList_uncons__ __print_exit_error__ hs ,(k rest)
+  Sjs_set_handlers rest ,()
+  k v)
+
+;; 受け手のない例外のメッセージ：エラーのオブジェクトは "名前: メッセージ"、ほかは String(v)（段階 A の errorLine と同じ）
+(define Sjs_error_text ,(v)
+  Sjs_to_string v)
+
+;; try { body } catch (e) { handler(e) }。body と handler は thunk と、値を受け取る Closure。
+;; body がふつうに終われば、受け手を取り除いて戻る。投げられれば、受け手のスタックを try の前に戻して handler を呼ぶ
+(define Sjs_try ,(body handler)
+  __Cont_get__ ,(return)
+  Sjs_handlers ,(saved)
+  (,()
+    __Cont_get__ ,(catchK)
+    __LList_cons__ catchK saved ,(hs)
+    Sjs_set_handlers hs ,()
+    body ,()
+    Sjs_set_handlers saved ,()
+    return) ,(exc)
+  Sjs_set_handlers saved ,()
+  handler exc)
+
+;; エラーのオブジェクト：name と message を、名前の一覧に入れずに持つ（Object.keys と JSON に出ない）
+(define Sjs_error_object ,(G name msg)
+  Sjs_object_new G ,(o)
+  __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
+  __Dict_put__ props "name" name ,()
+  __Dict_put__ props "message" msg ,()
+  __Dict_put__ o "error" __TRUE__ ,()
+  __NULL__ o)
 
 (define Sjs_type_error ,(msg)
   Sjs_throw "TypeError" msg)
@@ -417,7 +478,16 @@
   __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return "undefined") ,()
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_join v "," ,(s) return s) ,()
-  __String_equal__ kind "object" ,(test__) __if__ test__ (,() return "[object Object]") ,()
+  __String_equal__ kind "object" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
+      Sjs_obj_get v "name" ,(name)
+      Sjs_obj_get v "message" ,(msg)
+      Sjs_to_string name ,(n)
+      Sjs_to_string msg ,(m)
+      __String_concat__ n ": " ,(s)
+      __String_concat__ s m ,(s)
+      return s) ,()
   __NULL__ "function () { [native code] }")
 
 ;; 数を、JavaScript の String(n) と同じ形にする。ConMa の __Number_toString__ は、最も短い桁を出すが、

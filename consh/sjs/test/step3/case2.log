@@ -1,0 +1,20 @@
+body
+finally 1
+finally 2
+from try
+2
+i 0
+fin 0
+fin 1
+i 2
+fin 2
+fin 3
+done
+inner finally
+outer caught inner
+a
+b
+x
+after catch
+c t
+exit: 0
