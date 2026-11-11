@@ -89,6 +89,7 @@ pub fn load_body_interp(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc
         Some(CLCont::V(_)) => return err("an LCont written as a __Closure__ value is not supported"),
     };
     vp.sinfo = body.sinfo.clone();
+    vp.dict_site = body.dict_site.clone();
     vp.operator = operator;
     vp.olist = olist;
     vp.lcont = lcont;

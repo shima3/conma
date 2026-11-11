@@ -60,6 +60,34 @@ pub struct BodyDef {
     pub operator: Option<CExpr>,
     pub olist: Vec<CExpr>,
     pub lcont: Option<CLCont>,
+    /// For a Body that applies __Dict_lookup_or__ or __Dict_put__ with a String key written in
+    /// place: the key and the cache of this place (step.rs puts it in VProc::dict_site).
+    pub dict_site: Option<Rc<DictSite>>,
+}
+
+/// A place that reads or writes a Dict with a String key written in place, for the VM as the
+/// Ic of transpiled code is for transpiled code: the key node (a String constant of the OList),
+/// its text and str_hash, and the last shape and position found here.
+pub struct DictSite {
+    pub node: Sexp,
+    pub text: Box<str>,
+    pub hash: u64,
+    pub ic: Ic,
+}
+
+/// The DictSite of a Body whose Operator is the global __Dict_lookup_or__ or __Dict_put__ and
+/// whose second operand is a String constant without escapes.
+fn dict_site_of(operator: &Option<CExpr>, olist: &[CExpr]) -> Option<Rc<DictSite>> {
+    match operator {
+        Some(CExpr::G(_, name)) if matches!(unquote(name), "__Dict_lookup_or__" | "__Dict_put__") && olist.len() == 3 => {}
+        _ => return None,
+    }
+    let CExpr::C(Value::StrNode(node)) = &olist[1] else { return None };
+    let text = node.as_list().and_then(|l| l.get(2)).and_then(|x| x.as_atom()).map(unquote)?;
+    if text.contains('\\') {
+        return None;
+    }
+    Some(Rc::new(DictSite { node: node.clone(), text: text.into(), hash: str_hash(text), ic: Ic::new() }))
 }
 
 pub fn is_variadic_head(head: Option<&Sexp>) -> bool {
@@ -176,7 +204,8 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
             }
         }
     }
-    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont })
+    let dict_site = dict_site_of(&operator, &olist);
+    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont, dict_site })
 }
 
 /// A Closure of a compiled Function in an environment.

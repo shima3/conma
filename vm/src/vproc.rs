@@ -45,6 +45,8 @@ pub struct VProc {
     pub cwd: String,
     /// LazyLists this VProc has claimed and may be evaluating.
     pub claims: Vec<Rc<RefObj>>,
+    /// The DictSite of the Body loaded last, if it has one (step.rs, prim/collections.rs).
+    pub dict_site: Option<Rc<crate::module::DictSite>>,
 }
 
 impl VProc {
@@ -62,6 +64,7 @@ impl VProc {
             gvenv,
             cwd,
             claims: Vec::new(),
+            dict_site: None,
         }
     }
 

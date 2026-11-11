@@ -93,11 +93,55 @@ pub fn dict_new(m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// The position of key in d, through the DictSite of the Body that applies the primitive when key
+/// is the String constant of that place (VProc::dict_site, module::DictSite): the cache, or the
+/// index without making the text of the key again. Otherwise DictObj::find.
+#[inline]
+fn find_at_site(site: Option<Rc<crate::module::DictSite>>, d: &DictObj, key: &Value) -> Result<Option<usize>, VmError> {
+    if let (Some(s), Value::StrNode(crate::sexp::Sexp::List(k))) = (&site, key) {
+        if let crate::sexp::Sexp::List(n) = &s.node {
+            if Rc::ptr_eq(k, n) {
+                return Ok(d.find_str_cached(&s.text, s.hash, &s.ic));
+            }
+        }
+    }
+    d.find(key).map_err(VmError::Error)
+}
+
 pub fn dict_put(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let site = vp.dict_site.take();
+    // The usual case, without taking the operands into new Vecs: the OList is used for the
+    // results (as prim_return would set it)
+    if vp.olist.len() >= 3 {
+        if let Value::Dict(d) = &vp.olist[0] {
+            let d = d.clone();
+            let found = match find_at_site(site, &d, &vp.olist[1]) {
+                Ok(f) => f,
+                Err(e) => {
+                    vp.olist.drain(..3);
+                    return Err(e);
+                }
+            };
+            let value = std::mem::replace(&mut vp.olist[2], Value::Null);
+            match found {
+                None => {
+                    let key = std::mem::replace(&mut vp.olist[1], Value::Null);
+                    if let Err(e) = d.append(key, value) {
+                        vp.olist.drain(..3);
+                        return Err(VmError::Error(e));
+                    }
+                }
+                Some(i) => d.entries_mut()[i].1 = value,
+            }
+            vp.olist.clear();
+            vp.operator = vp.lcont.take().unwrap_or(Value::Null);
+            return Ok(());
+        }
+    }
     let (d, mut a) = dict_args(vp, "__Dict_put__", 3)?;
     let value = a.pop().unwrap();
     let key = a.pop().unwrap();
-    match d.find(&key).map_err(VmError::Error)? {
+    match find_at_site(site, &d, &key)? {
         None => d.append(key, value).map_err(VmError::Error)?,
         Some(i) => d.entries_mut()[i].1 = value,
     }
@@ -128,10 +172,39 @@ pub fn dict_put_core(d: &Value, key: Value, value: Value) -> Result<(), VmError>
 }
 
 pub fn dict_lookup_or(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let site = vp.dict_site.take();
+    // The usual case, without taking the operands into new Vecs: the OList is used for the
+    // result or for the key given to onMissing (as prim_return and the code below would set it)
+    if vp.olist.len() >= 3 {
+        if let Value::Dict(d) = &vp.olist[0] {
+            let found = match find_at_site(site, d, &vp.olist[1]) {
+                Ok(f) => f,
+                Err(e) => {
+                    vp.olist.drain(..3);
+                    return Err(e);
+                }
+            };
+            match found {
+                Some(i) => {
+                    let v = d.entries.borrow()[i].1.clone();
+                    vp.olist.clear();
+                    vp.olist.push(v);
+                    vp.operator = vp.lcont.take().unwrap_or(Value::Null);
+                }
+                None => {
+                    let key = std::mem::replace(&mut vp.olist[1], Value::Null);
+                    vp.operator = std::mem::replace(&mut vp.olist[2], Value::Null);
+                    vp.olist.clear();
+                    vp.olist.push(key);
+                }
+            }
+            return Ok(());
+        }
+    }
     let (d, mut a) = dict_args(vp, "__Dict_lookup_or__", 3)?;
     let on_missing = a.pop().unwrap();
     let key = a.pop().unwrap();
-    match d.find(&key).map_err(VmError::Error)? {
+    match find_at_site(site, &d, &key)? {
         Some(i) => {
             let v = d.entries.borrow()[i].1.clone();
             vp.prim_return(vec![v]);
