@@ -262,7 +262,8 @@ var ConMaVM = (function () {
         reOk = REGEX_AFTER.has(src.slice(s, i));
       } else if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(src[i + 1] || ""))) {
         i++;
-        while (i < src.length && /[\w.]/.test(src[i])) i++;
+        // digits, letters (e, x, n) and the point; a sign right after the e of an exponent (1e-7)
+        while (i < src.length && (/[\w.]/.test(src[i]) || ((src[i] === "+" || src[i] === "-") && /[eE]/.test(src[i - 1]) && !/^0[xX]/.test(src.slice(s, i))))) i++;
         push("num", s, depth);
         reOk = false;
       } else if (c === "'" || c === '"') {

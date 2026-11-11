@@ -1,0 +1,3 @@
+before
+sjs: TypeError: + needs numbers, not the string "a" (join strings with a template literal)
+exit: 2

@@ -1,0 +1,16 @@
+#!/bin/bash
+# SJS のファイルを ConMa に変換して動かす（consh/SAFEJS-PLAN-ja.md の段階 B1）。Rust 版の VM（vm/target/release/conma）を使う。
+#   consh/sjs/sjs [--emit] file.sjs
+# --emit を付けると、動かさずに、変換した ConMa のソースを出す
+sjs="$(cd "$(dirname "$0")"; pwd)"
+consh="${sjs%/*}"
+root="${consh%/*}"
+conma="$root/vm/target/release/conma"
+emit=
+if [ "$1" = --emit ]; then emit=yes; shift; fi
+if [ $# -ne 1 ]; then echo "usage: sjs [--emit] file.sjs" >&2; exit 2; fi
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+"$conma" run --include "$consh/include" "$sjs/sjsc.se" "$1" > "$tmp/prog.se" || exit $?
+if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
+"$conma" run --include "$consh/include" "$tmp/prog.se"

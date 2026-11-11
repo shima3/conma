@@ -33,3 +33,5 @@ echo "$(( a1 + b1 )) $(( p1 + p2 )) $(( m.f(4) )) $(( m?.missing?.x ?? "none" ))
 # 構文エラー
 (( (1 + ) )); echo "syntax status $?"
 (( ({ get x() { return 1 } }) )); echo "getter status $?"
+# 指数の符号（1e-7）も 1 つの数
+echo "exp: $(( 1e-7 * 10 )) $(( 2.5E+3 ))"

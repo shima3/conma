@@ -1,0 +1,25 @@
+;; SJS の変換器（consh/SAFEJS-PLAN-ja.md の段階 B1）：SJS のファイルを読み、ConMa のソースを標準出力に出す。
+;;   main の引数: SJS のファイル名
+;; 変換は consh/include の sjs_lex.se、sjs_parse.se、sjs_gen.se。作ったソースは sjs_rt.se を include する
+(include "util.se")
+(include "sjs_rt.se")
+(include "sjs_lex.se")
+(include "sjs_parse.se")
+(include "sjs_gen.se")
+
+(define main ,(args)
+  __Seq_get__ (,() __print_exit_error__ "usage: sjsc.se <file.sjs>\n") args ,(path rest)
+  __OS_open__ (,(msg) __String_concat__ "sjsc: " msg ,(m) __String_concat__ m "\n" ,(m) __print_exit_error__ m) path "r" ,(stream)
+  __LazyList_lines__ stream ,(lines)
+  Sjsc_join lines "" ,(text)
+  __OS_close__ __print_exit_error__ stream ,()
+  Sjs_translate text ,(source)
+  __OS_print__ source)
+
+;; 行の LazyList を、改行でつないだ 1 つの String にする
+(define Sjsc_join ,(lines acc)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return acc) lines ,(line rest)
+  __String_concat__ acc line ,(acc)
+  __String_concat__ acc "\n" ,(acc)
+  Sjsc_join rest acc)

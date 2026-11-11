@@ -27,4 +27,5 @@ consh: case9.sh:34:1: sjs: SyntaxError: unexpected ')'
 syntax status 2
 consh: case9.sh:35:1: sjs: not in SJS: a getter or a setter
 getter status 2
+exp: 0.000001 2500
 exit: 0

@@ -1,0 +1,571 @@
+;; SJS の実行時の支え（consh/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
+;;
+;; SJS の値の表し方：
+;;   数        Number（IEEE 754 の倍精度。ConMa の Number と同じ）
+;;   文字列    String
+;;   真偽値    __TRUE__ と __FALSE__（ConMa では Closure）
+;;   undefined __NULL__
+;;   null      Ref（中身は使わない。SJS の値で Ref になるのは null だけ）
+;;   関数      Dict。"t" に "function"、"f" に引数の LList を受け取る Closure、"id" に作った順の番号（=== で比べる）
+;; 大域の名前（SJS変数）は、文脈 G（Dict）に名前で置く。G の "" には、関数の番号を数える Ref を置く
+;; （"" は SJS の名前にならない）。
+;; エラーは、メッセージを "sjs: " を付けて標準エラーに出し、終了ステータス 2 で終える（try と catch は段階 B3）。
+
+;; ── 文脈と大域の名前 ──
+
+(define Sjs_init ,()
+  __Dict_new__ ,(G)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(counter)
+  __Dict_put__ G "" counter ,()
+  __NULL__ G)
+
+;; 大域の名前 name の値。なければ ReferenceError
+(define Sjs_global ,(G name)
+  __Dict_lookup_or__ G name (,(key)
+    __String_equal__ key "undefined" ,(test__) __if__ test__ (,() __NULL__ __NULL__) ,()
+    __String_concat__ key " is not defined" ,(msg)
+    Sjs_throw "ReferenceError" msg))
+
+;; ── エラー ──
+
+(define Sjs_throw ,(name msg)
+  __String_concat__ "sjs: " name ,(s)
+  __String_concat__ s ": " ,(s)
+  __String_concat__ s msg ,(s)
+  __String_concat__ s "\n" ,(s)
+  __OS_print_error__ s ,()
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __OS_exit__ __print_exit_error__ two)
+
+(define Sjs_type_error ,(msg)
+  Sjs_throw "TypeError" msg)
+
+;; ── 型 ──
+
+;; SJS の値の種類："number"、"string"、"boolean"、"undefined"、"null"、"function"
+(define Sjs_kind ,(v)
+  __Cont_get__ ,(return)
+  __type_name__ v ,(type)
+  __String_equal__ type "Number" ,(test__) __if__ test__ (,() return "number") ,()
+  __String_equal__ type "String" ,(test__) __if__ test__ (,() return "string") ,()
+  __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return "boolean") ,()
+  __String_equal__ type "null" ,(test__) __if__ test__ (,() return "undefined") ,()
+  __String_equal__ type "Ref" ,(test__) __if__ test__ (,() return "null") ,()
+  __String_equal__ type "Dict" ,(test__) __if__ test__
+    (,() __Dict_lookup_or__ v "t" __print_exit_error__ ,(t) return t) ,()
+  __String_concat__ "an unknown value: " type ,(msg)
+  Sjs_type_error msg)
+
+;; typeof
+(define Sjs_typeof ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "object") ,()
+  __NULL__ kind)
+
+(define Sjs_is_number ,(v)
+  __type_name__ v ,(type)
+  __String_equal__ type "Number")
+
+;; JavaScript の真偽。偽は、false、0、-0、NaN、""、undefined、null
+(define Sjs_truthy ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
+  __String_equal__ kind "string" ,(test__) __if__ test__
+    (,() __String_equal__ v "" ,(empty) __not__ empty ,(t) return t) ,()
+  __String_equal__ kind "number" ,(test__) __if__ test__
+    (,()
+      __Number_is_zero__ v ,(zero)
+      __if__ zero (,() return __FALSE__) ,()
+      Sjs_is_nan v ,(nan)
+      __not__ nan ,(t)
+      return t) ,()
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __String_equal__ kind "null" ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __NULL__ __TRUE__)
+
+;; null か undefined か（??）
+(define Sjs_is_nullish ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __String_equal__ kind "null")
+
+;; エラーのメッセージの値の説明（conma.js の sjsDescribe と同じ）
+(define Sjs_describe ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "string" ,(test__) __if__ test__
+    (,()
+      __String_length__ v ,(len)
+      __Number_fromString__ __print_exit_error__ "20" ,(twenty)
+      __Number_subtract__ len twenty ,(over)
+      __Number_is_positive__ over ,(long)
+      __if_then_else__ long
+        (,()
+          __Number_fromString__ __print_exit_error__ "0" ,(zero)
+          __String_substring__ __print_exit_error__ v zero twenty ,(head)
+          __String_concat__ head "..." ,(s) __NULL__ s)
+        (,() __NULL__ v) ,(shown)
+      Sjs_json_string shown ,(q)
+      __String_concat__ "the string " q ,(s)
+      return s) ,()
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return "undefined") ,()
+  __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
+  __String_equal__ kind "function" ,(test__) __if__ test__ (,() return "a function") ,()
+  Sjs_to_string v ,(s)
+  __String_concat__ "the " kind ,(a)
+  __String_concat__ a " " ,(a)
+  __String_concat__ a s)
+
+;; 文字列を JSON の文字列のリテラルにする（", \, 改行、タブ、復帰だけを逃がす）
+(define Sjs_json_string ,(s)
+  Sjs_chars s ,(chars)
+  Sjs_json_chars chars "\"")
+
+(define Sjs_json_chars ,(chars acc)
+  __Cont_get__ ,(return)
+  __is_null__ chars ,(test__) __if__ test__ (,() __String_concat__ acc "\"" ,(s) return s) ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  __String_equal__ c "\"" ,(q)
+  __String_equal__ c "\\" ,(b)
+  __String_equal__ c "\n" ,(n)
+  __String_equal__ c "\t" ,(t)
+  __String_equal__ c "\r" ,(r)
+  __if_then_else__ q (,() __NULL__ "\\\"") (,()
+  __if_then_else__ b (,() __NULL__ "\\\\") (,()
+  __if_then_else__ n (,() __NULL__ "\\n") (,()
+  __if_then_else__ t (,() __NULL__ "\\t") (,()
+  __if_then_else__ r (,() __NULL__ "\\r") (,() __NULL__ c))))) ,(e)
+  __String_concat__ acc e ,(acc)
+  Sjs_json_chars rest acc)
+
+;; 文字列の 1 文字ずつの LList
+(define Sjs_chars ,(s)
+  __String_length__ s ,(len)
+  Sjs_chars_from s len __NULL__)
+
+(define Sjs_chars_from ,(s i acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ i ,(test__) __if__ test__ (,() return acc) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ i one ,(j)
+  __String_substring__ __print_exit_error__ s j i ,(c)
+  __LList_cons__ c acc ,(acc)
+  Sjs_chars_from s j acc)
+
+;; ── 数 ──
+
+(define Sjs_is_nan ,(n)
+  __Number_toString__ n ,(s)
+  __String_equal__ s "nan")
+
+(define Sjs_infinity ,()
+  __Number_fromString__ __print_exit_error__ "1e308" ,(big)
+  __Number_fromString__ __print_exit_error__ "10" ,(ten)
+  __Number_multiply__ big ten)
+
+(define Sjs_nan ,()
+  Sjs_infinity ,(inf)
+  __Number_subtract__ inf inf)
+
+;; 演算子 op の被演算子が数か確かめる（conma.js の sjsNeed と同じメッセージ）
+(define Sjs_need ,(op v)
+  __Cont_get__ ,(return)
+  Sjs_is_number v ,(ok)
+  __if__ ok return ,()
+  Sjs_describe v ,(d)
+  __String_concat__ op " needs numbers, not " ,(msg)
+  __String_concat__ msg d ,(msg)
+  __String_equal__ op "+" ,(plus)
+  __String_equal__ op "+=" ,(plusEq)
+  __or__ plus plusEq ,(join)
+  __if_then_else__ join
+    (,() __String_concat__ msg " (join strings with a template literal)")
+    (,() __NULL__ msg) ,(msg)
+  Sjs_type_error msg)
+
+(define Sjs_need2 ,(op a b)
+  Sjs_need op a ,()
+  Sjs_need op b)
+
+(define Sjs_add ,(a b)
+  Sjs_need2 "+" a b ,()
+  __Number_add__ a b)
+
+(define Sjs_sub ,(a b)
+  Sjs_need2 "-" a b ,()
+  __Number_subtract__ a b)
+
+(define Sjs_mul ,(a b)
+  Sjs_need2 "*" a b ,()
+  __Number_multiply__ a b)
+
+;; a / b。0 で割れば、JavaScript と同じく Infinity、-Infinity か NaN（割る数の -0 は 0 と同じに扱う）
+(define Sjs_div ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_need2 "/" a b ,()
+  __Number_divide__ (,(msg)
+    Sjs_is_nan a ,(nan)
+    __Number_is_zero__ a ,(zero)
+    __or__ nan zero ,(undefinedRatio)
+    __if__ undefinedRatio (,() Sjs_nan ,(n) return n) ,()
+    Sjs_infinity ,(inf)
+    __Number_is_negative__ a ,(neg)
+    __if__ neg (,() __Number_fromString__ __print_exit_error__ "0" ,(z) __Number_subtract__ z inf ,(m) return m) ,()
+    return inf) a b)
+
+;; a % b：a - b * trunc(a / b)（JavaScript の % と同じく、結果の符号は a に合わせる）。0 で割れば NaN
+(define Sjs_mod ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_need2 "%" a b ,()
+  __Number_is_zero__ b ,(zero)
+  __if__ zero (,() Sjs_nan ,(n) return n) ,()
+  __Number_divide__ __print_exit_error__ a b ,(q)
+  Sjs_trunc q ,(t)
+  __Number_multiply__ b t ,(m)
+  __Number_subtract__ a m)
+
+(define Sjs_trunc ,(x)
+  __Cont_get__ ,(return)
+  __Number_is_negative__ x ,(neg)
+  __unless__ neg (,() __Number_floor__ x ,(f) return f) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_subtract__ zero x ,(y)
+  __Number_floor__ y ,(f)
+  __Number_subtract__ zero f)
+
+(define Sjs_neg ,(v)
+  Sjs_need "-" v ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_subtract__ zero v)
+
+(define Sjs_pos ,(v)
+  Sjs_need "+" v ,()
+  __NULL__ v)
+
+;; ++ と --：d は 1 か -1
+(define Sjs_step ,(v d)
+  __Number_is_positive__ d ,(up)
+  __if_then_else__ up (,() __NULL__ "++") (,() __NULL__ "--") ,(op)
+  Sjs_need op v ,()
+  __Number_add__ v d)
+
+;; ── 比べる ──
+
+;; 大小の比較の被演算子：数どうしか、文字列どうし（conma.js の sjsCompare と同じメッセージ）。数なら真
+(define Sjs_compare_kind ,(op a b)
+  __Cont_get__ ,(return)
+  Sjs_kind a ,(ka)
+  Sjs_kind b ,(kb)
+  __String_equal__ ka kb ,(same)
+  __String_equal__ ka "number" ,(num)
+  __String_equal__ ka "string" ,(str)
+  __and__ same num ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __and__ same str ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  Sjs_describe a ,(da)
+  Sjs_describe b ,(db)
+  __String_concat__ op " compares two numbers or two strings, not " ,(msg)
+  __String_concat__ msg da ,(msg)
+  __String_concat__ msg " and " ,(msg)
+  __String_concat__ msg db ,(msg)
+  Sjs_type_error msg)
+
+;; a < b（数か文字列）
+(define Sjs_less ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_kind a ,(ka)
+  __String_equal__ ka "number" ,(num)
+  __if__ num (,() __Number_subtract__ a b ,(d) __Number_is_negative__ d ,(t) return t) ,()
+  Sjs_chars a ,(ca)
+  Sjs_chars b ,(cb)
+  Sjs_less_chars ca cb)
+
+;; 文字の LList の辞書順（文字の番号で比べる）
+(define Sjs_less_chars ,(ca cb)
+  __Cont_get__ ,(return)
+  __is_null__ cb ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __is_null__ ca ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ ca ,(a rest1)
+  __LList_uncons__ __print_exit_error__ cb ,(b rest2)
+  __String_toCode__ __print_exit_error__ a ,(x)
+  __String_toCode__ __print_exit_error__ b ,(y)
+  __Number_subtract__ x y ,(d)
+  __Number_is_negative__ d ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __Number_is_positive__ d ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  Sjs_less_chars rest1 rest2)
+
+(define Sjs_lt ,(a b)
+  Sjs_compare_kind "<" a b ,(isNumber)
+  Sjs_less a b)
+
+(define Sjs_gt ,(a b)
+  Sjs_compare_kind ">" a b ,(isNumber)
+  Sjs_less b a)
+
+;; a <= b は、b < a でなく、NaN を含まないとき（数の NaN は、どの比較も偽）
+(define Sjs_le ,(a b)
+  Sjs_compare_kind "<=" a b ,(isNumber)
+  Sjs_not_greater a b)
+
+(define Sjs_ge ,(a b)
+  Sjs_compare_kind ">=" a b ,(isNumber)
+  Sjs_not_greater b a)
+
+(define Sjs_not_greater ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_kind a ,(ka)
+  __String_equal__ ka "number" ,(num)
+  __if__ num
+    (,()
+      Sjs_is_nan a ,(n1)
+      Sjs_is_nan b ,(n2)
+      __or__ n1 n2 ,(test__) __if__ test__ (,() return __FALSE__) ,()) ,()
+  Sjs_less b a ,(greater)
+  __not__ greater)
+
+;; a === b
+(define Sjs_seq ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_kind a ,(ka)
+  Sjs_kind b ,(kb)
+  __String_equal__ ka kb ,(same)
+  __unless__ same (,() return __FALSE__) ,()
+  __String_equal__ ka "undefined" ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __String_equal__ ka "null" ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __String_equal__ ka "string" ,(test__) __if__ test__ (,() __String_equal__ a b ,(t) return t) ,()
+  __String_equal__ ka "boolean" ,(test__) __if__ test__
+    (,()
+      __and__ a b ,(both)
+      __or__ a b ,(either)
+      __not__ either ,(neither)
+      __or__ both neither ,(t)
+      return t) ,()
+  __String_equal__ ka "number" ,(test__) __if__ test__
+    (,()
+      ;; 差が 0 か、同じ無限大（Infinity - Infinity は NaN）。NaN はどれとも等しくない
+      __Number_subtract__ a b ,(d)
+      __Number_is_zero__ d ,(test__) __if__ test__ (,() return __TRUE__) ,()
+      Sjs_is_nan a ,(nan)
+      __if__ nan (,() return __FALSE__) ,()
+      __Number_toString__ a ,(sa)
+      __Number_toString__ b ,(sb)
+      __String_equal__ sa sb ,(t)
+      return t) ,()
+  ;; 関数（とオブジェクト）は、同じものか（番号で比べる）
+  __Dict_lookup_or__ a "id" __print_exit_error__ ,(ia)
+  __Dict_lookup_or__ b "id" __print_exit_error__ ,(ib)
+  __Number_subtract__ ia ib ,(d)
+  __Number_is_zero__ d)
+
+;; ── 関数 ──
+
+;; 引数の LList を受け取る Closure f から、SJS の関数の値を作る
+(define Sjs_function ,(G f)
+  __Dict_lookup_or__ G "" __print_exit_error__ ,(counter)
+  __Ref_get__ counter ,(n)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Ref_set__ counter n ,()
+  __Dict_new__ ,(fn)
+  __Dict_put__ fn "t" "function" ,()
+  __Dict_put__ fn "f" f ,()
+  __Dict_put__ fn "id" n ,()
+  __NULL__ fn)
+
+;; f(args)。args は引数の LList
+(define Sjs_call ,(f args)
+  __Cont_get__ ,(return)
+  Sjs_kind f ,(kind)
+  __String_equal__ kind "function" ,(ok)
+  __unless__ ok (,() Sjs_describe f ,(d) __String_concat__ d " is not a function" ,(msg) Sjs_type_error msg) ,()
+  __Dict_lookup_or__ f "f" __print_exit_error__ ,(closure)
+  closure args)
+
+;; 引数の LList の最初と残り。なければ undefined と空
+(define Sjs_arg ,(args)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return __NULL__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ args)
+
+;; ── 文字列にする ──
+
+;; String(v)
+(define Sjs_to_string ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
+  __String_equal__ kind "number" ,(test__) __if__ test__ (,() Sjs_num_str v ,(s) return s) ,()
+  __String_equal__ kind "boolean" ,(test__) __if__ test__
+    (,() __if_then_else__ v (,() __NULL__ "true") (,() __NULL__ "false") ,(s) return s) ,()
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return "undefined") ,()
+  __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
+  __NULL__ "[Function (anonymous)]")
+
+;; 数を、JavaScript の String(n) と同じ形にする。ConMa の __Number_toString__ は、最も短い桁を出すが、
+;; 指数の形（1e-07）と、指数にする範囲が JavaScript と違うので、桁と小数点の位置に分けてから書き直す
+(define Sjs_num_str ,(n)
+  __Cont_get__ ,(return)
+  __Number_toString__ n ,(repr)
+  __String_equal__ repr "inf" ,(test__) __if__ test__ (,() return "Infinity") ,()
+  __String_equal__ repr "-inf" ,(test__) __if__ test__ (,() return "-Infinity") ,()
+  __String_equal__ repr "nan" ,(test__) __if__ test__ (,() return "NaN") ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ repr zero one ,(first)
+  __String_equal__ first "-" ,(negative)
+  __String_length__ repr ,(len)
+  __if_then_else__ negative
+    (,() __String_substring__ __print_exit_error__ repr one len)
+    (,() __NULL__ repr) ,(body)
+  __if_then_else__ negative (,() __NULL__ "-") (,() __NULL__ "") ,(sign)
+  ;; 仮数と指数
+  __String_find__ __print_exit_error__ body "e" zero ,(e)
+  __String_length__ body ,(blen)
+  __is_null__ e ,(noExp)
+  __if_then_else__ noExp
+    (,() __NULL__ body zero)
+    (,()
+      __String_substring__ __print_exit_error__ body zero e ,(mant)
+      __Number_add__ e one ,(es)
+      __String_substring__ __print_exit_error__ body es blen ,(expText)
+      Sjs_parse_int expText ,(exp)
+      __NULL__ mant exp) ,(mant exp)
+  ;; 整数部と小数部
+  __String_find__ __print_exit_error__ mant "." zero ,(dot)
+  __String_length__ mant ,(mlen)
+  __is_null__ dot ,(noDot)
+  __if_then_else__ noDot
+    (,() __NULL__ mant "")
+    (,()
+      __String_substring__ __print_exit_error__ mant zero dot ,(ip)
+      __Number_add__ dot one ,(fs)
+      __String_substring__ __print_exit_error__ mant fs mlen ,(fp)
+      __NULL__ ip fp) ,(ip fp)
+  __String_concat__ ip fp ,(digits)
+  __String_length__ ip ,(ilen)
+  __Number_add__ ilen exp ,(point)
+  Sjs_strip_leading_zeros digits point ,(digits point)
+  Sjs_strip_trailing_zeros digits ,(digits)
+  __String_equal__ digits "" ,(test__) __if__ test__ (,() return "0") ,()
+  Sjs_render digits point ,(s)
+  __String_concat__ sign s)
+
+;; 10 進の整数の String（+ か - で始まってもよい）を Number にする
+(define Sjs_parse_int ,(s)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ s zero one ,(first)
+  __String_equal__ first "+" ,(plus)
+  __String_length__ s ,(len)
+  __if__ plus (,() __String_substring__ __print_exit_error__ s one len ,(rest) __Number_fromString__ __print_exit_error__ rest ,(n) return n) ,()
+  __Number_fromString__ __print_exit_error__ s)
+
+(define Sjs_strip_leading_zeros ,(digits point)
+  __Cont_get__ ,(return)
+  __String_length__ digits ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return digits point) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_substring__ __print_exit_error__ digits zero one ,(c)
+  __String_equal__ c "0" ,(isZero)
+  __unless__ isZero (,() return digits point) ,()
+  __String_substring__ __print_exit_error__ digits one len ,(rest)
+  __Number_subtract__ point one ,(point)
+  Sjs_strip_leading_zeros rest point)
+
+(define Sjs_strip_trailing_zeros ,(digits)
+  __Cont_get__ ,(return)
+  __String_length__ digits ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return digits) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ __print_exit_error__ digits last len ,(c)
+  __String_equal__ c "0" ,(isZero)
+  __unless__ isZero (,() return digits) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_substring__ __print_exit_error__ digits zero last ,(rest)
+  Sjs_strip_trailing_zeros rest)
+
+;; 桁 digits（先頭も末尾も 0 でない）と小数点の位置 point（値は 0.digits × 10^point）から、
+;; JavaScript の Number::toString の形を作る（ECMAScript の 6.1.6.1.20）
+(define Sjs_render ,(digits point)
+  __Cont_get__ ,(return)
+  __String_length__ digits ,(k)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "21" ,(n21)
+  __Number_fromString__ __print_exit_error__ "-6" ,(nm6)
+  ;; k <= point <= 21：桁の後に 0 を足す
+  __Number_subtract__ point k ,(extra)
+  __Number_is_negative__ extra ,(short)
+  __Number_subtract__ n21 point ,(room)
+  __Number_is_negative__ room ,(tooBig)
+  __not__ short ,(test1)
+  __not__ tooBig ,(test2)
+  __and__ test1 test2 ,(test__) __if__ test__
+    (,() Sjs_zeros extra ,(z) __String_concat__ digits z ,(s) return s) ,()
+  ;; 0 < point <= 21：途中に小数点
+  __Number_is_positive__ point ,(positive)
+  __and__ positive test2 ,(test__) __if__ test__
+    (,()
+      __String_substring__ __print_exit_error__ digits zero point ,(a)
+      __String_substring__ __print_exit_error__ digits point k ,(b)
+      __String_concat__ a "." ,(s)
+      __String_concat__ s b ,(s)
+      return s) ,()
+  ;; -6 < point <= 0：0. と 0 の後に桁
+  __Number_subtract__ point nm6 ,(above)
+  __Number_is_positive__ above ,(aboveMin)
+  __not__ positive ,(notPositive)
+  __and__ aboveMin notPositive ,(test__) __if__ test__
+    (,()
+      __Number_subtract__ zero point ,(nz)
+      Sjs_zeros nz ,(z)
+      __String_concat__ "0." z ,(s)
+      __String_concat__ s digits ,(s)
+      return s) ,()
+  ;; 指数の形：d.ddde+n
+  __Number_subtract__ point one ,(e)
+  __String_substring__ __print_exit_error__ digits zero one ,(lead)
+  __String_substring__ __print_exit_error__ digits one k ,(tail)
+  __String_equal__ tail "" ,(noTail)
+  __if_then_else__ noTail (,() __NULL__ lead) (,() __String_concat__ lead "." ,(s) __String_concat__ s tail) ,(m)
+  __Number_is_negative__ e ,(neg)
+  __if_then_else__ neg (,() __Number_subtract__ zero e ,(a) __NULL__ "-" a) (,() __NULL__ "+" e) ,(esign eabs)
+  __Number_toString__ eabs ,(es)
+  __String_concat__ m "e" ,(s)
+  __String_concat__ s esign ,(s)
+  __String_concat__ s es)
+
+(define Sjs_zeros ,(n)
+  Sjs_zeros_acc n "")
+
+(define Sjs_zeros_acc ,(n acc)
+  __Cont_get__ ,(return)
+  __Number_is_positive__ n ,(more)
+  __unless__ more (,() return acc) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  __String_concat__ acc "0" ,(acc)
+  Sjs_zeros_acc n acc)
+
+;; ── console ──
+
+;; console.log(...args)：値を空白でつないで、標準出力に 1 行で出す（文字列はそのまま）
+(define Sjs_log ,(args)
+  Sjs_log_join args "" __TRUE__ ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print__ line)
+
+(define Sjs_log_join ,(args acc first)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ args ,(v rest)
+  Sjs_to_string v ,(s)
+  __if_then_else__ first (,() __NULL__ acc) (,() __String_concat__ acc " ") ,(acc)
+  __String_concat__ acc s ,(acc)
+  Sjs_log_join rest acc __FALSE__)
