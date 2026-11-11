@@ -71,7 +71,8 @@ impl Profile {
         for (kind, table) in [("body", &self.by_sinfo), ("call", &self.calls), ("thunk", &self.thunks)] {
             let mut merged: HashMap<Vec<String>, u64> = HashMap::new();
             for (s, n) in table.values() {
-                let key: Vec<String> = s.iter().filter_map(|x| x.as_atom()).map(|a| crate::value::unquote(a).to_string()).collect();
+                // Only the file, line and column, as format_error (the SJS translator adds "sjs" as a 4th string)
+                let key: Vec<String> = s.iter().filter_map(|x| x.as_atom()).take(3).map(|a| crate::value::unquote(a).to_string()).collect();
                 *merged.entry(key).or_insert(0) += n;
             }
             for (k, n) in merged {
@@ -79,7 +80,7 @@ impl Profile {
             }
         }
         let atoms = |s: &SInfo| -> String {
-            s.iter().filter_map(|x| x.as_atom()).map(|a| crate::value::unquote(a).to_string()).collect::<Vec<_>>().join("\t")
+            s.iter().filter_map(|x| x.as_atom()).take(3).map(|a| crate::value::unquote(a).to_string()).collect::<Vec<_>>().join("\t")
         };
         let mut merged: HashMap<(String, String), u64> = HashMap::new();
         for (caller, callee, n) in self.edges.values() {

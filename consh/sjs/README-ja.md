@@ -9,7 +9,7 @@ consh/sjs/test/run_all.sh         # テスト
 consh/sjs/test/compare.sh f.sjs   # 段階 A（ConSh の (( )) でホストの JavaScript）と出力を比べる（Node.js と wasm 版の VM が要る）
 ```
 
-SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は ConSh の段階 A（conma.js の `inspect`）と同じで、文字列はそのまま、配列とオブジェクトは `JSON.stringify`、ほかは `String` にする。受け手のない例外は、最後に実行した文の行と一緒に `sjs: line 4: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
+SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は ConSh の段階 A（conma.js の `inspect`）と同じで、文字列はそのまま、配列とオブジェクトは `JSON.stringify`、ほかは `String` にする。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.sjs:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える（段階 B9。位置は Node.js と同じ）。
 
 ## ファイル
 
@@ -51,7 +51,7 @@ consh/include/
 
 * `throw 値`、`try { } catch (e) { }`（`catch { }` も）、`finally { }`
 * 実行時のエラー（`TypeError` など）は、隠した `name` と `message` を持つオブジェクトとして投げる。段階 A の `Error` と同じく、`e.message`、`` `${e}` ``（`TypeError: ...`）が使え、`JSON.stringify(e)` は `{}`、`Object.keys(e)` は空
-* 受け手のない例外のメッセージに、最後に実行した文の行を付ける（`sjs: line 4: ...`）。段階 A は ConSh の `(( ))` の位置を出す
+* 受け手のない例外のメッセージに、最後に実行した文の行を付ける（`sjs: line 4: ...`）。段階 A は ConSh の `(( ))` の位置を出す（段階 B9 で、投げた所のファイル、行、桁にした。下の「段階 B9」）
 
 ## 段階 B4 で足したもの
 
@@ -195,6 +195,10 @@ nbody のステップの約 27%、loop の約半分が、変換したコード�
 * consh/sjs/test/step8 の case8 が、Ref のない const とそうでない const（関数の宣言や前の文の閉包が読むもの、自分を読むもの、ループ、ブロック、switch、try、ジェネレータ）、数のリテラルとの比較（-0、NaN、無限大、文字列）、行を記録しない文の後のエラーの行を、Node.js と比べる。
 * 見つけたこと：`1e999` のように、数にすると無限大になるリテラルは、`SyntaxError: a bad number` になる（VM の `__Number_fromString__` が受け付けない。前から）。
 
+## 段階 B9：SInfo で SJS の位置を示す（2026/11/12）
+
+consh/SAFEJS-PLAN-ja.md の 4.4 のとおりに作った。受け手のない例外は `ファイル:行:桁: TypeError: ...` の形で出し、位置は、それを投げた所（実行時のエラーなら失敗した式。メンバーは名前、代入は演算子）で、Node.js が出す行と桁と同じになる。finally を通っても、ジェネレータや await の後でも、最初に投げた所になる。ConSh の `(( ))` と `$(( ))` では、`(( ))` の中の位置をスクリプトの行と桁にして出す（SJS関数をコマンドとして呼んだときも、関数を作った所）。文ごとの `Sjs_line` をなくしたので、loop 100000 が 0.259 秒から 0.202 秒、fib 20 が 0.192 秒から 0.136 秒、nbody 2000 が 1.398 秒から 1.225 秒になった。モジュールの大きさは変わらない。詳しくは consh/SAFEJS-PLAN-ja.md の 4.4 の「作ったもの」。前の節の「行を記録しない文」は、`Sjs_line` がなくなったので、もう要らない。
+
 ## 変換の形
 
 `consh/include/sjs_gen.se` の始めにも書いた。
@@ -207,7 +211,7 @@ nbody のステップの約 27%、loop の約半分が、変換したコード�
 * **例外**：受け手の継続のスタックを PDict に置く。`Sjs_try` は、`catch` へ戻る脱出の継続を積んで本体を実行し、`throw` と実行時のエラー（`Sjs_raise`）は、いちばん上の受け手を取り出して呼ぶ。`return`、`break`、`continue` の継続は、それを取った所（関数とループの始め）で受け手のスタックを覚えておき、呼ぶ前に戻す（`Gen_jump`）。`finally` は、本体を「例外を受けて `finally` を実行し、投げ直す」`Sjs_try` で包み、本体の中の `return`、`break`、`continue` を、`finally` を実行してから外へ出る Closure に置き換える（`Gen_try`）。
 * **ジェネレータ**：ジェネレータの関数を呼ぶと、引数を入れて、本体を thunk にしたジェネレータのオブジェクト（`Sjs_generator`）を返す。最初の `next` は、その `next` の上で本体を始める。`yield`（`Sjs_yield`）は、本体に戻る継続を覚え、今の `next` の継続に `{value, done}` を渡す。次の `next` は、そのときの継続を覚え直して、本体に戻る継続を呼ぶ（`Sjs_gen_resume`）。本体の受け手のスタックは、`next` を呼んだ所のものと別にし、いちばん下の受け手（境）が、本体から出た例外を、今の `next` を呼んだ所に投げ直す。`return(x)` は、`yield` の所から「return の印」を投げ、`catch` は通し（`Sjs_try_catch`）、`finally` は実行して、境で終える。`for...of` は、繰り返しの手順（`Sjs_iter_open`、`Sjs_iter_more`、`Sjs_iter_take`）で読む
 * **async**：async 関数を呼ぶと、本体の thunk をジェネレータの本体にして、最初の `await` まで動かし（`Sjs_async`）、結果の Promise を返す。`await v` は `yield v` と同じで（`Sjs_await`）、止まるたびに、`v` の Promise に、本体を続ける（拒否なら、本体に投げる）受け手を付ける（`Sjs_async_step`）。Promise の決着は、受け手を呼ぶジョブを PDict の列（`"sjs_jobs"`）に入れ、`Sjs_run_jobs` が動かす
-* **行**：字句解析が行を数え、文ごとに `Sjs_line` で PDict に置く（文 1 つに 1 ステップ）。
+* **位置**：字句解析が行と桁を数え、変換器が、実行時の支えを呼ぶ Body に `(__SInfo__ ファイル 行 桁 "sjs")` を付ける（段階 B9）。受け手のない例外の位置は、投げたときに CChain から取る（`Sjs_raise_pos`）。
 * **数の書き方**：ConMa の `__Number_toString__` は最も短い桁を出すが、指数の形（`1e-07`）と指数にする範囲が JavaScript と違うので、`Sjs_num_str` が桁と小数点の位置に分けて、JavaScript の `Number::toString` の規則で書き直す。`Infinity`、`-Infinity`、`NaN` も同じ。
 * **`/` と `%`**：`__Number_divide__` は 0 で割るとエラーなので、`Sjs_div` が JavaScript と同じく `Infinity`、`-Infinity`、`NaN` にする。`%` のプリミティブはないので、`a - b * trunc(a / b)` で求める（大きな数では、JavaScript の `%` と下の桁が違うことがある）。
 

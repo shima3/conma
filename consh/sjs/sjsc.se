@@ -13,7 +13,7 @@
   __LazyList_lines__ stream ,(lines)
   Sjsc_join lines "" ,(text)
   __OS_close__ __print_exit_error__ stream ,()
-  Sjs_translate text ,(source)
+  Sjs_translate_file text path ,(source)
   __OS_print__ source)
 
 ;; 行の LazyList を 1 つの String にする（__LazyList_lines__ の行は、改行を含む）

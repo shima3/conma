@@ -14,5 +14,5 @@
 [1,10]
 [[true,false,false,true,false,true],[true,false,false,true,false,true],[false,true,true,false,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,true,false]]
 3
-sjs: line 72: TypeError: Cannot set properties of undefined (setting 'bar')
+case8.sjs:72:13: TypeError: Cannot set properties of undefined (setting 'bar')
 exit: 2

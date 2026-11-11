@@ -18,3 +18,5 @@ run case5 case5.sh < /dev/null
 run case6 case6.sh < /dev/null
 # case7：対話モードでは、コマンド行の文がそのまま (( )) なら、値を標準エラーに出す（ループ、関数、if の条件の中は出さない）
 run case7 < case7.input
+# case8：エラーの位置（段階 B9）。(( )) の中の失敗した所を、スクリプトの行と桁で出す
+run case8 case8.sh < /dev/null

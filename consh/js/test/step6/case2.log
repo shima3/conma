@@ -1,4 +1,4 @@
-consh: case2.sh:2:1: sjs: ReferenceError: undefinedName is not defined
+consh: case2.sh:2:4: sjs: ReferenceError: undefinedName is not defined
 status 2
 consh: case2.sh:4:1: sjs: SyntaxError: unexpected end of the expression
 status 2
@@ -8,13 +8,13 @@ consh: case2.sh:8:1: sjs: not in SJS: new
 status 2
 consh: case2.sh:10:1: sjs: not in SJS: globalThis
 status 2
-consh: case2.sh:12:1: sjs: ReferenceError: process is not defined
+consh: case2.sh:12:4: sjs: ReferenceError: process is not defined
 status 2
 consh: case2.sh:14:1: sjs: not in SJS: .constructor
 status 2
-consh: case2.sh:16:1: sjs: TypeError: the property constructor is not in SJS
+consh: case2.sh:16:7: sjs: TypeError: the property constructor is not in SJS
 status 2
-consh: case2.sh:19:1: sjs: TypeError: the property constructor is not in SJS
+consh: case2.sh:19:9: sjs: TypeError: the property constructor is not in SJS
 status 2
 consh: case2.sh:21:1: sjs: not in SJS: .__proto__
 status 2
@@ -22,7 +22,7 @@ consh: case2.sh:23:1: sjs: not in SJS: a regular expression
 status 2
 consh: case2.sh:25:1: sjs: not in SJS: == (use ===)
 status 2
-consh: case2.sh:27:1: sjs: TypeError: cannot assign to Math
+consh: case2.sh:27:9: sjs: TypeError: cannot assign to Math
 status 2
 consh: case2.sh:29:1: sjs: not in SJS: eval
 status 2

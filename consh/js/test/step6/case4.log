@@ -1,5 +1,5 @@
 $ > > 1 2 3
 $ 3
-$ consh: stdin:5:7: sjs: ReferenceError: nope is not defined
+$ consh: stdin:5:11: sjs: ReferenceError: nope is not defined
 $ status 2
 $ exit: 0

@@ -1,3 +1,3 @@
 before
-consh: case3.sh:2:8: sjs: ReferenceError: nope is not defined
+consh: case3.sh:2:12: sjs: ReferenceError: nope is not defined
 exit: 2

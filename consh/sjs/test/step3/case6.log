@@ -1,0 +1,2 @@
+case6.sjs:4:23: TypeError: Cannot read properties of null (reading 'size')
+exit: 2

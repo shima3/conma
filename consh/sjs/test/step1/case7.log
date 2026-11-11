@@ -1,2 +1,2 @@
-sjs: line 3: TypeError: not yet translated to ConMa: ** with an exponent that is not an integer
+case7.sjs:3:13: TypeError: not yet translated to ConMa: ** with an exponent that is not an integer
 exit: 2

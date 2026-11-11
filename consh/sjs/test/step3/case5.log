@@ -1,0 +1,2 @@
+case5.sjs:5:13: TypeError: Cannot read properties of undefined (reading 'deep')
+exit: 2

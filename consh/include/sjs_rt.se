@@ -100,23 +100,40 @@
   Sjs_error_object G name msg ,(e)
   Sjs_raise e)
 
-;; 受け手のない例外：メッセージ text と、最後に実行した文の行（Sjs_line）を出して、終了ステータス 2 で終える
+;; 受け手のない例外：メッセージ text を、例外を投げた所の位置（"sjs_pos"。Sjs_raise）を付けて
+;; 「ファイル:行:桁: メッセージ」の形で出し、終了ステータス 2 で終える。位置がなければ「sjs: メッセージ」
 (define Sjs_uncaught ,(text)
-  ;; ConSh から動かすときは、ConSh に渡す
+  ;; ConSh から動かすときは、ConSh に渡す（位置は、ConSh が PDict の "sjs_pos" から読む）
   __PDict_lookup_or__ "sjs_fail" (,(k) __NULL__ __NULL__) ,(fail)
   __is_null__ fail ,(test__) __unless__ test__ (,() fail text) ,()
-  __PDict_lookup_or__ "sjs_line" (,(k) __NULL__ __NULL__) ,(line)
-  __is_null__ line ,(noLine)
-  __if_then_else__ noLine (,() __NULL__ "sjs: ") (,() __String_concat__ "sjs: line " line ,(s) __String_concat__ s ": ") ,(s)
+  __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(pos)
+  __is_null__ pos ,(noPos)
+  __if_then_else__ noPos (,() __NULL__ "sjs: ") (,() __String_concat__ pos ": ") ,(s)
   __String_concat__ s text ,(s)
   __String_concat__ s "\n" ,(s)
   __OS_print_error__ s ,()
   __Number_fromString__ __print_exit_error__ "2" ,(two)
   __OS_exit__ __print_exit_error__ two)
 
-;; 文の行（変換したコードが、文ごとに呼ぶ）
-(define Sjs_line ,(line)
-  __PDict_put__ "sjs_line" line)
+;; 例外を投げた所の SJS の位置（"ファイル:行:桁"。なければ null）：CChain の CFrame のうち、SInfo の最後が
+;; "sjs" のいちばん上のもの（変換器が付ける。sjs_gen.se の Gen_sinfo_fill）。CFrame を取り出して調べ、最後に
+;; __CChain_set__ で元の CChain に戻してから値を返す（調べる間は、CFrame を積む呼び出しをしない）
+(define Sjs_raise_pos ,()
+  __CChain_get__ ,(cc)
+  Sjs_raise_pos_scan cc)
+
+(define Sjs_raise_pos_scan ,(cc)
+  __CChain_pop_CFrame__ ,(cf)
+  __is_null__ cf ,(none)
+  __if_then_else__ none
+    (,() __CChain_set__ cc ,() __NULL__ __NULL__)
+    (,()
+      __CFrame_get_SInfo__ cf ,(si)
+      __String_strip_suffix__ si ":sjs" ,(pos)
+      __String_equal__ pos si ,(other)
+      __if_then_else__ other
+        (,() Sjs_raise_pos_scan cc)
+        (,() __CChain_set__ cc ,() __NULL__ pos)))
 
 ;; ── 例外 ──
 
@@ -126,8 +143,15 @@
 (define Sjs_set_handlers ,(hs)
   __PDict_put__ "sjs_handlers" hs)
 
-;; 値 v を投げる。いちばん内側の受け手を取り除いて、それに v を渡す。受け手がなければ終える
+;; 値 v を投げる。投げた所の位置を "sjs_pos" に置いて（受け手のない例外のメッセージに出す）、Sjs_reraise
 (define Sjs_raise ,(v)
+  Sjs_raise_pos ,(pos)
+  __PDict_put__ "sjs_pos" pos ,()
+  Sjs_reraise v)
+
+;; 値 v を投げ直す（位置は変えない。finally の後、ジェネレータの境、内部の印）。いちばん内側の受け手を取り除いて、
+;; それに v を渡す。受け手がなければ終える
+(define Sjs_reraise ,(v)
   Sjs_handlers ,(hs)
   __is_null__ hs ,(none)
   __if__ none (,() Sjs_error_text v ,(t) Sjs_uncaught t) ,()
@@ -2260,7 +2284,7 @@
   put "Sjs_ge" Sjs_ge ,() put "Sjs_get_member" Sjs_get_member ,() put "Sjs_global" Sjs_global ,() put "Sjs_gt" Sjs_gt ,()
   put "Sjs_handlers" Sjs_handlers ,() put "Sjs_is_nullish" Sjs_is_nullish ,() put "Sjs_iter_keys" Sjs_iter_keys ,()
   put "Sjs_iter_values" Sjs_iter_values ,() put "Sjs_key" Sjs_key ,() put "Sjs_key_string" Sjs_key_string ,()
-  put "Sjs_le" Sjs_le ,() put "Sjs_line" Sjs_line ,() put "Sjs_lt" Sjs_lt ,() put "Sjs_mod" Sjs_mod ,() put "Sjs_mul" Sjs_mul ,()
+  put "Sjs_le" Sjs_le ,() put "Sjs_reraise" Sjs_reraise ,() put "Sjs_lt" Sjs_lt ,() put "Sjs_mod" Sjs_mod ,() put "Sjs_mul" Sjs_mul ,()
   put "Sjs_neg" Sjs_neg ,() put "Sjs_object" Sjs_object ,() put "Sjs_pos" Sjs_pos ,() put "Sjs_raise" Sjs_raise ,()
   put "Sjs_seq" Sjs_seq ,() put "Sjs_set_global" Sjs_set_global ,() put "Sjs_set_handlers" Sjs_set_handlers ,()
   put "Sjs_set_member" Sjs_set_member ,() put "Sjs_shell_get" Sjs_shell_get ,() put "Sjs_shell_number" Sjs_shell_number ,()
@@ -2535,7 +2559,7 @@
 
 ;; 作ったときの PDict の文脈（シェルから値を読むとき、Sjs_gen_ctx_restore で置く）
 (define Sjs_gen_ctx_save ,()
-  Sjs_list5 "sjs_G" "sjs_vars" "sjs_shell" "sjs_out" "sjs_line" ,(keys)
+  Sjs_list5 "sjs_G" "sjs_vars" "sjs_shell" "sjs_out" "sjs_pos" ,(keys)
   Sjs_gen_ctx_loop keys __NULL__)
 
 (define Sjs_list5 ,(a b c d e)
@@ -2644,7 +2668,7 @@
   Sjs_gen_ref gen "state" ,(stateRef)
   __Ref_set__ stateRef "done" ,()
   Sjs_gen_restore gen ,()
-  Sjs_raise exc)
+  Sjs_reraise exc)
 
 ;; yield v：止まって v を出し、続けられたら next に渡された値を返す（throw なら投げ、return なら return の印を投げる）
 (define Sjs_yield ,(v)
@@ -2655,7 +2679,7 @@
   __Dict_new__ ,(mark)
   __Dict_put__ mark "t" "genreturn" ,()
   __Dict_put__ mark "value" x ,()
-  Sjs_raise mark)
+  Sjs_reraise mark)
 
 (define Sjs_yield_wait ,(v)
   __Cont_get__ ,(resume)
@@ -2745,7 +2769,9 @@
 (define Sjs_try_catch ,(body handler)
   Sjs_try body (,(exc)
     Sjs_kind exc ,(kind)
-    __String_equal__ kind "genreturn" ,(test__) __if__ test__ (,() Sjs_raise exc) ,()
+    __String_equal__ kind "genreturn" ,(test__) __if__ test__ (,() Sjs_reraise exc) ,()
+    ;; catch が受けたので、投げた所の位置を消す（後の受け手のない例外に、古い位置を出さない）
+    __PDict_put__ "sjs_pos" __NULL__ ,()
     handler exc))
 
 ;; ── 段階 B5b：Promise、async、await ──
@@ -2892,7 +2918,7 @@
       Sjs_arg as ,(e rest)
       Sjs_call f __NULL__ ,(y)
       Sjs_promise_coerce G y ,(c)
-      Sjs_function G "" (,(bs) Sjs_raise e) ,(thrower)
+      Sjs_function G "" (,(bs) Sjs_reraise e) ,(thrower)
       Sjs_promise_derive G c thrower __NULL__) ,(onFail)
     Sjs_promise_derive G p onOk onFail) ,()
   __NULL__ __NULL__)
@@ -3172,7 +3198,7 @@
   __Dict_new__ ,(rmark)
   __Dict_put__ rmark "t" "genreturn" ,()
   __Dict_put__ rmark "value" y ,()
-  Sjs_raise rmark)
+  Sjs_reraise rmark)
 
 ;; async ジェネレータの yield* v：v が async ジェネレータなら、その next の結果の値をそのまま出し、戻り値を返す。
 ;; ほかは、繰り返しの値を 1 つずつ await して出す（throw と return は、委ねた先に渡さない）

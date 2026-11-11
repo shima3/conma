@@ -167,8 +167,9 @@
 (define Eval_arith_run ,(sh pos code namesNode show)
   __Cont_get__ ,(return)
   Ar_eval sh pos code namesNode (,(msg)
+    Sjs_fail_pos pos msg ,(wpos msg)
     __String_concat__ "sjs: " msg ,(m)
-    Sh_warn sh pos m ,()
+    Sh_warn sh wpos m ,()
     Sh_set_status sh "2" ,()
     return) ,(value)
   __if__ show (,() Ar_show sh pos value) ,()
@@ -185,8 +186,9 @@
 
 ;; 算術置換のエラー。Sh_error と同じく止めるが、$? は 2。対話モードでなければ、ConSh を終了ステータス 2 で終える
 (define Sjs_abort ,(sh pos msg)
+  Sjs_fail_pos pos msg ,(wpos msg)
   __String_concat__ "sjs: " msg ,(m)
-  Sh_message sh pos m ,(s)
+  Sh_message sh wpos m ,(s)
   __OS_print_error__ s ,()
   Sh_set_status sh "2" ,()
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
@@ -439,7 +441,7 @@
   __Dict_lookup_or__ global "sjsB" __print_exit_error__ ,(B)
   __Dict_lookup_or__ B "mode" (,(k) __NULL__ "") ,(mode)
   __String_equal__ mode "A" ,(test__) __if__ test__ (,() Sjsa_eval sh pos code namesNode fail ,(v) return v) ,()
-  Sjsb_eval sh pos code (,(msg)
+  Sjsb_eval sh pos code namesNode (,(msg)
     ;; モジュールを作れない：ホストの JavaScript を使ってよければ、段階 A にする
     __Dict_lookup_or__ global "jsState" __print_exit_error__ ,(state)
     __String_equal__ state "js" ,(a)
@@ -485,6 +487,10 @@
   __Dict_put__ B "rt" rt ,()
   __Dict_new__ ,(cache)
   __Dict_put__ B "cache" cache ,()
+  __Dict_new__ ,(files)
+  __Dict_put__ B "files" files ,()
+  __Dict_new__ ,(places)
+  __Dict_put__ B "places" places ,()
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(n)
   __Dict_put__ B "n" n ,()
@@ -492,10 +498,20 @@
 
 ;; SJS式 code を変換したモジュールで求めた値（String か、{"sjsv": 値}）。モジュールを動かせなければ spawnFail、
 ;; 変換や実行のエラーなら fail にメッセージを渡す（どちらも戻らない）
-(define Sjsb_eval ,(sh pos code spawnFail fail)
+(define Sjsb_eval ,(sh pos code namesNode spawnFail fail)
   __Cont_get__ ,(return)
   Sjsb_state sh ,(B)
   Sjsb_module sh B code fail ,(path)
+  ;; このコードの SInfo のファイル名に、コードの始まりの位置（(( の 2 文字後）を覚える（Sjsb_map_pos）
+  __Dict_lookup_or__ B "files" __print_exit_error__ ,(files)
+  __Dict_lookup_or__ files code __print_exit_error__ ,(file)
+  Node_split namesNode ,(ntag npos nchildren)
+  Pos_split npos ,(nline ncol)
+  num "2" ,(two)
+  __Number_add__ ncol two ,(ccol)
+  Pos_make nline ccol ,(start)
+  __Dict_lookup_or__ B "places" __print_exit_error__ ,(places)
+  __Dict_put__ places file start ,()
   __Ref_new__ __NULL__ ,(result)
   __Dict_lookup_or__ B "G" __print_exit_error__ ,(G)
   __Dict_lookup_or__ B "rt" __print_exit_error__ ,(rt)
@@ -506,7 +522,10 @@
   __Dict_put__ ctx "setup" (,(exit)
     __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
     Sjsb_setup sh pos G out (,(msg)
-      __LList_cons__ msg __NULL__ ,(l)
+      ;; 例外を投げた所の位置（Sjs_raise。"sjs-ハッシュ:行:桁"）
+      __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(where)
+      __LList_cons__ where __NULL__ ,(l)
+      __LList_cons__ msg l ,(l)
       __LList_cons__ "error" l ,(r)
       __Ref_set__ result r ,()
       exit)) ,()
@@ -516,8 +535,83 @@
   __is_null__ r ,(test__) __if__ test__ (,() fail "the evaluation stopped") ,()
   __LList_uncons__ __print_exit_error__ r ,(tag rest)
   List_first rest ,(x)
-  __String_equal__ tag "error" ,(test__) __if__ test__ (,() fail x) ,()
+  __String_equal__ tag "error" ,(test__) __if__ test__
+    (,() __LList_uncons__ __print_exit_error__ rest ,(m more) List_first more ,(where) Sjsb_fail_text B where m ,(m) fail m) ,()
   Sjsb_to_raw x)
+
+;; ── エラーの位置（consh/SAFEJS-PLAN-ja.md の 4.4）──
+;; 変換したコードの SInfo のファイル名は sjs-ハッシュ（コードから決まる）。Sjsb_eval が、ファイル名ごとに、その (( )) の
+;; コードの始まりの位置を "places" に覚える。受け手のない例外の位置（"sjs-ハッシュ:行:桁"）は、コードの中の行と桁なので、
+;; それを足してスクリプトの位置にし、メッセージの先頭に "\t行\t桁\t" で付ける。エラーを出す所（Eval_arith_run、Sjs_abort、
+;; Sjsb_call）は、Sjs_fail_pos でそれを取り出して、(( )) の位置の代わりに使う。同じコードが別の場所にもあれば、
+;; 最後に動かした場所になる
+
+;; 位置 where（"ファイル:行:桁" か null）をスクリプトの位置 (行 桁) にする。知らないファイルなら null
+(define Sjsb_map_pos ,(B where)
+  __Cont_get__ ,(return)
+  __is_null__ where ,(test__) __if__ test__ (,() return __NULL__) ,()
+  num "0" ,(zero)
+  num "1" ,(one)
+  __String_find__ __print_exit_error__ where ":" zero ,(i)
+  __is_null__ i ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __String_substring__ __print_exit_error__ where zero i ,(file)
+  __Number_add__ i one ,(i1)
+  __String_find__ __print_exit_error__ where ":" i1 ,(j)
+  __is_null__ j ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __String_length__ where ,(n)
+  __String_substring__ __print_exit_error__ where i1 j ,(ls)
+  __Number_add__ j one ,(j1)
+  __String_substring__ __print_exit_error__ where j1 n ,(cs)
+  __Number_fromString__ (,(m) return __NULL__) ls ,(line)
+  __Number_fromString__ (,(m) return __NULL__) cs ,(col)
+  __Dict_lookup_or__ B "places" __print_exit_error__ ,(places)
+  __Dict_lookup_or__ places file (,(k) return __NULL__) ,(start)
+  Pos_split start ,(sline scol)
+  ;; 1 行目は、コードの始まりの桁から数える。2 行目からは、その行の桁そのもの
+  __Number_subtract__ line one ,(dl)
+  __Number_is_zero__ dl ,(first)
+  __Number_add__ sline dl ,(rline)
+  __if_then_else__ first
+    (,() __Number_add__ scol col ,(c) __Number_subtract__ c one)
+    (,() __NULL__ col) ,(rcol)
+  Pos_make rline rcol)
+
+;; 例外のメッセージ msg に、スクリプトの位置を "\t行\t桁\t" で前に付ける（位置がわからなければ msg のまま）
+(define Sjsb_fail_text ,(B where msg)
+  __Cont_get__ ,(return)
+  Sjsb_map_pos B where ,(p)
+  __is_null__ p ,(test__) __if__ test__ (,() return msg) ,()
+  Pos_split p ,(line col)
+  __Number_toString__ line ,(ls)
+  __Number_toString__ col ,(cs)
+  __String_concat__ "\t" ls ,(s)
+  __String_concat__ s "\t" ,(s)
+  __String_concat__ s cs ,(s)
+  __String_concat__ s "\t" ,(s)
+  __String_concat__ s msg)
+
+;; Sjsb_fail_text が前に付けた位置を取り出す：あれば (その位置 残りのメッセージ)、なければ (pos msg)
+(define Sjs_fail_pos ,(pos msg)
+  __Cont_get__ ,(return)
+  num "0" ,(zero)
+  num "1" ,(one)
+  __String_length__ msg ,(n)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return pos msg) ,()
+  __String_substring__ __print_exit_error__ msg zero one ,(c)
+  __String_equal__ c "\t" ,(test__) __unless__ test__ (,() return pos msg) ,()
+  __String_find__ __print_exit_error__ msg "\t" one ,(i)
+  __is_null__ i ,(test__) __if__ test__ (,() return pos msg) ,()
+  __Number_add__ i one ,(i1)
+  __String_find__ __print_exit_error__ msg "\t" i1 ,(j)
+  __is_null__ j ,(test__) __if__ test__ (,() return pos msg) ,()
+  __String_substring__ __print_exit_error__ msg one i ,(ls)
+  __String_substring__ __print_exit_error__ msg i1 j ,(cs)
+  __Number_add__ j one ,(j1)
+  __String_substring__ __print_exit_error__ msg j1 n ,(rest)
+  __Number_fromString__ (,(m) return pos msg) ls ,(line)
+  __Number_fromString__ (,(m) return pos msg) cs ,(col)
+  Pos_make line col ,(p)
+  __NULL__ p rest)
 
 ;; SJS の値を、シェル変数に入れる形にする：文字列はそのまま、ほかは {"sjsv": 値}
 (define Sjsb_to_raw ,(v)
@@ -536,6 +630,7 @@
   __PDict_put__ "sjs_shell" (,(name) Sjsb_shell_get sh G name) ,()
   __PDict_put__ "sjs_out" (,(line) Target_write sh pos out line) ,()
   __PDict_put__ "sjs_fail" fail ,()
+  __PDict_put__ "sjs_pos" __NULL__ ,()
   __PDict_put__ "sjs_handlers" __NULL__)
 
 ;; 変換したモジュールのファイル名（コードの文字列ごとに覚えておく）。変換のエラーは fail に渡す
@@ -547,7 +642,12 @@
   ;; 変換：sjs_lex.se などの SyntaxError は、Sjs_throw から PDict の "sjs_fail" に来る
   __PDict_lookup_or__ "sjs_fail" (,(k) __NULL__ __NULL__) ,(saved)
   __PDict_put__ "sjs_fail" (,(msg) __PDict_put__ "sjs_fail" saved ,() fail msg) ,()
-  Sjs_translate_module code ,(source)
+  ;; SInfo のファイル名は、コードから決まる sjs-ハッシュ（エラーの位置を、その (( )) の位置に足して直す。Sjsb_map_pos）
+  Sjsb_hash code ,(ch)
+  __String_concat__ "sjs-" ch ,(file)
+  __Dict_lookup_or__ B "files" __print_exit_error__ ,(files)
+  __Dict_put__ files code file ,()
+  Sjs_translate_module code file ,(source)
   __PDict_put__ "sjs_fail" saved ,()
   ;; ファイル：$TMPDIR（なければ /tmp）の consh-sjs-ハッシュ.se。ハッシュはソースから求めるので、同じソースなら、
   ;; 別のプロセスでも同じファイルになる（ConMa にはファイルを消すプリミティブがないので、ファイルの数を、
@@ -792,9 +892,13 @@
   __Dict_lookup_or__ B "G" __print_exit_error__ ,(G)
   Sjsb_pdict_save ,(saved)
   __NULL__ (,(msg)
+    ;; 例外を投げた所が、関数を作った (( )) の中なら、その位置にする
+    __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(where)
     Sjsb_pdict_restore saved ,()
+    Sjsb_fail_text B where msg ,(msg)
+    Sjs_fail_pos pos msg ,(wpos msg)
     __String_concat__ "sjs: " msg ,(m)
-    Sh_warn sh pos m ,()
+    Sh_warn sh wpos m ,()
     Sh_set_status sh "2" ,()
     return) ,(fail)
   Sjsb_setup sh pos G out fail ,()
@@ -819,7 +923,7 @@
 
 ;; PDict の SJS の文脈を保存して戻す（SJS の関数を、ConSh の VProc で呼ぶとき）
 (define Sjsb_pdict_keys ,()
-  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_line sjs_gen sjs_jobs sjs_unhandled")
+  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_pos sjs_gen sjs_jobs sjs_unhandled")
 
 (define Sjsb_pdict_save ,()
   Sjsb_pdict_keys ,(keys)

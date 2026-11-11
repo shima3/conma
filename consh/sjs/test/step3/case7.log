@@ -1,0 +1,3 @@
+2
+case7.sjs:5:14: TypeError: Cannot read properties of undefined (reading 'length')
+exit: 2

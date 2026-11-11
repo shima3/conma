@@ -12,7 +12,7 @@
 ;;   if（"test" "yes" "no"）、while（"test" "body"）、for（"init" "test" "update" "body"）、
 ;;   forof（"kind"（let、const、var か null）"name" "of"（of か in）"right" "body"、for await なら "await"）、break、continue、
 ;;   return（"value"）、throw（"value"）、try（"body" "param" "handler" "finalizer"）、expr（"expr"）、program（"body"）。
-;;   文の節は "line"（始まりの行の String）も持つ
+;;   文の節は "line" と "col"（始まりの行と桁の String）も持つ。式の節も、P_assign などが返すものは持つ（P_at）
 ;; まだ読まない書き方は、「not yet translated」のエラーにする。
 ;; sjs_lex.se を使う
 
@@ -240,13 +240,29 @@
   __Dict_put__ n "body" body ,()
   __NULL__ n)
 
-;; 文。節の "line" に、文の始まりの行を入れる（実行時のエラーの位置。Sjs_line）
+;; 文。節の "line" と "col" に、文の始まりの位置を入れる（変換器が SInfo にする）
 (define P_statement ,(p)
   P_peek p ,(tok)
   Tok_line tok ,(line)
+  Tok_col tok ,(col)
   P_statement_body p ,(n)
   __Dict_put__ n "line" line ,()
+  __Dict_put__ n "col" col ,()
   __NULL__ n)
+
+;; 節 n に、字句 tok の位置（"line" と "col"。String）を入れる。もう位置があるか、節でなければ何もしない
+(define P_at ,(n tok)
+  __Cont_get__ ,(return)
+  __type_name__ n ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d return ,()
+  __Dict_lookup_or__ n "col" (,(k) __NULL__ __NULL__) ,(c)
+  __is_null__ c ,(none)
+  __unless__ none return ,()
+  Tok_line tok ,(line)
+  Tok_col tok ,(col)
+  __Dict_put__ n "line" line ,()
+  __Dict_put__ n "col" col)
 
 (define P_statement_body ,(p)
   __Cont_get__ ,(return)
@@ -598,7 +614,14 @@
 (define Sjs_is_assign_op ,(text)
   Sjs_in_words text "= += -= *= /= %= **= <<= >>= >>>= &= |= ^= &&= ||= ??=")
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_assign ,(p)
+  P_peek p ,(tok__)
+  P_assign_body p ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_assign_body ,(p)
   __Cont_get__ ,(return)
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
@@ -646,6 +669,8 @@
   __if_then_else__ plain (,() P_to_pattern left) (,() P_target left ,() __NULL__ left) ,(left)
   P_assign p ,(value)
   Sjs_node "assign" ,(n)
+  ;; 代入のエラーの位置は、JavaScript と同じく演算子の字句
+  P_at n op ,()
   __Dict_put__ n "op" opText ,()
   __Dict_put__ n "target" left ,()
   __Dict_put__ n "value" value ,()
@@ -821,7 +846,14 @@
   __Dict_put__ n "expr" e ,()
   __NULL__ n)
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_conditional ,(p)
+  P_peek p ,(tok__)
+  P_conditional_body p ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_conditional_body ,(p)
   __Cont_get__ ,(return)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   P_binary p zero ,(test)
@@ -854,7 +886,14 @@
   level "**" "12" ,()
   __NULL__ __NULL__)
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_binary ,(p min)
+  P_peek p ,(tok__)
+  P_binary_body p min ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_binary_body ,(p min)
   P_unary p ,(left)
   P_binary_rest p min left)
 
@@ -894,7 +933,14 @@
   __Dict_put__ n "right" rhs ,()
   P_binary_rest p min n)
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_unary ,(p)
+  P_peek p ,(tok__)
+  P_unary_body p ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_unary_body ,(p)
   __Cont_get__ ,(return)
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
@@ -954,7 +1000,14 @@
       return n) ,()
   __NULL__ e)
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_postfix ,(p)
+  P_peek p ,(tok__)
+  P_postfix_body p ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_postfix_body ,(p)
   P_primary p ,(e)
   P_postfix_rest p e)
 
@@ -969,6 +1022,8 @@
       Tok_text tok ,(name)
       P_check_property name ,()
       Sjs_node "member" ,(n)
+      ;; メンバーのエラーの位置は、JavaScript と同じく名前の字句
+      P_at n tok ,()
       __Dict_put__ n "object" e ,()
       __Dict_put__ n "name" name ,()
       P_postfix_rest p n ,(r)
@@ -983,9 +1038,11 @@
       return r) ,()
   P_eat p "[" ,(test__) __if__ test__
     (,()
+      P_peek p ,(ktok)
       P_allow_in p (,() P_expression p) ,(key)
       P_expect p "]" ,()
       Sjs_node "member" ,(n)
+      P_at n ktok ,()
       __Dict_put__ n "object" e ,()
       __Dict_put__ n "key" key ,()
       P_postfix_rest p n ,(r)
@@ -1014,6 +1071,7 @@
           __unless__ ok (,() Sjs_throw "SyntaxError" "expected a property name after '?.'") ,()
           Tok_text tok ,(name)
           P_check_property name ,()
+          P_at n tok ,()
           __Dict_put__ n "name" name) ,()
       P_postfix_rest p n ,(r)
       return r) ,()
@@ -1044,7 +1102,14 @@
   __unless__ comma (,() P_expect p ")" ,() Sjs_reverse acc ,(args) return args) ,()
   P_args p acc)
 
+;; 式の始まりの字句の位置を、返す節に入れる（変換器が SInfo にする。P_at）
 (define P_primary ,(p)
+  P_peek p ,(tok__)
+  P_primary_body p ,(n)
+  P_at n tok__ ,()
+  __NULL__ n)
+
+(define P_primary_body ,(p)
   __Cont_get__ ,(return)
   P_peek p ,(tok)
   Tok_kind tok ,(kind)

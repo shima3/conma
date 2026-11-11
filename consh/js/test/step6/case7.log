@@ -6,11 +6,11 @@ lt status 0
 k: string
 len: 3
 env: env
-consh: case7.sh:15:1: sjs: TypeError: not a number: $s ("abc")
+consh: case7.sh:15:4: sjs: TypeError: not a number: $s ("abc")
 not a number status 2
-consh: case7.sh:16:1: sjs: ReferenceError: undefined variable: undefinedvar
+consh: case7.sh:16:4: sjs: ReferenceError: undefined variable: undefinedvar
 undefined status 2
-consh: case7.sh:17:1: sjs: TypeError: cannot assign to the shell variable $n
+consh: case7.sh:17:7: sjs: TypeError: cannot assign to the shell variable $n
 assign status 2
 consh: case7.sh:18:1: sjs: not in SJS: a declaration of $x (a name that begins with $ is a shell variable)
 declare status 2
@@ -24,6 +24,6 @@ small
 status 1 m: hello
 3
 3
-consh: case7.sh:38:1: sjs: x
+consh: case7.sh:38:13: sjs: x
 throw status 2
 exit: 0

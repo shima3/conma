@@ -1,2 +1,2 @@
-sjs: line 3: TypeError: the property constructor is not in SJS
+case7.sjs:3:15: TypeError: the property constructor is not in SJS
 exit: 2

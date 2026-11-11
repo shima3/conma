@@ -16,5 +16,5 @@ cleanup
 {"value":1,"done":false} {"value":2,"done":true}
 inner done
 o(i1) o(i2)
-sjs: line 48: uncaught from a generator
+case2.sjs:48:29: uncaught from a generator
 exit: 2

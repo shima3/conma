@@ -1,0 +1,4 @@
+1
+after a
+case9.sjs:5:11: TypeError: Cannot read properties of null (reading 'y')
+exit: 2

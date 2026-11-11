@@ -1,2 +1,2 @@
-sjs: line 3: TypeError: Cannot read properties of undefined (reading 'b')
+case6.sjs:3:17: TypeError: Cannot read properties of undefined (reading 'b')
 exit: 2

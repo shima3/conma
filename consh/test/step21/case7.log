@@ -10,7 +10,7 @@ $ $ n=6
 $ 4
 5
 $ yes
-$ consh: stdin:13:1: sjs: ReferenceError: undefinedThing is not defined
+$ consh: stdin:13:4: sjs: ReferenceError: undefinedThing is not defined
 $ status 2
 $ $ $ $ status 0
 $ exit: 0
