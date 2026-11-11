@@ -1,0 +1,5 @@
+;; 高速版 ConMa の印（docs/FAST-PLAN-ja.md 3.4）を試すためのプログラム。
+;; test.sh が、このモジュールに (Uses ...) を書き加えて動かす
+(define main ,()
+  __OS_print__ "hello\n" ,()
+  __OS_exit_normal__)

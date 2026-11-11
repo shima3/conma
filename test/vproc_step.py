@@ -309,7 +309,18 @@ def is_variadic_head(head_node):
     """True for the Head of a variadic Function: (Head pos Rest (Variable ...))."""
     return isinstance(head_node, list) and "Rest" in head_node[2:]
 
+def check_concise(module_sexp):
+    """Raise LoadError if the module uses a feature of fast ConMa (a String of a
+    (Uses ...) item, docs/FAST-PLAN-ja.md 3.4): this VM runs concise ConMa only.
+    The message is that of the Rust VM (check_features of vm/src/module.rs)."""
+    for item in module_sexp[2:]:
+        if isinstance(item, list) and item and item[0] == "Uses" and len(item) > 1:
+            f = item[1] if isinstance(item[1], str) else sexp_to_str(item[1])
+            raise LoadError(f"the module uses a feature of fast ConMa that this VM does not run: {f} "
+                            "(bin/concise translates the module into concise ConMa)")
+
 def load_module(module_sexp):
+    check_concise(module_sexp)
     gvenv = {}
     for item in module_sexp[2:]:
         if not isinstance(item, list) or item[0] != "G": continue

@@ -137,6 +137,11 @@ def unquote(atom):
     return atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else atom
 
 
+# The features of fast ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
+# as FAST_FEATURES of vm/src/module.rs: none yet.
+FAST_FEATURES = ()
+
+
 def tag(x):
     return x[0] if isinstance(x, list) and x and isinstance(x[0], str) else None
 
@@ -1151,6 +1156,11 @@ def translate(index, path, prim_names, out):
     module = parse(data.decode("utf-8"))
     if tag(module) != "Module":
         raise ValueError("no Module")
+    for item in module[2:]:
+        for f in (item[1:] if tag(item) == "Uses" else []):
+            if not isinstance(f, str) or unquote(f) not in FAST_FEATURES:
+                raise ValueError(f"{path}: the module uses a feature of fast ConMa that this translator "
+                                 f"does not know: {f}")
     funcs, prims, tops, gfun = load(module, prim_names)
     used = []
 

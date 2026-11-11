@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""concise: translate a module of fast ConMa into a module of concise ConMa
+(docs/FAST-PLAN-ja.md 3.4 and 5).
+
+    concise [<module_file>]
+
+Reads the module (standard input without a file) and writes the concise module
+to standard output. A module of fast ConMa names the features it uses in a
+(Uses "feature" ...) item; the translator rewrites each of them into concise
+ConMa and removes the item. It knows no features yet (stage F1), so it only
+removes an empty (Uses), and stops with an error on any feature. The rest of the
+text is written as it is read, so a module without (Uses ...) comes out the same.
+Errors go to standard error, with exit code 1.
+"""
+import sys
+
+# The features of fast ConMa this translator rewrites (as FAST_FEATURES of
+# vm/src/module.rs): none yet.
+FEATURES = ()
+
+
+class ConciseError(Exception):
+    pass
+
+
+def skip_string(text, i):
+    """The index after the string literal that starts at text[i] ('"')."""
+    i += 1
+    while i < len(text):
+        c = text[i]
+        if c == "\\":
+            i += 2
+        elif c == '"':
+            return i + 1
+        else:
+            i += 1
+    raise ConciseError("unterminated string")
+
+
+def atom_end(text, i):
+    """The index after the atom (or string) that starts at text[i]."""
+    if text[i] == '"':
+        return skip_string(text, i)
+    while i < len(text) and text[i] not in ' \t\r\n()"':
+        i += 1
+    return i
+
+
+def item_end(text, i):
+    """The index after the list that starts at text[i] ('('), and its atoms
+    directly inside it (a list inside it is given as None)."""
+    depth = 0
+    atoms = []
+    while i < len(text):
+        c = text[i]
+        if c == "(":
+            depth += 1
+            if depth == 2:
+                atoms.append(None)
+            i += 1
+        elif c == ")":
+            depth -= 1
+            i += 1
+            if depth == 0:
+                return i, atoms
+        elif c in " \t\r\n":
+            i += 1
+        else:
+            j = atom_end(text, i)
+            if depth == 1:
+                atoms.append(text[i:j])
+            i = j
+    raise ConciseError("unbalanced parentheses")
+
+
+def concise(text):
+    """The concise module of the text of a module."""
+    i = 0
+    while i < len(text) and text[i] in " \t\r\n":
+        i += 1
+    if not text.startswith("(Module", i):
+        raise ConciseError("not a Module")
+    end, _ = item_end(text, i)
+    out = []
+    last = 0          # the text before this index has been copied to out
+    j = i + len("(Module")
+    while j < end - 1:
+        c = text[j]
+        if c in " \t\r\n":
+            j += 1
+        elif c == "(":
+            k, atoms = item_end(text, j)
+            if atoms and atoms[0] == "Uses":
+                for f in atoms[1:]:
+                    name = f[1:-1] if f and f.startswith('"') else f
+                    if name not in FEATURES:
+                        raise ConciseError("cannot translate a feature of fast ConMa: "
+                                           + (f if f is not None else "(a list)"))
+                # remove the item and the white space before it
+                w = j
+                while w > last and text[w - 1] in " \t\r\n":
+                    w -= 1
+                out.append(text[last:w])
+                last = k
+            j = k
+        else:
+            j = atom_end(text, j)
+    out.append(text[last:])
+    return "".join(out)
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) > 1 or (args and args[0].startswith("-")):
+        print("usage: concise [<module_file>]", file=sys.stderr)
+        sys.exit(1)
+    try:
+        text = open(args[0], encoding="utf-8").read() if args else sys.stdin.read()
+    except OSError as e:
+        print(f"concise: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        sys.stdout.write(concise(text))
+    except ConciseError as e:
+        print(f"concise: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

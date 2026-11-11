@@ -1,0 +1,17 @@
+== run uses0
+hello
+exit: 0
+== run uses1
+Error: the module uses a feature of fast ConMa that this VM does not run: "if" (bin/concise translates the module into concise ConMa)
+exit: 1
+== concise uses0
+exit: 0
+the module without (Uses)
+== concise uses1
+exit: 1
+concise: cannot translate a feature of fast ConMa: "if"
+== concise from standard input
+the module without (Uses)
+== concise: not a Module
+concise: not a Module
+exit: 1

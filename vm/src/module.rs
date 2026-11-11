@@ -280,7 +280,39 @@ pub fn module_files(module: &Sexp) -> String {
     atoms.join(" ")
 }
 
+/// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4):
+/// none yet, so a module may have only an empty (Uses).
+pub const FAST_FEATURES: &[&str] = &[];
+
+/// The features of fast ConMa that a module uses: the items of its (Uses ...)
+/// items, as written.
+pub fn fast_features(module: &Sexp) -> Vec<String> {
+    let mut features = Vec::new();
+    if let Some(l) = module.as_list() {
+        for item in l.iter().skip(2) {
+            if item.tag() == Some("Uses") {
+                features.extend(item.as_list().unwrap().iter().skip(1).map(crate::sexp::to_string));
+            }
+        }
+    }
+    features
+}
+
+/// An error for the first feature of fast ConMa the module uses that this VM
+/// does not run (the message of check_concise of test/vproc_step.py).
+fn check_features(module: &Sexp) -> Result<(), String> {
+    match fast_features(module).into_iter().find(|f| !FAST_FEATURES.contains(&unquote(f))) {
+        Some(f) => Err(format!(
+            "the module uses a feature of fast ConMa that this VM does not run: {} \
+             (bin/concise translates the module into concise ConMa)",
+            f
+        )),
+        None => Ok(()),
+    }
+}
+
 fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
+    check_features(module)?;
     let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), transpiled: RefCell::new(None) });
     let mut vals: Vec<Option<Value>> = Vec::new();
     if let Some(l) = module.as_list() {

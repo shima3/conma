@@ -93,7 +93,11 @@ def run(module_file, func_name, trace=False, program_args=None):
         sys.exit(1)
 
     gid   = name_index[func_name]
-    gvenv = load_module(module_sexp)
+    try:
+        gvenv = load_module(module_sexp)
+    except (vs.LoadError, VProcError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     closure = gvenv.get(gid)
     if closure is None:

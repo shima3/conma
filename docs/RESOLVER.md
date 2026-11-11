@@ -71,6 +71,8 @@ The entire output is a single `Module` S-expression:
 
 Entries appear in the order variables were first assigned a sequence number. `Program` nodes themselves are not written to the output.
 
+A module of fast ConMa (docs/FAST-PLAN-ja.md) has a `(Uses "feature" ...)` item after `(F ...)`, naming the features of fast ConMa it uses. The resolver writes none, since no feature exists yet. Every VM runs a module with an empty `(Uses)` and stops with an error on a module that names a feature it does not run (`the module uses a feature of fast ConMa that this VM does not run: "if" (bin/concise translates the module into concise ConMa)`): the Python VM runs concise ConMa only, and the Rust VM knows no feature yet (`FAST_FEATURES` of `vm/src/module.rs`). `bin/concise [<module_file>]` translates a module of fast ConMa into concise ConMa; for now, it removes an empty `(Uses)` and stops with an error on any feature.
+
 ---
 
 ### Processing

@@ -9,7 +9,7 @@ if [ "$1" = -j ]; then
   jobs=$2
   shift 2
 fi
-tests=(step*/test.sh module*/test.sh selfhost*/test.sh frontend/test.sh transpiled/test.sh)
+tests=(step*/test.sh module*/test.sh selfhost*/test.sh frontend/test.sh fast*/test.sh transpiled/test.sh)
 if [ "$jobs" -le 1 ]; then
   for t in "${tests[@]}"
   do
