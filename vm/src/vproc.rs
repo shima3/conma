@@ -93,6 +93,14 @@ impl VProc {
         self.olist = results;
     }
 
+    /// prim_return(vec![value]) without making a Vec: the OList (with the
+    /// operands the primitive read in place) is emptied and takes the value.
+    pub fn prim_return1(&mut self, value: Value) {
+        self.operator = self.lcont.take().unwrap_or(Value::Null);
+        self.olist.clear();
+        self.olist.push(value);
+    }
+
     /// Apply onError to an error message. The LCont is kept.
     pub fn prim_error(&mut self, on_error: Value, message: &str) {
         self.operator = on_error;

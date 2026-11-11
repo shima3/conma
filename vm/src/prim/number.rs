@@ -1,6 +1,6 @@
 //! Number primitives.
 
-use super::{err, take_args, PResult, VmError};
+use super::{check_args, err, in_place_failed, take_args, PResult, VmError};
 use crate::sched::Machine;
 use crate::trace::value_to_display;
 use crate::value::*;
@@ -84,17 +84,25 @@ pub fn from_string(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+// The primitives below read their operands in place (check_args) and return
+// through the OList (VProc::prim_return1), so that they make no Vec.
+
 pub fn to_string(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let a = take_args(vp, "__Number_toString__", 1)?;
-    let x = check_number("__Number_toString__", &a[0])?;
-    vp.prim_return(vec![string_value(&number_to_str(x))]);
+    check_args(vp, "__Number_toString__", 1)?;
+    let x = match check_number("__Number_toString__", &vp.olist[0]) {
+        Ok(x) => x,
+        Err(e) => return in_place_failed(vp, 1, e),
+    };
+    vp.prim_return1(string_value(&number_to_str(x)));
     Ok(())
 }
 
 fn predicate(m: &mut Machine, vp: &mut VProc, name: &str, f: fn(f64) -> bool) -> PResult {
-    let a = take_args(vp, name, 1)?;
-    let b = predicate_core(m, name, &a[0], f)?;
-    vp.prim_return(vec![b]);
+    check_args(vp, name, 1)?;
+    match predicate_core(m, name, &vp.olist[0], f) {
+        Ok(b) => vp.prim_return1(b),
+        Err(e) => return in_place_failed(vp, 1, e),
+    }
     Ok(())
 }
 
@@ -115,9 +123,11 @@ pub fn is_negative(m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 fn binop(vp: &mut VProc, name: &str, f: fn(f64, f64) -> f64) -> PResult {
-    let a = take_args(vp, name, 2)?;
-    let v = binop_core(name, &a[0], &a[1], f)?;
-    vp.prim_return(vec![v]);
+    check_args(vp, name, 2)?;
+    match binop_core(name, &vp.olist[0], &vp.olist[1], f) {
+        Ok(v) => vp.prim_return1(v),
+        Err(e) => return in_place_failed(vp, 2, e),
+    }
     Ok(())
 }
 
@@ -139,38 +149,47 @@ pub fn multiply(_m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 pub fn divide(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__Number_divide__", 3)?;
-    let y = a.pop().unwrap();
-    let x = a.pop().unwrap();
-    let on_error = a.pop().unwrap();
-    let x = check_number("__Number_divide__", &x)?;
-    let y = check_number("__Number_divide__", &y)?;
+    let name = "__Number_divide__";
+    check_args(vp, name, 3)?;
+    let xy = check_number(name, &vp.olist[1]).and_then(|x| check_number(name, &vp.olist[2]).map(|y| (x, y)));
+    let (x, y) = match xy {
+        Ok(xy) => xy,
+        Err(e) => return in_place_failed(vp, 3, e),
+    };
     if y == 0.0 {
+        let on_error = std::mem::replace(&mut vp.olist[0], Value::Null);
+        vp.olist.drain(..3);
         vp.prim_error(on_error, "__Number_divide__: division by zero");
         return Ok(());
     }
-    vp.prim_return(vec![num(x / y)]);
+    vp.prim_return1(num(x / y));
     Ok(())
 }
 
 /// __Number_sqrt__ onError Number ,(Number): the square root; a negative
 /// Number (not -0) applies onError.
 pub fn sqrt(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__Number_sqrt__", 2)?;
-    let x = a.pop().unwrap();
-    let on_error = a.pop().unwrap();
-    let x = check_number("__Number_sqrt__", &x)?;
+    check_args(vp, "__Number_sqrt__", 2)?;
+    let x = match check_number("__Number_sqrt__", &vp.olist[1]) {
+        Ok(x) => x,
+        Err(e) => return in_place_failed(vp, 2, e),
+    };
     if x < 0.0 {
+        let on_error = std::mem::replace(&mut vp.olist[0], Value::Null);
+        vp.olist.drain(..2);
         vp.prim_error(on_error, "__Number_sqrt__: square root of a negative number");
         return Ok(());
     }
-    vp.prim_return(vec![num(x.sqrt())]);
+    vp.prim_return1(num(x.sqrt()));
     Ok(())
 }
 
 pub fn floor(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let a = take_args(vp, "__Number_floor__", 1)?;
-    let x = check_number("__Number_floor__", &a[0])?;
-    vp.prim_return(vec![num(if x.is_finite() { x.floor() } else { x })]);
+    check_args(vp, "__Number_floor__", 1)?;
+    let x = match check_number("__Number_floor__", &vp.olist[0]) {
+        Ok(x) => x,
+        Err(e) => return in_place_failed(vp, 1, e),
+    };
+    vp.prim_return1(num(if x.is_finite() { x.floor() } else { x }));
     Ok(())
 }

@@ -164,6 +164,27 @@ pub fn take_n(vp: &mut VProc, name: &str, n: usize) -> Result<Vec<crate::value::
     Ok(vp.olist.drain(..n).collect())
 }
 
+/// Check that there are n operands, to read them in place from vp.olist, with
+/// the error of take_args. A primitive that reads them so returns with
+/// VProc::prim_return1, and drops them (in_place_failed) before it fails, as
+/// take_args would have taken them.
+pub fn check_args(vp: &VProc, name: &str, n: usize) -> Result<(), VmError> {
+    if vp.olist.len() < n {
+        return if n == 1 {
+            err(format!("{}: missing argument", name))
+        } else {
+            err(format!("{}: missing argument(s)", name))
+        };
+    }
+    Ok(())
+}
+
+/// Drop the n operands read in place and pass on the error e.
+pub fn in_place_failed<T>(vp: &mut VProc, n: usize, e: VmError) -> Result<T, VmError> {
+    vp.olist.drain(..n);
+    Err(e)
+}
+
 /// Take the first n operands, or fail with "<name>: missing argument(s)"
 /// ("missing argument" for one).
 pub fn take_args(vp: &mut VProc, name: &str, n: usize) -> Result<Vec<crate::value::Value>, VmError> {
