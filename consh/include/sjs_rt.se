@@ -1848,7 +1848,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
-  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_set_index" Sjs_set_index ,()
   __NULL__ rt)
 
 
@@ -2616,3 +2616,51 @@
 ;; await v（async 関数の本体の中。本体はジェネレータとして動いている）
 (define Sjs_await ,(v)
   Sjs_yield v)
+
+;; ── 速くするため：変換器が型を知っている所（sjs_gen.se の Gen_arith など）──
+
+;; a === k（k は数と分かっている）。a が数でなければ偽。差が 0 なら真、0 でない数（無限大も）なら偽、NaN（NaN か、
+;; 同じ無限大どうし）なら Sjs_seq で決める
+(define Sjs_eq_num ,(a k)
+  __Cont_get__ ,(return)
+  __type_name__ a ,(t)
+  __String_equal__ t "Number" ,(num)
+  __unless__ num (,() return __FALSE__) ,()
+  __Number_subtract__ a k ,(d)
+  __Number_is_zero__ d ,(z)
+  __if__ z (,() return __TRUE__) ,()
+  __Number_is_positive__ d ,(p)
+  __if__ p (,() return __FALSE__) ,()
+  __Number_is_negative__ d ,(n)
+  __if__ n (,() return __FALSE__) ,()
+  Sjs_seq a k)
+
+(define Sjs_ne_num ,(a k)
+  Sjs_eq_num a k ,(e)
+  __not__ e)
+
+;; o[i]（i は数と分かっている）：配列なら items をそのまま引く（整数でない数と負の数は、items にないので undefined）。
+;; ほかは Sjs_get_member
+(define Sjs_get_index ,(G o i)
+  __Cont_get__ ,(return)
+  __type_name__ o ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d (,() Sjs_get_member G o i ,(v) return v) ,()
+  __Dict_lookup_or__ o "items" (,(k) Sjs_get_member G o i ,(v) return v) ,(items)
+  __Number_toString__ i ,(ks)
+  __Dict_lookup_or__ items ks (,(k) __NULL__ __NULL__))
+
+;; o[i] = v（i は数と分かっている）：配列で、i が 0 以上の整数なら、そのまま入れる。ほかは Sjs_set_member
+(define Sjs_set_index ,(G o i v)
+  __Cont_get__ ,(return)
+  __type_name__ o ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d (,() Sjs_set_member G o i v ,() return) ,()
+  __Dict_lookup_or__ o "items" (,(k) Sjs_set_member G o i v ,() return) ,(items)
+  __Number_is_negative__ i ,(neg)
+  __if__ neg (,() Sjs_set_member G o i v ,() return) ,()
+  __Number_floor__ i ,(f)
+  __Number_subtract__ i f ,(frac)
+  __Number_is_zero__ frac ,(whole)
+  __unless__ whole (,() Sjs_set_member G o i v ,() return) ,()
+  Sjs_array_set o i v)
