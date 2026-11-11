@@ -590,7 +590,7 @@ consh/SAFEJS-PLAN-ja.md の段階 B4。`(( ))` と `$(( ))` の SJS式を、cons
 
 - consh_jsstmt.se の `Ar_eval` が、まず段階 B（`Sjsb_eval`）で求め、モジュールを作れない版（ブラウザ）では、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A（`Sjsa_eval`。前の `Sjs_eval` などを `Sjsa_` に改名した）にする。段階 B は `CONSH_ENABLE_JS` を要らない。
 - SJS変数とシェル変数には、SJS の値が ConMa の値のまま入る（文字列か `{"sjsv": 値}`）。consh_eval.se（参照版も）の `Value_force` が、`$` で読むときにシェルの値にする。
-- `js 変数名=` の JS の値を `$名前` で読むときは、ConMa の値に直す（`Sjsb_from_js`。数、真偽値、`null`、`undefined`、オブジェクトは JSON を読む。配列の要素は文字列かリスト。consh/sjs/README-ja.md の「段階 A との違い」）。step5 の case3 で確かめる。
+- `js 変数名=` の JS の値を `$名前` で読むときは、ConMa の値に直す（`Sjsb_from_js`。数、真偽値、`null`、`undefined`、オブジェクトは JSON を読む。配列の要素は文字列かリスト。consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。step5 の case3 で確かめる。
 - 変換器に、`switch`、`do...while`、`**`、ビット演算、分割代入、スプレッド、既定値、残りの引数、`$名前`、構文解析の前の確認を足した。
 - テスト：consh/js/test/step6 の case5off と case5bad のログを、`(( ))` が `CONSH_ENABLE_JS` なしで動くものに直した（`js` は今までどおり disabled）。consh/test/step21 を足した（ConMa 版の ConSh で、ネイティブの VM でも wasm 版でも同じログ。Rust 版の ConSh では飛ばす）。
 

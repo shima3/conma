@@ -81,7 +81,7 @@ VM は、ネイティブ版と同じく、実際のファイルを読み書き�
 
 ## (( )) と $(( ))：SJS
 
-算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「段階 A との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
+算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
 
 ```
 (( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）
@@ -97,7 +97,7 @@ echo $(( sum([1, 2, 3]) ))     # 6
 * SJS式の中の代入は、シェルの変数ではなく **SJS変数**を変える。SJS変数は、シェルの変数と同じ名前でも別のもので、シェルの変数と同じく、関数、パイプラインの要素、`$( )`、`&` では写しになる（シェルの関数の中で `(( n = 5 ))` としても、外の `n` は変わらない）。SJS変数の値をシェルの変数に入れるときは `v=$(( n ))` と書く。
 * 大域の名前は、SJS変数と、SJS の組み込み（`Math`、`JSON`、`Number`、`String`、`Boolean`、`Array`、`Object` の `keys` など、`parseInt`、`parseFloat`、`isNaN`、`isFinite`、`console`、`undefined`、`NaN`、`Infinity`）だけである。組み込みには代入できず（`TypeError`）、組み込みはホストのものの凍結した写しなので、変えてもホストには届かない。ホストの名前（`process`、`document`、`fetch` など）は `ReferenceError` になる。
 * 関数の本体のブロックには、`let`、`const`、`if`、`for`、`while`、`return`、`try` なども書ける（`(( ))` の中なので ConSh の構文と衝突しない）。
-* 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`async`、`await`、`yield`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
+* 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前（段階 A では、`async`、`await`、`yield` も）、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
 * **演算の型**：`+` は数どうしだけを足す。文字列をつなぐときは、テンプレート文字列（`` `${a}${b}` ``）か `[a, b].join("")` を使う。`-`、`*`、`/`、`%`、`**`、ビット演算（`&`、`|`、`^`、`~`、`<<`、`>>`、`>>>`）、単項の `-` と `+`、`++` と `--`、複合の代入（`+=` など）も、数でなければ `TypeError` になる。大小の比較（`<` など）は、数どうしか文字列どうしだけ。JavaScript の意味は変えず、紛らわしい組み合わせをエラーにするだけなので、SJS でエラーにならずに動いたコードは、JavaScript でも同じ結果になる。シェルから渡した引数は文字列なので、数として使うときは `Number(x)` と書く（`$名前` は、演算子の隣なら自動で数になる）。
 * `console.log` は標準出力に出る（リダイレクトできる）。
 * 文の `(( ))` は値を出さない（`$?` だけ）。ただし**対話モード**では、コマンド行の文がそのまま `(( ))` なら、Node.js の REPL のように値を標準エラーに出す（SJS関数の戻り値と同じ形。`undefined` と `null` は出さない。`(( 1+2 )) 2> (n)` で `n` は 3）。ループ、関数、`if` の条件の中の `(( ))` は出さない。スクリプトでは出さない。Rust 版の ConSh（`CONSH_IMPL` の既定）には `(( ))` がないので、`CONSH_IMPL=conma` で使う
@@ -126,7 +126,8 @@ echo $(( sum([1, 2, 3]) ))     # 6
 
   引数はシェルの関数と同じく展開し、String は文字列、リスト（`${xs}`）は配列になる（`$xs` は要素を別々の引数にする）。シェル変数の JS の値は、引数では文字列かリストになるので、値のまま渡すときは `(( f($v) ))` のように `$名前` を使う。先頭の語の値が、SJS が作った関数でない値なら、`not a function` のエラー（`$?` は 2。語の中の `$(( ))` のエラーと同じく、スクリプトは終わる）。
 * SJS の関数の中の大域の名前は、**呼び出したときの** SJS変数を読み書きする（動的なスコープ）。シェルの関数の中で呼べば、その関数の中の写しを読む。SJS変数の写しは浅く、配列やオブジェクトの中身は写さない（シェルの関数の中で `(( o.a = 1 ))` とすると、外の `o` の中身も変わる）。
-* `async`、`await`、ジェネレータ（`yield`）は、今は SJS の範囲の外である（`await` の後で、別の評価の SJS変数を見てしまうため）。
+* エラーのメッセージの位置は、`(( ))` の中の失敗した所の、スクリプトの行と桁である（段階 B9。consh/sjs/README-ja.md の「エラーの位置」）。SJS の関数をコマンドとして呼んだときは、その関数を作った `(( ))` の中の位置になる。
+* SJS の書けるものと、JavaScript との違いは、consh/sjs/README-ja.md にまとめてある（段階 B）。
 * 制限：`typeof` を定義されていない名前に使うと、`"undefined"` ではなく `ReferenceError` になる。
 
 ## js

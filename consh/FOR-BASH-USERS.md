@@ -58,7 +58,8 @@ ConSh has a small grammar. These Bash features are syntax errors or are not spec
 | `{ …; }`, `( … )` | not available; use a function, or a pipeline element or `$( )` for a separate context |
 | `f() { … }` | write `function f () { … }` |
 | `<<END`, `<<<`, `2>>`, `&>` | not available; see [Redirecting to and from variables](#redirecting-to-and-from-variables) |
-| `$(( … ))`, `${#x}`, `${x:-y}`, `${x%…}` and other parameter operators | not available; `${x-y}` is the only form with an operator; use external commands such as `expr` |
+| `$(( … ))` | different: the ConMa version of ConSh evaluates a subset of JavaScript in it (see [Arithmetic](#arithmetic--and-)); the default Rust version does not have it |
+| `${#x}`, `${x:-y}`, `${x%…}` and other parameter operators | not available; `${x-y}` is the only form with an operator; use `$(( ))` or external commands such as `expr` |
 | `{a,b}` brace expansion | syntax error (`{` and `}` must be quoted) |
 | `` `cmd` ``, `$*`, `~` | not special: they stay as they are |
 | `local`, `read`, `set`, `shift`, `source`, `test`/`[` as builtins, aliases, arrays | not builtins; `[` and `test` work as the external commands |
@@ -332,6 +333,28 @@ kill $!; wait $!; echo "status $?"        # -> status 143
 ```
 
 There is no `fg`, `bg` or `jobs`. A background job shares standard input with the shell (Bash gives it `/dev/null`).
+
+## Arithmetic: `(( ))` and `$(( ))`
+
+The ConMa version of ConSh (`CONSH_IMPL=conma`; the default Rust version does not have them) evaluates `(( … ))` and `$(( … ))` as **SJS**, a safe subset of JavaScript that is translated to ConMa and run in the VM, not as Bash arithmetic ([js/README-ja.md](js/README-ja.md), [sjs/README-ja.md](sjs/README-ja.md)). The exit status follows Bash: 0 when the value is true, 1 when it is false, and 2 on an error. The differences:
+
+```sh
+echo $(( 7 / 2 ))          # -> 3.5: numbers are JavaScript numbers, not integers
+n=4
+echo $(( $n * 2 ))         # -> 8: write $n to read the shell variable n
+(( m = 1 + 2 ))            # sets the SJS variable m, not the shell variable m
+echo $(( m ))              # -> 3
+echo $m                    # -> consh: …: undefined variable: m
+m=$(( 1 + 2 ))             # sets the shell variable m
+if (( m > 2 )); then echo big; fi
+```
+
+* **Spaces are required** after `((` and before `))`: `$((1+2))` is a syntax error (`expected a space after '(('`).
+* **Assignments set SJS variables.** A bare name such as `m` is an SJS variable, kept apart from the shell variables (and copied into functions, pipelines and `$( )` as they are). Read a shell variable with `$n`, which is read-only in SJS: `(( $n = 5 ))` is an error. To store a value in a shell variable, write `n=$(( … ))`.
+* **Types are checked.** `+` adds numbers only (join strings with a template literal, `` `${a}${b}` ``), and `"a" + 1` is a `TypeError` with `$?` 2. Next to an operator, `$n` is taken as a number when it is written as one, as in Bash.
+* **More than arithmetic.** It is JavaScript: strings, arrays, objects, functions (`(( sum = (a) => … ))`, and `$(( f )) 1 2` calls one as a command), generators, `async`. A value that is not a string goes to a shell variable as itself and reads back as a word or a list.
+* **Errors** show the line and column inside the `(( ))`. An error in `(( ))` sets `$?` to 2 and goes on; an error in `$(( ))` in a word stops the script, as an undefined variable does.
+* `let` and `[[ … ]]` of Bash are not available (`expr` works, as an external command).
 
 ## Idioms for missing features
 
