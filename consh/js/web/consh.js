@@ -13,6 +13,9 @@
 // from the server each time, and the files written (and those that "ファイルを置く" puts) are kept in
 // memory over them until the page is closed. "スクリプトを実行" gives the lines of a script to standard
 // input, as if they were typed (the ConMa version of ConSh has no source).
+// The Content-Security-Policy without 'unsafe-eval' (the same as CSP_NO_EVAL of serve.py)
+const CSP_NO_EVAL = "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'";
+
 (async function () {
   "use strict";
   const out = document.getElementById("out");
@@ -23,6 +26,29 @@
   // absolute path given as ?home= (?home=/ makes it the root)
   const HOME = ServerFS.normalize(new URLSearchParams(location.search).get("home") || "/home/user") || "/home/user";
   const useWorker = typeof Worker !== "undefined" && typeof SharedArrayBuffer !== "undefined" && self.crossOriginIsolated === true;
+
+  // When the server does not turn on js or the SJS of the host (config.json, as consh-core.js reads it),
+  // nothing in the page needs to evaluate a String as code: forbid it, so that eval and Function fail even
+  // if some code reached them (consh/SAFEJS-PLAN-ja.md 5). WebAssembly still compiles ('wasm-unsafe-eval').
+  // serve.py sends the same policy as a header (which also covers the Worker); this <meta> covers the
+  // page on other servers. A policy only adds restrictions, so it is set before ConSh starts
+  await (async function lockEval() {
+    let mode = null;
+    try {
+      const r = await fetch("config.json", { cache: "no-cache" });
+      if (r.ok) {
+        const config = await r.json();
+        if (config !== null && typeof config === "object") mode = config.CONSH_ENABLE_JS;
+      }
+    } catch (e) {
+      // no config.json: js is off
+    }
+    if (mode === "js" || mode === "sjs") return;
+    const meta = document.createElement("meta");
+    meta.httpEquiv = "Content-Security-Policy";
+    meta.content = CSP_NO_EVAL;
+    document.head.appendChild(meta);
+  })();
 
   function show(text, cls) {
     if (text === "") return;

@@ -62,6 +62,8 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
   ```
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
+
+  `config.json` が `js` も `sjs` も使えるようにしていなければ、ページは `eval` と `Function` を使わないので、ブラウザに止めさせる（consh/SAFEJS-PLAN-ja.md の 5）：serve.py は、どの応答にも Content-Security-Policy `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け（Worker にも効く）、ページ（web/consh.js）も、`config.json` を読んだ後、ConSh を動かす前に、同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。WebAssembly は動く（`'wasm-unsafe-eval'`）。そのため、ページの中のスクリプトはファイル（web/boot.js）にした。`config.json` を変えたら、ページを読み直す（serve.py は、ページを 304 でなく、いつも 200 で送るので、新しい設定のポリシーになる）。ほかのサーバーで公開するときは、`js` を使わないなら、このヘッダーを付けるとよい。
 * JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は、ネイティブの VM の ConMa 版では段階 B で動き、Rust 版の ConSh にはない。
 * この設定で守れるのは、主にブラウザ版である。Node.js 版の ConSh は、もともと外部コマンドを起動でき、ファイルも読み書きできるので、`js` を止めても、スクリプトにできることはほとんど減らない。Node.js 版では、信用できないスクリプトを ConSh で動かさないこと。
 

@@ -603,6 +603,13 @@ consh/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段階 B
 - `build.sh` が `vm/frontend.module.se` を `web/` に写し、`serve.py` は、それがないか古いときも `build.sh` を求める。`.gitignore` に足した。
 - `config.json` のないサーバーで、ジェネレータ、`async`、別のコマンドで続けるジェネレータ、エラーの `$?` が、Node.js 版と同じに動くことを確かめた。新しい式は 0.26 秒、前に作った式は 0.15 秒だった（Worker で動かすページ）。
 
+### 3.30. js を使わないときの Content-Security-Policy（2026-11-12）
+
+- consh/SAFEJS-PLAN-ja.md の 5 の「ホストの JavaScript を確実に止める」を作った。`config.json` が `js` も `sjs` も使えるようにしていなければ、serve.py はどの応答にも `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け、web/consh.js も、`config.json` を読んで、ConSh を動かす前に同じものを `<meta>` で入れる。ブラウザが `eval` と `Function` を EvalError にする。WebAssembly のコンパイルは `'wasm-unsafe-eval'` で動く。
+- index.html の中のスクリプト（ほかのスクリプトを `?Date.now()` を付けて読むもの）は、`'unsafe-inline'` を許さないので、web/boot.js にした。
+- 304 の応答は、キャッシュにあるヘッダーを使うので、`config.json` を変えてもページのポリシーが変わらなかった。serve.py は、ページ（`/` と `.html`）を、`If-Modified-Since` と `If-None-Match` を除いて、いつも 200 で送るようにした（スクリプトと Worker は `?Date.now()` で読むので、いつも新しい）。
+- Chrome（Claude の browser pane）で確かめた：`config.json` がなければ、ヘッダーと `<meta>` があり、`eval` と `Function` は EvalError、`(( a = [1, 2, 3].map(v => v * 7) ))`、`$(( a.reduce(...) ))` は動き（段階 B）、`(( null.x ))` のエラーは `stdin:3:9`（段階 B9）、`js` は使えないと出る。`{"CONSH_ENABLE_JS": "js"}` にすると、ポリシーはなく、`eval` も `js` も動く。サーバーを止めずに `config.json` を消して読み直すと、またポリシーが付く。ヘッダーを付けないサーバー（python3 -m http.server。cross-origin isolated でないので、ConSh はページの中で動く）でも、`<meta>` で `eval` が止まり、`$(( ))` は動く。
+
 ## 4. 未解決の点
 
 - JS の値の関数を、`$f 1 2` だけでなく `f 1 2` でも呼べるようにするか。シェルの関数を JavaScript から呼ぶか（2.5 の 9）。

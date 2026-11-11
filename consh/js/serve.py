@@ -7,6 +7,10 @@
   (304 when it has not changed), and a file changed on the disk is seen at once;
 * Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy, so that the page is cross-origin isolated
   and can run the VM in a Worker (web/consh.js).
+* Content-Security-Policy without 'unsafe-eval' (CSP_NO_EVAL), unless web/config.json turns on js or the SJS of
+  the host ({"CONSH_ENABLE_JS": "js"} or "sjs"): then the browser stops eval and Function in the page and in the
+  Worker, which nothing needs when they are off (consh/SAFEJS-PLAN-ja.md 5). The page sets the same policy
+  itself (web/consh.js), for other servers.
 
 It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is
 missing or older than its sources (conma.js, conma.wasm, consh.module.se, frontend.module.se, whose sources include
@@ -24,9 +28,25 @@ import urllib.parse
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
 
+# The same as CSP_NO_EVAL of web/consh.js: scripts only from this server, WebAssembly allowed, no eval or Function
+CSP_NO_EVAL = "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'"
+
+
+def host_js_enabled():
+    """Whether web/config.json turns on js or the SJS of the host (read at each request, as the page reads it)."""
+    try:
+        with open(os.path.join(WEB, "config.json"), encoding="utf-8") as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return isinstance(config, dict) and config.get("CONSH_ENABLE_JS") in ("js", "sjs")
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache")
+        if not host_js_enabled():
+            self.send_header("Content-Security-Policy", CSP_NO_EVAL)
         # Cross-origin isolated, so that the page can give the Worker of the VM a SharedArrayBuffer
         # (web/consh.js); then a resource of another origin needs CORS or Cross-Origin-Resource-Policy
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
@@ -35,6 +55,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         url = urllib.parse.urlsplit(self.path)
+        # A page is always sent in full (200, not 304), so that the browser takes its Content-Security-Policy
+        # as it is now: a 304 keeps the headers of the copy in the cache, so turning js on or off in config.json
+        # would not change the policy of a page read before (the scripts and the Worker are read with ?Date.now())
+        if url.path.endswith("/") or url.path.endswith(".html"):
+            del self.headers["If-Modified-Since"]
+            del self.headers["If-None-Match"]
         if url.query == "consh-ls":
             path = self.translate_path(url.path)
             if not os.path.isdir(path):

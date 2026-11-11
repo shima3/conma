@@ -269,7 +269,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 
 - **段階 A は安全の境界ではない**：ホストの JavaScript で動かすので、構文解析の確認（3.2）をすり抜けるコードがあれば、ページや Node.js のプロセスの権限で動く。たとえば、名前を見るだけの確認では `[]["constructor"]["constructor"]("任意のコード")()` で `Function` に届く。計算したキーの書き換えと、大域の名前と反射の関数の制限で、知られている抜け道は防ぐが、なくなったとは証明できない。そのため、段階 A の間は、consh/js/README-ja.md のセキュリティの注意をそのまま残す。
 - **段階 B で安全になる**：SJS のプログラムが呼べるのは、変換器が出したコードと、実行時の支えのライブラリだけである。変換器は、`__OS_*__`、`__JS_call__`、`__VProc_spawn__` などを出さない。SJS からシェル関数は呼べない（2.2 の 5）ので、外とつながるのは、引数と戻り値、SJS変数、`console.log` だけである。
-- **ホストの JavaScript を確実に止める**：段階 B の後、`js` を使わないサーバでは、Content-Security-Policy で `'unsafe-eval'` を許さなければ（WebAssembly のための `'wasm-unsafe-eval'` だけを許す）、ブラウザが `Function` と `eval` を止める。段階 A の SJS もホストの `Function` を使うので、それまでは使えない。段階 B6 で、ブラウザ版の `(( ))` も段階 B になったので、`js` を使わないサーバでは、この CSP を付けられる（まだ付けていない。段階 A への戻り（モジュールを作れないとき）は、`CONSH_ENABLE_JS` がなければ起きない）。
+- **ホストの JavaScript を確実に止める**：段階 B の後、`js` を使わないサーバでは、Content-Security-Policy で `'unsafe-eval'` を許さなければ（WebAssembly のための `'wasm-unsafe-eval'` だけを許す）、ブラウザが `Function` と `eval` を止める。段階 A の SJS もホストの `Function` を使うので、それまでは使えない。段階 B6 で、ブラウザ版の `(( ))` も段階 B になったので、`js` を使わないサーバでは、この CSP を付けられる（段階 A への戻り（モジュールを作れないとき）は、`CONSH_ENABLE_JS` がなければ起きない）。2026-11-12 に付けた：`config.json` が `js` も `sjs` も使えるようにしていなければ、consh/js/serve.py がこの CSP をヘッダーで送り（Worker にも効く）、ページ（web/consh.js）も、ConSh を動かす前に同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。ページの中のスクリプトは web/boot.js にした。ブラウザで、`eval` と `Function` が EvalError になり、`(( ))` と `$(( ))` は動き、`config.json` を `js` にすると、ポリシーがなくなって `js` が動くことを確かめた（serve.py と、ヘッダーを付けない python3 -m http.server の両方）。
 - 終わらないループは、Ctrl-C で止める（ConSh の今の仕組み）。使うメモリと時間の上限は、まだない（7）。
 
 ## 6. 段階

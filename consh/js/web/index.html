@@ -92,9 +92,8 @@
   <button id="intr" type="button" title="Ctrl-C と同じ">中断</button>
 </header>
 <div id="term"><span id="out"></span><input id="line" autocomplete="off" autocapitalize="off" spellcheck="false" disabled aria-label="ConSh への入力"></div>
-<script>
-  // Load the scripts again each time, so that the cache never gives old ones after consh/js/build.sh
-  for (const name of ["conma.js", "serverfs.js", "consh-core.js", "consh.js"]) document.write('<script src="' + name + "?" + Date.now() + '"><\/script>');
-</script>
+<!-- boot.js loads the other scripts. It is a file, not a script in the page, so that a Content-Security-Policy
+     without 'unsafe-inline' can allow it (serve.py, consh.js) -->
+<script src="boot.js"></script>
 </body>
 </html>
