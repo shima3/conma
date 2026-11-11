@@ -876,6 +876,8 @@
       Cat5 testCode lst " ,(" e ") __not__ " ,(testCode)
       Cat5 testCode e " ,(" e "n) ") ,(testCode)
   __String_concat__ e "n" ,(testVal)
+  ;; 残りがあるかは真偽値（Sjs_iter_more、Sjs_aiter_more、__not__）なので、Sjs_truthy を通さない
+  Gen_type_set g testVal "boolean" ,()
   __is_null__ kind ,(assignOnly)
   Gen_loop g cx testCode testVal (,(inner)
     __Dict_new__ ,(idict)

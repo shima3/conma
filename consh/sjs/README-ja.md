@@ -167,6 +167,14 @@ docs/FAST-PLAN-ja.md の F2〜F5 は、言語を変えず、Rust 版と wasm 版
 * **nbody のステップが増えた**：時間の刻み 1 回に 22,065（d9a4e53）から 24,230（今）。言語の残りを足したとき（1cd47cb）に +1,565、レビューで直したとき（e6e81ae）に +600。プロファイルで見ると、`for (const [b1, b2] of pairs)` の配列の分割代入が、JavaScript と同じく繰り返しの手順（`Sjs_iter_open`、`Sjs_iter_next`、`Sjs_iter_close`）で読むようになったこと（前は `Sjs_array_list` で LList にしていた）と、`Sjs_set_index` が凍った配列を確かめるようになったこと（1 回に 32 から 40 ステップ）。同じ VM では、nbody は約 5% 遅くなった。loop と fib のステップは変わらない。
 * **配列の分割代入を添字で読むようにした**：配列の形（`[a, b] = v`）は、`Sjs_pattern_open` で開き、値が配列なら、その配列のまま、要素を添字の文字列で `items` から読む（`Sjs_pattern_next it "1"`。残りは `Sjs_pattern_rest`、閉じるのは `Sjs_pattern_close` で、配列なら何もしない）。配列でなければ（文字列、ジェネレータ）、今までどおり繰り返しの手順。SJS の配列は繰り返しを変えられないので、JavaScript の配列の繰り返しと同じく、読む時の配列の i 番目になる。前は始めに配列全体を LList に写していたので、既定値の式が同じ配列を変えると（`const [a = la.push(8), b] = la`）、Node.js と違っていた（b が undefined。今は 8）。consh/sjs/test/step8 の case6。
 * これで nbody は、時間の刻み 1 回に 21,910 ステップ（d9a4e53 の 22,065 より少ない）、nbody 2000 が 1.927 秒から 1.771 秒になった。loop と fib は分割代入を使わないので変わらない。
+* **配列の添字と算術の確認を軽くした**（nbody のプロファイルで、`Sjs_get_index`、`Sjs_set_index` と `Sjs_array_set`、`Sjs_need2` がステップの約 35%）：
+    * `Sjs_set_index` は、添字の文字列が items にあれば、入れ替えるだけにした（長さも穴も変わらない。負の数と整数でない数は items にないので、その確かめは、items にない添字のとき（`Sjs_set_index_new`）だけ）。凍った配列の確かめは前のまま。1 回に 40 + 25 ステップが 30 ステップ。
+    * `Sjs_need2` は、2 つの型の名前をつないで `"NumberNumber"` と比べる（19 から 17 ステップ。Boolean を関数として呼ぶ形は 21 で、かえって多い）。
+    * `Sjs_get_member` は、オブジェクトの String の名前（`Math.sqrt` など）を、ほかの種類を調べる前に props から引く（48 から 26 ステップ）。
+    * `Sjs_pattern_open` は、`Sjs_kind` の代わりに、Dict で items があるか（配列だけが持つ）を見る。
+    * 変換器：`for...of`、`for...in`、`for await` の「残りがあるか」は真偽値なので、`Sjs_truthy` を通さない。
+* これで nbody は、時間の刻み 1 回に 17,993 ステップ（手で書いた ConMa の 10.2 倍）、nbody 2000 が 1.771 秒から 1.528 秒になった。fib は 1 回の呼び出しに 5,350 から 5,321 ステップ、loop は変わらない。consh/sjs/test/step8 の case7 が、変えた所（添字への代入、凍った配列、オブジェクトの名前、繰り返しの条件）を Node.js と比べる。
+* 残り（nbody）：`main` の手順（Ref の変数、文の行）が約 27%、`Sjs_get_index`（19 ステップ）が 17%、`Sjs_set_index` が 12%、`Sjs_need2` が 11%。定数の添字（`const VX = 3` の `b[VX]`）を変換のときに文字列にすれば、`__Number_toString__` を省けるが、宣言より前に読む場合が変わるので、していない。
 
 ## 変換の形
 

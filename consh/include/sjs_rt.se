@@ -362,9 +362,9 @@
   __Cont_get__ ,(return)
   __type_name__ a ,(ta)
   __type_name__ b ,(tb)
-  __String_equal__ ta "Number" ,(x)
-  __String_equal__ tb "Number" ,(y)
-  __if__ x (,() __if__ y return ,()) ,()
+  __String_concat__ ta tb ,(tt)
+  __String_equal__ tt "NumberNumber" ,(both)
+  __if__ both return ,()
   Sjs_need op a ,()
   Sjs_need op b)
 
@@ -1291,6 +1291,9 @@
 (define Sjs_get_member ,(G o key)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
+  ;; オブジェクトの名前（o.name。Math.sqrt など）は、props をそのまま引く
+  __String_equal__ kind "object" ,(test__) __if__ test__
+    (,() __type_name__ key ,(kt) __String_equal__ kt "String" ,(test__) __if__ test__ (,() Sjs_obj_get o key ,(v) return v) ,()) ,()
   ;; 配列の添字（いちばん多い）は、キーを文字列にせずに読む。数のキーは、そのまま items を引く
   ;; （整数でない数と負の数は、items にないので undefined になる）
   __String_equal__ kind "array" ,(test__) __if__ test__
@@ -3301,6 +3304,14 @@
   __Dict_lookup_or__ o "items" (,(k) Sjs_set_member G o i v ,() return) ,(items)
   __Dict_lookup_or__ o "frozen" (,(k) __NULL__ __FALSE__) ,(frozen)
   __if__ frozen return ,()
+  __Number_toString__ i ,(ks)
+  ;; すでにある添字なら、入れ替えるだけ（長さも穴も変わらない。負の数と整数でない数は items にない）
+  __Dict_lookup_or__ items ks (,(k) Sjs_set_index_new G o i v ,() return) ,(old)
+  __Dict_put__ items ks v)
+
+;; Sjs_set_index の、items にない添字：0 以上の整数なら Sjs_array_set（長さを延ばす）、ほかは Sjs_set_member
+(define Sjs_set_index_new ,(G o i v)
+  __Cont_get__ ,(return)
   __Number_is_negative__ i ,(neg)
   __if__ neg (,() Sjs_set_member G o i v ,() return) ,()
   __Number_floor__ i ,(f)
@@ -3335,9 +3346,12 @@
 ;; 変えられないので、JavaScript の配列の繰り返しと同じく、その時の配列の i 番目と、その時の長さまでの残りになる
 (define Sjs_pattern_open ,(v)
   __Cont_get__ ,(return)
-  Sjs_kind v ,(kind)
-  __String_equal__ kind "array" ,(test__) __if__ test__ (,() return v) ,()
-  Sjs_iter_open v)
+  __type_name__ v ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d (,() Sjs_iter_open v ,(it) return it) ,()
+  ;; items があるのは配列だけ
+  __Dict_lookup_or__ v "items" (,(k) Sjs_iter_open v ,(it) return it) ,(items)
+  __NULL__ v)
 
 ;; key 番目（添字の文字列）の要素。繰り返しの手順なら次の値（なければ undefined）
 (define Sjs_pattern_next ,(it key)
