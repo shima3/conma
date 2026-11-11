@@ -92,7 +92,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -142,9 +142,79 @@
   __if_then_else__ n (,() __NULL__ "\\n") (,()
   __if_then_else__ t (,() __NULL__ "\\t") (,()
   __if_then_else__ r (,() __NULL__ "\\r") (,()
-  __if_then_else__ control (,() Gen_not_yet "a control character in a string") (,() __NULL__ c)))))) ,(e)
+  __if_then_else__ control (,() Gen_error "a control character in Gen_quote") (,() __NULL__ c)))))) ,(e)
   __String_concat__ acc e ,(acc)
   Gen_quote_chars rest acc)
+
+;; SJS の文字列の値 s の被演算子。ConMa の文字列のリテラルに書けない制御文字（\n、\t、\r のほか）があれば、
+;; プログラムの始めに文字の番号から作る定数にする
+(define Gen_str ,(g s)
+  __Cont_get__ ,(return)
+  Sjs_chars s ,(chars)
+  Gen_has_control chars ,(ctl)
+  __unless__ ctl (,() Gen_quote s ,(q) return q) ,()
+  __String_concat__ "str:" s ,(key)
+  __Dict_lookup_or__ g "consts" __print_exit_error__ ,(consts)
+  __Dict_lookup_or__ consts key (,(k) __NULL__ __NULL__) ,(known)
+  __is_null__ known ,(test__) __unless__ test__ (,() return known) ,()
+  Gen_temp g "k" ,(k)
+  __Dict_put__ consts key k ,()
+  Gen_temp g "s" ,(v)
+  Cat3 "__NULL__ \"\" ,(" v ") " ,(code)
+  Gen_str_code g chars "" code v ,(code v)
+  __Dict_lookup_or__ g "constCode" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(cc)
+  Cat5 cc code "__NULL__ " v " ,(" ,(cc)
+  Cat3 cc k ") " ,(cc)
+  __Ref_set__ ref cc ,()
+  __NULL__ k)
+
+;; 制御文字（\n、\t、\r のほか）か
+(define Gen_is_control ,(c)
+  __Cont_get__ ,(return)
+  __String_equal__ c "\n" ,(n)
+  __String_equal__ c "\t" ,(t)
+  __String_equal__ c "\r" ,(r)
+  __or__ n t ,(x)
+  __or__ x r ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __String_toCode__ __print_exit_error__ c ,(code)
+  __Number_fromString__ __print_exit_error__ "32" ,(space)
+  __Number_subtract__ code space ,(d)
+  __Number_is_negative__ d)
+
+(define Gen_has_control ,(chars)
+  __Cont_get__ ,(return)
+  __is_null__ chars ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  Gen_is_control c ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Gen_has_control rest)
+
+;; 文字を v の後につなぐ手順。run は、まだつないでいない制御文字でない文字
+(define Gen_str_code ,(g chars run code v)
+  __Cont_get__ ,(return)
+  __NULL__ (,(code v)
+    __Cont_get__ ,(ret)
+    __String_equal__ run "" ,(test__) __if__ test__ (,() ret code v) ,()
+    Gen_quote run ,(q)
+    Gen_temp g "s" ,(v2)
+    Cat5 code "__String_concat__ " v " " q ,(code)
+    Cat3 code " ,(" v2 ,(code)
+    __String_concat__ code ") " ,(code)
+    __NULL__ code v2) ,(flush)
+  __is_null__ chars ,(test__) __if__ test__ (,() flush code v ,(c x) return c x) ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  Gen_is_control c ,(ctl)
+  __unless__ ctl (,() __String_concat__ run c ,(run) Gen_str_code g rest run code v ,(c2 x) return c2 x) ,()
+  flush code v ,(code v)
+  __String_toCode__ __print_exit_error__ c ,(n)
+  __Number_toString__ n ,(ns)
+  Gen_temp g "s" ,(ch)
+  Gen_temp g "s" ,(v2)
+  Cat4 code "__Number_fromString__ __print_exit_error__ \"" ns "\" ,(" ,(code)
+  Cat5 code ch ") __String_fromCode__ __print_exit_error__ " ch " ,(" ,(code)
+  Cat5 code ch ") __String_concat__ " v " " ,(code)
+  Cat5 code ch " ,(" v2 ") " ,(code)
+  Gen_str_code g rest "" code v2)
 
 ;; 文字列をつなぐ（a b c ...）
 (define Cat3 ,(a b c)
@@ -209,7 +279,13 @@
   __String_equal__ t "empty" ,(isEmpty)
   __or__ isBlock isEmpty ,(test__) __if__ test__ (,() Gen_stmt_body g scope s cx ,(c) return c) ,()
   ;; for...of の終わりに、繰り返しの手順を閉じる（Gen_forof。行は記録しない）
-  __String_equal__ t "iterclose" ,(test__) __if__ test__ (,() Sjs_get s "it" ,(it) Cat3 "Sjs_iter_close " it " ,() " ,(c) return c) ,()
+  __String_equal__ t "iterclose" ,(test__) __if__ test__
+    (,()
+      Sjs_get s "it" ,(it)
+      __Dict_lookup_or__ s "await" (,(k) __NULL__ __FALSE__) ,(isAwait)
+      __if_then_else__ isAwait (,() __NULL__ "Sjs_aiter_close ") (,() __NULL__ "Sjs_iter_close ") ,(f)
+      Cat3 f it " ,() " ,(c)
+      return c) ,()
   __Dict_lookup_or__ s "line" (,(k) __NULL__ "") ,(line)
   Gen_quote line ,(q)
   ;; 文の中の呼び出しは、戻った後に、この文の行を記録し直す（呼ばれた関数の文が、行を変えるので）
@@ -280,6 +356,11 @@
       __is_null__ value ,(none)
       __if__ none (,() Gen_jump cx "ret" "__NULL__" ,(c) return c) ,()
       Gen_expr g scope value ,(code val)
+      ;; async ジェネレータの return v は、v を await する
+      __Dict_lookup_or__ g "asyncGen" (,(k) __NULL__ __FALSE__) ,(inAsyncGen)
+      __if_then_else__ inAsyncGen
+        (,() Gen_temp g "t" ,(w) Cat5 code "Sjs_await " val " ,(" w ,(code) __String_concat__ code ") " ,(code) __NULL__ code w)
+        (,() __NULL__ code val) ,(code val)
       Gen_jump cx "ret" val ,(j)
       __String_concat__ code j ,(c)
       return c) ,()
@@ -439,7 +520,7 @@
   Sjs_get prop "computed" ,(computed)
   __is_null__ computed ,(static)
   __if_then_else__ static
-    (,() Sjs_get prop "key" ,(key) Gen_quote key ,(q) __NULL__ "" q)
+    (,() Sjs_get prop "key" ,(key) Gen_str g key ,(q) __NULL__ "" q)
     (,()
       Gen_expr g scope computed ,(kc kv)
       Gen_temp g "k" ,(k)
@@ -727,6 +808,8 @@
   ;; 抜けると、ジェネレータの return() を呼ぶ）。中のループは、開いた手順（"iterVar"）を使う
   Sjs_get s "of" ,(ofWord)
   __String_equal__ ofWord "of" ,(isOfLoop)
+  ;; for await：Sjs_aiter_open、Sjs_aiter_more（次の値を await する）、Sjs_aiter_close（return() を await する）
+  __Dict_lookup_or__ s "await" (,(k) __NULL__ __FALSE__) ,(isAwait)
   __Dict_lookup_or__ s "iterVar" (,(k) __NULL__ __NULL__) ,(given)
   __is_null__ given ,(fresh)
   __and__ isOfLoop fresh ,(test__) __if__ test__
@@ -741,6 +824,7 @@
       __Dict_put__ block "body" bodyStmts ,()
       Sjs_node "iterclose" ,(close)
       __Dict_put__ close "it" it ,()
+      __Dict_put__ close "await" isAwait ,()
       __LList_cons__ close __NULL__ ,(finStmts)
       Sjs_node "block" ,(fin)
       __Dict_put__ fin "body" finStmts ,()
@@ -750,7 +834,8 @@
       __Dict_put__ t "handler" __NULL__ ,()
       __Dict_put__ t "finalizer" fin ,()
       Gen_try g scope t cx ,(tc)
-      Cat5 rc "Sjs_iter_open " rv " ,(" it ,(c)
+      __if_then_else__ isAwait (,() __NULL__ "Sjs_aiter_open G ") (,() __NULL__ "Sjs_iter_open ") ,(open)
+      Cat5 rc open rv " ,(" it ,(c)
       Cat3 c ") " tc ,(c)
       return c) ,()
   Sjs_get s "kind" ,(kind)
@@ -773,8 +858,9 @@
       Cat5 c ") __Ref_new__ " lst " ,(" list ,(c)
       __String_concat__ c ") ") ,(c)
   ;; 条件：残りがあるか。あれば取り出して進める
+  __if_then_else__ isAwait (,() __NULL__ "Sjs_aiter_more ") (,() __NULL__ "Sjs_iter_more ") ,(more)
   __if_then_else__ isOf
-    (,() Cat5 "Sjs_iter_more " list " ,(" e "n) ")
+    (,() Cat5 more list " ,(" e "n) ")
     (,()
       Cat5 "__Ref_get__ " list " ,(" lst ") __is_null__ " ,(testCode)
       Cat5 testCode lst " ,(" e ") __not__ " ,(testCode)
@@ -912,6 +998,7 @@
     (,()
       Sjs_get s "name" ,(name)
       __LList_cons__ name __NULL__ ,(names)
+      Gen_check_redeclare scope names __FALSE__ ,()
       Gen_hoist_names g scope names __FALSE__ acc ,(acc)
       Gen_hoist g scope rest acc ,(c)
       return c) ,()
@@ -929,8 +1016,29 @@
   __LList_uncons__ __print_exit_error__ decls ,(d rest)
   Sjs_get d "target" ,(target)
   Gen_pattern_names target __NULL__ ,(names)
+  Gen_check_redeclare scope names __TRUE__ ,()
   Gen_hoist_names g scope names isConst acc ,(acc)
   Gen_hoist_decls g scope rest isConst acc)
+
+;; 同じブロック（関数の本体なら引数も）で、let と const の名前は、ほかの宣言と重なれば SyntaxError。関数の宣言は、
+;; let と const と重なれば SyntaxError（関数の宣言どうしと、引数とは重なってよい。JavaScript のスクリプトと同じ）。
+;; lexical は、names が let か const の名前か。そうなら "lex:名前" を印にする
+(define Gen_check_redeclare ,(scope names lexical)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __LList_uncons__ __print_exit_error__ scope ,(dict outer)
+  __String_concat__ "lex:" name ,(lk)
+  __Dict_lookup_or__ dict lk (,(k) __NULL__ __FALSE__) ,(lex)
+  __if_then_else__ lexical
+    (,() __Dict_lookup_or__ dict name (,(k) __NULL__ __NULL__) ,(old) __is_null__ old ,(none) __not__ none ,(had) __or__ had lex)
+    (,() __NULL__ lex) ,(clash)
+  __if__ clash
+    (,()
+      Cat3 "Identifier '" name "' has already been declared" ,(msg)
+      Gen_error msg) ,()
+  __if__ lexical (,() __Dict_put__ dict lk __TRUE__) ,()
+  Gen_check_redeclare scope rest lexical)
 
 ;; 名前を宣言して、それぞれの Ref を作る手順
 (define Gen_hoist_names ,(g scope names isConst acc)
@@ -961,7 +1069,7 @@
   __String_equal__ t "num" ,(test__) __if__ test__
     (,() Sjs_get e "text" ,(text) Gen_const g text ,(v) return "" v) ,()
   __String_equal__ t "str" ,(test__) __if__ test__
-    (,() Sjs_get e "value" ,(value) Gen_quote value ,(q) return "" q) ,()
+    (,() Sjs_get e "value" ,(value) Gen_str g value ,(q) return "" q) ,()
   __String_equal__ t "lit" ,(test__) __if__ test__
     (,()
       Sjs_get e "text" ,(text)
@@ -985,6 +1093,7 @@
   __String_equal__ t "array" ,(test__) __if__ test__ (,() Gen_array g scope e ,(c v) return c v) ,()
   __String_equal__ t "object" ,(test__) __if__ test__ (,() Gen_object g scope e ,(c v) return c v) ,()
   __String_equal__ t "template" ,(test__) __if__ test__ (,() Gen_template g scope e ,(c v) return c v) ,()
+  __String_equal__ t "tagged" ,(test__) __if__ test__ (,() Gen_tagged g scope e ,(c v) return c v) ,()
   __String_equal__ t "yield" ,(test__) __if__ test__ (,() Gen_yield g scope e ,(c v) return c v) ,()
   __String_equal__ t "seq" ,(test__) __if__ test__ (,() Sjs_get e "exprs" ,(exprs) Gen_seq g scope exprs "" ,(c v) return c v) ,()
   __String_equal__ t "await" ,(test__) __if__ test__
@@ -1311,7 +1420,7 @@
   Sjs_get prop "computed" ,(computed)
   __is_null__ computed ,(static)
   __if_then_else__ static
-    (,() Sjs_get prop "key" ,(key) Gen_quote key ,(q) __NULL__ "" q key)
+    (,() Sjs_get prop "key" ,(key) Gen_str g key ,(q) __NULL__ "" q key)
     (,()
       Gen_expr g scope computed ,(kc kv)
       Gen_temp g "k" ,(k)
@@ -1333,7 +1442,7 @@
   Sjs_get e "parts" ,(parts)
   Sjs_get e "exprs" ,(exprs)
   __LList_uncons__ __print_exit_error__ parts ,(first rest)
-  Gen_quote first ,(q)
+  Gen_str g first ,(q)
   Gen_temp g "s" ,(acc)
   Cat5 "__NULL__ " q " ,(" acc ") " ,(code)
   Gen_template_rest g scope rest exprs code acc)
@@ -1347,13 +1456,85 @@
   Gen_temp g "s" ,(s)
   Gen_temp g "s" ,(a1)
   Gen_temp g "s" ,(a2)
-  Gen_quote part ,(q)
+  Gen_str g part ,(q)
   Cat5 code ec "Sjs_to_string " ev " ,(" ,(code)
   Cat5 code s ") __String_concat__ " acc " " ,(code)
   Cat5 code s " ,(" a1 ") __String_concat__ " ,(code)
   Cat5 code a1 " " q " ,(" ,(code)
   Cat3 code a2 ") " ,(code)
   Gen_template_rest g scope moreParts moreExprs code a2)
+
+;; タグ付きテンプレート tag`...`：tag を (中身の配列 式の値...) で呼ぶ。中身の配列は、書いた所ごとに 1 つで、
+;; プログラムの始めに作る（JavaScript と同じく、同じ所なら同じ配列）。o.m`...` は、メソッドの呼び出し
+(define Gen_tagged ,(g scope e)
+  __Cont_get__ ,(return)
+  Sjs_get e "tag" ,(tag)
+  Sjs_get e "quasi" ,(q)
+  Sjs_get q "parts" ,(parts)
+  Sjs_get q "raws" ,(raws)
+  Sjs_get q "exprs" ,(exprs)
+  Gen_strings_const g parts raws ,(k)
+  Gen_temp g "t" ,(v)
+  Sjs_get tag "t" ,(tt)
+  __String_equal__ tt "member" ,(isMember)
+  __Dict_lookup_or__ tag "optional" (,(x) __NULL__ __FALSE__) ,(opt)
+  __not__ opt ,(plain)
+  __and__ isMember plain ,(test__) __if__ test__
+    (,()
+      Sjs_get tag "object" ,(object)
+      Gen_expr g scope object ,(oc ov)
+      Gen_key g scope tag ,(kc kv)
+      Gen_args g scope exprs ,(ac list)
+      Gen_temp g "l" ,(l)
+      Cat5 oc kc ac "__LList_cons__ " k ,(c)
+      Cat5 c " " list " ,(" l ,(c)
+      Cat5 c ") Sjs_call_member G " ov " " kv ,(c)
+      Cat5 c " " l " ,(" v ,(c)
+      __String_concat__ c ") " ,(c)
+      Gen_line_again g ,(again)
+      __String_concat__ c again ,(c)
+      return c v) ,()
+  Gen_expr g scope tag ,(fc fv)
+  Gen_args g scope exprs ,(ac list)
+  Gen_temp g "l" ,(l)
+  Cat5 fc ac "__LList_cons__ " k " " ,(c)
+  Cat5 c list " ,(" l ") " ,(c)
+  Cat5 c "Sjs_call " fv " " l ,(c)
+  Cat3 c " ,(" v ,(c)
+  __String_concat__ c ") " ,(c)
+  Gen_line_again g ,(again)
+  __String_concat__ c again ,(c)
+  __NULL__ c v)
+
+;; タグ付きテンプレートの中身の配列を作る手順を、定数の手順に足す。その変数名
+(define Gen_strings_const ,(g parts raws)
+  Gen_temp g "k" ,(k)
+  Gen_string_list g parts ,(pc pv)
+  Gen_string_list g raws ,(rc rv)
+  __Dict_lookup_or__ g "constCode" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(code)
+  Cat3 code pc rc ,(code)
+  Cat5 code "Sjs_template_strings G " pv " " rv ,(code)
+  Cat3 code " ,(" k ,(code)
+  __String_concat__ code ") " ,(code)
+  __Ref_set__ ref code ,()
+  __NULL__ k)
+
+;; 文字列の LList を作る手順と、その変数名
+(define Gen_string_list ,(g strs)
+  Sjs_reverse strs ,(rev)
+  Gen_string_list_rev g rev "" "__NULL__")
+
+(define Gen_string_list_rev ,(g rev code l)
+  __Cont_get__ ,(return)
+  __is_null__ rev ,(test__) __if__ test__ (,() return code l) ,()
+  __LList_uncons__ __print_exit_error__ rev ,(str rest)
+  Gen_str g str ,(q)
+  Gen_temp g "l" ,(l2)
+  Cat5 code "__LList_cons__ " q " " l ,(code)
+  Cat3 code " ,(" l2 ,(code)
+  __String_concat__ code ") " ,(code)
+  Gen_string_list_rev g rest code l2)
 
 ;; 代入。名前か、メンバー（o.名前 = v、o[k] = v。o とキーは 1 回だけ求める）
 (define Gen_assign ,(g scope e)
@@ -1596,6 +1777,12 @@
   __LList_cons__ dict scope ,(inner)
   Gen_temp g "args" ,(args)
   Gen_params g inner params args "" ,(bind)
+  ;; 本体の yield が、async ジェネレータのもの（Sjs_ag_yield）か
+  __Dict_lookup_or__ e "gen" (,(k) __NULL__ __FALSE__) ,(isGen)
+  __Dict_lookup_or__ e "async" (,(k) __NULL__ __FALSE__) ,(isAsync)
+  __and__ isGen isAsync ,(isAsyncGen)
+  __Dict_lookup_or__ g "asyncGen" (,(k) __NULL__ __FALSE__) ,(savedAsyncGen)
+  __Dict_put__ g "asyncGen" isAsyncGen ,()
   __is_null__ body ,(concise)
   __if_then_else__ concise
     (,() Gen_expr g inner expr ,(c v) Cat4 c "return " v " ,() ")
@@ -1607,17 +1794,17 @@
       Gen_cx_with fcx "retH" h ,(fcx)
       Gen_block_code g inner stmts fcx ,(code)
       Cat4 "Sjs_handlers ,(" h ") " code) ,(bodyCode)
+  __Dict_put__ g "asyncGen" savedAsyncGen ,()
   Gen_temp g "t" ,(v)
   Gen_quote name ,(qn)
   ;; ジェネレータ：呼び出しは引数を入れてジェネレータのオブジェクトを返し、本体は、next で動かす thunk にする
-  ;; async 関数も同じ形で、本体の thunk を Sjs_async に渡す（結果は Promise）
-  __Dict_lookup_or__ e "gen" (,(k) __NULL__ __FALSE__) ,(isGen)
-  __Dict_lookup_or__ e "async" (,(k) __NULL__ __FALSE__) ,(isAsync)
+  ;; async 関数も同じ形で、本体の thunk を Sjs_async に渡す（結果は Promise）。async ジェネレータは Sjs_async_generator
   __or__ isGen isAsync ,(wrapped)
   __if__ wrapped
     (,()
       Gen_temp g "gen" ,(gv)
-      __if_then_else__ isAsync (,() __NULL__ "Sjs_async G (,() __Cont_get__ ,(return) ") (,() __NULL__ "Sjs_generator G (,() __Cont_get__ ,(return) ") ,(head)
+      __if_then_else__ isAsyncGen (,() __NULL__ "Sjs_async_generator G (,() __Cont_get__ ,(return) ") (,()
+      __if_then_else__ isAsync (,() __NULL__ "Sjs_async G (,() __Cont_get__ ,(return) ") (,() __NULL__ "Sjs_generator G (,() __Cont_get__ ,(return) ")) ,(head)
       Cat3 head bodyCode "return __NULL__) ,(" ,(gc)
       Cat5 gc gv ") return " gv " " ,(bodyCode)
       Cat5 "Sjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)
@@ -1668,7 +1855,10 @@
   Gen_temp g "t" ,(v)
   __is_null__ arg ,(none)
   __if_then_else__ none (,() __NULL__ "" "__NULL__") (,() Gen_expr g scope arg) ,(c a)
-  __if_then_else__ delegate (,() __NULL__ "Sjs_yield_star ") (,() __NULL__ "Sjs_yield ") ,(f)
+  __Dict_lookup_or__ g "asyncGen" (,(k) __NULL__ __FALSE__) ,(inAsyncGen)
+  __if_then_else__ inAsyncGen
+    (,() __if_then_else__ delegate (,() __NULL__ "Sjs_ag_yield_star G ") (,() __NULL__ "Sjs_ag_yield "))
+    (,() __if_then_else__ delegate (,() __NULL__ "Sjs_yield_star ") (,() __NULL__ "Sjs_yield ")) ,(f)
   Cat5 c f a " ,(" v ,(c)
   __String_concat__ c ") " ,(c)
   __NULL__ c v)

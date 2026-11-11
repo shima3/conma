@@ -18,5 +18,5 @@ echo "status $?"
 s=abc
 (( $s + 1 ))
 echo "status $?"
-(( async function* () {} ))
+(( "a" in { a: 1 } ))
 echo "status $?"

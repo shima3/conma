@@ -3,7 +3,8 @@
 
 ;; 字句は LList (種類 テキスト 改行 行) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、
 ;; "punct"、"eof"、テンプレート文字列の部分（テキストは逃がしを解いた中身）の "template"（`...` 全体）、
-;; "tmplhead"（` から ${ まで）、"tmplmid"（} から ${ まで）、"tmpltail"（} から ` まで）。改行は、前に改行
+;; "tmplhead"（` から ${ まで）、"tmplmid"（} から ${ まで）、"tmpltail"（} から ` まで）。テンプレートの部分の字句は、
+;; 5 番目に、逃がしを解かない中身（タグ付きテンプレートの raw）を持つ。改行は、前に改行
 ;; （コメントの中も）があったか（真偽値）、行は、字句の始まりの行の番号（String）。正規表現は読まない（SJS の範囲の外）
 (define Sjs_lex ,(text)
   Sjs_chars text ,(chars)
@@ -16,6 +17,16 @@
   __LList_cons__ nl l ,(l)
   __LList_cons__ text l ,(l)
   __LList_cons__ kind l)
+
+(define Tok_raw ,(tok)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ tok ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(text rest)
+  __LList_uncons__ __print_exit_error__ rest ,(nl rest)
+  __LList_uncons__ __print_exit_error__ rest ,(line rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() return text) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(raw rest)
+  __NULL__ raw)
 
 (define Tok_kind ,(tok)
   __LList_uncons__ __print_exit_error__ tok ,(kind rest)
@@ -62,6 +73,19 @@
     __Number_add__ line lines ,(next)
     Sjs_lex_loop rest acc __FALSE__ stack next ,(t)
     return t) ,(emit)
+  ;; テンプレートの部分の字句を足して続ける（start は ` か } の後の文字）
+  __NULL__ (,(kind text start rest stack lines)
+    Sjs_lex_raw start "" ,(raw)
+    __Number_toString__ line ,(ls)
+    __LList_cons__ raw __NULL__ ,(tok)
+    __LList_cons__ ls tok ,(tok)
+    __LList_cons__ nl tok ,(tok)
+    __LList_cons__ text tok ,(tok)
+    __LList_cons__ kind tok ,(tok)
+    __LList_cons__ tok acc ,(acc)
+    __Number_add__ line lines ,(next)
+    Sjs_lex_loop rest acc __FALSE__ stack next ,(t)
+    return t) ,(emitT)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   ;; 空白と改行
@@ -93,9 +117,10 @@
   ;; テンプレート文字列：` から、` か ${ まで
   __String_equal__ c "`" ,(test__) __if__ test__
     (,()
+      __NULL__ rest ,(start)
       Sjs_lex_template rest "" zero ,(text open rest lines)
       __if_then_else__ open (,() __LList_cons__ "T" stack ,(s) __NULL__ "tmplhead" s) (,() __NULL__ "template" stack) ,(kind stack)
-      emit kind text rest stack lines) ,()
+      emitT kind text start rest stack lines) ,()
   ;; { と }。テンプレートの ${ を閉じる } なら、テンプレートの続きを読む
   __String_equal__ c "{" ,(test__) __if__ test__
     (,() __LList_cons__ "{" stack ,(stack) emit "punct" "{" rest stack zero) ,()
@@ -105,9 +130,10 @@
       __LList_uncons__ __print_exit_error__ stack ,(top below)
       __String_equal__ top "T" ,(inTemplate)
       __unless__ inTemplate (,() emit "punct" "}" rest below zero) ,()
+      __NULL__ rest ,(start)
       Sjs_lex_template rest "" zero ,(text open rest lines)
       __if_then_else__ open (,() __NULL__ "tmplmid" stack) (,() __NULL__ "tmpltail" below) ,(kind stack)
-      emit kind text rest stack lines) ,()
+      emitT kind text start rest stack lines) ,()
   ;; 名前
   Sjs_is_ident_start c ,(test__) __if__ test__
     (,() Sjs_lex_ident chars "" ,(text rest) emit "id" text rest stack zero) ,()
@@ -141,6 +167,37 @@
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __if_then_else__ newline (,() __Number_add__ lines one) (,() __NULL__ lines) ,(lines)
   Sjs_lex_template rest acc lines)
+
+;; テンプレートの部分の逃がしを解かない中身（` か ${ の前まで。\r\n と \r は \n にする）
+(define Sjs_lex_raw ,(chars acc)
+  __Cont_get__ ,(return)
+  __is_null__ chars ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  __String_equal__ c "`" ,(test__) __if__ test__ (,() return acc) ,()
+  Sjs_peek_char rest ,(d)
+  __String_equal__ c "$" ,(dollar)
+  __String_equal__ d "{" ,(brace)
+  __and__ dollar brace ,(test__) __if__ test__ (,() return acc) ,()
+  __String_equal__ c "\\" ,(test__) __if__ test__
+    (,()
+      __is_null__ rest ,(test__) __if__ test__ (,() return acc) ,()
+      __LList_uncons__ __print_exit_error__ rest ,(e more)
+      __String_concat__ acc c ,(acc)
+      Sjs_lex_raw_cr e more acc ,(more acc)
+      Sjs_lex_raw more acc ,(r)
+      return r) ,()
+  Sjs_lex_raw_cr c rest acc ,(rest acc)
+  Sjs_lex_raw rest acc)
+
+;; c を足す。\r なら \n にし、続く \n を飛ばす
+(define Sjs_lex_raw_cr ,(c rest acc)
+  __Cont_get__ ,(return)
+  __String_equal__ c "\r" ,(cr)
+  __unless__ cr (,() __String_concat__ acc c ,(acc) return rest acc) ,()
+  __String_concat__ acc "\n" ,(acc)
+  Sjs_peek_char rest ,(d)
+  __String_equal__ d "\n" ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return rest acc) ,()
+  __NULL__ rest acc)
 
 (define Sjs_reverse ,(list)
   Sjs_reverse_onto list __NULL__)
@@ -270,6 +327,21 @@
   __String_equal__ e "r" ,(test__) __if__ test__ (,() return "\r" rest) ,()
   __String_equal__ e "0" ,(test__) __if__ test__
     (,() __Number_fromString__ __print_exit_error__ "0" ,(z) __String_fromCode__ __print_exit_error__ z ,(s) return s rest) ,()
+  __String_equal__ e "b" ,(test__) __if__ test__ (,() Sjs_char_code "8" ,(s) return s rest) ,()
+  __String_equal__ e "f" ,(test__) __if__ test__ (,() Sjs_char_code "12" ,(s) return s rest) ,()
+  __String_equal__ e "v" ,(test__) __if__ test__ (,() Sjs_char_code "11" ,(s) return s rest) ,()
+  __String_equal__ e "x" ,(test__) __if__ test__
+    (,() Sjs_hex_digits rest "2" ,(code rest) __String_fromCode__ __print_exit_error__ code ,(s) return s rest) ,()
+  Sjs_peek_char rest ,(brace)
+  __String_equal__ e "u" ,(isU)
+  __String_equal__ brace "{" ,(isBrace)
+  __and__ isU isBrace ,(test__) __if__ test__
+    (,()
+      Sjs_rest rest ,(rest)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      Sjs_hex_braced rest zero ,(code rest)
+      __String_fromCode__ (,(msg) Sjs_lex_error "a bad \\u{} escape") code ,(s)
+      return s rest) ,()
   __String_equal__ e "u" ,(test__) __if__ test__
     (,()
       Sjs_hex4 rest ,(code rest)
@@ -277,6 +349,21 @@
       return s rest) ,()
   __String_equal__ e "\n" ,(test__) __if__ test__ (,() return "" rest) ,()
   __NULL__ e rest)
+
+;; \u{ の後から } まで（} も読む）の 16 進の数字の値
+(define Sjs_hex_braced ,(chars acc)
+  __Cont_get__ ,(return)
+  __is_null__ chars ,(test__) __if__ test__ (,() Sjs_lex_error "a bad \\u{} escape") ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  __String_equal__ c "}" ,(test__) __if__ test__ (,() return acc rest) ,()
+  __LList_cons__ c __NULL__ ,(one)
+  __Number_fromString__ __print_exit_error__ "1" ,(n)
+  Sjs_hex_loop one n acc ,(acc more)
+  Sjs_hex_braced rest acc)
+
+(define Sjs_char_code ,(n)
+  __Number_fromString__ __print_exit_error__ n ,(code)
+  __String_fromCode__ __print_exit_error__ code)
 
 (define Sjs_hex4 ,(chars)
   Sjs_hex_digits chars "4" ,(n rest)

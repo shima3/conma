@@ -18,7 +18,7 @@ consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
 ├── bench/           段階 B7 の測定：loop.sjs、fib.sjs、nbody.sjs（bench/ と同じ計算）と run.sh
-└── test/            step1〜step6（段階 B1〜B3、B5a、B5b、残りの書き方）の caseN.sjs と caseN.log、run_all.sh、compare.sh
+└── test/            step1〜step7（段階 B1〜B3、B5a、B5b、残りの書き方、言語の残り）の caseN.sjs と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
@@ -96,7 +96,17 @@ consh/include/
 * `for (let i ...)` の本体で `continue` したときも、本体の中で変えた `i` を、ループの変数に写し戻す（前は写し戻さなかった）
 * step6 のログは、Node.js の結果と同じ
 
-まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：async のジェネレータ、タグ付きテンプレート、配列の `length` への代入と、整数でない添字への代入。getter と setter は SJS の範囲の外。
+## 言語の残りを足したもの（2026/11/11）
+
+* タグ付きテンプレート（`` tag`a${x}b` ``）：`tag` を（中身の配列、式の値...）で呼ぶ。中身の配列は `raw`（逃がしを解かない中身の配列。字句の 5 番目に持つ）を持ち、書いた所ごとに 1 つで、プログラムの始めに作る（同じ所なら同じ配列。`Sjs_template_strings`）。`` o.m`...` `` はメソッドの呼び出し。`String.raw` も足した
+* 文字列の逃がし：`\x41`、`\u{1F600}`、`\b`、`\f`、`\v` を足した。ConMa の文字列のリテラルに書けない制御文字は、プログラムの始めに文字の番号から作る定数にする（`Gen_str`。前は not yet translated）。`JSON.stringify` は、制御文字を `\b`、`\f`、`\u00XX` にする
+* 配列の穴とメソッド：`forEach`、`map`、`filter`、`some`、`every`、`reduce`、`indexOf` と `for...in` は穴を飛ばし、`map`、`slice`、`concat`、`reverse` は穴を残す。`find`、`findIndex`、`includes`、`join`、スプレッドと `for...of` は、JavaScript と同じく `undefined` とみる
+* 配列の `length` への代入：短くすれば後ろの要素を消し、長くすれば穴を足す。0 以上 2**32 - 1 以下の整数でなければ `RangeError: Invalid array length`（長さを大きく縮めると、消す添字の数だけかかる）
+* 同じブロック（関数の本体なら引数も、`catch` の本体なら `catch` の変数も）で、`let` と `const` の名前がほかの宣言と重なれば、`SyntaxError: Identifier 'x' has already been declared`（`Gen_check_redeclare`）。関数の宣言どうしと、引数と関数の宣言は、JavaScript のスクリプトと同じく重なってよい
+* async ジェネレータ（`async function*`、`async *m() { }`）と `for await (... of ...)`（async 関数の本体の中）：本体は、`await` も `yield` も止まるジェネレータとして動き（`Sjs_async_generator`）、`yield v` は v を await してから印を出す。`next`、`return`、`throw` は要求を列に入れて Promise を返し、本体が止まっていれば、列の先頭の要求で続ける。`return v` は v を await する。`for await` は、async ジェネレータなら `next()` の結果を、ほかは繰り返しの値を await し、途中で抜けると `return()` を await する（`Sjs_aiter_open` など）。`yield*` は、async ジェネレータなら結果の値をそのまま、ほかは値を await して出す。`typeof` は `"object"`、`String` は `[object AsyncGenerator]`。順序は Node.js と同じ（step7 の case6）
+* step7 のログは、Node.js の結果と同じ（case4 は、Node.js と同じ SyntaxError）
+
+まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：`in` 演算子、配列の整数でない添字への代入（`a.x = 1`、`a[-1] = 1`。実行時のエラー）、整数でも 0.5 でもない指数の `**`。getter と setter は SJS の範囲の外。
 
 ## 段階 B7：測定（2026/11/11）
 
@@ -156,10 +166,8 @@ consh/include/
 * `String(関数)` と、`console.log` に渡した関数は、関数のソースでなく `function () { [native code] }`（段階 A は、書き換えた後のソース）。
 
 * `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
-* ジェネレータ：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない。
-* 同じブロックで同じ名前を 2 度 `let` や `const` で宣言しても、エラーにしない（JavaScript は SyntaxError）。
-* 配列の穴：`forEach`、`map` などのメソッドは、穴を `undefined` の要素として扱う（JavaScript は飛ばし、`map` は穴のまま残す）。
-* Promise：`new Promise`（`new` は SJS の範囲の外）、`Promise.race`、`allSettled`、`any`、`for await`、async のジェネレータはない。受け手のない拒否は、Node.js ではプロセスを終了ステータス 1 で終えるが、ここではメッセージを出して 2 にする。
+* ジェネレータ：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない（async ジェネレータの `yield*` は `next(x)` の `x` だけを渡す）。
+* Promise：`new Promise`（`new` は SJS の範囲の外）、`Promise.race`、`allSettled`、`any` はない。受け手のない拒否は、Node.js ではプロセスを終了ステータス 1 で終えるが、ここではメッセージを出して 2 にする。
 * シェルの値にしたジェネレータのエラーのメッセージに、ConSh の位置が付かない（`consh: sjs: ...`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。
 * 関数を `console.log` に渡すと `[Function (anonymous)]` を出す（Node.js は名前を出すことがある）。
@@ -168,4 +176,4 @@ consh/include/
 
 ## テスト
 
-`consh/sjs/test/step1`（段階 B1）の case1〜case6 と、`step2`（段階 B2）の case1〜case7 は、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの行の前置きを除く）。step1 の case7 は、まだ変換しない書き方のエラー。ConSh の `(( ))` は、consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）で確かめる。
+`consh/sjs/test/step1`（段階 B1）の case1〜case6 と、`step2`（段階 B2）の case1〜case7 は、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの行の前置きを除く）。step1 の case7 は、まだ変換しない書き方（`in` 演算子）のエラー。step4〜step7 は段階 A にない書き方なので、Node.js の結果と比べた。ConSh の `(( ))` は、consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）で確かめる。

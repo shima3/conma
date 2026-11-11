@@ -1,0 +1,2 @@
+sjs: SyntaxError: Identifier 'p' has already been declared
+exit: 2

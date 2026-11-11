@@ -1,0 +1,9 @@
+sum: 60
+first: 10, second: 20, done: true
+typeof object, [object AsyncGenerator]
+a\tb2 x|y| 1,2
+3 [1,3]
+[1]
+consh: case6.sh:13:1: sjs: SyntaxError: Identifier 'z' has already been declared
+status 2
+exit: 0

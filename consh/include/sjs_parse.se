@@ -6,13 +6,14 @@
 ;;   member（"object" と、"name"（.名前）か "key"（[式]）、"optional"（?.））、
 ;;   arrow と function（"params" は名前の LList、"body" はブロックか、"expr" は式。function は "name" も）、
 ;;   array（"items"）、object（"props"。各要素は "key"（String）か "computed"（式）、"value"）、
-;;   template（"parts" は文字列の LList、"exprs" は式の LList。parts は exprs より 1 つ多い）
+;;   template（"parts" は文字列の LList、"raws" は逃がしを解かない文字列の LList、"exprs" は式の LList。parts は exprs より
+;;   1 つ多い）、tagged（"tag" と "quasi"（template））
 ;; 文：block（"body"）、empty、decl（"kind" "decls"。decls は "name" と "init" を持つ Dict の LList）、
 ;;   if（"test" "yes" "no"）、while（"test" "body"）、for（"init" "test" "update" "body"）、
-;;   forof（"kind"（let、const、var か null）"name" "of"（of か in）"right" "body"）、break、continue、
+;;   forof（"kind"（let、const、var か null）"name" "of"（of か in）"right" "body"、for await なら "await"）、break、continue、
 ;;   return（"value"）、throw（"value"）、try（"body" "param" "handler" "finalizer"）、expr（"expr"）、program（"body"）。
 ;;   文の節は "line"（始まりの行の String）も持つ
-;; まだ読まない書き方（配列の穴、ラベルなど）は、「not yet translated」のエラーにする。
+;; まだ読まない書き方は、「not yet translated」のエラーにする。
 ;; sjs_lex.se を使う
 
 (define Sjs_parse ,(text)
@@ -1018,7 +1019,15 @@
   Tok_kind tok ,(kind)
   __String_equal__ kind "template" ,(t1)
   __String_equal__ kind "tmplhead" ,(t2)
-  __or__ t1 t2 ,(test__) __if__ test__ (,() P_not_yet "tagged templates") ,()
+  __or__ t1 t2 ,(test__) __if__ test__
+    (,()
+      ;; タグ付きテンプレート：e`...`
+      P_primary p ,(q)
+      Sjs_node "tagged" ,(n)
+      __Dict_put__ n "tag" e ,()
+      __Dict_put__ n "quasi" q ,()
+      P_postfix_rest p n ,(r)
+      return r) ,()
   __NULL__ e)
 
 ;; ( の後から ) まで（) も読む）の引数の式の LList
@@ -1063,15 +1072,20 @@
     (,()
       P_next p ,(t)
       __LList_cons__ text __NULL__ ,(parts)
+      Tok_raw t ,(raw)
+      __LList_cons__ raw __NULL__ ,(raws)
       Sjs_node "template" ,(n)
       __Dict_put__ n "parts" parts ,()
+      __Dict_put__ n "raws" raws ,()
       __Dict_put__ n "exprs" __NULL__ ,()
       return n) ,()
   __String_equal__ kind "tmplhead" ,(test__) __if__ test__
     (,()
       P_next p ,(t)
       __LList_cons__ text __NULL__ ,(parts)
-      P_template_rest p parts __NULL__ ,(n)
+      Tok_raw t ,(raw)
+      __LList_cons__ raw __NULL__ ,(raws)
+      P_template_rest p parts raws __NULL__ ,(n)
       return n) ,()
   P_is p "/" ,(slash)
   P_is p "/=" ,(slashEq)
@@ -1080,8 +1094,8 @@
   P_eat p "{" ,(test__) __if__ test__ (,() P_object p __NULL__ ,(n) return n) ,()
   P_fail p)
 
-;; テンプレートの ${ の後から。parts と exprs は逆順
-(define P_template_rest ,(p parts exprs)
+;; テンプレートの ${ の後から。parts、raws と exprs は逆順
+(define P_template_rest ,(p parts raws exprs)
   __Cont_get__ ,(return)
   P_expression p ,(e)
   __LList_cons__ e exprs ,(exprs)
@@ -1089,13 +1103,17 @@
   Tok_kind tok ,(kind)
   Tok_text tok ,(text)
   __LList_cons__ text parts ,(parts)
-  __String_equal__ kind "tmplmid" ,(test__) __if__ test__ (,() P_template_rest p parts exprs ,(n) return n) ,()
+  Tok_raw tok ,(raw)
+  __LList_cons__ raw raws ,(raws)
+  __String_equal__ kind "tmplmid" ,(test__) __if__ test__ (,() P_template_rest p parts raws exprs ,(n) return n) ,()
   __String_equal__ kind "tmpltail" ,(ok)
   __unless__ ok (,() Sjs_throw "SyntaxError" "expected the rest of a template literal") ,()
   Sjs_reverse parts ,(parts)
   Sjs_reverse exprs ,(exprs)
+  Sjs_reverse raws ,(raws)
   Sjs_node "template" ,(n)
   __Dict_put__ n "parts" parts ,()
+  __Dict_put__ n "raws" raws ,()
   __Dict_put__ n "exprs" exprs ,()
   __NULL__ n)
 
@@ -1147,7 +1165,6 @@
   __and__ a1 sameLine ,(a) __and__ a notPlain ,(isAsync)
   __if__ isAsync (,() P_next p ,(t) __nop__) ,()
   P_eat p "*" ,(isGen)
-  __and__ isGen isAsync ,(test__) __if__ test__ (,() P_not_yet "async generators") ,()
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
   Tok_text tok ,(text)
@@ -1238,8 +1255,28 @@
 
 ;; for 文
 (define P_for ,(p)
-  __Cont_get__ ,(return)
   P_next p ,(t)
+  ;; for await (... of ...)：async 関数の本体の中だけ
+  P_eat p "await" ,(isAwait)
+  __if__ isAwait
+    (,()
+      __Dict_lookup_or__ p "async" (,(k) __NULL__ __FALSE__) ,(inAsync)
+      __unless__ inAsync (,() Sjs_throw "SyntaxError" "for await is only valid in async functions") ,()) ,()
+  P_for_head p ,(n)
+  __if__ isAwait
+    (,()
+      Sjs_get n "t" ,(t)
+      __String_equal__ t "forof" ,(isForOf)
+      __Dict_lookup_or__ n "of" (,(k) __NULL__ "") ,(of)
+      __String_equal__ of "of" ,(isOf)
+      __and__ isForOf isOf ,(ok)
+      __unless__ ok (,() Sjs_throw "SyntaxError" "for await needs of") ,()
+      __Dict_put__ n "await" __TRUE__) ,()
+  __NULL__ n)
+
+;; for の後の ( から
+(define P_for_head ,(p)
+  __Cont_get__ ,(return)
   P_expect p "(" ,()
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_fromString__ __print_exit_error__ "2" ,(two)
@@ -1345,7 +1382,6 @@
   __Cont_get__ ,(return)
   P_next p ,(tok)
   P_eat p "*" ,(isGen)
-  __and__ isGen isAsync ,(test__) __if__ test__ (,() P_not_yet "async generators") ,()
   P_peek p ,(tok)
   Tok_is_name tok ,(named)
   __if_then_else__ named (,() P_next p ,(t) Tok_text t) (,() __NULL__ "") ,(fname)

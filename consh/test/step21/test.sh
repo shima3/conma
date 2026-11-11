@@ -14,3 +14,5 @@ run case3 case3.sh < /dev/null
 run case4 case4.sh < /dev/null
 # case5：async と Promise（段階 B5b）。評価ごとにマイクロタスクの列を最後まで動かし、シェルの値の Promise は、その結果になる
 run case5 case5.sh < /dev/null
+# case6：async ジェネレータと for await、タグ付きテンプレート、配列の穴と length、let の重なり
+run case6 case6.sh < /dev/null
