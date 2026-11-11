@@ -66,6 +66,34 @@ pub struct BodyDef {
     /// FAST_LAZY_FORCE for the Body of __LazyList_force__ of include/util.se (mark_fast),
     /// 0 otherwise.
     pub fast: std::cell::Cell<u8>,
+    /// IF_THEN_ELSE, IF or UNLESS for a Body that applies __if_then_else__, __if__ or
+    /// __unless__ to its operands with each clause written as a function without parameters
+    /// (step.rs, load_if), 0 otherwise.
+    pub if_site: u8,
+}
+
+pub const IF_THEN_ELSE: u8 = 1;
+pub const IF: u8 = 2;
+pub const UNLESS: u8 = 3;
+
+/// The kind of if_site of a Body (BodyDef::if_site).
+fn if_site_of(operator: &Option<CExpr>, olist: &[CExpr]) -> u8 {
+    let kind = match operator {
+        Some(CExpr::G(_, name)) => match unquote(name) {
+            "__if_then_else__" => IF_THEN_ELSE,
+            "__if__" => IF,
+            "__unless__" => UNLESS,
+            _ => return 0,
+        },
+        _ => return 0,
+    };
+    let n = if kind == IF_THEN_ELSE { 3 } else { 2 };
+    let clause = |e: &CExpr| matches!(e, CExpr::F(f) if f.params.is_empty() && !f.variadic && f.body.is_some());
+    if olist.len() == n && olist[1..].iter().all(clause) {
+        kind
+    } else {
+        0
+    }
 }
 
 /// A place that reads or writes a Dict with a String key written in place, for the VM as the
@@ -208,7 +236,18 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
         }
     }
     let dict_site = dict_site_of(&operator, &olist);
-    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont, dict_site, fast: std::cell::Cell::new(0) })
+    let if_site = if_site_of(&operator, &olist);
+    Rc::new(BodyDef {
+        node: node.clone(),
+        func_id,
+        sinfo,
+        operator,
+        olist,
+        lcont,
+        dict_site,
+        fast: std::cell::Cell::new(0),
+        if_site,
+    })
 }
 
 /// A Closure of a compiled Function in an environment.
@@ -455,5 +494,11 @@ fn mark_fast(module: &Sexp, vals: &[Option<Value>]) {
     }
     if std::env::var_os("CONMA_FAST_REPORT").is_some() {
         eprintln!("fast __LazyList_force__: {}", if marked { "used" } else { "none" });
+        let ifs = REGISTRY.with(|r| {
+            r.borrow().as_ref().map_or(0, |v| {
+                v.iter().flatten().filter(|f| f.body.as_ref().map_or(false, |b| b.if_site != 0)).count()
+            })
+        });
+        eprintln!("fast __if_then_else__, __if__, __unless__: {} Bodies", ifs);
     }
 }

@@ -1,0 +1,51 @@
+;; 条件が Boolean の __if_then_else__、__if__、__unless__（docs/FAST-PLAN-ja.md 4.3）。
+;; Rust VM と wasm 版は、節を関数で書いた適用を読み込むときに節を選び、選んだ節の Body を読み込むまでのステップを、
+;; 数えたうえで 1 回で行う。各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる
+(include "pure.se")
+
+(define fail ,()
+  __Ref_get__ "abc" ,(x)
+  __OS_exit_normal__)
+
+(define say ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; case1: 3 つのプリミティブで、どちらの節も選ぶ。LCont のあるものとないもの
+(define case1 ,()
+  __if_then_else__ __TRUE__ (,() say "then") (,() say "else") ,()
+  __if_then_else__ __FALSE__ (,() say "then") (,() say "else") ,()
+  __if__ __TRUE__ (,() say "if true") ,()
+  __if__ __FALSE__ (,() say "if false") ,()
+  __unless__ __TRUE__ (,() say "unless true") ,()
+  __unless__ __FALSE__ (,() say "unless false") ,()
+  __is_null__ __NULL__ ,(b)
+  __if_then_else__ b (,() say "null") (,() say "not null") ,()
+  fail)
+
+;; 末尾の __if_then_else__（LCont なし）と、入れ子
+(define pick ,(b c)
+  __if_then_else__ b
+    (,() __if__ c (,() say "both") ,() say "first")
+    (,() say "neither"))
+
+(define case2 ,()
+  pick __TRUE__ __TRUE__ ,()
+  pick __TRUE__ __FALSE__ ,()
+  pick __FALSE__ __TRUE__ ,()
+  fail)
+
+;; case3: 条件が関数のときは、今までどおり条件を適用する
+(define case3 ,()
+  __if_then_else__ (,() __is_null__ __NULL__) (,() say "function then") (,() say "function else") ,()
+  __if__ (,() __is_null__ "x") (,() say "not reached") ,()
+  fail)
+
+;; case4: 節が変数のときと、節の中のエラー
+(define case4 ,()
+  __if_then_else__ __TRUE__ (,() say "written") fail ,()
+  say "not reached")
+
+(define case5 ,()
+  __if__ __TRUE__ (,() __Ref_get__ "in the clause" ,(x) say "not reached") ,()
+  say "not reached")

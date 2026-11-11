@@ -60,7 +60,73 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gven
             }
         }
     }
+    if body.if_site != 0 && m.fast_steps >= 3 {
+        if let Some(r) = load_if(m, vp, body, &lvenv, gvenv) {
+            return r;
+        }
+    }
     load_body_interp(vp, body, lvenv, gvenv)
+}
+
+/// Load a Body that applies __if_then_else__, __if__ or __unless__ (BodyDef::if_site)
+/// and do the next two steps with it, counting them (docs/FAST-PLAN-ja.md 4.3): when its
+/// Operator is that primitive and its condition a Boolean, the primitive would make the
+/// chosen clause the Operator (one step), and applying that Closure without parameters
+/// would push the LCont to the CChain and load its Body (another step). Here the clause
+/// is loaded without making the Closures of the clauses. When __if__ or __unless__
+/// chooses the clause that does nothing, the primitive returns to the LCont (one step).
+/// None, without changing anything, when the Body is to be loaded as it is.
+fn load_if(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
+    let name = match body.if_site {
+        crate::module::IF_THEN_ELSE => "__if_then_else__",
+        crate::module::IF => "__if__",
+        _ => "__unless__",
+    };
+    match eval(body.operator.as_ref()?, lvenv, gvenv) {
+        Ok(Value::Prim(p)) if p.name == name => {}
+        _ => return None,
+    }
+    let b = crate::prim::control::boolean_choice(&eval(&body.olist[0], lvenv, gvenv).ok()?)?;
+    let clause = match (body.if_site, b) {
+        (crate::module::IF_THEN_ELSE, true) | (crate::module::IF, true) => &body.olist[1],
+        (crate::module::IF_THEN_ELSE, false) => &body.olist[2],
+        (crate::module::UNLESS, false) => &body.olist[1],
+        _ => {
+            // The clause that does nothing: return to the LCont without values.
+            let lcont = match &body.lcont {
+                None => Value::Null,
+                Some(CLCont::F(f)) => make_closure(f, lvenv, Some(gvenv)),
+                Some(CLCont::V(_)) => return None,
+            };
+            vp.sinfo = body.sinfo.clone();
+            vp.dict_site = None;
+            vp.operator = lcont;
+            vp.olist.clear();
+            vp.lcont = None;
+            vp.lvenv = lvenv.clone();
+            m.steps += 1;
+            m.fast_steps -= 1;
+            return Some(Ok(()));
+        }
+    };
+    let f = match clause {
+        CExpr::F(f) => f,
+        _ => return None,
+    };
+    let lcont = match &body.lcont {
+        None => None,
+        Some(CLCont::F(lf)) => Some(make_closure(lf, lvenv, Some(gvenv))),
+        Some(CLCont::V(_)) => return None,
+    };
+    vp.sinfo = body.sinfo.clone();
+    if let Some(lc) = lcont {
+        vp.cchain_push(lc, body.sinfo.clone());
+    }
+    vp.olist.clear();
+    vp.lcont = None;
+    m.steps += 2;
+    m.fast_steps -= 2;
+    Some(load_body(m, vp, f.body.as_ref().unwrap(), lvenv.clone(), gvenv))
 }
 
 /// Load a Body into the VProc: its SInfo, Operator, OList and LCont,
@@ -186,6 +252,7 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
                         vp.olist[0] = cell;
                         vp.operator = vp.lcont.take().unwrap();
                         m.steps += crate::module::LAZY_FORCE_STEPS - 1;
+                        m.fast_steps -= crate::module::LAZY_FORCE_STEPS - 1;
                         return Ok(());
                     }
                 }
@@ -240,6 +307,7 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
             env = lv_push(&env, params[k].clone(), v);
         }
         m.steps += 1;
+        m.fast_steps -= 1;
         if let Some(lc) = vp.lcont.take() {
             let cur_sinfo = vp.sinfo.clone();
             vp.cchain_push(lc, cur_sinfo);

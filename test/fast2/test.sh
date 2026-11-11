@@ -15,7 +15,7 @@ if [ -x "$conma" ]; then
   do
     echo '(include "util.se") (define main ,() __OS_exit_normal__)' > $tmp/report.se
     "$conma" build --include "$root/$dir" $tmp/report.se > $tmp/report.module.se &&
-      CONMA_FAST_REPORT=1 "$conma" $tmp/report.module.se main 2>&1 | sed "s/^/$dir: /"
+      CONMA_FAST_REPORT=1 "$conma" $tmp/report.module.se main 2>&1 | grep LazyList | sed "s/^/$dir: /"
   done > $tmp/report.log
   diff report.log $tmp/report.log
 fi

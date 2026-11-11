@@ -1,0 +1,2 @@
+Error in VProc 1 at step 3: conma/test/fast3/test.se:50:24: __Ref_get__: expected Ref, got String
+exit: 1
