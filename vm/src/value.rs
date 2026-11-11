@@ -765,14 +765,24 @@ pub struct LList {
 }
 
 impl Drop for LList {
-    // Drop a long list without recursion.
+    // Drop a long list without recursion. The tail of a cell of a LazyList is a Ref whose value
+    // is the next cell (or null), so a Ref that only this cell holds is gone through too:
+    // otherwise dropping a LazyList of n elements recurses 2n deep (LList, Ref, LList, ...),
+    // which overflows the stack of a browser at about 10,000 elements (consh/js).
     fn drop(&mut self) {
         let mut next = std::mem::replace(&mut self.tail, Value::Null);
-        while let Value::LList(rc) = next {
-            match Rc::try_unwrap(rc) {
-                Ok(mut cell) => next = std::mem::replace(&mut cell.tail, Value::Null),
-                Err(_) => break,
-            }
+        loop {
+            next = match next {
+                Value::LList(rc) => match Rc::try_unwrap(rc) {
+                    Ok(mut cell) => std::mem::replace(&mut cell.tail, Value::Null),
+                    Err(_) => break,
+                },
+                Value::Ref(rc) => match Rc::try_unwrap(rc) {
+                    Ok(r) => r.value.into_inner(),
+                    Err(_) => break,
+                },
+                _ => break,
+            };
         }
     }
 }
