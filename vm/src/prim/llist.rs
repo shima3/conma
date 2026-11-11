@@ -1,16 +1,16 @@
 //! LList primitives.
 
-use super::{take_args, PResult};
+use super::{check_args, take_args, take_at, PResult};
 use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
 use std::rc::Rc;
 
 pub fn cons(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__LList_cons__", 2)?;
-    let tail = a.pop().unwrap();
-    let head = a.pop().unwrap();
-    vp.prim_return(vec![Value::LList(Rc::new(LList { head, tail }))]);
+    check_args(vp, "__LList_cons__", 2)?;
+    let tail = take_at(vp, 1);
+    let head = take_at(vp, 0);
+    vp.prim_return1(Value::LList(Rc::new(LList { head, tail })));
     Ok(())
 }
 
@@ -24,13 +24,13 @@ pub fn uncons_core(lst: &Value) -> Result<(Value, Value), String> {
 }
 
 pub fn uncons(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__LList_uncons__", 2)?;
-    let lst = a.pop().unwrap();
-    let on_error = a.pop().unwrap();
+    check_args(vp, "__LList_uncons__", 2)?;
+    let lst = take_at(vp, 1);
+    let on_error = take_at(vp, 0);
+    vp.olist.drain(..2);
     match &lst {
         Value::LList(cell) => {
-            let r = vec![cell.head.clone(), cell.tail.clone()];
-            vp.prim_return(r);
+            vp.prim_return2(cell.head.clone(), cell.tail.clone());
         }
         _ => {
             let msg = format!("__LList_uncons__: expected LList, got {}", value_type_name(&lst));

@@ -7,7 +7,7 @@
 //! applied to the two clauses, as the ConMa definition does, and the clause it
 //! passes back is applied.
 
-use super::{take_n, PResult};
+use super::{check_n, take_at, PResult};
 use crate::module::CExpr;
 use crate::sched::Machine;
 use crate::value::*;
@@ -38,7 +38,7 @@ fn choose(m: &mut Machine, vp: &mut VProc, boolean: Value, then: Value, els: Val
             let clause = if b { then } else { els };
             if m.is_nop(&clause) {
                 // __nop__ returns nothing to the LCont.
-                vp.prim_return(vec![]);
+                vp.prim_return0();
             } else {
                 vp.operator = clause; // applied with the LCont
             }
@@ -62,27 +62,27 @@ fn choose(m: &mut Machine, vp: &mut VProc, boolean: Value, then: Value, els: Val
 
 /// __if_then_else__ Boolean then else
 pub fn if_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_n(vp, "__if_then_else__", 3)?;
-    let els = a.pop().unwrap();
-    let then = a.pop().unwrap();
-    let boolean = a.pop().unwrap();
+    check_n(vp, "__if_then_else__", 3)?;
+    let els = take_at(vp, 2);
+    let then = take_at(vp, 1);
+    let boolean = take_at(vp, 0);
     choose(m, vp, boolean, then, els)
 }
 
 /// __if__ Boolean then
 pub fn if_(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_n(vp, "__if__", 2)?;
-    let then = a.pop().unwrap();
-    let boolean = a.pop().unwrap();
+    check_n(vp, "__if__", 2)?;
+    let then = take_at(vp, 1);
+    let boolean = take_at(vp, 0);
     let nop = m.nop_closure();
     choose(m, vp, boolean, then, nop)
 }
 
 /// __unless__ Boolean else
 pub fn unless(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_n(vp, "__unless__", 2)?;
-    let els = a.pop().unwrap();
-    let boolean = a.pop().unwrap();
+    check_n(vp, "__unless__", 2)?;
+    let els = take_at(vp, 1);
+    let boolean = take_at(vp, 0);
     let nop = m.nop_closure();
     choose(m, vp, boolean, nop, els)
 }

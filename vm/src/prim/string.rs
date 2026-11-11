@@ -118,9 +118,10 @@ pub fn concat(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 pub fn equal(m: &mut Machine, vp: &mut VProc) -> PResult {
     need(vp, "__String_equal__", 2)?;
-    let a: Vec<Value> = vp.olist.drain(..2).collect();
-    let b = equal_core(m, &a[0], &a[1])?;
-    vp.prim_return(vec![b]);
+    match equal_core(m, &vp.olist[0], &vp.olist[1]) {
+        Ok(b) => vp.prim_return1(b),
+        Err(e) => return super::in_place_failed(vp, 2, e),
+    }
     Ok(())
 }
 

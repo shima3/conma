@@ -179,6 +179,20 @@ pub fn check_args(vp: &VProc, name: &str, n: usize) -> Result<(), VmError> {
     Ok(())
 }
 
+/// check_args with the error of take_n ("missing argument(s)" for any n).
+pub fn check_n(vp: &VProc, name: &str, n: usize) -> Result<(), VmError> {
+    if vp.olist.len() < n {
+        return err(format!("{}: missing argument(s)", name));
+    }
+    Ok(())
+}
+
+/// The operand at i, read in place and left as null in the OList (for a
+/// primitive that keeps it).
+pub fn take_at(vp: &mut VProc, i: usize) -> crate::value::Value {
+    std::mem::replace(&mut vp.olist[i], crate::value::Value::Null)
+}
+
 /// Drop the n operands read in place and pass on the error e.
 pub fn in_place_failed<T>(vp: &mut VProc, n: usize, e: VmError) -> Result<T, VmError> {
     vp.olist.drain(..n);

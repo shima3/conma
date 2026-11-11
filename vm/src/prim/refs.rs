@@ -1,41 +1,49 @@
 //! Ref and PDict primitives.
 
-use super::{err, take_args, PResult, VmError};
+use super::{check_args, in_place_failed, take_args, take_at, PResult, VmError};
 use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
 
 pub fn ref_new(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__Ref_new__", 1)?;
+    check_args(vp, "__Ref_new__", 1)?;
     m.serials.refs += 1;
-    let r = Value::Ref(crate::gc::new_ref(RefObj::new(m.serials.refs, a.pop().unwrap())));
-    vp.prim_return(vec![r]);
+    let v = take_at(vp, 0);
+    let r = Value::Ref(crate::gc::new_ref(RefObj::new(m.serials.refs, v)));
+    vp.prim_return1(r);
     Ok(())
 }
 
 pub fn ref_get(_m: &mut Machine, vp: &mut VProc) -> PResult {
-    let a = take_args(vp, "__Ref_get__", 1)?;
-    match &a[0] {
+    check_args(vp, "__Ref_get__", 1)?;
+    match &vp.olist[0] {
         Value::Ref(r) => {
             let v = r.value.borrow().clone();
-            vp.prim_return(vec![v]);
+            vp.prim_return1(v);
             Ok(())
         }
-        v => err(format!("__Ref_get__: expected Ref, got {}", value_type_name(v))),
+        v => {
+            let e = format!("__Ref_get__: expected Ref, got {}", value_type_name(v));
+            in_place_failed(vp, 1, VmError::Error(e))
+        }
     }
 }
 
 pub fn ref_set(m: &mut Machine, vp: &mut VProc) -> PResult {
-    let mut a = take_args(vp, "__Ref_set__", 2)?;
-    let value = a.pop().unwrap();
-    match &a[0] {
+    check_args(vp, "__Ref_set__", 2)?;
+    let value = take_at(vp, 1);
+    match &vp.olist[0] {
         Value::Ref(r) => {
-            *r.value.borrow_mut() = value;
+            let old = std::mem::replace(&mut *r.value.borrow_mut(), value);
             m.ref_changed = true;
-            vp.prim_return(vec![]);
+            vp.prim_return0();
+            drop(old);
             Ok(())
         }
-        v => err(format!("__Ref_set__: expected Ref, got {}", value_type_name(v))),
+        v => {
+            let e = format!("__Ref_set__: expected Ref, got {}", value_type_name(v));
+            in_place_failed(vp, 2, VmError::Error(e))
+        }
     }
 }
 

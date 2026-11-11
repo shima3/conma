@@ -101,6 +101,20 @@ impl VProc {
         self.olist.push(value);
     }
 
+    /// prim_return(vec![]) keeping the buffer of the OList.
+    pub fn prim_return0(&mut self) {
+        self.operator = self.lcont.take().unwrap_or(Value::Null);
+        self.olist.clear();
+    }
+
+    /// prim_return(vec![a, b]) keeping the buffer of the OList.
+    pub fn prim_return2(&mut self, a: Value, b: Value) {
+        self.operator = self.lcont.take().unwrap_or(Value::Null);
+        self.olist.clear();
+        self.olist.push(a);
+        self.olist.push(b);
+    }
+
     /// Apply onError to an error message. The LCont is kept.
     pub fn prim_error(&mut self, on_error: Value, message: &str) {
         self.operator = on_error;
