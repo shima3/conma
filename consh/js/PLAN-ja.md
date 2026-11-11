@@ -190,10 +190,12 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 - ファイルはページを閉じると消える。
 - 行の編集と履歴は、ブラウザの入力欄のものだけである。
 - 2.1 の 8 の、同時に動く `js` の `console.log` の区別（結果は変数名を書けば区別できる）。
-- テストは Node.js（vm-node.js）で動かす。vm-wasm.sh は、node が動けば Node.js を使い、動かなければ macOS の JavaScriptCore のシェル（jsc、vm-jsc.js）を使う。jsc でのテストは 3.3 の後は行わない（2026/11/8 から）。どちらでも、標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
+- テストは Node.js（vm-node.js）で動かす。vm-wasm.sh は、node が動けば Node.js を使い、動かなければ macOS の JavaScriptCore のシェル（jsc、vm-jsc.js）を使う。jsc でのテストは 3.3 の後は行わない（2026/11/8 から）。ただし、jsc で ConSh が動くことは test/step7 で確かめる（jsc がなければ何もしない）。どちらでも、標準入力は、VM がそれを求めたときにだけ、読めた分ずつ渡す。
     - Node.js では、段階 7 の 1 から、VM はファイルをホストのファイルシステムで読み書きする（`conma_use_host_fs`。`host_fs_open` などの import を `fs.*Sync` で作る）。パスは OS が解決するので、`..` とシンボリックリンクもネイティブ版と同じである。それより前は、仮想ファイルシステムを通して読み（ファイルは開いたとき、ディレクトリは初めて一覧したときに、`host_file_needed` と `host_dir_needed` でホストに求める）、書いたファイルはメモリの中にだけあった。
     - jsc にはバイト列の入出力も終了コードもないので、vm-wasm.sh が 16 進数の行に直してつなぐ。jsc はディレクトリを調べられないので、VM に見えるのは、vm-wasm.sh が渡す名前（今のディレクトリの下の深さ 3 までと、/tmp の下の深さ 2 までのディレクトリ）と、VM が開いたファイルだけである。
     - jsc とブラウザでは、VM が書いたファイルは、実際のファイルシステムには書かれない。
+    - jsc では、`__JS_call__` の結果（ConSh が始めに JavaScript が使えるかを調べるものも）は Promise で VM に渡るので、vm-jsc.js は、VM が待つと、入力を読む前に `drainMicrotasks()` で Promise を動かし、結果が渡れば（`jsDone`）VM を続ける。JavaScript の呼び出しが終わっていなければ（`vm.jsPending()`。setTimeout を待つなど）、入力を待つ VProc がなければ、jsc のイベントループに 1 ms 戻る。これをしていなかったので、2026/11/8 から 11/12 まで、jsc では ConSh が始めに止まっていた（every VProc waits）。jsc には `console` がないので、conma.js が、ホストの標準出力と標準エラーに書くものを作る。
+    - jsc には外部コマンドがなく（`hostProc` がない）、SJS のモジュールも作れない（`__VProc_spawn__`）ので、`(( ))` と `$(( ))` は、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ブラウザと同じくホストの JavaScript で評価し（段階 A。`async` などは使えない）、そうでなければエラーになる。
     - 仮想ファイルシステムでは、パスは、ネイティブ版と同じく、途中のディレクトリを 1 つずつ確かめて解決する（`""` は ENOENT、`work/none/..` は `none` がなければ ENOENT、`file/x` は ENOTDIR）。ただし jsc では、途中のディレクトリがわからなければ、あるものとする（`conma_assume_dirs`）。
     - 仮想ファイルシステムにはシンボリックリンクがない。
 - ConMa 版の ConSh には `source` がないので、ブラウザでは「スクリプトを実行」が、スクリプトの各行を入力として渡す。

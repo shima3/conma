@@ -37,9 +37,15 @@
       // not in the real file system either, or a directory
     }
   };
+  // A result of JavaScript (__JS_call__, also the probe of ConSh at its start) is given to the VM by a
+  // Promise, which runs only when the microtasks are drained (drainMicrotasks of the shell)
+  let jsWoke = false;
   const vm = ConMaVM.create(wasm, (fd, bytes) => print(fd + " " + hex(bytes)), {
     inputNeeded: readInput,
     fileNeeded: fetchFile,
+    jsDone: () => {
+      jsWoke = true;
+    },
   });
   // The shell cannot tell directories: a directory on the way of a path is taken to exist.
   vm.assumeDirs();
@@ -68,25 +74,39 @@
     print("x 1");
     return;
   }
-  let code = vm.start(module, argv);
-  if (code === 0) {
-    for (;;) {
-      code = vm.run(100000);
-      // A program may poll standard input instead of waiting for it: give it input when it found none.
-      if (code === ConMaVM.RUNNING && !(vm.wantsInput() && !inputEnded)) continue;
-      if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) break;
-      if (!inputEnded) {
-        readInput(vm);
-        continue;
+  // Run the VM, giving the event loop of the shell its turn (await) while JavaScript is busy.
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
+  (async () => {
+    let code = vm.start(module, argv);
+    if (code === 0) {
+      for (;;) {
+        code = vm.run(100000);
+        // A program may poll standard input instead of waiting for it: give it input when it found none.
+        if (code === ConMaVM.RUNNING && !(vm.wantsInput() && !inputEnded)) continue;
+        if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) break;
+        // Let the Promises of JavaScript run before waiting for input: a VProc may wait for their result.
+        jsWoke = false;
+        drainMicrotasks();
+        if (jsWoke) continue;
+        // A call of JavaScript is still running (a timer, for example) and no VProc waits for input:
+        // let the event loop run it instead of waiting for input, which would block the loop.
+        if (vm.jsPending() > 0 && !(vm.wantsInput() && !inputEnded)) {
+          await tick();
+          continue;
+        }
+        if (!inputEnded) {
+          readInput(vm);
+          continue;
+        }
+        if (code === ConMaVM.IDLE) {
+          // Input has ended and there are no processes: nothing can wake the VM
+          // (the native VM would wait for ever).
+          print("2 " + hex(ConMaVM.utf8("vm-jsc: every VProc waits, and nothing can wake them\n")));
+          code = 2;
+        }
+        break;
       }
-      if (code === ConMaVM.IDLE) {
-        // Input has ended and there are no processes: nothing can wake the VM
-        // (the native VM would wait for ever).
-        print("2 " + hex(ConMaVM.utf8("vm-jsc: every VProc waits, and nothing can wake them\n")));
-        code = 2;
-      }
-      break;
     }
-  }
-  print("x " + code);
+    print("x " + code);
+  })();
 })(...arguments);

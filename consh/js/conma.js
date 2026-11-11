@@ -1400,10 +1400,13 @@ var ConMaVM = (function () {
 
   function installConsole(write) {
     consoleFallback = write;
-    if (consoleOriginal || typeof console === "undefined") return;
+    if (consoleOriginal) return;
+    // The shell of JavaScriptCore (jsc) has no console: make one that writes to the host's output
+    if (typeof console === "undefined") globalThis.console = {};
     consoleOriginal = {};
     for (const [name, tag] of [["log", "o"], ["info", "o"], ["debug", "o"], ["error", "x"], ["warn", "x"]]) {
-      const original = console[name];
+      const original =
+        console[name] || ((...args) => consoleFallback(tag === "o" ? 1 : 2, utf8(args.map(inspect).join(" ") + "\n")));
       consoleOriginal[name] = original;
       console[name] = function (...args) {
         if (liveJobs.size === 0) return original.apply(console, args);

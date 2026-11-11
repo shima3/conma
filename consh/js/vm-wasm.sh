@@ -42,7 +42,7 @@ while True:
         sys.stdout.write("d " + b.hex() + "\n" if b else "e\n")
         sys.stdout.flush()
     except BrokenPipeError:
-        break
+        os._exit(0)  # jsc has ended (not flushing again at exit)
     if not b:
         break
 ')

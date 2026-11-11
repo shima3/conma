@@ -1,0 +1,3 @@
+echo one
+function f () { echo two; }
+f
