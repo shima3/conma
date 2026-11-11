@@ -224,7 +224,7 @@ ConMa の関数が、最初に `__Cont_get__` で取った継続（`return`）�
 | B5b（作った。consh/sjs/test/step5、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
 | B6（作った。consh/js/PLAN-ja.md の 3.29） | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと（`config.json` なしで確かめた） |
 | B7（作った。consh/sjs/bench） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
-| B8（効果が小さいので、計画のまま。docs/ROADMAP.md に測った結果） | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
+| B8（効果が小さいので、作らないと決めた。docs/ROADMAP.md に測った結果、docs/FAST-PLAN-ja.md の 4.4 に決定） | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
 
 ## 7. 未解決の点とリスク
 

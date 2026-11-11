@@ -824,7 +824,7 @@ No new primitive.
 
 ## Planned: returning without making the escape continuation
 
-Not built yet. Moved here from consh/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/SAFEJS-REVIEW-ja.md (3.1.4).
+Not built, and decided not to be built (2026-11-12, docs/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the fast version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/SAFEJS-REVIEW-ja.md (3.1.4).
 
 * Goal: when a function takes its escape continuation with `__Cont_get__ ,(return)` at its start and uses `return` only to return from itself, return through the CChain as a normal return does, without making the value of `return` (a Closure that keeps the CChain). Most functions of ConSh have this form, and so would the functions that SJS is translated into.
 * Now (see `__Cont_get__` in PRIMITIVES.md): `__Cont_get__` makes `return`, which keeps the CChain at that time; applying it sets the CChain back to the kept one, then pops its top CFrame and applies its Closure. `return` is a value: it can be passed to other functions, put in a Ref, or called after the function has returned.
