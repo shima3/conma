@@ -259,6 +259,55 @@ var ConshCore = (function () {
       }
     }
 
+    // ── __VProc_spawn__ (buildModule of conma.js): the modules of SJS ((( )) of ConSh, consh_jsstmt.se) ──
+    // The module of the ConMa source file (in the files of serverfs.js, /tmp for SJS), made by the frontend
+    // of ConMa (frontend.module.se, a copy of vm/frontend.module.se that build.sh puts beside the page) in
+    // another VM, at once, as vm-node.js does. The frontend is read from the server the first time, with a
+    // synchronous request, since the VM asks for the module synchronously. A module of SJS includes no
+    // file, so the directory of include files is only /tmp (the frontend needs one that exists)
+    let frontendBytes = null;
+    function loadFrontend() {
+      if (frontendBytes !== null) return frontendBytes;
+      const x = new XMLHttpRequest();
+      x.open("GET", "frontend.module.se", false);
+      x.overrideMimeType("text/plain; charset=x-user-defined");
+      x.send();
+      if (x.status !== 200) throw new Error("frontend.module.se: " + x.status + " (run consh/js/build.sh)");
+      const text = x.responseText;
+      const bytes = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
+      frontendBytes = bytes;
+      return bytes;
+    }
+    function buildModule(wasm, source, cwd) {
+      let bytes;
+      try {
+        bytes = loadFrontend();
+      } catch (e) {
+        return { ok: false, message: String(e.message || e) };
+      }
+      const out = [];
+      const err = [];
+      const sub = ConMaVM.create(wasm, (fd, b) => (fd === 1 ? out : err).push(b.slice()), { hostFs: fs });
+      sub.useHostFs();
+      sub.setCwd(cwd);
+      sub.inputEnd();
+      let code = sub.start(bytes, ["--main", "conma/vm/frontend.module.se", "--include", "/tmp", source]);
+      if (code === 0) {
+        do code = sub.run(1000000);
+        while (code === ConMaVM.RUNNING);
+      }
+      const text = (chunks) => {
+        const d = new TextDecoder();
+        return chunks.map((c) => d.decode(c, { stream: true })).join("") + d.decode();
+      };
+      if (code !== 0) {
+        const msg = text(err).trim();
+        return { ok: false, message: code === ConMaVM.IDLE ? "the frontend waits" : (msg.split("\n")[0] || "").trim() };
+      }
+      return { ok: true, text: text(out) };
+    }
+
     let vm;
     let pumping = false;
     let done = false;
@@ -278,15 +327,22 @@ var ConshCore = (function () {
       vm = ConMaVM.create(
         wasm,
         (fd, bytes) => show(decoders[fd].decode(bytes, { stream: true }), fd === 2 ? "e" : ""),
-        { jsDone: () => pump(), hostProc, hostFs: fs, jsRemote: options.jsRemote }
+        {
+          jsDone: () => pump(),
+          hostProc,
+          hostFs: fs,
+          jsRemote: options.jsRemote,
+          buildModule: (source, cwd) => buildModule(wasm, source, cwd),
+        }
       );
       vm.useHostFs();
       vm.setCwd(HOME);
       for (const [k, v] of [["HOME", HOME], ["PWD", HOME], ["USER", "user"], ["PS1", "$ "]]) vm.setenv(k, v);
       // The commands of COMMANDS are builtin commands of ConSh
       vm.setenv("CONSH_HOST_BUILTINS", Object.keys(COMMANDS).join(" "));
-      // (( )) and js run code in the page without a sandbox, so they are off unless the
-      // server has config.json with {"CONSH_ENABLE_JS": "sjs"} ((( )) only) or "js" (both)
+      // js, and (( )) in stage A (only when a module of SJS cannot be made, buildModule above), run code
+      // in the page without a sandbox, so they are off unless the server has config.json with
+      // {"CONSH_ENABLE_JS": "sjs"} ((( )) in stage A only) or "js" (both)
       // (consh/js/README-ja.md). A parameter of the URL is not used, since a link from someone else
       // could turn it on
       const jsMode = await jsModeOfServer();

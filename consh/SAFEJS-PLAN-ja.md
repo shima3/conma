@@ -1,6 +1,6 @@
 # 安全な JavaScript のサブセット（SJS）の計画
 
-JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。段階 A1 を作った（2026/11/11。consh/js/PLAN-ja.md の 3.23）。段階 A2 を作った（3.24、3.25）。段階 A3 で JS の文を消し、段階 A を終えた（3.26）。段階 B1（変換器の土台）、B2（配列、オブジェクト、ループ、組み込み）、B3（例外）を作った（consh/sjs/README-ja.md）。段階 B4 で、ConSh の `(( ))` と `$(( ))` を変換したコードで動かすようにした（ネイティブの VM と Node.js の wasm 版。ブラウザは段階 B6 まで段階 A）。段階 B5 を、B5a（ジェネレータ）と B5b（`async` と `await`）に分けて作った。
+JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。段階 A1 を作った（2026/11/11。consh/js/PLAN-ja.md の 3.23）。段階 A2 を作った（3.24、3.25）。段階 A3 で JS の文を消し、段階 A を終えた（3.26）。段階 B1（変換器の土台）、B2（配列、オブジェクト、ループ、組み込み）、B3（例外）を作った（consh/sjs/README-ja.md）。段階 B4 で、ConSh の `(( ))` と `$(( ))` を変換したコードで動かすようにした（ネイティブの VM と Node.js の wasm 版）。段階 B5 を、B5a（ジェネレータ）と B5b（`async` と `await`）に分けて作った。段階 B6 で、ブラウザ版も段階 B で動かすようにした。
 
 当面（段階 A）は SJS をホストの JavaScript で動かし、将来（段階 B）は SJS を ConMa に変換して VM の中で動かす。
 
@@ -194,7 +194,7 @@ SJS は `(( ))` の中にだけ書くので、JavaScript の文法をそのま�
 - 名前：SJS の識別子は、ConMa の名前と重ならないように、前に印を付ける（`js_x` など）。利用者は `__OS_open__` のようなプリミティブの名前を書けない。
 - 実行時の支え：値の型を確かめる関数、演算、組み込みのメソッドは、ConMa で書いたライブラリ（たとえば `consh/include/sjs_rt.se`）にまとめる。
 - エラーの位置：生成する ConMa のソースは、SJS の 1 つの文を 1 か所にまとめ、SJS の行と桁を、実行時のエラーに出せるようにする。どこまでできるかを測る（REVIEW の 1）。
-- 動かし方：変換したソースをモジュールにする。ネイティブ版は `conma build`（VM に埋め込んだ ConMa の front end）、Node.js の wasm 版は `host_build_module`（consh/js/PLAN-ja.md の 3.10）を使う。ブラウザ版には今それがない（`includer failed`）ので、ページか Worker で、もう 1 つの VM のインスタンスに `vm/frontend.module.se` を動かす形を作る。同じコードを何度も動かすときのために、変換とモジュールを、コードの文字列で覚えておく。
+- 動かし方：変換したソースをモジュールにする。ネイティブ版は `conma build`（VM に埋め込んだ ConMa の front end）、Node.js の wasm 版は `host_build_module`（consh/js/PLAN-ja.md の 3.10）を使う。ブラウザ版は、ページか Worker で、もう 1 つの VM のインスタンスに `vm/frontend.module.se` を動かす（段階 B6 で作った。consh/js/web/consh-core.js の `buildModule`）。同じコードを何度も動かすときのために、変換とモジュールを、コードの文字列で覚えておく。
 
 ### 4.3. 自分が戻るためだけに使う継続の最適化
 
@@ -204,7 +204,7 @@ ConMa の関数が、最初に `__Cont_get__` で取った継続（`return`）�
 
 - **段階 A は安全の境界ではない**：ホストの JavaScript で動かすので、構文解析の確認（3.2）をすり抜けるコードがあれば、ページや Node.js のプロセスの権限で動く。たとえば、名前を見るだけの確認では `[]["constructor"]["constructor"]("任意のコード")()` で `Function` に届く。計算したキーの書き換えと、大域の名前と反射の関数の制限で、知られている抜け道は防ぐが、なくなったとは証明できない。そのため、段階 A の間は、consh/js/README-ja.md のセキュリティの注意をそのまま残す。
 - **段階 B で安全になる**：SJS のプログラムが呼べるのは、変換器が出したコードと、実行時の支えのライブラリだけである。変換器は、`__OS_*__`、`__JS_call__`、`__VProc_spawn__` などを出さない。SJS からシェル関数は呼べない（2.2 の 5）ので、外とつながるのは、引数と戻り値、SJS変数、`console.log` だけである。
-- **ホストの JavaScript を確実に止める**：段階 B の後、`js` を使わないサーバでは、Content-Security-Policy で `'unsafe-eval'` を許さなければ（WebAssembly のための `'wasm-unsafe-eval'` だけを許す）、ブラウザが `Function` と `eval` を止める。段階 A の SJS もホストの `Function` を使うので、それまでは使えない。
+- **ホストの JavaScript を確実に止める**：段階 B の後、`js` を使わないサーバでは、Content-Security-Policy で `'unsafe-eval'` を許さなければ（WebAssembly のための `'wasm-unsafe-eval'` だけを許す）、ブラウザが `Function` と `eval` を止める。段階 A の SJS もホストの `Function` を使うので、それまでは使えない。段階 B6 で、ブラウザ版の `(( ))` も段階 B になったので、`js` を使わないサーバでは、この CSP を付けられる（まだ付けていない。段階 A への戻り（モジュールを作れないとき）は、`CONSH_ENABLE_JS` がなければ起きない）。
 - 終わらないループは、Ctrl-C で止める（ConSh の今の仕組み）。使うメモリと時間の上限は、まだない（7）。
 
 ## 6. 段階
@@ -222,7 +222,7 @@ ConMa の関数が、最初に `__Cont_get__` で取った継続（`return`）�
 | B4（作った。consh/test/step21） | ConSh の `(( ))` を、変換したコードで動かす（ネイティブ版と Node.js の wasm 版）。SJS変数を ConMa の値にする | consh/test に `(( ))` のテスト（ネイティブ版と wasm 版で同じログ） |
 | B5a（作った。consh/sjs/test/step4、consh/test/step21 の case4） | ジェネレータ（`function*`、`yield`、`yield*`）。シェルの値は LazyList | 段階 A にないので、Node.js の結果と比べる |
 | B5b（作った。consh/sjs/test/step5、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
-| B6 | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと |
+| B6（作った。consh/js/PLAN-ja.md の 3.29） | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと（`config.json` なしで確かめた） |
 | B7 | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
 | B8 | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
 

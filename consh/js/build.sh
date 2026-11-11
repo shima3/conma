@@ -26,6 +26,8 @@ fi
 (cd "$js/wasm" && "$cargo" build --release)
 cp "$js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" "$js/web/conma.wasm"
 cp "$js/conma.js" "$js/web/conma.js"
+# (( )) の SJS のモジュールを、ページの中で作るための ConMa のフロントエンド（web/consh-core.js の buildModule）
+cp "$root/vm/frontend.module.se" "$js/web/frontend.module.se"
 module="$js/web/consh.module.se"
 # ConSh は高速版（consh/include と標準ライブラリの include。consh/include/README-ja.md）
 main="$consh/include/consh_main.se"

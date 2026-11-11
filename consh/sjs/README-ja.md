@@ -58,7 +58,7 @@ consh/include/
 * 字句と構文の確認を、構文解析の前にする（段階 A と同じく、`this` などの名前、`constructor` などのメンバー、`==` と `!=` を `not in SJS` にする）
 * ConSh の `(( ))` と `$(( ))`：式を `Sjs_translate_module` で、`Sjs_entry` だけを定義するモジュールのソースにし、`$TMPDIR/consh-sjs-ハッシュ.se`（ハッシュはソースから求めるので、同じ式は同じファイルになる）に書いて、`__VProc_spawn__` で新しい VProc として動かす。式ごとに、そのファイル名を覚えておく（文脈の global の `"sjsB"`）。モジュールは、実行時の支えの関数（`Sjs_rt_dict`）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を引数で受け取り、`"setup"`（`Sjsb_setup`）で、その VProc の PDict に、SJS変数の Dict（シェルの文脈の `"sjsvars"`）、`$名前` を引く関数、`console.log` の出力先（ConSh のリダイレクトに従う）、受け手のない例外の行き先を置く
 * SJS の値は ConMa の値のまま、SJS変数とシェル変数に入る（ホストの表はない）。シェル変数には、文字列はそのまま、ほかは `{"sjsv": 値}` の Dict で入れ、`$` で読むたびにシェルの値にする（`Sjsb_to_shell`。配列は語の並び、ほかは `console.log` と同じ文字列）。SJS関数をコマンドとして呼ぶ（`$f 1 2`）のも、この値で動く
-* 段階 B は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` を要らない（`js` コマンドは、今までどおり `CONSH_ENABLE_JS=js` が要る）。モジュールを作れない版（ブラウザ。段階 B6 まで）では、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A で動かし、なければエラー（`SJS cannot run here`）にする
+* 段階 B は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` を要らない（`js` コマンドは、今までどおり `CONSH_ENABLE_JS=js` が要る）。モジュールを作れないときは、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A で動かし、なければエラー（`SJS cannot run here`）にする
 
 ## 段階 B5a で足したもの：ジェネレータ（2026/11/11）
 
@@ -77,6 +77,12 @@ consh/include/
 * 列が空になったとき、受け手のない拒否された Promise があれば、受け手のない例外（`Uncaught (in promise) ...`）にする。ConSh では、その評価のエラー（`$?` は 2）
 * ConSh：シェルの値（`$p`）にした Promise は、成功していればその値、拒否されていれば空文字列になる（評価が終われば決着している）。`(( ))` の `$?` は、Promise は真なので 0
 * 段階 A には `async` がない（`not in SJS: async`）ので、テストのログは Node.js で動かした結果と比べた
+
+## 段階 B6：ブラウザ版（2026/11/11）
+
+* ブラウザ版の ConSh（consh/js/web）でも、`(( ))` を段階 B で動かす。`__VProc_spawn__` が要るモジュールは、ページか Worker の中で、もう 1 つの VM のインスタンスに ConMa のフロントエンド（`frontend.module.se`。`build.sh` が `vm/frontend.module.se` を写す）を動かして作る（`web/consh-core.js` の `buildModule`。Node.js 版の `vm-node.js` と同じ）。フロントエンドは、最初に使うときにサーバーから読む
+* 変換したソースは、メモリの `/tmp`（`web/serverfs.js`）に書く
+* ホストの JavaScript を使わないので、`config.json` がなくても `(( ))` が使える。新しい式は 0.3 秒くらい、前に作った式は 0.15 秒くらいで動いた（2026/11/11、Worker で動かすページ）
 
 まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：async のジェネレータ、配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
 

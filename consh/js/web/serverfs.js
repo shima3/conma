@@ -1,7 +1,7 @@
 // The file system of ConSh in a browser (hostFs of conma.js): the files of the server, beside the
 // page, are under home (/home/user, or / and others, see consh.js), read from the server each time
 // they are opened or listed, and the files written are kept in memory over them (they go when the
-// page is closed). The directories on the way to home, /dev and /dev/null are in memory, and come
+// page is closed). The directories on the way to home, /dev, /dev/null and /tmp are in memory, and come
 // before the files of the server of the same names (when home is /). The browser
 // keeps the files of the server in its cache as it does other files (serve.py asks it to check them
 // with the server each time, Cache-Control: no-cache, so that a file changed on the disk is seen).
@@ -35,7 +35,8 @@ const ServerFS = (function () {
     base = new URL(base || ".", location.href).href; // the directory of the page
     if (!base.endsWith("/")) base += "/";
     // path -> {dir: true} | {data: Uint8Array}; /dev/null is {null: true}
-    const mem = new Map([["/", { dir: true }], ["/dev", { dir: true }], ["/dev/null", { null: true }]]);
+    // /tmp is in memory too, for the modules of SJS (consh_jsstmt.se) and other temporary files
+    const mem = new Map([["/", { dir: true }], ["/dev", { dir: true }], ["/dev/null", { null: true }], ["/tmp", { dir: true }]]);
     for (let p = home; p !== "/"; p = parentOf(p)) mem.set(p, { dir: true });
 
     const homePrefix = home === "/" ? "/" : home + "/";

@@ -9,7 +9,7 @@
   and can run the VM in a Worker (web/consh.js).
 
 It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is
-missing or older than its sources (conma.js, conma.wasm, consh.module.se, whose sources include
+missing or older than its sources (conma.js, conma.wasm, consh.module.se, frontend.module.se, whose sources include
 the frontend in bin/), as after git pull.
 
 Usage: consh/js/serve.py [port]   (8765 by default; only on 127.0.0.1)
@@ -92,6 +92,8 @@ def stale():
             newest(os.path.join(ROOT, "bin"), suffixes=("",)),
         ),
     }
+    # the frontend of ConMa, copied by build.sh (web/consh-core.js makes the modules of SJS with it)
+    sources["frontend.module.se"] = os.path.getmtime(os.path.join(ROOT, "vm", "frontend.module.se"))
     for name, source_time in sources.items():
         path = os.path.join(WEB, name)
         if not os.path.exists(path) or os.path.getmtime(path) < source_time:

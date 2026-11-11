@@ -2,9 +2,9 @@
 
 ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
 
-**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、Node.js 版では ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない）が、ブラウザ版では、当面はホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない。ブラウザ版も段階 B6 から）。変換したモジュールを作れないとき（`frontend.module.se` がないなど）だけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
-そのため、`js` と、ブラウザ版の `(( ))` は、既定では使えない（`(( ))` は `sjs: SJS cannot run here: ...`、`js` は `js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`sjs` は `(( ))` だけ、`js` は `(( ))` と `js` の両方を使えるようにする。
+そのため、`js` は、既定では使えない（`js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`js` は `js` と、段階 A の `(( ))` を使えるようにし、`sjs` は段階 A の `(( ))` だけを使えるようにする。
 
 * Node.js 版：環境変数 `CONSH_ENABLE_JS` を `sjs` か `js` にして起動する。
 * ブラウザ版：サーバーのページのディレクトリ（`consh/js/web`）に `config.json` を置き、`{"CONSH_ENABLE_JS": "sjs"}`（か `"js"`）と書く。
@@ -26,7 +26,7 @@ consh/js/build.sh
 consh/js/serve.py          # http://localhost:8765/（ポートは引数で変えられる）
 ```
 
-http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。`serve.py` は `python3 -m http.server` と同じくファイルを出すほか、ディレクトリの一覧（`?consh-ls`）を返し、ブラウザにファイルを毎回確かめさせる（`Cache-Control: no-cache`）。`build.sh` が `web/` に作るファイル（`conma.js`、`conma.wasm`、`consh.module.se`）がないか、ソースより古いとき（`git pull` の後など。これらはリポジトリにないので pull では変わらない）は、`build.sh` を実行するように言って起動しない。ほかの Web サーバーでも動くが、`index.html` のあるディレクトリ（ページのディレクトリ）の一覧が取れないので、`ls` や `*` にはそのディレクトリのファイルが出ない。
+http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.claude/launch.json` の `consh-web` と同じ）。`serve.py` は `python3 -m http.server` と同じくファイルを出すほか、ディレクトリの一覧（`?consh-ls`）を返し、ブラウザにファイルを毎回確かめさせる（`Cache-Control: no-cache`）。`build.sh` が `web/` に作るファイル（`conma.js`、`conma.wasm`、`consh.module.se`、`frontend.module.se`）がないか、ソースより古いとき（`git pull` の後など。これらはリポジトリにないので pull では変わらない）は、`build.sh` を実行するように言って起動しない。ほかの Web サーバーでも動くが、`index.html` のあるディレクトリ（ページのディレクトリ）の一覧が取れないので、`ls` や `*` にはそのディレクトリのファイルが出ない。
 
 * VM、ファイル、`cat` などの組み込みコマンドは Worker（`web/consh-worker.js`、`web/consh-core.js`）で動き、ページは画面と JavaScript（`js` と `(( ))` の SJS）を受け持つ。そのため、ファイルを読む間や長い処理の間も画面は固まらず、JavaScript からは今までどおり `document` や `window` が使える。Worker に JS の値を同期して渡すために SharedArrayBuffer を使うので、ページが cross-origin isolated である必要がある。`serve.py` は、そのためのヘッダ（`Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp`）を送る。そのため、ページから別のオリジンのものを no-cors で読む（`<img>`、`<script>`、`fetch` の `mode: "no-cors"`）と、相手が `Cross-Origin-Resource-Policy` を付けて出していなければ止められる。CORS で読む `fetch`（既定）は、相手が CORS を許していれば動く。
 * このヘッダを送らないサーバーでは、ConSh はページの中で動く（Worker を使う前と同じ。ファイルを読む間は画面が止まる）。最初の案内に、どちらで動いているかが出る。
@@ -41,9 +41,9 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
 ## JavaScript を有効にする
 
-`js` と、段階 A で動かす `(( ))`（ブラウザ版）は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。段階 B で動かす `(( ))`（Node.js 版とネイティブの VM の ConMa 版）は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` によらず使える。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。
+`js` と、段階 A で動かす `(( ))`（モジュールを作れないとき）は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。段階 B で動かす `(( ))`（Node.js 版、ブラウザ版、ネイティブの VM の ConMa 版）は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` によらず使える。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。
 
-| `CONSH_ENABLE_JS` | ブラウザ版の `(( ))` と `$(( ))` | `js` |
+| `CONSH_ENABLE_JS` | 段階 A の `(( ))` と `$(( ))`（モジュールを作れないとき） | `js` |
 |---|---|---|
 | `sjs` | 使える | 使えない |
 | `js` | 使える | 使える |
@@ -79,7 +79,7 @@ VM は、ネイティブ版と同じく、実際のファイルを読み書き�
 
 ## (( )) と $(( ))：SJS
 
-算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版では、`CONSH_ENABLE_JS` が `sjs` か `js` のとき、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「段階 A との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
+算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「段階 A との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
 
 ```
 (( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）
@@ -98,7 +98,7 @@ echo $(( sum([1, 2, 3]) ))     # 6
 * 次は SJS の範囲の外として、評価する前にエラーにする（`sjs: not in SJS: ...`、`$?` は 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`async`、`await`、`yield`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ、正規表現、`==` と `!=`。計算したキー `a[k]` は、評価のときに、`constructor` などのキーを `TypeError` にする。
 * **演算の型**：`+` は数どうしだけを足す。文字列をつなぐときは、テンプレート文字列（`` `${a}${b}` ``）か `[a, b].join("")` を使う。`-`、`*`、`/`、`%`、`**`、ビット演算（`&`、`|`、`^`、`~`、`<<`、`>>`、`>>>`）、単項の `-` と `+`、`++` と `--`、複合の代入（`+=` など）も、数でなければ `TypeError` になる。大小の比較（`<` など）は、数どうしか文字列どうしだけ。JavaScript の意味は変えず、紛らわしい組み合わせをエラーにするだけなので、SJS でエラーにならずに動いたコードは、JavaScript でも同じ結果になる。シェルから渡した引数は文字列なので、数として使うときは `Number(x)` と書く（`$名前` は、演算子の隣なら自動で数になる）。
 * `console.log` は標準出力に出る（リダイレクトできる）。
-* 段階 B（Node.js 版）では、ジェネレータと `async`/`await` も使える（consh/sjs/README-ja.md の段階 B5a、B5b）。ブラウザ版（段階 A）では範囲の外。
+* 段階 B では、ジェネレータと `async`/`await` も使える（consh/sjs/README-ja.md の段階 B5a、B5b）。段階 A では範囲の外。
 * 文の `(( ))` でエラーになれば、メッセージを出して `$?` を 2 にし、次の文に進む。語の中の `$(( ))` でエラーになれば、変数が未定義のときと同じく、その文を止め（スクリプトなら終了ステータス 2 で終える。対話モードならそのコマンド行を止める）、`$?` を 2 にする。
 * **`$名前` でシェル変数を読む**：SJS式の中の `$n` は、シェル変数 `n` の値である（読むだけ。代入と `let $n` の宣言はエラー）。String は文字列、リストは配列、JS の値はそのまま。定義されていなければエラー（局所変数になければ環境変数も見る）。
 

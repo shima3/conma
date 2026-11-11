@@ -592,6 +592,15 @@ consh/SAFEJS-PLAN-ja.md の段階 B4。`(( ))` と `$(( ))` の SJS式を、cons
 - 変換器に、`switch`、`do...while`、`**`、ビット演算、分割代入、スプレッド、既定値、残りの引数、`$名前`、構文解析の前の確認を足した。
 - テスト：consh/js/test/step6 の case5off と case5bad のログを、`(( ))` が `CONSH_ENABLE_JS` なしで動くものに直した（`js` は今までどおり disabled）。consh/test/step21 を足した（ConMa 版の ConSh で、ネイティブの VM でも wasm 版でも同じログ。Rust 版の ConSh では飛ばす）。
 
+### 3.29. SJS の段階 B6：ブラウザ版の (( ))（2026/11/11）
+
+consh/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段階 B（ConMa に変換して VM の中で動かす）で動かす。
+
+- `web/consh-core.js` に `buildModule`（conma.js の `host_build_module` が呼ぶ）を足した。`vm-node.js` と同じく、もう 1 つの VM のインスタンスで、ConMa のフロントエンド（`frontend.module.se`）を、その場で最後まで動かして、モジュールのテキストを返す。フロントエンドは、最初に使うときに同期の XMLHttpRequest で読む（VM がモジュールを同期で求めるため）。SJS のモジュールはファイルを含めないので、含めるファイルのディレクトリは `/tmp`（フロントエンドは、あるディレクトリを要る）。
+- `web/serverfs.js` に、メモリの `/tmp` を足した（ConSh は、変換したソースを `$TMPDIR` か `/tmp` に書く）。
+- `build.sh` が `vm/frontend.module.se` を `web/` に写し、`serve.py` は、それがないか古いときも `build.sh` を求める。`.gitignore` に足した。
+- `config.json` のないサーバーで、ジェネレータ、`async`、別のコマンドで続けるジェネレータ、エラーの `$?` が、Node.js 版と同じに動くことを確かめた。新しい式は 0.26 秒、前に作った式は 0.15 秒だった（Worker で動かすページ）。
+
 ## 4. 未解決の点
 
 - JS の値の関数を、`$f 1 2` だけでなく `f 1 2` でも呼べるようにするか。シェルの関数を JavaScript から呼ぶか（2.5 の 9）。
