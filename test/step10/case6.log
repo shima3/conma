@@ -1,4 +1,4 @@
 child 2: failing
-Error in VProc 2 at step 40: conma/test/step10/child.se:55:5: __Ref_get__: expected Ref, got String
+Error in VProc 2 at step N: conma/test/step10/child.se:55:5: __Ref_get__: expected Ref, got String
 child 3: still running
 exit: 0

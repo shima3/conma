@@ -40,6 +40,13 @@ pub struct Machine {
     pub transpiled_on: bool,
     /// Step counts for CONMA_PROFILE.
     pub profile: Option<crate::profile::Profile>,
+    /// The next step may apply a Closure to exactly as many operands as its
+    /// parameters and load its Body at once, counting two steps
+    /// (docs/FAST-PLAN-ja.md 4.1): set before each step when nothing shows
+    /// each step (--trace, CONMA_PROFILE) and the budget has another step.
+    /// No other VProc runs between the two steps, which changes only when
+    /// VProcs are switched (FAST-PLAN 3.3).
+    pub fuse_apply: bool,
     /// The Rust calls of native code that are running (vm/src/native.rs).
     pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
@@ -219,6 +226,7 @@ impl Machine {
             trace,
             transpiled_on: false,
             profile: crate::profile::Profile::from_env(),
+            fuse_apply: false,
             nctx: Default::default(),
             joining: Vec::new(),
             lazy: Vec::new(),
@@ -665,12 +673,14 @@ impl Machine {
             self.current = Some(cell.clone());
             let mut vp = cell.vp.borrow_mut();
             let mut requeue = false;
+            let may_fuse = !self.trace && self.profile.is_none();
             // While no other VProc can run and nothing waits, a pass of the
             // loop above would only take this VProc again: run its steps here.
             loop {
                 if let Some(p) = &mut self.profile {
                     p.count(&vp);
                 }
+                self.fuse_apply = may_fuse && self.steps + 1 < limit;
                 let r = step(self, &mut vp);
                 match r {
                     Ok(()) => {

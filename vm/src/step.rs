@@ -210,6 +210,27 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
         return load_body(m, vp, &body, c.lvenv.clone(), &gvenv);
     }
 
+    // As many operands as parameters, when the scheduler allows it (Machine::fuse_apply):
+    // bind them and load the Body in this step, as the next step would do with the
+    // Closure the binding makes (Head empty, OList empty, below), and count the binding
+    // as a step of its own, so that the steps are numbered as before.
+    if m.fuse_apply && vp.olist.len() == params.len() {
+        let mut env = c.lvenv.clone();
+        for (k, v) in vp.olist.drain(..).enumerate() {
+            env = lv_push(&env, params[k].clone(), v);
+        }
+        m.steps += 1;
+        if let Some(lc) = vp.lcont.take() {
+            let cur_sinfo = vp.sinfo.clone();
+            vp.cchain_push(lc, cur_sinfo);
+        }
+        let body = match &c.body {
+            Some(b) => b.clone(),
+            None => return err("Closure has no Body"),
+        };
+        return load_body(m, vp, &body, env, &gvenv);
+    }
+
     // Head not empty, OList not empty: bind as many parameters as there are operands.
     if !vp.olist.is_empty() {
         let n = params.len().min(vp.olist.len());
