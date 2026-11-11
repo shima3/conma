@@ -12,3 +12,5 @@ run case2 case2.sh < /dev/null
 run case3 case3.sh < /dev/null
 # case4：ジェネレータ（段階 B5）。別の (( )) で続け、シェルの値としては、読むときに next を呼ぶ LazyList になる
 run case4 case4.sh < /dev/null
+# case5：async と Promise（段階 B5b）。評価ごとにマイクロタスクの列を最後まで動かし、シェルの値の Promise は、その結果になる
+run case5 case5.sh < /dev/null

@@ -28,7 +28,7 @@
   Gen_cx __FALSE__ "" "" ,(cx)
   Gen_block_code g scope body cx ,(code)
   __String_concat__ ";; SJS を変換したもの（consh/include/sjs_gen.se）\n(include \"util.se\")\n(include \"sjs_rt.se\")\n(define main ,(args)\n  Sjs_init ,(G)\n" code ,(s)
-  __String_concat__ s "\n  __nop__)\n")
+  __String_concat__ s "\n  Sjs_run_jobs ,()\n  __nop__)\n")
 
 ;; 文の文脈 cx：関数の中か（"fn"）と、return、break、continue で呼ぶ継続の変数名（"ret"、"brk"、"cnt"。使えなければ ""）、
 ;; その継続を呼ぶ前に戻す、例外の受け手のスタックの変数名（"retH"、"brkH"、"cntH"。継続が try の finally を通す
@@ -77,12 +77,13 @@
   Sjs_rt_names ,(names)
   Gen_binds names "" ,(binds)
   Cat3 ";; SJS の (( )) を変換したもの（consh/include/sjs_gen.se の Sjs_translate_module）\n(define Sjs_entry ,(err ctx in out)\n  __Dict_lookup_or__ ctx \"rt\" (,(k) __NULL__ __NULL__) ,(rt)\n" binds "  __Dict_lookup_or__ ctx \"G\" (,(k) __NULL__ __NULL__) ,(G)\n  __Dict_lookup_or__ ctx \"done\" (,(k) __NULL__ __NULL__) ,(done)\n  __Dict_lookup_or__ ctx \"setup\" (,(k) __NULL__ __NULL__) ,(setup)\n  __Cont_get__ ,(sjsExit)\n  setup sjsExit ,()\n  " ,(s)
-  Cat4 s code "done " val ,(s)
+  ;; マイクロタスクの列を最後まで動かしてから、値を渡す
+  Cat4 s code "Sjs_run_jobs ,() done " val ,(s)
   __String_concat__ s ")\n")
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -889,6 +890,14 @@
   __String_equal__ t "object" ,(test__) __if__ test__ (,() Gen_object g scope e ,(c v) return c v) ,()
   __String_equal__ t "template" ,(test__) __if__ test__ (,() Gen_template g scope e ,(c v) return c v) ,()
   __String_equal__ t "yield" ,(test__) __if__ test__ (,() Gen_yield g scope e ,(c v) return c v) ,()
+  __String_equal__ t "await" ,(test__) __if__ test__
+    (,()
+      Sjs_get e "arg" ,(arg)
+      Gen_expr g scope arg ,(c a)
+      Gen_temp g "t" ,(v)
+      Cat5 c "Sjs_await " a " ,(" v ,(c)
+      __String_concat__ c ") " ,(c)
+      return c v) ,()
   __String_concat__ "an expression of " t ,(what)
   Gen_not_yet what)
 
@@ -1462,11 +1471,15 @@
   Gen_temp g "t" ,(v)
   Gen_quote name ,(qn)
   ;; ジェネレータ：呼び出しは引数を入れてジェネレータのオブジェクトを返し、本体は、next で動かす thunk にする
+  ;; async 関数も同じ形で、本体の thunk を Sjs_async に渡す（結果は Promise）
   __Dict_lookup_or__ e "gen" (,(k) __NULL__ __FALSE__) ,(isGen)
-  __if__ isGen
+  __Dict_lookup_or__ e "async" (,(k) __NULL__ __FALSE__) ,(isAsync)
+  __or__ isGen isAsync ,(wrapped)
+  __if__ wrapped
     (,()
       Gen_temp g "gen" ,(gv)
-      Cat3 "Sjs_generator G (,() __Cont_get__ ,(return) " bodyCode "return __NULL__) ,(" ,(gc)
+      __if_then_else__ isAsync (,() __NULL__ "Sjs_async G (,() __Cont_get__ ,(return) ") (,() __NULL__ "Sjs_generator G (,() __Cont_get__ ,(return) ") ,(head)
+      Cat3 head bodyCode "return __NULL__) ,(" ,(gc)
       Cat5 gc gv ") return " gv " " ,(bodyCode)
       Cat5 "Sjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)
       Cat4 c bind bodyCode ") ,(" ,(c)

@@ -65,7 +65,7 @@
 ;; SJS の範囲の外の名前（段階 A の SJS_NAMES と、__ で始まる名前）なら、「not in SJS」のエラー
 (define P_check_name ,(name)
   __Cont_get__ ,(return)
-  Sjs_in_words name "this new class super import export with eval arguments debugger async await globalThis window self document Function" ,(bad)
+  Sjs_in_words name "this new class super import export with eval arguments debugger globalThis window self document Function" ,(bad)
   Sjs_starts name "__" ,(under)
   __or__ bad under ,(test__) __unless__ test__ return ,()
   __String_concat__ "not in SJS: " name ,(msg)
@@ -278,10 +278,19 @@
           __Dict_put__ n "value" value ,()
           return n) ,()
       __String_equal__ word "try" ,(test__) __if__ test__ (,() P_try p ,(n) return n) ,()
-      ;; 関数の宣言（ブロックの始めで値を入れる）
-      __String_equal__ word "function" ,(test__) __if__ test__
+      ;; 関数の宣言（ブロックの始めで値を入れる）。async function も
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      P_peek_at p one ,(after)
+      Tok_is after "function" ,(afterFn)
+      Tok_nl after ,(afterNl)
+      __not__ afterNl ,(sameLine)
+      __String_equal__ word "async" ,(isAsyncWord)
+      __and__ isAsyncWord afterFn ,(x) __and__ x sameLine ,(asyncDecl)
+      __String_equal__ word "function" ,(fnDecl)
+      __or__ fnDecl asyncDecl ,(test__) __if__ test__
         (,()
-          P_function p ,(fn)
+          __if__ asyncDecl (,() P_next p ,(t) __nop__) ,()
+          P_function_as p asyncDecl ,(fn)
           Sjs_get fn "name" ,(name)
           __String_equal__ name "" ,(test__) __if__ test__ (,() P_fail p) ,()
           Sjs_node "funcdecl" ,(n)
@@ -562,6 +571,8 @@
   __String_equal__ kind "id" ,(isId)
   __String_equal__ text "yield" ,(isYield)
   __and__ isId isYield ,(test__) __if__ test__ (,() P_yield p ,(n) return n) ,()
+  __String_equal__ text "async" ,(isAsyncWord)
+  __and__ isId isAsyncWord ,(test__) __if__ test__ (,() P_async p ,(n) return n) ,()
   ;; アロー関数：名前 => か、( ... ) =>
   Tok_is_name tok ,(isName)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -759,12 +770,16 @@
   P_params p acc)
 
 (define P_arrow_body ,(p params)
+  P_arrow_body_as p params __FALSE__)
+
+(define P_arrow_body_as ,(p params isAsync)
   __Cont_get__ ,(return)
   Sjs_node "arrow" ,(n)
   __Dict_put__ n "params" params ,()
+  __Dict_put__ n "async" isAsync ,()
   P_is p "{" ,(test__) __if__ test__
-    (,() P_body p __FALSE__ ,(body) __Dict_put__ n "body" body ,() __Dict_put__ n "expr" __NULL__ ,() return n) ,()
-  P_in_gen p __FALSE__ (,() P_assign p) ,(e)
+    (,() P_body p __FALSE__ isAsync ,(body) __Dict_put__ n "body" body ,() __Dict_put__ n "expr" __NULL__ ,() return n) ,()
+  P_in_fn p __FALSE__ isAsync (,() P_assign p) ,(e)
   __Dict_put__ n "body" __NULL__ ,()
   __Dict_put__ n "expr" e ,()
   __NULL__ n)
@@ -845,6 +860,17 @@
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
   Tok_text tok ,(text)
+  __String_equal__ kind "id" ,(isId)
+  __String_equal__ text "await" ,(isAwait)
+  __and__ isId isAwait ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ p "async" (,(k) __NULL__ __FALSE__) ,(inAsync)
+      __unless__ inAsync (,() Sjs_not_in "not in SJS: await outside an async function") ,()
+      P_next p ,(t)
+      P_unary p ,(arg)
+      Sjs_node "await" ,(n)
+      __Dict_put__ n "arg" arg ,()
+      return n) ,()
   __String_equal__ kind "punct" ,(punct)
   Sjs_in_words text "! - + ~" ,(sign)
   __and__ punct sign ,(isSign)
@@ -1067,7 +1093,23 @@
   P_eat p "..." ,(test__) __if__ test__
     (,() P_assign p ,(a) Sjs_node "spread" ,(sp) __Dict_put__ sp "arg" a ,() return sp) ,()
   Sjs_node "prop" ,(prop)
+  ;; async のメソッド：async の後に、同じ行で名前か * が続く
+  P_peek p ,(tok)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  P_peek_at p one ,(after)
+  Tok_is tok "async" ,(a1)
+  Tok_nl after ,(nl)
+  __not__ nl ,(sameLine)
+  Tok_is after ":" ,(b1)
+  Tok_is after "(" ,(b2)
+  Tok_is after "," ,(b3)
+  Tok_is after "}" ,(b4)
+  __or__ b1 b2 ,(b) __or__ b b3 ,(b) __or__ b b4 ,(plain)
+  __not__ plain ,(notPlain)
+  __and__ a1 sameLine ,(a) __and__ a notPlain ,(isAsync)
+  __if__ isAsync (,() P_next p ,(t) __nop__) ,()
   P_eat p "*" ,(isGen)
+  __and__ isGen isAsync ,(test__) __if__ test__ (,() P_not_yet "async generators") ,()
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
   Tok_text tok ,(text)
@@ -1105,9 +1147,10 @@
   P_eat p "(" ,(test__) __if__ test__
     (,()
       P_params p __NULL__ ,(params)
-      P_body p isGen ,(body)
+      P_body p isGen isAsync ,(body)
       Sjs_node "function" ,(f)
       __Dict_put__ f "gen" isGen ,()
+      __Dict_put__ f "async" isAsync ,()
       __Dict_put__ f "params" params ,()
       __Dict_put__ f "body" body ,()
       __Dict_put__ f "expr" __NULL__ ,()
@@ -1237,17 +1280,23 @@
 
 ;; function 式（名前は読むが使わない）
 (define P_function ,(p)
+  P_function_as p __FALSE__)
+
+;; isAsync なら async function
+(define P_function_as ,(p isAsync)
   __Cont_get__ ,(return)
   P_next p ,(tok)
   P_eat p "*" ,(isGen)
+  __and__ isGen isAsync ,(test__) __if__ test__ (,() P_not_yet "async generators") ,()
   P_peek p ,(tok)
   Tok_is_name tok ,(named)
   __if_then_else__ named (,() P_next p ,(t) Tok_text t) (,() __NULL__ "") ,(fname)
   P_expect p "(" ,()
   P_params p __NULL__ ,(params)
-  P_body p isGen ,(body)
+  P_body p isGen isAsync ,(body)
   Sjs_node "function" ,(n)
   __Dict_put__ n "gen" isGen ,()
+  __Dict_put__ n "async" isAsync ,()
   __Dict_put__ n "name" fname ,()
   __Dict_put__ n "params" params ,()
   __Dict_put__ n "body" body ,()
@@ -1256,17 +1305,56 @@
 
 ;; ── 段階 B5：ジェネレータ ──
 
-;; 関数の本体のブロック。isGen ならジェネレータの本体（yield を書ける）
-(define P_body ,(p isGen)
-  P_in_gen p isGen (,() P_block p))
+;; 関数の本体のブロック。isGen ならジェネレータの本体（yield を書ける）、isAsync なら async 関数の本体（await を書ける）
+(define P_body ,(p isGen isAsync)
+  P_in_fn p isGen isAsync (,() P_block p))
 
-;; p の "gen"（ジェネレータの本体の中か）を isGen にして thunk を読み、戻す
-(define P_in_gen ,(p isGen thunk)
-  __Dict_lookup_or__ p "gen" (,(k) __NULL__ __FALSE__) ,(saved)
+;; p の "gen"（ジェネレータの本体の中か）と "async"（async 関数の本体の中か）を変えて thunk を読み、戻す
+(define P_in_fn ,(p isGen isAsync thunk)
+  __Dict_lookup_or__ p "gen" (,(k) __NULL__ __FALSE__) ,(savedGen)
+  __Dict_lookup_or__ p "async" (,(k) __NULL__ __FALSE__) ,(savedAsync)
   __Dict_put__ p "gen" isGen ,()
+  __Dict_put__ p "async" isAsync ,()
   thunk ,(n)
-  __Dict_put__ p "gen" saved ,()
+  __Dict_put__ p "gen" savedGen ,()
+  __Dict_put__ p "async" savedAsync ,()
   __NULL__ n)
+
+;; async function、async (引数) => 本体、async 名前 => 本体（async の後に改行はない）
+(define P_async ,(p)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  P_peek_at p one ,(after)
+  Tok_nl after ,(nl)
+  __if__ nl (,() Sjs_not_in "not in SJS: async") ,()
+  Tok_is after "function" ,(test__) __if__ test__ (,() P_next p ,(t) P_function_as p __TRUE__ ,(n) return n) ,()
+  Tok_is_name after ,(named)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  P_peek_at p two ,(after2)
+  Tok_is after2 "=>" ,(arrow)
+  __and__ named arrow ,(test__) __if__ test__
+    (,()
+      P_next p ,(t)
+      P_next p ,(tok)
+      Tok_text tok ,(name)
+      P_next p ,(t)
+      Sjs_node "id" ,(param)
+      __Dict_put__ param "name" name ,()
+      __LList_cons__ param __NULL__ ,(params)
+      P_arrow_body_as p params __TRUE__ ,(n)
+      return n) ,()
+  Tok_is after "(" ,(test__) __if__ test__
+    (,()
+      P_next p ,(t)
+      P_paren_arrow p ,(isArrow)
+      __if__ isArrow
+        (,()
+          P_next p ,(tok)
+          P_params p __NULL__ ,(params)
+          P_expect p "=>" ,()
+          P_arrow_body_as p params __TRUE__ ,(n)
+          return n) ,()) ,()
+  Sjs_not_in "not in SJS: async")
 
 ;; yield [式] と yield* 式。式がないのは、次の字句が閉じる括弧、コンマ、;、:、終わりか、改行の後のとき
 (define P_yield ,(p)

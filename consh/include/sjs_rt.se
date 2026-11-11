@@ -189,6 +189,7 @@
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "object") ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "object") ,()
   __NULL__ kind)
 
 (define Sjs_is_number ,(v)
@@ -245,6 +246,7 @@
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() return "an array") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__ (,() return "an object") ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "a generator") ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "a promise") ,()
   Sjs_to_string v ,(s)
   __String_concat__ "the " kind ,(a)
   __String_concat__ a " " ,(a)
@@ -540,6 +542,7 @@
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_join v "," ,(s) return s) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "[object Generator]") ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "[object Promise]") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
@@ -996,6 +999,7 @@
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,() Sjs_obj_get o ks ,(v) return v) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjs_gen_method G o ks ,(m) return m) ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_promise_method G o ks ,(m) return m) ,()
   __String_equal__ kind "function" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ o "props" (,(k) return __NULL__) ,(props)
@@ -1123,8 +1127,10 @@
   __String_equal__ kind "array" ,(isArray)
   __String_equal__ kind "object" ,(isObject)
   __String_equal__ kind "generator" ,(isGen)
+  __String_equal__ kind "promise" ,(isPromise)
   __or__ isArray isObject ,(container)
   __or__ container isGen ,(container)
+  __or__ container isPromise ,(container)
   __if__ container
     (,() Sjs_json v ,(j) __is_null__ j ,(none) __unless__ none (,() return j) ,()) ,()
   Sjs_to_string v)
@@ -1607,6 +1613,7 @@
       __String_concat__ s "}" ,(s)
       return s) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "{}") ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "{}") ,()
   __NULL__ __NULL__)
 
 (define Sjs_json_items ,(list acc first)
@@ -1701,7 +1708,13 @@
   Sjs_infinity ,(inf)
   __Dict_put__ G "Infinity" inf ,()
   Sjs_nan ,(nan)
-  __Dict_put__ G "NaN" nan)
+  __Dict_put__ G "NaN" nan ,()
+  ;; Promise（段階 B5b）
+  Sjs_object_new G ,(promise)
+  Sjs_def G promise "resolve" (,(args) Sjs_arg args ,(v rest) Sjs_promise_coerce G v) ,()
+  Sjs_def G promise "reject" (,(args) Sjs_arg args ,(e rest) Sjs_promise_new G ,(p) Sjs_promise_reject p e ,() __NULL__ p) ,()
+  Sjs_def G promise "all" (,(args) Sjs_arg args ,(v rest) Sjs_promise_all G v) ,()
+  __Dict_put__ G "Promise" promise)
 
 (define Sjs_need_object ,(o)
   __Cont_get__ ,(return)
@@ -1806,6 +1819,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,()
   __NULL__ rt)
 
 
@@ -2277,3 +2291,299 @@
     Sjs_kind exc ,(kind)
     __String_equal__ kind "genreturn" ,(test__) __if__ test__ (,() Sjs_raise exc) ,()
     handler exc))
+
+;; ── 段階 B5b：Promise、async、await ──
+;; Promise は Dict で、"t" は "promise"、"state" は Ref（"pending"、"fulfilled"、"rejected"）、"value" は Ref、
+;; "reactions" は、決着を待つ (成功の Closure 失敗の Closure) の逆順の LList の Ref、"handled" は、受け手が付いたか、
+;; "resolved" は、resolve か reject が呼ばれたか（2 度目からは何もしない）。
+;; 決着したときと、決着した Promise に受け手を付けたときは、受け手を呼ぶジョブを、PDict の "sjs_jobs" の列
+;; （マイクロタスクの列）に入れる。Sjs_run_jobs が列を最後まで動かす（ConSh は評価ごと、consh/sjs/sjs は最後に）。
+;; 列が空になったとき、受け手のない拒否された Promise があれば、受け手のない例外にする。
+;; async 関数は、本体をジェネレータの本体として動かし（Sjs_async）、await は yield にする（Sjs_await）。
+;; 本体が止まるたびに、await した値の Promise に、本体を続けるジョブを受け手として付ける
+
+(define Sjs_promise_new ,(G)
+  Sjs_new_id G ,(n)
+  __Dict_new__ ,(p)
+  __Dict_put__ p "t" "promise" ,()
+  __Dict_put__ p "id" n ,()
+  __Ref_new__ "pending" ,(state)
+  __Dict_put__ p "state" state ,()
+  __Ref_new__ __NULL__ ,(value)
+  __Dict_put__ p "value" value ,()
+  __Ref_new__ __NULL__ ,(reactions)
+  __Dict_put__ p "reactions" reactions ,()
+  __Ref_new__ __FALSE__ ,(handled)
+  __Dict_put__ p "handled" handled ,()
+  __Ref_new__ __FALSE__ ,(resolved)
+  __Dict_put__ p "resolved" resolved ,()
+  __NULL__ p)
+
+(define Sjs_promise_ref ,(p name)
+  __Dict_lookup_or__ p name __print_exit_error__ ,(r)
+  __Ref_get__ r)
+
+;; Promise.resolve(v)：Promise ならそのまま、ほかは v で成功した Promise
+(define Sjs_promise_coerce ,(G v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return v) ,()
+  Sjs_promise_new G ,(p)
+  Sjs_promise_settle p "fulfilled" v ,()
+  __NULL__ p)
+
+;; resolve(v)：v が Promise なら、ジョブで v の決着を p に写す。p 自身なら TypeError で拒否する
+(define Sjs_promise_resolve ,(p v)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "resolved" __print_exit_error__ ,(resolved)
+  __Ref_get__ resolved ,(done)
+  __if__ done return ,()
+  __Ref_set__ resolved __TRUE__ ,()
+  Sjs_seq p v ,(test__) __if__ test__
+    (,()
+      __PDict_lookup_or__ "sjs_G" (,(k) __NULL__ __NULL__) ,(G)
+      Sjs_error_object G "TypeError" "Chaining cycle detected for promise #<Promise>" ,(e)
+      Sjs_promise_settle p "rejected" e ,()
+      return) ,()
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "promise" ,(test__) __if__ test__
+    (,()
+      Sjs_enqueue (,() Sjs_promise_then v (,(x) Sjs_promise_settle p "fulfilled" x) (,(e) Sjs_promise_settle p "rejected" e)) ,()
+      return) ,()
+  Sjs_promise_settle p "fulfilled" v)
+
+(define Sjs_promise_reject ,(p e)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "resolved" __print_exit_error__ ,(resolved)
+  __Ref_get__ resolved ,(done)
+  __if__ done return ,()
+  __Ref_set__ resolved __TRUE__ ,()
+  Sjs_promise_settle p "rejected" e)
+
+;; 決着させ、待っている受け手のジョブを、付けた順に列に入れる
+(define Sjs_promise_settle ,(p state v)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "state" __print_exit_error__ ,(stateRef)
+  __Ref_get__ stateRef ,(now)
+  __String_equal__ now "pending" ,(test__) __unless__ test__ return ,()
+  __Ref_set__ stateRef state ,()
+  __Dict_lookup_or__ p "value" __print_exit_error__ ,(valueRef)
+  __Ref_set__ valueRef v ,()
+  __Dict_lookup_or__ p "reactions" __print_exit_error__ ,(reactionsRef)
+  __Ref_get__ reactionsRef ,(rev)
+  __Ref_set__ reactionsRef __NULL__ ,()
+  Sjs_reverse_list rev ,(reactions)
+  __String_equal__ state "fulfilled" ,(ok)
+  Sjs_promise_fire reactions ok v ,()
+  __if__ ok return ,()
+  Sjs_promise_ref p "handled" ,(handled)
+  __if__ handled return ,()
+  ;; 受け手のない拒否：列が空になったときに、まだ受け手がなければ、受け手のない例外にする
+  __PDict_lookup_or__ "sjs_unhandled" (,(k) __NULL__ __NULL__) ,(list)
+  __LList_cons__ p list ,(list)
+  __PDict_put__ "sjs_unhandled" list)
+
+(define Sjs_promise_fire ,(reactions ok v)
+  __Cont_get__ ,(return)
+  __is_null__ reactions ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ reactions ,(r rest)
+  __LList_uncons__ __print_exit_error__ r ,(onOk more)
+  __LList_uncons__ __print_exit_error__ more ,(onFail more)
+  __if_then_else__ ok (,() __NULL__ onOk) (,() __NULL__ onFail) ,(f)
+  Sjs_enqueue (,() f v) ,()
+  Sjs_promise_fire rest ok v)
+
+;; p に受け手（ConMa の Closure）を付ける
+(define Sjs_promise_then ,(p onOk onFail)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "handled" __print_exit_error__ ,(handled)
+  __Ref_set__ handled __TRUE__ ,()
+  Sjs_promise_ref p "state" ,(state)
+  Sjs_promise_ref p "value" ,(v)
+  __String_equal__ state "fulfilled" ,(test__) __if__ test__ (,() Sjs_enqueue (,() onOk v) ,() return) ,()
+  __String_equal__ state "rejected" ,(test__) __if__ test__ (,() Sjs_enqueue (,() onFail v) ,() return) ,()
+  __LList_cons__ onFail __NULL__ ,(r)
+  __LList_cons__ onOk r ,(r)
+  __Dict_lookup_or__ p "reactions" __print_exit_error__ ,(reactionsRef)
+  __Ref_get__ reactionsRef ,(rs)
+  __LList_cons__ r rs ,(rs)
+  __Ref_set__ reactionsRef rs)
+
+;; then、catch、finally
+(define Sjs_promise_method ,(G p name)
+  __Cont_get__ ,(return)
+  __NULL__ (,(m f) __String_equal__ name m ,(t) __if__ t (,() Sjs_function G m f ,(fn) return fn)) ,(method)
+  method "then" (,(args)
+    Sjs_arg args ,(f rest)
+    Sjs_arg rest ,(r rest)
+    Sjs_promise_derive G p f r) ,()
+  method "catch" (,(args)
+    Sjs_arg args ,(r rest)
+    Sjs_promise_derive G p __NULL__ r) ,()
+  ;; finally(f)：仕様どおり、f の戻り値を Promise にして、その決着の後に、同じ値か理由を渡す
+  method "finally" (,(args)
+    Sjs_arg args ,(f rest)
+    Sjs_kind f ,(fk)
+    __String_equal__ fk "function" ,(isFn)
+    __unless__ isFn (,() Sjs_promise_derive G p f f) ,()
+    Sjs_function G "" (,(as)
+      Sjs_arg as ,(v rest)
+      Sjs_call f __NULL__ ,(y)
+      Sjs_promise_coerce G y ,(c)
+      Sjs_function G "" (,(bs) __NULL__ v) ,(back)
+      Sjs_promise_derive G c back __NULL__) ,(onOk)
+    Sjs_function G "" (,(as)
+      Sjs_arg as ,(e rest)
+      Sjs_call f __NULL__ ,(y)
+      Sjs_promise_coerce G y ,(c)
+      Sjs_function G "" (,(bs) Sjs_raise e) ,(thrower)
+      Sjs_promise_derive G c thrower __NULL__) ,(onFail)
+    Sjs_promise_derive G p onOk onFail) ,()
+  __NULL__ __NULL__)
+
+;; p.then(f, r) の Promise
+(define Sjs_promise_derive ,(G p f r)
+  Sjs_promise_new G ,(q)
+  Sjs_kind f ,(fk)
+  __String_equal__ fk "function" ,(hasF)
+  Sjs_kind r ,(rk)
+  __String_equal__ rk "function" ,(hasR)
+  Sjs_promise_then p
+    (,(v) __if_then_else__ hasF (,() Sjs_promise_handler q f v (,(x) Sjs_promise_resolve q x)) (,() Sjs_promise_resolve q v))
+    (,(e) __if_then_else__ hasR (,() Sjs_promise_handler q r e (,(x) Sjs_promise_resolve q x)) (,() Sjs_promise_reject q e)) ,()
+  __NULL__ q)
+
+;; SJS の関数 f を x で呼び、戻り値を k に渡す（f が関数でなければ undefined を渡す）。投げられたら q を拒否する
+(define Sjs_promise_handler ,(q f x k)
+  __Cont_get__ ,(return)
+  Sjs_kind f ,(kind)
+  __String_equal__ kind "function" ,(isFn)
+  __Ref_new__ __NULL__ ,(out)
+  Sjs_try
+    (,()
+      __if_then_else__ isFn (,() __LList_cons__ x __NULL__ ,(args) Sjs_call f args) (,() __NULL__ __NULL__) ,(y)
+      __Ref_set__ out y)
+    (,(e) Sjs_promise_reject q e ,() return) ,()
+  __Ref_get__ out ,(y)
+  k y)
+
+;; Promise.all(配列)
+(define Sjs_promise_all ,(G v)
+  __Cont_get__ ,(return)
+  Sjs_promise_new G ,(p)
+  Sjs_iter_values v ,(items)
+  Sjs_array_new G ,(results)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Sjs_promise_all_count items zero ,(n)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() Sjs_promise_resolve p results ,() return p) ,()
+  __Ref_new__ n ,(left)
+  Sjs_promise_all_each G p results left items zero ,()
+  __NULL__ p)
+
+(define Sjs_promise_all_count ,(items n)
+  __Cont_get__ ,(return)
+  __is_null__ items ,(test__) __if__ test__ (,() return n) ,()
+  __LList_uncons__ __print_exit_error__ items ,(x rest)
+  Sjs_inc n ,(n)
+  Sjs_promise_all_count rest n)
+
+(define Sjs_promise_all_each ,(G p results left items i)
+  __Cont_get__ ,(return)
+  __is_null__ items ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ items ,(x rest)
+  Sjs_set_member G results i __NULL__ ,()
+  Sjs_promise_coerce G x ,(q)
+  Sjs_promise_then q
+    (,(v)
+      Sjs_set_member G results i v ,()
+      __Ref_get__ left ,(n)
+      Sjs_dec n ,(n)
+      __Ref_set__ left n ,()
+      __Number_is_zero__ n ,(test__) __if__ test__ (,() Sjs_promise_resolve p results) ,())
+    (,(e) Sjs_promise_reject p e) ,()
+  Sjs_inc i ,(i)
+  Sjs_promise_all_each G p results left rest i)
+
+;; ── マイクロタスクの列 ──
+
+(define Sjs_jobs ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_jobs" (,(k) __NULL__ __NULL__) ,(q)
+  __is_null__ q ,(test__) __unless__ test__ (,() return q) ,()
+  __Dict_new__ ,(q)
+  __Ref_new__ __NULL__ ,(in)
+  __Dict_put__ q "in" in ,()
+  __Ref_new__ __NULL__ ,(out)
+  __Dict_put__ q "out" out ,()
+  __PDict_put__ "sjs_jobs" q ,()
+  __NULL__ q)
+
+(define Sjs_enqueue ,(job)
+  Sjs_jobs ,(q)
+  __Dict_lookup_or__ q "in" __print_exit_error__ ,(in)
+  __Ref_get__ in ,(l)
+  __LList_cons__ job l ,(l)
+  __Ref_set__ in l)
+
+;; 次のジョブ（なければ null）
+(define Sjs_dequeue ,()
+  __Cont_get__ ,(return)
+  Sjs_jobs ,(q)
+  __Dict_lookup_or__ q "out" __print_exit_error__ ,(out)
+  __Ref_get__ out ,(l)
+  __is_null__ l ,(test__) __unless__ test__
+    (,() __LList_uncons__ __print_exit_error__ l ,(job rest) __Ref_set__ out rest ,() return job) ,()
+  __Dict_lookup_or__ q "in" __print_exit_error__ ,(in)
+  __Ref_get__ in ,(rev)
+  __is_null__ rev ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __Ref_set__ in __NULL__ ,()
+  Sjs_reverse_list rev ,(l)
+  __LList_uncons__ __print_exit_error__ l ,(job rest)
+  __Ref_set__ out rest ,()
+  __NULL__ job)
+
+;; 列が空になるまでジョブを動かし、受け手のない拒否があれば、受け手のない例外にする
+(define Sjs_run_jobs ,()
+  __Cont_get__ ,(return)
+  Sjs_dequeue ,(job)
+  __is_null__ job ,(test__) __unless__ test__ (,() job ,() Sjs_run_jobs ,() return) ,()
+  __PDict_lookup_or__ "sjs_unhandled" (,(k) __NULL__ __NULL__) ,(list)
+  __PDict_put__ "sjs_unhandled" __NULL__ ,()
+  Sjs_reverse_list list ,(list)
+  Sjs_unhandled_check list)
+
+(define Sjs_unhandled_check ,(list)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ list ,(p rest)
+  Sjs_promise_ref p "handled" ,(handled)
+  __if__ handled (,() Sjs_unhandled_check rest ,() return) ,()
+  Sjs_promise_ref p "value" ,(e)
+  Sjs_error_text e ,(t)
+  __String_concat__ "Uncaught (in promise) " t ,(msg)
+  Sjs_uncaught msg)
+
+;; ── async 関数 ──
+
+;; async 関数の呼び出し：本体の thunk body を、ジェネレータの本体として、最初の await まで動かし、結果の Promise を返す
+(define Sjs_async ,(G body)
+  Sjs_generator G body ,(gen)
+  Sjs_promise_new G ,(p)
+  Sjs_async_step G gen p "next" __NULL__ ,()
+  __NULL__ p)
+
+;; 本体を続ける。終われば戻り値で p を解決し、投げられれば p を拒否し、await で止まれば、その値の Promise の受け手から続ける
+(define Sjs_async_step ,(G gen p mode x)
+  __Cont_get__ ,(return)
+  __Ref_new__ __NULL__ ,(out)
+  Sjs_try (,() Sjs_gen_resume gen mode x ,(r) __Ref_set__ out r) (,(e) Sjs_promise_reject p e ,() return) ,()
+  __Ref_get__ out ,(r)
+  Sjs_obj_get r "done" ,(done)
+  Sjs_obj_get r "value" ,(v)
+  __if__ done (,() Sjs_promise_resolve p v ,() return) ,()
+  Sjs_promise_coerce G v ,(q)
+  Sjs_promise_then q (,(y) Sjs_async_step G gen p "next" y) (,(e) Sjs_async_step G gen p "throw" e))
+
+;; await v（async 関数の本体の中。本体はジェネレータとして動いている）
+(define Sjs_await ,(v)
+  Sjs_yield v)

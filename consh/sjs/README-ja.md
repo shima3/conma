@@ -17,7 +17,7 @@ SJS のファイルは、文の並びである（関数の本体と同じ。宣�
 consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
-└── test/            step1〜step4（段階 B1〜B3、B5a）の caseN.sjs と caseN.log、run_all.sh、compare.sh
+└── test/            step1〜step5（段階 B1〜B3、B5a、B5b）の caseN.sjs と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
@@ -69,7 +69,16 @@ consh/include/
 * ConSh：ジェネレータは、作った `(( ))` の後も、別の `(( ))` で続けられる（継続は、作った VProc が終わった後も、別の VProc で呼べる）。シェルの値（`$g`）にすると、要素を読むたびに `next` を呼ぶ LazyList になる（2026/11/11 にユーザーと決めた）。そのときの本体は、ジェネレータを作ったときの SJS変数、`$名前`、`console.log` の出力先で動き、エラーなら、メッセージを標準エラーに出して、リストをそこで終える
 * 段階 A にはジェネレータがない（`not in SJS: a generator`）ので、テスト（step4）のログは、Node.js で動かした結果と比べた
 
-まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
+## 段階 B5b で足したもの：async と await（2026/11/11）
+
+* `async function`（式と宣言）、`async (引数) => 本体`、`async 名前 => 本体`、`async` のメソッド、`await 式`（async 関数の本体の中だけ）
+* Promise：`then`、`catch`、`finally`、`Promise.resolve`、`Promise.reject`、`Promise.all`。`typeof` は `"object"`、`String` は `[object Promise]`、`JSON.stringify` と `console.log` は `{}`
+* マイクロタスクの列：`await` の後の続きと `then` の受け手は、JavaScript と同じ順で列に入り、`consh/sjs/sjs` はプログラムの最後に、ConSh は `(( ))` と `$(( ))` の評価ごと（SJS関数をコマンドとして呼んだときも）に、列を最後まで動かす（SAFEJS-PLAN-ja.md の 2.2 の 6）。順序は、async 関数が Promise を返すときの 2 つ多い段階や、仕様どおりの `finally` も含めて、Node.js と同じ（step5）
+* 列が空になったとき、受け手のない拒否された Promise があれば、受け手のない例外（`Uncaught (in promise) ...`）にする。ConSh では、その評価のエラー（`$?` は 2）
+* ConSh：シェルの値（`$p`）にした Promise は、成功していればその値、拒否されていれば空文字列になる（評価が終われば決着している）。`(( ))` の `$?` は、Promise は真なので 0
+* 段階 A には `async` がない（`not in SJS: async`）ので、テストのログは Node.js で動かした結果と比べた
+
+まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：async のジェネレータ、配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
 
 ## 変換の形
 
@@ -82,6 +91,7 @@ consh/include/
 * **if** は `__if_then_else__`。**ループ**は、Ref に入れた自分を末尾で呼ぶ thunk（CChain は伸びない）を、`__Cont_get__` で脱出の継続（`break`）を取る thunk で包み、各回の本体を、もう 1 つの脱出の継続（`continue`）を取る thunk で包む（`Gen_loop`）。`&&`、`||`、`??`、条件演算子は、`__if_then_else__` の 2 つの thunk が値を返す形にし、右辺は必要なときだけ求める。
 * **例外**：受け手の継続のスタックを PDict に置く。`Sjs_try` は、`catch` へ戻る脱出の継続を積んで本体を実行し、`throw` と実行時のエラー（`Sjs_raise`）は、いちばん上の受け手を取り出して呼ぶ。`return`、`break`、`continue` の継続は、それを取った所（関数とループの始め）で受け手のスタックを覚えておき、呼ぶ前に戻す（`Gen_jump`）。`finally` は、本体を「例外を受けて `finally` を実行し、投げ直す」`Sjs_try` で包み、本体の中の `return`、`break`、`continue` を、`finally` を実行してから外へ出る Closure に置き換える（`Gen_try`）。
 * **ジェネレータ**：ジェネレータの関数を呼ぶと、引数を入れて、本体を thunk にしたジェネレータのオブジェクト（`Sjs_generator`）を返す。最初の `next` は、その `next` の上で本体を始める。`yield`（`Sjs_yield`）は、本体に戻る継続を覚え、今の `next` の継続に `{value, done}` を渡す。次の `next` は、そのときの継続を覚え直して、本体に戻る継続を呼ぶ（`Sjs_gen_resume`）。本体の受け手のスタックは、`next` を呼んだ所のものと別にし、いちばん下の受け手（境）が、本体から出た例外を、今の `next` を呼んだ所に投げ直す。`return(x)` は、`yield` の所から「return の印」を投げ、`catch` は通し（`Sjs_try_catch`）、`finally` は実行して、境で終える。`for...of` は、繰り返しの手順（`Sjs_iter_open`、`Sjs_iter_more`、`Sjs_iter_take`）で読む
+* **async**：async 関数を呼ぶと、本体の thunk をジェネレータの本体にして、最初の `await` まで動かし（`Sjs_async`）、結果の Promise を返す。`await v` は `yield v` と同じで（`Sjs_await`）、止まるたびに、`v` の Promise に、本体を続ける（拒否なら、本体に投げる）受け手を付ける（`Sjs_async_step`）。Promise の決着は、受け手を呼ぶジョブを PDict の列（`"sjs_jobs"`）に入れ、`Sjs_run_jobs` が動かす
 * **行**：字句解析が行を数え、文ごとに `Sjs_line` で PDict に置く（文 1 つに 1 ステップ）。
 * **数の書き方**：ConMa の `__Number_toString__` は最も短い桁を出すが、指数の形（`1e-07`）と指数にする範囲が JavaScript と違うので、`Sjs_num_str` が桁と小数点の位置に分けて、JavaScript の `Number::toString` の規則で書き直す。`Infinity`、`-Infinity`、`NaN` も同じ。
 * **`/` と `%`**：`__Number_divide__` は 0 で割るとエラーなので、`Sjs_div` が JavaScript と同じく `Infinity`、`-Infinity`、`NaN` にする。`%` のプリミティブはないので、`a - b * trunc(a / b)` で求める（大きな数では、JavaScript の `%` と下の桁が違うことがある）。
@@ -95,6 +105,7 @@ consh/include/
 
 * `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
 * ジェネレータ：`for...of` を `break` などで抜けても、ジェネレータの `return()` を呼ばない（JavaScript は呼び、ジェネレータの `finally` が動く）。分割代入（`const [a, b] = gen()`）は、ジェネレータをすべて読む（JavaScript は要る分だけ読んで `return()` を呼ぶ）。`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない。
+* Promise：`new Promise`（`new` は SJS の範囲の外）、`Promise.race`、`allSettled`、`any`、`for await`、async のジェネレータはない。受け手のない拒否は、Node.js ではプロセスを終了ステータス 1 で終えるが、ここではメッセージを出して 2 にする。
 * シェルの値にしたジェネレータのエラーのメッセージに、ConSh の位置が付かない（`consh: sjs: ...`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。
 * 関数を `console.log` に渡すと `[Function (anonymous)]` を出す（Node.js は名前を出すことがある）。

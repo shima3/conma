@@ -1,0 +1,22 @@
+script start
+a1 start
+a2
+script end
+a1 end
+p1
+r2
+t1
+empty all []
+p2
+t2
+all rejected: bad
+TypeError: Chaining cycle detected for promise #<Promise>
+p3
+r1
+t3
+[10,20]
+passed 7
+t4
+sum 6
+fact 3628800
+exit: 0

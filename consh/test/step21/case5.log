@@ -1,0 +1,18 @@
+doubling 21
+status 0 after the evaluation
+value: 42
+doubling 5
+v=10, typeof object, [object Promise]
+then: 43
+doubling 1
+doubling 2
+all: 2 4
+consh: case5.sh:10:1: sjs: Uncaught (in promise) refused
+status 2
+consh: case5.sh:12:1: sjs: Uncaught (in promise) handled later
+status 2
+r: got caught
+c=42 status 0
+consh: case5.sh:19:1: sjs: not in SJS: await outside an async function
+status 2
+exit: 0

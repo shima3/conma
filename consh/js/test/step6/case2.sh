@@ -28,6 +28,6 @@ echo "status $?"
 echo "status $?"
 (( eval ))
 echo "status $?"
-# 段階 A では async と await も範囲の外
+# async と await は、段階 B5b から使える（Node.js は段階 B で動かす。ブラウザの段階 A では範囲の外）
 (( af = async () => 1 ))
 echo "status $?"

@@ -26,6 +26,5 @@ consh: case2.sh:27:1: sjs: TypeError: cannot assign to Math
 status 2
 consh: case2.sh:29:1: sjs: not in SJS: eval
 status 2
-consh: case2.sh:32:1: sjs: not in SJS: async
-status 2
+status 0
 exit: 0

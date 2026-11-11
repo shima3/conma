@@ -715,6 +715,15 @@
       return l) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_json v ,(j) return j) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjsb_gen_lazy v ,(l) return l) ,()
+  ;; Promise：評価のたびにマイクロタスクの列を最後まで動かすので、決着している。成功ならその値、ほかは ""
+  __String_equal__ kind "promise" ,(test__) __if__ test__
+    (,()
+      Sjs_promise_ref v "state" ,(state)
+      __String_equal__ state "fulfilled" ,(ok)
+      __unless__ ok (,() return "") ,()
+      Sjs_promise_ref v "value" ,(x)
+      Sjsb_to_shell x ,(sv)
+      return sv) ,()
   Sjs_is_nullish v ,(test__) __if__ test__ (,() return "") ,()
   Sjs_to_string v)
 
@@ -749,6 +758,7 @@
     __LazyList_empty__ ,(l)
     return l) ,()
   Sjs_gen_resume gen "next" __NULL__ ,(r)
+  Sjs_run_jobs ,()
   Sjsb_pdict_restore saved ,()
   Sjs_obj_get r "done" ,(done)
   __if__ done (,() __LazyList_empty__ ,(l) return l) ,()
@@ -777,6 +787,7 @@
   Sjsb_args G args __NULL__ ,(rev)
   Sjs_reverse_list rev ,(list)
   Sjs_call f list ,(r)
+  Sjs_run_jobs ,()
   Sjsb_pdict_restore saved ,()
   Sjs_is_nullish r ,(nothing)
   __unless__ nothing (,() Sjsb_to_shell r ,(s) Target_write sh pos err s) ,()
@@ -794,7 +805,7 @@
 
 ;; PDict の SJS の文脈を保存して戻す（SJS の関数を、ConSh の VProc で呼ぶとき）
 (define Sjsb_pdict_keys ,()
-  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_line sjs_gen")
+  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_line sjs_gen sjs_jobs sjs_unhandled")
 
 (define Sjsb_pdict_save ,()
   Sjsb_pdict_keys ,(keys)

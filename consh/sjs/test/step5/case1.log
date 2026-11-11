@@ -1,0 +1,20 @@
+f start 1
+sync after f object [object Promise]
+f start 10
+end of the program
+f after await 1
+resolved 5
+caught no
+finally
+f after await 10
+caught no
+finally
+fin
+then 2
+g done
+method 42
+catch: ReferenceError: new_err is not defined
+all [20,3,"g done"]
+chained 6
+after finally x
+exit: 0
