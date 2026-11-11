@@ -1,0 +1,70 @@
+;; LCont を関数で書いたプリミティブの適用（docs/FAST-PLAN-ja.md 4.4）。
+;; Rust VM と wasm 版は、値を LCont に返すだけのプリミティブ（vm/src/module.rs の INLINE_PRIMS）を、
+;; Body を読み込むときに実行し、LCont の Closure を作らずに、その Body まで読み込む（ステップは数える）。
+;; 各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる
+(define fail ,()
+  __Ref_get__ "abc" ,(x)
+  __OS_exit_normal__)
+
+(define say ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; return で抜ける関数と、抜けない関数
+(define find ,(list key)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(empty)
+  empty (,() return "none") (,()
+    __LList_uncons__ say list ,(head tail)
+    __String_equal__ head key ,(found)
+    found (,() return head) (,() find tail key) ,(next)
+    next) ,(chosen)
+  chosen)
+
+;; case1: __Cont_get__、__is_null__、__LList_uncons__、__String_equal__、return
+(define case1 ,()
+  __LList_cons__ "c" __NULL__ ,(l)
+  __LList_cons__ "b" l ,(l)
+  __LList_cons__ "a" l ,(l)
+  find l "b" ,(r)
+  say r ,()
+  find l "z" ,(r)
+  say r ,()
+  fail)
+
+;; case2: Dict（見つかる、見つからない）、Ref、数と文字列
+(define case2 ,()
+  __Dict_new__ ,(d)
+  __Dict_put__ d "k" "v" ,()
+  __Dict_lookup_or__ d "k" (,(key) say "missing") ,(v)
+  say v ,()
+  __Dict_lookup_or__ d "q" (,(key) __String_concat__ "missing " key ,(s) say s) ,()
+  __Ref_new__ "r" ,(ref)
+  __Ref_get__ ref ,(v)
+  say v ,()
+  __Number_fromString__ say "41" ,(n)
+  __Number_fromString__ say "1" ,(one)
+  __Number_add__ n one ,(n)
+  __type_name__ n ,(t)
+  say t ,()
+  __Number_fromString__ (,(msg) say msg) "x" ,(n)
+  say "not reached")
+
+;; case3: LCont の引数の数が値の数と違う（部分適用、余り）
+(define case3 ,()
+  __LList_cons__ "h" "t" ,(cell)
+  __LList_uncons__ say cell ,(h)
+  say "one parameter" ,()
+  __String_length__ "abc" ,()
+  say "no parameter" ,()
+  fail)
+
+;; case4: プリミティブの中のエラー
+(define case4 ,()
+  __String_equal__ "a" ,(b)
+  say "not reached")
+
+(define case5 ,()
+  __Dict_new__ ,(d)
+  __String_length__ d ,(n)
+  say "not reached")

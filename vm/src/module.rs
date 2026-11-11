@@ -70,6 +70,43 @@ pub struct BodyDef {
     /// __unless__ to its operands with each clause written as a function without parameters
     /// (step.rs, load_if), 0 otherwise.
     pub if_site: u8,
+    /// For a Body that applies one of INLINE_PRIMS, a global variable, with an LCont written as
+    /// a function with parameters: the primitive may be run while the Body is loaded
+    /// (step.rs, load_prim).
+    pub prim_site: bool,
+}
+
+/// The primitives that only pass values to their LCont (taking it from VProc::lcont), apply
+/// their onError keeping the LCont, or stop the VProc with an error: step.rs (load_prim) may
+/// run them while loading the Body that applies them.
+pub const INLINE_PRIMS: &[&str] = &[
+    "__Cont_get__",
+    "__Dict_lookup_or__",
+    "__Dict_put__",
+    "__is_null__",
+    "__type_name__",
+    "__LList_cons__",
+    "__LList_uncons__",
+    "__Ref_new__",
+    "__Ref_get__",
+    "__String_equal__",
+    "__String_substring__",
+    "__String_find__",
+    "__String_strip_suffix__",
+    "__String_length__",
+    "__String_concat__",
+    "__String_toCode__",
+    "__Number_fromString__",
+    "__Number_add__",
+    "__Number_subtract__",
+    "__Number_is_zero__",
+    "__Number_is_negative__",
+    "__Number_is_positive__",
+];
+
+fn prim_site_of(operator: &Option<CExpr>, lcont: &Option<CLCont>) -> bool {
+    matches!(operator, Some(CExpr::G(_, name)) if INLINE_PRIMS.contains(&unquote(name)))
+        && matches!(lcont, Some(CLCont::F(f)) if !f.variadic && f.body.is_some())
 }
 
 pub const IF_THEN_ELSE: u8 = 1;
@@ -237,6 +274,7 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
     }
     let dict_site = dict_site_of(&operator, &olist);
     let if_site = if_site_of(&operator, &olist);
+    let prim_site = prim_site_of(&operator, &lcont);
     Rc::new(BodyDef {
         node: node.clone(),
         func_id,
@@ -247,6 +285,7 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
         dict_site,
         fast: std::cell::Cell::new(0),
         if_site,
+        prim_site,
     })
 }
 
@@ -494,11 +533,12 @@ fn mark_fast(module: &Sexp, vals: &[Option<Value>]) {
     }
     if std::env::var_os("CONMA_FAST_REPORT").is_some() {
         eprintln!("fast __LazyList_force__: {}", if marked { "used" } else { "none" });
-        let ifs = REGISTRY.with(|r| {
-            r.borrow().as_ref().map_or(0, |v| {
-                v.iter().flatten().filter(|f| f.body.as_ref().map_or(false, |b| b.if_site != 0)).count()
+        let count = |p: &dyn Fn(&BodyDef) -> bool| {
+            REGISTRY.with(|r| {
+                r.borrow().as_ref().map_or(0, |v| v.iter().flatten().filter(|f| f.body.as_deref().map_or(false, p)).count())
             })
-        });
-        eprintln!("fast __if_then_else__, __if__, __unless__: {} Bodies", ifs);
+        };
+        eprintln!("fast __if_then_else__, __if__, __unless__: {} Bodies", count(&|b| b.if_site != 0));
+        eprintln!("fast primitives with an LCont: {} Bodies", count(&|b| b.prim_site));
     }
 }

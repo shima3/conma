@@ -81,6 +81,9 @@ pub struct Machine {
     false_closure: Value,
     select_closure: Value,
     nop_closure: Value,
+    /// The LCont that step.rs (load_prim) gives a primitive it runs while loading a Body,
+    /// to see whether the primitive returned to it: a Closure no program can get.
+    pub inline_mark: Value,
     /// CONMA_SEED: choose the next VProc at random.
     rng: Option<SplitMix64>,
     /// Sleep in the OS while every VProc waits for it. False in the VM for
@@ -248,6 +251,7 @@ impl Machine {
             false_closure: bool_closure("f"),
             select_closure: select_closure(),
             nop_closure: nop_closure(),
+            inline_mark: nop_closure(),
         }
     }
 

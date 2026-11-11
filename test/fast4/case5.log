@@ -1,0 +1,2 @@
+Error in VProc 1 at step 4: conma/test/fast4/test.se:69:3: __String_length__: expected String, got Dict
+exit: 1

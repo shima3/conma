@@ -1,0 +1,7 @@
+v
+missing q
+r
+Number
+__Number_fromString__: invalid number: "x"
+Error in VProc 1 at step 70: conma/test/fast4/test.se:50:3: Partial apply: OList empty, no LCont, CChain empty
+exit: 1

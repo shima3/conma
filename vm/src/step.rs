@@ -65,7 +65,76 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gven
             return r;
         }
     }
+    if body.prim_site && m.fast_steps >= 4 {
+        if let Some(r) = load_prim(m, vp, body, &lvenv, gvenv) {
+            return r;
+        }
+    }
     load_body_interp(vp, body, lvenv, gvenv)
+}
+
+/// True if v is Machine::inline_mark.
+fn is_mark(m: &Machine, v: &Value) -> bool {
+    matches!((v, &m.inline_mark), (Value::Closure(a), Value::Closure(b)) if Rc::ptr_eq(a, b))
+}
+
+/// Load a Body that applies one of INLINE_PRIMS with an LCont written as a function
+/// (BodyDef::prim_site), run the primitive at once (the next step), and if it passes as
+/// many values as the LCont has parameters, apply the LCont too (binding them and loading
+/// its Body, the steps after), counting each step (docs/FAST-PLAN-ja.md 4.4): the
+/// Closure of the LCont is not made then. The primitive gets Machine::inline_mark as its
+/// LCont; whatever else it does, the Closure of the LCont is made and put where the mark
+/// is, as if the steps had been taken one by one. None, without changing anything, when
+/// the Body is to be loaded as it is.
+fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
+    let p = match eval(body.operator.as_ref()?, lvenv, gvenv) {
+        Ok(Value::Prim(p)) if crate::module::INLINE_PRIMS.contains(&p.name) => p,
+        _ => return None,
+    };
+    let f = match &body.lcont {
+        Some(CLCont::F(f)) => f.clone(),
+        _ => return None,
+    };
+    let mut olist = std::mem::take(&mut vp.olist);
+    olist.clear();
+    for c in &body.olist {
+        match eval(c, lvenv, gvenv) {
+            Ok(v) => olist.push(v),
+            Err(_) => {
+                olist.clear();
+                vp.olist = olist;
+                return None;
+            }
+        }
+    }
+    vp.sinfo = body.sinfo.clone();
+    vp.dict_site = body.dict_site.clone();
+    vp.operator = Value::Prim(p);
+    vp.olist = olist;
+    vp.lcont = Some(m.inline_mark.clone());
+    vp.lvenv = lvenv.clone();
+    // The step of the primitive.
+    m.steps += 1;
+    m.fast_steps -= 1;
+    let r = (p.f)(m, vp);
+    if r.is_ok() && is_mark(m, &vp.operator) && vp.olist.len() == f.params.len() {
+        // The steps of applying the LCont: binding the values (if any) and loading its Body.
+        let mut env = lvenv.clone();
+        for (k, v) in vp.olist.drain(..).enumerate() {
+            env = lv_push(&env, f.params[k].clone(), v);
+        }
+        let k = if f.params.is_empty() { 1 } else { 2 };
+        m.steps += k;
+        m.fast_steps -= k;
+        vp.lcont = None;
+        return Some(load_body(m, vp, f.body.as_ref().unwrap(), env, gvenv));
+    }
+    if is_mark(m, &vp.operator) {
+        vp.operator = make_closure(&f, lvenv, Some(gvenv));
+    } else if vp.lcont.as_ref().map_or(false, |l| is_mark(m, l)) {
+        vp.lcont = Some(make_closure(&f, lvenv, Some(gvenv)));
+    }
+    Some(r)
 }
 
 /// Load a Body that applies __if_then_else__, __if__ or __unless__ (BodyDef::if_site)
