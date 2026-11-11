@@ -772,6 +772,15 @@ class Fuser:
             self.bail(x, d, locals_, out, J, retry=True)
             out.append("} };")
             return self.direct_result(x, d, locals_, lc, out, J)
+        if (name == "__LazyList_claim__" and len(b.olist) == 2 and None not in args
+                and self.rref(x, d, b.olist[1], 1, locals_) is not None):
+            # a LazyList already evaluated gives its cell (with a null thunk) in place; claiming
+            # one (it keeps the CChain and may block) is left to the code of this Body
+            out.append(f"let a1: &Value = {self.rref(x, d, b.olist[1], 1, locals_)};")
+            out.append("let o = match d_lazylist_claim_done(a1) { Some(c) => Out::R2(Value::Null, c), None => {")
+            self.bail(x, d, locals_, out, J, retry=True)
+            out.append("} };")
+            return self.direct_result(x, d, locals_, lc, out, J)
         if name in DIRECT and len(b.olist) == DIRECT[name][1] and None not in args:
             fn = DIRECT[name][0]
             names = []

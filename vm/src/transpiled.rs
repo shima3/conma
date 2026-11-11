@@ -1134,6 +1134,21 @@ pub fn d_llist_uncons(_m: &mut Machine, on_error: &Value, lst: &Value) -> Result
         Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
     })
 }
+/// `__LazyList_claim__ onError lazyList` of a LazyList that has been evaluated: its cell (null or
+/// an LList), which claim returns with a null thunk. None for anything else (a thunk to claim, a
+/// VProc evaluating it, not a LazyList), which the VM does: claiming keeps the CChain and may
+/// block, so only this case is done in place (the generated code bails to the Body).
+#[inline]
+pub fn d_lazylist_claim_done(lazy: &Value) -> Option<Value> {
+    match lazy {
+        Value::Ref(r) => match &*r.value.borrow() {
+            v @ (Value::Null | Value::LList(_)) => Some(v.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// The value of key in d, or None (__Dict_lookup_or__ without onMissing).
 #[inline]
 pub fn d_dict_get(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
