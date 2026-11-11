@@ -7,7 +7,7 @@
 ;;   undefined __NULL__
 ;;   null      Ref（中身は使わない。SJS の値で Ref になるのは null だけ）
 ;;   関数      Dict。"t" に "function"、"f" に引数の LList を受け取る Closure、"id" に作った順の番号（=== で比べる）、
-;;             "name" に名前（console.log に出す。なければ ""）、"props" に静的なメンバーの Dict（Number.isInteger など）
+;;             "name" に名前（console.log に出す。なければ ""）、"members" にメンバーの SJS のオブジェクト（Number.isInteger など。Sjs_members_find）
 ;;   配列      Dict。"t" に "array"、"id"、"items" に添字の String（"0"、"1"、…）から値への Dict、"length" に長さの Ref
 ;;   オブジェクト Dict。"t" に "object"、"id"、"props" に名前から値への Dict、"keys" に名前を足した順（逆順）の LList の Ref
 ;;             （プロトタイプはない。キーの順は、足した順だけ。JavaScript の整数のキーを先にする規則はない）
@@ -845,6 +845,9 @@
   __Ref_get__ ref ,(n)
   __Number_subtract__ i n ,(d)
   __Number_is_negative__ d ,(test__) __if__ test__ return ,()
+  ;; 長さより後に入れれば、間が穴になる
+  __Number_is_positive__ d ,(gap)
+  __if__ gap (,() __Dict_put__ a "holes" __TRUE__) ,()
   Sjs_inc i ,(n)
   __Ref_set__ ref n)
 
@@ -858,8 +861,86 @@
 
 ;; 要素のある添字の LList（順に。穴を飛ばす）
 (define Sjs_array_present ,(a)
+  __Cont_get__ ,(return)
+  Sjs_array_sparse a ,(idx)
+  __is_null__ idx ,(dense)
+  __unless__ dense (,() return idx) ,()
   Sjs_array_length a ,(n)
   Sjs_array_present_from a n __NULL__)
+
+;; 穴の多い配列（長さが 64 より大きく、要素の数の 2 倍より大きい）なら、要素のある添字の LList（順に）。ほかは null。
+;; 長さを大きくした配列（a.length = 1e9）でも、要素の数だけで済む。穴ができたかもしれない配列には "holes" の印を付け
+;; （長さより後への代入、穴のリテラル、長さを伸ばすこと、穴を残す写し）、印のない配列は調べない
+(define Sjs_array_sparse ,(a)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ a "holes" (,(k) return __NULL__) ,(holes)
+  Sjs_array_length a ,(n)
+  __Number_fromString__ __print_exit_error__ "64" ,(small)
+  __Number_subtract__ n small ,(d)
+  __Number_is_positive__ d ,(big)
+  __unless__ big (,() return __NULL__) ,()
+  Sjs_array_item_indexes a ,(idx count)
+  __Number_add__ count count ,(twice)
+  __Number_subtract__ n twice ,(gap)
+  __Number_is_positive__ gap ,(sparse)
+  __unless__ sparse (,() return __NULL__) ,()
+  Sjs_sort_numbers idx)
+
+;; items の添字（Number。順は決まらない）の LList と、その数
+(define Sjs_array_item_indexes ,(a)
+  __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
+  __Dict_keys__ items ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  Sjs_collect acc ,(sink)
+  keys sink ,(x)
+  __Ref_get__ acc ,(ks)
+  Sjs_zero ,(zero)
+  Sjs_numbers_of ks __NULL__ zero)
+
+(define Sjs_numbers_of ,(ks acc count)
+  __Cont_get__ ,(return)
+  __is_null__ ks ,(test__) __if__ test__ (,() return acc count) ,()
+  __LList_uncons__ __print_exit_error__ ks ,(k rest)
+  __Number_fromString__ __print_exit_error__ k ,(n)
+  __LList_cons__ n acc ,(acc)
+  Sjs_inc count ,(count)
+  Sjs_numbers_of rest acc count)
+
+;; Seq（__Dict_keys__）の要素を、Ref の LList に集める Sink
+(define Sjs_collect ,(acc)
+  __Ref_new__ __NULL__ ,(self)
+  __Ref_set__ self (,(x) __Ref_get__ acc ,(l) __LList_cons__ x l ,(l) __Ref_set__ acc l ,() __Ref_get__ self) ,()
+  __Ref_get__ self)
+
+;; 数の LList を小さい順に（マージソート）
+(define Sjs_sort_numbers ,(l)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ l ,(x rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() return l) ,()
+  Sjs_split_alternate l __NULL__ __NULL__ ,(a b)
+  Sjs_sort_numbers a ,(sa)
+  Sjs_sort_numbers b ,(sb)
+  Sjs_merge_numbers sa sb __NULL__)
+
+(define Sjs_split_alternate ,(l a b)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return a b) ,()
+  __LList_uncons__ __print_exit_error__ l ,(x rest)
+  __LList_cons__ x a ,(a)
+  Sjs_split_alternate rest b a)
+
+(define Sjs_merge_numbers ,(a b acc)
+  __Cont_get__ ,(return)
+  __is_null__ a ,(test__) __if__ test__ (,() Sjs_reverse_list acc ,(r) Sjs_reverse_onto_list r b ,(m) return m) ,()
+  __is_null__ b ,(test__) __if__ test__ (,() Sjs_reverse_list acc ,(r) Sjs_reverse_onto_list r a ,(m) return m) ,()
+  __LList_uncons__ __print_exit_error__ a ,(x as)
+  __LList_uncons__ __print_exit_error__ b ,(y bs)
+  __Number_subtract__ y x ,(d)
+  __Number_is_negative__ d ,(yFirst)
+  __if__ yFirst (,() __LList_cons__ y acc ,(acc) Sjs_merge_numbers a bs acc ,(m) return m) ,()
+  __LList_cons__ x acc ,(acc)
+  Sjs_merge_numbers as b acc)
 
 (define Sjs_array_present_from ,(a i acc)
   __Cont_get__ ,(return)
@@ -879,7 +960,7 @@
       __Dict_lookup_or__ out "length" __print_exit_error__ ,(ref)
       __Ref_get__ ref ,(n)
       __Number_subtract__ n at ,(d)
-      __Number_is_negative__ d ,(test__) __if__ test__ (,() __Ref_set__ ref at) ,()
+      __Number_is_negative__ d ,(test__) __if__ test__ (,() __Ref_set__ ref at ,() __Dict_put__ out "holes" __TRUE__) ,()
       return) ,()
   Sjs_array_has a from ,(has)
   __if__ has (,() Sjs_array_get a from ,(v) Sjs_array_set out at v) ,()
@@ -904,11 +985,33 @@
   __Number_is_negative__ room ,(test__) __if__ test__ bad ,()
   Sjs_array_length a ,(len)
   Sjs_array_truncate a n len ,()
+  __Number_subtract__ n len ,(grow)
+  __Number_is_positive__ grow ,(longer)
+  __if__ longer (,() __Dict_put__ a "holes" __TRUE__) ,()
   __Dict_lookup_or__ a "length" __print_exit_error__ ,(ref)
   __Ref_set__ ref n)
 
-;; n 番目から len 番目の前までの要素を消す
+;; n 番目から len 番目の前までの要素を消す。消す範囲が広ければ、items の添字を見て消す
 (define Sjs_array_truncate ,(a n len)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len n ,(span)
+  __Number_fromString__ __print_exit_error__ "64" ,(small)
+  __Number_subtract__ span small ,(d)
+  __Number_is_positive__ d ,(wide)
+  __if__ wide (,() Sjs_array_item_indexes a ,(idx count) Sjs_array_remove_from a idx n ,() return) ,()
+  Sjs_array_truncate_loop a n len)
+
+(define Sjs_array_remove_from ,(a idx n)
+  __Cont_get__ ,(return)
+  __is_null__ idx ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ idx ,(i rest)
+  __Number_subtract__ i n ,(d)
+  __Number_is_negative__ d ,(keep)
+  __unless__ keep
+    (,() __Dict_lookup_or__ a "items" __print_exit_error__ ,(items) __Number_toString__ i ,(k) __Dict_remove__ items k) ,()
+  Sjs_array_remove_from a rest n)
+
+(define Sjs_array_truncate_loop ,(a n len)
   __Cont_get__ ,(return)
   __Number_subtract__ len n ,(left)
   __Number_is_positive__ left ,(more)
@@ -917,16 +1020,17 @@
   __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
   __Number_toString__ len ,(k)
   __Dict_remove__ items k ,()
-  Sjs_array_truncate a n len)
+  Sjs_array_truncate_loop a n len)
 
 ;; タグ付きテンプレートの最初の引数：中身の配列で、raw に逃がしを解かない中身の配列を持つ
 (define Sjs_template_strings ,(G parts raws)
   Sjs_array G parts ,(a)
   Sjs_array G raws ,(r)
-  ;; raw は数えない（Object.keys に出ない）メンバー
-  __Dict_new__ ,(hidden)
-  __Dict_put__ hidden "raw" r ,()
-  __Dict_put__ a "hidden" hidden ,()
+  ;; raw は数えない（Object.keys に出ない）メンバー。どちらも JavaScript と同じく凍らせる（"frozen"）：
+  ;; 代入は何もせず（strict でないスクリプトと同じ）、push、pop、reverse は TypeError
+  Sjs_members_set_hidden G a "raw" r ,()
+  __Dict_put__ a "frozen" __TRUE__ ,()
+  __Dict_put__ r "frozen" __TRUE__ ,()
   __NULL__ a)
 
 ;; 値の LList（順に。空いた所は undefined）
@@ -959,9 +1063,10 @@
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
   __Dict_lookup_or__ props key (,(k) __NULL__ __NULL__))
 
-;; k in o：o のメンバーに k があるか（プロトタイプはないので、配列、ジェネレータ、Promise のメソッドの名前と、
-;; 関数の length と name を除いて、自分のメンバーだけ）。o がオブジェクトの類でなければ TypeError
-(define Sjs_in_op ,(k o)
+;; k in o：o のメンバーに k があるか。オブジェクトは自分のメンバー、配列は要素のある添字（穴は偽）、ほかは
+;; メンバー（"members"）と、読んで値のある名前（length、メソッド。プロトタイプはないので、SJS にあるメソッドだけ）。
+;; 関数の length と name は、SJS では読めないが、JavaScript と同じく真。o がオブジェクトの類でなければ TypeError
+(define Sjs_in_op ,(G k o)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
   Sjs_word_in kind "array object function generator asyncgen promise" ,(isObject)
@@ -978,29 +1083,47 @@
       Sjs_index k ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_has o i ,(h) return h) ,()) ,()
   Sjs_key_string k ,(ks)
-  __Dict_lookup_or__ o "props" (,(x) __NULL__ __NULL__) ,(props)
   __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_obj_has o ks ,(h) return h) ,()
-  ;; 関数の静的なメンバーと、配列の添字でないメンバー
-  __is_null__ props ,(test__) __unless__ test__ (,() Sjs_dict_has props ks ,(test__) __if__ test__ (,() return __TRUE__) ,()) ,()
-  Sjs_array_extra o ks ,(found v)
+  Sjs_members_find o ks ,(found v)
   __if__ found (,() return __TRUE__) ,()
-  __String_equal__ kind "array" ,(test__) __if__ test__
-    (,() Sjs_word_in ks "length push pop slice indexOf includes join map filter forEach some every find findIndex reduce concat reverse" ,(h) return h) ,()
   __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_word_in ks "length name" ,(h) return h) ,()
-  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_word_in ks "then catch finally" ,(h) return h) ,()
-  Sjs_word_in ks "next return throw")
+  Sjs_get_member G o ks ,(m)
+  __is_null__ m ,(none)
+  __not__ none)
 
-;; 配列の添字でないメンバー k：あるかと、その値
-(define Sjs_array_extra ,(a k)
+;; 配列と関数のメンバー（配列の添字でないもの、関数に入れたもの）は、"members" の SJS のオブジェクト（初めて入れる
+;; ときに作る）に持つ。数えないメンバー（組み込みの関数とオブジェクトのメンバー、タグ付きテンプレートの raw）は、
+;; props にだけ入れ、名前の一覧に入れない（エラーの name と message と同じ。Object.keys と JSON に出ない）
+
+;; メンバー k：あるかと、その値
+(define Sjs_members_find ,(o k)
   __Cont_get__ ,(return)
-  __Dict_lookup_or__ a "hidden" (,(x) __NULL__ __NULL__) ,(hidden)
-  __is_null__ hidden ,(test__) __unless__ test__
-    (,() __Dict_lookup_or__ hidden k (,(x) __NULL__ __NULL__) ,(hv) __is_null__ hv ,(test__) __unless__ test__ (,() return __TRUE__ hv) ,()) ,()
-  __Dict_lookup_or__ a "extra" (,(x) return __FALSE__ __NULL__) ,(extra)
-  Sjs_obj_has extra k ,(has)
-  __unless__ has (,() return __FALSE__ __NULL__) ,()
-  Sjs_obj_get extra k ,(v)
+  __Dict_lookup_or__ o "members" (,(x) return __FALSE__ __NULL__) ,(m)
+  __Dict_lookup_or__ m "props" __print_exit_error__ ,(props)
+  __Dict_lookup_or__ props k (,(x) return __FALSE__ __NULL__) ,(v)
   __NULL__ __TRUE__ v)
+
+(define Sjs_members_of ,(G o)
+  __Dict_lookup_or__ o "members" (,(k) Sjs_object_new G ,(m) __Dict_put__ o "members" m ,() __NULL__ m))
+
+(define Sjs_members_set ,(G o k v)
+  Sjs_members_of G o ,(m)
+  Sjs_obj_set m k v)
+
+(define Sjs_members_set_hidden ,(G o k v)
+  Sjs_members_of G o ,(m)
+  Sjs_obj_set_hidden m k v)
+
+;; 名前の一覧に入れずに入れる
+(define Sjs_obj_set_hidden ,(o k v)
+  __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
+  __Dict_put__ props k v)
+
+;; 数えるメンバーの名前の LList（なければ null）
+(define Sjs_members_keys ,(o)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "members" (,(x) return __NULL__) ,(m)
+  Sjs_obj_keys m)
 
 (define Sjs_dict_has ,(d k)
   __Cont_get__ ,(return)
@@ -1178,9 +1301,8 @@
           Sjs_array_get o key ,(v)
           __is_null__ v ,(miss)
           __unless__ miss (,() return v) ,()
-          __Dict_lookup_or__ o "extra" (,(k) return __NULL__) ,(extra)
           Sjs_key_string key ,(ks)
-          Sjs_obj_get extra ks ,(x)
+          Sjs_members_find o ks ,(found x)
           return x) ,()
       Sjs_index key ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_get o i ,(v) return v) ,()) ,()
@@ -1197,7 +1319,7 @@
   __String_equal__ kind "array" ,(test__) __if__ test__
     (,()
       __String_equal__ ks "length" ,(test__) __if__ test__ (,() Sjs_array_length o ,(len) return len) ,()
-      Sjs_array_extra o ks ,(found v)
+      Sjs_members_find o ks ,(found v)
       __if__ found (,() return v) ,()
       Sjs_array_method G o ks ,(m)
       return m) ,()
@@ -1213,11 +1335,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjs_gen_method G o ks ,(m) return m) ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() Sjs_ag_method G o ks ,(m) return m) ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_promise_method G o ks ,(m) return m) ,()
-  __String_equal__ kind "function" ,(test__) __if__ test__
-    (,()
-      __Dict_lookup_or__ o "props" (,(k) return __NULL__) ,(props)
-      __Dict_lookup_or__ props ks (,(k) __NULL__ __NULL__) ,(v)
-      return v) ,()
+  __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_members_find o ks ,(found v) return v) ,()
   __NULL__ __NULL__)
 
 ;; i 番目の文字（なければ undefined）
@@ -1235,7 +1353,11 @@
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
   __String_equal__ kind "array" ,(test__) __if__ test__
-    (,() Sjs_index key ,(i) __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()) ,()
+    (,()
+      ;; 凍らせた配列（タグ付きテンプレート）への代入は、何もしない
+      __Dict_lookup_or__ o "frozen" (,(k) __NULL__ __FALSE__) ,(frozen)
+      __if__ frozen return ,()
+      Sjs_index key ,(i) __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()) ,()
   __String_equal__ kind "undefined" ,(u)
   __String_equal__ kind "null" ,(n)
   __or__ u n ,(test__) __if__ test__
@@ -1252,17 +1374,15 @@
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()
       Sjs_key_string key ,(ks)
       __String_equal__ ks "length" ,(test__) __if__ test__ (,() Sjs_array_set_length o v ,() return) ,()
-      ;; 添字でないメンバー（a.x、a[-1]、a[1.5]）は、"extra" のオブジェクトに入れる
-      __Dict_lookup_or__ o "extra" (,(k) Sjs_object_new G ,(e) __Dict_put__ o "extra" e ,() __NULL__ e) ,(extra)
-      Sjs_obj_set extra ks v ,()
+      ;; 添字でないメンバー（a.x、a[-1]、a[1.5]）
+      Sjs_members_set G o ks v ,()
       return) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,() Sjs_key_string key ,(ks) Sjs_obj_set o ks v ,() return) ,()
   __String_equal__ kind "function" ,(test__) __if__ test__
     (,()
       Sjs_key_string key ,(ks)
-      __Dict_lookup_or__ o "props" (,(k) __Dict_new__ ,(d) __Dict_put__ o "props" d ,() __NULL__ d) ,(props)
-      __Dict_put__ props ks v ,()
+      Sjs_members_set G o ks v ,()
       return) ,()
   ;; 文字列、数、真偽値のメンバーへの代入は、JavaScript（strict でない）と同じく何もしない
   __nop__)
@@ -1484,9 +1604,30 @@
 ;; a の 0 番目から順に、f を (値 添字 a) で呼ぶ。each は、f の値を受け取り、続けるなら null、終えるなら返す値を返す。
 ;; 穴は飛ばす（JavaScript の forEach、map など）。Sjs_array_scan_all は、穴も undefined として呼ぶ（find、findIndex）
 (define Sjs_array_scan ,(a f each)
+  __Cont_get__ ,(return)
+  ;; 穴の多い配列は、要素のある添字だけを回る
+  Sjs_array_sparse a ,(idx)
+  __is_null__ idx ,(dense)
+  __unless__ dense (,() Sjs_array_scan_list a f each idx ,(r) return r) ,()
   Sjs_array_length a ,(n)
   Sjs_zero ,(zero)
   Sjs_array_scan_from a f each zero n __FALSE__)
+
+;; 要素のある添字の LList idx の順に（回る前に消された要素は飛ばす）
+(define Sjs_array_scan_list ,(a f each idx)
+  __Cont_get__ ,(return)
+  __is_null__ idx ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ idx ,(i rest)
+  __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
+  __Number_toString__ i ,(k)
+  __Dict_lookup_or__ items k (,(key) Sjs_array_scan_list a f each rest ,(r) return r) ,(v)
+  __LList_cons__ a __NULL__ ,(args)
+  __LList_cons__ i args ,(args)
+  __LList_cons__ v args ,(args)
+  Sjs_call f args ,(r)
+  each v i r ,(done)
+  __is_null__ done ,(test__) __unless__ test__ (,() return done) ,()
+  Sjs_array_scan_list a f each rest)
 
 (define Sjs_array_scan_all ,(a f each)
   Sjs_array_length a ,(n)
@@ -1498,9 +1639,11 @@
   __Number_subtract__ n i ,(left)
   __Number_is_positive__ left ,(more)
   __unless__ more (,() return __NULL__) ,()
-  __if_then_else__ all (,() __NULL__ __TRUE__) (,() Sjs_array_has a i) ,(visit)
-  __unless__ visit (,() Sjs_inc i ,(i) Sjs_array_scan_from a f each i n all ,(r) return r) ,()
-  Sjs_array_get a i ,(v)
+  ;; 1 回引くだけで、穴なら飛ばすか（all なら）undefined にする
+  __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
+  __Number_toString__ i ,(k)
+  __Dict_lookup_or__ items k
+    (,(key) __unless__ all (,() Sjs_inc i ,(i) Sjs_array_scan_from a f each i n all ,(r) return r) ,() __NULL__ __NULL__) ,(v)
   __LList_cons__ a __NULL__ ,(args)
   __LList_cons__ i args ,(args)
   __LList_cons__ v args ,(args)
@@ -1522,8 +1665,16 @@
 (define Sjs_array_method ,(G a name)
   __Cont_get__ ,(return)
   __NULL__ (,(m f) __String_equal__ name m ,(t) __if__ t (,() Sjs_function G m f ,(fn) return fn)) ,(method)
-  method "push" (,(args) Sjs_array_push_list a args ,() Sjs_array_length a) ,()
+  ;; 凍らせた配列（タグ付きテンプレート）を変えるメソッドは TypeError
+  __Dict_lookup_or__ a "frozen" (,(k) __NULL__ __FALSE__) ,(frozen)
+  __NULL__ (,(msg) __if__ frozen (,() Sjs_type_error msg) ,()) ,(guard)
+  method "push" (,(args)
+    Sjs_array_length a ,(n) Sjs_num_str n ,(ns)
+    Cat3s "Cannot add property " ns ", object is not extensible" ,(msg) guard msg ,()
+    Sjs_array_push_list a args ,() Sjs_array_length a) ,()
   method "pop" (,(args)
+    Sjs_array_length a ,(n) Sjs_dec n ,(last) Sjs_num_str last ,(ns)
+    Cat3s "Cannot delete property '" ns "' of [object Array]" ,(msg) guard msg ,()
     __Cont_get__ ,(ret)
     Sjs_array_length a ,(n)
     __Number_is_zero__ n ,(test__) __if__ test__ (,() ret __NULL__) ,()
@@ -1565,6 +1716,8 @@
     Sjs_array_length a ,(n)
     __Dict_lookup_or__ out "length" __print_exit_error__ ,(ref)
     __Ref_set__ ref n ,()
+    __Dict_lookup_or__ a "holes" (,(k) __NULL__ __FALSE__) ,(holes)
+    __if__ holes (,() __Dict_put__ out "holes" __TRUE__) ,()
     Sjs_array_scan a f (,(v i r) Sjs_array_set out i r ,() __NULL__ __NULL__) ,(x)
     __NULL__ out) ,()
   method "filter" (,(args)
@@ -1619,6 +1772,7 @@
     Sjs_concat_into out args ,()
     __NULL__ out) ,()
   method "reverse" (,(args)
+    guard "Cannot assign to read only property '0' of object '[object Array]'" ,()
     Sjs_array_length a ,(n)
     Sjs_array_present a ,(idx)
     __Dict_new__ ,(items)
@@ -1907,9 +2061,10 @@
   Sjs_function G name f ,(fn)
   Sjs_kind target ,(kind)
   __String_equal__ kind "object" ,(isObject)
+  ;; 組み込みのメンバーは、JavaScript と同じく数えない（Object.keys(Math) は空）
   __if_then_else__ isObject
-    (,() Sjs_obj_set target name fn)
-    (,() Sjs_set_member G target name fn))
+    (,() Sjs_obj_set_hidden target name fn)
+    (,() Sjs_members_set_hidden G target name fn))
 
 ;; String.raw(strings, ...subs)：strings.raw の中身の間に subs を入れた文字列
 (define Sjs_string_raw ,(G strs subs)
@@ -1960,7 +2115,7 @@
   Sjs_def G math "max" (,(args) Sjs_infinity ,(inf) Sjs_neg inf ,(ninf) Sjs_extreme args ninf __TRUE__) ,()
   Sjs_def G math "min" (,(args) Sjs_infinity ,(inf) Sjs_extreme args inf __FALSE__) ,()
   __Number_fromString__ __print_exit_error__ "3.141592653589793" ,(pi)
-  Sjs_obj_set math "PI" pi ,()
+  Sjs_obj_set_hidden math "PI" pi ,()
   __Dict_put__ G "Math" math ,()
   ;; JSON
   Sjs_object_new G ,(json)
@@ -2001,8 +2156,8 @@
   Sjs_def G promise "all" (,(args) Sjs_arg args ,(v rest) Sjs_promise_all G v) ,()
   __Dict_put__ G "Promise" promise)
 
-;; Object.keys などの名前：オブジェクトは名前、配列は要素のある添字と、添字でないメンバー（"extra"）、文字列は添字。
-;; 数、真偽値、関数などは空。null と undefined は TypeError
+;; Object.keys などの名前：オブジェクトは名前、配列は要素のある添字と、添字でないメンバー（"members"）、文字列は添字、
+;; 関数などは入れたメンバー。数と真偽値は空。null と undefined は TypeError
 (define Sjs_own_keys ,(o)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
@@ -2010,15 +2165,17 @@
   Sjs_is_nullish o ,(test__) __if__ test__ (,() Sjs_type_error "Cannot convert undefined or null to object") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_array_keys o ,(l) return l) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() __String_length__ o ,(n) Sjs_index_strings n __NULL__ ,(l) return l) ,()
-  __NULL__ __NULL__)
+  ;; 関数などは、入れたメンバー。数と真偽値は空
+  __type_name__ o ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __unless__ isDict (,() return __NULL__) ,()
+  Sjs_members_keys o)
 
 ;; 配列の名前：要素のある添字の文字列と、添字でないメンバーの名前
 (define Sjs_array_keys ,(a)
   Sjs_array_present a ,(idx)
   Sjs_number_strings idx __NULL__ ,(ks)
-  __Dict_lookup_or__ a "extra" (,(k) __NULL__ __NULL__) ,(extra)
-  __is_null__ extra ,(none)
-  __if_then_else__ none (,() __NULL__ __NULL__) (,() Sjs_obj_keys extra) ,(more)
+  Sjs_members_keys a ,(more)
   Sjs_reverse_list ks ,(rev)
   Sjs_reverse_onto_list rev more)
 
@@ -3089,7 +3246,16 @@
   __Dict_lookup_or__ it "done" (,(k) __NULL__ __FALSE__) ,(finished)
   __if__ finished return ,()
   __Dict_lookup_or__ it "agen" (,(k) __NULL__ __NULL__) ,(ag)
-  __is_null__ ag ,(test__) __unless__ test__ (,() Sjs_ag_request ag "return" __NULL__ ,(p) Sjs_await p ,(r) return) ,()
+  ;; 投げて終わった async ジェネレータの return() は呼ばない（JavaScript と同じ）
+  __is_null__ ag ,(test__) __unless__ test__
+    (,()
+      __Dict_lookup_or__ ag "gen" __print_exit_error__ ,(gen)
+      Sjs_gen_ref gen "state" ,(stateRef)
+      __Ref_get__ stateRef ,(state)
+      __String_equal__ state "done" ,(test__) __if__ test__ return ,()
+      Sjs_ag_request ag "return" __NULL__ ,(p)
+      Sjs_await p ,(r)
+      return) ,()
   __Dict_lookup_or__ it "sync" __print_exit_error__ ,(inner)
   Sjs_iter_close inner)
 
@@ -3124,7 +3290,7 @@
   __unless__ d (,() Sjs_get_member G o i ,(v) return v) ,()
   __Dict_lookup_or__ o "items" (,(k) Sjs_get_member G o i ,(v) return v) ,(items)
   __Number_toString__ i ,(ks)
-  __Dict_lookup_or__ items ks (,(k) Sjs_get_member G o i))
+  __Dict_lookup_or__ items ks (,(k) Sjs_members_find o ks ,(found v) __NULL__ v))
 
 ;; o[i] = v（i は数と分かっている）：配列で、i が 0 以上の整数なら、そのまま入れる。ほかは Sjs_set_member
 (define Sjs_set_index ,(G o i v)
@@ -3133,6 +3299,8 @@
   __String_equal__ t "Dict" ,(d)
   __unless__ d (,() Sjs_set_member G o i v ,() return) ,()
   __Dict_lookup_or__ o "items" (,(k) Sjs_set_member G o i v ,() return) ,(items)
+  __Dict_lookup_or__ o "frozen" (,(k) __NULL__ __FALSE__) ,(frozen)
+  __if__ frozen return ,()
   __Number_is_negative__ i ,(neg)
   __if__ neg (,() Sjs_set_member G o i v ,() return) ,()
   __Number_floor__ i ,(f)
@@ -3143,6 +3311,7 @@
 
 ;; 配列の穴（[1, , 2]）：要素を入れずに、長さだけを 1 増やす
 (define Sjs_array_hole ,(a)
+  __Dict_put__ a "holes" __TRUE__ ,()
   __Dict_lookup_or__ a "length" __print_exit_error__ ,(ref)
   __Ref_get__ ref ,(n)
   Sjs_inc n ,(n)

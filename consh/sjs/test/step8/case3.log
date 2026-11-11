@@ -1,0 +1,17 @@
+["a","b"] 2 undefined ["0","1"] ["0","1"] true
+TypeError Cannot add property 2, object is not extensible
+TypeError Cannot delete property '1' of [object Array]
+TypeError Cannot assign to read only property '0' of object '[object Array]'
+TypeError Cannot add property 2, object is not extensible
+["a!","b!"] ["a",1]
+true 1
+0 [] [] true true
+["y","z"] [1,null] true true true 1
+5:a,100000:b ["5","100000","x"] 100000 ab 2000000 2
+5,100000,x
+6 undefined ["5","x"]
+0 1
+["129","196"]
+true [true] true true
+true
+exit: 0

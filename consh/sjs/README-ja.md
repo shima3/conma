@@ -109,9 +109,10 @@ consh/include/
 ## in 演算子と配列のメンバー（2026/11/11）
 
 * `k in o`：配列は要素のある添字（穴は偽）、`length` とメソッドの名前、オブジェクトは自分のメンバー、関数は `length`、`name` と静的なメンバー、ジェネレータと Promise はメソッドの名前（`Sjs_in_op`）。オブジェクトでない値は `TypeError: Cannot use 'in' operator to search for 'k' in 値`。`$名前` は数にしない。`instanceof` は SJS の範囲の外（`not in SJS`）
-* 配列の添字でないメンバー（`a.x = 1`、`a[-1]`、`a[1.5]`）：配列の `"extra"` のオブジェクトに入れる。読むとき、`in`、`Object.keys`、`for...in` で見え、`JSON.stringify` には出ない（JavaScript と同じ）。タグ付きテンプレートの配列の `raw` は、数えないメンバー（`"hidden"`）
+* 配列の添字でないメンバー（`a.x = 1`、`a[-1]`、`a[1.5]`）と関数に入れたメンバー（`f.y = 1`）：`"members"` の SJS のオブジェクトに入れる。読むとき、`in`、`Object.keys`、`for...in` で見え、配列の `JSON.stringify` には出ない（JavaScript と同じ）。組み込みのメンバー（`Math.floor`、`Number.isInteger`、`Math.PI` など）とタグ付きテンプレートの配列の `raw` は、数えないメンバー（名前の一覧に入れない。`Object.keys(Math)` は空）
 * `Object.keys`、`values`、`entries`：配列（要素のある添字の後に、添字でないメンバー）、文字列（添字）も読む。数、真偽値、関数などは空の配列、`null` と `undefined` は `TypeError: Cannot convert undefined or null to object`（前は not yet translated）
-* step8 のログは、Node.js の結果と同じ
+* レビューで直したもの：タグ付きテンプレートの配列（と `raw`）は凍らせる（代入は何もせず、`push`、`pop`、`reverse` は Node.js と同じ TypeError）。穴の多い配列（長さだけを大きくしたもの）は、`forEach` など、`Object.keys`、`for...in`、長さを縮めることが、長さでなく要素の数だけの手間で済む（穴ができたかもしれない配列に `"holes"` の印を付け、印があって長さが要素の数の 2 倍より大きければ、要素の添字を並べて使う）。`for await` は、投げて終わった async ジェネレータの `return()` を呼ばない（前は呼んで、Node.js より 2 つ遅れた）。空の `\u{}` はエラー。`for (;;)` の初期化の中の括弧の外の `in` は、JavaScript と同じく演算子にしない。`in` は、メソッドの名前の一覧を持たずに、読んで値があるかで決める。配列のメソッドは要素を 1 回だけ引く
+* step8 のログは、Node.js の結果と同じ（case5 は、Node.js と同じく SyntaxError）
 
 まだ変換しないもの：整数でも 0.5 でもない指数の `**`（`TypeError: not yet translated to ConMa: ...`）。ConMa の VM に、`exp`、`log` などのプリミティブがないため（JavaScript と同じ桁の結果にするには、VM にプリミティブが要る）。`Math` も、`exp`、`log`、`sin` などはない。getter と setter は SJS の範囲の外。
 
@@ -174,7 +175,7 @@ consh/include/
 
 * `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
 * ジェネレータ：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない（async ジェネレータの `yield*` は `next(x)` の `x` だけを渡す）。
-* `in`：プロトタイプがないので、`"toString" in {}` は偽（JavaScript は真）。配列、ジェネレータ、Promise は、SJS にあるメソッドの名前だけを真にする。
+* `in`：プロトタイプがないので、`"toString" in {}` は偽（JavaScript は真）。配列、ジェネレータ、Promise は、SJS にあるメソッドの名前だけを真にする。関数の `length` と `name` は、`in` では真だが、読むと `undefined`。
 * Promise：`new Promise`（`new` は SJS の範囲の外）、`Promise.race`、`allSettled`、`any` はない。受け手のない拒否は、Node.js ではプロセスを終了ステータス 1 で終えるが、ここではメッセージを出して 2 にする。
 * シェルの値にしたジェネレータのエラーのメッセージに、ConSh の位置が付かない（`consh: sjs: ...`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。

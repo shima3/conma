@@ -339,7 +339,7 @@
     (,()
       Sjs_rest rest ,(rest)
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
-      Sjs_hex_braced rest zero ,(code rest)
+      Sjs_hex_braced rest zero __FALSE__ ,(code rest)
       __String_fromCode__ (,(msg) Sjs_lex_error "a bad \\u{} escape") code ,(s)
       return s rest) ,()
   __String_equal__ e "u" ,(test__) __if__ test__
@@ -350,16 +350,18 @@
   __String_equal__ e "\n" ,(test__) __if__ test__ (,() return "" rest) ,()
   __NULL__ e rest)
 
-;; \u{ の後から } まで（} も読む）の 16 進の数字の値
-(define Sjs_hex_braced ,(chars acc)
+;; \u{ の後から } まで（} も読む）の 16 進の数字の値。any は、数字があったか（\u{} はエラー）
+(define Sjs_hex_braced ,(chars acc any)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__ (,() Sjs_lex_error "a bad \\u{} escape") ,()
   __LList_uncons__ __print_exit_error__ chars ,(c rest)
-  __String_equal__ c "}" ,(test__) __if__ test__ (,() return acc rest) ,()
+  __String_equal__ c "}" ,(close)
+  __and__ close any ,(test__) __if__ test__ (,() return acc rest) ,()
+  __if__ close (,() Sjs_lex_error "a bad \\u{} escape") ,()
   __LList_cons__ c __NULL__ ,(one)
   __Number_fromString__ __print_exit_error__ "1" ,(n)
   Sjs_hex_loop one n acc ,(acc more)
-  Sjs_hex_braced rest acc)
+  Sjs_hex_braced rest acc __TRUE__)
 
 (define Sjs_char_code ,(n)
   __Number_fromString__ __print_exit_error__ n ,(code)

@@ -880,6 +880,8 @@
   __Number_is_positive__ d ,(higher)
   __unless__ higher (,() return left) ,()
   __if__ isInstanceof (,() Sjs_not_in "not in SJS: instanceof") ,()
+  __Dict_lookup_or__ p "noIn" (,(k) __NULL__ __FALSE__) ,(noIn)
+  __and__ isIn noIn ,(test__) __if__ test__ (,() return left) ,()
   P_next p ,(t)
   ;; ** は右結合
   __String_equal__ op "**" ,(right)
@@ -973,7 +975,7 @@
       return r) ,()
   P_eat p "(" ,(test__) __if__ test__
     (,()
-      P_args p __NULL__ ,(args)
+      P_allow_in p (,() P_args p __NULL__) ,(args)
       Sjs_node "call" ,(n)
       __Dict_put__ n "callee" e ,()
       __Dict_put__ n "args" args ,()
@@ -981,7 +983,7 @@
       return r) ,()
   P_eat p "[" ,(test__) __if__ test__
     (,()
-      P_expression p ,(key)
+      P_allow_in p (,() P_expression p) ,(key)
       P_expect p "]" ,()
       Sjs_node "member" ,(n)
       __Dict_put__ n "object" e ,()
@@ -992,7 +994,7 @@
     (,()
       P_eat p "(" ,(test__) __if__ test__
         (,()
-          P_args p __NULL__ ,(args)
+          P_allow_in p (,() P_args p __NULL__) ,(args)
           Sjs_node "call" ,(n)
           __Dict_put__ n "callee" e ,()
           __Dict_put__ n "args" args ,()
@@ -1004,7 +1006,7 @@
       __Dict_put__ n "optional" __TRUE__ ,()
       P_eat p "[" ,(computed)
       __if_then_else__ computed
-        (,() P_expression p ,(key) P_expect p "]" ,() __Dict_put__ n "key" key)
+        (,() P_allow_in p (,() P_expression p) ,(key) P_expect p "]" ,() __Dict_put__ n "key" key)
         (,()
           P_next p ,(tok)
           Tok_kind tok ,(kind)
@@ -1063,7 +1065,7 @@
       return n) ,()
   P_eat p "(" ,(test__) __if__ test__
     (,()
-      P_expression p ,(e)
+      P_allow_in p (,() P_expression p) ,(e)
       P_expect p ")" ,()
       Sjs_node "paren" ,(n)
       __Dict_put__ n "expr" e ,()
@@ -1085,13 +1087,13 @@
       __LList_cons__ text __NULL__ ,(parts)
       Tok_raw t ,(raw)
       __LList_cons__ raw __NULL__ ,(raws)
-      P_template_rest p parts raws __NULL__ ,(n)
+      P_allow_in p (,() P_template_rest p parts raws __NULL__) ,(n)
       return n) ,()
   P_is p "/" ,(slash)
   P_is p "/=" ,(slashEq)
   __or__ slash slashEq ,(test__) __if__ test__ (,() Sjs_not_in "not in SJS: a regular expression") ,()
-  P_eat p "[" ,(test__) __if__ test__ (,() P_array p __NULL__ ,(n) return n) ,()
-  P_eat p "{" ,(test__) __if__ test__ (,() P_object p __NULL__ ,(n) return n) ,()
+  P_eat p "[" ,(test__) __if__ test__ (,() P_allow_in p (,() P_array p __NULL__) ,(n) return n) ,()
+  P_eat p "{" ,(test__) __if__ test__ (,() P_allow_in p (,() P_object p __NULL__) ,(n) return n) ,()
   P_fail p)
 
 ;; テンプレートの ${ の後から。parts、raws と exprs は逆順
@@ -1262,7 +1264,10 @@
     (,()
       __Dict_lookup_or__ p "async" (,(k) __NULL__ __FALSE__) ,(inAsync)
       __unless__ inAsync (,() Sjs_throw "SyntaxError" "for await is only valid in async functions") ,()) ,()
+  __Dict_lookup_or__ p "noIn" (,(k) __NULL__ __FALSE__) ,(savedNoIn)
+  __Dict_put__ p "noIn" __TRUE__ ,()
   P_for_head p ,(n)
+  __Dict_put__ p "noIn" savedNoIn ,()
   __if__ isAwait
     (,()
       Sjs_get n "t" ,(t)
@@ -1321,6 +1326,7 @@
           __Dict_put__ init "decls" decls ,()
           P_for_rest p init ,(n)
           return n) ,()
+      __Dict_put__ p "noIn" __FALSE__ ,()
       P_expression p ,(right)
       P_expect p ")" ,()
       P_statement p ,(body)
@@ -1339,6 +1345,7 @@
       __Dict_put__ target "name" name ,()
       P_next p ,(o)
       Tok_text o ,(of)
+      __Dict_put__ p "noIn" __FALSE__ ,()
       P_expression p ,(right)
       P_expect p ")" ,()
       P_statement p ,(body)
@@ -1358,6 +1365,7 @@
 
 ;; for (初期化 の後の ; から、本体まで
 (define P_for_rest ,(p init)
+  __Dict_put__ p "noIn" __FALSE__ ,()
   P_expect p ";" ,()
   P_is p ";" ,(noTest)
   __if_then_else__ noTest (,() __NULL__ __NULL__) (,() P_expression p) ,(test)
@@ -1409,9 +1417,18 @@
   __Dict_lookup_or__ p "async" (,(k) __NULL__ __FALSE__) ,(savedAsync)
   __Dict_put__ p "gen" isGen ,()
   __Dict_put__ p "async" isAsync ,()
-  thunk ,(n)
+  P_allow_in p thunk ,(n)
   __Dict_put__ p "gen" savedGen ,()
   __Dict_put__ p "async" savedAsync ,()
+  __NULL__ n)
+
+;; for (;;) の最初の部分では、括弧などの外の in を演算子にしない（JavaScript の [~In]）。"noIn" がその印で、
+;; 括弧、配列、オブジェクト、引数、計算したキー、テンプレート、関数の本体の中では、thunk の間だけ外す
+(define P_allow_in ,(p thunk)
+  __Dict_lookup_or__ p "noIn" (,(k) __NULL__ __FALSE__) ,(saved)
+  __Dict_put__ p "noIn" __FALSE__ ,()
+  thunk ,(n)
+  __Dict_put__ p "noIn" saved ,()
   __NULL__ n)
 
 ;; async function、async (引数) => 本体、async 名前 => 本体（async の後に改行はない）

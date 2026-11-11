@@ -1242,7 +1242,7 @@
       Gen_expr g scope right ,(rc rv)
       Gen_temp g "t" ,(v)
       Gen_type_set g v "boolean" ,()
-      Cat5 lc rc "Sjs_in_op " lv " " ,(c)
+      Cat5 lc rc "Sjs_in_op G " lv " " ,(c)
       Cat4 c rv " ,(" v ,(c)
       __String_concat__ c ") " ,(c)
       return c v) ,()

@@ -1,5 +1,5 @@
 #!/bin/bash
-# SJS の in 演算子、配列の添字でないメンバー、Object.keys などの配列と文字列：
+# SJS の in 演算子、配列の添字でないメンバー、Object.keys などの配列と文字列、レビューで直したもの：
 # ログは Node.js で同じプログラムを動かした結果と比べた
 cd ${0%/*}
 for f in case*.sjs

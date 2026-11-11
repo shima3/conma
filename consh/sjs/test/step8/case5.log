@@ -1,0 +1,2 @@
+sjs: SyntaxError: a bad \u{} escape
+exit: 2
