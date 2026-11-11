@@ -1,0 +1,18 @@
+"late"
+3
+120
+[["i0",0],["i1",1],["i2",4]]
+1
+2
+10
+1
+"one"
+"two"
+"try"
+"try!?"
+"finally"
+[1,10]
+[[true,false,false,true,false,true],[true,false,false,true,false,true],[false,true,true,false,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,false,true],[false,true,false,true,true,false]]
+3
+sjs: line 72: TypeError: Cannot set properties of undefined (setting 'bar')
+exit: 2

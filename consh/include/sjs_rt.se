@@ -2275,7 +2275,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
-  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,() put "Sjs_pattern_open" Sjs_pattern_open ,() put "Sjs_pattern_next" Sjs_pattern_next ,() put "Sjs_pattern_rest" Sjs_pattern_rest ,() put "Sjs_pattern_close" Sjs_pattern_close ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,() put "Sjs_pattern_open" Sjs_pattern_open ,() put "Sjs_pattern_next" Sjs_pattern_next ,() put "Sjs_pattern_rest" Sjs_pattern_rest ,() put "Sjs_pattern_close" Sjs_pattern_close ,() put "Sjs_eq_lit" Sjs_eq_lit ,() put "Sjs_ne_lit" Sjs_ne_lit ,()
   __NULL__ rt)
 
 
@@ -3279,6 +3279,25 @@
   __Number_is_negative__ d ,(n)
   __if__ n (,() return __FALSE__) ,()
   Sjs_seq a k)
+
+;; a === k（k は有限の数のリテラル）：a が数で、差が 0 か（a が NaN か無限大なら、差は 0 でない）
+(define Sjs_eq_lit ,(a k)
+  __Cont_get__ ,(return)
+  __type_name__ a ,(t)
+  __String_equal__ t "Number" ,(num)
+  __unless__ num (,() return __FALSE__) ,()
+  __Number_subtract__ a k ,(d)
+  __Number_is_zero__ d)
+
+(define Sjs_ne_lit ,(a k)
+  __Cont_get__ ,(return)
+  __type_name__ a ,(t)
+  __String_equal__ t "Number" ,(num)
+  __unless__ num (,() return __TRUE__) ,()
+  __Number_subtract__ a k ,(d)
+  __Number_is_zero__ d ,(z)
+  __if__ z (,() return __FALSE__) ,()
+  __NULL__ __TRUE__)
 
 (define Sjs_ne_num ,(a k)
   Sjs_eq_num a k ,(e)

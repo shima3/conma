@@ -92,7 +92,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close Sjs_eq_lit Sjs_ne_lit")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -293,6 +293,10 @@
   __Dict_put__ g "line" q ,()
   Gen_stmt_body g scope s cx ,(c)
   __Dict_put__ g "line" outer ,()
+  ;; 実行時の支え（Sjs_ の関数）を呼ばない文は、例外を投げないので、行を記録しない（数の変数の算術など）
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ c "Sjs_" zero ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return c) ,()
   Cat4 "Sjs_line " q " ,() " c)
 
 ;; 呼び出しの後に、今の文の行を記録し直す手順（文の外なら空）
@@ -431,6 +435,11 @@
     (,()
       Sjs_get pat "name" ,(name)
       __unless__ init (,() Gen_write g scope name v ,(c) return c) ,()
+      ;; Ref のない const（Gen_plain_marks）：名前は、値の被演算子 v そのもの（"@" を付けて記録する）
+      __LList_uncons__ __print_exit_error__ scope ,(dict outer)
+      __String_concat__ "plain:" name ,(pk)
+      __Dict_lookup_or__ dict pk (,(k) __NULL__ __FALSE__) ,(plain)
+      __if__ plain (,() __String_concat__ "@" v ,(alias) __Dict_put__ dict name alias ,() return "") ,()
       Gen_lookup scope name ,(var c)
       Cat5 "__Ref_set__ " var " " v " ,() " ,(code)
       return code) ,()
@@ -643,7 +652,7 @@
   __LList_cons__ dict scope ,(outer)
   __is_null__ init ,(noInit)
   __if_then_else__ noInit (,() __NULL__ __NULL__) (,() __LList_cons__ init __NULL__) ,(inits)
-  Gen_block_code g outer inits cx ,(initCode)
+  Gen_block_code_refs g outer inits cx ,(initCode)
   ;; 回ごとの変数（let か const で宣言した名前）
   __if_then_else__ noInit (,() __NULL__ "") (,() Sjs_get init "t") ,(it)
   __String_equal__ it "decl" ,(isDecl)
@@ -982,6 +991,11 @@
 ;; 宣言した名前（let、const、var）は、ブロックの始めから見えるように、先に Ref を作っておく（宣言の文は、その Ref に
 ;; 値を入れる）。自分を呼ぶ関数（const fact = (n) => ... fact(n - 1)）や、後で宣言する名前を使う関数のため
 (define Gen_block_code ,(g scope stmts cx)
+  Gen_plain_marks scope stmts ,()
+  Gen_block_code_refs g scope stmts cx)
+
+;; Gen_block_code と同じだが、const もすべて Ref にする（for の初期化。回ごとの変数に Ref から写すため）
+(define Gen_block_code_refs ,(g scope stmts cx)
   Gen_hoist g scope stmts "" ,(code)
   Gen_funcdecls g scope stmts code ,(code)
   Gen_stmts g scope stmts cx code)
@@ -1052,12 +1066,111 @@
   __if__ lexical (,() __Dict_put__ dict lk __TRUE__) ,()
   Gen_check_redeclare scope rest lexical)
 
+;; ── Ref のない const ──
+;; ブロックの const x = 初期値 の x は、x がブロックの前の文にも、ブロックの関数の宣言（ブロックの始めで作る）にも、
+;; 自分の初期値にも（名前として）現れなければ、Ref を作らず、初期値の被演算子そのものにする（読むのに手順が要らない）。
+;; 宣言より前に読まれることがないので、JavaScript と同じ値になる。名前は、構文木の "name" をすべて見る（控えめ）。
+;; 印は、ブロックのスコープの Dict の "plain:名前"
+(define Gen_plain_marks ,(scope stmts)
+  __LList_uncons__ __print_exit_error__ scope ,(dict outer)
+  __Dict_new__ ,(fused)
+  Gen_funcdecl_uses stmts fused ,()
+  __Dict_new__ ,(used)
+  Gen_plain_stmts dict stmts fused used)
+
+(define Gen_funcdecl_uses ,(stmts used)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Sjs_get s "t" ,(t)
+  __String_equal__ t "funcdecl" ,(test__) __if__ test__ (,() Gen_names_in s used) ,()
+  Gen_funcdecl_uses rest used)
+
+(define Gen_plain_stmts ,(dict stmts fused used)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Sjs_get s "t" ,(t)
+  __String_equal__ t "decl" ,(isDecl)
+  __if_then_else__ isDecl (,() Sjs_get s "kind") (,() __NULL__ "") ,(kind)
+  __String_equal__ kind "const" ,(isConst)
+  __if_then_else__ isConst
+    (,() Sjs_get s "decls" ,(decls) Gen_plain_decls dict decls fused used)
+    (,() Gen_names_in s used) ,()
+  Gen_plain_stmts dict rest fused used)
+
+(define Gen_plain_decls ,(dict decls fused used)
+  __Cont_get__ ,(return)
+  __is_null__ decls ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ decls ,(d rest)
+  Sjs_get d "init" ,(init)
+  Gen_names_in init used ,()
+  Sjs_get d "target" ,(target)
+  Sjs_get target "t" ,(tt)
+  __String_equal__ tt "id" ,(isId)
+  __if__ isId
+    (,()
+      Sjs_get target "name" ,(name)
+      __Dict_lookup_or__ used name (,(k) __NULL__ __FALSE__) ,(u1)
+      __Dict_lookup_or__ fused name (,(k) __NULL__ __FALSE__) ,(u2)
+      __or__ u1 u2 ,(seen)
+      __is_null__ init ,(noInit)
+      __or__ seen noInit ,(test__) __unless__ test__ (,() __String_concat__ "plain:" name ,(pk) __Dict_put__ dict pk __TRUE__) ,())
+    (,() Gen_names_in target used) ,()
+  Gen_plain_decls dict rest fused used)
+
+;; 構文木の節（Dict）か、その LList に現れる "name" をすべて used に入れる
+(define Gen_names_in ,(node used)
+  __Cont_get__ ,(return)
+  __type_name__ node ,(type)
+  __String_equal__ type "LList" ,(test__) __if__ test__ (,() Gen_names_in_list node used ,() return) ,()
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ node "name" (,(k) __NULL__ __NULL__) ,(name)
+  __type_name__ name ,(nt)
+  __String_equal__ nt "String" ,(test__) __if__ test__ (,() __Dict_put__ used name __TRUE__) ,()
+  __Dict_keys__ node ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  Gen_collect acc ,(sink)
+  keys sink ,(s)
+  __Ref_get__ acc ,(ks)
+  Gen_names_in_fields node ks used)
+
+(define Gen_names_in_list ,(list used)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  Gen_names_in x used ,()
+  Gen_names_in_list rest used)
+
+(define Gen_names_in_fields ,(node keys used)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k rest)
+  __Dict_lookup_or__ node k __print_exit_error__ ,(v)
+  Gen_names_in v used ,()
+  Gen_names_in_fields node rest used)
+
+;; Ref のない const の名前の値（"@被演算子" なら被演算子、ほかは null）
+(define Gen_alias ,(var)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_length__ var ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __String_substring__ __print_exit_error__ var zero one ,(first)
+  __String_equal__ first "@" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __String_substring__ __print_exit_error__ var one len)
+
 ;; 名前を宣言して、それぞれの Ref を作る手順
 (define Gen_hoist_names ,(g scope names isConst acc)
   __Cont_get__ ,(return)
   __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ names ,(name rest)
   Gen_declare g scope name isConst ,(var)
+  __LList_uncons__ __print_exit_error__ scope ,(dict outer)
+  __String_concat__ "plain:" name ,(pk)
+  __Dict_lookup_or__ dict pk (,(k) __NULL__ __FALSE__) ,(plain)
+  __if__ plain (,() Gen_hoist_names g scope rest isConst acc ,(c) return c) ,()
   Cat3 acc "__Ref_new__ __NULL__ ,(" var ,(acc)
   __String_concat__ acc ") " ,(acc)
   Gen_hoist_names g scope rest isConst acc)
@@ -1127,7 +1240,11 @@
   Str_has_dollar name ,(test__) __if__ test__
     (,() Gen_quote name ,(q) Cat5 "Sjs_shell_get " q " ,(" v ") " ,(c) return c v) ,()
   __is_null__ var ,(global)
-  __unless__ global (,() Cat5 "__Ref_get__ " var " ,(" v ") " ,(c) return c v) ,()
+  __unless__ global
+    (,()
+      Gen_alias var ,(alias)
+      __is_null__ alias ,(test__) __unless__ test__ (,() return "" alias) ,()
+      Cat5 "__Ref_get__ " var " ,(" v ") " ,(c) return c v) ,()
   __String_equal__ name "undefined" ,(test__) __if__ test__ (,() return "" "__NULL__") ,()
   Gen_quote name ,(q)
   Cat5 "Sjs_global G " q " ,(" v ") " ,(c)
@@ -1278,7 +1395,22 @@
   __and__ equality someNum ,(test__) __if__ test__
     (,()
       __if_then_else__ rnum (,() __NULL__ lv rv) (,() __NULL__ rv lv) ,(x k)
-      __if_then_else__ isSeq (,() __NULL__ "Sjs_eq_num ") (,() __NULL__ "Sjs_ne_num ") ,(f)
+      ;; k が有限の数のリテラルなら、x が数で差が 0 かだけ（NaN と無限大は、差が 0 にならない）。
+      ;; x も数と分かれば、プリミティブだけ
+      Gen_is_finite_const g k ,(finite)
+      Gen_is_num_operand g x ,(xnum)
+      __and__ finite xnum ,(test__) __if__ test__
+        (,()
+          Gen_temp g "d" ,(d)
+          Cat5 code "__Number_subtract__ " x " " k ,(c)
+          Cat5 c " ,(" d ") __Number_is_zero__ " d ,(c)
+          __if_then_else__ isSeq
+            (,() Cat3 c " ,(" v ,(c) __String_concat__ c ") ")
+            (,() Gen_temp g "z" ,(z) Cat5 c " ,(" z ") __not__ " z ,(c) Cat4 c " ,(" v ") ") ,(c)
+          return c v) ,()
+      __if_then_else__ finite
+        (,() __if_then_else__ isSeq (,() __NULL__ "Sjs_eq_lit ") (,() __NULL__ "Sjs_ne_lit "))
+        (,() __if_then_else__ isSeq (,() __NULL__ "Sjs_eq_num ") (,() __NULL__ "Sjs_ne_num ")) ,(f)
       Cat5 code f x " " k ,(c)
       Cat3 c " ,(" v ,(c)
       __String_concat__ c ") " ,(c)
@@ -1888,7 +2020,7 @@
 
 ;; ── 型の分かる被演算子（速くするため。consh/sjs/README-ja.md の「速くしたもの」）──
 ;; 変換の状態 g は、"types"（被演算子 → "number" か "boolean"）、"consts"（数のリテラルの文字列 → 定数の変数名）と
-;; "constCode"（定数を作る手順。プログラムの始めに置く）、"numNames"（数だけを入れる名前。Gen_num_names）を持つ。
+;; "constCode"（定数を作る手順。プログラムの始めに置く）、"finite"（有限の数の定数の変数名。Sjs_eq_lit で比べる）、"numNames"（数だけを入れる名前。Gen_num_names）を持つ。
 ;; 型が分かれば、算術と比較は、型の確認を省いてプリミティブにし、条件は Sjs_truthy を省く
 
 (define Gen_state ,(root)
@@ -1900,6 +2032,8 @@
   __Dict_put__ g "types" types ,()
   __Dict_new__ ,(consts)
   __Dict_put__ g "consts" consts ,()
+  __Dict_new__ ,(finite)
+  __Dict_put__ g "finite" finite ,()
   __Ref_new__ "" ,(constCode)
   __Dict_put__ g "constCode" constCode ,()
   Gen_num_names root ,(numNames)
@@ -1927,6 +2061,14 @@
   Gen_temp g "k" ,(k)
   __Dict_put__ consts text k ,()
   Gen_type_set g k "number" ,()
+  ;; 有限の数か（1e999 は Infinity）。Sjs_eq_lit で比べられる
+  __Number_fromString__ (,(msg) __NULL__ __NULL__) text ,(n)
+  __is_null__ n ,(bad)
+  __unless__ bad
+    (,()
+      __Number_subtract__ n n ,(dd)
+      __Number_is_zero__ dd ,(finite)
+      __if__ finite (,() __Dict_lookup_or__ g "finite" __print_exit_error__ ,(fd) __Dict_put__ fd k __TRUE__) ,()) ,()
   Gen_quote text ,(q)
   __Dict_lookup_or__ g "constCode" __print_exit_error__ ,(ref)
   __Ref_get__ ref ,(code)
@@ -1934,6 +2076,11 @@
   __String_concat__ code ") " ,(code)
   __Ref_set__ ref code ,()
   __NULL__ k)
+
+;; v が有限の数のリテラル（Gen_const の定数）か
+(define Gen_is_finite_const ,(g v)
+  __Dict_lookup_or__ g "finite" __print_exit_error__ ,(fd)
+  __Dict_lookup_or__ fd v (,(k) __NULL__ __FALSE__))
 
 (define Gen_const_code ,(g)
   __Dict_lookup_or__ g "constCode" __print_exit_error__ ,(ref)
