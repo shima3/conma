@@ -13,7 +13,7 @@ do
 done
 # 対話モード（続きの行、エラーで止めたコマンド行）
 run case4 < case4.in
-# CONSH_ENABLE_JS が js なら js も使え、ないかほかの値なら、どちらも使えない
+# CONSH_ENABLE_JS が js なら js も使え、ないかほかの値なら js は使えない（(( )) は段階 B で動くので、いつも使える）
 (export CONSH_ENABLE_JS=js; run case5js case5.sh < /dev/null)
 (unset CONSH_ENABLE_JS; run case5off case5.sh < /dev/null)
 (export CONSH_ENABLE_JS=yes; run case5bad case5.sh < /dev/null)

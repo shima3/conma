@@ -1,6 +1,6 @@
 # SJS の変換器
 
-JavaScript の安全なサブセット SJS（[../SAFEJS-PLAN-ja.md](../SAFEJS-PLAN-ja.md)）を ConMa のソースに変換し、ConMa の VM で動かす（段階 B）。変換器は ConMa で書いてある。今は段階 B3 で、ConSh の `(( ))` にはまだつないでおらず（段階 B4）、SJS のファイルを単独で変換して動かす。
+JavaScript の安全なサブセット SJS（[../SAFEJS-PLAN-ja.md](../SAFEJS-PLAN-ja.md)）を ConMa のソースに変換し、ConMa の VM で動かす（段階 B）。変換器は ConMa で書いてある。SJS のファイルを単独で変換して動かせ（下）、段階 B4 から、ConSh の `(( ))` と `$(( ))` も、変換したコードで動く（ConMa 版の ConSh のネイティブの VM と Node.js の wasm 版。下の「段階 B4」）。
 
 ```
 consh/sjs/sjs file.sjs            # 変換して動かす（Rust 版の VM。vm で cargo build --release しておく）
@@ -25,7 +25,7 @@ consh/include/
 └── sjs_rt.se        実行時の支え：値の種類、演算の型の確認、比較、関数、配列、オブジェクト、メンバー、メソッド、組み込み、数の書き方、JSON.stringify、console.log
 ```
 
-変換器と実行時の支えは、段階 B4 で ConSh から使うので、consh/include に置く（名前は `sjs_` で始める）。
+変換器と実行時の支えは、ConSh からも使うので、consh/include に置く（名前は `sjs_` で始める）。ConSh の側は consh/include/consh_jsstmt.se の `Ar_eval` と `Sjsb_` で始まる関数。
 
 ## 段階 B1 で変換するもの
 
@@ -52,7 +52,15 @@ consh/include/
 * 実行時のエラー（`TypeError` など）は、隠した `name` と `message` を持つオブジェクトとして投げる。段階 A の `Error` と同じく、`e.message`、`` `${e}` ``（`TypeError: ...`）が使え、`JSON.stringify(e)` は `{}`、`Object.keys(e)` は空
 * 受け手のない例外のメッセージに、最後に実行した文の行を付ける（`sjs: line 4: ...`）。段階 A は ConSh の `(( ))` の位置を出す
 
-まだ変換しないもの（`SyntaxError: not yet translated (stage B3 of SJS): ...` になる）：`switch`、`do`、`**`、ビット演算、分割代入、スプレッド、既定値、残りの引数、配列の穴、ラベル、`$名前`（段階 B4）。getter と setter は SJS の範囲の外。
+## 段階 B4 で足したもの
+
+* 書き方：`switch`、`do...while`、`**`、ビット演算（`& | ^ ~ << >> >>>` と、その複合の代入）、分割代入（宣言、代入、`for...of`、引数。既定値と残りの要素も）、スプレッド（呼び出し、配列、オブジェクト）、引数の既定値と残りの引数、`$名前`（シェル変数を読む。演算子の隣と、数のリテラルとの `===`、`!==` では数にする）
+* 字句と構文の確認を、構文解析の前にする（段階 A と同じく、`this` などの名前、`constructor` などのメンバー、`==` と `!=` を `not in SJS` にする）
+* ConSh の `(( ))` と `$(( ))`：式を `Sjs_translate_module` で、`Sjs_entry` だけを定義するモジュールのソースにし、`$TMPDIR/consh-sjs-ハッシュ.se`（ハッシュはソースから求めるので、同じ式は同じファイルになる）に書いて、`__VProc_spawn__` で新しい VProc として動かす。式ごとに、そのファイル名を覚えておく（文脈の global の `"sjsB"`）。モジュールは、実行時の支えの関数（`Sjs_rt_dict`）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を引数で受け取り、`"setup"`（`Sjsb_setup`）で、その VProc の PDict に、SJS変数の Dict（シェルの文脈の `"sjsvars"`）、`$名前` を引く関数、`console.log` の出力先（ConSh のリダイレクトに従う）、受け手のない例外の行き先を置く
+* SJS の値は ConMa の値のまま、SJS変数とシェル変数に入る（ホストの表はない）。シェル変数には、文字列はそのまま、ほかは `{"sjsv": 値}` の Dict で入れ、`$` で読むたびにシェルの値にする（`Sjsb_to_shell`。配列は語の並び、ほかは `console.log` と同じ文字列）。SJS関数をコマンドとして呼ぶ（`$f 1 2`）のも、この値で動く
+* 段階 B は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` を要らない（`js` コマンドは、今までどおり `CONSH_ENABLE_JS=js` が要る）。モジュールを作れない版（ブラウザ。段階 B6 まで）では、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A で動かし、なければエラー（`SJS cannot run here`）にする
+
+まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
 
 ## 変換の形
 
@@ -75,11 +83,12 @@ consh/include/
 * 文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。
 * `String(関数)` と、`console.log` に渡した関数は、関数のソースでなく `function () { [native code] }`（段階 A は、書き換えた後のソース）。
 
+* `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。
 * 関数を `console.log` に渡すと `[Function (anonymous)]` を出す（Node.js は名前を出すことがある）。
 * `%` の精度（上）。
-* 変換と実行は遅い：`consh/sjs/sjs` は、変換器のモジュールを毎回作るので、1 つのファイルに 2 秒くらいかかる（段階 B7 で測り、段階 B4 で覚えておく仕組みを作る）。
+* 変換と実行は遅い：`consh/sjs/sjs` は、変換器のモジュールを毎回作るので、1 つのファイルに 2 秒くらいかかる。ConSh の `(( ))` は、初めての式ごとに、変換し、モジュールを作る（ネイティブ版は別のプロセスの `conma build`）。Rust 版の VM で、25 行ほどのスクリプトに 1.4 秒くらい、Python 版の VM では、`(( ))` の多いスクリプトに数十秒かかる（段階 B7 で測る）。
 
 ## テスト
 
-`consh/sjs/test/step1`（段階 B1）の case1〜case6 と、`step2`（段階 B2）の case1〜case7 は、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの行の前置きを除く）。step1 の case7 は、まだ変換しない書き方のエラー。
+`consh/sjs/test/step1`（段階 B1）の case1〜case6 と、`step2`（段階 B2）の case1〜case7 は、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの行の前置きを除く）。step1 の case7 は、まだ変換しない書き方のエラー。ConSh の `(( ))` は、consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）で確かめる。

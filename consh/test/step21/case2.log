@@ -1,0 +1,21 @@
+consh: case2.sh:2:1: sjs: TypeError: + needs numbers, not the string "a" (join strings with a template literal)
+status 2
+consh: case2.sh:4:1: sjs: ReferenceError: nosuch is not defined
+status 2
+consh: case2.sh:6:1: sjs: TypeError: Cannot read properties of null (reading 'x')
+status 2
+consh: case2.sh:8:1: sjs: not in SJS: this
+status 2
+consh: case2.sh:10:1: sjs: not in SJS: == (use ===)
+status 2
+consh: case2.sh:12:1: sjs: TypeError: + needs numbers, not the string "construct" (join strings with a template literal)
+status 2
+consh: case2.sh:14:1: sjs: thrown
+status 2
+consh: case2.sh:16:1: sjs: ReferenceError: undefined variable: undefinedvar
+status 2
+consh: case2.sh:19:1: sjs: TypeError: not a number: $s ("abc")
+status 2
+consh: case2.sh:21:1: sjs: SyntaxError: not yet translated to ConMa: holes in array literals
+status 2
+exit: 0

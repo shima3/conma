@@ -2,9 +2,9 @@
 
 ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
 
-**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS も、当面はホストの JavaScript で評価する。SJS の範囲の外のコードはエラーにするが、抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、Node.js 版では ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない）が、ブラウザ版では、当面はホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
-そのため、`(( ))` と `js` は、既定では使えない（`(( ))` は `sjs: SJS is disabled ...`、`js` は `js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`sjs` は `(( ))` だけ、`js` は `(( ))` と `js` の両方を使えるようにする。
+そのため、`js` と、ブラウザ版の `(( ))` は、既定では使えない（`(( ))` は `sjs: SJS cannot run here: ...`、`js` は `js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`sjs` は `(( ))` だけ、`js` は `(( ))` と `js` の両方を使えるようにする。
 
 * Node.js 版：環境変数 `CONSH_ENABLE_JS` を `sjs` か `js` にして起動する。
 * ブラウザ版：サーバーのページのディレクトリ（`consh/js/web`）に `config.json` を置き、`{"CONSH_ENABLE_JS": "sjs"}`（か `"js"`）と書く。
@@ -41,9 +41,9 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
 ## JavaScript を有効にする
 
-`(( ))` と `js` は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。
+`js` と、段階 A で動かす `(( ))`（ブラウザ版）は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。段階 B で動かす `(( ))`（Node.js 版とネイティブの VM の ConMa 版）は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` によらず使える。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。
 
-| `CONSH_ENABLE_JS` | `(( ))` と `$(( ))` | `js` |
+| `CONSH_ENABLE_JS` | ブラウザ版の `(( ))` と `$(( ))` | `js` |
 |---|---|---|
 | `sjs` | 使える | 使えない |
 | `js` | 使える | 使える |
@@ -62,7 +62,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
   ```
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
-* JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は `sjs: JavaScript is not available`（`$?` は 2）になる。
+* JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は、ネイティブの VM の ConMa 版では段階 B で動き、Rust 版の ConSh にはない。
 * この設定で守れるのは、主にブラウザ版である。Node.js 版の ConSh は、もともと外部コマンドを起動でき、ファイルも読み書きできるので、`js` を止めても、スクリプトにできることはほとんど減らない。Node.js 版では、信用できないスクリプトを ConSh で動かさないこと。
 
 ## Node.js で使う
@@ -73,13 +73,13 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 ```
 
-引数なしで起動すると対話モードになる。`(( ))` を使うときは `CONSH_ENABLE_JS=sjs`、`js` も使うときは `CONSH_ENABLE_JS=js` を付ける（上の「JavaScript を有効にする」）。
+引数なしで起動すると対話モードになる。`(( ))` は段階 B で動くので、そのまま使える。`js` を使うときは `CONSH_ENABLE_JS=js` を付ける（上の「JavaScript を有効にする」）。
 
 VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（PLAN-ja.md の 3.8）。
 
 ## (( )) と $(( ))：SJS
 
-`CONSH_ENABLE_JS` が `sjs` か `js` のとき、算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。当面は、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。
+算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版では、`CONSH_ENABLE_JS` が `sjs` か `js` のとき、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「段階 A との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
 
 ```
 (( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）

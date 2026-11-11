@@ -1,2 +1,2 @@
-sjs: SyntaxError: not yet translated (stage B3 of SJS): switch statements
+sjs: SyntaxError: not yet translated to ConMa: holes in array literals
 exit: 2

@@ -11,8 +11,10 @@
 ;;   配列      Dict。"t" に "array"、"id"、"items" に添字の String（"0"、"1"、…）から値への Dict、"length" に長さの Ref
 ;;   オブジェクト Dict。"t" に "object"、"id"、"props" に名前から値への Dict、"keys" に名前を足した順（逆順）の LList の Ref
 ;;             （プロトタイプはない。キーの順は、足した順だけ。JavaScript の整数のキーを先にする規則はない）
-;; 大域の名前（SJS変数）は、文脈 G（Dict）に名前で置く。G の "" には、関数の番号を数える Ref を置く
-;; （"" は SJS の名前にならない）。
+;; 文脈 G（Dict）には、組み込み（console、Math など）を名前で置き、"" に値の番号を数える Ref を置く（"" は SJS の名前に
+;; ならない）。大域の名前（SJS変数）は、PDict の "sjs_vars" の Dict に置く（Sjs_global、Sjs_set_global）。組み込みが先。
+;; ConSh から動かすとき（段階 B4。consh_jsstmt.se）は、ConSh が、評価する VProc の PDict に、SJS変数の Dict（"sjs_vars"）、
+;; $名前 を引く関数（"sjs_shell"）、console.log の出力先（"sjs_out"）、受け手のない例外の行き先（"sjs_fail"）を置く。
 ;; 例外（段階 B3）：受け手の継続のスタックを PDict の "sjs_handlers" に置く（Sjs_try が積み、Sjs_raise が取り出して
 ;; 呼ぶ）。受け手がなければ、"sjs: " を付けてメッセージを標準エラーに出し、終了ステータス 2 で終える。
 ;; 実行時のエラー（TypeError など）は、隠した name と message を持つオブジェクト（"error" の印。JSON では {}、
@@ -27,27 +29,84 @@
   __Dict_put__ G "" counter ,()
   Sjs_builtins G ,()
   __PDict_put__ "sjs_G" G ,()
+  __Dict_new__ ,(vars)
+  __PDict_put__ "sjs_vars" vars ,()
   __NULL__ G)
 
-;; 大域の名前 name の値。なければ ReferenceError
+;; ConSh のための文脈：組み込みと値の番号だけを作る（PDict は、評価するときに置く）
+(define Sjs_context ,()
+  __Dict_new__ ,(G)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(counter)
+  __Dict_put__ G "" counter ,()
+  Sjs_builtins G ,()
+  __NULL__ G)
+
+;; 大域の名前 name の値：組み込みか、SJS変数。なければ ReferenceError
 (define Sjs_global ,(G name)
-  __Dict_lookup_or__ G name (,(key)
-    __String_equal__ key "undefined" ,(test__) __if__ test__ (,() __NULL__ __NULL__) ,()
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ G name (,(key) __NULL__ __NULL__) ,(builtin)
+  __is_null__ builtin ,(test__) __unless__ test__ (,() return builtin) ,()
+  __String_equal__ name "undefined" ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Sjs_vars ,(vars)
+  __Dict_lookup_or__ vars name (,(key)
     __String_concat__ key " is not defined" ,(msg)
     Sjs_throw "ReferenceError" msg))
+
+;; 大域の名前 name に v を入れる（SJS変数）。組み込みの名前には入れられない（段階 A の sjsScope と同じ）
+(define Sjs_set_global ,(G name v)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ G name (,(key) __NULL__ __NULL__) ,(builtin)
+  __is_null__ builtin ,(test__) __unless__ test__ (,() __String_concat__ "cannot assign to " name ,(msg) Sjs_type_error msg) ,()
+  Sjs_vars ,(vars)
+  __Dict_put__ vars name v)
+
+(define Sjs_vars ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_vars" (,(k) __NULL__ __NULL__) ,(vars)
+  __is_null__ vars ,(test__) __unless__ test__ (,() return vars) ,()
+  __Dict_new__ ,(d)
+  __PDict_put__ "sjs_vars" d ,()
+  __NULL__ d)
+
+;; $名前 の値（ConSh のシェル変数。consh/SAFEJS-PLAN-ja.md の 2.2 の 7）。PDict の "sjs_shell" の関数が引く
+(define Sjs_shell_get ,(name)
+  __PDict_lookup_or__ "sjs_shell" (,(k) __NULL__ __NULL__) ,(get)
+  __is_null__ get ,(test__) __if__ test__ (,() __String_concat__ "undefined variable: " name ,(msg) Sjs_throw "ReferenceError" msg) ,()
+  get name)
+
+;; 演算子の被演算子の $名前 の数：数か、10 進の数の書き方の文字列。ほかは not a number のエラー（段階 A の sjsNumber）
+(define Sjs_shell_number ,(v name)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
+  __String_equal__ kind "string" ,(isString)
+  __if__ isString
+    (,()
+      Sjs_decimal_text v ,(ok)
+      __if__ ok (,() __Number_fromString__ (,(m) __nop__) v ,(n) return n) ,()) ,()
+  __String_concat__ "not a number: " name ,(msg)
+  __if_then_else__ isString
+    (,() Sjs_json_string v ,(q) __String_concat__ msg " (" ,(m) __String_concat__ m q ,(m) __String_concat__ m ")")
+    (,() __NULL__ msg) ,(msg)
+  Sjs_type_error msg)
 
 ;; ── エラー ──
 
 (define Sjs_throw ,(name msg)
   ;; 変換するとき（G がない）は、そのまま出して終える
-  __PDict_lookup_or__ "sjs_G" (,(k) __String_concat__ name ": " ,(s) __String_concat__ s msg ,(s) Sjs_uncaught s) ,(G)
+  __PDict_lookup_or__ "sjs_G" (,(k) __NULL__ __NULL__) ,(G)
+  __is_null__ G ,(test__) __if__ test__ (,() __String_concat__ name ": " ,(s) __String_concat__ s msg ,(s) Sjs_uncaught s) ,()
   Sjs_error_object G name msg ,(e)
   Sjs_raise e)
 
 ;; 受け手のない例外：メッセージ text と、最後に実行した文の行（Sjs_line）を出して、終了ステータス 2 で終える
 (define Sjs_uncaught ,(text)
-  __PDict_lookup_or__ "sjs_line" (,(k) __NULL__ "") ,(line)
-  __String_equal__ line "" ,(noLine)
+  ;; ConSh から動かすときは、ConSh に渡す
+  __PDict_lookup_or__ "sjs_fail" (,(k) __NULL__ __NULL__) ,(fail)
+  __is_null__ fail ,(test__) __unless__ test__ (,() fail text) ,()
+  __PDict_lookup_or__ "sjs_line" (,(k) __NULL__ __NULL__) ,(line)
+  __is_null__ line ,(noLine)
   __if_then_else__ noLine (,() __NULL__ "sjs: ") (,() __String_concat__ "sjs: line " line ,(s) __String_concat__ s ": ") ,(s)
   __String_concat__ s text ,(s)
   __String_concat__ s "\n" ,(s)
@@ -642,9 +701,13 @@
 ;; ── console ──
 
 ;; console.log(...args)：値を空白でつないで、標準出力に 1 行で出す。ConSh の段階 A（conma.js の inspect）と同じく、
-;; 文字列はそのまま、配列とオブジェクトは JSON.stringify、ほかは String
+;; 文字列はそのまま、配列とオブジェクトは JSON.stringify、ほかは String。ConSh から動かすときは、PDict の "sjs_out" の関数に
+;; 行（改行なし）を渡す
 (define Sjs_log ,(args)
+  __Cont_get__ ,(return)
   Sjs_log_join args "" __TRUE__ ,(line)
+  __PDict_lookup_or__ "sjs_out" (,(k) __NULL__ __NULL__) ,(out)
+  __is_null__ out ,(test__) __unless__ test__ (,() out line ,() return) ,()
   __String_concat__ line "\n" ,(line)
   __OS_print__ line)
 
@@ -965,7 +1028,7 @@
       Sjs_index key ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()
       Sjs_key_string key ,(ks)
-      __String_concat__ "not yet translated (stage B2 of SJS): setting the property " ks ,(msg)
+      __String_concat__ "not yet translated to ConMa: setting the property " ks ,(msg)
       __String_concat__ msg " of an array" ,(msg)
       Sjs_type_error msg) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
@@ -1637,7 +1700,7 @@
   __String_equal__ kind "object" ,(ok)
   __if__ ok return ,()
   Sjs_describe o ,(d)
-  __String_concat__ "not yet translated (stage B2 of SJS): Object.keys and the like of " d ,(msg)
+  __String_concat__ "not yet translated to ConMa: Object.keys and the like of " d ,(msg)
   Sjs_type_error msg)
 
 (define Sjs_obj_values ,(o)
@@ -1704,3 +1767,251 @@
   __unless__ ok (,() return acc) ,()
   __String_concat__ acc c ,(acc)
   Sjs_take_digits rest acc)
+
+;; ════ 段階 B4：ConSh から動かすモジュールに渡す関数 ════
+;; 変換したモジュール（sjs_gen.se の Sjs_translate_module）は何も include しないので、実行時の支えの関数と、標準の関数
+;; （__TRUE__ など）を、この Dict で受け取り、同じ名前の局所変数に束縛する（名前の一覧は sjs_gen.se の Sjs_rt_names）
+
+(define Sjs_rt_dict ,()
+  __Dict_new__ ,(rt)
+  __NULL__ (,(name f) __Dict_put__ rt name f) ,(put)
+  put "__TRUE__" __TRUE__ ,() put "__FALSE__" __FALSE__ ,() put "__not__" __not__ ,() put "__nop__" __nop__ ,()
+  put "__print_exit_error__" __print_exit_error__ ,()
+  put "Sjs_add" Sjs_add ,() put "Sjs_arg" Sjs_arg ,() put "Sjs_array" Sjs_array ,() put "Sjs_call" Sjs_call ,()
+  put "Sjs_call_member" Sjs_call_member ,() put "Sjs_div" Sjs_div ,() put "Sjs_function" Sjs_function ,()
+  put "Sjs_ge" Sjs_ge ,() put "Sjs_get_member" Sjs_get_member ,() put "Sjs_global" Sjs_global ,() put "Sjs_gt" Sjs_gt ,()
+  put "Sjs_handlers" Sjs_handlers ,() put "Sjs_is_nullish" Sjs_is_nullish ,() put "Sjs_iter_keys" Sjs_iter_keys ,()
+  put "Sjs_iter_values" Sjs_iter_values ,() put "Sjs_key" Sjs_key ,() put "Sjs_key_string" Sjs_key_string ,()
+  put "Sjs_le" Sjs_le ,() put "Sjs_line" Sjs_line ,() put "Sjs_lt" Sjs_lt ,() put "Sjs_mod" Sjs_mod ,() put "Sjs_mul" Sjs_mul ,()
+  put "Sjs_neg" Sjs_neg ,() put "Sjs_object" Sjs_object ,() put "Sjs_pos" Sjs_pos ,() put "Sjs_raise" Sjs_raise ,()
+  put "Sjs_seq" Sjs_seq ,() put "Sjs_set_global" Sjs_set_global ,() put "Sjs_set_handlers" Sjs_set_handlers ,()
+  put "Sjs_set_member" Sjs_set_member ,() put "Sjs_shell_get" Sjs_shell_get ,() put "Sjs_shell_number" Sjs_shell_number ,()
+  put "Sjs_step" Sjs_step ,() put "Sjs_sub" Sjs_sub ,() put "Sjs_throw" Sjs_throw ,() put "Sjs_to_string" Sjs_to_string ,()
+  put "Sjs_truthy" Sjs_truthy ,() put "Sjs_try" Sjs_try ,() put "Sjs_type_error" Sjs_type_error ,() put "Sjs_typeof" Sjs_typeof ,()
+  put "Sjs_pow" Sjs_pow ,() put "Sjs_band" Sjs_band ,() put "Sjs_bor" Sjs_bor ,() put "Sjs_bxor" Sjs_bxor ,() put "Sjs_bnot" Sjs_bnot ,()
+  put "Sjs_shl" Sjs_shl ,() put "Sjs_shr" Sjs_shr ,() put "Sjs_ushr" Sjs_ushr ,()
+  put "Sjs_is_undefined" Sjs_is_undefined ,() put "Sjs_array_new" Sjs_array_new ,() put "Sjs_array_push" Sjs_array_push ,()
+  put "Sjs_array_list" Sjs_array_list ,() put "Sjs_spread_into" Sjs_spread_into ,() put "Sjs_object_new" Sjs_object_new ,()
+  put "Sjs_obj_set" Sjs_obj_set ,() put "Sjs_object_spread" Sjs_object_spread ,() put "Sjs_object_rest" Sjs_object_rest ,()
+  put "Sjs_case_runs" Sjs_case_runs ,()
+  __NULL__ rt)
+
+
+;; ── ** とビット演算（段階 B4。段階 A と同じく、数だけ）──
+
+;; a ** b：b が整数なら掛け算で（負なら逆数）、b が 0.5 なら平方根。ほかの b はまだ変換しない
+(define Sjs_pow ,(a b)
+  __Cont_get__ ,(return)
+  Sjs_need2 "**" a b ,()
+  Sjs_is_integer b ,(integer)
+  __unless__ integer
+    (,()
+      __Number_fromString__ __print_exit_error__ "0.5" ,(half)
+      __Number_subtract__ b half ,(d)
+      __Number_is_zero__ d ,(test__) __if__ test__ (,() __Number_sqrt__ (,(m) Sjs_nan) a ,(r) return r) ,()
+      Sjs_type_error "not yet translated to ConMa: ** with an exponent that is not an integer") ,()
+  __Number_is_negative__ b ,(neg)
+  __if_then_else__ neg (,() Sjs_neg b) (,() __NULL__ b) ,(n)
+  Sjs_one ,(one)
+  Sjs_pow_loop a n one ,(r)
+  __unless__ neg (,() return r) ,()
+  Sjs_div one r)
+
+;; 二乗を繰り返す
+(define Sjs_pow_loop ,(x n acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return acc) ,()
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __Number_divide__ __print_exit_error__ n two ,(h)
+  __Number_floor__ h ,(half)
+  __Number_multiply__ half two ,(even)
+  __Number_subtract__ n even ,(bit)
+  __Number_is_zero__ bit ,(isEven)
+  __if_then_else__ isEven (,() __NULL__ acc) (,() __Number_multiply__ acc x) ,(acc)
+  __Number_multiply__ x x ,(x)
+  Sjs_pow_loop x half acc)
+
+(define Sjs_two32 ,() __Number_fromString__ __print_exit_error__ "4294967296")
+
+;; ToUint32：整数部を 2^32 で割った余り（0 以上）。NaN と無限大は 0
+(define Sjs_to_uint32 ,(x)
+  __Cont_get__ ,(return)
+  Sjs_is_nan x ,(nan)
+  __if__ nan (,() Sjs_zero ,(z) return z) ,()
+  __Number_toString__ x ,(repr)
+  __String_equal__ repr "inf" ,(pinf)
+  __String_equal__ repr "-inf" ,(ninf)
+  __or__ pinf ninf ,(test__) __if__ test__ (,() Sjs_zero ,(z) return z) ,()
+  Sjs_trunc x ,(t)
+  Sjs_two32 ,(m)
+  __Number_divide__ __print_exit_error__ t m ,(q)
+  __Number_floor__ q ,(q)
+  __Number_multiply__ q m ,(y)
+  __Number_subtract__ t y)
+
+;; ToInt32：ToUint32 が 2^31 以上なら 2^32 を引く
+(define Sjs_to_int32 ,(x)
+  Sjs_to_uint32 x ,(u)
+  __Number_fromString__ __print_exit_error__ "2147483648" ,(half)
+  __Number_subtract__ u half ,(d)
+  __Number_is_negative__ d ,(small)
+  __if_then_else__ small (,() __NULL__ u) (,() Sjs_two32 ,(m) __Number_subtract__ u m))
+
+;; 32 ビットの符号なし整数 a と b の、ビットごとの演算 op（"&"、"|"、"^"）
+(define Sjs_bits ,(op a b)
+  Sjs_zero ,(zero)
+  Sjs_one ,(one)
+  __Number_fromString__ __print_exit_error__ "32" ,(n)
+  Sjs_bits_loop op a b one zero n)
+
+(define Sjs_bits_loop ,(op a b place acc n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return acc) ,()
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  Sjs_low_bit a ,(x a)
+  Sjs_low_bit b ,(y b)
+  __String_equal__ op "&" ,(isAnd)
+  __String_equal__ op "|" ,(isOr)
+  __and__ x y ,(both)
+  __or__ x y ,(either)
+  __not__ both ,(notBoth)
+  __and__ either notBoth ,(one)
+  __if_then_else__ isAnd (,() __NULL__ both) (,() __if_then_else__ isOr (,() __NULL__ either) (,() __NULL__ one)) ,(bit)
+  __if_then_else__ bit (,() __Number_add__ acc place) (,() __NULL__ acc) ,(acc)
+  __Number_multiply__ place two ,(place)
+  Sjs_dec n ,(n)
+  Sjs_bits_loop op a b place acc n)
+
+;; 整数 a の最下位のビット（真偽値）と、a を 2 で割った整数部
+(define Sjs_low_bit ,(a)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __Number_divide__ __print_exit_error__ a two ,(h)
+  __Number_floor__ h ,(half)
+  __Number_multiply__ half two ,(even)
+  __Number_subtract__ a even ,(bit)
+  __Number_is_zero__ bit ,(zero)
+  __not__ zero ,(set)
+  __NULL__ set half)
+
+(define Sjs_band ,(a b) Sjs_need2 "&" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "&" x y ,(r) Sjs_to_int32 r)
+(define Sjs_bor ,(a b) Sjs_need2 "|" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "|" x y ,(r) Sjs_to_int32 r)
+(define Sjs_bxor ,(a b) Sjs_need2 "^" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "^" x y ,(r) Sjs_to_int32 r)
+(define Sjs_bnot ,(a) Sjs_need "~" a ,() Sjs_to_int32 a ,(x) Sjs_neg x ,(y) Sjs_one ,(one) __Number_subtract__ y one)
+
+;; シフトの量：b の下 5 ビット
+(define Sjs_shift_count ,(b)
+  Sjs_to_uint32 b ,(u)
+  __Number_fromString__ __print_exit_error__ "32" ,(m)
+  __Number_divide__ __print_exit_error__ u m ,(q)
+  __Number_floor__ q ,(q)
+  __Number_multiply__ q m ,(y)
+  __Number_subtract__ u y)
+
+(define Sjs_shl ,(a b)
+  Sjs_need2 "<<" a b ,()
+  Sjs_to_uint32 a ,(x)
+  Sjs_shift_count b ,(n)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  Sjs_one ,(one)
+  Sjs_pow_loop two n one ,(f)
+  __Number_multiply__ x f ,(r)
+  Sjs_to_int32 r)
+
+(define Sjs_shr ,(a b)
+  Sjs_need2 ">>" a b ,()
+  Sjs_to_int32 a ,(x)
+  Sjs_shift_count b ,(n)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  Sjs_one ,(one)
+  Sjs_pow_loop two n one ,(f)
+  __Number_divide__ __print_exit_error__ x f ,(q)
+  __Number_floor__ q)
+
+(define Sjs_ushr ,(a b)
+  Sjs_need2 ">>>" a b ,()
+  Sjs_to_uint32 a ,(x)
+  Sjs_shift_count b ,(n)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  Sjs_one ,(one)
+  Sjs_pow_loop two n one ,(f)
+  __Number_divide__ __print_exit_error__ x f ,(q)
+  __Number_floor__ q)
+
+
+;; ── 段階 B4：分割代入、スプレッド、switch ──
+
+(define Sjs_is_undefined ,(v)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "undefined")
+
+;; 配列 a に、v の中身（配列は要素、文字列は文字）を足す（...v）
+(define Sjs_spread_into ,(a v)
+  Sjs_iter_values v ,(list)
+  Sjs_array_push_list a list)
+
+;; オブジェクト o に、v の名前と値を足す（{...v}）。配列と文字列は添字、null と undefined は何も足さない
+(define Sjs_object_spread ,(o v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "object" ,(isObject)
+  __if__ isObject (,() Sjs_obj_keys v ,(keys) Sjs_copy_props o v keys ,() return) ,()
+  __String_equal__ kind "array" ,(isArray)
+  __String_equal__ kind "string" ,(isString)
+  __or__ isArray isString ,(indexed)
+  __unless__ indexed return ,()
+  Sjs_iter_keys v ,(keys)
+  Sjs_iter_values v ,(vals)
+  Sjs_copy_pairs o keys vals)
+
+(define Sjs_copy_props ,(o v keys)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k rest)
+  Sjs_obj_get v k ,(x)
+  Sjs_obj_set o k x ,()
+  Sjs_copy_props o v rest)
+
+(define Sjs_copy_pairs ,(o keys vals)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k krest)
+  __LList_uncons__ __print_exit_error__ vals ,(x vrest)
+  Sjs_obj_set o k x ,()
+  Sjs_copy_pairs o krest vrest)
+
+;; {a, ...rest} の rest：v（オブジェクト）の名前のうち used（取り出した名前の LList）にないものの新しいオブジェクト
+(define Sjs_object_rest ,(G v used)
+  Sjs_object_new G ,(o)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "object" ,(isObject)
+  __if__ isObject
+    (,()
+      Sjs_obj_keys v ,(keys)
+      Sjs_copy_unused o v keys used) ,()
+  __NULL__ o)
+
+(define Sjs_copy_unused ,(o v keys used)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k rest)
+  Sjs_list_has_string used k ,(skip)
+  __unless__ skip (,() Sjs_obj_get v k ,(x) Sjs_obj_set o k x) ,()
+  Sjs_copy_unused o v rest used)
+
+(define Sjs_list_has_string ,(list s)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  Sjs_to_string x ,(xs)
+  __String_equal__ xs s ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Sjs_list_has_string rest s)
+
+;; switch：一致した番号 start（Number。なければ -1）から、番号 k（String）の case を実行するか
+(define Sjs_case_runs ,(start k)
+  __Cont_get__ ,(return)
+  __Number_is_negative__ start ,(none)
+  __if__ none (,() return __FALSE__) ,()
+  __Number_fromString__ __print_exit_error__ k ,(n)
+  __Number_subtract__ n start ,(d)
+  __Number_is_negative__ d ,(before)
+  __not__ before)
