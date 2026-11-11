@@ -879,7 +879,7 @@
   __Number_subtract__ prec min ,(d)
   __Number_is_positive__ d ,(higher)
   __unless__ higher (,() return left) ,()
-  __if__ wordOp (,() __String_concat__ "the operator " op ,(what) P_not_yet what) ,()
+  __if__ isInstanceof (,() Sjs_not_in "not in SJS: instanceof") ,()
   P_next p ,(t)
   ;; ** は右結合
   __String_equal__ op "**" ,(right)

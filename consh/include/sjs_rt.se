@@ -923,9 +923,10 @@
 (define Sjs_template_strings ,(G parts raws)
   Sjs_array G parts ,(a)
   Sjs_array G raws ,(r)
-  __Dict_new__ ,(props)
-  __Dict_put__ props "raw" r ,()
-  __Dict_put__ a "props" props ,()
+  ;; raw は数えない（Object.keys に出ない）メンバー
+  __Dict_new__ ,(hidden)
+  __Dict_put__ hidden "raw" r ,()
+  __Dict_put__ a "hidden" hidden ,()
   __NULL__ a)
 
 ;; 値の LList（順に。空いた所は undefined）
@@ -957,6 +958,65 @@
 (define Sjs_obj_get ,(o key)
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
   __Dict_lookup_or__ props key (,(k) __NULL__ __NULL__))
+
+;; k in o：o のメンバーに k があるか（プロトタイプはないので、配列、ジェネレータ、Promise のメソッドの名前と、
+;; 関数の length と name を除いて、自分のメンバーだけ）。o がオブジェクトの類でなければ TypeError
+(define Sjs_in_op ,(k o)
+  __Cont_get__ ,(return)
+  Sjs_kind o ,(kind)
+  Sjs_word_in kind "array object function generator asyncgen promise" ,(isObject)
+  __unless__ isObject
+    (,()
+      Sjs_key_string k ,(ks)
+      Sjs_to_string o ,(os)
+      __String_concat__ "Cannot use 'in' operator to search for '" ks ,(msg)
+      __String_concat__ msg "' in " ,(msg)
+      __String_concat__ msg os ,(msg)
+      Sjs_type_error msg) ,()
+  __String_equal__ kind "array" ,(test__) __if__ test__
+    (,()
+      Sjs_index k ,(i)
+      __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_has o i ,(h) return h) ,()) ,()
+  Sjs_key_string k ,(ks)
+  __Dict_lookup_or__ o "props" (,(x) __NULL__ __NULL__) ,(props)
+  __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_obj_has o ks ,(h) return h) ,()
+  ;; 関数の静的なメンバーと、配列の添字でないメンバー
+  __is_null__ props ,(test__) __unless__ test__ (,() Sjs_dict_has props ks ,(test__) __if__ test__ (,() return __TRUE__) ,()) ,()
+  Sjs_array_extra o ks ,(found v)
+  __if__ found (,() return __TRUE__) ,()
+  __String_equal__ kind "array" ,(test__) __if__ test__
+    (,() Sjs_word_in ks "length push pop slice indexOf includes join map filter forEach some every find findIndex reduce concat reverse" ,(h) return h) ,()
+  __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_word_in ks "length name" ,(h) return h) ,()
+  __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_word_in ks "then catch finally" ,(h) return h) ,()
+  Sjs_word_in ks "next return throw")
+
+;; 配列の添字でないメンバー k：あるかと、その値
+(define Sjs_array_extra ,(a k)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ a "hidden" (,(x) __NULL__ __NULL__) ,(hidden)
+  __is_null__ hidden ,(test__) __unless__ test__
+    (,() __Dict_lookup_or__ hidden k (,(x) __NULL__ __NULL__) ,(hv) __is_null__ hv ,(test__) __unless__ test__ (,() return __TRUE__ hv) ,()) ,()
+  __Dict_lookup_or__ a "extra" (,(x) return __FALSE__ __NULL__) ,(extra)
+  Sjs_obj_has extra k ,(has)
+  __unless__ has (,() return __FALSE__ __NULL__) ,()
+  Sjs_obj_get extra k ,(v)
+  __NULL__ __TRUE__ v)
+
+(define Sjs_dict_has ,(d k)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ d k (,(x) return __FALSE__) ,(v)
+  __NULL__ __TRUE__)
+
+;; word が、空白で区切った words の 1 つか
+(define Sjs_word_in ,(word words)
+  __String_concat__ " " words ,(w)
+  __String_concat__ w " " ,(w)
+  __String_concat__ " " word ,(x)
+  __String_concat__ x " " ,(x)
+  Sjs_zero ,(zero)
+  __String_find__ __print_exit_error__ w x zero ,(at)
+  __is_null__ at ,(none)
+  __not__ none)
 
 (define Sjs_obj_has ,(o key)
   __Cont_get__ ,(return)
@@ -1113,7 +1173,15 @@
   __String_equal__ kind "array" ,(test__) __if__ test__
     (,()
       __type_name__ key ,(kt)
-      __String_equal__ kt "Number" ,(test__) __if__ test__ (,() Sjs_array_get o key ,(v) return v) ,()
+      __String_equal__ kt "Number" ,(test__) __if__ test__
+        (,()
+          Sjs_array_get o key ,(v)
+          __is_null__ v ,(miss)
+          __unless__ miss (,() return v) ,()
+          __Dict_lookup_or__ o "extra" (,(k) return __NULL__) ,(extra)
+          Sjs_key_string key ,(ks)
+          Sjs_obj_get extra ks ,(x)
+          return x) ,()
       Sjs_index key ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_get o i ,(v) return v) ,()) ,()
   Sjs_key_string key ,(ks)
@@ -1129,9 +1197,8 @@
   __String_equal__ kind "array" ,(test__) __if__ test__
     (,()
       __String_equal__ ks "length" ,(test__) __if__ test__ (,() Sjs_array_length o ,(len) return len) ,()
-      __Dict_lookup_or__ o "props" (,(k) __NULL__ __NULL__) ,(props)
-      __is_null__ props ,(test__) __unless__ test__
-        (,() __Dict_lookup_or__ props ks (,(k) __NULL__ __NULL__) ,(v) __is_null__ v ,(test__) __unless__ test__ (,() return v) ,()) ,()
+      Sjs_array_extra o ks ,(found v)
+      __if__ found (,() return v) ,()
       Sjs_array_method G o ks ,(m)
       return m) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__
@@ -1185,9 +1252,10 @@
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()
       Sjs_key_string key ,(ks)
       __String_equal__ ks "length" ,(test__) __if__ test__ (,() Sjs_array_set_length o v ,() return) ,()
-      __String_concat__ "not yet translated to ConMa: setting the property " ks ,(msg)
-      __String_concat__ msg " of an array" ,(msg)
-      Sjs_type_error msg) ,()
+      ;; 添字でないメンバー（a.x、a[-1]、a[1.5]）は、"extra" のオブジェクトに入れる
+      __Dict_lookup_or__ o "extra" (,(k) Sjs_object_new G ,(e) __Dict_put__ o "extra" e ,() __NULL__ e) ,(extra)
+      Sjs_obj_set extra ks v ,()
+      return) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,() Sjs_key_string key ,(ks) Sjs_obj_set o ks v ,() return) ,()
   __String_equal__ kind "function" ,(test__) __if__ test__
@@ -1238,7 +1306,7 @@
   __String_equal__ kind "string" ,(isString)
   __or__ isArray isString ,(test__) __if__ test__
     (,()
-      __if__ isArray (,() Sjs_array_present v ,(idx) Sjs_number_strings idx __NULL__ ,(l) return l) ,()
+      __if__ isArray (,() Sjs_array_keys v ,(l) return l) ,()
       __String_length__ v ,(n)
       Sjs_index_strings n __NULL__ ,(l)
       return l) ,()
@@ -1900,9 +1968,9 @@
   __Dict_put__ G "JSON" json ,()
   ;; Object
   Sjs_object_new G ,(object)
-  Sjs_def G object "keys" (,(args) Sjs_arg args ,(o rest) Sjs_need_object o ,() Sjs_obj_keys o ,(keys) Sjs_array G keys) ,()
-  Sjs_def G object "values" (,(args) Sjs_arg args ,(o rest) Sjs_need_object o ,() Sjs_obj_values o ,(vs) Sjs_array G vs) ,()
-  Sjs_def G object "entries" (,(args) Sjs_arg args ,(o rest) Sjs_need_object o ,() Sjs_obj_entries G o ,(es) Sjs_array G es) ,()
+  Sjs_def G object "keys" (,(args) Sjs_arg args ,(o rest) Sjs_own_keys o ,(keys) Sjs_array G keys) ,()
+  Sjs_def G object "values" (,(args) Sjs_arg args ,(o rest) Sjs_own_keys o ,(keys) Sjs_own_values G o keys ,(vs) Sjs_array G vs) ,()
+  Sjs_def G object "entries" (,(args) Sjs_arg args ,(o rest) Sjs_own_keys o ,(keys) Sjs_own_entries G o keys ,(es) Sjs_array G es) ,()
   __Dict_put__ G "Object" object ,()
   ;; Array
   Sjs_object_new G ,(array)
@@ -1933,40 +2001,51 @@
   Sjs_def G promise "all" (,(args) Sjs_arg args ,(v rest) Sjs_promise_all G v) ,()
   __Dict_put__ G "Promise" promise)
 
-(define Sjs_need_object ,(o)
+;; Object.keys などの名前：オブジェクトは名前、配列は要素のある添字と、添字でないメンバー（"extra"）、文字列は添字。
+;; 数、真偽値、関数などは空。null と undefined は TypeError
+(define Sjs_own_keys ,(o)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
-  __String_equal__ kind "object" ,(ok)
-  __if__ ok return ,()
-  Sjs_describe o ,(d)
-  __String_concat__ "not yet translated to ConMa: Object.keys and the like of " d ,(msg)
-  Sjs_type_error msg)
+  __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_obj_keys o ,(l) return l) ,()
+  Sjs_is_nullish o ,(test__) __if__ test__ (,() Sjs_type_error "Cannot convert undefined or null to object") ,()
+  __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_array_keys o ,(l) return l) ,()
+  __String_equal__ kind "string" ,(test__) __if__ test__ (,() __String_length__ o ,(n) Sjs_index_strings n __NULL__ ,(l) return l) ,()
+  __NULL__ __NULL__)
 
-(define Sjs_obj_values ,(o)
-  Sjs_obj_keys o ,(keys)
-  Sjs_obj_values_of o keys)
+;; 配列の名前：要素のある添字の文字列と、添字でないメンバーの名前
+(define Sjs_array_keys ,(a)
+  Sjs_array_present a ,(idx)
+  Sjs_number_strings idx __NULL__ ,(ks)
+  __Dict_lookup_or__ a "extra" (,(k) __NULL__ __NULL__) ,(extra)
+  __is_null__ extra ,(none)
+  __if_then_else__ none (,() __NULL__ __NULL__) (,() Sjs_obj_keys extra) ,(more)
+  Sjs_reverse_list ks ,(rev)
+  Sjs_reverse_onto_list rev more)
 
-(define Sjs_obj_values_of ,(o keys)
+(define Sjs_reverse_onto_list ,(rev acc)
+  __Cont_get__ ,(return)
+  __is_null__ rev ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ rev ,(x rest)
+  __LList_cons__ x acc ,(acc)
+  Sjs_reverse_onto_list rest acc)
+
+(define Sjs_own_values ,(G o keys)
   __Cont_get__ ,(return)
   __is_null__ keys ,(test__) __if__ test__ (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ keys ,(k rest)
-  Sjs_obj_get o k ,(v)
-  Sjs_obj_values_of o rest ,(vs)
+  Sjs_get_member G o k ,(v)
+  Sjs_own_values G o rest ,(vs)
   __LList_cons__ v vs)
 
-(define Sjs_obj_entries ,(G o)
-  Sjs_obj_keys o ,(keys)
-  Sjs_obj_entries_of G o keys)
-
-(define Sjs_obj_entries_of ,(G o keys)
+(define Sjs_own_entries ,(G o keys)
   __Cont_get__ ,(return)
   __is_null__ keys ,(test__) __if__ test__ (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ keys ,(k rest)
-  Sjs_obj_get o k ,(v)
+  Sjs_get_member G o k ,(v)
   __LList_cons__ v __NULL__ ,(pair)
   __LList_cons__ k pair ,(pair)
   Sjs_array G pair ,(entry)
-  Sjs_obj_entries_of G o rest ,(es)
+  Sjs_own_entries G o rest ,(es)
   __LList_cons__ entry es)
 
 ;; Math.max（isMax が真）と Math.min。引数を数にする。NaN があれば NaN
@@ -2036,7 +2115,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
-  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,()
   __NULL__ rt)
 
 
@@ -3045,7 +3124,7 @@
   __unless__ d (,() Sjs_get_member G o i ,(v) return v) ,()
   __Dict_lookup_or__ o "items" (,(k) Sjs_get_member G o i ,(v) return v) ,(items)
   __Number_toString__ i ,(ks)
-  __Dict_lookup_or__ items ks (,(k) __NULL__ __NULL__))
+  __Dict_lookup_or__ items ks (,(k) Sjs_get_member G o i))
 
 ;; o[i] = v（i は数と分かっている）：配列で、i が 0 以上の整数なら、そのまま入れる。ほかは Sjs_set_member
 (define Sjs_set_index ,(G o i v)

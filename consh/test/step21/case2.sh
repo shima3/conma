@@ -18,5 +18,5 @@ echo "status $?"
 s=abc
 (( $s + 1 ))
 echo "status $?"
-(( "a" in { a: 1 } ))
+(( 2 ** 0.3 ))
 echo "status $?"

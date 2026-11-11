@@ -92,7 +92,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -1235,6 +1235,17 @@
   __String_equal__ op "??" ,(isNullish)
   __or__ isAnd isOr ,(logical)
   __or__ logical isNullish ,(test__) __if__ test__ (,() Gen_logical g scope op left right ,(c v) return c v) ,()
+  ;; k in o（$名前 を数にしない）
+  __String_equal__ op "in" ,(test__) __if__ test__
+    (,()
+      Gen_expr g scope left ,(lc lv)
+      Gen_expr g scope right ,(rc rv)
+      Gen_temp g "t" ,(v)
+      Gen_type_set g v "boolean" ,()
+      Cat5 lc rc "Sjs_in_op " lv " " ,(c)
+      Cat4 c rv " ,(" v ,(c)
+      __String_concat__ c ") " ,(c)
+      return c v) ,()
   ;; === と !== は、もう一方が数のリテラルなら $名前 を数にする。ほかの演算子（=== を除く）は、いつも数にする
   __String_equal__ op "===" ,(isSeq)
   __String_equal__ op "!==" ,(isSne)
@@ -1939,7 +1950,7 @@
   __if__ isBinary
     (,()
       Sjs_in_words op "+ - * / % ** & | ^ << >> >>>" ,(test__) __if__ test__ (,() return "number") ,()
-      Sjs_in_words op "< <= > >= === !==" ,(test__) __if__ test__ (,() return "boolean") ,()
+      Sjs_in_words op "< <= > >= === !== in" ,(test__) __if__ test__ (,() return "boolean") ,()
       return "") ,()
   Sjs_in_words op "+= -= *= /= %= **= &= |= ^= <<= >>= >>>=" ,(test__) __if__ test__ (,() return "number") ,()
   __String_equal__ op "=" ,(test__) __if__ test__ (,() Sjs_get e "value" ,(value) Gen_static_kind value ,(k) return k) ,()

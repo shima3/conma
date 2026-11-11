@@ -1,2 +1,2 @@
-sjs: SyntaxError: not yet translated to ConMa: the operator in
+sjs: line 3: TypeError: not yet translated to ConMa: ** with an exponent that is not an integer
 exit: 2

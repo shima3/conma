@@ -1,0 +1,9 @@
+true true false true false true false true true true
+true true true true true true
+1 yes
+TypeError Cannot use 'in' operator to search for 'x' in 5
+TypeError Cannot use 'in' operator to search for 'x' in str
+TypeError Cannot use 'in' operator to search for 'x' in null
+TypeError Cannot use 'in' operator to search for 'x' in undefined
+TypeError Cannot use 'in' operator to search for 'x' in true
+exit: 0
