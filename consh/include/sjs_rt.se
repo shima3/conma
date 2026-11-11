@@ -1848,7 +1848,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
-  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_set_index" Sjs_set_index ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,()
   __NULL__ rt)
 
 
@@ -2291,7 +2291,7 @@
   Sjs_gen_resume gen "next" __NULL__ ,(r)
   Sjs_obj_get r "done" ,(done)
   Sjs_obj_get r "value" ,(v)
-  __if__ done (,() __Dict_lookup_or__ it "ret" __print_exit_error__ ,(ret) __Ref_set__ ret v ,() return __FALSE__) ,()
+  __if__ done (,() __Dict_lookup_or__ it "ret" __print_exit_error__ ,(ret) __Ref_set__ ret v ,() __Dict_put__ it "done" __TRUE__ ,() return __FALSE__) ,()
   __Dict_lookup_or__ it "buf" __print_exit_error__ ,(buf)
   __Ref_set__ buf v ,()
   __NULL__ __TRUE__)
@@ -2664,3 +2664,35 @@
   __Number_is_zero__ frac ,(whole)
   __unless__ whole (,() Sjs_set_member G o i v ,() return) ,()
   Sjs_array_set o i v)
+
+;; 配列の穴（[1, , 2]）：要素を入れずに、長さだけを 1 増やす
+(define Sjs_array_hole ,(a)
+  __Dict_lookup_or__ a "length" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(n)
+  Sjs_inc n ,(n)
+  __Ref_set__ ref n)
+
+;; 分割代入の次の要素（なければ undefined）
+(define Sjs_iter_next ,(it)
+  __Cont_get__ ,(return)
+  Sjs_iter_more it ,(more)
+  __unless__ more (,() return __NULL__) ,()
+  Sjs_iter_take it)
+
+;; 残りの要素の配列（...rest）
+(define Sjs_iter_rest ,(G it)
+  Sjs_iter_drain it __NULL__ ,(rev)
+  Sjs_reverse_list rev ,(l)
+  Sjs_array G l)
+
+;; 繰り返しの手順を閉じる：終わっていないジェネレータなら return() を呼ぶ（finally を動かす）。配列と文字列は何もしない
+(define Sjs_iter_close ,(it)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "gen" (,(k) return) ,(gen)
+  __Dict_lookup_or__ it "done" (,(k) __NULL__ __FALSE__) ,(finished)
+  __if__ finished return ,()
+  Sjs_gen_ref gen "state" ,(stateRef)
+  __Ref_get__ stateRef ,(state)
+  __String_equal__ state "done" ,(test__) __if__ test__ return ,()
+  Sjs_gen_resume gen "return" __NULL__ ,(r)
+  __nop__)

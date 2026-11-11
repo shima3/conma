@@ -1,0 +1,16 @@
+got 1
+closed break
+closed return
+first 1
+closed throw
+caught oops
+closed end
+closed destructure
+1 2
+closed rest
+1 [2,3]
+closed label 1
+closed label 2
+0 1 2
+8
+exit: 0

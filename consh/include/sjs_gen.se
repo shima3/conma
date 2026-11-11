@@ -41,7 +41,18 @@
   __Dict_put__ cx "retH" "" ,()
   __Dict_put__ cx "brkH" "" ,()
   __Dict_put__ cx "cntH" "" ,()
+  ;; ラベルの付いた break と continue の継続のキー（"brk:名前"、"cnt:名前"）の LList
+  __Dict_put__ cx "labels" __NULL__ ,()
   __NULL__ cx)
+
+;; cx にラベル付きの継続 kind（"brk:名前" など）を足す。受け手のスタックの変数名は h
+(define Gen_cx_label ,(cx kind k h)
+  Gen_cx_with cx kind k ,(cx)
+  __String_concat__ kind "H" ,(hk)
+  Gen_cx_with cx hk h ,(cx)
+  __Dict_lookup_or__ cx "labels" (,(x) __NULL__ __NULL__) ,(labels)
+  __LList_cons__ kind labels ,(labels)
+  Gen_cx_with cx "labels" labels)
 
 ;; cx の写しの key を value にしたもの
 (define Gen_cx_with ,(cx key value)
@@ -81,7 +92,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_line Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -197,6 +208,8 @@
   __String_equal__ t "block" ,(isBlock)
   __String_equal__ t "empty" ,(isEmpty)
   __or__ isBlock isEmpty ,(test__) __if__ test__ (,() Gen_stmt_body g scope s cx ,(c) return c) ,()
+  ;; for...of の終わりに、繰り返しの手順を閉じる（Gen_forof。行は記録しない）
+  __String_equal__ t "iterclose" ,(test__) __if__ test__ (,() Sjs_get s "it" ,(it) Cat3 "Sjs_iter_close " it " ,() " ,(c) return c) ,()
   __Dict_lookup_or__ s "line" (,(k) __NULL__ "") ,(line)
   Gen_quote line ,(q)
   ;; 文の中の呼び出しは、戻った後に、この文の行を記録し直す（呼ばれた関数の文が、行を変えるので）
@@ -244,6 +257,16 @@
   __or__ isBreak isContinue ,(test__) __if__ test__
     (,()
       __if_then_else__ isBreak (,() __NULL__ "brk") (,() __NULL__ "cnt") ,(kind)
+      __Dict_lookup_or__ s "label" (,(x) __NULL__ "") ,(label)
+      __String_equal__ label "" ,(plain)
+      __unless__ plain
+        (,()
+          Cat3 kind ":" label ,(lkind)
+          __Dict_lookup_or__ cx lkind (,(x) __NULL__ "") ,(k)
+          __String_equal__ k "" ,(test__) __if__ test__
+            (,() Cat4 "undefined label in " t ": " label ,(msg) Gen_error msg) ,()
+          Gen_jump cx lkind "" ,(c)
+          return c) ,()
       Sjs_get cx kind ,(k)
       __String_equal__ k "" ,(outside)
       __if__ outside (,() __String_concat__ t " outside a loop" ,(msg) Gen_error msg) ,()
@@ -268,6 +291,7 @@
       return c) ,()
   __String_equal__ t "try" ,(test__) __if__ test__ (,() Gen_try g scope s cx ,(code) return code) ,()
   __String_equal__ t "funcdecl" ,(test__) __if__ test__ (,() return "") ,()
+  __String_equal__ t "labeled" ,(test__) __if__ test__ (,() Gen_labeled g scope s cx ,(code) return code) ,()
   __String_concat__ "a statement of " t ,(what)
   Gen_not_yet what)
 
@@ -358,10 +382,11 @@
       return c) ,()
   __String_equal__ t "arrayPattern" ,(test__) __if__ test__
     (,()
+      ;; 繰り返しの手順で、要る数だけ読み、残りの要素（...）がなければ閉じる（ジェネレータの return()）
       Sjs_get pat "items" ,(items)
-      Gen_temp g "list" ,(list)
-      Cat5 "Sjs_iter_values " v " ,(" list ") " ,(c)
-      Gen_pattern_items g scope items list init c ,(c)
+      Gen_temp g "it" ,(it)
+      Cat5 "Sjs_iter_open " v " ,(" it ") " ,(c)
+      Gen_pattern_items g scope items it init c ,(c)
       return c) ,()
   __String_equal__ t "objectPattern" ,(test__) __if__ test__
     (,()
@@ -373,7 +398,7 @@
 ;; 配列の形の要素：値の LList list から先頭を取り出して入れる
 (define Gen_pattern_items ,(g scope items list init code)
   __Cont_get__ ,(return)
-  __is_null__ items ,(test__) __if__ test__ (,() return code) ,()
+  __is_null__ items ,(test__) __if__ test__ (,() Cat4 code "Sjs_iter_close " list " ,() " ,(c) return c) ,()
   __LList_uncons__ __print_exit_error__ items ,(item rest)
   __is_null__ item ,(hole)
   __if_then_else__ hole (,() __NULL__ "") (,() Sjs_get item "t") ,(t)
@@ -382,19 +407,17 @@
     (,()
       Sjs_get item "target" ,(target)
       Gen_temp g "t" ,(a)
-      Cat5 code "Sjs_array G " list " ,(" a ,(code)
+      Cat5 code "Sjs_iter_rest G " list " ,(" a ,(code)
       __String_concat__ code ") " ,(code)
       Gen_pattern g scope target a init ,(c)
       __String_concat__ code c ,(code)
       return code) ,()
   Gen_temp g "t" ,(x)
-  Gen_temp g "list" ,(next)
-  Cat5 code "Sjs_arg " list " ,(" x ,(code)
-  Cat3 code " " next ,(code)
+  Cat5 code "Sjs_iter_next " list " ,(" x ,(code)
   __String_concat__ code ") " ,(code)
   __if_then_else__ hole (,() __NULL__ "") (,() Gen_pattern g scope item x init) ,(c)
   __String_concat__ code c ,(code)
-  Gen_pattern_items g scope rest next init code)
+  Gen_pattern_items g scope rest list init code)
 
 ;; オブジェクトの形の要素。used は、取り出した名前（残りの形のため）の LList を作る被演算子
 (define Gen_pattern_props ,(g scope props v init code used)
@@ -478,6 +501,15 @@
   Gen_cx_with inner "cnt" cnt ,(inner)
   Gen_cx_with inner "brkH" h ,(inner)
   Gen_cx_with inner "cntH" h ,(inner)
+  ;; このループに付いたラベル（Gen_labeled が置く）
+  __Dict_lookup_or__ g "label" (,(x) __NULL__ "") ,(label)
+  __Dict_put__ g "label" "" ,()
+  __String_equal__ label "" ,(noLabel)
+  __if_then_else__ noLabel (,() __NULL__ inner) (,()
+    Cat3 "brk" ":" label ,(bk)
+    Cat3 "cnt" ":" label ,(ck)
+    Gen_cx_label inner bk brk h ,(inner)
+    Gen_cx_label inner ck cnt h) ,(inner)
   body inner ,(bodyCode)
   ;; break と continue の継続と、受け手のスタックは、本体が使うときだけ取る（使うなら、その変数名が本体にある）
   Gen_uses bodyCode brk ,(usesBrk)
@@ -534,11 +566,20 @@
   __is_null__ update ,(noUpdate)
   __if_then_else__ noUpdate (,() __NULL__ "") (,() Gen_expr g outer update ,(c v) __NULL__ c) ,(updateCode)
   Gen_loop g cx testCode testVal (,(inner)
+    __Cont_get__ ,(done)
     __Dict_new__ ,(idict)
     __LList_cons__ idict outer ,(iscope)
     Gen_copy_in g outer iscope decls "" "" ,(copyIn copyOut)
+    __is_null__ decls ,(test__) __if__ test__ (,() Gen_branch g iscope body inner ,(bodyCode) done bodyCode) ,()
+    ;; 回ごとの変数があれば、continue は、変えた値をループの変数に写し戻す所（copyOut）に来る
+    Gen_temp g "cnt" ,(cnt)
+    Sjs_get inner "cnt" ,(old)
+    Gen_cx_retarget inner old cnt ,(inner)
     Gen_branch g iscope body inner ,(bodyCode)
-    Cat3 copyIn bodyCode copyOut) updateCode ,(loopCode)
+    Gen_uses bodyCode cnt ,(uses)
+    __unless__ uses (,() Cat3 copyIn bodyCode copyOut ,(c) done c) ,()
+    Cat5 copyIn "(,() __Cont_get__ ,(" cnt ") " bodyCode ,(c)
+    Cat3 c "__nop__) ,() " copyOut) updateCode ,(loopCode)
   __String_concat__ initCode loopCode)
 
 ;; 回ごとの変数：外の Ref の値を、iscope に宣言した新しい Ref に入れる手順と、本体の後で外の Ref に写し戻す手順。
@@ -681,13 +722,44 @@
 
 ;; for (x of e) と for (x in e)：値（of）か名前（in）の LList を Ref に入れ、回ごとに先頭を取り出す
 (define Gen_forof ,(g scope s cx)
+  __Cont_get__ ,(return)
+  ;; for...of：繰り返しの手順を開いてから、ループを try { } finally { 閉じる } の中で動かす（break、return、例外で
+  ;; 抜けると、ジェネレータの return() を呼ぶ）。中のループは、開いた手順（"iterVar"）を使う
+  Sjs_get s "of" ,(ofWord)
+  __String_equal__ ofWord "of" ,(isOfLoop)
+  __Dict_lookup_or__ s "iterVar" (,(k) __NULL__ __NULL__) ,(given)
+  __is_null__ given ,(fresh)
+  __and__ isOfLoop fresh ,(test__) __if__ test__
+    (,()
+      Sjs_get s "right" ,(right)
+      Gen_expr g scope right ,(rc rv)
+      Gen_temp g "it" ,(it)
+      __Dict_copy__ s ,(loop)
+      __Dict_put__ loop "iterVar" it ,()
+      __LList_cons__ loop __NULL__ ,(bodyStmts)
+      Sjs_node "block" ,(block)
+      __Dict_put__ block "body" bodyStmts ,()
+      Sjs_node "iterclose" ,(close)
+      __Dict_put__ close "it" it ,()
+      __LList_cons__ close __NULL__ ,(finStmts)
+      Sjs_node "block" ,(fin)
+      __Dict_put__ fin "body" finStmts ,()
+      Sjs_node "try" ,(t)
+      __Dict_put__ t "body" block ,()
+      __Dict_put__ t "param" __NULL__ ,()
+      __Dict_put__ t "handler" __NULL__ ,()
+      __Dict_put__ t "finalizer" fin ,()
+      Gen_try g scope t cx ,(tc)
+      Cat5 rc "Sjs_iter_open " rv " ,(" it ,(c)
+      Cat3 c ") " tc ,(c)
+      return c) ,()
   Sjs_get s "kind" ,(kind)
   Sjs_get s "target" ,(target)
   Sjs_get s "of" ,(of)
   Sjs_get s "right" ,(right)
   Sjs_get s "body" ,(body)
-  Gen_expr g scope right ,(rc rv)
-  Gen_temp g "list" ,(list)
+  __if_then_else__ fresh (,() Gen_expr g scope right) (,() __NULL__ "" "") ,(rc rv)
+  __if_then_else__ fresh (,() Gen_temp g "list") (,() __NULL__ given) ,(list)
   Gen_temp g "lst" ,(lst)
   Gen_temp g "e" ,(e)
   Gen_temp g "x" ,(x)
@@ -695,7 +767,7 @@
   __String_equal__ of "of" ,(isOf)
   ;; for...of は、繰り返しの手順（Sjs_iter_open。ジェネレータは 1 つずつ）、for...in は、名前の LList の Ref
   __if_then_else__ isOf
-    (,() Cat5 rc "Sjs_iter_open " rv " ,(" list ,(c) __String_concat__ c ") ")
+    (,() __NULL__ "")
     (,()
       Cat5 rc "Sjs_iter_keys " rv " ,(" lst ,(c)
       Cat5 c ") __Ref_new__ " lst " ,(" list ,(c)
@@ -776,6 +848,8 @@
   wrap cx "ret" c ,(icx c)
   wrap icx "brk" c ,(icx c)
   wrap icx "cnt" c ,(icx c)
+  __Dict_lookup_or__ cx "labels" (,(x) __NULL__ __NULL__) ,(labels)
+  Gen_wrap_labels wrap icx labels c ,(icx c)
   __is_null__ handler ,(noCatch)
   __if_then_else__ noCatch
     (,() Sjs_get body "body" ,(stmts) __Dict_new__ ,(d) __LList_cons__ d scope ,(bscope) Gen_block_code g bscope stmts icx)
@@ -872,6 +946,9 @@
 
 ;; 式 e の手順の並びと、値の被演算子
 (define Gen_expr ,(g scope e)
+  Sjs_get e "t" ,(et)
+  Sjs_in_words et "member call" ,(link)
+  __unless__ link (,() __Dict_put__ g "inChain" __FALSE__) ,()
   Gen_expr_raw g scope e ,(c v)
   Gen_static_kind e ,(kind)
   __String_equal__ kind "" ,(test__) __unless__ test__ (,() Gen_type_set g v kind) ,()
@@ -909,6 +986,7 @@
   __String_equal__ t "object" ,(test__) __if__ test__ (,() Gen_object g scope e ,(c v) return c v) ,()
   __String_equal__ t "template" ,(test__) __if__ test__ (,() Gen_template g scope e ,(c v) return c v) ,()
   __String_equal__ t "yield" ,(test__) __if__ test__ (,() Gen_yield g scope e ,(c v) return c v) ,()
+  __String_equal__ t "seq" ,(test__) __if__ test__ (,() Sjs_get e "exprs" ,(exprs) Gen_seq g scope exprs "" ,(c v) return c v) ,()
   __String_equal__ t "await" ,(test__) __if__ test__
     (,()
       Sjs_get e "arg" ,(arg)
@@ -1171,23 +1249,25 @@
 
 ;; o.名前、o[式]、o?.名前、o?.[式]
 (define Gen_member ,(g scope e)
+  Gen_chain g e (,() Gen_member_link g scope e))
+
+(define Gen_member_link ,(g scope e)
   __Cont_get__ ,(return)
   Sjs_get e "object" ,(object)
   __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(optional)
-  Gen_expr g scope object ,(oc ov)
+  Gen_chain_object g scope object ,(oc ov)
   Gen_key g scope e ,(kc kv)
   Gen_temp g "t" ,(v)
   Gen_get_fn g kv ,(getFn)
   Cat5 getFn ov " " kv " ,(" ,(get)
   Cat3 get v ") " ,(get)
   __unless__ optional (,() Cat3 oc kc get ,(c) return c v) ,()
-  ;; ?. は、o が null か undefined なら undefined（キーは求めない）
+  ;; ?. の鎖の中なら、o が null か undefined のとき、鎖全体を undefined にする（Gen_chain の継続）
+  __Dict_lookup_or__ g "chainEsc" (,(x) __NULL__ "") ,(esc)
   Gen_temp g "b" ,(b)
   Cat5 oc "Sjs_is_nullish " ov " ,(" b ,(c)
-  Cat5 c ") __if_then_else__ " b " (,() __NULL__ __NULL__) (,() " kc ,(c)
-  Cat5 c "Sjs_get_member G " ov " " kv ,(c)
-  Cat5 c " ,(" v "x) __NULL__ " v ,(c)
-  Cat5 c "x) ,(" v ") " "" ,(c)
+  Cat5 c ") __if__ " b " (,() " esc ,(c)
+  Cat4 c " __NULL__) ,() " kc get ,(c)
   __NULL__ c v)
 
 ;; [a, b, ...]（スプレッドもある）
@@ -1418,6 +1498,7 @@
   __LList_uncons__ __print_exit_error__ items ,(x rest)
   Sjs_get x "t" ,(t)
   __String_equal__ t "spread" ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __String_equal__ t "hole" ,(test__) __if__ test__ (,() return __TRUE__) ,()
   Gen_has_spread rest)
 
 ;; 配列 a に、式（スプレッドは中身を）を足す手順
@@ -1426,6 +1507,8 @@
   __is_null__ items ,(test__) __if__ test__ (,() return code) ,()
   __LList_uncons__ __print_exit_error__ items ,(x rest)
   Sjs_get x "t" ,(t)
+  __String_equal__ t "hole" ,(test__) __if__ test__
+    (,() Cat4 code "Sjs_array_hole " a " ,() " ,(code) Gen_push_items g scope rest a code ,(c) return c) ,()
   __String_equal__ t "spread" ,(isSpread)
   __if_then_else__ isSpread (,() Sjs_get x "arg") (,() __NULL__ x) ,(e)
   Gen_expr g scope e ,(c v)
@@ -1454,6 +1537,9 @@
 
 ;; 呼び出し。o.m(...) と o[k](...) は Sjs_call_member、f?.(...) は f が null か undefined なら undefined
 (define Gen_call ,(g scope e)
+  Gen_chain g e (,() Gen_call_link g scope e))
+
+(define Gen_call_link ,(g scope e)
   __Cont_get__ ,(return)
   Sjs_get e "callee" ,(callee)
   Sjs_get e "args" ,(args)
@@ -1467,7 +1553,7 @@
   __and__ x plainCall ,(test__) __if__ test__
     (,()
       Sjs_get callee "object" ,(object)
-      Gen_expr g scope object ,(oc ov)
+      Gen_chain_object g scope object ,(oc ov)
       Gen_key g scope callee ,(kc kv)
       Gen_args g scope args ,(ac list)
       Gen_temp g "t" ,(v)
@@ -1478,7 +1564,7 @@
       Gen_line_again g ,(again)
       __String_concat__ c again ,(c)
       return c v) ,()
-  Gen_expr g scope callee ,(fc fv)
+  Gen_chain_object g scope callee ,(fc fv)
   Gen_args g scope args ,(ac list)
   Gen_temp g "t" ,(v)
   __unless__ optional
@@ -1489,12 +1575,14 @@
       Gen_line_again g ,(again)
       __String_concat__ c again ,(c)
       return c v) ,()
+  ;; f?.()：f が null か undefined なら、鎖全体を undefined にする
+  __Dict_lookup_or__ g "chainEsc" (,(x) __NULL__ "") ,(esc)
   Gen_temp g "b" ,(b)
   Cat5 fc "Sjs_is_nullish " fv " ,(" b ,(c)
-  Cat5 c ") __if_then_else__ " b " (,() __NULL__ __NULL__) (,() " ac ,(c)
+  Cat5 c ") __if__ " b " (,() " esc ,(c)
+  Cat3 c " __NULL__) ,() " ac ,(c)
   Cat5 c "Sjs_call " fv " " list ,(c)
-  Cat5 c " ,(" v "x) __NULL__ " v ,(c)
-  Cat3 c "x) ,(" v ,(c)
+  Cat3 c " ,(" v ,(c)
   __String_concat__ c ") " ,(c)
   __NULL__ c v)
 
@@ -1886,3 +1974,88 @@
 (define Gen_set_fn ,(g kv)
   Gen_is_num_operand g kv ,(num)
   __if_then_else__ num (,() __NULL__ "Sjs_set_index G ") (,() __NULL__ "Sjs_set_member G "))
+
+;; コンマ演算子：式を順に求め、値は最後の式
+(define Gen_seq ,(g scope exprs code)
+  __LList_uncons__ __print_exit_error__ exprs ,(e rest)
+  Gen_expr g scope e ,(c v)
+  __String_concat__ code c ,(code)
+  __is_null__ rest ,(last)
+  __if_then_else__ last (,() __NULL__ code v) (,() Gen_seq g scope rest code))
+
+;; ラベルの付いた継続も、finally を通すものにする
+(define Gen_wrap_labels ,(wrap cx labels c)
+  __Cont_get__ ,(return)
+  __is_null__ labels ,(test__) __if__ test__ (,() return cx c) ,()
+  __LList_uncons__ __print_exit_error__ labels ,(kind rest)
+  wrap cx kind c ,(cx c)
+  Gen_wrap_labels wrap cx rest c)
+
+;; ラベルの付いた文。ループなら、そのループの break と continue にラベルを付ける（Gen_loop）。ほかの文は、
+;; break ラベル で抜けられるように、脱出の継続を取る thunk にする
+(define Gen_labeled ,(g scope s cx)
+  __Cont_get__ ,(return)
+  Sjs_get s "label" ,(label)
+  Sjs_get s "body" ,(body)
+  Sjs_get body "t" ,(bt)
+  Sjs_in_words bt "while for forof dowhile" ,(isLoop)
+  __if__ isLoop (,() __Dict_put__ g "label" label ,() Gen_stmt g scope body cx ,(c) return c) ,()
+  Gen_temp g "lb" ,(lb)
+  Gen_temp g "h" ,(h)
+  Cat3 "brk" ":" label ,(bk)
+  Gen_cx_label cx bk lb h ,(inner)
+  Gen_stmt g scope body inner ,(bodyCode)
+  Cat5 "(,() __Cont_get__ ,(" lb ") Sjs_handlers ,(" h ") " ,(c)
+  Cat3 c bodyCode "__nop__) ,() ")
+
+;; ── ?. の鎖 ──
+;; メンバーと呼び出しの鎖（a?.b.c(d)）で、?. の所の値が null か undefined なら、鎖全体が undefined になる。
+;; 鎖のいちばん外の節（g の "inChain" が偽）で、鎖に ?. があれば、脱出の継続を取る thunk にし、?. の所は、
+;; その継続（g の "chainEsc"）で undefined を返す。鎖の中の節は、object と callee を "inChain" を真にして求める
+;; （括弧、キー、引数は、鎖を切る）
+(define Gen_chain ,(g e link)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ g "inChain" (,(x) __NULL__ __FALSE__) ,(inner)
+  __Dict_put__ g "inChain" __FALSE__ ,()
+  __if__ inner (,() link ,(c v) return c v) ,()
+  Gen_chain_optional e ,(opt)
+  __unless__ opt (,() link ,(c v) return c v) ,()
+  __Dict_lookup_or__ g "chainEsc" (,(x) __NULL__ "") ,(saved)
+  Gen_temp g "oc" ,(esc)
+  __Dict_put__ g "chainEsc" esc ,()
+  link ,(c v)
+  __Dict_put__ g "chainEsc" saved ,()
+  Gen_temp g "t" ,(t)
+  Cat5 "(,() __Cont_get__ ,(" esc ") " c "__NULL__ " ,(code)
+  Cat5 code v ") ,(" t ") " ,(code)
+  __NULL__ code t)
+
+;; 鎖に ?. があるか
+(define Gen_chain_optional ,(e)
+  __Cont_get__ ,(return)
+  Sjs_get e "t" ,(t)
+  __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(opt)
+  __if__ opt (,() return __TRUE__) ,()
+  __String_equal__ t "member" ,(test__) __if__ test__ (,() Sjs_get e "object" ,(o) Gen_chain_optional o ,(r) return r) ,()
+  __String_equal__ t "call" ,(test__) __if__ test__ (,() Sjs_get e "callee" ,(f) Gen_chain_optional f ,(r) return r) ,()
+  __NULL__ __FALSE__)
+
+;; 鎖の中の節の object か callee を求める
+(define Gen_chain_object ,(g scope x)
+  __Dict_put__ g "inChain" __TRUE__ ,()
+  Gen_expr g scope x)
+
+;; 文脈 cx の continue の継続（"cnt" と、ラベルの付いたもの）のうち、old を指すものを cnt にする
+(define Gen_cx_retarget ,(cx old cnt)
+  Gen_cx_with cx "cnt" cnt ,(cx)
+  __Dict_lookup_or__ cx "labels" (,(x) __NULL__ __NULL__) ,(labels)
+  Gen_cx_retarget_labels cx labels old cnt)
+
+(define Gen_cx_retarget_labels ,(cx labels old cnt)
+  __Cont_get__ ,(return)
+  __is_null__ labels ,(test__) __if__ test__ (,() return cx) ,()
+  __LList_uncons__ __print_exit_error__ labels ,(kind rest)
+  __Dict_lookup_or__ cx kind (,(x) __NULL__ "") ,(k)
+  __String_equal__ k old ,(same)
+  __if_then_else__ same (,() Gen_cx_with cx kind cnt) (,() __NULL__ cx) ,(cx)
+  Gen_cx_retarget_labels cx rest old cnt)

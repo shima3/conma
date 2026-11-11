@@ -1,0 +1,10 @@
+00 01 10 11 20 21
+in block
+xy 1 1
+xy 1 2
+finally 1
+finally 2
+finally 3
+6 done
+5
+exit: 0

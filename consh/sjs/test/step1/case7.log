@@ -1,2 +1,2 @@
-sjs: SyntaxError: not yet translated to ConMa: holes in array literals
+sjs: SyntaxError: not yet translated to ConMa: tagged templates
 exit: 2

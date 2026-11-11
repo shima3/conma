@@ -18,7 +18,7 @@ consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
 ├── bench/           段階 B7 の測定：loop.sjs、fib.sjs、nbody.sjs（bench/ と同じ計算）と run.sh
-└── test/            step1〜step5（段階 B1〜B3、B5a、B5b）の caseN.sjs と caseN.log、run_all.sh、compare.sh
+└── test/            step1〜step6（段階 B1〜B3、B5a、B5b、残りの書き方）の caseN.sjs と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
@@ -85,7 +85,18 @@ consh/include/
 * 変換したソースは、メモリの `/tmp`（`web/serverfs.js`）に書く
 * ホストの JavaScript を使わないので、`config.json` がなくても `(( ))` が使える。新しい式は 0.3 秒くらい、前に作った式は 0.15 秒くらいで動いた（2026/11/11、Worker で動かすページ）
 
-まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：async のジェネレータ、配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
+## 残りの書き方を足したもの（2026/11/11）
+
+* コンマ演算子（`a, b`。`for (i = 0, j = 9; ...; i++, j--)` など）：左から順に求め、値は最後の式（"seq" の節）
+* 配列の穴（`[1, , 3]`）：長さだけを数え、要素は入れない（`Sjs_array_hole`）。分割代入の穴（`[a, , b] = ...`）も
+* `for (let [a, b] = e; ...; ...)`：`for` の最初の部分の分割代入。回ごとの変数も、形の中の名前ごとに作る
+* ラベル（`outer: for ...`、`break outer`、`continue outer`、ループでない文の `break ラベル`）：ラベルの付いた継続を文脈に足し（`Gen_cx_label`）、`finally` を通るときも包む
+* `?.` は、鎖（`a?.b.c(d)`）全体を `undefined` にする：鎖のいちばん外の節で脱出の継続を取り、`?.` の所はそれを呼ぶ（`Gen_chain`）。括弧は鎖を切る（`(a?.b).c` はエラー）
+* ジェネレータを閉じる：`for...of` を `break`、`return`、例外、ラベルの付いた `continue` で抜けると、ジェネレータの `return()` を呼ぶ（ループを `try { } finally { Sjs_iter_close }` の中で動かす）。分割代入（`const [a, b] = gen()`）は、要る数だけ読んでから閉じる（終わらないジェネレータもよい）。`for...of` ごとに `try` が 1 つ増えるので、nbody 2000 は 2.22 秒から 2.34 秒になった
+* `for (let i ...)` の本体で `continue` したときも、本体の中で変えた `i` を、ループの変数に写し戻す（前は写し戻さなかった）
+* step6 のログは、Node.js の結果と同じ
+
+まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：async のジェネレータ、タグ付きテンプレート、配列の `length` への代入と、整数でない添字への代入。getter と setter は SJS の範囲の外。
 
 ## 段階 B7：測定（2026/11/11）
 
@@ -141,13 +152,13 @@ consh/include/
 
 ## 段階 A との違い（今わかっているもの）
 
-* `for (let i ...)` の本体で `continue` したとき、本体の中で変えた `i` を、ループの変数に写し戻さない（`Gen_copy_in`）。
-* `?.` は、その 1 つのメンバーだけを短絡する（`a?.b.c` で `a` が `null` なら、JavaScript は `undefined` だが、ここでは `.c` でエラー）。
 * 文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。
 * `String(関数)` と、`console.log` に渡した関数は、関数のソースでなく `function () { [native code] }`（段階 A は、書き換えた後のソース）。
 
 * `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
-* ジェネレータ：`for...of` を `break` などで抜けても、ジェネレータの `return()` を呼ばない（JavaScript は呼び、ジェネレータの `finally` が動く）。分割代入（`const [a, b] = gen()`）は、ジェネレータをすべて読む（JavaScript は要る分だけ読んで `return()` を呼ぶ）。`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない。
+* ジェネレータ：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない。
+* 同じブロックで同じ名前を 2 度 `let` や `const` で宣言しても、エラーにしない（JavaScript は SyntaxError）。
+* 配列の穴：`forEach`、`map` などのメソッドは、穴を `undefined` の要素として扱う（JavaScript は飛ばし、`map` は穴のまま残す）。
 * Promise：`new Promise`（`new` は SJS の範囲の外）、`Promise.race`、`allSettled`、`any`、`for await`、async のジェネレータはない。受け手のない拒否は、Node.js ではプロセスを終了ステータス 1 で終えるが、ここではメッセージを出して 2 にする。
 * シェルの値にしたジェネレータのエラーのメッセージに、ConSh の位置が付かない（`consh: sjs: ...`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。
