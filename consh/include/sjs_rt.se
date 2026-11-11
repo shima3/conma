@@ -98,7 +98,12 @@
   __PDict_lookup_or__ "sjs_G" (,(k) __NULL__ __NULL__) ,(G)
   __is_null__ G ,(test__) __if__ test__ (,() __String_concat__ name ": " ,(s) __String_concat__ s msg ,(s) Sjs_uncaught s) ,()
   Sjs_error_object G name msg ,(e)
-  Sjs_raise e)
+  ;; エラーのオブジェクトは、作った所の位置を持つ（受け手のない Promise の拒否で、JavaScript と同じくそこを出す。
+  ;; Sjs_promise_reject）。投げるのも同じ所
+  Sjs_raise_pos ,(pos)
+  __Dict_put__ e "pos" pos ,()
+  __PDict_put__ "sjs_pos" pos ,()
+  Sjs_reraise e)
 
 ;; 受け手のない例外：メッセージ text を、例外を投げた所の位置（"sjs_pos"。Sjs_raise）を付けて
 ;; 「ファイル:行:桁: メッセージ」の形で出し、終了ステータス 2 で終える。位置がなければ「sjs: メッセージ」
@@ -2840,7 +2845,22 @@
   __Ref_get__ resolved ,(done)
   __if__ done return ,()
   __Ref_set__ resolved __TRUE__ ,()
+  ;; 受け手のない拒否のメッセージの位置（Sjs_unhandled_check）：エラーのオブジェクトなら作った所、ほかは、拒否のもとに
+  ;; なった例外を投げた所（"sjs_pos"。async 関数の本体の throw など）。"sjs_pos" は使ったので消す（後の拒否に古い位置を
+  ;; 出さない。Promise.reject(値) のように投げずに拒否したものは、位置がない）
+  __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(thrown)
+  __PDict_put__ "sjs_pos" __NULL__ ,()
+  Sjs_error_pos e thrown ,(pos)
+  __Dict_put__ p "pos" pos ,()
   Sjs_promise_settle p "rejected" e)
+
+;; v がエラーのオブジェクトで、作った所の位置を持てばそれ、なければ other
+(define Sjs_error_pos ,(v other)
+  __Cont_get__ ,(return)
+  __type_name__ v ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d (,() return other) ,()
+  __Dict_lookup_or__ v "pos" (,(k) __NULL__ other))
 
 ;; 決着させ、待っている受け手のジョブを、付けた順に列に入れる
 (define Sjs_promise_settle ,(p state v)
@@ -3043,6 +3063,8 @@
   Sjs_promise_ref p "value" ,(e)
   Sjs_error_text e ,(t)
   __String_concat__ "Uncaught (in promise) " t ,(msg)
+  __Dict_lookup_or__ p "pos" (,(k) __NULL__ __NULL__) ,(pos)
+  __PDict_put__ "sjs_pos" pos ,()
   Sjs_uncaught msg)
 
 ;; ── async 関数 ──

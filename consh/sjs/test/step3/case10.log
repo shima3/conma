@@ -1,0 +1,3 @@
+caught
+case10.sjs:9:1: TypeError: Cannot read properties of null (reading 'x')
+exit: 2

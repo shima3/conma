@@ -1,0 +1,3 @@
+made
+case4.sjs:3:26: Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'y')
+exit: 2
