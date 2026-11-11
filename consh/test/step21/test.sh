@@ -16,3 +16,5 @@ run case4 case4.sh < /dev/null
 run case5 case5.sh < /dev/null
 # case6：async ジェネレータと for await、タグ付きテンプレート、配列の穴と length、let の重なり
 run case6 case6.sh < /dev/null
+# case7：対話モードでは、コマンド行の文がそのまま (( )) なら、値を標準エラーに出す（ループ、関数、if の条件の中は出さない）
+run case7 < case7.input

@@ -1,0 +1,18 @@
+(( 1+2 ))
+echo "status $?"
+(( x = [1, 2, 3] ))
+(( ({ a: 1 }) ))
+(( "text" ))
+(( console.log("logged") ))
+(( 0 ))
+echo "status $?"
+(( 2 * 3 )) 2> (n)
+echo "n=$n"
+(( 4 )); (( 5 ))
+if (( 7 )); then echo yes; fi
+(( undefinedThing ))
+echo "status $?"
+for i in 1 2; do (( $i * 10 )); done
+function f () { (( 99 )); }
+f
+echo "status $?"

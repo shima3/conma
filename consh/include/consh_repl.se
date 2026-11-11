@@ -98,7 +98,7 @@
   Str_ends text "\\\n" ,(continued)
   __if__ continued (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
   Repl_parse sh r text start ,(lines full msg)
-  __is_null__ full ,(test__) __if__ test__ (,() return lines lineNo) ,()
+  __is_null__ full ,(test__) __if__ test__ (,() Repl_show_arith lines ,(lines) return lines lineNo) ,()
   Parse_incomplete msg ,(incomplete)
   __if__ incomplete (,() Repl_command sh r lineNo text start ,(lines n) return lines n) ,()
   __String_concat__ "consh: " full ,(s)
@@ -214,5 +214,29 @@
   __String_equal__ tail suffix)
 
 ;; text を解析する（Parse_text）
+;; 対話モードでは、コマンド行の文がそのまま (( )) なら、その値を表示する（Node.js の REPL のように。
+;; consh/SAFEJS-PLAN-ja.md の 2.4）。行 (line 位置 文 ...) の文の arith を arithshow にする。ループ、関数、if の条件の中の
+;; (( )) は、行の文ではないので表示しない
+(define Repl_show_arith ,(lines)
+  __Cont_get__ ,(return)
+  __is_null__ lines ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ lines ,(line rest)
+  Node_split line ,(tag pos stmts)
+  Repl_show_stmts stmts __NULL__ ,(rev)
+  List_reverse rev ,(stmts)
+  Node_make tag pos stmts ,(line)
+  Repl_show_arith rest ,(more)
+  __LList_cons__ line more)
+
+(define Repl_show_stmts ,(stmts acc)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Node_split s ,(tag pos children)
+  __String_equal__ tag "arith" ,(isArith)
+  __if_then_else__ isArith (,() Node_make "arithshow" pos children) (,() __NULL__ s) ,(s)
+  __LList_cons__ s acc ,(acc)
+  Repl_show_stmts rest acc)
+
 (define Repl_parse ,(sh r text start)
   Parse_text text "stdin" start)

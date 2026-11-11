@@ -154,22 +154,24 @@
   __Dict_put__ to "sjsvars" vars)
 
 ;; 文の算術評価 (arith 位置 コード (names 位置 名前 ...) [(redirs …)])。値は出さず、エラーなら $? を 2、
-;; そうでなければ値の JavaScript の真偽で、真なら 0、偽なら 1 にする（SAFEJS-PLAN-ja.md の 2.2 の 1）
-(define Eval_arith ,(sh pos children)
+;; そうでなければ値の JavaScript の真偽で、真なら 0、偽なら 1 にする（SAFEJS-PLAN-ja.md の 2.2 の 1）。
+;; show（対話モードのコマンド行の (( ))）なら、値を標準エラーに出す（SJS関数の戻り値と同じ。undefined と null は出さない）
+(define Eval_arith ,(sh pos children show)
   __LList_uncons__ __print_exit_error__ children ,(code rest)
   __LList_uncons__ __print_exit_error__ rest ,(namesNode rest)
   __is_null__ rest ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,() List_first rest ,(node) Node_split node ,(rtag rpos items) __NULL__ items) ,(redirs)
-  Eval_redirected sh pos redirs (,(inner) Eval_arith_run inner pos code namesNode))
+  Eval_redirected sh pos redirs (,(inner) Eval_arith_run inner pos code namesNode show))
 
-(define Eval_arith_run ,(sh pos code namesNode)
+(define Eval_arith_run ,(sh pos code namesNode show)
   __Cont_get__ ,(return)
   Ar_eval sh pos code namesNode (,(msg)
     __String_concat__ "sjs: " msg ,(m)
     Sh_warn sh pos m ,()
     Sh_set_status sh "2" ,()
     return) ,(value)
+  __if__ show (,() Ar_show sh pos value) ,()
   Ar_truthy value ,(truth)
   __if_then_else__ truth (,() __NULL__ "0") (,() __NULL__ "1") ,(status)
   Sh_set_status sh status)
@@ -450,6 +452,18 @@
     __Dict_put__ B "mode" "A" ,()
     Sjsa_eval sh pos code namesNode fail ,(v)
     return v) fail)
+
+;; 対話モードで (( )) の値を標準エラーに出す：文字列はそのまま、段階 B の値は SJS関数の戻り値と同じ形
+;; （Sjsb_to_shell。undefined と null は出さない）、段階 A の値は Sjsa_output
+(define Ar_show ,(sh pos value)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  __type_name__ value ,(type)
+  __String_equal__ type "String" ,(test__) __if__ test__ (,() Target_write sh pos err value ,() return) ,()
+  __Dict_lookup_or__ value "sjsv" (,(k) Sjsa_output sh pos err value ,() return) ,(v)
+  Sjs_is_nullish v ,(test__) __if__ test__ return ,()
+  Sjsb_to_shell v ,(s)
+  Target_write sh pos err s)
 
 ;; 値の真偽（$? の 0 と 1）
 (define Ar_truthy ,(value)
