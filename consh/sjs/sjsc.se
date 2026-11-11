@@ -16,10 +16,9 @@
   Sjs_translate text ,(source)
   __OS_print__ source)
 
-;; 行の LazyList を、改行でつないだ 1 つの String にする
+;; 行の LazyList を 1 つの String にする（__LazyList_lines__ の行は、改行を含む）
 (define Sjsc_join ,(lines acc)
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return acc) lines ,(line rest)
   __String_concat__ acc line ,(acc)
-  __String_concat__ acc "\n" ,(acc)
   Sjsc_join rest acc)

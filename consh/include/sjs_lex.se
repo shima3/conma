@@ -1,12 +1,13 @@
 ;; SJS の字句解析（consh/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の jsTokens と同じ区切り方。
-;; 字句は LList (種類 テキスト 改行) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、
-;; "punct"、"eof"。改行は、前に改行（コメントの中も）があったか（真偽値）。
-;; 正規表現とテンプレート文字列は、まだ読まない（正規表現は SJS の範囲の外。テンプレートは段階 B2）。
 ;; sjs_rt.se（Sjs_chars）を使う
 
+;; 字句は LList (種類 テキスト 改行) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、
+;; "punct"、"eof"、テンプレート文字列の部分（テキストは逃がしを解いた中身）の "template"（`...` 全体）、
+;; "tmplhead"（` から ${ まで）、"tmplmid"（} から ${ まで）、"tmpltail"（} から ` まで）。改行は、前に改行
+;; （コメントの中も）があったか（真偽値）。正規表現は読まない（SJS の範囲の外）
 (define Sjs_lex ,(text)
   Sjs_chars text ,(chars)
-  Sjs_lex_loop chars __NULL__ __FALSE__)
+  Sjs_lex_loop chars __NULL__ __FALSE__ __NULL__)
 
 (define Sjs_tok ,(kind text nl)
   __LList_cons__ nl __NULL__ ,(l)
@@ -31,31 +32,38 @@
 (define Sjs_lex_error ,(msg)
   Sjs_throw "SyntaxError" msg)
 
-;; acc は逆順の字句。nl は、次の字句の前に改行があったか
-(define Sjs_lex_loop ,(chars acc nl)
+;; acc は逆順の字句。nl は、次の字句の前に改行があったか。stack は、開いている { と、テンプレートの ${（"T"）の LList
+(define Sjs_lex_loop ,(chars acc nl stack)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__
     (,()
+      __is_null__ stack ,(test__) __unless__ test__ (,() Sjs_lex_error "unterminated template literal or block") ,()
       Sjs_tok "eof" "" __TRUE__ ,(eof)
       __LList_cons__ eof acc ,(acc)
       Sjs_reverse acc ,(toks)
       return toks) ,()
   __LList_uncons__ __print_exit_error__ chars ,(c rest)
   Sjs_peek_char rest ,(d)
+  ;; 1 つの字句を足して続ける
+  __NULL__ (,(kind text rest stack)
+    Sjs_tok kind text nl ,(tok)
+    __LList_cons__ tok acc ,(acc)
+    Sjs_lex_loop rest acc __FALSE__ stack ,(t)
+    return t) ,(emit)
   ;; 空白と改行
-  __String_equal__ c "\n" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc __TRUE__ ,(t) return t) ,()
-  Sjs_in c " \t\r" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc nl ,(t) return t) ,()
+  __String_equal__ c "\n" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc __TRUE__ stack ,(t) return t) ,()
+  Sjs_in c " \t\r" ,(test__) __if__ test__ (,() Sjs_lex_loop rest acc nl stack ,(t) return t) ,()
   ;; コメント
   __String_equal__ c "/" ,(slash)
   __String_equal__ d "/" ,(slash2)
   __and__ slash slash2 ,(test__) __if__ test__
-    (,() Sjs_skip_line rest ,(rest) Sjs_lex_loop rest acc nl ,(t) return t) ,()
+    (,() Sjs_skip_line rest ,(rest) Sjs_lex_loop rest acc nl stack ,(t) return t) ,()
   __String_equal__ d "*" ,(star)
   __and__ slash star ,(test__) __if__ test__
     (,()
       Sjs_rest rest ,(rest)
       Sjs_skip_block rest nl ,(rest nl)
-      Sjs_lex_loop rest acc nl ,(t)
+      Sjs_lex_loop rest acc nl stack ,(t)
       return t) ,()
   ;; 数
   Sjs_is_digit c ,(digit)
@@ -63,37 +71,57 @@
   Sjs_is_digit d ,(digitNext)
   __and__ dot digitNext ,(dotNumber)
   __or__ digit dotNumber ,(test__) __if__ test__
-    (,()
-      Sjs_lex_number chars "" ,(text rest)
-      Sjs_tok "num" text nl ,(tok)
-      __LList_cons__ tok acc ,(acc)
-      Sjs_lex_loop rest acc __FALSE__ ,(t)
-      return t) ,()
+    (,() Sjs_lex_number chars "" ,(text rest) emit "num" text rest stack) ,()
   ;; 文字列
   Sjs_in c "'\"" ,(test__) __if__ test__
-    (,()
-      Sjs_lex_string rest c "" ,(text rest)
-      Sjs_tok "str" text nl ,(tok)
-      __LList_cons__ tok acc ,(acc)
-      Sjs_lex_loop rest acc __FALSE__ ,(t)
-      return t) ,()
+    (,() Sjs_lex_string rest c "" ,(text rest) emit "str" text rest stack) ,()
+  ;; テンプレート文字列：` から、` か ${ まで
   __String_equal__ c "`" ,(test__) __if__ test__
-    (,() Sjs_lex_error "template literals are not yet translated (stage B2 of SJS)") ,()
+    (,()
+      Sjs_lex_template rest "" ,(text open rest)
+      __if_then_else__ open (,() __LList_cons__ "T" stack ,(s) __NULL__ "tmplhead" s) (,() __NULL__ "template" stack) ,(kind stack)
+      emit kind text rest stack) ,()
+  ;; { と }。テンプレートの ${ を閉じる } なら、テンプレートの続きを読む
+  __String_equal__ c "{" ,(test__) __if__ test__
+    (,() __LList_cons__ "{" stack ,(stack) emit "punct" "{" rest stack) ,()
+  __String_equal__ c "}" ,(test__) __if__ test__
+    (,()
+      __is_null__ stack ,(test__) __if__ test__ (,() emit "punct" "}" rest stack) ,()
+      __LList_uncons__ __print_exit_error__ stack ,(top below)
+      __String_equal__ top "T" ,(inTemplate)
+      __unless__ inTemplate (,() emit "punct" "}" rest below) ,()
+      Sjs_lex_template rest "" ,(text open rest)
+      __if_then_else__ open (,() __NULL__ "tmplmid" stack) (,() __NULL__ "tmpltail" below) ,(kind stack)
+      emit kind text rest stack) ,()
   ;; 名前
   Sjs_is_ident_start c ,(test__) __if__ test__
-    (,()
-      Sjs_lex_ident chars "" ,(text rest)
-      Sjs_tok "id" text nl ,(tok)
-      __LList_cons__ tok acc ,(acc)
-      Sjs_lex_loop rest acc __FALSE__ ,(t)
-      return t) ,()
+    (,() Sjs_lex_ident chars "" ,(text rest) emit "id" text rest stack) ,()
   ;; 記号（長いものから）
   Sjs_lex_punct chars ,(text rest)
   __is_null__ text ,(test__) __if__ test__
     (,() __String_concat__ "unexpected character: " c ,(msg) Sjs_lex_error msg) ,()
-  Sjs_tok "punct" text nl ,(tok)
-  __LList_cons__ tok acc ,(acc)
-  Sjs_lex_loop rest acc __FALSE__)
+  emit "punct" text rest stack)
+
+;; テンプレート文字列の部分：` か } の後から、` の後か ${ の後まで。中身（逃がしを解いたもの）、${ で終わったか、残り
+(define Sjs_lex_template ,(chars acc)
+  __Cont_get__ ,(return)
+  __is_null__ chars ,(test__) __if__ test__ (,() Sjs_lex_error "unterminated template literal") ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  __String_equal__ c "`" ,(test__) __if__ test__ (,() return acc __FALSE__ rest) ,()
+  Sjs_peek_char rest ,(d)
+  __String_equal__ c "$" ,(dollar)
+  __String_equal__ d "{" ,(brace)
+  __and__ dollar brace ,(test__) __if__ test__ (,() Sjs_rest rest ,(rest) return acc __TRUE__ rest) ,()
+  __String_equal__ c "\\" ,(test__) __if__ test__
+    (,()
+      __is_null__ rest ,(test__) __if__ test__ (,() Sjs_lex_error "unterminated template literal") ,()
+      __LList_uncons__ __print_exit_error__ rest ,(e rest)
+      Sjs_escape e rest ,(s rest)
+      __String_concat__ acc s ,(acc)
+      Sjs_lex_template rest acc ,(t o r)
+      return t o r) ,()
+  __String_concat__ acc c ,(acc)
+  Sjs_lex_template rest acc)
 
 (define Sjs_reverse ,(list)
   Sjs_reverse_onto list __NULL__)

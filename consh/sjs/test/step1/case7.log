@@ -1,2 +1,2 @@
-sjs: SyntaxError: not yet translated (stage B1 of SJS): array literals
+sjs: SyntaxError: not yet translated (stage B2 of SJS): try statements
 exit: 2
