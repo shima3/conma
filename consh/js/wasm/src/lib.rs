@@ -158,7 +158,7 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
             return 1;
         }
     };
-    let gvenv = match module::load_module_transpiled(&module_sexp, None) {
+    let gvenv = match module::load_module_transpiled(&module_sexp, Some(transpiled::fnv1a(module_text.as_bytes()))) {
         Ok(g) => g,
         Err(e) => {
             eprint(&format!("Error: {}\n", e));
@@ -183,6 +183,9 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
     };
     let mut m = sched::Machine::new(trace);
     m.blocking = false;
+    // Run the transpiled code of the module, if the VM was built with some for it (as vm/src/main.rs
+    // does, not with --trace)
+    m.transpiled_on = !trace;
     m.seed();
     let cwd = CWD.with(|c| c.borrow().clone());
     let vp = m.make_vproc(closure, olist, Some(&module_file), gvenv, cwd);
