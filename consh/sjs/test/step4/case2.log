@@ -1,0 +1,20 @@
+caught in the generator: boom
+finally in the generator
+1 after catch end undefined true
+finally in the generator
+{"value":42,"done":true} {"done":true}
+{"value":7,"done":true}
+rethrown: late
+Cannot read properties of null (reading 'x')
+{"done":true}
+Generator is already running
+got 1
+ReferenceError: new_error is not defined
+cleanup
+[1]
+cleanup
+{"value":1,"done":false} {"value":2,"done":true}
+inner done
+o(i1) o(i2)
+sjs: line 48: uncaught from a generator
+exit: 2

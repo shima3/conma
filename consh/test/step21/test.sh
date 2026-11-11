@@ -10,3 +10,5 @@ run case1 case1.sh "$tmp" < /dev/null
 run case2 case2.sh < /dev/null
 # case3：語の中の $(( )) のエラーは、スクリプトを終了ステータス 2 で終える
 run case3 case3.sh < /dev/null
+# case4：ジェネレータ（段階 B5）。別の (( )) で続け、シェルの値としては、読むときに next を呼ぶ LazyList になる
+run case4 case4.sh < /dev/null

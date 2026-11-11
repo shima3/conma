@@ -188,6 +188,7 @@
   Sjs_kind v ,(kind)
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() return "object") ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "object") ,()
   __NULL__ kind)
 
 (define Sjs_is_number ,(v)
@@ -243,6 +244,7 @@
   __String_equal__ kind "function" ,(test__) __if__ test__ (,() return "a function") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() return "an array") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__ (,() return "an object") ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "a generator") ,()
   Sjs_to_string v ,(s)
   __String_concat__ "the " kind ,(a)
   __String_concat__ a " " ,(a)
@@ -537,6 +539,7 @@
   __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return "undefined") ,()
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_join v "," ,(s) return s) ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "[object Generator]") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
@@ -992,6 +995,7 @@
       return m) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,() Sjs_obj_get o ks ,(v) return v) ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjs_gen_method G o ks ,(m) return m) ,()
   __String_equal__ kind "function" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ o "props" (,(k) return __NULL__) ,(props)
@@ -1066,6 +1070,8 @@
   Sjs_kind v ,(kind)
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_array_list v ,(l) return l) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() Sjs_chars v ,(l) return l) ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__
+    (,() Sjs_iter_open v ,(it) Sjs_iter_drain it __NULL__ ,(rev) Sjs_reverse_list rev ,(l) return l) ,()
   Sjs_describe v ,(d)
   __String_concat__ d " is not iterable" ,(msg)
   Sjs_type_error msg)
@@ -1116,7 +1122,9 @@
   Sjs_kind v ,(kind)
   __String_equal__ kind "array" ,(isArray)
   __String_equal__ kind "object" ,(isObject)
+  __String_equal__ kind "generator" ,(isGen)
   __or__ isArray isObject ,(container)
+  __or__ container isGen ,(container)
   __if__ container
     (,() Sjs_json v ,(j) __is_null__ j ,(none) __unless__ none (,() return j) ,()) ,()
   Sjs_to_string v)
@@ -1598,6 +1606,7 @@
       __String_concat__ "{" body ,(s)
       __String_concat__ s "}" ,(s)
       return s) ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "{}") ,()
   __NULL__ __NULL__)
 
 (define Sjs_json_items ,(list acc first)
@@ -1794,6 +1803,9 @@
   put "Sjs_array_list" Sjs_array_list ,() put "Sjs_spread_into" Sjs_spread_into ,() put "Sjs_object_new" Sjs_object_new ,()
   put "Sjs_obj_set" Sjs_obj_set ,() put "Sjs_object_spread" Sjs_object_spread ,() put "Sjs_object_rest" Sjs_object_rest ,()
   put "Sjs_case_runs" Sjs_case_runs ,()
+  put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
+  put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
+  put "Sjs_try_catch" Sjs_try_catch ,()
   __NULL__ rt)
 
 
@@ -2015,3 +2027,253 @@
   __Number_subtract__ n start ,(d)
   __Number_is_negative__ d ,(before)
   __not__ before)
+
+;; ── 段階 B5：ジェネレータ ──
+;; ジェネレータのオブジェクトは Dict で、"t" は "generator"、"body" は本体の thunk（値は return の値）、"G" は文脈、
+;; "state" は Ref（"start"、"suspended"、"running"、"done"）。本体は、最初の next で、その next の上で動き始める。
+;; yield は、本体に戻る継続（"resume"。(mode value) を受け取る）を覚えて、next の継続（"caller"）に結果を渡す。
+;; 次の next は、そのときの継続を "caller" にして "resume" を呼ぶ。継続は、作った VProc の外でも呼べるので、
+;; 別の (( )) の評価（別の VProc）からも続けられる。本体の受け手のスタックは、next を呼んだ所のものと別にし
+;; （"bodyH"）、いちばん下の受け手（境）が、本体から出た例外を、今の next を呼んだ所に投げ直す。
+;; return(v) は、yield の所から「return の印」を投げ、catch は通り抜け、finally は実行して、境で終える
+
+(define Sjs_generator ,(G body)
+  Sjs_new_id G ,(n)
+  __Dict_new__ ,(gen)
+  __Dict_put__ gen "t" "generator" ,()
+  __Dict_put__ gen "id" n ,()
+  __Dict_put__ gen "G" G ,()
+  __Dict_put__ gen "body" body ,()
+  __Ref_new__ "start" ,(state)
+  __Dict_put__ gen "state" state ,()
+  Sjs_list5 "resume" "caller" "callerH" "prev" "bodyH" ,(names)
+  Sjs_gen_refs gen names ,()
+  Sjs_gen_ctx_save ,(ctx)
+  __Dict_put__ gen "ctx" ctx ,()
+  __NULL__ gen)
+
+(define Sjs_gen_refs ,(gen names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(name rest)
+  __Ref_new__ __NULL__ ,(r)
+  __Dict_put__ gen name r ,()
+  Sjs_gen_refs gen rest)
+
+(define Sjs_gen_ref ,(gen name)
+  __Dict_lookup_or__ gen name __print_exit_error__)
+
+;; 作ったときの PDict の文脈（シェルから値を読むとき、Sjs_gen_ctx_restore で置く）
+(define Sjs_gen_ctx_save ,()
+  Sjs_list5 "sjs_G" "sjs_vars" "sjs_shell" "sjs_out" "sjs_line" ,(keys)
+  Sjs_gen_ctx_loop keys __NULL__)
+
+(define Sjs_list5 ,(a b c d e)
+  __LList_cons__ e __NULL__ ,(l)
+  __LList_cons__ d l ,(l)
+  __LList_cons__ c l ,(l)
+  __LList_cons__ b l ,(l)
+  __LList_cons__ a l)
+
+(define Sjs_gen_ctx_loop ,(keys acc)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k rest)
+  __PDict_lookup_or__ k (,(key) __NULL__ __NULL__) ,(v)
+  __LList_cons__ v __NULL__ ,(pair)
+  __LList_cons__ k pair ,(pair)
+  __LList_cons__ pair acc ,(acc)
+  Sjs_gen_ctx_loop rest acc)
+
+(define Sjs_gen_ctx_restore ,(pairs)
+  __Cont_get__ ,(return)
+  __is_null__ pairs ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ pairs ,(pair rest)
+  __LList_uncons__ __print_exit_error__ pair ,(k more)
+  __LList_uncons__ __print_exit_error__ more ,(v more)
+  __PDict_put__ k v ,()
+  Sjs_gen_ctx_restore rest)
+
+;; {value: v, done: d}
+(define Sjs_gen_result ,(G v done)
+  Sjs_object_new G ,(o)
+  Sjs_obj_set o "value" v ,()
+  Sjs_obj_set o "done" done ,()
+  __NULL__ o)
+
+;; next(x)、throw(x)、return(x)（mode は "next"、"throw"、"return"）。結果のオブジェクトを返す
+(define Sjs_gen_resume ,(gen mode x)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ gen "G" __print_exit_error__ ,(G)
+  Sjs_gen_ref gen "state" ,(stateRef)
+  __Ref_get__ stateRef ,(state)
+  __String_equal__ state "running" ,(test__) __if__ test__ (,() Sjs_type_error "Generator is already running") ,()
+  __String_equal__ mode "next" ,(isNext)
+  __String_equal__ mode "throw" ,(isThrow)
+  __String_equal__ state "done" ,(done)
+  __String_equal__ state "start" ,(start)
+  __not__ isNext ,(notNext)
+  __and__ start notNext ,(endAtStart)
+  __or__ done endAtStart ,(test__) __if__ test__
+    (,()
+      __Ref_set__ stateRef "done" ,()
+      __if__ isThrow (,() Sjs_raise x) ,()
+      __if_then_else__ isNext (,() __NULL__ __NULL__) (,() __NULL__ x) ,(v)
+      Sjs_gen_result G v __TRUE__ ,(r)
+      return r) ,()
+  ;; 入る：今の next の継続と、呼んだ所の受け手のスタックと "sjs_gen" を覚える
+  Sjs_gen_ref gen "caller" ,(callerRef)
+  __Ref_set__ callerRef return ,()
+  Sjs_handlers ,(hs)
+  Sjs_gen_ref gen "callerH" ,(callerH)
+  __Ref_set__ callerH hs ,()
+  __PDict_lookup_or__ "sjs_gen" (,(k) __NULL__ __NULL__) ,(prev)
+  Sjs_gen_ref gen "prev" ,(prevRef)
+  __Ref_set__ prevRef prev ,()
+  __PDict_put__ "sjs_gen" gen ,()
+  __Ref_set__ stateRef "running" ,()
+  __if__ start
+    (,()
+      __LList_cons__ (,(exc) Sjs_gen_escape gen exc) __NULL__ ,(bodyHs)
+      Sjs_set_handlers bodyHs ,()
+      __Dict_lookup_or__ gen "body" __print_exit_error__ ,(body)
+      body ,(v)
+      Sjs_gen_leave gen v __TRUE__) ,()
+  Sjs_gen_ref gen "bodyH" ,(bodyH)
+  __Ref_get__ bodyH ,(bodyHs)
+  Sjs_set_handlers bodyHs ,()
+  Sjs_gen_ref gen "resume" ,(resumeRef)
+  __Ref_get__ resumeRef ,(resume)
+  resume mode x)
+
+;; 本体から出る：呼んだ所の受け手のスタックと "sjs_gen" を戻し、next の継続に {value: v, done} を渡す
+(define Sjs_gen_leave ,(gen v done)
+  __Dict_lookup_or__ gen "G" __print_exit_error__ ,(G)
+  Sjs_gen_ref gen "state" ,(stateRef)
+  __if_then_else__ done (,() __NULL__ "done") (,() __NULL__ "suspended") ,(state)
+  __Ref_set__ stateRef state ,()
+  Sjs_gen_restore gen ,()
+  Sjs_gen_result G v done ,(r)
+  Sjs_gen_ref gen "caller" ,(callerRef)
+  __Ref_get__ callerRef ,(k)
+  k r)
+
+(define Sjs_gen_restore ,(gen)
+  Sjs_gen_ref gen "callerH" ,(callerH)
+  __Ref_get__ callerH ,(hs)
+  Sjs_set_handlers hs ,()
+  Sjs_gen_ref gen "prev" ,(prevRef)
+  __Ref_get__ prevRef ,(prev)
+  __PDict_put__ "sjs_gen" prev)
+
+;; 本体の境の受け手：return の印なら、その値で終える。ほかの例外は、終えてから next を呼んだ所に投げ直す
+(define Sjs_gen_escape ,(gen exc)
+  Sjs_kind exc ,(kind)
+  __String_equal__ kind "genreturn" ,(test__) __if__ test__
+    (,() __Dict_lookup_or__ exc "value" __print_exit_error__ ,(v) Sjs_gen_leave gen v __TRUE__) ,()
+  Sjs_gen_ref gen "state" ,(stateRef)
+  __Ref_set__ stateRef "done" ,()
+  Sjs_gen_restore gen ,()
+  Sjs_raise exc)
+
+;; yield v：止まって v を出し、続けられたら next に渡された値を返す（throw なら投げ、return なら return の印を投げる）
+(define Sjs_yield ,(v)
+  __Cont_get__ ,(return)
+  Sjs_yield_wait v ,(mode x)
+  __String_equal__ mode "next" ,(test__) __if__ test__ (,() return x) ,()
+  __String_equal__ mode "throw" ,(test__) __if__ test__ (,() Sjs_raise x) ,()
+  __Dict_new__ ,(mark)
+  __Dict_put__ mark "t" "genreturn" ,()
+  __Dict_put__ mark "value" x ,()
+  Sjs_raise mark)
+
+(define Sjs_yield_wait ,(v)
+  __Cont_get__ ,(resume)
+  __PDict_lookup_or__ "sjs_gen" (,(k) __NULL__ __NULL__) ,(gen)
+  Sjs_gen_ref gen "resume" ,(resumeRef)
+  __Ref_set__ resumeRef resume ,()
+  Sjs_handlers ,(hs)
+  Sjs_gen_ref gen "bodyH" ,(bodyH)
+  __Ref_set__ bodyH hs ,()
+  Sjs_gen_leave gen v __FALSE__)
+
+;; yield* v：v の値を 1 つずつ yield し、v がジェネレータなら、その戻り値を返す
+(define Sjs_yield_star ,(v)
+  Sjs_iter_open v ,(it)
+  Sjs_yield_star_loop it)
+
+(define Sjs_yield_star_loop ,(it)
+  __Cont_get__ ,(return)
+  Sjs_iter_more it ,(more)
+  __unless__ more (,() __Dict_lookup_or__ it "ret" (,(k) return __NULL__) ,(r) __Ref_get__ r ,(rv) return rv) ,()
+  Sjs_iter_take it ,(x)
+  Sjs_yield x ,(sent)
+  Sjs_yield_star_loop it)
+
+;; ジェネレータのメソッド
+(define Sjs_gen_method ,(G gen name)
+  __Cont_get__ ,(return)
+  __NULL__ (,(m) __String_equal__ name m ,(t) __if__ t
+    (,() Sjs_function G m (,(args) Sjs_arg args ,(x rest) Sjs_gen_resume gen m x) ,(fn) return fn)) ,(method)
+  method "next" ,()
+  method "return" ,()
+  method "throw" ,()
+  __NULL__ __NULL__)
+
+;; ── 繰り返しの手順（for...of、yield*）：配列と文字列は値の LList から、ジェネレータは next で 1 つずつ ──
+
+(define Sjs_iter_open ,(v)
+  __Cont_get__ ,(return)
+  __Dict_new__ ,(it)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "generator" ,(test__) __if__ test__
+    (,()
+      __Dict_put__ it "gen" v ,()
+      __Ref_new__ __NULL__ ,(buf)
+      __Dict_put__ it "buf" buf ,()
+      __Ref_new__ __NULL__ ,(ret)
+      __Dict_put__ it "ret" ret ,()
+      return it) ,()
+  Sjs_iter_values v ,(list)
+  __Ref_new__ list ,(ref)
+  __Dict_put__ it "list" ref ,()
+  __NULL__ it)
+
+;; 残りがあるか（ジェネレータなら next を呼んで、値を "buf" に置く）
+(define Sjs_iter_more ,(it)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "list" (,(k) __NULL__ __NULL__) ,(ref)
+  __is_null__ ref ,(test__) __unless__ test__ (,() __Ref_get__ ref ,(l) __is_null__ l ,(e) __not__ e ,(m) return m) ,()
+  __Dict_lookup_or__ it "gen" __print_exit_error__ ,(gen)
+  Sjs_gen_resume gen "next" __NULL__ ,(r)
+  Sjs_obj_get r "done" ,(done)
+  Sjs_obj_get r "value" ,(v)
+  __if__ done (,() __Dict_lookup_or__ it "ret" __print_exit_error__ ,(ret) __Ref_set__ ret v ,() return __FALSE__) ,()
+  __Dict_lookup_or__ it "buf" __print_exit_error__ ,(buf)
+  __Ref_set__ buf v ,()
+  __NULL__ __TRUE__)
+
+;; 次の値（Sjs_iter_more が真を返した後に呼ぶ）
+(define Sjs_iter_take ,(it)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "list" (,(k) __NULL__ __NULL__) ,(ref)
+  __is_null__ ref ,(test__) __unless__ test__
+    (,() __Ref_get__ ref ,(l) __LList_uncons__ __print_exit_error__ l ,(x rest) __Ref_set__ ref rest ,() return x) ,()
+  __Dict_lookup_or__ it "buf" __print_exit_error__ ,(buf)
+  __Ref_get__ buf)
+
+;; 残りの値をすべて、逆順の LList にする（スプレッド、分割代入）
+(define Sjs_iter_drain ,(it acc)
+  __Cont_get__ ,(return)
+  Sjs_iter_more it ,(more)
+  __unless__ more (,() return acc) ,()
+  Sjs_iter_take it ,(x)
+  __LList_cons__ x acc ,(acc)
+  Sjs_iter_drain it acc)
+
+;; catch のある try：return の印（ジェネレータの return(v)）は受けずに通す
+(define Sjs_try_catch ,(body handler)
+  Sjs_try body (,(exc)
+    Sjs_kind exc ,(kind)
+    __String_equal__ kind "genreturn" ,(test__) __if__ test__ (,() Sjs_raise exc) ,()
+    handler exc))

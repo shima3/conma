@@ -1,0 +1,23 @@
+making 1
+first: 1
+making 2
+second, in another evaluation: 2
+spread: 1 a b
+making 1
+shell got 1
+making 2
+shell got 2
+making 3
+shell got 3
+making 4
+making 1
+making 2
+making 3
+all: 1 2
+typeof: object, [object Generator]
+bad gave 1
+consh: sjs: oops
+status 0
+consh: case4.sh:16:1: sjs: not in SJS: yield outside a generator function
+status 2
+exit: 0

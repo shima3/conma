@@ -17,7 +17,7 @@ SJS のファイルは、文の並びである（関数の本体と同じ。宣�
 consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
-└── test/            step1〜step3（段階 B1〜B3）の caseN.sjs と caseN.log、run_all.sh、compare.sh
+└── test/            step1〜step4（段階 B1〜B3、B5a）の caseN.sjs と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
@@ -60,6 +60,15 @@ consh/include/
 * SJS の値は ConMa の値のまま、SJS変数とシェル変数に入る（ホストの表はない）。シェル変数には、文字列はそのまま、ほかは `{"sjsv": 値}` の Dict で入れ、`$` で読むたびにシェルの値にする（`Sjsb_to_shell`。配列は語の並び、ほかは `console.log` と同じ文字列）。SJS関数をコマンドとして呼ぶ（`$f 1 2`）のも、この値で動く
 * 段階 B は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` を要らない（`js` コマンドは、今までどおり `CONSH_ENABLE_JS=js` が要る）。モジュールを作れない版（ブラウザ。段階 B6 まで）では、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A で動かし、なければエラー（`SJS cannot run here`）にする
 
+## 段階 B5a で足したもの：ジェネレータ（2026/11/11）
+
+* `function*` の式と宣言、オブジェクトのメソッド `*m() { }`、`yield`、`yield 値`、`yield* 値`（配列、文字列、ジェネレータ。値はジェネレータの戻り値）
+* ジェネレータのオブジェクト：`next(x)`、`return(x)`（`finally` を実行し、`catch` は通る）、`throw(x)`、`typeof` は `"object"`、`String` は `[object Generator]`、`JSON.stringify` と `console.log` は `{}`。走っているジェネレータの `next` は `TypeError: Generator is already running`
+* `for...of` は、ジェネレータから値を 1 つずつ読む（終わらないジェネレータも `break` で抜けられる）。スプレッドと分割代入は、すべて読む
+* 関数の宣言（`function f() { }`、`function* g() { }`）：JavaScript と同じく、ブロックの始めで値を入れる
+* ConSh：ジェネレータは、作った `(( ))` の後も、別の `(( ))` で続けられる（継続は、作った VProc が終わった後も、別の VProc で呼べる）。シェルの値（`$g`）にすると、要素を読むたびに `next` を呼ぶ LazyList になる（2026/11/11 にユーザーと決めた）。そのときの本体は、ジェネレータを作ったときの SJS変数、`$名前`、`console.log` の出力先で動き、エラーなら、メッセージを標準エラーに出して、リストをそこで終える
+* 段階 A にはジェネレータがない（`not in SJS: a generator`）ので、テスト（step4）のログは、Node.js で動かした結果と比べた
+
 まだ変換しないもの（`SyntaxError: not yet translated to ConMa: ...` になる）：配列の穴、ラベル、コンマ演算子、タグ付きテンプレート、`for` の最初の部分の分割代入。getter と setter は SJS の範囲の外。
 
 ## 変換の形
@@ -72,6 +81,7 @@ consh/include/
 * **関数**は、引数の LList を受け取る Closure を `Sjs_function` で包む。本体の最初で `__Cont_get__ ,(return)` を取り、`return` 文はそれを呼ぶ。足りない引数は `undefined`、余った引数は捨てる。
 * **if** は `__if_then_else__`。**ループ**は、Ref に入れた自分を末尾で呼ぶ thunk（CChain は伸びない）を、`__Cont_get__` で脱出の継続（`break`）を取る thunk で包み、各回の本体を、もう 1 つの脱出の継続（`continue`）を取る thunk で包む（`Gen_loop`）。`&&`、`||`、`??`、条件演算子は、`__if_then_else__` の 2 つの thunk が値を返す形にし、右辺は必要なときだけ求める。
 * **例外**：受け手の継続のスタックを PDict に置く。`Sjs_try` は、`catch` へ戻る脱出の継続を積んで本体を実行し、`throw` と実行時のエラー（`Sjs_raise`）は、いちばん上の受け手を取り出して呼ぶ。`return`、`break`、`continue` の継続は、それを取った所（関数とループの始め）で受け手のスタックを覚えておき、呼ぶ前に戻す（`Gen_jump`）。`finally` は、本体を「例外を受けて `finally` を実行し、投げ直す」`Sjs_try` で包み、本体の中の `return`、`break`、`continue` を、`finally` を実行してから外へ出る Closure に置き換える（`Gen_try`）。
+* **ジェネレータ**：ジェネレータの関数を呼ぶと、引数を入れて、本体を thunk にしたジェネレータのオブジェクト（`Sjs_generator`）を返す。最初の `next` は、その `next` の上で本体を始める。`yield`（`Sjs_yield`）は、本体に戻る継続を覚え、今の `next` の継続に `{value, done}` を渡す。次の `next` は、そのときの継続を覚え直して、本体に戻る継続を呼ぶ（`Sjs_gen_resume`）。本体の受け手のスタックは、`next` を呼んだ所のものと別にし、いちばん下の受け手（境）が、本体から出た例外を、今の `next` を呼んだ所に投げ直す。`return(x)` は、`yield` の所から「return の印」を投げ、`catch` は通し（`Sjs_try_catch`）、`finally` は実行して、境で終える。`for...of` は、繰り返しの手順（`Sjs_iter_open`、`Sjs_iter_more`、`Sjs_iter_take`）で読む
 * **行**：字句解析が行を数え、文ごとに `Sjs_line` で PDict に置く（文 1 つに 1 ステップ）。
 * **数の書き方**：ConMa の `__Number_toString__` は最も短い桁を出すが、指数の形（`1e-07`）と指数にする範囲が JavaScript と違うので、`Sjs_num_str` が桁と小数点の位置に分けて、JavaScript の `Number::toString` の規則で書き直す。`Infinity`、`-Infinity`、`NaN` も同じ。
 * **`/` と `%`**：`__Number_divide__` は 0 で割るとエラーなので、`Sjs_div` が JavaScript と同じく `Infinity`、`-Infinity`、`NaN` にする。`%` のプリミティブはないので、`a - b * trunc(a / b)` で求める（大きな数では、JavaScript の `%` と下の桁が違うことがある）。
@@ -84,6 +94,8 @@ consh/include/
 * `String(関数)` と、`console.log` に渡した関数は、関数のソースでなく `function () { [native code] }`（段階 A は、書き換えた後のソース）。
 
 * `js 変数名=` の JS の値を `$名前` で読むと、その時点の写しになる（段階 A は同じ値を共有する）。数、真偽値、`null`、`undefined` はその値、オブジェクトはホストが出す JSON を読んだもの、配列は、要素を文字列か配列にしたもの（`[1, {}]` の要素は `"1"` と `"{}"`）。関数は読めない（`undefined variable`）。
+* ジェネレータ：`for...of` を `break` などで抜けても、ジェネレータの `return()` を呼ばない（JavaScript は呼び、ジェネレータの `finally` が動く）。分割代入（`const [a, b] = gen()`）は、ジェネレータをすべて読む（JavaScript は要る分だけ読んで `return()` を呼ぶ）。`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない。
+* シェルの値にしたジェネレータのエラーのメッセージに、ConSh の位置が付かない（`consh: sjs: ...`）。
 * `-0`：ConMa では `-0` と `0` を区別しないので、`console.log(-0)` は `0` を出す（Node.js は `-0`）。
 * 関数を `console.log` に渡すと `[Function (anonymous)]` を出す（Node.js は名前を出すことがある）。
 * `%` の精度（上）。

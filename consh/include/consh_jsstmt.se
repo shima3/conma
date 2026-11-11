@@ -714,6 +714,7 @@
       LazyList_fromList list ,(l)
       return l) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_json v ,(j) return j) ,()
+  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjsb_gen_lazy v ,(l) return l) ,()
   Sjs_is_nullish v ,(test__) __if__ test__ (,() return "") ,()
   Sjs_to_string v)
 
@@ -726,6 +727,37 @@
   __if_then_else__ isFn (,() __NULL__ "function") (,() Sjsb_to_shell x) ,(s)
   __LList_cons__ s acc ,(acc)
   Sjsb_to_shell_list rest acc)
+
+;; ジェネレータを、シェルの値の LazyList にする（SAFEJS-PLAN-ja.md の段階 B5）。要素を読むたびに、その VProc で next を呼ぶ。
+;; ジェネレータの本体は、作ったときの文脈（SJS変数、$名前、console.log の出力先）で動く。エラーなら、メッセージを
+;; 標準エラーに出して、リストをそこで終える
+(define Sjsb_gen_lazy ,(gen)
+  __LazyList_new__ (,() Sjsb_gen_step gen))
+
+(define Sjsb_gen_step ,(gen)
+  __Cont_get__ ,(return)
+  Sjsb_pdict_save ,(saved)
+  __Dict_lookup_or__ gen "ctx" __print_exit_error__ ,(ctx)
+  Sjs_gen_ctx_restore ctx ,()
+  __PDict_put__ "sjs_handlers" __NULL__ ,()
+  __PDict_put__ "sjs_gen" __NULL__ ,()
+  __PDict_put__ "sjs_fail" (,(msg)
+    Sjsb_pdict_restore saved ,()
+    __String_concat__ "consh: sjs: " msg ,(m)
+    __String_concat__ m "\n" ,(m)
+    __OS_print_error__ m ,()
+    __LazyList_empty__ ,(l)
+    return l) ,()
+  Sjs_gen_resume gen "next" __NULL__ ,(r)
+  Sjsb_pdict_restore saved ,()
+  Sjs_obj_get r "done" ,(done)
+  __if__ done (,() __LazyList_empty__ ,(l) return l) ,()
+  Sjs_obj_get r "value" ,(v)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "function" ,(isFn)
+  __if_then_else__ isFn (,() __NULL__ "function") (,() Sjsb_to_shell v) ,(sv)
+  Sjsb_gen_lazy gen ,(tail)
+  __LazyList_cons__ sv tail)
 
 ;; SJS の関数 f を、シェルのコマンドとして引数 args で呼ぶ（SAFEJS-PLAN-ja.md の 2.2 の 3）。この VProc の PDict に
 ;; SJS の文脈を置いて呼び、終わったら戻す。戻り値は標準エラーに出し（undefined と null は出さない）、$? は、
@@ -762,7 +794,7 @@
 
 ;; PDict の SJS の文脈を保存して戻す（SJS の関数を、ConSh の VProc で呼ぶとき）
 (define Sjsb_pdict_keys ,()
-  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_line")
+  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_line sjs_gen")
 
 (define Sjsb_pdict_save ,()
   Sjsb_pdict_keys ,(keys)

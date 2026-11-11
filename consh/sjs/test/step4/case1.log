@@ -1,0 +1,13 @@
+object {"value":0,"done":false} {"value":1,"done":false} {"value":"end","done":true} {"done":true}
+of 0
+of 1
+of 2
+[0,1,2,3] 4
+0 1
+first got 1 got 2
+5050
+0 1 end x y a b
+3
+7
+1 [object Generator]
+exit: 0

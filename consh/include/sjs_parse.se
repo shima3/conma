@@ -65,7 +65,7 @@
 ;; SJS の範囲の外の名前（段階 A の SJS_NAMES と、__ で始まる名前）なら、「not in SJS」のエラー
 (define P_check_name ,(name)
   __Cont_get__ ,(return)
-  Sjs_in_words name "this new class super import export with eval arguments debugger yield async await globalThis window self document Function" ,(bad)
+  Sjs_in_words name "this new class super import export with eval arguments debugger async await globalThis window self document Function" ,(bad)
   Sjs_starts name "__" ,(under)
   __or__ bad under ,(test__) __unless__ test__ return ,()
   __String_concat__ "not in SJS: " name ,(msg)
@@ -278,6 +278,16 @@
           __Dict_put__ n "value" value ,()
           return n) ,()
       __String_equal__ word "try" ,(test__) __if__ test__ (,() P_try p ,(n) return n) ,()
+      ;; 関数の宣言（ブロックの始めで値を入れる）
+      __String_equal__ word "function" ,(test__) __if__ test__
+        (,()
+          P_function p ,(fn)
+          Sjs_get fn "name" ,(name)
+          __String_equal__ name "" ,(test__) __if__ test__ (,() P_fail p) ,()
+          Sjs_node "funcdecl" ,(n)
+          __Dict_put__ n "name" name ,()
+          __Dict_put__ n "fn" fn ,()
+          return n) ,()
       __String_equal__ word "do" ,(test__) __if__ test__
         (,()
           P_next p ,(t)
@@ -546,8 +556,13 @@
 
 (define P_assign ,(p)
   __Cont_get__ ,(return)
-  ;; アロー関数：名前 => か、( ... ) =>
   P_peek p ,(tok)
+  Tok_kind tok ,(kind)
+  Tok_text tok ,(text)
+  __String_equal__ kind "id" ,(isId)
+  __String_equal__ text "yield" ,(isYield)
+  __and__ isId isYield ,(test__) __if__ test__ (,() P_yield p ,(n) return n) ,()
+  ;; アロー関数：名前 => か、( ... ) =>
   Tok_is_name tok ,(isName)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   P_peek_at p one ,(tok1)
@@ -748,8 +763,8 @@
   Sjs_node "arrow" ,(n)
   __Dict_put__ n "params" params ,()
   P_is p "{" ,(test__) __if__ test__
-    (,() P_block p ,(body) __Dict_put__ n "body" body ,() __Dict_put__ n "expr" __NULL__ ,() return n) ,()
-  P_assign p ,(e)
+    (,() P_body p __FALSE__ ,(body) __Dict_put__ n "body" body ,() __Dict_put__ n "expr" __NULL__ ,() return n) ,()
+  P_in_gen p __FALSE__ (,() P_assign p) ,(e)
   __Dict_put__ n "body" __NULL__ ,()
   __Dict_put__ n "expr" e ,()
   __NULL__ n)
@@ -1052,6 +1067,7 @@
   P_eat p "..." ,(test__) __if__ test__
     (,() P_assign p ,(a) Sjs_node "spread" ,(sp) __Dict_put__ sp "arg" a ,() return sp) ,()
   Sjs_node "prop" ,(prop)
+  P_eat p "*" ,(isGen)
   P_peek p ,(tok)
   Tok_kind tok ,(kind)
   Tok_text tok ,(text)
@@ -1089,8 +1105,9 @@
   P_eat p "(" ,(test__) __if__ test__
     (,()
       P_params p __NULL__ ,(params)
-      P_block p ,(body)
+      P_body p isGen ,(body)
       Sjs_node "function" ,(f)
+      __Dict_put__ f "gen" isGen ,()
       __Dict_put__ f "params" params ,()
       __Dict_put__ f "body" body ,()
       __Dict_put__ f "expr" __NULL__ ,()
@@ -1222,16 +1239,55 @@
 (define P_function ,(p)
   __Cont_get__ ,(return)
   P_next p ,(tok)
-  P_is p "*" ,(test__) __if__ test__ (,() Sjs_not_in "not in SJS: a generator") ,()
+  P_eat p "*" ,(isGen)
   P_peek p ,(tok)
   Tok_is_name tok ,(named)
   __if_then_else__ named (,() P_next p ,(t) Tok_text t) (,() __NULL__ "") ,(fname)
   P_expect p "(" ,()
   P_params p __NULL__ ,(params)
-  P_block p ,(body)
+  P_body p isGen ,(body)
   Sjs_node "function" ,(n)
+  __Dict_put__ n "gen" isGen ,()
   __Dict_put__ n "name" fname ,()
   __Dict_put__ n "params" params ,()
   __Dict_put__ n "body" body ,()
   __Dict_put__ n "expr" __NULL__ ,()
+  __NULL__ n)
+
+;; ── 段階 B5：ジェネレータ ──
+
+;; 関数の本体のブロック。isGen ならジェネレータの本体（yield を書ける）
+(define P_body ,(p isGen)
+  P_in_gen p isGen (,() P_block p))
+
+;; p の "gen"（ジェネレータの本体の中か）を isGen にして thunk を読み、戻す
+(define P_in_gen ,(p isGen thunk)
+  __Dict_lookup_or__ p "gen" (,(k) __NULL__ __FALSE__) ,(saved)
+  __Dict_put__ p "gen" isGen ,()
+  thunk ,(n)
+  __Dict_put__ p "gen" saved ,()
+  __NULL__ n)
+
+;; yield [式] と yield* 式。式がないのは、次の字句が閉じる括弧、コンマ、;、:、終わりか、改行の後のとき
+(define P_yield ,(p)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "gen" (,(k) __NULL__ __FALSE__) ,(inGen)
+  __unless__ inGen (,() Sjs_not_in "not in SJS: yield outside a generator function") ,()
+  P_next p ,(tok)
+  Sjs_node "yield" ,(n)
+  P_eat p "*" ,(delegate)
+  __Dict_put__ n "delegate" delegate ,()
+  __if__ delegate (,() P_assign p ,(arg) __Dict_put__ n "arg" arg ,() return n) ,()
+  P_peek p ,(next)
+  Tok_nl next ,(nl)
+  Tok_kind next ,(kind)
+  __String_equal__ kind "eof" ,(eof)
+  Tok_text next ,(text)
+  __String_equal__ kind "punct" ,(punct)
+  Sjs_in_words text ") ] } , ; :" ,(closing)
+  __and__ punct closing ,(closing)
+  __or__ nl eof ,(none)
+  __or__ none closing ,(none)
+  __if_then_else__ none (,() __NULL__ __NULL__) (,() P_assign p) ,(arg)
+  __Dict_put__ n "arg" arg ,()
   __NULL__ n)
