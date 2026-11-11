@@ -172,6 +172,26 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
 }
 
 fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult {
+    // __LazyList_force__ of include/util.se applied to a LazyList that has been evaluated
+    // (module.rs, mark_fast): pass its cell to the LCont at once, counting the 16 steps of the
+    // definition (docs/FAST-PLAN-ja.md 4.2). Anything else runs the definition.
+    if m.fast_steps >= crate::module::LAZY_FORCE_STEPS && vp.olist.len() == 1 && vp.lcont.is_some() && c.skip == 0 {
+        if let Some(b) = &c.body {
+            if b.fast.get() == crate::module::FAST_LAZY_FORCE {
+                if let Value::Ref(r) = &vp.olist[0] {
+                    let v = r.value.borrow();
+                    if v.is_null() || matches!(*v, Value::LList(_)) {
+                        let cell = v.clone();
+                        drop(v);
+                        vp.olist[0] = cell;
+                        vp.operator = vp.lcont.take().unwrap();
+                        m.steps += crate::module::LAZY_FORCE_STEPS - 1;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
     let gvenv = c.gvenv.clone().unwrap_or_else(|| vp.gvenv.clone());
 
     // Variadic: the parameter is bound to a Seq of all the operands.
@@ -210,11 +230,11 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
         return load_body(m, vp, &body, c.lvenv.clone(), &gvenv);
     }
 
-    // As many operands as parameters, when the scheduler allows it (Machine::fuse_apply):
+    // As many operands as parameters, when the scheduler allows it (Machine::fast_steps):
     // bind them and load the Body in this step, as the next step would do with the
     // Closure the binding makes (Head empty, OList empty, below), and count the binding
     // as a step of its own, so that the steps are numbered as before.
-    if m.fuse_apply && vp.olist.len() == params.len() {
+    if m.fast_steps >= 2 && vp.olist.len() == params.len() {
         let mut env = c.lvenv.clone();
         for (k, v) in vp.olist.drain(..).enumerate() {
             env = lv_push(&env, params[k].clone(), v);

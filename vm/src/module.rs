@@ -63,6 +63,9 @@ pub struct BodyDef {
     /// For a Body that applies __Dict_lookup_or__ or __Dict_put__ with a String key written in
     /// place: the key and the cache of this place (step.rs puts it in VProc::dict_site).
     pub dict_site: Option<Rc<DictSite>>,
+    /// FAST_LAZY_FORCE for the Body of __LazyList_force__ of include/util.se (mark_fast),
+    /// 0 otherwise.
+    pub fast: std::cell::Cell<u8>,
 }
 
 /// A place that reads or writes a Dict with a String key written in place, for the VM as the
@@ -205,7 +208,7 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
         }
     }
     let dict_site = dict_site_of(&operator, &olist);
-    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont, dict_site })
+    Rc::new(BodyDef { node: node.clone(), func_id, sinfo, operator, olist, lcont, dict_site, fast: std::cell::Cell::new(0) })
 }
 
 /// A Closure of a compiled Function in an environment.
@@ -348,6 +351,109 @@ fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
             vals[gid] = val;
         }
     }
+    mark_fast(module, &vals);
     *gvenv.vals.borrow_mut() = vals;
     Ok(gvenv)
+}
+
+/// BodyDef::fast of the Body of __LazyList_force__ of include/util.se.
+pub const FAST_LAZY_FORCE: u8 = 1;
+
+/// The steps from applying __LazyList_force__ of include/util.se to a LazyList that has
+/// been evaluated, with an LCont, to applying the LCont to its cell (test/fast2).
+pub const LAZY_FORCE_STEPS: u64 = 16;
+
+/// The text of a Function without its positions, SInfo and GIDs (canon).
+const LAZY_FORCE_TEXT: &str = r#"(Function (Head (Variable "lazyList" (L 0))) (Body (Operator (Variable "__LazyList_force_claim__" (G))) (OList (Variable "lazyList" (L 0))) (LCont (Function (Head (Variable "cell" (L 0))) (Body (Operator (Null)) (OList (Variable "cell" (L 0))) (LCont))))))"#;
+const LAZY_FORCE_CLAIM_TEXT: &str = r#"(Function (Head (Variable "lazyList" (L 0))) (Body (Operator (Variable "__LazyList_claim__" (G))) (OList (Variable "__LazyList_error__" (G)) (Variable "lazyList" (L 0))) (LCont (Function (Head (Variable "thunk" (L 1)) (Variable "cell" (L 0))) (Body (Operator (Variable "__is_null__" (G))) (OList (Variable "thunk" (L 1))) (LCont (Function (Head (Variable "condition" (L 0))) (Body (Operator (Variable "__if_then_else__" (G))) (OList (Variable "condition" (L 0)) (FuncExp (Function (Head) (Body (Operator (Null)) (OList (Variable "cell" (L 1))) (LCont)))) (FuncExp (Function (Head) (Body (Operator (Variable "thunk" (L 2))) (OList) (LCont (Function (Head (Variable "result" (L 0))) (Body (Operator (Variable "__LazyList_force__" (G))) (OList (Variable "result" (L 0))) (LCont (Function (Head (Variable "cell" (L 0))) (Body (Operator (Variable "__LazyList_publish__" (G))) (OList (Variable "lazyList" (L 5)) (Variable "cell" (L 0))) (LCont (Function (Head) (Body (Operator (Null)) (OList (Variable "cell" (L 0))) (LCont)))))))))))))) (LCont)))))))))"#;
+
+/// The text of a node without what depends on where it is: positions, SInfo,
+/// and the GIDs of global variables (their names stay).
+fn canon(x: &Sexp, out: &mut String) {
+    match x.as_list() {
+        None => out.push_str(x.as_atom().unwrap_or("")),
+        Some(l) => {
+            out.push('(');
+            let mut first = true;
+            for (i, c) in l.iter().enumerate() {
+                if let Some(cl) = c.as_list() {
+                    let pos = cl.len() == 2 && cl.iter().all(|a| a.as_atom().map_or(false, |t| t.parse::<i64>().is_ok()));
+                    if pos || c.tag() == Some("SInfo") {
+                        continue;
+                    }
+                    if c.tag() == Some("G") && i > 0 {
+                        if !first {
+                            out.push(' ');
+                        }
+                        out.push_str("(G)");
+                        first = false;
+                        continue;
+                    }
+                }
+                if !first {
+                    out.push(' ');
+                }
+                canon(c, out);
+                first = false;
+            }
+            out.push(')');
+        }
+    }
+}
+
+/// Mark the Bodies that the VM runs in fewer steps (docs/FAST-PLAN-ja.md 4.2):
+/// __LazyList_force__, if it and __LazyList_force_claim__ are the definitions of
+/// include/util.se and __LazyList_claim__, __is_null__ and __if_then_else__ are
+/// primitives, so that its steps are those LAZY_FORCE_STEPS counts.
+fn mark_fast(module: &Sexp, vals: &[Option<Value>]) {
+    let l = match module.as_list() {
+        Some(l) => l,
+        None => return,
+    };
+    let mut force = None;
+    let mut claim_ok = false;
+    let mut prims = 0;
+    for item in l.iter().skip(2) {
+        if item.tag() != Some("G") {
+            continue;
+        }
+        let il = item.as_list().unwrap();
+        let name = il.get(2).and_then(|a| a.as_atom()).map(unquote).unwrap_or("");
+        let gid = il.get(1).and_then(|a| a.as_atom()).and_then(|a| a.parse::<usize>().ok());
+        let text = || {
+            let mut t = String::new();
+            if let Some(f) = il.get(3) {
+                canon(f, &mut t);
+            }
+            t
+        };
+        match name {
+            "__LazyList_force__" => {
+                if text() == LAZY_FORCE_TEXT {
+                    force = gid;
+                }
+            }
+            "__LazyList_force_claim__" => {
+                claim_ok = text() == LAZY_FORCE_CLAIM_TEXT;
+            }
+            "__LazyList_claim__" | "__is_null__" | "__if_then_else__" => {
+                if matches!(gid.and_then(|g| vals.get(g)).and_then(|v| v.as_ref()), Some(Value::Prim(_))) {
+                    prims += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut marked = false;
+    if let (Some(g), true, 3) = (force, claim_ok, prims) {
+        if let Some(Some(Value::Closure(c))) = vals.get(g) {
+            if let Some(b) = &c.body {
+                b.fast.set(FAST_LAZY_FORCE);
+                marked = true;
+            }
+        }
+    }
+    if std::env::var_os("CONMA_FAST_REPORT").is_some() {
+        eprintln!("fast __LazyList_force__: {}", if marked { "used" } else { "none" });
+    }
 }

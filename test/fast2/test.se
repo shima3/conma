@@ -1,0 +1,68 @@
+;; 評価済みの LazyList の __LazyList_force__（docs/FAST-PLAN-ja.md 4.2）。
+;; Rust VM と wasm 版は、include/util.se の定義の 16 ステップを 1 回で行い、16 と数える。
+;; 各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる
+(include "util.se")
+
+(define fail ,()
+  __Ref_get__ "abc" ,(x)
+  __OS_exit_normal__)
+
+(define show ,(cell)
+  __LList_uncons__ __print_exit_error__ cell ,(head tail)
+  __OS_print__ head ,()
+  __OS_print__ "\n")
+
+;; case1: 評価済みのセルを、LCont 付きで force する
+(define case1 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_cons__ "a" empty ,(l)
+  __LazyList_force__ l ,(cell)
+  show cell ,()
+  __LazyList_force__ empty ,(cell2)
+  __is_null__ cell2 ,(b)
+  b (,() __OS_print__ "empty\n") (,() __OS_print__ "not empty\n") ,(chosen)
+  chosen ,()
+  fail)
+
+;; case2: サンクの LazyList。1 回目はサンクを評価し、2 回目は評価済み
+(define case2 ,()
+  __LazyList_new__ (,() __OS_print__ "thunk\n" ,() __LazyList_empty__ ,(e) __LazyList_cons__ "b" e) ,(l)
+  __LazyList_force__ l ,(cell)
+  show cell ,()
+  __LazyList_force__ l ,(cell)
+  show cell ,()
+  fail)
+
+;; case3: LCont なし（末尾）の force は、定義のとおりに動く
+(define forceTail ,(l)
+  __LazyList_force__ l)
+
+(define case3 ,()
+  __LazyList_empty__ ,(empty)
+  __LazyList_cons__ "c" empty ,(l)
+  forceTail l ,(cell)
+  show cell ,()
+  fail)
+
+;; 値を 1 行ずつ書く Sink
+(define printer ,(v)
+  __OS_print__ v ,()
+  __OS_print__ "\n" ,()
+  __NULL__ printer)
+
+;; case4: Seq から作った LazyList をたどる（__LazyList_uncons__ が force を呼ぶ）
+(define case4 ,()
+  __LazyList_fromSeq__ (,(s) s "x" "y" "z") ,(l)
+  __LazyList_toSeq__ l ,(seq)
+  seq printer ,(sink)
+  __LazyList_toSeq__ l ,(seq)
+  seq printer ,(sink)
+  fail)
+
+;; case5: 自分自身に依存する LazyList は、定義のとおりエラーで終える
+(define case5 ,()
+  __Ref_new__ __NULL__ ,(box)
+  __LazyList_new__ (,() __Ref_get__ box ,(self) __LazyList_force__ self) ,(l)
+  __Ref_set__ box l ,()
+  __LazyList_force__ l ,(cell)
+  __OS_print__ "not reached\n")

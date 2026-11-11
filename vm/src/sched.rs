@@ -40,13 +40,12 @@ pub struct Machine {
     pub transpiled_on: bool,
     /// Step counts for CONMA_PROFILE.
     pub profile: Option<crate::profile::Profile>,
-    /// The next step may apply a Closure to exactly as many operands as its
-    /// parameters and load its Body at once, counting two steps
-    /// (docs/FAST-PLAN-ja.md 4.1): set before each step when nothing shows
-    /// each step (--trace, CONMA_PROFILE) and the budget has another step.
-    /// No other VProc runs between the two steps, which changes only when
-    /// VProcs are switched (FAST-PLAN 3.3).
-    pub fuse_apply: bool,
+    /// How many steps the next step may do at once, counting each of them
+    /// (docs/FAST-PLAN-ja.md 4.1 and 4.2): the steps left in the budget when
+    /// nothing shows each step (--trace, CONMA_PROFILE), and 0 otherwise. The
+    /// steps are numbered as before; no other VProc runs between them, which
+    /// changes only when VProcs are switched (FAST-PLAN 3.3).
+    pub fast_steps: u64,
     /// The Rust calls of native code that are running (vm/src/native.rs).
     pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
@@ -226,7 +225,7 @@ impl Machine {
             trace,
             transpiled_on: false,
             profile: crate::profile::Profile::from_env(),
-            fuse_apply: false,
+            fast_steps: 0,
             nctx: Default::default(),
             joining: Vec::new(),
             lazy: Vec::new(),
@@ -680,7 +679,7 @@ impl Machine {
                 if let Some(p) = &mut self.profile {
                     p.count(&vp);
                 }
-                self.fuse_apply = may_fuse && self.steps + 1 < limit;
+                self.fast_steps = if may_fuse { limit.saturating_sub(self.steps) } else { 0 };
                 let r = step(self, &mut vp);
                 match r {
                     Ok(()) => {
