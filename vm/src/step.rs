@@ -170,7 +170,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
 }
 
-fn apply_closure(m: &mut Machine, vp: &mut VProc, c: Rc<Closure>) -> PResult {
+fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult {
     let gvenv = c.gvenv.clone().unwrap_or_else(|| vp.gvenv.clone());
 
     // Variadic: the parameter is bound to a Seq of all the operands.
@@ -212,6 +212,22 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, c: Rc<Closure>) -> PResult {
     // Head not empty, OList not empty: bind as many parameters as there are operands.
     if !vp.olist.is_empty() {
         let n = params.len().min(vp.olist.len());
+        // A Closure that nothing else holds (an LCont just made by load_body, as a rule) is the
+        // partially applied Closure itself: bind the operands into its LVEnv and move its skip on,
+        // instead of making a new Closure. No one can see the difference.
+        if let Some(cm) = Rc::get_mut(&mut c) {
+            let all = cm.params.clone();
+            let base = cm.skip;
+            let mut env = cm.lvenv.take();
+            for (k, v) in vp.olist.drain(..n).enumerate() {
+                env = Some(Rc::new(LVNode { name: all[base + k].clone(), value: v, next: env }));
+            }
+            cm.lvenv = env;
+            cm.skip = base + n;
+            vp.operator = Value::Closure(c);
+            return Ok(());
+        }
+        let params = c.params();
         let mut env = c.lvenv.clone();
         for (k, v) in vp.olist.drain(..n).enumerate() {
             env = lv_push(&env, params[k].clone(), v);
