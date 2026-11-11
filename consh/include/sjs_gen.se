@@ -201,8 +201,19 @@
   __or__ isBlock isEmpty ,(test__) __if__ test__ (,() Gen_stmt_body g scope s cx ,(c) return c) ,()
   __Dict_lookup_or__ s "line" (,(k) __NULL__ "") ,(line)
   Gen_quote line ,(q)
+  ;; 文の中の呼び出しは、戻った後に、この文の行を記録し直す（呼ばれた関数の文が、行を変えるので）
+  __Dict_lookup_or__ g "line" (,(k) __NULL__ "") ,(outer)
+  __Dict_put__ g "line" q ,()
   Gen_stmt_body g scope s cx ,(c)
+  __Dict_put__ g "line" outer ,()
   Cat4 "Sjs_line " q " ,() " c)
+
+;; 呼び出しの後に、今の文の行を記録し直す手順（文の外なら空）
+(define Gen_line_again ,(g)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ g "line" (,(k) __NULL__ "") ,(q)
+  __String_equal__ q "" ,(test__) __if__ test__ (,() return "") ,()
+  Cat3 "Sjs_line " q " ,() ")
 
 (define Gen_stmt_body ,(g scope s cx)
   __Cont_get__ ,(return)
@@ -1428,6 +1439,8 @@
       Cat5 c " " kv " " list ,(c)
       Cat3 c " ,(" v ,(c)
       __String_concat__ c ") " ,(c)
+      Gen_line_again g ,(again)
+      __String_concat__ c again ,(c)
       return c v) ,()
   Gen_expr g scope callee ,(fc fv)
   Gen_args g scope args ,(ac list)
@@ -1437,6 +1450,8 @@
       Cat5 fc ac "Sjs_call " fv " " ,(c)
       Cat4 c list " ,(" v ,(c)
       __String_concat__ c ") " ,(c)
+      Gen_line_again g ,(again)
+      __String_concat__ c again ,(c)
       return c v) ,()
   Gen_temp g "b" ,(b)
   Cat5 fc "Sjs_is_nullish " fv " ,(" b ,(c)

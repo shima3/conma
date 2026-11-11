@@ -172,13 +172,13 @@
 (define Sjs_kind ,(v)
   __Cont_get__ ,(return)
   __type_name__ v ,(type)
+  __String_equal__ type "Dict" ,(test__) __if__ test__
+    (,() __Dict_lookup_or__ v "t" __print_exit_error__ ,(t) return t) ,()
   __String_equal__ type "Number" ,(test__) __if__ test__ (,() return "number") ,()
   __String_equal__ type "String" ,(test__) __if__ test__ (,() return "string") ,()
   __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return "boolean") ,()
   __String_equal__ type "null" ,(test__) __if__ test__ (,() return "undefined") ,()
   __String_equal__ type "Ref" ,(test__) __if__ test__ (,() return "null") ,()
-  __String_equal__ type "Dict" ,(test__) __if__ test__
-    (,() __Dict_lookup_or__ v "t" __print_exit_error__ ,(t) return t) ,()
   __String_concat__ "an unknown value: " type ,(msg)
   Sjs_type_error msg)
 
@@ -199,6 +199,9 @@
 ;; JavaScript の真偽。偽は、false、0、-0、NaN、""、undefined、null
 (define Sjs_truthy ,(v)
   __Cont_get__ ,(return)
+  ;; 真偽値（条件でいちばん多い）は、そのまま
+  __type_name__ v ,(type)
+  __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return v) ,()
   Sjs_kind v ,(kind)
   __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__
@@ -306,7 +309,8 @@
 ;; 演算子 op の被演算子が数か確かめる（conma.js の sjsNeed と同じメッセージ）
 (define Sjs_need ,(op v)
   __Cont_get__ ,(return)
-  Sjs_is_number v ,(ok)
+  __type_name__ v ,(type)
+  __String_equal__ type "Number" ,(ok)
   __if__ ok return ,()
   Sjs_describe v ,(d)
   __String_concat__ op " needs numbers, not " ,(msg)
@@ -319,7 +323,14 @@
     (,() __NULL__ msg) ,(msg)
   Sjs_type_error msg)
 
+;; 2 つの被演算子。どちらも数なら、関数を呼ばずに戻る（算術でいちばん多い）
 (define Sjs_need2 ,(op a b)
+  __Cont_get__ ,(return)
+  __type_name__ a ,(ta)
+  __type_name__ b ,(tb)
+  __String_equal__ ta "Number" ,(x)
+  __String_equal__ tb "Number" ,(y)
+  __if__ x (,() __if__ y return ,()) ,()
   Sjs_need op a ,()
   Sjs_need op b)
 
@@ -461,6 +472,16 @@
 ;; a === b
 (define Sjs_seq ,(a b)
   __Cont_get__ ,(return)
+  ;; 数どうし（いちばん多い）：差が 0 なら等しく、差が NaN でない数なら等しくない。差が NaN（NaN か、同じ符号の
+  ;; 無限大どうし）なら、下の規則で決める
+  __type_name__ a ,(ta)
+  __type_name__ b ,(tb)
+  __String_equal__ ta "Number" ,(na)
+  __String_equal__ tb "Number" ,(nb)
+  __if__ na (,() __if__ nb (,()
+    __Number_subtract__ a b ,(d)
+    __Number_is_zero__ d ,(test__) __if__ test__ (,() return __TRUE__) ,()
+    Sjs_is_nan d ,(test__) __unless__ test__ (,() return __FALSE__) ,()) ,()) ,()
   Sjs_kind a ,(ka)
   Sjs_kind b ,(kb)
   __String_equal__ ka kb ,(same)
@@ -971,8 +992,16 @@
 ;; o[key] と o.key（key は String か Number）
 (define Sjs_get_member ,(G o key)
   __Cont_get__ ,(return)
-  Sjs_key_string key ,(ks)
   Sjs_kind o ,(kind)
+  ;; 配列の添字（いちばん多い）は、キーを文字列にせずに読む。数のキーは、そのまま items を引く
+  ;; （整数でない数と負の数は、items にないので undefined になる）
+  __String_equal__ kind "array" ,(test__) __if__ test__
+    (,()
+      __type_name__ key ,(kt)
+      __String_equal__ kt "Number" ,(test__) __if__ test__ (,() Sjs_array_get o key ,(v) return v) ,()
+      Sjs_index key ,(i)
+      __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_get o i ,(v) return v) ,()) ,()
+  Sjs_key_string key ,(ks)
   __String_equal__ kind "undefined" ,(u)
   __String_equal__ kind "null" ,(n)
   __or__ u n ,(test__) __if__ test__
@@ -985,8 +1014,6 @@
   __String_equal__ kind "array" ,(test__) __if__ test__
     (,()
       __String_equal__ ks "length" ,(test__) __if__ test__ (,() Sjs_array_length o ,(len) return len) ,()
-      Sjs_index key ,(i)
-      __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_get o i ,(v) return v) ,()
       Sjs_array_method G o ks ,(m)
       return m) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__
@@ -1021,6 +1048,8 @@
 (define Sjs_set_member ,(G o key v)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
+  __String_equal__ kind "array" ,(test__) __if__ test__
+    (,() Sjs_index key ,(i) __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_set o i v ,() return) ,()) ,()
   __String_equal__ kind "undefined" ,(u)
   __String_equal__ kind "null" ,(n)
   __or__ u n ,(test__) __if__ test__

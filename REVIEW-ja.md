@@ -187,6 +187,12 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * Rust 版の VM はこのモジュールを埋め込み、`conma build <source>` でモジュールを書き、`conma run <source> [<arg>...]` で作って実行する。`__VProc_spawn__` も、`bin/includer` と `bin/resolver` の代わりにこれを使う（別のプロセスとして動かすので、ステップの外で、2 つの VM のトレースは同じまま）。起動に失敗したときの `onError` のメッセージは、2 つの VM とも、フロントエンドのエラーの最初の行にした（`bin/includer` が付け足す `Error: parser exited with code 1` は出さない。step10 の case5 の期待ログから、その行を除いた）。
     * test/ の全テストが両方の VM で通る。基準（Python 版の VM とフロントエンド）は今までどおり Python を使う。変換器（`vm/conma2rust`）は、作者の方針で、改良中のため当面は Python のままとし、将来は ConMa で書く（そのときは、フロントエンドと同じく、Python 版を基準として出力を比べる）。
     * ConMa 版 ConSh の起動からも Python をなくした。スクリプトは ConMa 版の構文解析（`consh_parser.se`）で読み（以前の `--conma-parser`。Python の `consh_parse` は `--python-parser` で使う）、モジュールは、Rust 版の VM があれば `conma build` で作る。`CONMA_VM=rust` なら、ConMa 版 ConSh も Python を使わない（`python3` を、呼ばれたら失敗するものに替えて確かめた）。構文エラーは、Rust 版と同じく `consh:` で始まる。consh/test は、ConMa 版（Rust 版の VM。モジュールを `conma build` で作り直して）と Rust 版で通る。
+* 5：SJS（JavaScript の安全なサブセット。consh/SAFEJS-PLAN-ja.md）から ConMa への変換器を、ConMa で書いた（consh/include の sjs_lex.se、sjs_parse.se、sjs_gen.se と実行時の支え sjs_rt.se。consh/sjs/README-ja.md）。関数、クロージャ、配列とオブジェクト、ループ、例外（`try`、`finally`）、ジェネレータ、`async` と `await` まで変換し、ConSh の `(( ))` で、ネイティブの VM、Node.js、ブラウザで動く。測った結果（consh/sjs/README-ja.md の「段階 B7」）：
+    * 大きさ：SJS 1 行が、ConMa の約 200 バイト（約 9 倍）。実行時の支えは約 1 MB のモジュールになる。
+    * 性能（7）：bench/ の loop、fib、nbody を SJS で書くと、手で書いた ConMa の 13〜21 倍のステップになる（直す前は 21〜57 倍。プロファイルで、配列の添字を文字列にして読み戻していた所などを直した）。多くは、動的な型の確認（算術の 1 回に 19 ステップ）と、メンバーの読み書きの種類の判定である。変換器が型を知っている所（数のリテラルとの演算など）で確認を省くこと、添字で読み書きできる列のプリミティブ（6 と同じ問題の、配列の側）が、次に効く。
+    * エラーの位置（1）：VM の位置は、変換したコード（1 行の長いソース）を指すので使えない。変換器が、文ごとに SJS の行を記録する（文 1 つと呼び出し 1 つに 2 ステップずつ）。桁と式の中の位置はない。中間言語として使うには、生成したコードに元の言語の位置を付ける仕組み（SInfo に元のファイルと行を書けるようにするなど）があるとよい。
+    * 引数の個数（2）：変換したコードの呼び出しは、引数を 1 つの LList で渡す形にしたので、生成したコードでは起きない。一方、変換器を手で書くときに、4 つの引数で `Cat5` を呼び、カリー化された Closure が値になる誤りを 3 回起こした（引数の数を数えるスクリプトで見つけた）。2 の警告（`--warn-arity`。少ないとき）が、まさにこれを見つける。
+    * 継続：`return`、`break`、`continue`、例外、ジェネレータ、`async` が、すべて `__Cont_get__` の脱出の継続と PDict だけで書けた。継続は、取った VProc が終わった後も、別の VProc で呼べるので、ジェネレータを別の `(( ))` の評価で続けられる。
 * ほかはまだ。
 
 ### 付録: 実験に使ったプログラム

@@ -1,6 +1,6 @@
 # 安全な JavaScript のサブセット（SJS）の計画
 
-JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。段階 A1 を作った（2026/11/11。consh/js/PLAN-ja.md の 3.23）。段階 A2 を作った（3.24、3.25）。段階 A3 で JS の文を消し、段階 A を終えた（3.26）。段階 B1（変換器の土台）、B2（配列、オブジェクト、ループ、組み込み）、B3（例外）を作った（consh/sjs/README-ja.md）。段階 B4 で、ConSh の `(( ))` と `$(( ))` を変換したコードで動かすようにした（ネイティブの VM と Node.js の wasm 版）。段階 B5 を、B5a（ジェネレータ）と B5b（`async` と `await`）に分けて作った。段階 B6 で、ブラウザ版も段階 B で動かすようにした。
+JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。段階 A1 を作った（2026/11/11。consh/js/PLAN-ja.md の 3.23）。段階 A2 を作った（3.24、3.25）。段階 A3 で JS の文を消し、段階 A を終えた（3.26）。段階 B1（変換器の土台）、B2（配列、オブジェクト、ループ、組み込み）、B3（例外）を作った（consh/sjs/README-ja.md）。段階 B4 で、ConSh の `(( ))` と `$(( ))` を変換したコードで動かすようにした（ネイティブの VM と Node.js の wasm 版）。段階 B5 を、B5a（ジェネレータ）と B5b（`async` と `await`）に分けて作った。段階 B6 で、ブラウザ版も段階 B で動かすようにした。段階 B7 で測り、結果を consh/sjs/README-ja.md の「段階 B7」と REVIEW-ja.md の 5 の対応にまとめた。
 
 当面（段階 A）は SJS をホストの JavaScript で動かし、将来（段階 B）は SJS を ConMa に変換して VM の中で動かす。
 
@@ -223,7 +223,7 @@ ConMa の関数が、最初に `__Cont_get__` で取った継続（`return`）�
 | B5a（作った。consh/sjs/test/step4、consh/test/step21 の case4） | ジェネレータ（`function*`、`yield`、`yield*`）。シェルの値は LazyList | 段階 A にないので、Node.js の結果と比べる |
 | B5b（作った。consh/sjs/test/step5、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
 | B6（作った。consh/js/PLAN-ja.md の 3.29） | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと（`config.json` なしで確かめた） |
-| B7 | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
+| B7（作った。consh/sjs/bench） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
 | B8 | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
 
 ## 7. 未解決の点とリスク
