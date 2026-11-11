@@ -2272,7 +2272,7 @@
   put "Sjs_generator" Sjs_generator ,() put "Sjs_yield" Sjs_yield ,() put "Sjs_yield_star" Sjs_yield_star ,()
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
-  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,()
+  put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,() put "Sjs_pattern_open" Sjs_pattern_open ,() put "Sjs_pattern_next" Sjs_pattern_next ,() put "Sjs_pattern_rest" Sjs_pattern_rest ,() put "Sjs_pattern_close" Sjs_pattern_close ,()
   __NULL__ rt)
 
 
@@ -3329,6 +3329,46 @@
   Sjs_iter_drain it __NULL__ ,(rev)
   Sjs_reverse_list rev ,(l)
   Sjs_array G l)
+
+;; ── 分割代入の配列の形 ──
+;; 値を開く：配列ならその配列（要素は添字で読む）、ほかは繰り返しの手順（Sjs_iter_open）。SJS の配列は繰り返しを
+;; 変えられないので、JavaScript の配列の繰り返しと同じく、その時の配列の i 番目と、その時の長さまでの残りになる
+(define Sjs_pattern_open ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "array" ,(test__) __if__ test__ (,() return v) ,()
+  Sjs_iter_open v)
+
+;; key 番目（添字の文字列）の要素。繰り返しの手順なら次の値（なければ undefined）
+(define Sjs_pattern_next ,(it key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "items" (,(k) Sjs_iter_next it ,(x) return x) ,(items)
+  __Dict_lookup_or__ items key (,(k) __NULL__ __NULL__))
+
+;; i 番目からの残りの要素の配列（...rest）
+(define Sjs_pattern_rest ,(G it i)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "items" (,(k) Sjs_iter_rest G it ,(a) return a) ,(items)
+  Sjs_array_length it ,(n)
+  Sjs_array_list_down it n i __NULL__ ,(l)
+  Sjs_array G l)
+
+;; 配列 a の i 番目から n - 1 番目までの値の LList（後ろから作る）
+(define Sjs_array_list_down ,(a n i acc)
+  __Cont_get__ ,(return)
+  __Number_subtract__ n i ,(d)
+  __Number_is_positive__ d ,(more)
+  __unless__ more (,() return acc) ,()
+  Sjs_dec n ,(n)
+  Sjs_array_get a n ,(v)
+  __LList_cons__ v acc ,(acc)
+  Sjs_array_list_down a n i acc)
+
+;; 閉じる：配列は何もしない
+(define Sjs_pattern_close ,(it)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ it "items" (,(k) Sjs_iter_close it ,() return) ,(items)
+  return)
 
 ;; 繰り返しの手順を閉じる：終わっていないジェネレータなら return() を呼ぶ（finally を動かす）。配列と文字列は何もしない
 (define Sjs_iter_close ,(it)
