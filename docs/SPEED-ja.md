@@ -34,6 +34,7 @@
 | ConMa のモジュールを Rust にして VM に組み込む（変換版の VM） | 2026-11-07 | nbody 100000 が 6.59 s（Rust VM）→ 3.80 s | 入れた | bench/README.md「Results」 |
 | 融合した鎖（変数を Rust の変数に置く）から、LCont 付きの呼び出しを Rust の呼び出しにするまで（6 つの変更） | 2026-11-07 | nbody 100000 が 3.80 s → 0.67 s | 入れた | bench/README.md「up to calls with an LCont」 |
 | その後の 14 の変更（自分を呼ぶ関数のループ化、直接の入口、`f64` の計算、値の移動、キーのハッシュ、Dict の形とキャッシュ、小さな関数のインライン化など） | 2026-11-07〜08 | nbody 0.49 → 0.25 s、richards 20 2.10 → 0.55 s、fib 32 0.68 → 0.32 s、loop 0.65 → 0.07 s、ConSh 0.89 → 0.50〜0.53 s。変更ごとの数は詳細の表 | 入れた | bench/README.md「since then」 |
+| インライン展開の制限を緩める（段数 2 → 3、または Body の数 8 → 16） | 2026-11-12 | richards 20 が、Body 16 で 0.94〜0.95 倍（2 回とも）。ほかの bench/ と consh/bench、ConSh の 15,000 回の呼び出しは、どちらも 0.90〜1.09 倍の中でばらつき、決まった向きがない。ConSh の変換したコードは 62.8 MB が 65.1 MB（段数 3）、73.7 MB（Body 16） | 変えなかった | vm/README.md「Inlining」 |
 
 ## 3. ConMa のプログラム（ConSh、SJS）の書き方
 
