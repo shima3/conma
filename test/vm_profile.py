@@ -61,6 +61,8 @@ def main():
                     help="show who calls the function NAME, by calling function")
     ap.add_argument("--thunks", action="store_true",
                     help="show the lines that pass a condition written as a function (not a Boolean) to __if__, __unless__ or __if_then_else__")
+    ap.add_argument("--apply", action="store_true",
+                    help="show the applications of Closures by kind (exact, partial, over, ...), and the lines that make the ones not exact")
     ap.add_argument("profile")
     args = ap.parse_args()
     funcs = defaultdict(int)
@@ -69,6 +71,8 @@ def main():
     calls = defaultdict(int)
     callers = defaultdict(int)
     thunks = defaultdict(int)
+    kinds = defaultdict(int)
+    sites = defaultdict(int)
     total = 0
     records = []
     with open(args.profile, encoding="utf-8") as f:
@@ -102,6 +106,12 @@ def main():
                     caller = f"{function_of(parts[2], int(parts[3]))} ({os.path.basename(parts[2])}:{parts[3]})"
                 callers[caller] += n
             continue
+        if parts[1] == "apply":
+            kinds[parts[2]] += n
+            if parts[2] not in ("exact", "exact-rest"):
+                where = "(no SInfo)" if parts[3] == "-" else f"{os.path.basename(parts[3])}:{parts[4]} {function_of(parts[3], int(parts[4]))}"
+                sites[f"{parts[2]:<9} {where}"] += n
+            continue
         if parts[1] == "thunk":
             thunks[f"{os.path.basename(parts[2])}:{parts[3]} {function_of(parts[2], int(parts[3]))}"] += n
             continue
@@ -124,6 +134,17 @@ def main():
         for k, n in sorted(table.items(), key=lambda kv: -kv[1])[:args.top]:
             print(f"{n:>12,} {100 * n / denom:5.1f}%  {k}")
         print()
+
+    if args.apply:
+        allk = sum(kinds.values())
+        print(f"== applications of Closures by kind (steps: {total:,})")
+        for k, n in sorted(kinds.items(), key=lambda kv: -kv[1]):
+            print(f"{n:>12,} {100 * n / max(allk, 1):5.1f}%  {k}")
+        print()
+        print("== applications that are not exact (kind, file:line, function)")
+        for k, n in sorted(sites.items(), key=lambda kv: -kv[1])[:args.top]:
+            print(f"{n:>12,}  {k}")
+        return
 
     if args.thunks:
         print("== conditions written as functions (file:line function)")

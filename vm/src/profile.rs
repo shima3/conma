@@ -22,15 +22,50 @@ pub struct Profile {
     /// Conditions that are not Booleans (written as functions), passed to
     /// __if_then_else__, __if__ or __unless__, by the Body that passes them.
     thunks: HashMap<usize, (SInfo, u64)>,
+    /// Applications of Closures and SeqClosures, by kind (see `apply_kind`)
+    /// and by the Body that applies them.
+    apps: HashMap<(&'static str, usize), (Option<SInfo>, u64)>,
+}
+
+/// The kind of the step that applies the operator of `vp`, or None when the
+/// operator is not a Closure or a SeqClosure, or the step only loads the Body
+/// of a Closure whose parameters are all bound (the second step of an application):
+/// "exact" as many operands as parameters (the Closure not partially applied),
+/// "exact-rest" the same for a partially applied Closure, "partial" fewer,
+/// "over" more, "pass" a partially applied Closure with no operands (passed on),
+/// "surplus" a Closure without parameters with operands (they go to a SeqClosure),
+/// "variadic" a variadic Closure, "seq" a SeqClosure.
+fn apply_kind(vp: &VProc) -> Option<&'static str> {
+    match &vp.operator {
+        Value::Seq(_) => Some("seq"),
+        Value::Closure(c) if c.variadic => Some("variadic"),
+        Value::Closure(c) => {
+            let (p, o) = (c.params().len(), vp.olist.len());
+            Some(match (p, o) {
+                (0, 0) => return None,
+                (0, _) => "surplus",
+                (_, 0) => "pass",
+                _ if o < p => "partial",
+                _ if o > p => "over",
+                _ if c.skip > 0 => "exact-rest",
+                _ => "exact",
+            })
+        }
+        _ => None,
+    }
 }
 
 impl Profile {
     pub fn from_env() -> Option<Profile> {
         let path = std::env::var("CONMA_PROFILE").ok().filter(|p| !p.is_empty())?;
-        Some(Profile { path, by_sinfo: HashMap::new(), no_sinfo: 0, prims: HashMap::new(), calls: HashMap::new(), edges: HashMap::new(), thunks: HashMap::new() })
+        Some(Profile { path, by_sinfo: HashMap::new(), no_sinfo: 0, prims: HashMap::new(), calls: HashMap::new(), edges: HashMap::new(), thunks: HashMap::new(), apps: HashMap::new() })
     }
 
     pub fn count(&mut self, vp: &VProc) {
+        if let Some(kind) = apply_kind(vp) {
+            let at = vp.sinfo.as_ref().map(|s| Rc::as_ptr(s) as usize).unwrap_or(0);
+            self.apps.entry((kind, at)).or_insert_with(|| (vp.sinfo.clone(), 0)).1 += 1;
+        }
         match &vp.sinfo {
             Some(s) => self.by_sinfo.entry(Rc::as_ptr(s) as usize).or_insert_with(|| (s.clone(), 0)).1 += 1,
             None => self.no_sinfo += 1,
@@ -64,7 +99,9 @@ impl Profile {
     /// same with `call` for the calls of each Body and with `thunk` for the
     /// conditions that are not Booleans, by the Body that passes them,
     /// `count<TAB>edge<TAB>caller file, line, column<TAB>callee file, line, column`
-    /// for the calls by caller, and
+    /// for the calls by caller,
+    /// `count<TAB>apply<TAB>kind<TAB>file<TAB>line<TAB>column` for the applications
+    /// of each kind, by the Body that applies them, and
     /// `count<TAB>prim<TAB>name` for each primitive.
     pub fn write(&self) {
         let mut out = String::new();
@@ -89,6 +126,14 @@ impl Profile {
         }
         for ((from, to), n) in merged {
             out.push_str(&format!("{}\tedge\t{}\t{}\n", n, from, to));
+        }
+        let mut merged: HashMap<(&str, String), u64> = HashMap::new();
+        for ((kind, _), (at, n)) in &self.apps {
+            let at = at.as_ref().map(atoms).unwrap_or_else(|| "-\t0\t0".to_string());
+            *merged.entry((kind, at)).or_insert(0) += n;
+        }
+        for ((kind, at), n) in merged {
+            out.push_str(&format!("{}\tapply\t{}\t{}\n", n, kind, at));
         }
         if self.no_sinfo > 0 {
             out.push_str(&format!("{}\tbody\t-\n", self.no_sinfo));
