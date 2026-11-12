@@ -1,6 +1,6 @@
 ;; Transpiled code (vm/conma2rust): inlined calls, primitives called from fused chains through the
-;; OList, __Dict_lookup_or__ whose onMissing is a function, and clauses of __if__ that are not written in
-;; place (a continuation, a Closure in a variable). Run on the transpiled VM after
+;; OList, __Dict_lookup_or__ whose onMissing is a function, clauses of __if__ that are not written in
+;; place (a continuation, a Closure in a variable), and a Boolean applied to two values. Run on the transpiled VM after
 ;; bench/build.sh (which builds this file in), it tests that code; on the other VMs, the results to match.
 (include "util.se")
 
@@ -52,6 +52,19 @@
   __NULL__ (,() __NULL__ "then") ,(then)
   __if_then_else__ c then (,() __NULL__ "else") ,(v)
   __NULL__ v)
+
+;; a Boolean that is a Rust bool in the chain (of __is_null__, of a Number predicate) applied to two values
+(define pick ,(x)
+  __is_null__ x ,(none)
+  none "null" "value" ,(s)
+  none __FALSE__ __TRUE__ ,(some)
+  __if_then_else__ some (,() __NULL__ s) (,() __String_concat__ s "!"))
+
+(define sign ,(n)
+  num n ,(v)
+  __Number_is_negative__ v ,(neg)
+  neg "-" "+" ,(s)
+  __String_concat__ s n)
 
 (define line ,(s)
   __OS_print__ s ,()
@@ -106,4 +119,12 @@
   choose yes ,(c1)
   line c1 ,()
   choose no ,(c2)
-  line c2)
+  line c2 ,()
+  pick __NULL__ ,(p1)
+  line p1 ,()
+  pick "a" ,(p2)
+  line p2 ,()
+  sign "-3" ,(s1)
+  line s1 ,()
+  sign "4" ,(s2)
+  line s2)

@@ -717,6 +717,15 @@ class Fuser:
             # would lack the CFrames of the clauses: left to the VM)
             out.append(f"let {self.xn(d)} = make_cont(m, vp);")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
+        if (one and op[0] == "L" and op[1] < d and self.local(d, locals_, op[1])[1] == "b"
+                and len(b.olist) == 2 and None not in args):
+            # a Boolean in a Rust bool applied to two values (`c x y ,(v)`, as `__not__` does):
+            # the value it chooses (without applying it), the values of both operands read first, as the
+            # VM reads them when it loads the Body (a global without a value stops the VProc there)
+            c, _ = self.local(d, locals_, op[1])
+            out.append(f"let a0 = {args[0]}; let a1 = {args[1]};")
+            out.append(f"let {self.xn(d)} = if {c} {{ a0 }} else {{ a1 }};")
+            return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
         if one and name == "__is_null__" and len(b.olist) == 1 and self.rref(x, d, b.olist[0], 0, locals_) is not None:
             # a bool in a Rust variable
             out.append(f"let {self.xn(d)}: bool = matches!({self.rref(x, d, b.olist[0], 0, locals_)}, Value::Null);")

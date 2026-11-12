@@ -17,4 +17,8 @@ x
 (not x)
 then
 else
+null!
+value
+--3
++4
 exit: 0
