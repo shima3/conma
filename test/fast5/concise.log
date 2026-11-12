@@ -1,0 +1,2 @@
+Error: the module uses a feature of fast ConMa that this VM does not run: "bitwise32" (bin/concise translates the module into concise ConMa)
+exit: 1

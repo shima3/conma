@@ -49,6 +49,7 @@ CHAIN = {
     "__Number_fromString__", "__Number_toString__", "__Number_is_zero__",
     "__Number_is_positive__", "__Number_is_negative__", "__Number_add__",
     "__Number_subtract__", "__Number_multiply__", "__Number_divide__", "__Number_floor__", "__Number_sqrt__",
+    "__Number_and32__", "__Number_or32__", "__Number_xor32__", "__Number_not32__", "__Number_shl32__", "__Number_shr32__", "__Number_ushr32__",
     "__String_find_any__", "__String_strip_suffix__", "__String_length__",
     "__String_substring__", "__String_find__", "__Sexp_read__", "__String_concat__",
     "__String_toCode__", "__String_fromCode__", "__String_equal__",
@@ -138,8 +139,9 @@ def unquote(atom):
 
 
 # The features of fast ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
-# as FAST_FEATURES of vm/src/module.rs: none yet.
-FAST_FEATURES = ()
+# as FAST_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
+# (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN.
+FAST_FEATURES = ("bitwise32",)
 
 
 def tag(x):

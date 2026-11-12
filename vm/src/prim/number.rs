@@ -148,6 +148,53 @@ pub fn multiply(_m: &mut Machine, vp: &mut VProc) -> PResult {
     binop(vp, "__Number_multiply__", |a, b| a * b)
 }
 
+// ── Bitwise operations: the feature "bitwise32" of fast ConMa (docs/BITWISE-PLAN-ja.md) ──
+// The 32-bit meaning of JavaScript: the operands are made 32-bit integers with ToInt32 (NaN and
+// infinities 0, toward 0, the remainder by 2^32), the results are signed 32-bit integers
+// (__Number_ushr32__ unsigned), and a shift count is the low 5 bits of the ToUint32 of the right
+// operand. include/fast/bitwise32.se defines the same in concise ConMa.
+
+/// ToUint32 of JavaScript.
+pub fn to_uint32(x: f64) -> u32 {
+    if !x.is_finite() {
+        return 0;
+    }
+    x.trunc().rem_euclid(4294967296.0) as u32
+}
+
+/// ToInt32 of JavaScript.
+pub fn to_int32(x: f64) -> i32 {
+    to_uint32(x) as i32
+}
+
+pub fn and32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_and32__", |a, b| (to_int32(a) & to_int32(b)) as f64)
+}
+pub fn or32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_or32__", |a, b| (to_int32(a) | to_int32(b)) as f64)
+}
+pub fn xor32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_xor32__", |a, b| (to_int32(a) ^ to_int32(b)) as f64)
+}
+pub fn shl32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_shl32__", |a, n| to_int32(a).wrapping_shl(to_uint32(n) & 31) as f64)
+}
+pub fn shr32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_shr32__", |a, n| (to_int32(a) >> (to_uint32(n) & 31)) as f64)
+}
+pub fn ushr32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    binop(vp, "__Number_ushr32__", |a, n| (to_uint32(a) >> (to_uint32(n) & 31)) as f64)
+}
+pub fn not32(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_args(vp, "__Number_not32__", 1)?;
+    let x = match check_number("__Number_not32__", &vp.olist[0]) {
+        Ok(x) => x,
+        Err(e) => return in_place_failed(vp, 1, e),
+    };
+    vp.prim_return1(num((!to_int32(x)) as f64));
+    Ok(())
+}
+
 pub fn divide(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__Number_divide__";
     check_args(vp, name, 3)?;

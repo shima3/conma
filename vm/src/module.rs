@@ -102,6 +102,13 @@ pub const INLINE_PRIMS: &[&str] = &[
     "__Number_is_zero__",
     "__Number_is_negative__",
     "__Number_is_positive__",
+    "__Number_and32__",
+    "__Number_or32__",
+    "__Number_xor32__",
+    "__Number_not32__",
+    "__Number_shl32__",
+    "__Number_shr32__",
+    "__Number_ushr32__",
 ];
 
 fn prim_site_of(operator: &Option<CExpr>, lcont: &Option<CLCont>) -> bool {
@@ -361,9 +368,9 @@ pub fn module_files(module: &Sexp) -> String {
     atoms.join(" ")
 }
 
-/// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4):
-/// none yet, so a module may have only an empty (Uses).
-pub const FAST_FEATURES: &[&str] = &[];
+/// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
+/// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs).
+pub const FAST_FEATURES: &[&str] = &["bitwise32"];
 
 /// The features of fast ConMa that a module uses: the items of its (Uses ...)
 /// items, as written.

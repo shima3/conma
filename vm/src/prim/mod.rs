@@ -67,6 +67,13 @@ prims! {
     "__Number_divide__"    => "prim_Number_divide", number::divide;
     "__Number_sqrt__"      => "prim_Number_sqrt", number::sqrt;
     "__Number_floor__"     => "prim_Number_floor", number::floor;
+    "__Number_and32__"     => "prim_Number_and32", number::and32;
+    "__Number_or32__"      => "prim_Number_or32", number::or32;
+    "__Number_xor32__"     => "prim_Number_xor32", number::xor32;
+    "__Number_not32__"     => "prim_Number_not32", number::not32;
+    "__Number_shl32__"     => "prim_Number_shl32", number::shl32;
+    "__Number_shr32__"     => "prim_Number_shr32", number::shr32;
+    "__Number_ushr32__"    => "prim_Number_ushr32", number::ushr32;
     "__CChain_get__"       => "prim_CChain_get", cchain::get;
     "__CChain_set__"       => "prim_CChain_set", cchain::set;
     "__CChain_push_CFrame__" => "prim_CChain_push_CFrame", cchain::push_cframe;

@@ -1,0 +1,83 @@
+;; fast5：高速版 ConMa の機能 "bitwise32" のプリミティブ（docs/BITWISE-PLAN-ja.md の W2）。test/step41 と同じ式を、代わりの定義を
+;; 入れずに、モジュールに (Uses "bitwise32") を付けて動かす。ログは step41 と同じ（Node.js の値）
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 値の書き方：数のほか、NaN、Infinity、-Infinity
+(define val ,(s)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "1e300" ,(big)
+  __Number_multiply__ big big ,(inf)
+  __String_equal__ s "Infinity" ,(t) __if__ t (,() return inf) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_equal__ s "-Infinity" ,(t) __if__ t (,() __Number_subtract__ zero inf ,(n) return n) ,()
+  __String_equal__ s "NaN" ,(t) __if__ t (,() __Number_subtract__ inf inf ,(n) return n) ,()
+  __Number_fromString__ __print_exit_error__ s)
+
+(define show ,(name a b r)
+  __Number_toString__ r ,(t)
+  __String_concat__ name " " ,(l)
+  __String_concat__ l a ,(l)
+  __String_concat__ l " " ,(l)
+  __String_concat__ l b ,(l)
+  __String_concat__ l " = " ,(l)
+  __String_concat__ l t ,(l)
+  println l)
+
+(define bin ,(name f a b)
+  val a ,(x)
+  val b ,(y)
+  f x y ,(r)
+  show name a b r)
+
+(define un ,(name f a)
+  val a ,(x)
+  f x ,(r)
+  show name a "" r)
+
+;; 各組に op を適用する
+(define each_b ,(name f a bs)
+  __Cont_get__ ,(return)
+  __is_null__ bs ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ bs ,(b rest)
+  bin name f a b ,()
+  each_b name f a rest)
+
+(define each_a ,(name f as bs)
+  __Cont_get__ ,(return)
+  __is_null__ as ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ as ,(a rest)
+  each_b name f a bs ,()
+  each_a name f rest bs)
+
+(define each_un ,(name f as)
+  __Cont_get__ ,(return)
+  __is_null__ as ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ as ,(a rest)
+  un name f a ,()
+  each_un name f rest)
+
+;; case1：and、or、xor
+(define case1 ,()
+  __NULL__ __NULL__ ,(l) __LList_cons__ "-Infinity" l ,(l) __LList_cons__ "Infinity" l ,(l) __LList_cons__ "NaN" l ,(l) __LList_cons__ "-0" l ,(l) __LList_cons__ "1e300" l ,(l) __LList_cons__ "-1e10" l ,(l) __LList_cons__ "1e10" l ,(l) __LList_cons__ "-0.5" l ,(l) __LList_cons__ "0.5" l ,(l) __LList_cons__ "-1.9" l ,(l) __LList_cons__ "1.9" l ,(l) __LList_cons__ "4294967297" l ,(l) __LList_cons__ "4294967296" l ,(l) __LList_cons__ "4294967295" l ,(l) __LList_cons__ "-2147483649" l ,(l) __LList_cons__ "-2147483648" l ,(l) __LList_cons__ "2147483648" l ,(l) __LList_cons__ "2147483647" l ,(l) __LList_cons__ "53256" l ,(l) __LList_cons__ "-12345" l ,(l) __LList_cons__ "12345" l ,(l) __LList_cons__ "5" l ,(l) __LList_cons__ "-1" l ,(l) __LList_cons__ "1" l ,(l) __LList_cons__ "0" l ,(l) __NULL__ l ,(as)
+  __NULL__ __NULL__ ,(l) __LList_cons__ "NaN" l ,(l) __LList_cons__ "1.5" l ,(l) __LList_cons__ "2147483648" l ,(l) __LList_cons__ "53256" l ,(l) __LList_cons__ "-33" l ,(l) __LList_cons__ "33" l ,(l) __LList_cons__ "32" l ,(l) __LList_cons__ "31" l ,(l) __LList_cons__ "3" l ,(l) __LList_cons__ "-1" l ,(l) __LList_cons__ "1" l ,(l) __LList_cons__ "0" l ,(l) __NULL__ l ,(bs)
+  each_a "&" __Number_and32__ as bs ,()
+  each_a "|" __Number_or32__ as bs ,()
+  each_a "^" __Number_xor32__ as bs)
+
+;; case2：シフト
+(define case2 ,()
+  __NULL__ __NULL__ ,(l) __LList_cons__ "-Infinity" l ,(l) __LList_cons__ "Infinity" l ,(l) __LList_cons__ "NaN" l ,(l) __LList_cons__ "-0" l ,(l) __LList_cons__ "1e300" l ,(l) __LList_cons__ "-1e10" l ,(l) __LList_cons__ "1e10" l ,(l) __LList_cons__ "-0.5" l ,(l) __LList_cons__ "0.5" l ,(l) __LList_cons__ "-1.9" l ,(l) __LList_cons__ "1.9" l ,(l) __LList_cons__ "4294967297" l ,(l) __LList_cons__ "4294967296" l ,(l) __LList_cons__ "4294967295" l ,(l) __LList_cons__ "-2147483649" l ,(l) __LList_cons__ "-2147483648" l ,(l) __LList_cons__ "2147483648" l ,(l) __LList_cons__ "2147483647" l ,(l) __LList_cons__ "53256" l ,(l) __LList_cons__ "-12345" l ,(l) __LList_cons__ "12345" l ,(l) __LList_cons__ "5" l ,(l) __LList_cons__ "-1" l ,(l) __LList_cons__ "1" l ,(l) __LList_cons__ "0" l ,(l) __NULL__ l ,(as)
+  __NULL__ __NULL__ ,(l) __LList_cons__ "NaN" l ,(l) __LList_cons__ "1.5" l ,(l) __LList_cons__ "2147483648" l ,(l) __LList_cons__ "53256" l ,(l) __LList_cons__ "-33" l ,(l) __LList_cons__ "33" l ,(l) __LList_cons__ "32" l ,(l) __LList_cons__ "31" l ,(l) __LList_cons__ "3" l ,(l) __LList_cons__ "-1" l ,(l) __LList_cons__ "1" l ,(l) __LList_cons__ "0" l ,(l) __NULL__ l ,(bs)
+  each_a "<<" __Number_shl32__ as bs ,()
+  each_a ">>" __Number_shr32__ as bs ,()
+  each_a ">>>" __Number_ushr32__ as bs)
+
+;; case3：not
+(define case3 ,()
+  __NULL__ __NULL__ ,(l) __LList_cons__ "-Infinity" l ,(l) __LList_cons__ "Infinity" l ,(l) __LList_cons__ "NaN" l ,(l) __LList_cons__ "-0" l ,(l) __LList_cons__ "1e300" l ,(l) __LList_cons__ "-1e10" l ,(l) __LList_cons__ "1e10" l ,(l) __LList_cons__ "-0.5" l ,(l) __LList_cons__ "0.5" l ,(l) __LList_cons__ "-1.9" l ,(l) __LList_cons__ "1.9" l ,(l) __LList_cons__ "4294967297" l ,(l) __LList_cons__ "4294967296" l ,(l) __LList_cons__ "4294967295" l ,(l) __LList_cons__ "-2147483649" l ,(l) __LList_cons__ "-2147483648" l ,(l) __LList_cons__ "2147483648" l ,(l) __LList_cons__ "2147483647" l ,(l) __LList_cons__ "53256" l ,(l) __LList_cons__ "-12345" l ,(l) __LList_cons__ "12345" l ,(l) __LList_cons__ "5" l ,(l) __LList_cons__ "-1" l ,(l) __LList_cons__ "1" l ,(l) __LList_cons__ "0" l ,(l) __NULL__ l ,(as)
+  each_un "~" __Number_not32__ as)
+
