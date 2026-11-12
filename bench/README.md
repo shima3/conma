@@ -18,6 +18,8 @@ bench/run.sh nbody 100000 # CPython, the Rust VM and the transpiled VM: best of 
 
 ## Results
 
+A list of all the speed-ups tried so far, with their effect on time and size and whether they were kept, is in docs/SPEED-ja.md.
+
 Apple M4, CPython 3.9.6, times in user + sys seconds (best of 3), including the start of each program.
 
 | Benchmark | CPython | Rust VM | Transpiled VM |

@@ -45,6 +45,8 @@ Measured on an Apple M4, with the ConSh module already built:
 
 ## Speed
 
+A list of all the speed-ups tried so far (this VM, the transpiled VM, ConSh, SJS and the wasm build), with their effect and whether they were kept, is in docs/SPEED-ja.md.
+
 Measured with the profiler of macOS (`sample`) on the ConMa front end building the ConSh module, and then on ConSh. Two changes took most of the time away:
 
 * The allocator. A step makes and drops small Rc blocks (LVNodes, Closures, CFrames, LList cells), and the allocator of macOS took about half of the time (it also clears each block it frees). `alloc.rs` keeps blocks of up to 256 bytes in a free list for each multiple of 16 bytes, carved from chunks of 256 KB, so a block is reused by the next one of the same size. Larger blocks go to the system allocator. Small blocks are never given back to the system, so the memory of a process stays at its peak.
