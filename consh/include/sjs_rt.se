@@ -19,6 +19,7 @@
 ;; 呼ぶ）。受け手がなければ、"sjs: " を付けてメッセージを標準エラーに出し、終了ステータス 2 で終える。
 ;; 実行時のエラー（TypeError など）は、隠した name と message を持つオブジェクト（"error" の印。JSON では {}、
 ;; String では "TypeError: メッセージ"。段階 A の Error と同じ見え方）にして投げる。文脈 G は PDict の "sjs_G" にも置く
+(include "sjs_bits.se")
 
 ;; ── 文脈と大域の名前 ──
 
@@ -2342,112 +2343,8 @@
   __Number_multiply__ x x ,(x)
   Sjs_pow_loop x half acc)
 
-(define Sjs_two32 ,() __Number_fromString__ __print_exit_error__ "4294967296")
-
-;; ToUint32：整数部を 2^32 で割った余り（0 以上）。NaN と無限大は 0
-(define Sjs_to_uint32 ,(x)
-  __Cont_get__ ,(return)
-  Sjs_is_nan x ,(nan)
-  __if__ nan (,() Sjs_zero ,(z) return z) ,()
-  __Number_toString__ x ,(repr)
-  __String_equal__ repr "inf" ,(pinf)
-  __String_equal__ repr "-inf" ,(ninf)
-  __or__ pinf ninf ,(test__) __if__ test__ (,() Sjs_zero ,(z) return z) ,()
-  Sjs_trunc x ,(t)
-  Sjs_two32 ,(m)
-  __Number_divide__ __print_exit_error__ t m ,(q)
-  __Number_floor__ q ,(q)
-  __Number_multiply__ q m ,(y)
-  __Number_subtract__ t y)
-
-;; ToInt32：ToUint32 が 2^31 以上なら 2^32 を引く
-(define Sjs_to_int32 ,(x)
-  Sjs_to_uint32 x ,(u)
-  __Number_fromString__ __print_exit_error__ "2147483648" ,(half)
-  __Number_subtract__ u half ,(d)
-  __Number_is_negative__ d ,(small)
-  __if_then_else__ small (,() __NULL__ u) (,() Sjs_two32 ,(m) __Number_subtract__ u m))
-
-;; 32 ビットの符号なし整数 a と b の、ビットごとの演算 op（"&"、"|"、"^"）
-(define Sjs_bits ,(op a b)
-  Sjs_zero ,(zero)
-  Sjs_one ,(one)
-  __Number_fromString__ __print_exit_error__ "32" ,(n)
-  Sjs_bits_loop op a b one zero n)
-
-(define Sjs_bits_loop ,(op a b place acc n)
-  __Cont_get__ ,(return)
-  __Number_is_zero__ n ,(test__) __if__ test__ (,() return acc) ,()
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  Sjs_low_bit a ,(x a)
-  Sjs_low_bit b ,(y b)
-  __String_equal__ op "&" ,(isAnd)
-  __String_equal__ op "|" ,(isOr)
-  __and__ x y ,(both)
-  __or__ x y ,(either)
-  __not__ both ,(notBoth)
-  __and__ either notBoth ,(one)
-  __if_then_else__ isAnd (,() __NULL__ both) (,() __if_then_else__ isOr (,() __NULL__ either) (,() __NULL__ one)) ,(bit)
-  __if_then_else__ bit (,() __Number_add__ acc place) (,() __NULL__ acc) ,(acc)
-  __Number_multiply__ place two ,(place)
-  Sjs_dec n ,(n)
-  Sjs_bits_loop op a b place acc n)
-
-;; 整数 a の最下位のビット（真偽値）と、a を 2 で割った整数部
-(define Sjs_low_bit ,(a)
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  __Number_divide__ __print_exit_error__ a two ,(h)
-  __Number_floor__ h ,(half)
-  __Number_multiply__ half two ,(even)
-  __Number_subtract__ a even ,(bit)
-  __Number_is_zero__ bit ,(zero)
-  __not__ zero ,(set)
-  __NULL__ set half)
-
-(define Sjs_band ,(a b) Sjs_need2 "&" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "&" x y ,(r) Sjs_to_int32 r)
-(define Sjs_bor ,(a b) Sjs_need2 "|" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "|" x y ,(r) Sjs_to_int32 r)
-(define Sjs_bxor ,(a b) Sjs_need2 "^" a b ,() Sjs_to_uint32 a ,(x) Sjs_to_uint32 b ,(y) Sjs_bits "^" x y ,(r) Sjs_to_int32 r)
-(define Sjs_bnot ,(a) Sjs_need "~" a ,() Sjs_to_int32 a ,(x) Sjs_neg x ,(y) Sjs_one ,(one) __Number_subtract__ y one)
-
-;; シフトの量：b の下 5 ビット
-(define Sjs_shift_count ,(b)
-  Sjs_to_uint32 b ,(u)
-  __Number_fromString__ __print_exit_error__ "32" ,(m)
-  __Number_divide__ __print_exit_error__ u m ,(q)
-  __Number_floor__ q ,(q)
-  __Number_multiply__ q m ,(y)
-  __Number_subtract__ u y)
-
-(define Sjs_shl ,(a b)
-  Sjs_need2 "<<" a b ,()
-  Sjs_to_uint32 a ,(x)
-  Sjs_shift_count b ,(n)
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  Sjs_one ,(one)
-  Sjs_pow_loop two n one ,(f)
-  __Number_multiply__ x f ,(r)
-  Sjs_to_int32 r)
-
-(define Sjs_shr ,(a b)
-  Sjs_need2 ">>" a b ,()
-  Sjs_to_int32 a ,(x)
-  Sjs_shift_count b ,(n)
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  Sjs_one ,(one)
-  Sjs_pow_loop two n one ,(f)
-  __Number_divide__ __print_exit_error__ x f ,(q)
-  __Number_floor__ q)
-
-(define Sjs_ushr ,(a b)
-  Sjs_need2 ">>>" a b ,()
-  Sjs_to_uint32 a ,(x)
-  Sjs_shift_count b ,(n)
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  Sjs_one ,(one)
-  Sjs_pow_loop two n one ,(f)
-  __Number_divide__ __print_exit_error__ x f ,(q)
-  __Number_floor__ q)
-
+;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：高速版（consh/include）は高速版 ConMa のプリミティブ（"bitwise32"）を、
+;; 参照版（consh/reference）は算術で 1 ビットずつ求める（docs/BITWISE-PLAN-ja.md の W6）
 
 ;; ── 段階 B4：分割代入、スプレッド、switch ──
 

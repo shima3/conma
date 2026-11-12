@@ -28,7 +28,7 @@ consh/
 │   ├── consh_expand.se  語の展開
 │   ├── consh_eval.se    文の実行
 │   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。SAFEJS-PLAN-ja.md）
-│   └── sjs_*.se         SJS の変換器（sjs_lex、sjs_parse、sjs_gen）と実行時の支え（sjs_rt）。sjs/README-ja.md
+│   └── sjs_*.se         SJS の変換器（sjs_lex、sjs_parse、sjs_gen）と実行時の支え（sjs_rt、ビット演算の sjs_bits）。sjs/README-ja.md
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数

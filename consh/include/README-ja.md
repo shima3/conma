@@ -18,7 +18,7 @@ include は、include ディレクトリを指定の順に探すので（docs/IN
 
 ## 今の高速版
 
-`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（書き直す前のものは `consh/reference` にある）（各ファイルの先頭にも書いてある）。動きは変えていない（consh/test が高速版と参照版の両方で通り、下のスクリプトの出力も同じ）。
+`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（書き直す前のものは `consh/reference` にある）（各ファイルの先頭にも書いてある）。また、SJS のビット演算の `sjs_bits.se` は、高速版 ConMa のプリミティブ（`"bitwise32"`。docs/BITWISE-PLAN-ja.md）を使い、`consh/reference/sjs_bits.se` は算術で求める（2026-11-12。高速版のモジュールには、フロントエンドが `(Uses "bitwise32")` を付け、Python VM は bin/concise で直して動かす）。動きは変えていない（consh/test が高速版と参照版の両方で通り、下のスクリプトの出力も同じ）。
 
 * `Sh_get sh "key"` を `__Dict_lookup_or__ sh "key" __print_exit_error__` に、`num s` を `__Number_fromString__ __print_exit_error__ s` にした（関数の呼び出しを 1 つ減らす）。
 * 条件が組み込み 1 つの関数（`__if__ (,() __is_null__ x) ...`）を、先に計算して渡す形（`__is_null__ x ,(test__) __if__ test__ ...`）にした（条件の関数を作って呼ぶ分を減らす）。

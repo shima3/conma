@@ -1,0 +1,12 @@
+;; SJS のビット演算（& | ^ ~ << >> >>>）：高速版 ConMa のプリミティブ（機能 "bitwise32"。docs/BITWISE-PLAN-ja.md）。
+;; 意味は JavaScript と同じ 32 ビット（ToInt32、シフトの量は下 5 ビット）で、プリミティブがそのまま求める。被演算子が
+;; 数でなければ、段階 A と同じ TypeError（Sjs_need2、Sjs_need。sjs_rt.se）。
+;; 参照版（consh/reference/sjs_bits.se）は、同じものを算術で 1 ビットずつ求める。sjs_rt.se が include する
+
+(define Sjs_band ,(a b) Sjs_need2 "&" a b ,() __Number_and32__ a b)
+(define Sjs_bor ,(a b) Sjs_need2 "|" a b ,() __Number_or32__ a b)
+(define Sjs_bxor ,(a b) Sjs_need2 "^" a b ,() __Number_xor32__ a b)
+(define Sjs_bnot ,(a) Sjs_need "~" a ,() __Number_not32__ a)
+(define Sjs_shl ,(a b) Sjs_need2 "<<" a b ,() __Number_shl32__ a b)
+(define Sjs_shr ,(a b) Sjs_need2 ">>" a b ,() __Number_shr32__ a b)
+(define Sjs_ushr ,(a b) Sjs_need2 ">>>" a b ,() __Number_ushr32__ a b)
