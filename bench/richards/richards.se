@@ -3,8 +3,9 @@
 ;;   main N: runs the simulation N times and prints the hold count and the packet count of each run.
 ;; A task, a packet and the record of a task are Dicts; a task has under "fn" the function that runs it
 ;; (as a method of its class in richards.py). The work area w is a Dict too, with the constants that
-;; richards.py has as global variables. The data of a packet is a Dict from 0 1 2 3. ConMa has no bit
-;; operations: the idle task computes `control & 1`, `control // 2` and `^ 0xD008` with arithmetic.
+;; richards.py has as global variables. The data of a packet is a Dict from 0 1 2 3. The idle task computes
+;; `control & 1`, `control // 2` and `^ 0xD008` with the bitwise primitives of fast ConMa (docs/BITWISE-PLAN-ja.md;
+;; the frontend marks the module (Uses "bitwise32"), and bin/concise translates it for the Python VM).
 (include "util.se")
 
 (define num ,(s)
@@ -253,11 +254,8 @@
     (,() task_hold w t)
     (,()
       __Dict_lookup_or__ i "control" __print_exit_error__ ,(control)
-      __Dict_lookup_or__ w "two" __print_exit_error__ ,(two)
-      __Number_divide__ __print_exit_error__ control two ,(h)
-      __Number_floor__ h ,(half)
-      __Number_multiply__ half two ,(even)
-      __Number_subtract__ control even ,(bit)
+      __Number_shr32__ control one ,(half)
+      __Number_and32__ control one ,(bit)
       __Number_is_zero__ bit ,(isEven)
       __if_then_else__ isEven
         (,()
@@ -266,39 +264,10 @@
           task_release w t id)
         (,()
           __Dict_lookup_or__ w "xD008" __print_exit_error__ ,(mask)
-          xor w half mask ,(x)
+          __Number_xor32__ half mask ,(x)
           __Dict_put__ i "control" x ,()
           __Dict_lookup_or__ w "iDevB" __print_exit_error__ ,(id)
           task_release w t id)))
-
-;; a ^ b for integers a, b >= 0, bit by bit
-(define xor ,(w a b)
-  __Dict_lookup_or__ w "zero" __print_exit_error__ ,(zero)
-  __Dict_lookup_or__ w "one" __print_exit_error__ ,(one)
-  __Dict_lookup_or__ w "two" __print_exit_error__ ,(two)
-  xor_bits a b one two zero)
-
-(define xor_bits ,(a b bit two acc)
-  __Number_is_zero__ a ,(az)
-  __Number_is_zero__ b ,(bz)
-  __if_then_else__ az (,() __NULL__ bz) (,() __NULL__ __FALSE__) ,(both)
-  __if_then_else__ both
-    (,() __NULL__ acc)
-    (,()
-      __Number_divide__ __print_exit_error__ a two ,(ah)
-      __Number_floor__ ah ,(ah)
-      __Number_multiply__ ah two ,(a2)
-      __Number_subtract__ a a2 ,(abit)
-      __Number_divide__ __print_exit_error__ b two ,(bh)
-      __Number_floor__ bh ,(bh)
-      __Number_multiply__ bh two ,(b2)
-      __Number_subtract__ b b2 ,(bbit)
-      __Number_subtract__ abit bbit ,(diff)
-      __Number_is_zero__ diff ,(same)
-      __if_then_else__ same (,() __NULL__ acc) (,() __Number_add__ acc bit) ,(acc)
-      __Number_multiply__ bit two ,(bit)
-      xor_bits ah bh bit two acc))
-
 (define worker_fn ,(w t pkt wr)
   __is_null__ pkt ,(none)
   __if_then_else__ none

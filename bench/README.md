@@ -5,7 +5,7 @@ Each benchmark is a small, known Python program and the same computation in ConM
 * `nbody/`: the orbits of the Jovian planets (the n-body benchmark of pyperformance and of the Computer Language Benchmarks Game). `nbody.py N` and `nbody.se` (`main N`) print the energy of the system, advance it N steps of 0.01 days, and print the energy again.
 * `fib/`: the naive recursive Fibonacci function, a benchmark of calls. `fib.py N` and `fib.se` (`main N`) print fib(N).
 * `loop/`: a loop that counts N down to 0, a benchmark of the simplest iteration (a function that calls itself in ConMa, `while` in Python). `loop.py N` and `loop.se` (`main N`) print N.
-* `richards/`: Martin Richards' simulation of the task dispatcher of an operating system (the richards benchmark of pyperformance). `richards.py N` and `richards.se` (`main N`) run it N times and print the hold count and the packet count of each run (9297 23246). Tasks, packets and the records of the tasks are objects in Python and Dicts in ConMa, a task having the function that runs it under `"fn"`. ConMa has no bit operations, so the idle task computes `control & 1`, `control // 2` and `^ 0xD008` with arithmetic (`xor_bits`, bit by bit).
+* `richards/`: Martin Richards' simulation of the task dispatcher of an operating system (the richards benchmark of pyperformance). `richards.py N` and `richards.se` (`main N`) run it N times and print the hold count and the packet count of each run (9297 23246). Tasks, packets and the records of the tasks are objects in Python and Dicts in ConMa, a task having the function that runs it under `"fn"`. The idle task computes `control & 1`, `control // 2` and `^ 0xD008` with the bitwise primitives of fast ConMa (`__Number_and32__`, `__Number_shr32__`, `__Number_xor32__`; docs/BITWISE-PLAN-ja.md), since 2026-11-12; before, ConMa having no bit operations, it computed them with arithmetic (`xor_bits`, bit by bit, about 30% of its steps). The frontend marks the module `(Uses "bitwise32")`; the Python VM runs it after `bin/concise` has put in the replacement definitions (test/vm.sh). On the Rust VM, richards 20 takes 5.24 s instead of 7.53 s with the primitives (best of 5); the times in the tables below were taken before.
 
 ```
 bench/build.sh            # build the transpiled VM with the transpiled code of the benchmarks (and of ConSh)
@@ -63,7 +63,7 @@ The transpiled VM after each change, built with the transpiled code of the bench
 | the entries and index of a Dict shared by its copies until one of them is changed (`__Dict_copy__`) | 2026-11-08 | 0.25 s | 0.55 s | 0.32 s | 0.07 s | 0.50–0.53 s (about 1% faster, within what runs vary) |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
-So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and for richards, whose idle task computes its bit operations with arithmetic (ConMa has none).
+So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and for richards, whose idle task then computed its bit operations with arithmetic (ConMa had none).
 
 What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).
 
@@ -71,7 +71,7 @@ What the changes for richards were found from (samples of the running VM): at fi
 
 They are for these programs: no implementation is faster than another for every program. The cost of each kind of operation differs between the two, and a program made mostly of operations that one does better is faster there:
 
-* ConMa has no bit operations: they are written with arithmetic (as in richards), several times slower than an operator of Python.
+* Concise ConMa has no bit operations: they are written with arithmetic, several times slower than an operator of Python. Fast ConMa has the 32-bit ones of JavaScript as primitives (docs/BITWISE-PLAN-ja.md), which richards uses since 2026-11-12.
 * Much of what a Python program does runs in C inside CPython (`sort`, the methods of `str`, `dict` and `list`), while the same work in ConMa is ConMa code.
 * Some operations take time that grows differently: `__Dict_remove__` rebuilds the index of the Dict (linear in its size; `del d[k]` in Python takes constant time on average), and `__LList_append__` copies its first list and `__LList_length__` walks the list (linear, as in Lisp; a Python list appends and gives its length in constant time). A growing sequence is an MSeq in ConMa.
 * The transpiled VM is fast only where the transpiled code runs as expected: a module without transpiled code (any module not built into the VM, `vm/conma2rust/build.sh`), and the Bodies a fused chain hands back to the code of the Bodies, run at the speed of the Rust VM.
