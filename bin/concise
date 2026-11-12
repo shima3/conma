@@ -7,16 +7,35 @@
 Reads the module (standard input without a file) and writes the concise module
 to standard output. A module of fast ConMa names the features it uses in a
 (Uses "feature" ...) item; the translator rewrites each of them into concise
-ConMa and removes the item. It knows no features yet (stage F1), so it only
-removes an empty (Uses), and stops with an error on any feature. The rest of the
-text is written as it is read, so a module without (Uses ...) comes out the same.
+ConMa and removes the item, and stops with an error on a feature it does not
+know. The rest of the text is written as it is read, so a module without
+(Uses ...) comes out the same.
+
+The features it knows:
+
+* "bitwise32" (docs/BITWISE-PLAN-ja.md): the bitwise primitives __Number_and32__
+  and the others. Their replacement definitions, functions of concise ConMa with
+  the same names (include/fast/bitwise32.se, made into a module with
+  bin/includer and bin/resolver), are put into the module: a global of the
+  module that is a primitive of the feature (Undefined) gets the definition, and
+  the other globals of the definitions are matched to the globals of the module
+  of the same names, or added after them. A global the module defines itself is
+  kept. On every VM, a global with a definition is used before a primitive of
+  the same name.
+
 Errors go to standard error, with exit code 1.
 """
+import os
+import re
+import subprocess
 import sys
 
 # The features of fast ConMa this translator rewrites (as FAST_FEATURES of
-# vm/src/module.rs): none yet.
-FEATURES = ()
+# vm/src/module.rs), and the file of the replacement definitions of each
+# (under include/ of the repository)
+FEATURES = ("bitwise32",)
+DEFINITIONS = {"bitwise32": "fast/bitwise32.se"}
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class ConciseError(Exception):
@@ -73,8 +92,139 @@ def item_end(text, i):
     raise ConciseError("unbalanced parentheses")
 
 
+def top_items(text, i, end):
+    """The items directly inside the list text[i:end] (from after its tag):
+    (start, end, atoms) for each list item."""
+    items = []
+    j = i
+    while j < end - 1:
+        c = text[j]
+        if c in " \t\r\n":
+            j += 1
+        elif c == "(":
+            k, atoms = item_end(text, j)
+            items.append((j, k, atoms))
+            j = k
+        else:
+            j = atom_end(text, j)
+    return items
+
+
+def module_items(text):
+    """The start and end of the Module, and its items (top_items)."""
+    i = 0
+    while i < len(text) and text[i] in " \t\r\n":
+        i += 1
+    if not text.startswith("(Module", i):
+        raise ConciseError("not a Module")
+    end, _ = item_end(text, i)
+    return i, end, top_items(text, i + len("(Module"), end)
+
+
+def definitions_module(feature):
+    """The text of the module of the replacement definitions of the feature."""
+    source = os.path.join(ROOT, "include", DEFINITIONS[feature])
+    include = os.path.join(ROOT, "include")
+    ast = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "includer"), "--include", include, source],
+                         capture_output=True, text=True)
+    if ast.returncode != 0:
+        raise ConciseError(f"the definitions of {feature}: {ast.stderr.strip()}")
+    # the file names of SInfo relative to the directory above the repository, as consh/bin/consh and
+    # test/resolver.sh write them
+    above = os.path.dirname(ROOT)
+    text = ast.stdout.replace('"' + above + "/", '"')
+    module = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "resolver")], input=text,
+                            capture_output=True, text=True)
+    if module.returncode != 0:
+        raise ConciseError(f"the definitions of {feature}: {module.stderr.strip()}")
+    return module.stdout
+
+
+GLOBAL_REF = re.compile(r"\(G (\d+)\)")
+
+
+def put_definitions(text, feature):
+    """The text of the module with the replacement definitions of the feature
+    put in (the (Uses ...) item is left as it is)."""
+    start, end, items = module_items(text)
+    globals_ = {}          # name -> (index, item start, item end, Undefined?)
+    last_index = -1
+    f_item = None
+    for (j, k, atoms) in items:
+        if atoms and atoms[0] == "G" and len(atoms) >= 3:
+            index = int(atoms[1])
+            globals_[atoms[2][1:-1]] = (index, j, k, len(atoms) >= 4 and atoms[3] == "Undefined")
+            last_index = max(last_index, index)
+        elif atoms and atoms[0] == "F" and f_item is None:
+            f_item = (j, k, atoms)
+    dtext = definitions_module(feature)
+    _, _, ditems = module_items(dtext)
+    dglobals = []          # (index, name, item text, Undefined?)
+    dfiles = []
+    for (j, k, atoms) in ditems:
+        if atoms and atoms[0] == "G" and len(atoms) >= 3:
+            dglobals.append((int(atoms[1]), atoms[2][1:-1], dtext[j:k], len(atoms) >= 4 and atoms[3] == "Undefined"))
+        elif atoms and atoms[0] == "F":
+            dfiles = atoms[1:]
+    # the number of each global of the definitions in the module
+    number = {}
+    next_index = last_index + 1
+    for (index, name, _, _) in dglobals:
+        if name in globals_:
+            number[index] = globals_[name][0]
+        else:
+            number[index] = next_index
+            next_index += 1
+    def renumbered(item):
+        head = re.match(r"\(G (\d+)", item)
+        body = GLOBAL_REF.sub(lambda m: f"(G {number[int(m.group(1))]})", item[head.end():])
+        return f"(G {number[int(head.group(1))]}" + body
+    replace = {}           # item start in the module -> (item end, new text)
+    added = []
+    for (index, name, item, undefined) in dglobals:
+        if name in globals_:
+            _, j, k, target_undefined = globals_[name]
+            # a primitive of the module (Undefined) gets the definition; a global the module defines is kept
+            if target_undefined and not undefined:
+                replace[j] = (k, renumbered(item))
+        else:
+            added.append(renumbered(item))
+    out = []
+    last = 0
+    if f_item is not None:
+        j, k, atoms = f_item
+        files = list(atoms[1:])
+        files += [f for f in dfiles if f not in files]
+        out.append(text[last:j])
+        out.append("(F " + " ".join(files) + ")")
+        last = k
+    for j in sorted(replace):
+        k, new = replace[j]
+        out.append(text[last:j])
+        out.append(new)
+        last = k
+    # the added globals before the ) of the Module
+    out.append(text[last:end - 1])
+    for item in added:
+        out.append("\n  " + item)
+    out.append(text[end - 1:])
+    return "".join(out)
+
+
 def concise(text):
     """The concise module of the text of a module."""
+    _, _, items = module_items(text)
+    for (j, k, atoms) in items:
+        if atoms and atoms[0] == "Uses":
+            for f in atoms[1:]:
+                name = f[1:-1] if f and f.startswith('"') else f
+                if name in DEFINITIONS:
+                    text = put_definitions(text, name)
+    return remove_uses(text)
+
+
+def remove_uses(text):
+    """The text of the module without its (Uses ...) item (its features known)."""
     i = 0
     while i < len(text) and text[i] in " \t\r\n":
         i += 1

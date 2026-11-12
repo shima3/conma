@@ -1,0 +1,19 @@
+;; fast5 の own：自分で __Number_and32__ を定義したモジュールは、bin/concise で直しても自分の定義を使う（どの VM でも）。
+;; ほかの名前（__Number_xor32__）は、高速版の VM ではプリミティブ、簡潔版の VM では代わりの定義
+(include "util.se")
+
+(define __Number_and32__ ,(a b)
+  __OS_print__ "own and32\n" ,()
+  __NULL__ a)
+
+(define main ,(args)
+  __Number_fromString__ __print_exit_error__ "12" ,(a)
+  __Number_fromString__ __print_exit_error__ "10" ,(b)
+  __Number_and32__ a b ,(x)
+  __Number_xor32__ a b ,(y)
+  __Number_toString__ x ,(s)
+  __Number_toString__ y ,(t)
+  __String_concat__ s " " ,(s)
+  __String_concat__ s t ,(s)
+  __String_concat__ s "\n" ,(s)
+  __OS_print__ s)
