@@ -111,6 +111,18 @@ NUM_OPS = {
     "__Number_add__": ("bin", 2), "__Number_subtract__": ("bin", 2), "__Number_multiply__": ("bin", 2),
     "__Number_divide__": ("div", 3), "__Number_sqrt__": ("sqrt", 2), "__Number_floor__": ("floor", 1),
     "__Number_is_zero__": ("pred", 1), "__Number_is_positive__": ("pred", 1), "__Number_is_negative__": ("pred", 1),
+    # the bitwise primitives of the feature "bitwise32" (docs/BITWISE-PLAN-ja.md), as prim/number.rs computes them
+    "__Number_and32__": ("bit", 2), "__Number_or32__": ("bit", 2), "__Number_xor32__": ("bit", 2),
+    "__Number_shl32__": ("bit", 2), "__Number_shr32__": ("bit", 2), "__Number_ushr32__": ("bit", 2),
+    "__Number_not32__": ("not", 1),
+}
+NUM_BIT = {
+    "__Number_and32__": "(number::to_int32(n0) & number::to_int32(n1)) as f64",
+    "__Number_or32__": "(number::to_int32(n0) | number::to_int32(n1)) as f64",
+    "__Number_xor32__": "(number::to_int32(n0) ^ number::to_int32(n1)) as f64",
+    "__Number_shl32__": "number::to_int32(n0).wrapping_shl(number::to_uint32(n1) & 31) as f64",
+    "__Number_shr32__": "(number::to_int32(n0) >> (number::to_uint32(n1) & 31)) as f64",
+    "__Number_ushr32__": "(number::to_uint32(n0) >> (number::to_uint32(n1) & 31)) as f64",
 }
 NUM_BIN = {"__Number_add__": "+", "__Number_subtract__": "-", "__Number_multiply__": "*"}
 NUM_PRED = {"__Number_is_zero__": "== 0.0", "__Number_is_positive__": "> 0.0", "__Number_is_negative__": "< 0.0"}
@@ -711,7 +723,7 @@ class Fuser:
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
         if one and name in NUM_OPS and len(b.olist) == NUM_OPS[name][1]:
             kind, n = NUM_OPS[name]
-            ops = b.olist[n - (2 if kind in ("bin", "div") else 1):]
+            ops = b.olist[n - (2 if kind in ("bin", "div", "bit") else 1):]
             first = n - len(ops)
             fs = [self.fnum(x, d, e, first + k, name, locals_) for k, e in enumerate(ops)]
             oe_ok = kind not in ("div", "sqrt") or self.ref(x, d, b.olist[0], "olist[0]", locals_) is not None
@@ -731,7 +743,8 @@ class Fuser:
                     out.append(f"let {self.xn(d)}: bool = n0 {NUM_PRED[name]};")
                     return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
                 expr = {"bin": f"n0 {NUM_BIN.get(name)} n1", "div": "n0 / n1", "sqrt": "n0.sqrt()",
-                        "floor": "if n0.is_finite() { n0.floor() } else { n0 }"}[kind]
+                        "floor": "if n0.is_finite() { n0.floor() } else { n0 }",
+                        "bit": NUM_BIT.get(name), "not": "(!number::to_int32(n0)) as f64"}[kind]
                 out.append(f"let {self.xn(d)}: f64 = {expr};")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         key = b.olist[1] if name in ("__Dict_lookup_or__", "__Dict_put__") and len(b.olist) == 3 else None

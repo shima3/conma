@@ -719,3 +719,23 @@ The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `incl
 * **Error**: Stops the VProc with an error if there are fewer than two operands.
 
 **Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error.
+
+---
+
+## 16. Primitives of Fast ConMa
+
+These primitives are not part of concise ConMa, the language defined above and in docs/SPEC.md. They belong to **fast ConMa** (docs/FAST-PLAN-ja.md): a module that uses one of them as a global without a definition is marked by the frontend with `(Uses "feature")` after its `(F ...)`. The fast VMs (Rust, wasm, transpiled) run the primitives; the concise VM (Python) refuses such a module, and `bin/concise` translates it into concise ConMa by putting in the replacement definitions of the feature, functions of concise ConMa with the same names and meaning (`test/vm.sh` does this for the Python VM). A global that a module defines is used before a primitive of the same name on every VM.
+
+### Feature `"bitwise32"`: bitwise operations (docs/BITWISE-PLAN-ja.md)
+
+The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/fast/bitwise32.se`.
+
+### **`__Number_and32__ a b ,(Number)`** / **`__Number_or32__`** / **`__Number_xor32__`**
+* **Description**: `a & b`, `a | b`, `a ^ b` of JavaScript.
+
+### **`__Number_not32__ a ,(Number)`**
+* **Description**: `~a` of JavaScript.
+
+### **`__Number_shl32__ a n ,(Number)`** / **`__Number_shr32__`** / **`__Number_ushr32__`**
+* **Description**: `a << n`, `a >> n` (sign-propagating) and `a >>> n` (zero-fill, an unsigned result) of JavaScript.
+

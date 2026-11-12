@@ -20,7 +20,7 @@ CONMA_VM=rust test/run_all.sh
 * Each `test.sh` sources `test/common.sh`, which moves to the test directory and makes a temporary directory `$tmp` (`mktemp -d`, removed when the test ends); `resolve test.se` builds `$tmp/test.module.se` with `test/resolver.sh`, and the logs of the cases are written in `$tmp`. So tests of different steps can run at the same time. The same test cannot run twice at the same time, since some tests make a `work/` directory or links in their own directory (`step14`, `step16`, `step23`, `step24`, `selfhost6`, `selfhost7`). (`step33` writes its file in `$tmp`, which it passes in `STEP33_DIR`.) The ConSh tests (`consh/test`) do the same with their own `consh/test/common.sh`, and `bin/consh` builds its module in `CONSH_MODULE_DIR` (`/tmp` by default) through a temporary file, so that ConSh started at the same time never reads a half-written module. Where an output holds a path in `$tmp` (the module file in the trace of `step1`, file names in `selfhost2` and `selfhost5`), it is written as `<tmp>`.
 * `test/resolver.sh [path/]file.se [dir]` writes `dir/file.ast.se` and `dir/file.module.se` (`dir` is `/tmp` by default).
 
-* `test.sh` starts the VM through `test/vm.sh`: the Python VM (`test/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`.
+* `test.sh` starts the VM through `test/vm.sh`: the Python VM (`test/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`. The Python VM runs only concise ConMa, so `test/vm.sh` first translates a module of fast ConMa (with `(Uses "...")`) with `bin/concise` (Step 41).
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
 * Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`; `test/step21` gives each case its own input).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
@@ -821,6 +821,17 @@ No new primitive.
 |---|---|
 | case1 | correct arguments (Strings and nested LLists): `JavaScript is not available` |
 | case2 | code that is not a String, args that are not an LList, and an element that is neither a String nor an LList, also inside a nested LList, go to `onError` |
+
+## Step 41: Bitwise primitives of fast ConMa
+
+| Primitive | Status |
+|---|---|
+| `__Number_and32__`, `__Number_or32__`, `__Number_xor32__`, `__Number_not32__`, `__Number_shl32__`, `__Number_shr32__`, `__Number_ushr32__` (feature `"bitwise32"` of fast ConMa) | implemented |
+
+* Goal: ConMa had no bitwise operations, so richards (`bench/`) and the bitwise operators of SJS computed them with arithmetic, one bit at a time: about 30% of the steps of richards, and about 100 times the steps of an addition for an SJS `^`. Planned and built in docs/BITWISE-PLAN-ja.md (stages W1 to W7), the first primitives of fast ConMa (docs/FAST-PLAN-ja.md): concise ConMa is unchanged.
+* The 32-bit meaning of JavaScript (PRIMITIVES.md, section 16). The fast VMs run them (the transpiled code computes them on `f64` in fused chains); the frontends (`bin/resolver`, `include/resolver.se`) mark a module that uses them `(Uses "bitwise32")`, and `bin/concise` puts in the replacement definitions of `include/fast/bitwise32.se` for the Python VM, which `test/vm.sh` does on its own.
+* Tests: `test/step41` (the replacement definitions against the values of Node.js), `test/fast5` (the primitives in a module marked by the frontend, on every VM; the module translated by `bin/concise`; a module defining one of the names itself), `consh/sjs/test/step8` case9 (SJS).
+* Results: richards 20 on the Rust VM 7.53 s to 5.24 s; one bitwise operation of SJS about 4,500 steps to about 65 (an addition takes 45).
 
 ## Planned: returning without making the escape continuation
 
