@@ -31,8 +31,43 @@
   __Ref_get__ order ,(names)
   __Resolver_reverse__ names __NULL__ ,(names)
   __Resolver_entries__ globals values names ,(entries)
-  __LList_cons__ f entries ,(children)
+  __Resolver_uses__ globals values entries ,(children)
+  __LList_cons__ f children ,(children)
   __AST_new__ "Module" __NULL__ children)
+
+;; 高速版 ConMa の機能（docs/FAST-PLAN-ja.md の 3.4）：ビット演算のプリミティブ（docs/BITWISE-PLAN-ja.md）を、定義のない
+;; 大域の名前として使うモジュールは、(F ...) の後に (Uses "bitwise32") を置く（bin/resolver と同じ）。entries の前に足す
+(define __Resolver_uses__ ,(globals values entries)
+  __LList_cons__ "__Number_ushr32__" __NULL__ ,(prims)
+  __LList_cons__ "__Number_shr32__" prims ,(prims)
+  __LList_cons__ "__Number_shl32__" prims ,(prims)
+  __LList_cons__ "__Number_not32__" prims ,(prims)
+  __LList_cons__ "__Number_xor32__" prims ,(prims)
+  __LList_cons__ "__Number_or32__" prims ,(prims)
+  __LList_cons__ "__Number_and32__" prims ,(prims)
+  __Resolver_uses_prim__ globals values prims ,(used)
+  __if_then_else__ used
+    (,()
+      __LList_cons__ "bitwise32" __NULL__ ,(features)
+      __AST_new__ "Uses" __NULL__ features ,(uses)
+      __LList_cons__ uses entries)
+    (,() __NULL__ entries))
+
+;; prims のどれかが、定義のない大域の名前か
+(define __Resolver_uses_prim__ ,(globals values prims)
+  __is_null__ prims ,(test__) __if_then_else__ test__
+    (,() __NULL__ __FALSE__)
+    (,()
+      __LList_uncons__ __print_exit_error__ prims ,(name rest)
+      __Dict_lookup_or__ globals name (,(key) __NULL__ __NULL__) ,(id)
+      __is_null__ id ,(unused)
+      __Dict_lookup_or__ values name (,(key) __NULL__ __NULL__) ,(value)
+      __is_null__ value ,(undefined)
+      __not__ unused ,(used)
+      __and__ used undefined ,(prim)
+      __if_then_else__ prim
+        (,() __NULL__ __TRUE__)
+        (,() __Resolver_uses_prim__ globals values rest)))
 
 ;; ── 注釈 ──
 
@@ -229,12 +264,25 @@
 (define __Resolver_warnings__ ,(module)
   __LList_uncons__ __print_exit_error__ module ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
   __LList_uncons__ __print_exit_error__ children ,(f entries)
+  ;; (Uses ...) があれば飛ばす（__Resolver_uses__）
+  __Resolver_skip_uses__ entries ,(entries)
   __Dict_new__ ,(arities)
   __Resolver_arities__ arities entries ,()
   __Ref_new__ __NULL__ ,(acc)
   __Resolver_warn_entries__ arities acc entries ,()
   __Ref_get__ acc ,(messages)
   __Resolver_reverse__ messages __NULL__)
+
+;; entries の最初が (Uses ...) なら、それを除いたもの
+(define __Resolver_skip_uses__ ,(entries)
+  __is_null__ entries ,(test__) __if_then_else__ test__
+    (,() __NULL__ entries)
+    (,()
+      __LList_uncons__ __print_exit_error__ entries ,(first rest)
+      __LList_uncons__ __print_exit_error__ first ,(kind more)
+      __String_equal__ kind "Uses" ,(test__) __if_then_else__ test__
+        (,() __NULL__ rest)
+        (,() __NULL__ entries)))
 
 ;; 各 entry (G id "name" value) の value が可変長でない Function なら、name に Head のパラメータの数を入れる
 (define __Resolver_arities__ ,(arities entries)

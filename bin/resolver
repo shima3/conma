@@ -2,6 +2,13 @@
 import sys
 import re
 
+# The features of fast ConMa and the primitives of each (docs/FAST-PLAN-ja.md 3.4): a module that uses one of
+# them as a global without a definition gets (Uses "feature") after its (F ...) (include/resolver.se does the same)
+FAST_PRIMITIVES = [
+    ("bitwise32", ("__Number_and32__", "__Number_or32__", "__Number_xor32__", "__Number_not32__",
+                   "__Number_shl32__", "__Number_shr32__", "__Number_ushr32__")),
+]
+
 class ASTNode:
     def __init__(self, node_type, line, col, value=None):
         self.type = node_type
@@ -254,6 +261,12 @@ class Resolver:
         # Collect filenames from Program nodes in order
         filenames = [root.value for root in roots if root.value]
         f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
+        # The features of fast ConMa the module uses (docs/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
+        # bitwise primitive (docs/BITWISE-PLAN-ja.md), a global of that name without a definition
+        uses = [f for f, prims in FAST_PRIMITIVES
+                if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
+        if uses:
+            f_node += " (Uses " + " ".join(f'"{f}"' for f in uses) + ")"
 
         lines = [f"(Module {f_node}"]
 
