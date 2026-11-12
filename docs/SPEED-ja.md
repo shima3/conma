@@ -3,7 +3,7 @@
 これまでに試した高速化の手法を、効果（時間、大きさ、ステップの数）と、入れたかどうかとともに一覧にする。詳しい計測と理由は、それぞれの「詳細」のドキュメントにある。
 
 * 数は、**記録した時点のもの**である。測った VM、モジュール、機械の負荷が違うので、表どうしの数を比べるときは、詳細のドキュメントの条件を見る。
-* 時間はふつう user + sys（3 回か 5 回のうち最速）、wasm 版は実時間。機械は Apple M4。
+* 時間はふつう user + sys（3 回か 5 回のうち最速）、wasm 版は実時間。機械は Apple M4 か Apple M2 で、ドキュメントによって違う（bench/README.md の 2026-11-08 までの表、vm/README.md、consh/sjs/README-ja.md は M4。consh/bench/README-ja.md、ビット演算の W5〜W7、wasm 版の実験、bench/README.md の 2026-11-12 の表は M2）。違う機械の時間は比べず、CPython や Rust 版との比で比べる。
 * 比は「後 ÷ 前」の時間（0.80 なら 2 割速い）。
 * 古くなった数と、測り直しが要るものは 5 にまとめた。測り直しは、必要になったものだけ行う。
 
@@ -71,7 +71,7 @@
 | もの | 大きさ | 備考 |
 |---|---|---|
 | Rust VM（vm/target/release/conma） | 1.9 MB | |
-| 変換版の VM（vm/target-transpiled/release/conma） | 100 MB | bench/ の 4 つ、test/transpiled、ConSh の変換版のコードを含む |
+| 変換版の VM（vm/target-transpiled/release/conma） | 190 MB | bench/ の 4 つ、test/transpiled、ConSh の高速版と参照版の変換版のコードを含む（`CONMA_BENCH_REFERENCE=1 bench/build.sh`、62 分）。前に作ったもの（どちらの版を含めたかは記録がない）は約 100 MB。bench/ と test/transpiled だけなら 8 MB |
 | wasm 版（consh/js/web/conma.wasm） | 0.83 MB（gzip で 0.22 MB） | |
 | wasm 版に ConSh の変換版のコードを入れたもの | 78 MB（gzip で 12.5 MB） | 実験（FAST-PLAN 8.3） |
 | ConSh の高速版のモジュール（bin/includer と bin/resolver、1 行の形） | 5.1 MB | F8 では 5,011,489 バイト、参照版は 4,948,125 バイト |
@@ -81,10 +81,16 @@
 
 ## 7. 古くなった数と、測り直しが要るもの
 
-* **bench/README.md の表**：変換版の表は 2026-11-08 のもので、その後の Rust VM の変更（Number のプリミティブなど）と、richards のビット演算（W5 から）を含まない。W7 のとき、nbody、fib、loop は機械が混んでいて、表と比べられなかった。
-* **consh/bench/README-ja.md の「結果」の表**：F2〜F5 より前のもの。
-* **変換版の VM の ConSh**：今の変換版の VM は、W6 より前の ConSh のモジュールで作ってある。ConSh を変換版の VM で動かすと警告が出て、変換したコードが使われない。`bench/build.sh` で作り直す。
-* **大きさの記述**：consh/js/README-ja.md の「wasm 約 700 KB」（今は 0.83 MB）、consh/bench/README-ja.md の「約 2.3 MB のモジュール」、consh/js/PLAN-ja.md の「約 7.0 MB」は、今の大きさと合わない。
+2026-11-12 に、変換版の VM を作り直し（ConSh の高速版と参照版を含む）、次を測り直した（Apple M2、3243b7d）。
+
+* **bench/README.md**：「Now: 2026-11-12, Apple M2」の表を足した。変換版の時間は、CPython 3.9.6 の 0.19〜0.76 倍（nbody 0.42、richards 0.41、fib 0.76、loop 0.19）。2026-11-08 までの表は Apple M4 のもので、そのまま残した。W7 で nbody などを表と比べられなかったのは、負荷より、機械の違いのためだった。
+* **consh/bench/README-ja.md の「結果」の表**：測り直して置き換えた。Rust 版の VM は、2026-11-09 の表より速くなった（高速版の 02 が 1.818 → 1.106 秒、参照版が 5.434 → 3.006 秒）。起動は 0.025 → 0.05 秒に遅くなった（理由は調べていない）。
+* **変換版の VM の ConSh**：W6 の後のモジュールで作り直したので、変換したコードが使われる。test/ と consh/test（高速版、参照版）は、変換版の VM、Rust VM で通った。
+
+まだ合わないもの：
+
+* **大きさの記述**：consh/js/PLAN-ja.md の「約 7.0 MB」は、計画を書いたときの数で、今の大きさと合わない（consh/js/README-ja.md の「wasm 約 700 KB」は、約 0.8 MB に直した）。
+* **CPython**：`bench/run.sh` は PATH の最初の `python3` を使う。この機械では Homebrew の 3.15.2 で、表の 3.9.6（/usr/bin/python3）より 2.2〜2.6 倍速い。
 
 ## 8. 記録の場所
 

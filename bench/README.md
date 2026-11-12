@@ -65,6 +65,19 @@ The transpiled VM after each change, built with the transpiled code of the bench
 | the entries and index of a Dict shared by its copies until one of them is changed (`__Dict_copy__`) | 2026-11-08 | 0.25 s | 0.55 s | 0.32 s | 0.07 s | 0.50–0.53 s (about 1% faster, within what runs vary) |
 | CPython 3.9.6 | | 0.56 s | 0.79 s | 0.35 s | 0.31 s | |
 
+### Now: 2026-11-12, Apple M2
+
+The tables above were measured on an Apple M4; these on an Apple M2, at 3243b7d, so compare the ratios to CPython, not the times. User + sys seconds, best of 5 (the Rust VM: best of 3, `CONMA_BENCH_RUST=1 bench/run.sh`); in parentheses, the time divided by that of CPython 3.9.6. All of them print the same. The transpiled VM was built with `CONMA_BENCH_REFERENCE=1 bench/build.sh` (both versions of ConSh: 62 min, 190 MB); one built with the code of the benchmarks only (8 MB, 1 min) takes the same times. Richards uses the bitwise primitives.
+
+| Benchmark | CPython 3.9.6 | CPython 3.15.2 | Rust VM | Transpiled VM |
+|---|---|---|---|---|
+| nbody 100000 | 0.78 s | 0.33 s (0.42) | 4.94 s (6.3) | 0.33 s (0.42) |
+| richards 20 | 1.49 s | 0.60 s (0.40) | 5.14 s (3.5) | 0.61 s (0.41) |
+| fib 32 | 0.51 s | 0.20 s (0.39) | 2.79 s (5.5) | 0.39 s (0.76) |
+| loop 10000000 | 0.51 s | 0.23 s (0.45) | 2.84 s (5.6) | 0.10 s (0.19) |
+
+ConSh, the 15,000 function calls above on the transpiled VM: 0.648 s (user). CPython 3.15.2 (Homebrew; `bench/run.sh` runs the `python3` found first, which may be it) is 2.2 to 2.6 times as fast as 3.9.6 here: as fast as the transpiled VM for nbody and richards, twice as fast for fib, and less than half as fast for the loop.
+
 So the transpiled VM is now faster than CPython 3.9.6 for nbody, fib and the loop, and for richards, whose idle task then computed its bit operations with arithmetic (ConMa had none).
 
 What the changes for richards were found from (samples of the running VM): at first, calls took about 40% of its time (their machinery, `drive`, `frame_run`, `fused_call`, 23%, and the LVEnv nodes the arguments go into, 16%), cloning and dropping values 27%, and the Dict lookups 12%; and the bit operations about a third (computing each `^ 0xD008` twice made the run 0.63 s longer), because `__Number_floor__` went back to the code of the Bodies at each bit, making and dropping an LVEnv of 12 variables. After the changes above, the time goes to the call machinery (about 26%), cloning and dropping values (26%), the Dict lookups and puts (21%, a fourth of it comparing the texts of keys) and the generated code itself (24%).

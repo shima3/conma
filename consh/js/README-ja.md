@@ -16,7 +16,7 @@ rustup target add wasm32-unknown-unknown   # 初めてのときだけ
 consh/js/build.sh
 ```
 
-`build.sh` は、VM を wasm32 でビルドし（consh/js/wasm、約 700 KB）、`web/` に wasm、`conma.js`、ConSh のモジュール（`consh.module.se`、bin/includer と bin/resolver で作る。約 7.0 MB）を置く。
+`build.sh` は、VM を wasm32 でビルドし（consh/js/wasm、約 0.8 MB）、`web/` に wasm、`conma.js`、ConSh のモジュール（`consh.module.se`、bin/includer と bin/resolver で作る。約 7.0 MB）を置く。
 
 ## ブラウザで使う
 
