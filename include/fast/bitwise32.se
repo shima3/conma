@@ -1,0 +1,167 @@
+;; 高速版 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。
+;; ビット演算の 7 つのプリミティブと同じ名前、同じ意味の関数を、簡潔版 ConMa で書いたもの。高速版の VM（Rust、
+;; wasm、変換版）はプリミティブで動かし、簡潔版の VM（Python）は、bin/concise がこの定義をモジュールに入れて動かす
+;; （大域の名前に定義があれば、プリミティブより先に使われる）。
+;;
+;; 意味は JavaScript と同じ 32 ビット：被演算子を ToInt32（整数でない数は 0 の方へ切り捨て、NaN と無限大は 0、
+;; 2^32 で割った余りを符号付きにする）にしてから求め、結果は符号付きの 32 ビットの整数（__Number_ushr32__ だけ
+;; 符号なし）。シフトの量は、右の被演算子の ToUint32 の下 5 ビット。
+;;   __Number_and32__ a b ,(r)    a & b
+;;   __Number_or32__ a b ,(r)     a | b
+;;   __Number_xor32__ a b ,(r)    a ^ b
+;;   __Number_not32__ a ,(r)      ~a
+;;   __Number_shl32__ a n ,(r)    a << n
+;;   __Number_shr32__ a n ,(r)    a >> n
+;;   __Number_ushr32__ a n ,(r)   a >>> n
+;; 被演算子が Number でなければ、VProc はエラーで止まる（プリミティブと同じく "expected Number, got ..." だが、
+;; メッセージの名前は、中で使う算術のプリミティブの名前になる）。
+;; 使う名前は、どれも Bitwise32_ で始める（取り込むモジュールの名前と重ならないように）。
+
+(include "pure.se")
+
+(define __Number_and32__ ,(a b)
+  Bitwise32_binary a b "and")
+
+(define __Number_or32__ ,(a b)
+  Bitwise32_binary a b "or")
+
+(define __Number_xor32__ ,(a b)
+  Bitwise32_binary a b "xor")
+
+(define __Number_not32__ ,(a)
+  Bitwise32_to_int32 a ,(x)
+  Bitwise32_n "0" ,(zero)
+  __Number_subtract__ zero x ,(y)
+  Bitwise32_n "1" ,(one)
+  __Number_subtract__ y one)
+
+(define __Number_shl32__ ,(a n)
+  Bitwise32_to_int32 a ,(x)
+  Bitwise32_shift_count n ,(k)
+  Bitwise32_pow2 k ,(p)
+  __Number_multiply__ x p ,(y)
+  Bitwise32_to_int32 y)
+
+(define __Number_shr32__ ,(a n)
+  Bitwise32_to_int32 a ,(x)
+  Bitwise32_shift_count n ,(k)
+  Bitwise32_pow2 k ,(p)
+  __Number_divide__ __print_exit_error__ x p ,(q)
+  __Number_floor__ q)
+
+(define __Number_ushr32__ ,(a n)
+  Bitwise32_to_uint32 a ,(x)
+  Bitwise32_shift_count n ,(k)
+  Bitwise32_pow2 k ,(p)
+  __Number_divide__ __print_exit_error__ x p ,(q)
+  __Number_floor__ q)
+
+(define Bitwise32_n ,(s)
+  __Number_fromString__ __print_exit_error__ s)
+
+;; and、or、xor：2 つの ToUint32 の値を、下のビットから 1 つずつ求め、結果を符号付きにする
+(define Bitwise32_binary ,(a b op)
+  Bitwise32_to_uint32 a ,(x)
+  Bitwise32_to_uint32 b ,(y)
+  Bitwise32_n "0" ,(zero)
+  Bitwise32_n "1" ,(one)
+  Bitwise32_bits op x y one zero ,(u)
+  Bitwise32_signed u)
+
+;; x と y（0 以上の整数）の op を、place の桁から acc に足していく。両方が 0 になれば終わる
+(define Bitwise32_bits ,(op x y place acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ x ,(xz)
+  __Number_is_zero__ y ,(yz)
+  __if_then_else__ xz (,() __NULL__ yz) (,() __NULL__ __FALSE__) ,(both)
+  __if__ both (,() return acc) ,()
+  Bitwise32_n "2" ,(two)
+  Bitwise32_low x ,(xb x)
+  Bitwise32_low y ,(yb y)
+  __String_equal__ op "and" ,(isAnd)
+  __String_equal__ op "or" ,(isOr)
+  __if_then_else__ isAnd
+    (,() __if_then_else__ xb (,() __NULL__ yb) (,() __NULL__ __FALSE__))
+    (,() __if_then_else__ isOr
+      (,() __if_then_else__ xb (,() __NULL__ __TRUE__) (,() __NULL__ yb))
+      (,() __if_then_else__ xb (,() __if_then_else__ yb (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__)) (,() __NULL__ yb))) ,(bit)
+  __if_then_else__ bit (,() __Number_add__ acc place) (,() __NULL__ acc) ,(acc)
+  __Number_multiply__ place two ,(place)
+  Bitwise32_bits op x y place acc)
+
+;; 0 以上の整数 x の最下位のビット（真偽値）と、x を 2 で割った整数部
+(define Bitwise32_low ,(x)
+  Bitwise32_n "2" ,(two)
+  __Number_divide__ __print_exit_error__ x two ,(h)
+  __Number_floor__ h ,(h)
+  __Number_multiply__ h two ,(e)
+  __Number_subtract__ x e ,(bit)
+  __Number_is_zero__ bit ,(zero)
+  __if_then_else__ zero (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__) ,(b)
+  __NULL__ b h)
+
+;; ToUint32：NaN と無限大は 0。ほかは 0 の方へ切り捨て、2^32 で割った余り（0 以上 2^32 未満）。
+;; 2^32 で割ること、floor、2^32 を掛けること、引くことは、どれも丸めずに求まる
+(define Bitwise32_to_uint32 ,(a)
+  __Cont_get__ ,(return)
+  Bitwise32_n "0" ,(zero)
+  __Number_subtract__ a a ,(d)
+  __Number_is_zero__ d ,(finite)
+  __if_then_else__ finite (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__) ,(nonFinite)
+  __if__ nonFinite (,() return zero) ,()
+  Bitwise32_trunc a ,(t)
+  Bitwise32_n "4294967296" ,(m)
+  __Number_divide__ __print_exit_error__ t m ,(q)
+  __Number_floor__ q ,(q)
+  __Number_multiply__ q m ,(e)
+  __Number_subtract__ t e ,(r)
+  ;; -0 を 0 にする
+  __Number_add__ r zero)
+
+;; ToInt32：ToUint32 の値を、2^31 以上なら 2^32 を引いて符号付きにする
+(define Bitwise32_to_int32 ,(a)
+  Bitwise32_to_uint32 a ,(u)
+  Bitwise32_signed u)
+
+(define Bitwise32_signed ,(u)
+  __Cont_get__ ,(return)
+  Bitwise32_n "2147483648" ,(h)
+  __Number_subtract__ u h ,(d)
+  __Number_is_negative__ d ,(small)
+  __if__ small (,() return u) ,()
+  Bitwise32_n "4294967296" ,(m)
+  __Number_subtract__ u m)
+
+;; 0 の方へ切り捨て
+(define Bitwise32_trunc ,(a)
+  __Cont_get__ ,(return)
+  __Number_is_negative__ a ,(neg)
+  __unless__ neg (,() __Number_floor__ a ,(t) return t) ,()
+  Bitwise32_n "0" ,(zero)
+  __Number_subtract__ zero a ,(p)
+  __Number_floor__ p ,(f)
+  __Number_subtract__ zero f)
+
+;; シフトの量：n の ToUint32 の下 5 ビット（0〜31）
+(define Bitwise32_shift_count ,(n)
+  Bitwise32_to_uint32 n ,(u)
+  Bitwise32_n "32" ,(m)
+  __Number_divide__ __print_exit_error__ u m ,(q)
+  __Number_floor__ q ,(q)
+  __Number_multiply__ q m ,(e)
+  __Number_subtract__ u e)
+
+;; 2 の k 乗（k は 0〜31 の整数）
+(define Bitwise32_pow2 ,(k)
+  Bitwise32_n "1" ,(one)
+  Bitwise32_pow2_loop k one)
+
+(define Bitwise32_pow2_loop ,(k acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ k ,(done)
+  __if__ done (,() return acc) ,()
+  Bitwise32_n "2" ,(two)
+  __Number_multiply__ acc two ,(acc)
+  Bitwise32_n "1" ,(one)
+  __Number_subtract__ k one ,(k)
+  Bitwise32_pow2_loop k acc)
