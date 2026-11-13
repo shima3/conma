@@ -26,6 +26,7 @@
 | ConSh がよく使うプリミティブ（`__is_null__`、LList、Ref、条件分岐など）も同じにする | 2026-11-12 | consh/bench が 0.93〜0.97 倍 | 入れた | 同上 |
 | 束縛の変数名を intern して、参照数の増減をなくす | 2026-11-12 | 0.98〜1.00 倍 | 戻した | FAST-PLAN 8.2 |
 | 引数の束縛で、ローカル環境の節を使い回す | 2026-11-12 | 0.98〜1.02 倍（使い回せたのは 35%） | 戻した | FAST-PLAN 8.2 |
+| 文字列が書いてある `__Number_fromString__` を、変数の代わりに数を置いた Body にして読み込む（`load_const`。ステップの数は同じ） | 2026-11-13 | richards 20 で、使う所で数を作る `richards_const.se` が 4.196 s → 3.754 s（`richards_tuned.se` の 1.13 倍 → 1.01 倍）。`richards_tuned.se` は変わらない | 入れた（`CONMA_NO_FOLD=1` で止める） | bench/README.md「Numbers written where they are used」 |
 
 ## 2. 変換版の VM（vm/conma2rust）
 
@@ -34,6 +35,7 @@
 | ConMa のモジュールを Rust にして VM に組み込む（変換版の VM） | 2026-11-07 | nbody 100000 が 6.59 s（Rust VM）→ 3.80 s | 入れた | bench/README.md「Results」 |
 | 融合した鎖（変数を Rust の変数に置く）から、LCont 付きの呼び出しを Rust の呼び出しにするまで（6 つの変更） | 2026-11-07 | nbody 100000 が 3.80 s → 0.67 s | 入れた | bench/README.md「up to calls with an LCont」 |
 | その後の 14 の変更（自分を呼ぶ関数のループ化、直接の入口、`f64` の計算、値の移動、キーのハッシュ、Dict の形とキャッシュ、小さな関数のインライン化など） | 2026-11-07〜08 | nbody 0.49 → 0.25 s、richards 20 2.10 → 0.55 s、fib 32 0.68 → 0.32 s、loop 0.65 → 0.07 s、ConSh 0.89 → 0.50〜0.53 s。変更ごとの数は詳細の表 | 入れた | bench/README.md「since then」 |
+| 文字列が書いてある `__Number_fromString__` を、融合した鎖の `f64` の定数にする（`number_literal`） | 2026-11-13 | richards 20 で、`richards_const.se` が 0.807 s → 0.468 s（`richards_tuned.se` の 1.69 倍 → 0.98 倍）。ConSh などの 1,156 か所が定数になる | 入れた（`CONMA2RUST_NO_FOLD=1` で止める） | bench/README.md「Numbers written where they are used」 |
 | インライン展開の制限を緩める（段数 2 → 3、または Body の数 8 → 16） | 2026-11-12 | richards 20 が、Body 16 で 0.94〜0.95 倍（2 回とも）。ほかの bench/ と consh/bench、ConSh の 15,000 回の呼び出しは、どちらも 0.90〜1.09 倍の中でばらつき、決まった向きがない。ConSh の変換したコードは 62.8 MB が 65.1 MB（段数 3）、73.7 MB（Body 16） | 変えなかった | vm/README.md「Inlining」 |
 
 ## 3. ConMa のプログラム（ConSh、SJS）の書き方
@@ -58,6 +60,7 @@
 | 脱出の継続を作らずに戻る（F5 の案、段階 B8） | 2026-11-12 | `__Cont_get__` は 02 のステップの 3.2%、全部なくしても約 3%。使える関数も 637 個のうち 48 個 | 作らないと決めた | FAST-PLAN 4.4、consh/sjs/README-ja.md |
 | 変換版の VM が高速版のモジュールを入力にする（F7） | 2026-11-12 | 高速版に構文がないので、渡す情報がない | 構文ができるまで作らない | FAST-PLAN 6 |
 | 部分適用、完全適用、過剰適用の印をソースやモジュールにつける | 2026-11-12 | 数えると、Closure の適用の 99.7〜100% が引数の数のちょうど合う適用で、部分適用は 0 回だった。VM は整数の比較 1 回で見分けている | 作らない | FAST-PLAN 4.1 |
+| 値を自分で確かめる条件分岐の組み込み（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`）。確かめ、Boolean の束縛、条件分岐を 1 ステップにする | 2026-11-13 | `richards_tuned.se` のコピーで、richards 2 が 15,199,166 → 13,542,821（null の 11 か所）、14,995,439（zero の 5 か所）、15,198,686（`__Number_if_greater__` の 1 か所、初期化だけ）、14,407,034（`__Number_if_greater_then_else__` の 5 か所）、12,546,962（`__Number_if_greater__` 以外の 21 か所）ステップ。richards 20 が Rust VM で 0.903、0.987、0.998、0.955、0.840 倍 | Rust VM だけに入れた（フロントエンド、変換版の VM、Python VM は知らない） | vm/README.md「Speed」、コミット 1e4c864 |
 | ローカル環境を配列のフレームにする | 2026-11-12 | 変数をたどる深さは平均 2〜3 と浅く、読む速さは上がらない。節を作って捨てる手間は、関数ごとのフレームとエスケープ解析なら減らせる見込み（未検討） | 作っていない | vm/README.md「Speed」、FAST-PLAN 8.2 |
 
 ## 5. wasm 版
@@ -73,7 +76,7 @@
 | もの | 大きさ | 備考 |
 |---|---|---|
 | Rust VM（vm/target/release/conma） | 1.9 MB | |
-| 変換版の VM（vm/target-transpiled/release/conma） | 190 MB | bench/ の 4 つ、test/transpiled、ConSh の高速版と参照版の変換版のコードを含む（`CONMA_BENCH_REFERENCE=1 bench/build.sh`、62 分）。前に作ったもの（どちらの版を含めたかは記録がない）は約 100 MB。bench/ と test/transpiled だけなら 8 MB |
+| 変換版の VM（vm/target-transpiled/release/conma） | 41 MB | 2026-11-13 に作り直したもの（`CONMA_BENCH_REFERENCE=1 bench/build.sh`、34 分。変換した Rust は 86.8 MB）。richards は richards.se と richards_tuned.se を含む（richards_const.se は、その後に bench/ に入れた）。2026-11-12 に同じように作ったものは 190 MB（62 分）で、その間に 36a8036（制御の組み込み）と数の定数化が入ったが、どちらでどれだけ小さくなったかは調べていない。bench/ の 4 つ、test/transpiled、ConSh の高速版と参照版の変換版のコードを含む。前に作ったもの（どちらの版を含めたかは記録がない）は約 100 MB。bench/ と test/transpiled だけなら 8 MB |
 | wasm 版（consh/js/web/conma.wasm） | 0.83 MB（gzip で 0.22 MB） | |
 | wasm 版に ConSh の変換版のコードを入れたもの | 78 MB（gzip で 12.5 MB） | 実験（FAST-PLAN 8.3） |
 | ConSh の高速版のモジュール（bin/includer と bin/resolver、1 行の形） | 5.1 MB | F8 では 5,011,489 バイト、参照版は 4,948,125 バイト |

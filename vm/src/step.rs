@@ -65,12 +65,34 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gven
             return r;
         }
     }
+    if body.fold_site && m.fast_steps >= 4 && m.fold_constants {
+        if let Some(r) = load_const(m, vp, body, &lvenv, gvenv) {
+            return r;
+        }
+    }
     if body.prim_site && m.fast_steps >= 4 {
         if let Some(r) = load_prim(m, vp, body, &lvenv, gvenv) {
             return r;
         }
     }
     load_body_interp(vp, body, lvenv, gvenv)
+}
+
+/// Load a Body `__Number_fromString__ onError "text" ,(x) ...` (BodyDef::fold_site) whose
+/// Operator is the primitive: the three steps of the primitive, binding x and loading the Body
+/// of the LCont are counted, and the Body of the LCont is loaded with the Number in place of x
+/// (module::const_fold), without parsing the text or binding x. None when the Body is to be
+/// loaded as it is.
+fn load_const(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
+    match eval(body.operator.as_ref()?, lvenv, gvenv) {
+        Ok(Value::Prim(p)) if p.name == "__Number_fromString__" => {}
+        _ => return None,
+    }
+    let folded = crate::module::const_fold(body)?;
+    vp.sinfo = body.sinfo.clone();
+    m.steps += 3;
+    m.fast_steps -= 3;
+    Some(load_body(m, vp, &folded, lvenv.clone(), gvenv))
 }
 
 /// True if v is Machine::inline_mark.

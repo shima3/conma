@@ -76,6 +76,12 @@ pub struct BodyDef {
     /// a function with parameters: the primitive may be run while the Body is loaded
     /// (step.rs, load_prim).
     pub prim_site: bool,
+    /// For a Body `__Number_fromString__ onError "text" ,(x) ...` whose text is a Number (an
+    /// experiment, docs/SPEED-ja.md): the Body of the LCont with the Number in place of x and the
+    /// variables beyond it one nearer, made when it is first needed (const_fold); step.rs
+    /// (load_const) loads it in place of the three steps, when the Operator is the primitive.
+    pub fold_site: bool,
+    pub folded: std::cell::OnceCell<Option<Rc<BodyDef>>>,
 }
 
 /// The primitives that only pass values to their LCont (taking it from VProc::lcont), apply
@@ -302,11 +308,23 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
             }
         }
     }
+    new_body(node.clone(), func_id, sinfo, operator, olist, lcont)
+}
+
+fn new_body(
+    node: Sexp,
+    func_id: Option<usize>,
+    sinfo: Option<SInfo>,
+    operator: Option<CExpr>,
+    olist: Vec<CExpr>,
+    lcont: Option<CLCont>,
+) -> Rc<BodyDef> {
     let dict_site = dict_site_of(&operator, &olist);
     let if_site = if_site_of(&operator, &olist);
     let prim_site = prim_site_of(&operator, &lcont);
+    let fold_site = fold_number(&operator, &olist, &lcont).is_some();
     Rc::new(BodyDef {
-        node: node.clone(),
+        node,
         func_id,
         sinfo,
         operator,
@@ -316,7 +334,79 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
         fast: std::cell::Cell::new(0),
         if_site,
         prim_site,
+        fold_site,
+        folded: std::cell::OnceCell::new(),
     })
+}
+
+/// The Number of a Body `__Number_fromString__ onError "text" ,(x) ...` whose text is a
+/// Number that __Number_fromString__ returns, and the Function of its LCont.
+fn fold_number<'a>(operator: &Option<CExpr>, olist: &[CExpr], lcont: &'a Option<CLCont>) -> Option<(f64, &'a Rc<FuncDef>)> {
+    match operator {
+        Some(CExpr::G(_, name)) if unquote(name) == "__Number_fromString__" => {}
+        _ => return None,
+    }
+    let f = match lcont {
+        Some(CLCont::F(f)) if f.params.len() == 1 && !f.variadic && f.body.is_some() => f,
+        _ => return None,
+    };
+    let text = match olist {
+        [_, CExpr::C(v @ Value::StrNode(_))] => crate::trace::value_to_display(v).ok()?,
+        _ => return None,
+    };
+    if !prim::number::is_number_syntax(&text) {
+        return None;
+    }
+    let n = prim::number::parse_number(&text);
+    if n.is_infinite() {
+        return None;
+    }
+    Some((n, f))
+}
+
+/// The Body of the LCont of a fold_site Body with its Number in place (BodyDef::folded).
+pub fn const_fold(b: &BodyDef) -> Option<Rc<BodyDef>> {
+    b.folded
+        .get_or_init(|| {
+            let (n, f) = fold_number(&b.operator, &b.olist, &b.lcont)?;
+            subst_body(f.body.as_ref()?, 0, &num(n))
+        })
+        .clone()
+}
+
+/// e with the variable at de Bruijn index off replaced by v, and those beyond it one nearer.
+fn subst_expr(e: &CExpr, off: usize, v: &Value) -> Option<CExpr> {
+    Some(match e {
+        CExpr::L(i) if *i == off => CExpr::C(v.clone()),
+        CExpr::L(i) if *i > off => CExpr::L(i - 1),
+        CExpr::L(i) => CExpr::L(*i),
+        CExpr::G(g, name) => CExpr::G(*g, name.clone()),
+        CExpr::C(c) => CExpr::C(c.clone()),
+        CExpr::F(f) => CExpr::F(subst_func(f, off, v)?),
+        CExpr::X(_) => return None,
+    })
+}
+
+fn subst_func(f: &Rc<FuncDef>, off: usize, v: &Value) -> Option<Rc<FuncDef>> {
+    let body = match &f.body {
+        Some(b) => Some(subst_body(b, off + f.params.len(), v)?),
+        None => None,
+    };
+    Some(Rc::new(FuncDef { params: f.params.clone(), variadic: f.variadic, body }))
+}
+
+fn subst_body(b: &BodyDef, off: usize, v: &Value) -> Option<Rc<BodyDef>> {
+    let operator = match &b.operator {
+        Some(e) => Some(subst_expr(e, off, v)?),
+        None => None,
+    };
+    let olist = b.olist.iter().map(|e| subst_expr(e, off, v)).collect::<Option<Vec<_>>>()?;
+    let lcont = match &b.lcont {
+        Some(CLCont::F(f)) => Some(CLCont::F(subst_func(f, off, v)?)),
+        Some(CLCont::V(_)) => return None,
+        None => None,
+    };
+    Some(new_body(b.node.clone(), None, b.sinfo.clone(), operator, olist, lcont))
 }
 
 /// A Closure of a compiled Function in an environment.

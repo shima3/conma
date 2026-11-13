@@ -36,6 +36,7 @@ between Number primitives), and hands the VProc to the per-Body functions
 ("bail") where it cannot go on.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -72,6 +73,18 @@ PURE = {
 }
 
 IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
+
+# __Number_fromString__ of a String written in place whose text is a Number: an f64
+# constant in fused chains (an experiment); off with CONMA2RUST_NO_FOLD=1.
+FOLD_NUMBERS = not os.environ.get("CONMA2RUST_NO_FOLD")
+
+
+def number_literal(atom):
+    """The Rust f64 literal of a String atom whose text is a whole or decimal number, or None."""
+    text = atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else None
+    if text is None or not re.fullmatch(r"-?[0-9]+(\.[0-9]+)?", text):
+        return None
+    return f"{float(text)!r}_f64"
 
 # Inlining (Fuser.inline): the most Bodies of a Function written in place,
 # and the most calls written in place one in another.
@@ -738,6 +751,13 @@ class Fuser:
             # a bool in a Rust variable
             out.append(f"let {self.xn(d)}: bool = matches!({self.rref(x, d, b.olist[0], 0, locals_)}, Value::Null);")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "b")], out, J)
+        if one and name == "__Number_fromString__" and len(b.olist) == 2 and FOLD_NUMBERS:
+            c = self.constant(x, d, b.olist[1], 1, locals_)
+            n = number_literal(c[2]) if c is not None else None
+            if n is not None:
+                # a Number written as a String in place: an f64 constant (an experiment, docs/SPEED-ja.md)
+                out.append(f"let {self.xn(d)}: f64 = {n};")
+                return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         if one and name in NUM_OPS and len(b.olist) == NUM_OPS[name][1]:
             kind, n = NUM_OPS[name]
             ops = b.olist[n - (2 if kind in ("bin", "div", "bit") else 1):]

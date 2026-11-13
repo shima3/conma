@@ -46,6 +46,9 @@ pub struct Machine {
     /// steps are numbered as before; no other VProc runs between them, which
     /// changes only when VProcs are switched (FAST-PLAN 3.3).
     pub fast_steps: u64,
+    /// Load `__Number_fromString__ onError "text" ,(x) ...` with the Number in place of x
+    /// (step.rs, load_const; an experiment): off with CONMA_NO_FOLD=1.
+    pub fold_constants: bool,
     /// The Rust calls of native code that are running (vm/src/native.rs).
     pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
@@ -229,6 +232,7 @@ impl Machine {
             transpiled_on: false,
             profile: crate::profile::Profile::from_env(),
             fast_steps: 0,
+            fold_constants: std::env::var_os("CONMA_NO_FOLD").is_none(),
             nctx: Default::default(),
             joining: Vec::new(),
             lazy: Vec::new(),
