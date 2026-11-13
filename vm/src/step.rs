@@ -27,6 +27,10 @@ pub fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmErro
             Some(v) => Ok(v.clone()),
             None => err(format!("LVEnv[{}] out of range", i)),
         },
+        CExpr::S(k) => match lv_slot(lvenv, *k) {
+            Some(v) => Ok(v.clone()),
+            None => err(format!("frame slot {} out of range", k)),
+        },
         CExpr::C(v) => Ok(v.clone()),
         CExpr::G(g, name) => match gvenv.get(*g) {
             Some(v) => Ok(v),
@@ -49,7 +53,7 @@ pub fn eval(c: &CExpr, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Result<Value, VmErro
 
 /// Load a Body into the VProc, or run its transpiled code (vm/conma2rust), which
 /// loads a Body later in the same way or leaves the VProc as a step would.
-fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
+fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, mut lvenv: LVEnv, gvenv: &Rc<GVEnv>) -> PResult {
     if m.transpiled_on {
         if let Some(id) = body.func_id {
             let table = gvenv.transpiled.borrow().clone();
@@ -71,7 +75,7 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gven
         }
     }
     if body.prim_site && m.fast_steps >= 4 {
-        if let Some(r) = load_prim(m, vp, body, &lvenv, gvenv) {
+        if let Some(r) = load_prim(m, vp, body, &mut lvenv, gvenv) {
             return r;
         }
     }
@@ -117,7 +121,7 @@ fn is_mark(m: &Machine, v: &Value) -> bool {
 /// LCont; whatever else it does, the Closure of the LCont is made and put where the mark
 /// is, as if the steps had been taken one by one. None, without changing anything, when
 /// the Body is to be loaded as it is.
-fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
+fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &mut LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
     let p = match eval(body.operator.as_ref()?, lvenv, gvenv) {
         Ok(Value::Prim(p)) if crate::module::INLINE_PRIMS.contains(&p.name) => p,
         _ => return None,
@@ -150,10 +154,18 @@ fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gve
     let r = (p.f)(m, vp);
     if r.is_ok() && is_mark(m, &vp.operator) && vp.olist.len() == f.params.len() {
         // The steps of applying the LCont: binding the values (if any) and loading its Body.
-        let mut env = lvenv.clone();
-        for v in vp.olist.drain(..) {
-            env = lv_push(&env, v);
-        }
+        let fb = f.body.as_ref().unwrap();
+        let env = if fb.frame == 0 && !matches!(lvenv.as_ref().map(|n| &n.value), Some(Value::Frame(_))) {
+            let mut env = lvenv.clone();
+            for v in vp.olist.drain(..) {
+                env = lv_push(&env, v);
+            }
+            env
+        } else {
+            // Nothing else is to hold the frame node, so that the values are added in place.
+            vp.lvenv = None;
+            lv_bind(std::mem::take(lvenv), vp.olist.drain(..), fb.frame, fb.frame_size)
+        };
         let k = if f.params.is_empty() { 1 } else { 2 };
         m.steps += k;
         m.fast_steps -= k;
@@ -368,6 +380,19 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
 }
 
+/// How the values passed to c are bound (BodyDef::frame): a frame that the first values bound
+/// to c made is added to.
+fn frame_of(c: &Closure) -> u8 {
+    match c.body.as_ref().map_or(0, |b| b.frame) {
+        1 if c.skip > 0 => 2,
+        f => f,
+    }
+}
+
+fn frame_size(c: &Closure) -> u32 {
+    c.body.as_ref().map_or(0, |b| b.frame_size)
+}
+
 fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult {
     // __LazyList_force__ of include/util.se applied to a LazyList that has been evaluated
     // (module.rs, mark_fast): pass its cell to the LCont at once, counting the 16 steps of the
@@ -425,7 +450,17 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
             Some(b) => b.clone(),
             None => return err("Closure has no Body"),
         };
-        return load_body(m, vp, &body, c.lvenv.clone(), &gvenv);
+        // A frame (module::frame_chain) is left to the Body alone, so that it adds to it in place.
+        let env = if matches!(c.lvenv.as_ref().map(|n| &n.value), Some(Value::Frame(_))) {
+            vp.lvenv = None;
+            match Rc::get_mut(&mut c) {
+                Some(cm) => cm.lvenv.take(),
+                None => c.lvenv.clone(),
+            }
+        } else {
+            c.lvenv.clone()
+        };
+        return load_body(m, vp, &body, env, &gvenv);
     }
 
     // As many operands as parameters, when the scheduler allows it (Machine::fast_steps):
@@ -433,10 +468,21 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
     // Closure the binding makes (Head empty, OList empty, below), and count the binding
     // as a step of its own, so that the steps are numbered as before.
     if m.fast_steps >= 2 && vp.olist.len() == params.len() {
-        let mut env = c.lvenv.clone();
-        for v in vp.olist.drain(..) {
-            env = lv_push(&env, v);
-        }
+        let frame = frame_of(&c);
+        let env = if frame == 0 {
+            let mut env = c.lvenv.clone();
+            for v in vp.olist.drain(..) {
+                env = lv_push(&env, v);
+            }
+            env
+        } else {
+            vp.lvenv = None;
+            let env = match Rc::get_mut(&mut c) {
+                Some(cm) => cm.lvenv.take(),
+                None => c.lvenv.clone(),
+            };
+            lv_bind(env, vp.olist.drain(..), frame, frame_size(&c))
+        };
         m.steps += 1;
         m.fast_steps -= 1;
         if let Some(lc) = vp.lcont.take() {
@@ -456,21 +502,17 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
         // A Closure that nothing else holds (an LCont just made by load_body, as a rule) is the
         // partially applied Closure itself: bind the operands into its LVEnv and move its skip on,
         // instead of making a new Closure. No one can see the difference.
+        let frame = frame_of(&c);
+        let size = frame_size(&c);
         if let Some(cm) = Rc::get_mut(&mut c) {
             let base = cm.skip;
-            let mut env = cm.lvenv.take();
-            for v in vp.olist.drain(..n) {
-                env = Some(Rc::new(LVNode { value: v, next: env }));
-            }
-            cm.lvenv = env;
+            let env = cm.lvenv.take();
+            cm.lvenv = lv_bind(env, vp.olist.drain(..n), frame, size);
             cm.skip = base + n;
             vp.operator = Value::Closure(c);
             return Ok(());
         }
-        let mut env = c.lvenv.clone();
-        for v in vp.olist.drain(..n) {
-            env = lv_push(&env, v);
-        }
+        let env = lv_bind(c.lvenv.clone(), vp.olist.drain(..n), frame, size);
         vp.operator = Value::Closure(Rc::new(Closure {
             params: c.params.clone(),
             skip: c.skip + n,

@@ -34,6 +34,8 @@ pub struct FuncDef {
 pub enum CExpr {
     /// A local variable by de Bruijn index.
     L(usize),
+    /// A variable of the frame at the head of the LVEnv, by slot (frame_chain).
+    S(usize),
     /// A global variable by GID, with its name for error messages.
     G(usize, Rc<str>),
     /// A constant: a String node or null.
@@ -82,6 +84,11 @@ pub struct BodyDef {
     /// (load_const) loads it in place of the three steps, when the Operator is the primitive.
     pub fold_site: bool,
     pub folded: std::cell::OnceCell<Option<Rc<BodyDef>>>,
+    /// How the values passed to the Function whose Body this is are bound (frame_chain,
+    /// value::lv_bind): 0, a node for each; 1, a new frame node; 2, into the frame node.
+    pub frame: u8,
+    /// For frame 1: the variables the frame will hold.
+    pub frame_size: u32,
     /// The names of the variables of the LVEnv the Body runs in (its own and those of the
     /// Functions around it), for traces and printed Closures.
     pub scope: Scope,
@@ -321,7 +328,7 @@ fn compile_expr(expr: &Sexp, scope: &Scope) -> CExpr {
         Some("String") => CExpr::C(Value::StrNode(expr.clone())),
         Some("Null") => CExpr::C(Value::Null),
         Some("FuncExp") => match l.get(2) {
-            Some(f) => CExpr::F(compile_function_in(f, scope)),
+            Some(f) => CExpr::F(frame_chain(compile_function_in(f, scope))),
             None => CExpr::X(expr.clone()),
         },
         _ => CExpr::X(expr.clone()),
@@ -373,6 +380,20 @@ fn new_body(
     lcont: Option<CLCont>,
     scope: Scope,
 ) -> Rc<BodyDef> {
+    new_body_frame(node, func_id, sinfo, operator, olist, lcont, scope, (0, 0))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn new_body_frame(
+    node: Sexp,
+    func_id: Option<usize>,
+    sinfo: Option<SInfo>,
+    operator: Option<CExpr>,
+    olist: Vec<CExpr>,
+    lcont: Option<CLCont>,
+    scope: Scope,
+    frame: (u8, u32),
+) -> Rc<BodyDef> {
     let dict_site = dict_site_of(&operator, &olist);
     let if_site = if_site_of(&operator, &olist);
     let prim_site = prim_site_of(&operator, &lcont);
@@ -391,6 +412,8 @@ fn new_body(
         fold_site,
         folded: std::cell::OnceCell::new(),
         scope,
+        frame: frame.0,
+        frame_size: frame.1,
     })
 }
 
@@ -424,6 +447,10 @@ pub fn const_fold(b: &BodyDef) -> Option<Rc<BodyDef>> {
     b.folded
         .get_or_init(|| {
             let (n, f) = fold_number(&b.operator, &b.olist, &b.lcont)?;
+            // Not into a frame chain (frame_chain), whose variables are not numbered so.
+            if f.body.as_ref()?.frame != 0 {
+                return None;
+            }
             subst_body(f.body.as_ref()?, 0, &num(n), &b.scope)
         })
         .clone()
@@ -435,6 +462,7 @@ fn subst_expr(e: &CExpr, off: usize, v: &Value, scope: &Scope) -> Option<CExpr> 
         CExpr::L(i) if *i == off => CExpr::C(v.clone()),
         CExpr::L(i) if *i > off => CExpr::L(i - 1),
         CExpr::L(i) => CExpr::L(*i),
+        CExpr::S(_) => return None,
         CExpr::G(g, name) => CExpr::G(*g, name.clone()),
         CExpr::C(c) => CExpr::C(c.clone()),
         CExpr::F(f) => CExpr::F(subst_func(f, off, v, scope)?),
@@ -464,6 +492,101 @@ fn subst_body(b: &BodyDef, off: usize, v: &Value, scope: &Scope) -> Option<Rc<Bo
         None => None,
     };
     Some(new_body(b.node.clone(), None, b.sinfo.clone(), operator, olist, lcont, scope.clone()))
+}
+
+/// The fewest variables that the LConts of a chain bind for frame_chain to bind them into a
+/// frame (CONMA_FRAME_MIN=n sets it; an empty or bad value, no frames).
+const FRAME_MIN_DEFAULT: usize = 8;
+
+thread_local! {
+    static FRAME_MIN: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
+}
+
+/// f, or, when its Body and the Bodies of the LConts after it (written as Functions, the chain)
+/// make no Closure (no function expression among their Operators and operands) and the LConts
+/// bind at least FRAME_MIN variables, f with the variables of these LConts bound into one frame
+/// node of the LVEnv (value::lv_bind) instead of a node each: the first LCont with parameters makes
+/// it (BodyDef::frame 1) and the next ones add theirs (2), and in each Body a variable of the
+/// frame is read by slot (CExpr::S) and one beyond it by its index counting the frame as one node.
+/// The parameters of f itself are bound as before. A Function nested in another is given to this
+/// when it is compiled (compile_expr), before the Function around it.
+fn frame_chain(f: Rc<FuncDef>) -> Rc<FuncDef> {
+    let min = FRAME_MIN.with(|c| c.get());
+    if min == usize::MAX {
+        return f;
+    }
+    let mut bodies: Vec<Rc<BodyDef>> = Vec::new();
+    let mut funcs: Vec<Rc<FuncDef>> = Vec::new();
+    let mut cur = match &f.body {
+        Some(b) => b.clone(),
+        None => return f,
+    };
+    loop {
+        let makes_closure = cur.operator.iter().chain(cur.olist.iter()).any(|e| matches!(e, CExpr::F(_) | CExpr::S(_)));
+        if makes_closure {
+            return f;
+        }
+        bodies.push(cur.clone());
+        match &cur.lcont {
+            Some(CLCont::F(g)) if !g.variadic && g.body.is_some() => {
+                funcs.push(g.clone());
+                cur = g.body.clone().unwrap();
+            }
+            // An LCont whose Body would not be rewritten.
+            Some(_) => return f,
+            None => break,
+        }
+    }
+    let total: usize = funcs.iter().map(|g| g.params.len()).sum();
+    if total < min {
+        return f;
+    }
+    // m[j]: the variables in the frame when bodies[j] runs.
+    let mut m = vec![0usize; bodies.len()];
+    for j in 1..bodies.len() {
+        m[j] = m[j - 1] + funcs[j - 1].params.len();
+    }
+    let map = |e: &CExpr, m: usize| -> CExpr {
+        match e {
+            CExpr::L(i) if m > 0 && *i < m => CExpr::S(m - 1 - *i),
+            CExpr::L(i) if m > 0 => CExpr::L(*i - m + 1),
+            CExpr::L(i) => CExpr::L(*i),
+            CExpr::G(g, n) => CExpr::G(*g, n.clone()),
+            CExpr::C(c) => CExpr::C(c.clone()),
+            CExpr::X(x) => CExpr::X(x.clone()),
+            CExpr::S(_) | CExpr::F(_) => unreachable!(),
+        }
+    };
+    // Rebuild from the last Body.
+    let mut next: Option<CLCont> = None;
+    for j in (0..bodies.len()).rev() {
+        let b = &bodies[j];
+        let frame = if j == 0 || funcs[j - 1].params.is_empty() {
+            0
+        } else if m[j - 1] == 0 {
+            1
+        } else {
+            2
+        };
+        let lcont = next.take();
+        let nb = new_body_frame(
+            b.node.clone(),
+            b.func_id,
+            b.sinfo.clone(),
+            b.operator.as_ref().map(|e| map(e, m[j])),
+            b.olist.iter().map(|e| map(e, m[j])).collect(),
+            lcont,
+            b.scope.clone(),
+            (frame, total as u32),
+        );
+        nb.fast.set(b.fast.get());
+        if j == 0 {
+            return Rc::new(FuncDef { params: f.params.clone(), variadic: f.variadic, body: Some(nb) });
+        }
+        let g = &funcs[j - 1];
+        next = Some(CLCont::F(Rc::new(FuncDef { params: g.params.clone(), variadic: false, body: Some(nb) })));
+    }
+    unreachable!()
 }
 
 /// A Closure of a compiled Function in an environment.
@@ -506,6 +629,17 @@ pub fn load_module(module: &Sexp) -> Result<Rc<GVEnv>, String> {
 /// load_module, and if the binary has transpiled code for the module whose file
 /// has this hash (vm/conma2rust), attach it to the GVEnv.
 pub fn load_module_transpiled(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
+    // Frames only where the LVEnvs are not those of transpiled code or of traces.
+    FRAME_MIN.with(|c| {
+        c.set(if hash.is_some_and(crate::transpiled::has_code) || scopes_kept() {
+            usize::MAX
+        } else {
+            match std::env::var("CONMA_FRAME_MIN") {
+                Ok(v) => v.parse().unwrap_or(usize::MAX),
+                Err(_) => FRAME_MIN_DEFAULT,
+            }
+        })
+    });
     REGISTRY.with(|r| *r.borrow_mut() = Some(Vec::new()));
     let result = load_module_inner(module);
     let funcs = REGISTRY.with(|r| r.borrow_mut().take()).unwrap_or_default();
@@ -599,7 +733,7 @@ fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
                 None => prim::lookup(name).map(Value::Prim),
                 Some(v) if v.as_atom() == Some("Undefined") => prim::lookup(name).map(Value::Prim),
                 Some(v) => match v.tag() {
-                    Some("Function") => Some(make_closure(&compile_function(v), &None, Some(&gvenv))),
+                    Some("Function") => Some(make_closure(&frame_chain(compile_function(v)), &None, Some(&gvenv))),
                     Some("Null") => Some(Value::Null),
                     Some("PrimFunc") => {
                         let pname = v.as_list().unwrap().get(1).and_then(|a| a.as_atom()).map(unquote).unwrap_or("");

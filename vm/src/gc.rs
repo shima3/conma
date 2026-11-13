@@ -286,6 +286,12 @@ fn value_child(v: &Value, f: &mut dyn FnMut(Node)) {
         Value::MSeq(r) => f(Node::MSeq(r.clone())),
         Value::Dict(r) => f(Node::Dict(r.clone())),
         Value::VProc(r) => f(Node::VProc(r.clone())),
+        // The values of a frame are those of the LVEnv node that holds it.
+        Value::Frame(fr) => {
+            for v in fr.iter() {
+                value_child(v, f);
+            }
+        }
         // Strings, Numbers, primitives, AST nodes, Streams and OSProcs hold no values.
         _ => {}
     }

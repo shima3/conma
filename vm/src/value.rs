@@ -40,6 +40,9 @@ pub enum Value {
     Stream(Rc<StreamObj>),
     /// An OS process started by __OS_spawn__.
     OSProc(Rc<OSProcObj>),
+    /// The values of the variables of a frame (module::frame_chain): only the value of an LVEnv
+    /// node, never one that a program sees.
+    Frame(Rc<Vec<Value>>),
 }
 
 /// A raw OS file descriptor as a ConMa value.
@@ -609,6 +612,7 @@ pub fn identity(v: &Value) -> usize {
         Value::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Stream(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::OSProc(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Frame(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Prim(p) => *p as *const _ as *const u8 as usize,
         Value::Raw(s) | Value::StrNode(s) => match s {
             Sexp::List(l) => Rc::as_ptr(l) as *const u8 as usize,
@@ -817,6 +821,60 @@ pub fn lv_push(env: &LVEnv, value: Value) -> LVEnv {
     Some(Rc::new(LVNode { value, next: env.clone() }))
 }
 
+/// env with the values bound to the parameters of a Function whose Body has this
+/// BodyDef::frame: 0, a node for each value; 1, a new frame node with all of them; 2, added to
+/// the frame node at the head of env, in place if nothing else holds the node (and its values),
+/// otherwise in a copy of it.
+#[inline(never)]
+pub fn lv_bind(env: LVEnv, vals: impl Iterator<Item = Value>, frame: u8, size: u32) -> LVEnv {
+    match frame {
+        0 => {
+            let mut env = env;
+            for v in vals {
+                env = Some(Rc::new(LVNode { value: v, next: env }));
+            }
+            env
+        }
+        1 => {
+            let mut fr = Vec::with_capacity(size as usize);
+            fr.extend(vals);
+            Some(Rc::new(LVNode { value: Value::Frame(Rc::new(fr)), next: env }))
+        }
+        _ => {
+            let mut node = env.expect("lv_bind: no frame node");
+            if let Some(n) = Rc::get_mut(&mut node) {
+                if let Value::Frame(fr) = &mut n.value {
+                    match Rc::get_mut(fr) {
+                        Some(v) => v.extend(vals),
+                        None => {
+                            let mut v = (**fr).clone();
+                            v.extend(vals);
+                            *fr = Rc::new(v);
+                        }
+                    }
+                    return Some(node);
+                }
+                panic!("lv_bind: not a frame node");
+            }
+            let mut v = match &node.value {
+                Value::Frame(fr) => (**fr).clone(),
+                _ => panic!("lv_bind: not a frame node"),
+            };
+            v.extend(vals);
+            Some(Rc::new(LVNode { value: Value::Frame(Rc::new(v)), next: node.next.clone() }))
+        }
+    }
+}
+
+/// The variable at slot k of the frame node at the head of env (module::CExpr::S).
+#[inline]
+pub fn lv_slot(env: &LVEnv, k: usize) -> Option<&Value> {
+    match &env.as_ref()?.value {
+        Value::Frame(fr) => fr.get(k),
+        _ => None,
+    }
+}
+
 pub fn lv_get(env: &LVEnv, idx: usize) -> Option<&Value> {
     let mut cur = env.as_ref();
     let mut i = idx;
@@ -1018,6 +1076,7 @@ pub fn value_type_name(v: &Value) -> String {
         Value::VProc(_) => "VProc".into(),
         Value::Stream(s) => s.kind().into(),
         Value::OSProc(_) => "OSProc".into(),
+        Value::Frame(_) => "Frame".into(),
         Value::Null => "null".into(),
     }
 }
@@ -1039,6 +1098,6 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
         Value::VProc(_) => "VProc",
         Value::Stream(_) => "Stream",
         Value::OSProc(_) => "OSProc",
-        Value::Raw(_) | Value::Null => return Err("__type_name__: unknown value".into()),
+        Value::Raw(_) | Value::Null | Value::Frame(_) => return Err("__type_name__: unknown value".into()),
     })
 }

@@ -63,6 +63,7 @@
 | 部分適用、完全適用、過剰適用の印をソースやモジュールにつける | 2026-11-12 | 数えると、Closure の適用の 99.7〜100% が引数の数のちょうど合う適用で、部分適用は 0 回だった。VM は整数の比較 1 回で見分けている | 作らない | FAST-PLAN 4.1 |
 | 値を自分で確かめる条件分岐の組み込み（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`）。確かめ、Boolean の束縛、条件分岐を 1 ステップにする | 2026-11-13 | `richards_tuned.se` のコピーで、richards 2 が 15,199,166 → 13,542,821（null の 11 か所）、14,995,439（zero の 5 か所）、15,198,686（`__Number_if_greater__` の 1 か所、初期化だけ）、14,407,034（`__Number_if_greater_then_else__` の 5 か所）、12,546,962（`__Number_if_greater__` 以外の 21 か所）ステップ。richards 20 が Rust VM で 0.903、0.987、0.998、0.955、0.840 倍 | Rust VM だけに入れた（フロントエンド、変換版の VM、Python VM は知らない） | vm/README.md「Speed」、コミット 1e4c864 |
 | ローカル環境を配列のフレームにする | 2026-11-12 | 変数をたどる深さは平均 2〜3 と浅く、読む速さは上がらない。節を作って捨てる手間は、関数ごとのフレームとエスケープ解析なら減らせる見込み（未検討） | 作っていない | vm/README.md「Speed」、FAST-PLAN 8.2 |
+| Closure を作らず、LCont で 8 個以上の変数を束縛する鎖だけ、その変数を LVEnv の 1 つの節（フレーム）に置き、スロットで読む（モジュールを読み込むときに選ぶ。`--trace` と変換版のコードがあるモジュールでは使わない） | 2026-11-13 | nbody（`pair_step` が 43 個、読む深さの平均 7.45）が 0.87〜0.89 倍。ほかの bench/ と consh/bench は 0.98〜1.02 倍。閾値を 0 や 1 にすると loop と consh/bench の一部が 1.03〜1.04 倍、8 と 16 はフレームなしと同じ | 入れた（`CONMA_FRAME_MIN=n`、空で止める） | vm/README.md「Speed」、FAST-PLAN 8.2 |
 
 ## 5. wasm 版
 

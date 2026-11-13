@@ -232,6 +232,11 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
 
 /// The Table for the module file with this hash, if there is transpiled code for
 /// it and it has the same number of Functions.
+/// Whether the binary has transpiled code for the module whose file has this hash.
+pub fn has_code(hash: u64) -> bool {
+    generated::MODULES.iter().any(|m| m.hash == hash)
+}
+
 pub fn table_for(hash: u64, funcs: Vec<Rc<FuncDef>>) -> Option<Rc<Table>> {
     let m = generated::MODULES.iter().find(|m| m.hash == hash)?;
     if m.nfuncs != funcs.len() || m.fns.len() != funcs.len() || m.dfns.len() != funcs.len() {
