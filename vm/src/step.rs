@@ -137,29 +137,55 @@ fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gve
     Some(r)
 }
 
-/// Load a Body that applies __if_then_else__, __if__ or __unless__ (BodyDef::if_site)
-/// and do the next two steps with it, counting them (docs/FAST-PLAN-ja.md 4.3): when its
+/// Load a Body that applies __if_then_else__, __if__, __unless__, __if_null_then_else__,
+/// __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__, __Number_if_greater__ or
+/// __Number_if_greater_then_else__ (BodyDef::if_site) and do the next two steps with it, counting them (docs/FAST-PLAN-ja.md 4.3): when its
 /// Operator is that primitive and its condition a Boolean, the primitive would make the
-/// chosen clause the Operator (one step), and applying that Closure without parameters
+/// chosen clause the Operator (one step; __if_null_then_else__ and __unless_null__ choose by
+/// whether their first operand is __NULL__, __Number_if_zero_then_else__ and __Number_unless_zero__ by whether
+/// it is the Number 0, __Number_if_greater__ and __Number_if_greater_then_else__ by comparing
+/// their first two operands, and leave
+/// any other value to the primitive, which stops with an error), and applying that Closure without parameters
 /// would push the LCont to the CChain and load its Body (another step). Here the clause
 /// is loaded without making the Closures of the clauses. When __if__ or __unless__
 /// chooses the clause that does nothing, the primitive returns to the LCont (one step).
 /// None, without changing anything, when the Body is to be loaded as it is.
 fn load_if(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv: &Rc<GVEnv>) -> Option<PResult> {
+    use crate::module::{IF, IF_GREATER, IF_GREATER_THEN_ELSE, IF_NULL_THEN_ELSE, IF_THEN_ELSE, IF_ZERO_THEN_ELSE, UNLESS, UNLESS_NULL, UNLESS_ZERO};
     let name = match body.if_site {
-        crate::module::IF_THEN_ELSE => "__if_then_else__",
-        crate::module::IF => "__if__",
-        _ => "__unless__",
+        IF_THEN_ELSE => "__if_then_else__",
+        IF => "__if__",
+        UNLESS => "__unless__",
+        IF_NULL_THEN_ELSE => "__if_null_then_else__",
+        UNLESS_NULL => "__unless_null__",
+        IF_ZERO_THEN_ELSE => "__Number_if_zero_then_else__",
+        UNLESS_ZERO => "__Number_unless_zero__",
+        IF_GREATER => "__Number_if_greater__",
+        _ => "__Number_if_greater_then_else__",
     };
     match eval(body.operator.as_ref()?, lvenv, gvenv) {
         Ok(Value::Prim(p)) if p.name == name => {}
         _ => return None,
     }
-    let b = crate::prim::control::boolean_choice(&eval(&body.olist[0], lvenv, gvenv).ok()?)?;
+    let first = eval(&body.olist[0], lvenv, gvenv).ok()?;
+    let b = match body.if_site {
+        IF_NULL_THEN_ELSE | UNLESS_NULL => first.is_null(),
+        IF_ZERO_THEN_ELSE | UNLESS_ZERO => match first {
+            Value::Number(x) => x == 0.0,
+            _ => return None,
+        },
+        IF_GREATER | IF_GREATER_THEN_ELSE => match (first, eval(&body.olist[1], lvenv, gvenv).ok()?) {
+            (Value::Number(a), Value::Number(b)) => a > b,
+            _ => return None,
+        },
+        _ => crate::prim::control::boolean_choice(&first)?,
+    };
     let clause = match (body.if_site, b) {
-        (crate::module::IF_THEN_ELSE, true) | (crate::module::IF, true) => &body.olist[1],
-        (crate::module::IF_THEN_ELSE, false) => &body.olist[2],
-        (crate::module::UNLESS, false) => &body.olist[1],
+        (IF_THEN_ELSE | IF | IF_NULL_THEN_ELSE | IF_ZERO_THEN_ELSE, true) => &body.olist[1],
+        (IF_GREATER | IF_GREATER_THEN_ELSE, true) => &body.olist[2],
+        (IF_GREATER_THEN_ELSE, false) => &body.olist[3],
+        (IF_THEN_ELSE | IF_NULL_THEN_ELSE | IF_ZERO_THEN_ELSE, false) => &body.olist[2],
+        (UNLESS | UNLESS_NULL | UNLESS_ZERO, false) => &body.olist[1],
         _ => {
             // The clause that does nothing: return to the LCont without values.
             let lcont = match &body.lcont {

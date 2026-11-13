@@ -84,6 +84,12 @@ prims! {
     "__TRUE__"             => "prim_TRUE", control::true_;
     "__FALSE__"            => "prim_FALSE", control::false_;
     "__unless__"           => "prim_unless", control::unless;
+    "__if_null_then_else__" => "prim_if_null_then_else", control::if_null_then_else;
+    "__unless_null__"      => "prim_unless_null", control::unless_null;
+    "__Number_if_zero_then_else__" => "prim_Number_if_zero_then_else", control::number_if_zero_then_else;
+    "__Number_unless_zero__"      => "prim_Number_unless_zero", control::number_unless_zero;
+    "__Number_if_greater__" => "prim_Number_if_greater", control::number_if_greater;
+    "__Number_if_greater_then_else__" => "prim_Number_if_greater_then_else", control::number_if_greater_then_else;
     "__CFrame_get_Closure__" => "prim_CFrame_get_Closure", cchain::cframe_get_closure;
     "__CFrame_get_SInfo__" => "prim_CFrame_get_SInfo", cchain::cframe_get_sinfo;
     "__CFrame_new__"       => "prim_CFrame_new", cchain::cframe_new;

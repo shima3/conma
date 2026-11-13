@@ -66,8 +66,10 @@ pub struct BodyDef {
     /// FAST_LAZY_FORCE for the Body of __LazyList_force__ of include/util.se (mark_fast),
     /// 0 otherwise.
     pub fast: std::cell::Cell<u8>,
-    /// IF_THEN_ELSE, IF or UNLESS for a Body that applies __if_then_else__, __if__ or
-    /// __unless__ to its operands with each clause written as a function without parameters
+    /// IF_THEN_ELSE, IF, UNLESS, IF_NULL_THEN_ELSE, UNLESS_NULL, IF_ZERO_THEN_ELSE, UNLESS_ZERO
+    /// IF_GREATER or IF_GREATER_THEN_ELSE for a Body that applies __if_then_else__, __if__,
+    /// __unless__, __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__,
+    /// __Number_if_greater__ or __Number_if_greater_then_else__ to its operands with each clause written as a function without parameters
     /// (step.rs, load_if), 0 otherwise.
     pub if_site: u8,
     /// For a Body that applies one of INLINE_PRIMS, a global variable, with an LCont written as
@@ -121,6 +123,12 @@ fn prim_site_of(operator: &Option<CExpr>, lcont: &Option<CLCont>) -> bool {
 pub const IF_THEN_ELSE: u8 = 1;
 pub const IF: u8 = 2;
 pub const UNLESS: u8 = 3;
+pub const IF_NULL_THEN_ELSE: u8 = 4;
+pub const UNLESS_NULL: u8 = 5;
+pub const IF_ZERO_THEN_ELSE: u8 = 6;
+pub const UNLESS_ZERO: u8 = 7;
+pub const IF_GREATER: u8 = 8;
+pub const IF_GREATER_THEN_ELSE: u8 = 9;
 
 /// The kind of if_site of a Body (BodyDef::if_site).
 fn if_site_of(operator: &Option<CExpr>, olist: &[CExpr]) -> u8 {
@@ -129,13 +137,26 @@ fn if_site_of(operator: &Option<CExpr>, olist: &[CExpr]) -> u8 {
             "__if_then_else__" => IF_THEN_ELSE,
             "__if__" => IF,
             "__unless__" => UNLESS,
+            "__if_null_then_else__" => IF_NULL_THEN_ELSE,
+            "__unless_null__" => UNLESS_NULL,
+            "__Number_if_zero_then_else__" => IF_ZERO_THEN_ELSE,
+            "__Number_unless_zero__" => UNLESS_ZERO,
+            "__Number_if_greater__" => IF_GREATER,
+            "__Number_if_greater_then_else__" => IF_GREATER_THEN_ELSE,
             _ => return 0,
         },
         _ => return 0,
     };
-    let n = if kind == IF_THEN_ELSE { 3 } else { 2 };
+    let n = match kind {
+        IF_GREATER_THEN_ELSE => 4,
+        IF_THEN_ELSE | IF_NULL_THEN_ELSE | IF_ZERO_THEN_ELSE | IF_GREATER => 3,
+        _ => 2,
+    };
+    // the operands that are clauses (__Number_if_greater__ and __Number_if_greater_then_else__
+    // compare the first two)
+    let first_clause = if matches!(kind, IF_GREATER | IF_GREATER_THEN_ELSE) { 2 } else { 1 };
     let clause = |e: &CExpr| matches!(e, CExpr::F(f) if f.params.is_empty() && !f.variadic && f.body.is_some());
-    if olist.len() == n && olist[1..].iter().all(clause) {
+    if olist.len() == n && olist[first_clause..].iter().all(clause) {
         kind
     } else {
         0
@@ -373,7 +394,9 @@ pub fn module_files(module: &Sexp) -> String {
 /// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
 /// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs),
 /// "boolean", the primitives __TRUE__ and __FALSE__, and "control", __if_then_else__, __if__,
-/// __unless__ and __Cont_get__ (prim/control.rs, prim/cchain.rs).
+/// __unless__, __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__,
+/// __Number_if_greater__, __Number_if_greater_then_else__ and __Cont_get__ (prim/control.rs,
+/// prim/cchain.rs).
 pub const FAST_FEATURES: &[&str] = &["bitwise32", "boolean", "control"];
 
 /// True if the module uses the feature "boolean" of fast ConMa: __TRUE__ and

@@ -1,5 +1,7 @@
-//! __TRUE__, __FALSE__, __if_then_else__, __if__ and __unless__: the ConMa
-//! definitions of include/control.se in fewer steps.
+//! __TRUE__, __FALSE__, __if_then_else__, __if__, __unless__,
+//! __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__ and
+//! __Number_unless_zero__: the ConMa definitions of include/ref/control.se (and of
+//! a test with __is_null__ or __Number_is_zero__ before them) in fewer steps.
 //!
 //! A Boolean is one of the two Closures `,(t f) __NULL__ t` and
 //! `,(t f) __NULL__ f` (as the primitives return them in concise ConMa, and as
@@ -46,18 +48,22 @@ pub fn boolean_choice(v: &Value) -> Option<bool> {
     }
 }
 
+/// Apply the clause chosen by b (then if b) with the LCont: __nop__ returns
+/// nothing to the LCont.
+fn choose_clause(m: &mut Machine, vp: &mut VProc, b: bool, then: Value, els: Value) {
+    vp.olist.clear();
+    let clause = if b { then } else { els };
+    if m.is_nop(&clause) {
+        vp.prim_return0();
+    } else {
+        vp.operator = clause; // applied with the LCont
+    }
+}
+
 fn choose(m: &mut Machine, vp: &mut VProc, boolean: Value, then: Value, els: Value) -> PResult {
     vp.olist.clear();
     match boolean_choice(&boolean) {
-        Some(b) => {
-            let clause = if b { then } else { els };
-            if m.is_nop(&clause) {
-                // __nop__ returns nothing to the LCont.
-                vp.prim_return0();
-            } else {
-                vp.operator = clause; // applied with the LCont
-            }
-        }
+        Some(b) => choose_clause(m, vp, b, then, els),
         None => {
             // As the ConMa definition: the LCont goes to the CChain, the
             // Boolean is applied to the clauses, and the Closure ,(clause) clause
@@ -100,6 +106,79 @@ pub fn unless(m: &mut Machine, vp: &mut VProc) -> PResult {
     let boolean = take_at(vp, 0);
     let nop = m.nop_closure();
     choose(m, vp, boolean, nop, els)
+}
+
+/// __if_null_then_else__ Value then else: then if Value is __NULL__, else
+/// otherwise (`__is_null__ Value ,(b) __if_then_else__ b then else` in one step).
+pub fn if_null_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__if_null_then_else__", 3)?;
+    let els = take_at(vp, 2);
+    let then = take_at(vp, 1);
+    let v = take_at(vp, 0);
+    choose_clause(m, vp, v.is_null(), then, els);
+    Ok(())
+}
+
+/// __unless_null__ Value else: else unless Value is __NULL__
+/// (`__is_null__ Value ,(b) __unless__ b else` in one step).
+pub fn unless_null(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__unless_null__", 2)?;
+    let els = take_at(vp, 1);
+    let v = take_at(vp, 0);
+    let nop = m.nop_closure();
+    choose_clause(m, vp, v.is_null(), nop, els);
+    Ok(())
+}
+
+/// __Number_if_zero_then_else__ Number then else: then if Number is 0, else otherwise
+/// (`__Number_is_zero__ Number ,(b) __if_then_else__ b then else` in one step);
+/// an error, as __Number_is_zero__ gives, if it is not a Number.
+pub fn number_if_zero_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__Number_if_zero_then_else__", 3)?;
+    let x = crate::prim::number::check_number("__Number_if_zero_then_else__", &vp.olist[0])?;
+    let els = take_at(vp, 2);
+    let then = take_at(vp, 1);
+    choose_clause(m, vp, x == 0.0, then, els);
+    Ok(())
+}
+
+/// __Number_unless_zero__ Number else: else unless Number is 0
+/// (`__Number_is_zero__ Number ,(b) __unless__ b else` in one step).
+pub fn number_unless_zero(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__Number_unless_zero__", 2)?;
+    let x = crate::prim::number::check_number("__Number_unless_zero__", &vp.olist[0])?;
+    let els = take_at(vp, 1);
+    let nop = m.nop_closure();
+    choose_clause(m, vp, x == 0.0, nop, els);
+    Ok(())
+}
+
+/// __Number_if_greater__ Number Number then: then if the first Number is greater
+/// than the second, nothing otherwise (`__Number_subtract__ a b ,(d)
+/// __Number_is_positive__ d ,(g) __if__ g then` in one step); an error if one is not
+/// a Number.
+pub fn number_if_greater(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__Number_if_greater__", 3)?;
+    let a = crate::prim::number::check_number("__Number_if_greater__", &vp.olist[0])?;
+    let b = crate::prim::number::check_number("__Number_if_greater__", &vp.olist[1])?;
+    let then = take_at(vp, 2);
+    let nop = m.nop_closure();
+    choose_clause(m, vp, a > b, then, nop);
+    Ok(())
+}
+
+/// __Number_if_greater_then_else__ Number Number then else: then if the first
+/// Number is greater than the second, else otherwise (`__Number_subtract__ a b ,(d)
+/// __Number_is_positive__ d ,(g) __if_then_else__ g then else` in one step); an
+/// error if one is not a Number.
+pub fn number_if_greater_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__Number_if_greater_then_else__", 4)?;
+    let a = crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[0])?;
+    let b = crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[1])?;
+    let els = take_at(vp, 3);
+    let then = take_at(vp, 2);
+    choose_clause(m, vp, a > b, then, els);
+    Ok(())
 }
 
 /// __TRUE__ then else ,(then): passes then to the LCont, without applying it.
