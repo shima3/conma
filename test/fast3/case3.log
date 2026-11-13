@@ -1,3 +1,3 @@
 function then
-Error in VProc 1 at step 33: conma/test/fast3/test.se:7:3: __Ref_get__: expected Ref, got String
+Error in VProc 1 at step 37: conma/test/fast3/test.se:7:3: __Ref_get__: expected Ref, got String
 exit: 1

@@ -29,7 +29,7 @@ cp "$js/conma.js" "$js/web/conma.js"
 # (( )) の SJS のモジュールを、ページの中で作るための ConMa のフロントエンド（web/consh-core.js の buildModule）
 cp "$root/vm/frontend.module.se" "$js/web/frontend.module.se"
 module="$js/web/consh.module.se"
-# ConSh は高速版（consh/include と標準ライブラリの include。consh/include/README-ja.md）
+# ConSh は高速版（consh/include と標準ライブラリの include/fast と include。consh/include/README-ja.md）
 main="$consh/include/consh_main.se"
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
@@ -37,7 +37,7 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" \( -name 
   ast_tmp=$(mktemp "$js/web/consh.ast.XXXXXX")
   module_tmp=$(mktemp "$module.XXXXXX")
   trap 'rm -f "$ast_tmp" "$module_tmp"' EXIT
-  "$root/bin/includer" --include "$consh/include" --include "$root/include" "$main" \
+  "$root/bin/includer" --include "$consh/include" --include "$root/include/fast" --include "$root/include" "$main" \
     | sed -e 's/"\/.*\/conma/"conma/' > "$ast_tmp"
   "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   mv -f "$module_tmp" "$module"

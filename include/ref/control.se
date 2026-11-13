@@ -1,7 +1,10 @@
-;; VM の組み込みと同じ働きをする、ConMa 版の制御の関数。
-;; このファイルを include すると、ここで定義した関数が、同じ名前の組み込みの代わりに使われる
-;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。
-;; ステップを ConMa の関数として追いたいときや、組み込みと結果を比べるときに使う
+;; 制御の関数 __if_then_else__、__if__、__unless__、__Cont_get__ の、簡潔版 ConMa の定義。
+;; 簡潔版では、include/ref/pure.se がこのファイルを include するので、どのモジュールもこの定義を使う。
+;; 高速版 ConMa では、この 4 つは組み込みである（機能 "control"。フロントエンドが (Uses "control") を書き、
+;; bin/concise がこの定義を入れて簡潔版に直す。docs/FAST-PLAN-ja.md の 4.6）。
+;; 高速版のプログラムが (include "ref/control.se") とすると、組み込みの代わりにこの定義が使われる
+;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。ステップを ConMa の関数として追いたいときや、
+;; 組み込みと結果を比べるときに使う。__Cont_get__ の定義が使う __CChain_pop_LCont__ は util.se にある
 (include "util.se")
 
 ;; Boolean を then と else に適用し、返った節を呼ぶ

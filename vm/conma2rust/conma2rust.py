@@ -44,7 +44,7 @@ from pathlib import Path
 # to the LCont (prim_return) or apply a value (onError) with the LCont kept.
 # They do not use the LCont or the CChain as values, block, or switch VProcs.
 CHAIN = {
-    "__is_null__", "__type_name__",
+    "__is_null__", "__type_name__", "__TRUE__", "__FALSE__",
     "__LList_cons__", "__LList_uncons__", "__LList_append__", "__LList_length__",
     "__Number_fromString__", "__Number_toString__", "__Number_is_zero__",
     "__Number_is_positive__", "__Number_is_negative__", "__Number_add__",
@@ -152,8 +152,10 @@ def unquote(atom):
 
 # The features of fast ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
 # as FAST_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
-# (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN.
-FAST_FEATURES = ("bitwise32",)
+# (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
+# "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
+# __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before).
+FAST_FEATURES = ("bitwise32", "boolean", "control")
 
 
 def tag(x):
@@ -716,6 +718,12 @@ class Fuser:
             # the escape continuation, in a Rust variable (made in a clause, it
             # would lack the CFrames of the clauses: left to the VM)
             out.append(f"let {self.xn(d)} = make_cont(m, vp);")
+            return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
+        if one and name in ("__TRUE__", "__FALSE__") and len(b.olist) == 2 and None not in args:
+            # the primitive Boolean applied to two values: the value it chooses (without applying
+            # it), the values of both operands read first, as the VM reads them when it loads the Body
+            out.append(f"let a0 = {args[0]}; let a1 = {args[1]};")
+            out.append(f"let {self.xn(d)} = {'a0' if name == '__TRUE__' else 'a1'};")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
         if (one and op[0] == "L" and op[1] < d and self.local(d, locals_, op[1])[1] == "b"
                 and len(b.olist) == 2 and None not in args):

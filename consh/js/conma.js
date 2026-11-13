@@ -42,8 +42,9 @@
 // SIGINT (a browser does it for Ctrl-C anyway).
 // The host moves the data of the pipe ends of kinds 2 and 3 with vm.read,
 // vm.write and vm.close, and calls vm.childEvent() when a process exits.
-// buildModule(source, cwd), if given, makes the module of a ConMa source file
-// for __VProc_spawn__, as conma build does: {ok: true, text} with the file
+// buildModule(source, cwd, concise), if given, makes the module of a ConMa source file
+// for __VProc_spawn__, as conma build does (of concise ConMa if concise, when the
+// program runs a module of concise ConMa): {ok: true, text} with the file
 // names in SInfo relative to the directory above the repository, or
 // {ok: false, message} with the first line of the error.
 // jsDone(vm), if given, is called when the result of a call of JavaScript
@@ -1690,13 +1691,13 @@ var ConMaVM = (function () {
           return c === null ? 999 : c;
         },
         host_proc_kill: (id, sig) => (hostProc ? hostProc.kill(id, sig) : -3),
-        host_build_module: (srcPtr, srcLen, cwdPtr, cwdLen, out, cap) => {
-          const key = str(srcPtr, srcLen) + "\0" + str(cwdPtr, cwdLen);
+        host_build_module: (srcPtr, srcLen, cwdPtr, cwdLen, out, cap, concise) => {
+          const key = str(srcPtr, srcLen) + "\0" + str(cwdPtr, cwdLen) + "\0" + concise;
           if (!lastBuild || lastBuild.key !== key) {
             let r;
             if (!buildModule) r = "1cannot make a module in this host";
             else {
-              const b = buildModule(str(srcPtr, srcLen), str(cwdPtr, cwdLen));
+              const b = buildModule(str(srcPtr, srcLen), str(cwdPtr, cwdLen), concise !== 0);
               r = b.ok ? "0" + b.text : "1" + b.message;
             }
             lastBuild = { key, bytes: utf8(r) };

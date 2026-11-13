@@ -1,5 +1,5 @@
 thunk
 b
 b
-Error in VProc 1 at step 101: conma/test/fast2/test.se:7:3: __Ref_get__: expected Ref, got String
+Error in VProc 1 at step 119: conma/test/fast2/test.se:7:3: __Ref_get__: expected Ref, got String
 exit: 1

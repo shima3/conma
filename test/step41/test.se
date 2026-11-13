@@ -1,7 +1,7 @@
-;; Step41：高速版 ConMa の機能 "bitwise32" の代わりの定義（include/fast/bitwise32.se。docs/BITWISE-PLAN-ja.md）。
+;; Step41：高速版 ConMa の機能 "bitwise32" の代わりの定義（include/ref/bitwise32.se。docs/BITWISE-PLAN-ja.md）。
 ;; JavaScript と同じ 32 ビットの意味で、ログは Node.js で同じ式を求めた値（test.js）
 (include "util.se")
-(include "fast/bitwise32.se")
+(include "ref/bitwise32.se")
 
 (define println ,(str)
   __String_concat__ str "\n" ,(line)

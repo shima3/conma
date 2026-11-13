@@ -155,6 +155,41 @@ pub fn include_dir() -> PathBuf {
     }
 }
 
+thread_local! {
+    /// True when the program runs a module of concise ConMa (without (Uses ...)):
+    /// the modules __VProc_spawn__ makes are then of concise ConMa too, as the
+    /// Python VM makes them, so that the steps and traces are the same.
+    static CONCISE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Make the modules of __VProc_spawn__ of concise ConMa (main.rs, for a module
+/// without (Uses ...)).
+pub fn set_concise(concise: bool) {
+    CONCISE.with(|c| c.set(concise));
+}
+
+/// True if the modules of __VProc_spawn__ are of concise ConMa (set_concise).
+#[allow(dead_code)]
+pub fn is_concise() -> bool {
+    CONCISE.with(|c| c.get())
+}
+
+/// The include directories of the standard library: for fast ConMa include/fast
+/// (if it is there), then include/; for concise ConMa (set_concise) include/ref,
+/// then include/ (docs/FAST-PLAN-ja.md 4.6).
+pub fn include_args() -> Vec<String> {
+    let inc = include_dir();
+    let first = inc.join(if CONCISE.with(|c| c.get()) { "ref" } else { "fast" });
+    let mut a = Vec::new();
+    if first.is_dir() {
+        a.push("--include".to_string());
+        a.push(first.to_string_lossy().into_owned());
+    }
+    a.push("--include".to_string());
+    a.push(inc.to_string_lossy().into_owned());
+    a
+}
+
 /// Make the module of source_file (relative to cwd) with the ConMa frontend
 /// that this VM embeds (conma build, in another process of this executable),
 /// and load it, as load_program in test/vproc_step.py does with bin/includer
@@ -188,8 +223,7 @@ fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| format!("cannot run the frontend: {}", crate::sys::errno_str(&e)))?;
     let res = Command::new(exe)
         .arg("build")
-        .arg("--include")
-        .arg(include_dir())
+        .args(include_args())
         .arg(source_file)
         .current_dir(cwd)
         .stdin(Stdio::null())

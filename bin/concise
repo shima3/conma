@@ -15,13 +15,21 @@ The features it knows:
 
 * "bitwise32" (docs/BITWISE-PLAN-ja.md): the bitwise primitives __Number_and32__
   and the others. Their replacement definitions, functions of concise ConMa with
-  the same names (include/fast/bitwise32.se, made into a module with
+  the same names (include/ref/bitwise32.se, made into a module with
   bin/includer and bin/resolver), are put into the module: a global of the
   module that is a primitive of the feature (Undefined) gets the definition, and
   the other globals of the definitions are matched to the globals of the module
   of the same names, or added after them. A global the module defines itself is
   kept. On every VM, a global with a definition is used before a primitive of
   the same name.
+* "boolean": __TRUE__ and __FALSE__, built in in fast ConMa. Their definitions
+  in concise ConMa (include/ref/pure.se) are put in the same way.
+* "control": __if_then_else__, __if__, __unless__ and __Cont_get__, built in in
+  fast ConMa, with their definitions of include/ref/control.se.
+"control" and "boolean" are done after "bitwise32", whose definitions use them
+(left Undefined in the module of the definitions, which is made with include/),
+and either of them puts the definitions of the other too (include/ref/pure.se
+includes include/ref/control.se, which includes pure.se).
 
 Errors go to standard error, with exit code 1.
 """
@@ -33,8 +41,8 @@ import sys
 # The features of fast ConMa this translator rewrites (as FAST_FEATURES of
 # vm/src/module.rs), and the file of the replacement definitions of each
 # (under include/ of the repository)
-FEATURES = ("bitwise32",)
-DEFINITIONS = {"bitwise32": "fast/bitwise32.se"}
+FEATURES = ("bitwise32", "boolean", "control")
+DEFINITIONS = {"bitwise32": "ref/bitwise32.se", "boolean": "ref/pure.se", "control": "ref/control.se"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -214,12 +222,18 @@ def put_definitions(text, feature):
 def concise(text):
     """The concise module of the text of a module."""
     _, _, items = module_items(text)
+    used = []
     for (j, k, atoms) in items:
         if atoms and atoms[0] == "Uses":
             for f in atoms[1:]:
                 name = f[1:-1] if f and f.startswith('"') else f
                 if name in DEFINITIONS:
-                    text = put_definitions(text, name)
+                    used.append(name)
+    # "control" and "boolean" after "bitwise32": its definitions use them (left Undefined in them)
+    if "bitwise32" in used:
+        used += [f for f in ("control", "boolean") if f not in used]
+    for name in sorted(used, key=lambda n: ("bitwise32", "control", "boolean").index(n)):
+        text = put_definitions(text, name)
     return remove_uses(text)
 
 

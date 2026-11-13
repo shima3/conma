@@ -255,6 +255,13 @@ impl Machine {
         }
     }
 
+    /// For a module of fast ConMa with the feature "boolean" (module::uses_boolean):
+    /// the Booleans the primitives return are the primitives __TRUE__ and __FALSE__,
+    /// not the Closures of concise ConMa.
+    pub fn use_prim_booleans(&mut self) {
+        self.true_closure = Value::Prim(crate::prim::lookup("__TRUE__").expect("__TRUE__"));
+        self.false_closure = Value::Prim(crate::prim::lookup("__FALSE__").expect("__FALSE__"));
+    }
     pub fn true_closure(&self) -> Value {
         self.true_closure.clone()
     }

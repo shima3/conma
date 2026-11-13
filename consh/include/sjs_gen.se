@@ -1139,7 +1139,7 @@
   Sjs_get d "target" ,(target)
   Sjs_get target "t" ,(tt)
   __String_equal__ tt "id" ,(isId)
-  __if__ isId
+  __if_then_else__ isId
     (,()
       Sjs_get target "name" ,(name)
       __Dict_lookup_or__ used name (,(k) __NULL__ __FALSE__) ,(u1)

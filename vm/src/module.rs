@@ -82,6 +82,8 @@ pub struct BodyDef {
 pub const INLINE_PRIMS: &[&str] = &[
     "__Cont_get__",
     "__Dict_lookup_or__",
+    "__TRUE__",
+    "__FALSE__",
     "__Dict_put__",
     "__is_null__",
     "__type_name__",
@@ -369,8 +371,17 @@ pub fn module_files(module: &Sexp) -> String {
 }
 
 /// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
-/// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs).
-pub const FAST_FEATURES: &[&str] = &["bitwise32"];
+/// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs),
+/// "boolean", the primitives __TRUE__ and __FALSE__, and "control", __if_then_else__, __if__,
+/// __unless__ and __Cont_get__ (prim/control.rs, prim/cchain.rs).
+pub const FAST_FEATURES: &[&str] = &["bitwise32", "boolean", "control"];
+
+/// True if the module uses the feature "boolean" of fast ConMa: __TRUE__ and
+/// __FALSE__ are primitives (prim/control.rs), and so are the Booleans the
+/// primitives return (sched.rs, Machine::use_prim_booleans).
+pub fn uses_boolean(module: &Sexp) -> bool {
+    fast_features(module).iter().any(|f| unquote(f) == "boolean")
+}
 
 /// The features of fast ConMa that a module uses: the items of its (Uses ...)
 /// items, as written.

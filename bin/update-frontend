@@ -16,7 +16,7 @@ out="${1:-$root/vm/frontend.module.se}"
 tmp="$(mktemp -d /tmp/conma-frontend.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 relative() { sed -e "s|\"$root/|\"conma/|g"; }
-"$root/bin/includer" --include "$root/include" "$root/include/frontend.se" | relative | "$root/bin/resolver" > "$tmp/stage1.se"
+"$root/bin/includer" --include "$root/include/fast" --include "$root/include" "$root/include/frontend.se" | relative | "$root/bin/resolver" > "$tmp/stage1.se"
 if [ -x "$root/vm/target/release/conma" ]; then vm=("$root/vm/target/release/conma"); else vm=(python3 "$root/test/vproc_run.py"); fi
-(cd "$root" && "${vm[@]}" --main -- "$tmp/stage1.se" --include include include/frontend.se) | relative > "$tmp/stage2.se"
+(cd "$root" && "${vm[@]}" --main -- "$tmp/stage1.se" --include include/fast --include include include/frontend.se) | relative > "$tmp/stage2.se"
 mv "$tmp/stage2.se" "$out"

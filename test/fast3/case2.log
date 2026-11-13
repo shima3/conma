@@ -2,5 +2,5 @@ both
 first
 first
 neither
-Error in VProc 1 at step 46: conma/test/fast3/test.se:7:3: __Ref_get__: expected Ref, got String
+Error in VProc 1 at step 82: conma/test/fast3/test.se:7:3: __Ref_get__: expected Ref, got String
 exit: 1

@@ -1,7 +1,9 @@
 #!/bin/bash
 # 各 case を、組み込みの __if_then_else__、__if__、__unless__（test.se）と ConMa 版（conma.se）の両方で実行して比べる
 . "$(dirname "$0")/../common.sh"
-resolve test.se conma.se
+# どちらも高速版 ConMa で作る（include/fast を先に探す）。test.se は組み込み（(Uses "control")）を、conma.se は
+# include/ref/control.se の定義を使う。Python VM（簡潔版）では、test/vm.sh が bin/concise で直すので、どちらも定義になる
+CONMA_FAST=1 resolve test.se conma.se
 for c in case1 case2 case3 case4 case5 case6
 do
   for m in test conma

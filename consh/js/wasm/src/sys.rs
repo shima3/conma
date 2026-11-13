@@ -106,7 +106,7 @@ extern "C" {
     /// length, which may be more than cap: then the call is made again with
     /// the same arguments, and the host gives the same text without making it
     /// again.
-    fn host_build_module(src_ptr: *const u8, src_len: usize, cwd_ptr: *const u8, cwd_len: usize, out: *mut u8, cap: usize) -> i32;
+    fn host_build_module(src_ptr: *const u8, src_len: usize, cwd_ptr: *const u8, cwd_len: usize, out: *mut u8, cap: usize, concise: i32) -> i32;
 }
 
 /// A result of a host_fs_ function: the value, or the error of minus it.
@@ -512,9 +512,11 @@ pub fn spawn(args: &[String], fds: &[Option<i32>], env: &[(String, String)], cwd
 }
 
 /// __VProc_spawn__: the module text of the source file, made by the host, or
-/// the first line of the error.
+/// the first line of the error; of concise ConMa when the program runs a module
+/// of concise ConMa (prim::vprocs::is_concise), as the native VM makes it.
 pub fn build_module(source: &str, cwd: &str) -> Result<String, String> {
-    let r = host_text(|out, cap| unsafe { host_build_module(source.as_ptr(), source.len(), cwd.as_ptr(), cwd.len(), out, cap) })
+    let concise = crate::prim::vprocs::is_concise() as i32;
+    let r = host_text(|out, cap| unsafe { host_build_module(source.as_ptr(), source.len(), cwd.as_ptr(), cwd.len(), out, cap, concise) })
         .map_err(|e| strerror(&e))?;
     match r.split_at(r.len().min(1)) {
         ("0", text) => Ok(text.to_string()),

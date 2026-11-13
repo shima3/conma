@@ -329,7 +329,7 @@ The LCont of the application of `return` is never used.
 
 `__type_name__` gives `Closure` for `return`; in traces it is written `(__Cont__ "n")`, where `n` numbers the continuations made so far, as a Ref is written (the kept CChain may contain `return` itself).
 
-**ConMa version:** `include/control.se` defines `__Cont_get__` in ConMa with the same behavior, on top of `__CChain_pop_LCont__`, `__CChain_get__` and `__CChain_set__`.
+**Fast ConMa only (since 2026-11-13):** `__Cont_get__` is a primitive of fast ConMa (the feature `"control"`, section 16). In concise ConMa it is the ConMa definition of `include/ref/control.se`, with the same behavior, on top of `__CChain_pop_LCont__`, `__CChain_get__` and `__CChain_set__`; a program of fast ConMa that includes `ref/control.se` uses that definition instead of the primitive.
 A program that includes `control.se` uses that definition instead of the built-in one, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
 The two versions differ only in what can be seen of the steps: the ConMa version takes more than 30 steps for `__Cont_get__` and its `return` together, where the primitive takes 2 (one each), and its `return` is a variadic Closure with the CFrames of `control.se` in traces and in the CChain while it runs.
 
@@ -699,11 +699,11 @@ With the mark, the interpreter keeps the CChain of the VProc at the claim (not a
 
 ## 15. Control Primitives
 
-`__if_then_else__`, `__if__` and `__unless__` are primitives that do what their ConMa definitions in `include/control.se` do (see "Control flow" in SPEC.md), in fewer steps.
-A program that includes `control.se` uses those definitions instead, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
+`__if_then_else__`, `__if__` and `__unless__` are primitives of fast ConMa (the feature `"control"`, section 16, since 2026-11-13) that do what their ConMa definitions in `include/ref/control.se` do (see "Control flow" in SPEC.md), in fewer steps. In concise ConMa they are those definitions: `include/ref/pure.se` includes `control.se`, and the Python VM has no such primitives.
+A program of fast ConMa that includes `ref/control.se` uses those definitions instead, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
 
 A **Boolean** here is a Closure that is one of the two Closures `,(t f) __NULL__ t` and `,(t f) __NULL__ f`, whatever its parameters are named: two parameters (left after a partial application), a Body whose Operator is null, whose OList is the first or the second parameter, and without an LCont.
-The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `include/pure.se`, are of this form.
+The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `include/ref/pure.se`, are of this form. In fast ConMa, the primitives `__TRUE__` and `__FALSE__` of the feature `"boolean"` (section 16) are Booleans too, and a module with that feature gets them from the primitives instead.
 
 ### **`__if_then_else__ Boolean then else`**
 * **Description**: Applies `then` or `else`, as `Boolean` chooses, with the LCont.
@@ -718,7 +718,7 @@ The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `incl
 * **Behavior**: As `__if_then_else__`, with the Closure `,()` as the other clause. When that clause is chosen for a Boolean, the primitive returns to the LCont without values in the same step, as `__nop__` does.
 * **Error**: Stops the VProc with an error if there are fewer than two operands.
 
-**Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error.
+**Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error, and surplus operands, which the primitives drop, are applied to what the definitions return (an `__if__` written with two clauses, which the primitive ran as if the second were not there, fails with the definition: `consh/include/sjs_gen.se` had one, found when concise ConMa got the definitions).
 
 ---
 
@@ -728,7 +728,7 @@ These primitives are not part of concise ConMa, the language defined above and i
 
 ### Feature `"bitwise32"`: bitwise operations (docs/BITWISE-PLAN-ja.md)
 
-The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/fast/bitwise32.se`.
+The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/ref/bitwise32.se`.
 
 ### **`__Number_and32__ a b ,(Number)`** / **`__Number_or32__`** / **`__Number_xor32__`**
 * **Description**: `a & b`, `a | b`, `a ^ b` of JavaScript.
@@ -738,4 +738,18 @@ The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integ
 
 ### **`__Number_shl32__ a n ,(Number)`** / **`__Number_shr32__`** / **`__Number_ushr32__`**
 * **Description**: `a << n`, `a >> n` (sign-propagating) and `a >>> n` (zero-fill, an unsigned result) of JavaScript.
+
+### Feature `"boolean"`: the Booleans as primitives (docs/FAST-PLAN-ja.md 4.6)
+
+In concise ConMa, `__TRUE__` and `__FALSE__` are the Closures `,(then else) __NULL__ then` and `,(then else) __NULL__ else`, defined in `include/ref/pure.se`. A module of fast ConMa is made with `include/fast` before `include/` (`conma build`, `bin/update-frontend`, `bench/module.sh`, ConSh), where `include/fast/pure.se` does not define them, so they are globals without a definition, and the frontend writes `(Uses "boolean")`. Modules of concise ConMa are made with `include/ref` before `include/` (test/resolver.sh, the Python VM). Replacement definitions: `include/ref/pure.se`.
+
+In a module with this feature, the Booleans the primitives return (`__is_null__`, the Number predicates, `__String_equal__` and the others) are these primitives too, not the Closures. `__type_name__` gives `"Closure"` for both, and `__if_then_else__`, `__if__` and `__unless__` take both.
+
+### Feature `"control"`: the control functions as primitives (docs/FAST-PLAN-ja.md 4.6)
+
+`__if_then_else__`, `__if__`, `__unless__` (section 15) and `__Cont_get__` (section 4). In concise ConMa they are the ConMa definitions of `include/ref/control.se`, which `include/ref/pure.se` includes; `include/fast/pure.se` does not, so a module of fast ConMa uses them without a definition, and the frontend writes `(Uses "control")`. Replacement definitions: `include/ref/control.se`.
+
+### **`__TRUE__ then else ,(then)`** / **`__FALSE__ then else ,(else)`**
+* **Description**: Passes `then` (`__TRUE__`) or `else` (`__FALSE__`) to the LCont, without applying it, in one step (the Closure takes two).
+* **Error**: Stops the VProc with `__TRUE__: missing argument(s)` with fewer than two operands, where the Closure would be applied partially. Operands after the second are dropped, as by other primitives.
 

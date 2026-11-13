@@ -152,7 +152,7 @@ pub fn multiply(_m: &mut Machine, vp: &mut VProc) -> PResult {
 // The 32-bit meaning of JavaScript: the operands are made 32-bit integers with ToInt32 (NaN and
 // infinities 0, toward 0, the remainder by 2^32), the results are signed 32-bit integers
 // (__Number_ushr32__ unsigned), and a shift count is the low 5 bits of the ToUint32 of the right
-// operand. include/fast/bitwise32.se defines the same in concise ConMa.
+// operand. include/ref/bitwise32.se defines the same in concise ConMa.
 
 /// ToUint32 of JavaScript.
 pub fn to_uint32(x: f64) -> u32 {

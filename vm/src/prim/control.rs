@@ -1,9 +1,11 @@
-//! __if_then_else__, __if__ and __unless__: the ConMa definitions of
-//! include/control.se in fewer steps.
+//! __TRUE__, __FALSE__, __if_then_else__, __if__ and __unless__: the ConMa
+//! definitions of include/control.se in fewer steps.
 //!
-//! A Boolean that is one of the two Closures `,(t f) __NULL__ t` and
-//! `,(t f) __NULL__ f` (as the primitives return them, and __TRUE__ and
-//! __FALSE__ of pure.se) chooses its clause at once. Any other value is
+//! A Boolean is one of the two Closures `,(t f) __NULL__ t` and
+//! `,(t f) __NULL__ f` (as the primitives return them in concise ConMa, and as
+//! include/ref/pure.se defines __TRUE__ and __FALSE__), or one of the
+//! primitives __TRUE__ and __FALSE__ of fast ConMa (the feature "boolean",
+//! which the primitives then return); it chooses its clause at once. Any other value is
 //! applied to the two clauses, as the ConMa definition does, and the clause it
 //! passes back is applied.
 
@@ -13,10 +15,23 @@ use crate::sched::Machine;
 use crate::value::*;
 use crate::vproc::VProc;
 
-/// Some(true) for `,(t f) __NULL__ t`, Some(false) for `,(t f) __NULL__ f`,
-/// None for any other value.
+/// Some(true) for __TRUE__ and `,(t f) __NULL__ t`, Some(false) for __FALSE__
+/// and `,(t f) __NULL__ f`, None for any other value.
 pub fn boolean_choice(v: &Value) -> Option<bool> {
-    let Value::Closure(c) = v else { return None };
+    let c = match v {
+        Value::Prim(p) => {
+            let f = p.f as *const ();
+            return if f == true_ as fn(&mut Machine, &mut VProc) -> PResult as *const () {
+                Some(true)
+            } else if f == false_ as fn(&mut Machine, &mut VProc) -> PResult as *const () {
+                Some(false)
+            } else {
+                None
+            };
+        }
+        Value::Closure(c) => c,
+        _ => return None,
+    };
     if c.variadic || c.params().len() != 2 {
         return None;
     }
@@ -85,4 +100,20 @@ pub fn unless(m: &mut Machine, vp: &mut VProc) -> PResult {
     let boolean = take_at(vp, 0);
     let nop = m.nop_closure();
     choose(m, vp, boolean, nop, els)
+}
+
+/// __TRUE__ then else ,(then): passes then to the LCont, without applying it.
+pub fn true_(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__TRUE__", 2)?;
+    let then = take_at(vp, 0);
+    vp.prim_return1(then);
+    Ok(())
+}
+
+/// __FALSE__ then else ,(else): passes else to the LCont, without applying it.
+pub fn false_(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    check_n(vp, "__FALSE__", 2)?;
+    let els = take_at(vp, 1);
+    vp.prim_return1(els);
+    Ok(())
 }

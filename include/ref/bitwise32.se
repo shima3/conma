@@ -1,4 +1,5 @@
-;; 高速版 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。
+;; 高速版 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。簡潔版 ConMa のファイルなので include/ref に置く
+;; （2026-11-13 に include/fast から移した。docs/FAST-PLAN-ja.md の 4.6）。
 ;; ビット演算の 7 つのプリミティブと同じ名前、同じ意味の関数を、簡潔版 ConMa で書いたもの。高速版の VM（Rust、
 ;; wasm、変換版）はプリミティブで動かし、簡潔版の VM（Python）は、bin/concise がこの定義をモジュールに入れて動かす
 ;; （大域の名前に定義があれば、プリミティブより先に使われる）。

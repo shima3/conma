@@ -145,7 +145,7 @@ fn splice(chain: &Value, base: &Value, node: &Value) -> Value {
 /// the conditionals and __Cont_get__. They only change the registers of the
 /// VProc (and Refs, Dicts and so on); they do not block or switch VProcs.
 const SAFE_PRIMS: &[&str] = &[
-    "__is_null__", "__type_name__",
+    "__is_null__", "__type_name__", "__TRUE__", "__FALSE__",
     "__LList_cons__", "__LList_uncons__", "__LList_append__", "__LList_length__",
     "__Number_fromString__", "__Number_toString__", "__Number_is_zero__",
     "__Number_is_positive__", "__Number_is_negative__", "__Number_add__",

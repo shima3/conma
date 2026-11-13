@@ -7,6 +7,12 @@ import re
 FAST_PRIMITIVES = [
     ("bitwise32", ("__Number_and32__", "__Number_or32__", "__Number_xor32__", "__Number_not32__",
                    "__Number_shl32__", "__Number_shr32__", "__Number_ushr32__")),
+    # __TRUE__ and __FALSE__, built in in fast ConMa (include/fast/pure.se; concise ConMa defines them
+    # in include/ref/pure.se)
+    ("boolean", ("__TRUE__", "__FALSE__")),
+    # __if_then_else__, __if__, __unless__ and __Cont_get__, built in in fast ConMa (concise ConMa defines
+    # them in include/ref/control.se)
+    ("control", ("__if_then_else__", "__if__", "__unless__", "__Cont_get__")),
 ]
 
 class ASTNode:
@@ -262,7 +268,9 @@ class Resolver:
         filenames = [root.value for root in roots if root.value]
         f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
         # The features of fast ConMa the module uses (docs/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
-        # bitwise primitive (docs/BITWISE-PLAN-ja.md), a global of that name without a definition
+        # bitwise primitive (docs/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
+        # when it uses __if_then_else__, __if__, __unless__ or __Cont_get__, as a global of that name without a
+        # definition
         uses = [f for f, prims in FAST_PRIMITIVES
                 if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
         if uses:

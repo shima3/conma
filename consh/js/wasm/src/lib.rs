@@ -158,6 +158,9 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
             return 1;
         }
     };
+    let prim_booleans = module::uses_boolean(&module_sexp);
+    // a module of concise ConMa: __VProc_spawn__ makes modules of concise ConMa too (as vm/src/main.rs)
+    prim::vprocs::set_concise(module::fast_features(&module_sexp).is_empty());
     let gvenv = match module::load_module_transpiled(&module_sexp, Some(transpiled::fnv1a(module_text.as_bytes()))) {
         Ok(g) => g,
         Err(e) => {
@@ -182,6 +185,9 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
         None => Vec::new(),
     };
     let mut m = sched::Machine::new(trace);
+    if prim_booleans {
+        m.use_prim_booleans();
+    }
     m.blocking = false;
     // Run the transpiled code of the module, if the VM was built with some for it (as vm/src/main.rs
     // does, not with --trace)

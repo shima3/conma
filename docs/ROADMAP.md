@@ -37,7 +37,7 @@ CONMA_VM=rust test/run_all.sh
 
 * Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.html)).
 * `__OS_print__` is needed first because every later test reports its result through standard output.
-* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se`).
+* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se`; since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/ref/pure.se` for concise ConMa, and are primitives of fast ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/ref/control.se` for concise ConMa, the feature `"control"`, docs/FAST-PLAN-ja.md 4.6).
 
 ## Step 2: Termination and error output
 
@@ -829,7 +829,7 @@ No new primitive.
 | `__Number_and32__`, `__Number_or32__`, `__Number_xor32__`, `__Number_not32__`, `__Number_shl32__`, `__Number_shr32__`, `__Number_ushr32__` (feature `"bitwise32"` of fast ConMa) | implemented |
 
 * Goal: ConMa had no bitwise operations, so richards (`bench/`) and the bitwise operators of SJS computed them with arithmetic, one bit at a time: about 30% of the steps of richards, and about 100 times the steps of an addition for an SJS `^`. Planned and built in docs/BITWISE-PLAN-ja.md (stages W1 to W7), the first primitives of fast ConMa (docs/FAST-PLAN-ja.md): concise ConMa is unchanged.
-* The 32-bit meaning of JavaScript (PRIMITIVES.md, section 16). The fast VMs run them (the transpiled code computes them on `f64` in fused chains); the frontends (`bin/resolver`, `include/resolver.se`) mark a module that uses them `(Uses "bitwise32")`, and `bin/concise` puts in the replacement definitions of `include/fast/bitwise32.se` for the Python VM, which `test/vm.sh` does on its own.
+* The 32-bit meaning of JavaScript (PRIMITIVES.md, section 16). The fast VMs run them (the transpiled code computes them on `f64` in fused chains); the frontends (`bin/resolver`, `include/resolver.se`) mark a module that uses them `(Uses "bitwise32")`, and `bin/concise` puts in the replacement definitions of `include/ref/bitwise32.se` (`include/fast/bitwise32.se` until 2026-11-13) for the Python VM, which `test/vm.sh` does on its own.
 * Tests: `test/step41` (the replacement definitions against the values of Node.js), `test/fast5` (the primitives in a module marked by the frontend, on every VM; the module translated by `bin/concise`; a module defining one of the names itself), `consh/sjs/test/step8` case9 (SJS).
 * Results: richards 20 on the Rust VM 7.53 s to 5.24 s; one bitwise operation of SJS about 4,500 steps to about 65 (an addition takes 45).
 

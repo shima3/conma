@@ -1,0 +1,6 @@
+;; 高速版 ConMa の pure.se：高速版のモジュールは include/fast、include の順に探して作るので、include/pure.se の
+;; 代わりにこのファイルが使われる。簡潔版と高速版で共通の定義は include/pure.se にある。
+;; __TRUE__ と __FALSE__、制御の関数（__if_then_else__、__if__、__unless__、__Cont_get__）は組み込みなので、
+;; ここでは定義しない（定義のない大域変数として使うモジュールに、フロントエンドが (Uses "boolean") と
+;; (Uses "control") を書く。簡潔版の定義は include/ref/pure.se と include/ref/control.se）
+(include "../pure.se")

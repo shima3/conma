@@ -82,15 +82,15 @@ if [ -n "$interactive" ] && [ -n "$rust" ]; then
 fi
 # ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
-# include ディレクトリ：高速版は consh/include と標準ライブラリの include。参照版は、consh/reference と標準ライブラリの
-# reference を先に探す（そこにある、書き直す前のファイルが、同じ名前のファイルの代わりになる）。
+# include ディレクトリ：高速版は consh/include と標準ライブラリの include/fast と include。参照版は、consh/reference と
+# 標準ライブラリの include/ref（簡潔版 ConMa）と reference を先に探す（そこにある、書き直す前のファイルが、同じ名前のファイルの代わりになる）。
 # 最初のファイル consh_main.se も、参照版は consh/reference にあればそれを使う
 dir="${CONSH_MODULE_DIR:-/tmp}"
 if [ $impl = reference ]; then
-  dirs=("$consh/reference" "$consh/include" "$root/reference" "$root/include")
+  dirs=("$consh/reference" "$consh/include" "$root/include/ref" "$root/reference" "$root/include")
   name=consh.reference
 else
-  dirs=("$consh/include" "$root/include")
+  dirs=("$consh/include" "$root/include/fast" "$root/include")
   name=consh
 fi
 module="$dir/$name.module.se"

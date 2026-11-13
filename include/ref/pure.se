@@ -1,0 +1,14 @@
+;; 簡潔版 ConMa の pure.se：簡潔版のモジュールは include/ref、include の順に探して作るので、include/pure.se の
+;; 代わりにこのファイルが使われる。簡潔版と高速版で共通の定義は include/pure.se にある。
+;; 高速版 ConMa では __TRUE__ と __FALSE__ は組み込みである（include/fast/pure.se。フロントエンドが
+;; (Uses "boolean") を書く）。簡潔版では、ここで定義する。
+;; 制御の関数（__if_then_else__ など）も、高速版では組み込みで、簡潔版では control.se で定義する
+(include "../pure.se")
+(include "control.se")
+
+;; Boolean：選んだ値を、適用せずに返す
+(define __TRUE__ ,(then else)
+  __NULL__ then)
+
+(define __FALSE__ ,(then else)
+  __NULL__ else)

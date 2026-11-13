@@ -377,7 +377,7 @@ def value_to_sexp(val):
     if isinstance(val, Stream): return val.value_to_sexp()
     if isinstance(val, Number): return val.value_to_sexp()
     if isinstance(val, LList): return val.value_to_sexp()
-    if isinstance(val, (Ref, MSeq, Dict, VProc, OSProc, ContReturn)): return val.value_to_sexp()
+    if isinstance(val, (Ref, MSeq, Dict, VProc, OSProc)): return val.value_to_sexp()
     if callable(val): return ["PrimFunc", quoted(val.__name__)]
     return str(val)
 
@@ -1603,126 +1603,9 @@ def prim_CChain_pop_CFrame(vp, gvenv):
         _prim_return(vp, [cf])
 
 
-class ContReturn:
-    """The escape continuation that __Cont_get__ passes. It keeps the CChain
-    of the caller of the function that called __Cont_get__. Applying it to
-    any number of operands sets the CChain to that one, pops its top CFrame
-    and applies the Closure of the CFrame to the operands; with an empty
-    CChain it leaves the CChain empty, so the VProc finishes. Its own LCont
-    is dropped. It is shown by a serial number, like a Ref, because the
-    CChain may contain the continuation itself."""
-    _count = 0
-    def __init__(self, cchain):
-        ContReturn._count += 1
-        self.serial = ContReturn._count
-        self.cchain = cchain
-    def __call__(self, vp, gvenv):
-        args = vp["olist"]
-        vp["lcont"] = None
-        if cchain_is_empty(self.cchain):
-            vp["cchain"]   = self.cchain
-            vp["operator"] = NULL
-            vp["olist"]    = []
-            return
-        cf, vp["cchain"] = cchain_pop(self.cchain)
-        vp["operator"] = cf.closure
-        vp["olist"]    = list(args)
-        vp["sinfo"]    = cf.sinfo
-    def value_to_sexp(self):
-        return ["__Cont__", quoted(str(self.serial))]
-    def __repr__(self):
-        return f"ContReturn({self.serial})"
-
-
-def prim_Cont_get(vp, gvenv):
-    """__Cont_get__ ,(return) — pass the escape continuation of the calling
-    function to the LCont. Without an LCont, the top CFrame is the LCont."""
-    lc = vp["lcont"]
-    if lc is None:
-        if cchain_is_empty(vp["cchain"]):
-            raise VProcError("__Cont_get__: no LCont and CChain empty")
-        cf, vp["cchain"] = cchain_pop(vp["cchain"])
-        lc = cf.closure
-        vp["sinfo"] = cf.sinfo
-    vp["operator"] = lc
-    vp["olist"]    = [ContReturn(vp["cchain"])]
-    vp["lcont"]    = None
-
-
-# ── Control Primitives ────────────────────────────────────────────────────────
-# __if_then_else__, __if__ and __unless__ do what their ConMa definitions in
-# include/control.se do, in fewer steps. A Boolean that is one of the Closures
-# ,(t f) __NULL__ t and ,(t f) __NULL__ f (as the primitives return them, and
-# __TRUE__ and __FALSE__ of pure.se) chooses its clause at once. Any other
-# value is applied to the two clauses, as the ConMa definition does, and the
-# clause it passes back is applied by SELECT_CLOSURE.
-
-def _synthetic_closure(params, operator, olist):
-    body_node = ["Body", ["0","0"],
-                 ["Operator", ["0","0"], operator],
-                 ["OList", ["0","0"]] + olist,
-                 ["LCont", ["0","0"]]]
-    return Closure(params, body_node, [])
-
-# ,(clause) clause
-SELECT_CLOSURE = _synthetic_closure(["clause"], ["Variable", ["0","0"], '"clause"', ["L", "0"]], [])
-# ,() — the clause that does nothing
-NOP_CLOSURE = _synthetic_closure([], ["Null", ["0","0"]], [])
-
-def boolean_choice(v):
-    """True for ,(t f) __NULL__ t, False for ,(t f) __NULL__ f, None otherwise."""
-    if not isinstance(v, Closure) or v.variadic or len(v.params) != 2 or v.body is None:
-        return None
-    entry = _BODY_CACHE.get(id(v.body))
-    if entry is None or entry[0] is not v.body:
-        entry = compile_body(v.body)
-        _BODY_CACHE[id(v.body)] = entry
-    _, _, operator_c, olist_c, lcont_c = entry
-    if operator_c is None or operator_c[0] != "C" or not is_null_value(operator_c[1]):
-        return None
-    if lcont_c is not None or len(olist_c) != 1:
-        return None
-    if olist_c[0] == ("L", 1): return True
-    if olist_c[0] == ("L", 0): return False
-    return None
-
-def _choose(vp, boolean, then, els):
-    vp["olist"] = []
-    b = boolean_choice(boolean)
-    if b is not None:
-        clause = then if b else els
-        if clause is NOP_CLOSURE:
-            _prim_return(vp, [])        # __nop__ returns nothing to the LCont
-        else:
-            vp["operator"] = clause     # applied with the LCont
-        return
-    # As the ConMa definition: the LCont goes to the CChain, the Boolean is
-    # applied to the clauses, and SELECT_CLOSURE applies the one it passes back.
-    lc = vp["lcont"]
-    if lc is not None:
-        vp["cchain"] = cchain_push(vp["cchain"], CFrame(lc, vp["sinfo"]))
-    vp["operator"] = boolean
-    vp["olist"]    = [then, els]
-    vp["lcont"]    = SELECT_CLOSURE
-
-def prim_if_then_else(vp, gvenv):
-    """__if_then_else__ Boolean then else"""
-    olist = vp["olist"]
-    if len(olist) < 3: raise VProcError("__if_then_else__: missing argument(s)")
-    boolean, then, els = olist[0], olist[1], olist[2]
-    _choose(vp, boolean, then, els)
-
-def prim_if(vp, gvenv):
-    """__if__ Boolean then"""
-    olist = vp["olist"]
-    if len(olist) < 2: raise VProcError("__if__: missing argument(s)")
-    _choose(vp, olist[0], olist[1], NOP_CLOSURE)
-
-def prim_unless(vp, gvenv):
-    """__unless__ Boolean else"""
-    olist = vp["olist"]
-    if len(olist) < 2: raise VProcError("__unless__: missing argument(s)")
-    _choose(vp, olist[0], NOP_CLOSURE, olist[1])
+# __Cont_get__, __if_then_else__, __if__ and __unless__ are not primitives of concise ConMa: their
+# definitions are in include/ref/control.se (built in in fast ConMa, the feature "control";
+# docs/FAST-PLAN-ja.md 4.6).
 
 
 # ── LList Primitives ──────────────────────────────────────────────────────────
@@ -2543,7 +2426,7 @@ def load_program(source_file, cwd=None):
     if not os.path.isfile(os.path.join(cwd or os.getcwd(), source_file)):
         raise LoadError(f"file not found: {source_file}")
     try:
-        inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR), source_file],
+        inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR / "ref"), "--include", str(INCLUDE_DIR), source_file],
                              capture_output=True, text=True, cwd=cwd)
     except OSError as e:
         raise LoadError(f"cannot run includer: {e}")
@@ -2561,7 +2444,18 @@ def load_program(source_file, cwd=None):
         raise LoadError(f"cannot run resolver: {e}")
     if res.returncode != 0:
         raise LoadError(f"resolver failed: {first_line(res.stderr)}")
-    module_sexp = parse_sexp(res.stdout)
+    # a name used as a built-in of fast ConMa that include/ref does not define (a file that does not
+    # include pure.se): bin/concise puts in its definition, so that the module is of concise ConMa
+    text = res.stdout
+    if "(Uses " in text.split("\n", 1)[0]:
+        try:
+            con = subprocess.run([str(BIN_DIR / "concise")], input=text, capture_output=True, text=True)
+        except OSError as e:
+            raise LoadError(f"cannot run concise: {e}")
+        if con.returncode != 0:
+            raise LoadError(f"concise failed: {first_line(con.stderr)}")
+        text = con.stdout
+    module_sexp = parse_sexp(text)
     return module_sexp, load_module(module_sexp)
 
 
@@ -2902,10 +2796,6 @@ PRIMITIVES = {
     "__CChain_set__":          prim_CChain_set,
     "__CChain_push_CFrame__":  prim_CChain_push_CFrame,
     "__CChain_pop_CFrame__":   prim_CChain_pop_CFrame,
-    "__Cont_get__":            prim_Cont_get,
-    "__if_then_else__":        prim_if_then_else,
-    "__if__":                  prim_if,
-    "__unless__":              prim_unless,
     "__LList_cons__":          prim_LList_cons,
     "__LList_uncons__":        prim_LList_uncons,
     "__CFrame_get_Closure__":  prim_CFrame_get_Closure,

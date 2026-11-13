@@ -1,0 +1,50 @@
+;; 高速版 ConMa の機能 "boolean"：__TRUE__ と __FALSE__ が組み込み（include/fast/pure.se には定義がない）。
+;; 高速版の VM はプリミティブで、簡潔版の VM（Python）は bin/concise が include/ref/pure.se の定義を入れたモジュールで動かし、
+;; どちらも同じ出力になる
+(include "util.se")
+
+(define line ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+(define show ,(b)
+  __if_then_else__ b (,() __NULL__ "true") (,() __NULL__ "false") ,(s)
+  line s)
+
+;; case1：__TRUE__ と __FALSE__ を 2 つの値に適用すると、どちらかを適用せずに返す
+(define case1 ,()
+  __TRUE__ "then" "else" ,(a)
+  line a ,()
+  __FALSE__ "then" "else" ,(b)
+  line b ,()
+  __TRUE__ (,() line "applied") "x" ,(f)
+  __type_name__ f ,(name)
+  line name ,()
+  __FALSE__ "x" (,() __NULL__ "called") ,(g)
+  g ,(r)
+  line r)
+
+;; case2：プリミティブの返す Boolean、__not__、__and__、__or__、条件、Dict に入れた Boolean
+(define case2 ,()
+  __is_null__ __NULL__ ,(t)
+  t "null" "value" ,(c)
+  line c ,()
+  __String_equal__ "a" "b" ,(e)
+  e "same" "different" ,(d)
+  line d ,()
+  __not__ t ,(nt)
+  show nt ,()
+  __and__ t e ,(ae)
+  show ae ,()
+  __or__ e t ,(oe)
+  show oe ,()
+  __if__ __TRUE__ (,() line "if __TRUE__") ,()
+  __unless__ __FALSE__ (,() line "unless __FALSE__") ,()
+  __Dict_new__ ,(dict)
+  __Dict_put__ dict "k" __TRUE__ ,()
+  __Dict_lookup_or__ dict "k" __print_exit_error__ ,(v)
+  show v ,()
+  __Number_fromString__ __print_exit_error__ "-1" ,(n)
+  __Number_is_negative__ n ,(neg)
+  neg __FALSE__ __TRUE__ ,(pos)
+  show pos)

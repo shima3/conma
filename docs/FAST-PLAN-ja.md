@@ -196,6 +196,32 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 綴りの誤りを見つける必要が出てきたら、言語を変えずに、キーの読み書きを突き合わせる検査の道具を作ることから考える。
 
+### 4.6. `__TRUE__` と `__FALSE__`、制御の関数の組み込み（機能 `"boolean"` と `"control"`）
+
+**作ったもの（2026-11-13）**
+
+* **探す順**：標準ライブラリを、簡潔版のモジュールは `include/ref`、`include` の順に、高速版のモジュールは `include/fast`、`include` の順に探して作る。簡潔版と高速版で共通の定義は `include/pure.se` に置き、`include/ref/pure.se` と `include/fast/pure.se` は、それを `(include "../pure.se")` で読む。ほかの `reference/` は、今は動かさない（うまくいけば、`include/ref` にまとめていく）。
+    * 高速版：`conma build`（Rust VM。`include/fast` があれば先に探す）、bin/update-frontend、bench/module.sh、ConSh の速い版（consh/bin/consh、consh/js/build.sh）。
+    * 簡潔版：test/resolver.sh（`CONMA_FAST` を付けると高速版）、Python VM が `__VProc_spawn__` で作るモジュール、ConSh の参照版（`include/ref` を `reference/` より先に）。test/ のトレースとステップ数のテストは、7 の「簡潔版のテスト」のとおり、簡潔版のモジュールで行う。
+* **定義**：プリミティブでない `__TRUE__` と `__FALSE__`（`,(then else) __NULL__ then` など）は `include/ref/pure.se` にある。ビット演算の代わりの定義も、簡潔版 ConMa のファイルなので、`include/fast/bitwise32.se` から `include/ref/bitwise32.se` に移した。`include/fast` には、高速版で使うファイル（今は `pure.se` だけ）を置く。`include/fast/pure.se` には定義がないので、高速版のモジュールでは定義のない大域の名前になり、フロントエンド（bin/resolver と include/resolver.se）が `(Uses "boolean")` を書く。
+* **VM**：
+    * Rust VM、wasm 版、変換版の VM は、`__TRUE__` と `__FALSE__` をプリミティブとして持つ（vm/src/prim/control.rs）。2 つの値に適用すると、どちらかを適用せずに、1 ステップで LCont に渡す（Closure では 2 ステップ）。conma2rust.py は、その場で選ぶコードにする。
+    * `(Uses "boolean")` のあるモジュールを動かすときは、プリミティブの返す Boolean も、このプリミティブにする（`Machine::use_prim_booleans`）。印のない簡潔版のモジュールでは、今までどおり Closure の Boolean で、トレースとステップ数は Python VM と同じである。`boolean_choice` は、どちらも Boolean と見る。
+    * Python VM は変えない。bin/concise が、`include/ref/pure.se` の定義を入れて簡潔版に直す（ほかの機能の代わりの定義も `__TRUE__` を使うので、`"boolean"` は最後に直す）。
+* **違い**：`__TRUE__ x` のように被演算子が 1 つのときは、Closure なら部分適用になるが、プリミティブは `__TRUE__: missing argument(s)` で止まる。3 つ以上なら、ほかのプリミティブと同じく、余りを捨てる。
+* **テスト**：test/fast6 が、高速版のモジュール（`Uses "boolean"`）と bin/concise で直したモジュールを、それぞれの VM で動かし、同じ出力になることを確かめる。conma build と bin/resolver が同じモジュールを作ることも確かめる。
+
+**制御の関数（機能 `"control"`、2026-11-13）**
+
+* `__if_then_else__`、`__if__`、`__unless__`、`__Cont_get__` も、高速版だけの組み込みにした。簡潔版の定義（前の include/control.se）は `include/ref/control.se` に移し、`include/ref/pure.se` が include する。高速版のモジュールでは定義のない名前になり、フロントエンドが `(Uses "control")` を書く。bin/concise は `include/ref/control.se` の定義を入れる。
+* Python VM から 4 つのプリミティブを消した（簡潔版の VM は簡潔版の言語だけを持つ）。Rust VM、wasm 版、変換版の VM は、プリミティブを持ったままで、簡潔版のモジュールでは定義を使う。
+* 簡潔版のモジュールは、どのファイルも include しないとき（test/fast4 など）にも定義がないので、test/resolver.sh と Python VM の `__VProc_spawn__` は、最後に bin/concise を通す。Rust VM と wasm 版の `__VProc_spawn__` は、動かしているモジュールに `Uses` がなければ、子のモジュールも簡潔版（`include/ref` を先に）で作る（wasm 版は、ホストの buildModule に印を渡す）。
+* 簡潔版では条件分岐が ConMa の関数呼び出しになるので、ステップ数とトレースが大きく変わった。test/ の、ステップの番号やトレースを比べるログ（step1、step15、step17、step20、step21、fast2〜4）を、Python VM の出力で作り直した。Rust VM の F3、F4 の速い道は、プリミティブを使う高速版のモジュールでだけ働く。
+* test/step34 と step35 は、どちらも高速版で作り、組み込み（test.se）と `ref/control.se` の定義（conma.se）を比べるようにした。
+* 定義とプリミティブの違いが 1 つ見つかった：プリミティブは余分な被演算子を捨てるが、定義では、返したものに余分な被演算子が適用される。consh/include/sjs_gen.se の `Gen_plain_decls` が `__if__` に節を 2 つ渡していて（`__if_then_else__` の書き誤り）、ConSh の参照版の SJS が止まった（consh/test の step21）。`__if_then_else__` に直した（then でない側も、名前を集める）。ConSh と標準ライブラリの構文木を調べて、余分な被演算子を渡す所は、ほかになかった。
+* 簡潔版のモジュールは、Rust VM で遅くなる（richards2 で、control.se を include したときの測定では 1.7〜1.9 倍）。
+* **速さ**：試作（どの版でもプリミティブにしたもの）で、Rust VM の bench/（nbody、fib、loop、richards）と consh/bench は 0.98〜1.01 倍で、変わらなかった。条件分岐は `__if_then_else__` などが Boolean を見て節を選ぶので、Boolean を適用しないからである。Boolean を直接適用する `none __FALSE__ __TRUE__ ,(pending)` を使う richards の版で、ステップが 1,604 万から 1,595 万（0.6%）減った。
+
 ## 5. 変換器
 
 * **入力と出力**：高速版のモジュール（`Uses` 付き）を読み、簡潔版のモジュールを出す。構文解析と名前の解決（resolver）の後のモジュールの段で行う。

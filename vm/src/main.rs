@@ -53,15 +53,14 @@ fn usage_error(msg: &str) -> ! {
 const FRONTEND: &str = include_str!("../frontend.module.se");
 
 /// conma build: run the embedded frontend with the options and the source,
-/// the standard library last among the include directories.
+/// the standard library last among the include directories (include/fast, then include/).
 fn build(args: Vec<String>) -> i32 {
     let mut a = args;
     let source = match a.pop() {
         Some(s) if !s.starts_with("--") => s,
         _ => usage_error("build: a source file is needed"),
     };
-    a.push("--include".into());
-    a.push(prim::vprocs::include_dir().to_string_lossy().into_owned());
+    a.extend(prim::vprocs::include_args());
     a.push(source);
     run_text(FRONTEND.to_string(), "conma/vm/frontend.module.se", "__start__".into(), Some(a), false)
 }
@@ -190,6 +189,9 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
             return 1;
         }
     };
+    let prim_booleans = module::uses_boolean(&module_sexp);
+    // a module of concise ConMa: __VProc_spawn__ makes modules of concise ConMa too
+    prim::vprocs::set_concise(module::fast_features(&module_sexp).is_empty());
     let gvenv = match module::load_module_transpiled(&module_sexp, Some(transpiled::fnv1a(text.as_bytes()))) {
         Ok(g) => g,
         Err(e) => {
@@ -214,6 +216,9 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
     };
     transpiled::counts_from_env();
     let mut m = sched::Machine::new(trace);
+    if prim_booleans {
+        m.use_prim_booleans();
+    }
     m.transpiled_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_TRANSPILED_OFF").is_none();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let vp = m.make_vproc(closure, olist, Some(module_file), gvenv, cwd);

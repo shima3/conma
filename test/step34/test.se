@@ -1,5 +1,5 @@
 ;; Step34: __Cont_get__ の組み込み
-;; test.sh は、組み込みを使う test.se と、ConMa 版（control.se）を使う conma.se の両方で
+;; test.sh は、組み込みを使う test.se と、ConMa 版（include/ref/control.se）を使う conma.se の両方で
 ;; 各 case を実行し、同じログになることを確かめる
 (include "util.se")
 

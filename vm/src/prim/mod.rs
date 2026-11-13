@@ -81,6 +81,8 @@ prims! {
     "__Cont_get__"         => "prim_Cont_get", cchain::cont_get;
     "__if_then_else__"     => "prim_if_then_else", control::if_then_else;
     "__if__"               => "prim_if", control::if_;
+    "__TRUE__"             => "prim_TRUE", control::true_;
+    "__FALSE__"            => "prim_FALSE", control::false_;
     "__unless__"           => "prim_unless", control::unless;
     "__CFrame_get_Closure__" => "prim_CFrame_get_Closure", cchain::cframe_get_closure;
     "__CFrame_get_SInfo__" => "prim_CFrame_get_SInfo", cchain::cframe_get_sinfo;

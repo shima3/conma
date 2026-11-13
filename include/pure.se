@@ -1,10 +1,7 @@
 (define __nop__ ,())
 
-(define __TRUE__ ,(then else)
-  __NULL__ then)
-
-(define __FALSE__ ,(then else)
-  __NULL__ else)
+;; 簡潔版と高速版で共通の定義。__TRUE__ と __FALSE__ は、簡潔版では include/ref/pure.se で定義し、高速版では
+;; 組み込みである（include/fast/pure.se）。このファイルを直接 include せず、"pure.se" として include する
 
 (define __and__ ,(Boolean1 Boolean2)
   Boolean1 Boolean2 __FALSE__)
@@ -15,7 +12,7 @@
 (define __not__ ,(Boolean)
   Boolean __FALSE__ __TRUE__)
 
-;; __if_then_else__、__if__、__unless__ は組み込み（PRIMITIVES.md）。ConMa 版は control.se にある
+;; __if_then_else__、__if__、__unless__ は高速版の組み込み（PRIMITIVES.md）。簡潔版の定義は include/ref/control.se にある
 
 (define __fix__ ,(x)
   x (,() __fix__ x))

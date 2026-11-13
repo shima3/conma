@@ -1,4 +1,4 @@
 b
 none
-Error in VProc 1 at step 175: conma/test/fast4/test.se:6:3: __Ref_get__: expected Ref, got String
+Error in VProc 1 at step 343: conma/test/fast4/test.se:6:3: __Ref_get__: expected Ref, got String
 exit: 1
