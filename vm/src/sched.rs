@@ -167,7 +167,7 @@ fn bool_closure(param: &str) -> Value {
     Value::Closure(Rc::new(Closure {
         params: Rc::from(vec![Rc::from("t"), Rc::from("f")]),
         skip: 0,
-        body: Some(compile_body(&body)),
+        body: Some(compile_body(&body, &["t", "f"])),
         lvenv: None,
         gvenv: None,
         variadic: false,
@@ -191,7 +191,7 @@ fn select_closure() -> Value {
     Value::Closure(Rc::new(Closure {
         params: Rc::from(vec![Rc::from("clause")]),
         skip: 0,
-        body: Some(compile_body(&body)),
+        body: Some(compile_body(&body, &["clause"])),
         lvenv: None,
         gvenv: None,
         variadic: false,
@@ -212,7 +212,7 @@ fn nop_closure() -> Value {
     Value::Closure(Rc::new(Closure {
         params: Rc::from(Vec::<Rc<str>>::new()),
         skip: 0,
-        body: Some(compile_body(&body)),
+        body: Some(compile_body(&body, &[])),
         lvenv: None,
         gvenv: None,
         variadic: false,

@@ -751,6 +751,8 @@ pub struct SeqClosure {
     pub olist: Vec<Value>,
     pub sinfo: Option<SInfo>,
     pub lvenv: LVEnv,
+    /// The names of the variables of lvenv, kept with --trace (VProc::scope).
+    pub scope: crate::module::Scope,
 }
 
 pub struct CFrame {
@@ -791,8 +793,9 @@ impl Drop for LList {
 /// `[(name, value), ...]`, but shared between Closures.
 pub type LVEnv = Option<Rc<LVNode>>;
 
+/// A node of an LVEnv: the value of one variable. The names of the variables are not kept: a
+/// trace or a printed Closure finds them from the Body the LVEnv is for (module::Scope).
 pub struct LVNode {
-    pub name: Rc<str>,
     pub value: Value,
     pub next: LVEnv,
 }
@@ -809,8 +812,9 @@ impl Drop for LVNode {
     }
 }
 
-pub fn lv_push(env: &LVEnv, name: Rc<str>, value: Value) -> LVEnv {
-    Some(Rc::new(LVNode { name, value, next: env.clone() }))
+#[inline]
+pub fn lv_push(env: &LVEnv, value: Value) -> LVEnv {
+    Some(Rc::new(LVNode { value, next: env.clone() }))
 }
 
 pub fn lv_get(env: &LVEnv, idx: usize) -> Option<&Value> {

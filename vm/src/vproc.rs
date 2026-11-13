@@ -35,6 +35,8 @@ pub struct VProc {
     pub olist: Vec<Value>,
     pub lcont: Option<Value>,
     pub lvenv: LVEnv,
+    /// The names of the variables of lvenv, kept with --trace (module::keep_scopes).
+    pub scope: crate::module::Scope,
     pub gvenv_files: Vec<String>,
     /// An LList of CFrames, or null.
     pub cchain: Value,
@@ -58,6 +60,7 @@ impl VProc {
             olist,
             lcont: None,
             lvenv: None,
+            scope: None,
             gvenv_files: source_file.map(|s| vec![s.to_string()]).unwrap_or_default(),
             cchain: Value::Null,
             pdict: Vec::new(),

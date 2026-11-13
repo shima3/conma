@@ -52,6 +52,8 @@ Measured with the profiler of macOS (`sample`) on the ConMa front end building t
 * The allocator. A step makes and drops small Rc blocks (LVNodes, Closures, CFrames, LList cells), and the allocator of macOS took about half of the time (it also clears each block it frees). `alloc.rs` keeps blocks of up to 256 bytes in a free list for each multiple of 16 bytes, carved from chunks of 256 KB, so a block is reused by the next one of the same size. Larger blocks go to the system allocator. Small blocks are never given back to the system, so the memory of a process stays at its peak.
 * Strings. A String made at run time was kept in source form, so every String primitive unescaped its arguments and escaped its result: the lexer, which takes a line apart one character at a time, spent about 40% of its time there. Such a String now keeps its text.
 
+Variable names (2026-11-13). An LVEnv node (`value::LVNode`) holds a value and the next node only: the names of the variables, which only traces and the printed form of a Closure show, are found from the Body the LVEnv is for, which has the names of its scope (`module::Scope`, the parameters of its Function and of the Functions around it, made when the module is loaded), by de Bruijn index. A Closure names its LVEnv from its Body; a VProc and a SeqClosure keep the scope of their LVEnv only with `--trace`. Without the 16 bytes of the name and the counting of its references at each binding, bench/ and consh/bench take 0.94–0.99 times as long (2026-11-13; docs/FAST-PLAN-ja.md 8.2).
+
 Smaller ones: `load_body` reuses the Vec of the OList, and the collector checks plain counters at each step.
 
 | Run | Before | After |

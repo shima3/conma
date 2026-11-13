@@ -127,6 +127,7 @@ fn run(args: Vec<String>) -> i32 {
             match a.as_str() {
                 "-t" | "--trace" => {
                     trace = true;
+                    module::keep_scopes();
                     continue;
                 }
                 "-m" | "--main" => {
@@ -211,6 +212,7 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
             olist: a.iter().map(|s| string_value(s)).collect(),
             sinfo: None,
             lvenv: None,
+            scope: None,
         }))],
         None => Vec::new(),
     };

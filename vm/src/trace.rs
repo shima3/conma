@@ -69,11 +69,25 @@ fn llist_to_sexp(v: &Value) -> Sexp {
     out
 }
 
-pub fn lvenv_to_sexp(env: &LVEnv) -> Sexp {
+/// An LVEnv, with the name of its node i given by name(i) ("?" if unknown).
+pub fn lvenv_to_sexp(env: &LVEnv, name: impl Fn(usize) -> Option<std::rc::Rc<str>>) -> Sexp {
     tagged(
         "__LVEnv__",
-        lv_iter(env).map(|n| l(vec![a(&quoted(&n.name)), value_to_sexp(&n.value)])),
+        lv_iter(env).enumerate().map(|(i, n)| {
+            let nm = name(i).unwrap_or_else(|| std::rc::Rc::from("?"));
+            l(vec![a(&quoted(&nm)), value_to_sexp(&n.value)])
+        }),
     )
+}
+
+/// The names of the LVEnv of a Closure: its parameters already bound (the first skip, the last
+/// bound first), then the scope around its Function (that of its Body without its parameters).
+fn closure_names(c: &Closure, i: usize) -> Option<std::rc::Rc<str>> {
+    if i < c.skip {
+        return Some(c.params[c.skip - 1 - i].clone());
+    }
+    let outer = c.body.as_ref()?.scope.as_ref()?.next.clone();
+    crate::module::scope_name(&outer, i - c.skip)
 }
 
 fn closure_to_sexp(c: &Closure) -> Sexp {
@@ -88,7 +102,7 @@ fn closure_to_sexp(c: &Closure) -> Sexp {
         Some(b) => b.node.clone(),
         None => l(vec![a("Body"), Sexp::pos0()]),
     };
-    l(vec![a("__Closure__"), l(head), body, lvenv_to_sexp(&c.lvenv)])
+    l(vec![a("__Closure__"), l(head), body, lvenv_to_sexp(&c.lvenv, |i| closure_names(c, i))])
 }
 
 fn seq_to_sexp(s: &SeqClosure) -> Sexp {
@@ -111,7 +125,7 @@ fn seq_to_sexp(s: &SeqClosure) -> Sexp {
         a("__Closure__"),
         l(vec![a("Head"), Sexp::pos0(), l(vec![a("Variable"), Sexp::pos0(), a("\"__Sink__\"")])]),
         l(body),
-        lvenv_to_sexp(&s.lvenv),
+        lvenv_to_sexp(&s.lvenv, |i| crate::module::scope_name(&s.scope, i)),
     ])
 }
 
@@ -129,7 +143,7 @@ pub fn vproc_to_sexp(vp: &VProc) -> Sexp {
         l(vec![a("__Operator__"), value_to_sexp(&vp.operator)]),
         tagged("__OList__", vp.olist.iter().map(value_to_sexp)),
         lcont,
-        lvenv_to_sexp(&vp.lvenv),
+        lvenv_to_sexp(&vp.lvenv, |i| crate::module::scope_name(&vp.scope, i)),
         tagged("__GVEnv__", vp.gvenv_files.iter().map(|f| a(&quoted(f)))),
         tagged("__CChain__", frames),
         tagged("__PDict__", vp.pdict.iter().map(|(k, v)| l(vec![value_to_sexp(k), value_to_sexp(v)]))),

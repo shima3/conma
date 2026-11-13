@@ -239,6 +239,6 @@ pub fn dict_copy(m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn dict_keys(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let (d, _) = dict_args(vp, "__Dict_keys__", 1)?;
     let keys: Vec<Value> = d.entries.borrow().iter().map(|(k, _)| k.clone()).collect();
-    vp.prim_return(vec![Value::Seq(Rc::new(SeqClosure { olist: keys, sinfo: None, lvenv: None }))]);
+    vp.prim_return(vec![Value::Seq(Rc::new(SeqClosure { olist: keys, sinfo: None, lvenv: None, scope: None }))]);
     Ok(())
 }

@@ -545,10 +545,9 @@ fn apply(m: &mut Machine, vp: &mut VProc, gv: &Rc<GVEnv>, t: &Table) -> Result<O
                 vp.operator = Value::Null;
                 return d(m, vp, c.lvenv.clone(), &mut a[..n], None, gv, t).map(Some);
             }
-            let params = c.params();
             let mut env = c.lvenv.clone();
-            for (k, v) in vp.olist.drain(..).enumerate() {
-                env = lv_push(&env, params[k].clone(), v);
+            for v in vp.olist.drain(..) {
+                env = lv_push(&env, v);
             }
             vp.operator = Value::Null;
             Ok(Some(Next::Enter(fid, env)))
@@ -761,10 +760,9 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
             frame_run(m, vp, cf, first, gv, t, node, sinfo)?
         }
         None => {
-            let params = c.params();
             let mut e = c.lvenv.clone();
-            for (k, v) in args.into_iter().enumerate() {
-                e = lv_push(&e, params[k].clone(), v);
+            for v in args.into_iter() {
+                e = lv_push(&e, v);
             }
             let mut e = Some(e);
             let first = &mut |_: &mut Machine, _: &mut VProc| Ok(Next::Enter(cf, e.take().expect("entered once")));
@@ -858,8 +856,8 @@ fn pass_results(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Optio
         return Ok(Next::Apply);
     }
     let mut e = env;
-    for (k, v) in vp.olist.drain(..).enumerate() {
-        e = lv_push(&e, f.params[k].clone(), v);
+    for v in vp.olist.drain(..) {
+        e = lv_push(&e, v);
     }
     Ok(Next::Enter(l, e))
 }
@@ -950,10 +948,9 @@ pub fn call(m: &mut Machine, vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Tab
     // let the other VProcs run).
     let Some((c, cf)) = target.filter(|_| m.nctx.budget > 0) else { return deopt(vp, fid, env, gv, t) };
     m.nctx.budget -= 1;
-    let params = c.params();
     let mut e = c.lvenv.clone();
-    for (k, o) in b.olist.iter().enumerate() {
-        e = lv_push(&e, params[k].clone(), eval(o, &env, gv)?);
+    for o in b.olist.iter() {
+        e = lv_push(&e, eval(o, &env, gv)?);
     }
     vp.sinfo = b.sinfo.clone();
     vp.operator = Value::Null;
@@ -1081,8 +1078,8 @@ pub fn finish(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<
         let f = &t.funcs[l];
         if !f.variadic && f.params.len() == n {
             let mut e = env;
-            for (k, v) in a.into_iter().chain(b).enumerate() {
-                e = lv_push(&e, f.params[k].clone(), v);
+            for v in a.into_iter().chain(b) {
+                e = lv_push(&e, v);
             }
             return Ok(Next::Enter(l, e));
         }
@@ -1215,9 +1212,9 @@ pub fn lget(env: &LVEnv, i: usize) -> Result<Value, VmError> {
 /// for each value, which made most of the generated code).
 #[inline(never)]
 pub fn lv_build<const N: usize>(t: &Table, mut e: LVEnv, names: &[(usize, usize); N], vals: [Value; N]) -> LVEnv {
-    for (k, v) in vals.into_iter().enumerate() {
-        let (f, j) = names[k];
-        e = lv_push(&e, t.funcs[f].params[j].clone(), v);
+    let _ = (t, names); // the names of the variables are no longer kept (value::LVNode)
+    for v in vals {
+        e = lv_push(&e, v);
     }
     e
 }

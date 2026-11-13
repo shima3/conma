@@ -82,6 +82,50 @@ pub struct BodyDef {
     /// (load_const) loads it in place of the three steps, when the Operator is the primitive.
     pub fold_site: bool,
     pub folded: std::cell::OnceCell<Option<Rc<BodyDef>>>,
+    /// The names of the variables of the LVEnv the Body runs in (its own and those of the
+    /// Functions around it), for traces and printed Closures.
+    pub scope: Scope,
+}
+
+/// The names of the variables of an LVEnv, by the Functions that bind them, innermost first:
+/// LVEnv nodes keep no names (value::LVNode). Each node is a Function's parameters in order.
+pub type Scope = Option<Rc<ScopeNode>>;
+
+pub struct ScopeNode {
+    pub names: Rc<[Rc<str>]>,
+    pub next: Scope,
+}
+
+/// The scope of a Body of a Function with these parameters, in the scope around it.
+pub fn scope_push(names: &Rc<[Rc<str>]>, next: &Scope) -> Scope {
+    Some(Rc::new(ScopeNode { names: names.clone(), next: next.clone() }))
+}
+
+/// The name of the variable with de Bruijn index i in scope.
+pub fn scope_name(scope: &Scope, mut i: usize) -> Option<Rc<str>> {
+    let mut cur = scope.as_ref();
+    while let Some(s) = cur {
+        let n = s.names.len();
+        if i < n {
+            return Some(s.names[n - 1 - i].clone());
+        }
+        i -= n;
+        cur = s.next.as_ref();
+    }
+    None
+}
+
+static NAMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Keep the scope of the LVEnv of each VProc and SeqClosure (VProc::scope), for traces
+/// (main.rs, with --trace).
+pub fn keep_scopes() {
+    NAMES.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[inline]
+pub fn scopes_kept() -> bool {
+    NAMES.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The primitives that only pass values to their LCont (taking it from VProc::lcont), apply
@@ -207,6 +251,11 @@ thread_local! {
 }
 
 pub fn compile_function(node: &Sexp) -> Rc<FuncDef> {
+    compile_function_in(node, &None)
+}
+
+/// A Function in the scope around it.
+fn compile_function_in(node: &Sexp, outer: &Scope) -> Rc<FuncDef> {
     let id = REGISTRY.with(|r| {
         r.borrow_mut().as_mut().map(|v| {
             v.push(None);
@@ -234,10 +283,12 @@ pub fn compile_function(node: &Sexp) -> Rc<FuncDef> {
             .collect(),
         None => Vec::new(),
     };
+    let params: Rc<[Rc<str>]> = Rc::from(params);
+    let scope = scope_push(&params, outer);
     let f = Rc::new(FuncDef {
-        params: Rc::from(params),
+        params,
         variadic: is_variadic_head(head),
-        body: body.map(|b| compile_body_of(b, id)),
+        body: body.map(|b| compile_body_of(b, id, &scope)),
     });
     if let Some(i) = id {
         REGISTRY.with(|r| {
@@ -249,7 +300,7 @@ pub fn compile_function(node: &Sexp) -> Rc<FuncDef> {
     f
 }
 
-fn compile_expr(expr: &Sexp) -> CExpr {
+fn compile_expr(expr: &Sexp, scope: &Scope) -> CExpr {
     let l = match expr.as_list() {
         Some(l) if !l.is_empty() => l,
         _ => return CExpr::X(expr.clone()),
@@ -270,18 +321,20 @@ fn compile_expr(expr: &Sexp) -> CExpr {
         Some("String") => CExpr::C(Value::StrNode(expr.clone())),
         Some("Null") => CExpr::C(Value::Null),
         Some("FuncExp") => match l.get(2) {
-            Some(f) => CExpr::F(compile_function(f)),
+            Some(f) => CExpr::F(compile_function_in(f, scope)),
             None => CExpr::X(expr.clone()),
         },
         _ => CExpr::X(expr.clone()),
     }
 }
 
-pub fn compile_body(node: &Sexp) -> Rc<BodyDef> {
-    compile_body_of(node, None)
+/// A Body run in an LVEnv of variables with these names (the parameters of its Function).
+pub fn compile_body(node: &Sexp, params: &[&str]) -> Rc<BodyDef> {
+    let names: Rc<[Rc<str>]> = params.iter().map(|p| Rc::from(*p)).collect();
+    compile_body_of(node, None, &scope_push(&names, &None))
 }
 
-fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
+fn compile_body_of(node: &Sexp, func_id: Option<usize>, scope: &Scope) -> Rc<BodyDef> {
     let mut sinfo = None;
     let mut operator = None;
     let mut olist = Vec::new();
@@ -294,12 +347,12 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
             };
             match child.tag() {
                 Some("SInfo") => sinfo = Some(Rc::new(c[2..].to_vec())),
-                Some("Operator") if c.len() > 2 => operator = Some(compile_expr(&c[2])),
-                Some("OList") => olist = c[2..].iter().map(compile_expr).collect(),
+                Some("Operator") if c.len() > 2 => operator = Some(compile_expr(&c[2], scope)),
+                Some("OList") => olist = c[2..].iter().map(|e| compile_expr(e, scope)).collect(),
                 Some("LCont") if c.len() > 2 => {
                     let lc = &c[2];
                     lcont = match lc.tag() {
-                        Some("Function") => Some(CLCont::F(compile_function(lc))),
+                        Some("Function") => Some(CLCont::F(compile_function_in(lc, scope))),
                         Some("__Closure__") => Some(CLCont::V(lc.clone())),
                         _ => None,
                     };
@@ -308,7 +361,7 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>) -> Rc<BodyDef> {
             }
         }
     }
-    new_body(node.clone(), func_id, sinfo, operator, olist, lcont)
+    new_body(node.clone(), func_id, sinfo, operator, olist, lcont, scope.clone())
 }
 
 fn new_body(
@@ -318,6 +371,7 @@ fn new_body(
     operator: Option<CExpr>,
     olist: Vec<CExpr>,
     lcont: Option<CLCont>,
+    scope: Scope,
 ) -> Rc<BodyDef> {
     let dict_site = dict_site_of(&operator, &olist);
     let if_site = if_site_of(&operator, &olist);
@@ -336,6 +390,7 @@ fn new_body(
         prim_site,
         fold_site,
         folded: std::cell::OnceCell::new(),
+        scope,
     })
 }
 
@@ -369,44 +424,46 @@ pub fn const_fold(b: &BodyDef) -> Option<Rc<BodyDef>> {
     b.folded
         .get_or_init(|| {
             let (n, f) = fold_number(&b.operator, &b.olist, &b.lcont)?;
-            subst_body(f.body.as_ref()?, 0, &num(n))
+            subst_body(f.body.as_ref()?, 0, &num(n), &b.scope)
         })
         .clone()
 }
 
 /// e with the variable at de Bruijn index off replaced by v, and those beyond it one nearer.
-fn subst_expr(e: &CExpr, off: usize, v: &Value) -> Option<CExpr> {
+fn subst_expr(e: &CExpr, off: usize, v: &Value, scope: &Scope) -> Option<CExpr> {
     Some(match e {
         CExpr::L(i) if *i == off => CExpr::C(v.clone()),
         CExpr::L(i) if *i > off => CExpr::L(i - 1),
         CExpr::L(i) => CExpr::L(*i),
         CExpr::G(g, name) => CExpr::G(*g, name.clone()),
         CExpr::C(c) => CExpr::C(c.clone()),
-        CExpr::F(f) => CExpr::F(subst_func(f, off, v)?),
+        CExpr::F(f) => CExpr::F(subst_func(f, off, v, scope)?),
         CExpr::X(_) => return None,
     })
 }
 
-fn subst_func(f: &Rc<FuncDef>, off: usize, v: &Value) -> Option<Rc<FuncDef>> {
+/// scope: the scope around f once the variable is gone.
+fn subst_func(f: &Rc<FuncDef>, off: usize, v: &Value, scope: &Scope) -> Option<Rc<FuncDef>> {
     let body = match &f.body {
-        Some(b) => Some(subst_body(b, off + f.params.len(), v)?),
+        Some(b) => Some(subst_body(b, off + f.params.len(), v, &scope_push(&f.params, scope))?),
         None => None,
     };
     Some(Rc::new(FuncDef { params: f.params.clone(), variadic: f.variadic, body }))
 }
 
-fn subst_body(b: &BodyDef, off: usize, v: &Value) -> Option<Rc<BodyDef>> {
+/// scope: the scope of the new Body (that of b without the variable).
+fn subst_body(b: &BodyDef, off: usize, v: &Value, scope: &Scope) -> Option<Rc<BodyDef>> {
     let operator = match &b.operator {
-        Some(e) => Some(subst_expr(e, off, v)?),
+        Some(e) => Some(subst_expr(e, off, v, scope)?),
         None => None,
     };
-    let olist = b.olist.iter().map(|e| subst_expr(e, off, v)).collect::<Option<Vec<_>>>()?;
+    let olist = b.olist.iter().map(|e| subst_expr(e, off, v, scope)).collect::<Option<Vec<_>>>()?;
     let lcont = match &b.lcont {
-        Some(CLCont::F(f)) => Some(CLCont::F(subst_func(f, off, v)?)),
+        Some(CLCont::F(f)) => Some(CLCont::F(subst_func(f, off, v, scope)?)),
         Some(CLCont::V(_)) => return None,
         None => None,
     };
-    Some(new_body(b.node.clone(), None, b.sinfo.clone(), operator, olist, lcont))
+    Some(new_body(b.node.clone(), None, b.sinfo.clone(), operator, olist, lcont, scope.clone()))
 }
 
 /// A Closure of a compiled Function in an environment.

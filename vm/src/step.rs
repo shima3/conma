@@ -95,6 +95,15 @@ fn load_const(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gv
     Some(load_body(m, vp, &folded, lvenv.clone(), gvenv))
 }
 
+/// The scope of the LVEnv of vp, with --trace (module::keep_scopes); none otherwise.
+fn kept_scope(vp: &VProc) -> crate::module::Scope {
+    if crate::module::scopes_kept() {
+        vp.scope.clone()
+    } else {
+        None
+    }
+}
+
 /// True if v is Machine::inline_mark.
 fn is_mark(m: &Machine, v: &Value) -> bool {
     matches!((v, &m.inline_mark), (Value::Closure(a), Value::Closure(b)) if Rc::ptr_eq(a, b))
@@ -142,8 +151,8 @@ fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gve
     if r.is_ok() && is_mark(m, &vp.operator) && vp.olist.len() == f.params.len() {
         // The steps of applying the LCont: binding the values (if any) and loading its Body.
         let mut env = lvenv.clone();
-        for (k, v) in vp.olist.drain(..).enumerate() {
-            env = lv_push(&env, f.params[k].clone(), v);
+        for v in vp.olist.drain(..) {
+            env = lv_push(&env, v);
         }
         let k = if f.params.is_empty() { 1 } else { 2 };
         m.steps += k;
@@ -277,6 +286,9 @@ pub fn load_body_interp(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc
     vp.olist = olist;
     vp.lcont = lcont;
     vp.lvenv = lvenv;
+    if crate::module::scopes_kept() {
+        vp.scope = body.scope.clone();
+    }
     Ok(())
 }
 
@@ -307,6 +319,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
                 vp.operator = vp.olist.swap_remove(0);
                 vp.olist = seq.olist.clone();
                 vp.lvenv = seq.lvenv.clone();
+                vp.scope = seq.scope.clone();
             } else {
                 match vp.cchain_pop() {
                     Some(cf) => {
@@ -314,6 +327,7 @@ pub fn step(m: &mut Machine, vp: &mut VProc) -> PResult {
                         vp.operator = cf.closure.clone();
                         vp.sinfo = cf.sinfo.clone();
                         vp.lvenv = seq.lvenv.clone();
+                        vp.scope = seq.scope.clone();
                     }
                     None => {
                         vp.operator = Value::Seq(seq);
@@ -385,8 +399,8 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
             vp.cchain_push(lc, cur_sinfo.clone());
         }
         let olist = std::mem::take(&mut vp.olist);
-        let seq = Value::Seq(Rc::new(SeqClosure { olist, sinfo: cur_sinfo, lvenv: vp.lvenv.clone() }));
-        let new_lvenv = lv_push(&c.lvenv, c.params()[0].clone(), seq);
+        let seq = Value::Seq(Rc::new(SeqClosure { olist, sinfo: cur_sinfo, lvenv: vp.lvenv.clone(), scope: kept_scope(vp) }));
+        let new_lvenv = lv_push(&c.lvenv, seq);
         let body = match &c.body {
             Some(b) => b.clone(),
             None => return err("Closure has no Body"),
@@ -404,7 +418,7 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
         }
         if !vp.olist.is_empty() {
             let olist = std::mem::take(&mut vp.olist);
-            let seq = Value::Seq(Rc::new(SeqClosure { olist, sinfo: cur_sinfo.clone(), lvenv: vp.lvenv.clone() }));
+            let seq = Value::Seq(Rc::new(SeqClosure { olist, sinfo: cur_sinfo.clone(), lvenv: vp.lvenv.clone(), scope: kept_scope(vp) }));
             vp.cchain_push(seq, cur_sinfo);
         }
         let body = match &c.body {
@@ -420,8 +434,8 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
     // as a step of its own, so that the steps are numbered as before.
     if m.fast_steps >= 2 && vp.olist.len() == params.len() {
         let mut env = c.lvenv.clone();
-        for (k, v) in vp.olist.drain(..).enumerate() {
-            env = lv_push(&env, params[k].clone(), v);
+        for v in vp.olist.drain(..) {
+            env = lv_push(&env, v);
         }
         m.steps += 1;
         m.fast_steps -= 1;
@@ -443,21 +457,19 @@ fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult
         // partially applied Closure itself: bind the operands into its LVEnv and move its skip on,
         // instead of making a new Closure. No one can see the difference.
         if let Some(cm) = Rc::get_mut(&mut c) {
-            let all = cm.params.clone();
             let base = cm.skip;
             let mut env = cm.lvenv.take();
-            for (k, v) in vp.olist.drain(..n).enumerate() {
-                env = Some(Rc::new(LVNode { name: all[base + k].clone(), value: v, next: env }));
+            for v in vp.olist.drain(..n) {
+                env = Some(Rc::new(LVNode { value: v, next: env }));
             }
             cm.lvenv = env;
             cm.skip = base + n;
             vp.operator = Value::Closure(c);
             return Ok(());
         }
-        let params = c.params();
         let mut env = c.lvenv.clone();
-        for (k, v) in vp.olist.drain(..n).enumerate() {
-            env = lv_push(&env, params[k].clone(), v);
+        for v in vp.olist.drain(..n) {
+            env = lv_push(&env, v);
         }
         vp.operator = Value::Closure(Rc::new(Closure {
             params: c.params.clone(),

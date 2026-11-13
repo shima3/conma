@@ -181,6 +181,7 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
             olist: a.iter().map(|s| string_value(s)).collect(),
             sinfo: None,
             lvenv: None,
+            scope: None,
         }))],
         None => Vec::new(),
     };

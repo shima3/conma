@@ -25,6 +25,7 @@
 | Number のプリミティブが、被演算子をその場で読み、OList で返す | 2026-11-12 | bench/ が 0.77〜0.92 倍。ConSh は変わらない | 入れた | vm/README.md「Speed」 |
 | ConSh がよく使うプリミティブ（`__is_null__`、LList、Ref、条件分岐など）も同じにする | 2026-11-12 | consh/bench が 0.93〜0.97 倍 | 入れた | 同上 |
 | 束縛の変数名を intern して、参照数の増減をなくす | 2026-11-12 | 0.98〜1.00 倍 | 戻した | FAST-PLAN 8.2 |
+| ローカル環境の節から変数名を外し、名前は Body ごとの名前の列から引く（トレースと Closure の表示だけが使う） | 2026-11-13 | bench/ が 0.94〜0.99 倍、consh/bench の 02〜11 が 0.95〜0.99 倍。起動（00）は 1.04 倍。名前を別の表に持って節を捨てるたびに消す方式は 1.02〜1.06 倍 | 入れた | FAST-PLAN 8.2、vm/README.md「Speed」 |
 | 引数の束縛で、ローカル環境の節を使い回す | 2026-11-12 | 0.98〜1.02 倍（使い回せたのは 35%） | 戻した | FAST-PLAN 8.2 |
 | 文字列が書いてある `__Number_fromString__` を、変数の代わりに数を置いた Body にして読み込む（`load_const`。ステップの数は同じ） | 2026-11-13 | richards 20 で、使う所で数を作る `richards_const.se` が 4.196 s → 3.754 s（`richards_tuned.se` の 1.13 倍 → 1.01 倍）。`richards_tuned.se` は変わらない | 入れた（`CONMA_NO_FOLD=1` で止める） | bench/README.md「Numbers written where they are used」 |
 
