@@ -108,6 +108,7 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
             match a.as_str() {
                 "-t" | "--trace" => {
                     trace = true;
+                    module::keep_scopes();
                     continue;
                 }
                 "-m" | "--main" => {
