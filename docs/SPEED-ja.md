@@ -37,6 +37,7 @@
 | 融合した鎖（変数を Rust の変数に置く）から、LCont 付きの呼び出しを Rust の呼び出しにするまで（6 つの変更） | 2026-11-07 | nbody 100000 が 3.80 s → 0.67 s | 入れた | bench/README.md「up to calls with an LCont」 |
 | その後の 14 の変更（自分を呼ぶ関数のループ化、直接の入口、`f64` の計算、値の移動、キーのハッシュ、Dict の形とキャッシュ、小さな関数のインライン化など） | 2026-11-07〜08 | nbody 0.49 → 0.25 s、richards 20 2.10 → 0.55 s、fib 32 0.68 → 0.32 s、loop 0.65 → 0.07 s、ConSh 0.89 → 0.50〜0.53 s。変更ごとの数は詳細の表 | 入れた | bench/README.md「since then」 |
 | 文字列が書いてある `__Number_fromString__` を、融合した鎖の `f64` の定数にする（`number_literal`） | 2026-11-13 | richards 20 で、`richards_const.se` が 0.807 s → 0.468 s（`richards_tuned.se` の 1.69 倍 → 0.98 倍）。ConSh などの 1,156 か所が定数になる | 入れた（`CONMA2RUST_NO_FOLD=1` で止める） | bench/README.md「Numbers written where they are used」 |
+| 変換版のコードを VM と別の crate にし、関数ごとのモジュールに分けてコンパイルする（VM はライブラリにして前もってコンパイルし、変換版のコードは実行時に登録する） | 2026-11-13 | nbody のコードだけのビルドが 11.0 s → 4.8 s（16 モジュール、opt-level 3、速さは同じ）。ConSh（62 MB、128 モジュール）は opt-level 3 で 6 分 56 s、1 で 6 分 16 s（速さはほぼ同じ）、0 で 2 分 56 s（Rust VM より 1.1〜1.4 倍遅い） | 試しただけ（リポジトリは変えていない） | FAST-PLAN 8.4 |
 | インライン展開の制限を緩める（段数 2 → 3、または Body の数 8 → 16） | 2026-11-12 | richards 20 が、Body 16 で 0.94〜0.95 倍（2 回とも）。ほかの bench/ と consh/bench、ConSh の 15,000 回の呼び出しは、どちらも 0.90〜1.09 倍の中でばらつき、決まった向きがない。ConSh の変換したコードは 62.8 MB が 65.1 MB（段数 3）、73.7 MB（Body 16） | 変えなかった | vm/README.md「Inlining」 |
 
 ## 3. ConMa のプログラム（ConSh、SJS）の書き方
