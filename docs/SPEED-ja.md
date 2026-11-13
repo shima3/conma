@@ -45,6 +45,7 @@
 | ConSh のためのデータのプリミティブ（Step 36） | 2026-11-05 | `y=$(f $i)` 3000 回が 17,550,750 → 11,988,797 ステップ、0.96 s → 0.63 s | 入れた | docs/ROADMAP.md Step 36 |
 | ConSh の高速版（consh/include）：条件を先に計算する、1 段の LazyList、`Single_list_fields` など | 2026-11-08〜09 | 参照版と比べて、02 が 112.59M → 33.17M ステップ（-71%）、4.000 s → 1.341 s。ほかは -2〜-32% | 入れた | consh/include/README-ja.md |
 | 呼び出しごとに 1 ステップしか減らない書き換え（よく呼ばれる関数から `__Cont_get__` を除くなど） | — | ほとんど効果なし | 入れなかった | consh/include/README-ja.md |
+| richards を手で調整して書き直す（`bench/richards/richards_tuned.se`。定数を実行ごとに 1 回だけ引いて Closure の変数に持つ、スケジューラがフラグを 1 回ずつ読む、変わるフラグだけを書くなど） | 2026-11-13 | richards 2 が 20,110,425 → 15,199,166 ステップ（0.76）。richards 20 が Rust VM で 5.17 s → 3.93 s（0.76）、変換版で 0.590 s → 0.476 s（0.81）。Apple M2 | 別のファイルとして入れた（richards.se は Python の写しのまま） | bench/README.md「A tuned richards」 |
 | SJS の変換器と実行時の支えの改良（型の分かる所の確認を省く、配列の添字、Ref のない `const`、数のリテラルとの比較、行の記録を減らす） | 2026-11-11〜12 | 段階 B7 と比べて、loop 100000 が 1.28 s → 0.166 s、fib 20 が 0.50 s → 0.123 s、nbody 2000 が 9.94 s → 1.098 s | 入れた | consh/sjs/README-ja.md「速さ」「経緯」 |
 
 ## 4. 言語とプリミティブ
