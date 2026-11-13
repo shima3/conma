@@ -193,7 +193,11 @@ Primitives for floating-point arithmetic and numeric utilities.
 * **Description**: Converts a `Number` to its string representation.
 
 ### **`__Number_is_zero__ Number ,(Boolean)`** / **`__Number_is_positive__`** / **`__Number_is_negative__`**
-* **Description**: Evaluates the sign property of the given `Number` and returns a boolean value.
+* **Description**: Evaluates the sign property of the given `Number` and returns a boolean value. `-0` is zero and neither positive nor negative.
+
+### **`__Number_is_negative_zero__ Number ,(Boolean)`**
+* **Description**: Returns true if `Number` is `-0`, and false for any other `Number` (`+0`, NaN, whatever its sign bit, and every nonzero Number). A `Number` is an IEEE 754 double, which can be `-0` (`__Number_fromString__` of `"-0"`, `-1` times `0`, `__Number_sqrt__` of `-0`), but the other primitives treat `-0` as `0` (`__Number_toString__` writes it as `"0"`, `__Number_is_negative__` is false for it, and dividing by it is an error like dividing by `0`); this is the only primitive that tells them apart. It is for languages translated to ConMa that need the sign of zero, such as JavaScript (`1 / -0` is `-Infinity`).
+* **Error**: If the operand is not a `Number`, stops the VProc with an error, as `__Number_is_zero__` does.
 
 ### **`__Number_add__ aNumber bNumber ,(sumNumber)`** / **`__Number_subtract__ aNumber bNumber ,(differenceNumber)`** / **`__Number_multiply__ aNumber bNumber ,(productNumber)`**
 * **Description**: Performs the corresponding arithmetic operation on two `Number` values and returns the resulting `Number`.

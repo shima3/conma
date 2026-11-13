@@ -1503,6 +1503,15 @@ def prim_Number_is_negative(vp, gvenv):
     _check_number("__Number_is_negative__", val)
     _prim_return(vp, [TRUE_CLOSURE if val.value < 0 else FALSE_CLOSURE])
 
+def prim_Number_is_negative_zero(vp, gvenv):
+    """__Number_is_negative_zero__ Number ,(Boolean)"""
+    olist = vp["olist"]
+    if not olist: raise VProcError("__Number_is_negative_zero__: missing argument")
+    val = olist.pop(0)
+    _check_number("__Number_is_negative_zero__", val)
+    neg_zero = val.value == 0 and math.copysign(1.0, val.value) < 0
+    _prim_return(vp, [TRUE_CLOSURE if neg_zero else FALSE_CLOSURE])
+
 def _prim_binop(vp, name, op):
     olist = vp["olist"]
     if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
@@ -1557,7 +1566,11 @@ def prim_Number_floor(vp, gvenv):
     val = olist.pop(0)
     _check_number("__Number_floor__", val)
     x = val.value
-    _prim_return(vp, [Number(math.floor(x) if math.isfinite(x) else x)])
+    if math.isfinite(x):
+        # a float, as the Rust VM gives (f64::floor): -0 stays -0 (__Number_is_negative_zero__)
+        r = float(math.floor(x))
+        x = math.copysign(0.0, x) if r == 0 else r
+    _prim_return(vp, [Number(x)])
 
 
 # ── CChain / CFrame Primitives ────────────────────────────────────────────────
@@ -2786,6 +2799,7 @@ PRIMITIVES = {
     "__Number_is_zero__":      prim_Number_is_zero,
     "__Number_is_positive__":  prim_Number_is_positive,
     "__Number_is_negative__":  prim_Number_is_negative,
+    "__Number_is_negative_zero__": prim_Number_is_negative_zero,
     "__Number_add__":          prim_Number_add,
     "__Number_subtract__":     prim_Number_subtract,
     "__Number_multiply__":     prim_Number_multiply,

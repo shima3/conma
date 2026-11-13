@@ -121,6 +121,13 @@ pub fn is_positive(m: &mut Machine, vp: &mut VProc) -> PResult {
 pub fn is_negative(m: &mut Machine, vp: &mut VProc) -> PResult {
     predicate(m, vp, "__Number_is_negative__", |x| x < 0.0)
 }
+/// -0 (the only Number that is zero and has the sign bit; never NaN).
+pub fn is_negative_zero_f64(x: f64) -> bool {
+    x == 0.0 && x.is_sign_negative()
+}
+pub fn is_negative_zero(m: &mut Machine, vp: &mut VProc) -> PResult {
+    predicate(m, vp, "__Number_is_negative_zero__", is_negative_zero_f64)
+}
 
 fn binop(vp: &mut VProc, name: &str, f: fn(f64, f64) -> f64) -> PResult {
     check_args(vp, name, 2)?;

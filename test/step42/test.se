@@ -1,0 +1,49 @@
+;; Step42: __Number_is_negative_zero__ Number ,(Boolean)。-0 なら真、ほかの Number（+0、NaN、0 でない数）は偽。
+;; ほかのプリミティブは -0 を 0 と同じに扱うので、これだけが -0 を見分ける（JavaScript の 1 / -0 などのため）
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; label と、n が -0 か
+(define show ,(label n)
+  __Number_is_negative_zero__ n ,(b)
+  __if_then_else__ b (,() __NULL__ "true") (,() __NULL__ "false") ,(t)
+  __String_concat__ label ": " ,(s)
+  __String_concat__ s t ,(s)
+  println s)
+
+(define num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+;; case1: 書いた数と、計算で作った -0、+0、NaN、無限大
+(define case1 ,()
+  num "-0" ,(nz) show "-0" nz ,()
+  num "0" ,(z) show "0" z ,()
+  num "-0.0" ,(nz2) show "-0.0" nz2 ,()
+  num "-1" ,(m1) show "-1" m1 ,()
+  num "1" ,(one) show "1" one ,()
+  num "-1e-320" ,(tiny) show "-1e-320" tiny ,()
+  __Number_multiply__ m1 z ,(p) show "-1 * 0" p ,()
+  __Number_multiply__ m1 nz ,(q) show "-1 * -0" q ,()
+  __Number_subtract__ z z ,(d) show "0 - 0" d ,()
+  __Number_subtract__ nz z ,(d2) show "-0 - 0" d2 ,()
+  __Number_add__ nz nz ,(s) show "-0 + -0" s ,()
+  __Number_add__ nz z ,(s2) show "-0 + 0" s2 ,()
+  __Number_sqrt__ __print_exit_error__ nz ,(r) show "sqrt(-0)" r ,()
+  __Number_floor__ nz ,(f) show "floor(-0)" f ,()
+  num "1e-320" ,(small) __Number_multiply__ small tiny ,(v) show "1e-320 * -1e-320" v ,()
+  num "1e300" ,(big) __Number_multiply__ big big ,(inf) show "inf" inf ,()
+  __Number_multiply__ m1 inf ,(ninf) show "-inf" ninf ,()
+  __Number_subtract__ inf inf ,(nan) show "nan" nan ,()
+  __Number_multiply__ m1 nan ,(nnan) show "-nan" nnan ,()
+  ;; -0 は、ほかのプリミティブでは 0 と同じ
+  __Number_toString__ nz ,(str) println str ,()
+  __Number_is_negative__ nz ,(neg) __if_then_else__ neg (,() println "negative") (,() println "not negative") ,()
+  __Number_is_zero__ nz ,(zero) __if_then_else__ zero (,() println "zero") (,() println "not zero"))
+
+;; case2: Number でなければ、VProc をエラーで止める
+(define case2 ,()
+  __Number_is_negative_zero__ "0" ,(b)
+  println "not reached")

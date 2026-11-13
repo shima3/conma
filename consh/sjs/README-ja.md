@@ -33,7 +33,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * **SJS の範囲の外**（`not in SJS`、終了ステータス 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ（計算したキーも実行時に確かめる）、正規表現、`==` と `!=`、getter と setter、`instanceof`
 * **まだないもの**：整数でも 0.5 でもない指数の `**`（`TypeError: not yet translated to ConMa`）と、`Math` の `exp`、`log`、`sin` など（ConMa の VM にプリミティブがない）。`Promise.race`、`allSettled`、`any`。論理の代入（`&&=`、`||=`、`??=`。`not yet translated`）。数にすると無限大になる数のリテラル（`1e999`）は `SyntaxError: a bad number`
 * **プロトタイプがない**：メソッドは名前で選ぶ。`"toString" in {}` は偽（JavaScript は真）。関数の `length` と `name` は、`in` では真だが、読むと `undefined`
-* **値**：`-0` と `0` を区別しない（`console.log(-0)` は `0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は `a - b * trunc(a / b)` で求めるので、大きな数では下の桁が違うことがある
+* **値**：`-0` は JavaScript と同じに作り（単項の `-`、`Math.trunc`、`ceil`、`round`、`min`、`%` など）、`1 / -0` は `-Infinity`（2026-11-14 から。経緯の「-0」）。ただし、`console.log(-0)` は `0` と書く（`String(-0)` と同じ。Node.js の `console.log` は `-0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は `a - b * trunc(a / b)` で求めるので、大きな数では下の桁が違うことがある（0、無限大、NaN の場合と結果の符号は JavaScript と同じ）
 * **表示**：関数は `function () { [native code] }`、`console.log` では `[Function (anonymous)]`
 * **ジェネレータ**：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない（async ジェネレータの `yield*` は `next(x)` の `x` だけを渡す）
 * **`typeof` を定義されていない名前に使う**と、`"undefined"` でなく `ReferenceError`
@@ -277,3 +277,14 @@ nbody のステップの約 27%、loop の約半分が、変換したコード�
 ### 段階 B9：SInfo で SJS の位置を示す（2026/11/12）
 
 consh/SAFEJS-PLAN-ja.md の 4.4 のとおりに作った。受け手のない例外は `ファイル:行:桁: TypeError: ...` の形で出し、位置は、それを投げた所（実行時のエラーなら失敗した式。メンバーは名前、代入は演算子）で、Node.js が出す行と桁と同じになる。finally を通っても、ジェネレータや await の後でも、最初に投げた所になる。受け手のない Promise の拒否は、エラーのオブジェクトならそれを作った所、ほかの値なら拒否のもとになった `throw` の所（Node.js と同じく、投げずに拒否した値には位置を出さない）。ConSh の `(( ))` と `$(( ))` では、`(( ))` の中の位置をスクリプトの行と桁にして出す（SJS関数をコマンドとして呼んだときも、関数を作った所）。文ごとの `Sjs_line` をなくしたので、loop 100000 が 0.259 秒から 0.202 秒、fib 20 が 0.192 秒から 0.136 秒、nbody 2000 が 1.398 秒から 1.225 秒になった。モジュールの大きさは変わらない。詳しくは consh/SAFEJS-PLAN-ja.md の 4.4 の「作ったもの」。前の節の「行を記録しない文」は、`Sjs_line` がなくなったので、もう要らない。
+
+### -0（2026-11-14）
+
+ConMa の Number は `-0` を持てるが、プリミティブでは見えなかった（`__Number_is_negative__` は偽、`__Number_toString__` は `"0"`、0 で割るとエラー）ので、SJS は `-0` を作らず、`1 / -0` を `Infinity` にしていた。ユーザーと、JavaScript に合わせると決め（consh/SJS-WASM-PLAN-ja.md の 11）、簡潔版 ConMa に `__Number_is_negative_zero__` を足した（docs/ROADMAP.md の Step 42）。
+
+* `Sjs_div`：0 で割ると、`a` の符号と、割る数が `-0` か（`__Number_is_negative_zero__`）で、無限大の符号を決める。プリミティブが要るのは、ここだけである。
+* `-0` を作る所は、今のプリミティブで足りる：単項の `-` と `Sjs_trunc` は `0 - x` でなく `-1` を掛ける（`Sjs_minus`）。`Math.round` は `Sjs_round`（`x - floor(x)` が 0.5 以上なら切り上げ、結果が 0 で `x` が負か `-0` なら `-0`）。`Math.abs(-0)` は `0`。`Math.max` と `min` は、0 どうしなら、和と `-(-a + -b)` で求める（`max(-0, 0)` は `0`、`min(-0, 0)` は `-0`）。`%` は、結果が 0 なら割られる数の符号を付ける。
+* 同じ関数を直すときに、`Math.round(0.49999999999999994)`（`floor(x + 0.5)` では `1`）と、無限大で割る `%`（`5 % Infinity` が `NaN`）も JavaScript に合わせた。
+* Python の VM の `__Number_floor__` は、`math.floor` の int を返していて `-0` の符号を落としたので、Rust の VM と同じく float を返すようにした。
+* consh/sjs/test/step8 の case10 が、これらを Node.js の結果と比べる。
+

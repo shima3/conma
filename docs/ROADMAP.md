@@ -833,6 +833,17 @@ No new primitive.
 * Tests: `test/step41` (the replacement definitions against the values of Node.js), `test/fast5` (the primitives in a module marked by the frontend, on every VM; the module translated by `bin/concise`; a module defining one of the names itself), `consh/sjs/test/step8` case9 (SJS).
 * Results: richards 20 on the Rust VM 7.53 s to 5.24 s; one bitwise operation of SJS about 4,500 steps to about 65 (an addition takes 45).
 
+## Step 42: The sign of zero
+
+| Primitive | Status |
+|---|---|
+| `__Number_is_negative_zero__` | implemented |
+
+* Goal: a Number is an IEEE 754 double and can be `-0`, but no primitive told `-0` from `0` (`__Number_toString__` writes `"0"`, `__Number_is_negative__` is false, dividing by either is an error), so SJS (consh/sjs) could not give `-Infinity` for `1 / -0` as JavaScript does. Decided with the user on 2026-11-14 (consh/SJS-WASM-PLAN-ja.md 11): a primitive of concise ConMa, since a replacement definition cannot be written in ConMa.
+* `__Number_is_negative_zero__ Number ,(Boolean)` is true for `-0` only (false for NaN whatever its sign bit); a non-Number stops the VProc (PRIMITIVES.md). The transpiled code calls it as the other predicates of `CHAIN` (`vm/conma2rust/conma2rust.py`, `SAFE_PRIMS` of `vm/src/transpiled.rs`).
+* `__Number_floor__` of the Python VM now returns a float, keeping `-0` as the Rust VM does (`math.floor` gave an int, which lost the sign).
+* Tests: `test/step42` (written and computed `-0`, `+0`, NaN, infinities, subnormals, and that the other primitives treat `-0` as `0`).
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the fast version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/SAFEJS-REVIEW-ja.md (3.1.4).

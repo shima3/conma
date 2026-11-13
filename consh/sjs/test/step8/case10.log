@@ -1,0 +1,18 @@
+div -Infinity Infinity Infinity NaN Infinity -Infinity
+neg -Infinity Infinity -Infinity
+mul -Infinity -Infinity Infinity
+add Infinity -Infinity -Infinity Infinity
+trunc -Infinity Infinity -Infinity -1
+ceil -Infinity -Infinity -1 2
+floor -Infinity Infinity -1
+round -Infinity -Infinity -Infinity Infinity
+round2 0 3 -2 -1 1e+300 -4503599627370495
+abs Infinity 3 Infinity
+sign -Infinity Infinity -1
+max Infinity Infinity -Infinity -Infinity -Infinity NaN
+min -Infinity -Infinity Infinity Infinity 1
+mod -Infinity -Infinity Infinity -Infinity 5 -5 NaN NaN NaN -1
+str 0 0 [0] true 1
+number -Infinity -Infinity -Infinity
+assign NaN
+exit: 0

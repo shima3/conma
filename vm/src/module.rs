@@ -163,6 +163,7 @@ pub const INLINE_PRIMS: &[&str] = &[
     "__Number_is_zero__",
     "__Number_is_negative__",
     "__Number_is_positive__",
+    "__Number_is_negative_zero__",
     "__Number_and32__",
     "__Number_or32__",
     "__Number_xor32__",

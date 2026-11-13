@@ -61,6 +61,7 @@ prims! {
     "__Number_is_zero__"   => "prim_Number_is_zero", number::is_zero;
     "__Number_is_positive__" => "prim_Number_is_positive", number::is_positive;
     "__Number_is_negative__" => "prim_Number_is_negative", number::is_negative;
+    "__Number_is_negative_zero__" => "prim_Number_is_negative_zero", number::is_negative_zero;
     "__Number_add__"       => "prim_Number_add", number::add;
     "__Number_subtract__"  => "prim_Number_subtract", number::subtract;
     "__Number_multiply__"  => "prim_Number_multiply", number::multiply;
