@@ -52,7 +52,9 @@ if [ -f "$consh/js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ]
   "$vmw" --main "$tmp/$name.module.se" > "$tmp/wasm.out" 2>&1
   cmp -s "$tmp/node.out" "$tmp/wasm.out" || { echo "SJS on the wasm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/wasm.out"; }
   nfun=$(grep -o 'Sjs_wasm_fn Wsjs "[^"]*"' "$tmp/$name.se" | wc -l | tr -d ' ')
-  wat=$(grep -o 'Sjs_wasm_module "[^"]*"' "$tmp/$name.se" | wc -c | tr -d ' ')
+  # WAT の文字列の長さ（\" などのエスケープを 1 文字と数える。REVIEW-ja.md の 2026-11-14 (2) の 8）
+  wat=$(perl -ne 'if (/Sjs_wasm_module "((?:[^"\\]|\\.)*)"/) { ($s = $1) =~ s/\\(.)/$1/g; print length($s) }' "$tmp/$name.se")
+  wat=${wat:-0}
   printf 'numeric functions: %s (WAT %s bytes)\n' "$nfun" "$wat"
   printf '%-24s %s s\n' "wasm VM, SJS" "$(best "$vmw" --main "$tmp/$name.module.se")"
   printf '%-24s %s s\n' "wasm VM, SJS, no wasm" "$(best env CONMA_NO_WASM=1 "$vmw" --main "$tmp/$name.module.se")"
