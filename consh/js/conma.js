@@ -1791,15 +1791,15 @@ var ConMaVM = (function () {
     const js = jsRemote || JsEngine(jsOut, write);
     const instance = new WebAssembly.Instance(wasmModule, {
       env: {
-        host_write: (fd, ptr, len) => write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()),
+        host_write: (fd, ptr, len) => write(fd, bytesAt(ptr, len).slice()),
         host_input_needed: () => {
           if (inputNeeded) inputNeeded(vm);
         },
         host_file_needed: (ptr, len) => {
-          if (fileNeeded) fileNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
+          if (fileNeeded) fileNeeded(vm, text(bytesAt(ptr, len)));
         },
         host_dir_needed: (ptr, len) => {
-          if (dirNeeded) dirNeeded(vm, text(new Uint8Array(x.memory.buffer, ptr, len)));
+          if (dirNeeded) dirNeeded(vm, text(bytesAt(ptr, len)));
         },
         host_js_value: (idPtr, idLen, out, cap) => {
           let text;
@@ -1822,10 +1822,10 @@ var ConMaVM = (function () {
           if (!hostFs) return -38;
           const r = hostFs.read(fd, len);
           if (typeof r === "number") return r;
-          new Uint8Array(x.memory.buffer).set(r, ptr);
+          putAt(r, ptr);
           return r.length;
         },
-        host_fs_write: (fd, ptr, len) => (hostFs ? hostFs.write(fd, new Uint8Array(x.memory.buffer, ptr, len).slice()) : -38),
+        host_fs_write: (fd, ptr, len) => (hostFs ? hostFs.write(fd, bytesAt(ptr, len).slice()) : -38),
         host_fs_close: (fd) => (hostFs ? hostFs.close(fd) : -38),
         host_fs_stat: (ptr, len) => (hostFs ? hostFs.stat(str(ptr, len)) : -38),
         host_fs_realpath: (ptr, len, out, cap) => (hostFs ? give(hostFs.realpath(str(ptr, len)), out, cap) : -38),
@@ -1842,7 +1842,7 @@ var ConMaVM = (function () {
             const i = e.indexOf("=");
             env[e.slice(0, i)] = e.slice(i + 1);
           }
-          const nums = new Int32Array(x.memory.buffer, stdioPtr, 6);
+          const nums = new Int32Array(x.memory.buffer, stdioPtr >>> 0, 6);
           const stdio = [0, 1, 2].map((i) => ({ kind: nums[2 * i], n: nums[2 * i + 1] }));
           return hostProc.spawn(argv, env, str(cwdPtr, cwdLen), stdio, detached !== 0);
         },
@@ -1865,7 +1865,7 @@ var ConMaVM = (function () {
           }
           const bytes = lastBuild.bytes;
           if (bytes.length <= cap) {
-            new Uint8Array(x.memory.buffer).set(bytes, out);
+            putAt(bytes, out);
             lastBuild = null;
           }
           return bytes.length;
@@ -1880,7 +1880,7 @@ var ConMaVM = (function () {
         // exports the fuel as the mutable i64 global __fuel
         host_wasm_compile: (ptr, len) => {
           try {
-            const bytes = new Uint8Array(x.memory.buffer, ptr, len).slice();
+            const bytes = bytesAt(ptr, len).slice();
             const module = new WebAssembly.Module(bytes);
             const instance = new WebAssembly.Instance(module, {});
             const mem = instance.exports.__memory;
@@ -1901,7 +1901,7 @@ var ConMaVM = (function () {
             wasmError = "no such function";
             return 2;
           }
-          const args = Array.from(new Float64Array(x.memory.buffer, argsPtr, n));
+          const args = Array.from(new Float64Array(x.memory.buffer, argsPtr >>> 0, n));
           // The memory of the module (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
           // of __Wasm_call_memory__ from address 0 (growing it if they do not fit). Its size is that of
           // the module or what the words need, whatever the calls before did (memory.grow, more words):
@@ -1926,14 +1926,14 @@ var ConMaVM = (function () {
               }
             }
             new Uint8Array(mem.buffer).fill(0);
-            if (words > 0) new Float64Array(mem.buffer, 0, words).set(new Float64Array(x.memory.buffer, memPtr, words));
+            if (words > 0) new Float64Array(mem.buffer, 0, words).set(new Float64Array(x.memory.buffer, memPtr >>> 0, words));
           }
           const fuelGlobal = instance.exports.__fuel;
           fuelGlobal.value = BigInt(fuel);
           try {
             const r = f(...args);
-            new Float64Array(x.memory.buffer, out, 1)[0] = r;
-            if (mem && words > 0) new Float64Array(x.memory.buffer, memPtr, words).set(new Float64Array(mem.buffer, 0, words));
+            new Float64Array(x.memory.buffer, out >>> 0, 1)[0] = r;
+            if (mem && words > 0) new Float64Array(x.memory.buffer, memPtr >>> 0, words).set(new Float64Array(mem.buffer, 0, words));
             return 0;
           } catch (e) {
             if (fuelGlobal.value === 0n) return 1;
@@ -1949,15 +1949,24 @@ var ConMaVM = (function () {
     });
     x = instance.exports;
 
+    // The bytes at ptr in the memory of the VM. A pointer of wasm32 comes to JavaScript as a signed i32,
+    // negative from 2 GB on: >>> 0 makes it the unsigned address (as every pointer that indexes the memory).
+    function bytesAt(ptr, len) {
+      return new Uint8Array(x.memory.buffer, ptr >>> 0, len >>> 0);
+    }
+    // Copy bytes into the memory of the VM at ptr.
+    function putAt(bytes, ptr) {
+      new Uint8Array(x.memory.buffer).set(bytes, ptr >>> 0);
+    }
     // The string at ptr in the memory of the VM.
     function str(ptr, len) {
-      return text(new Uint8Array(x.memory.buffer, ptr, len));
+      return text(bytesAt(ptr, len));
     }
     // Write the string s (UTF-8) to out if it fits in cap bytes; its length, or a negative errno.
     function give(s, out, cap) {
       if (typeof s === "number") return s;
       const bytes = utf8(s);
-      if (bytes.length <= cap) new Uint8Array(x.memory.buffer).set(bytes, out);
+      if (bytes.length <= cap) putAt(bytes, out);
       return bytes.length;
     }
 
@@ -1965,7 +1974,7 @@ var ConMaVM = (function () {
     function pass(data, f) {
       const bytes = typeof data === "string" ? utf8(data) : data;
       const ptr = x.conma_alloc(bytes.length);
-      new Uint8Array(x.memory.buffer).set(bytes, ptr);
+      putAt(bytes, ptr);
       try {
         return f(ptr, bytes.length);
       } finally {
@@ -2008,7 +2017,7 @@ var ConMaVM = (function () {
         const ptr = x.conma_alloc(len);
         try {
           const n = x.conma_read(fd, ptr, len);
-          return n < 0 ? n : new Uint8Array(x.memory.buffer, ptr, n).slice();
+          return n < 0 ? n : bytesAt(ptr, n).slice();
         } finally {
           x.conma_free(ptr, len);
         }
@@ -2027,7 +2036,7 @@ var ConMaVM = (function () {
       getFile: (path) => {
         const n = pass(path, x.conma_get_file);
         if (n < 0) return null;
-        return new Uint8Array(x.memory.buffer, x.conma_result_ptr(), n).slice();
+        return bytesAt(x.conma_result_ptr(), n).slice();
       },
     };
     return vm;
