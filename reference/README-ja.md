@@ -12,5 +12,5 @@
 
   `conma build` で ConSh のモジュール（約 7,700 関数）を作るのは、1 億 520 万ステップ、3.58 秒から、7,240 万ステップ、2.78 秒になった（Rust 版の VM。Python の `bin/includer` と `bin/resolver` は 1.32 秒）。フロントエンドのモジュール `vm/frontend.module.se` は、`include` のファイルで作る。
 
-参照版で test/ を走らせるには、環境変数 `CONMA_REFERENCE` を空でない値にする（`test/resolver.sh` がこのフォルダを先に探す）。このとき、util.se そのものに依るログを持つ 4 つ（test/step20 の case15 と test/step18 の case12 はエラーの位置が `reference/util.se` の行になり、test/step21 の case5 と case6 は数える時点のステップがずれる）は、期待されるログと違う。ConSh の参照版（`CONSH_IMPL=reference`）も、このフォルダを先に探す。
+参照版で test/ を走らせるには、環境変数 `CONMA_REFERENCE` を空でない値にする（`test/resolver.sh` がこのフォルダを先に探す）。このとき、util.se そのものに依るログを持つ 5 つは、期待されるログと違う：test/step20 の case15 と test/step18 の case12 はエラーの位置が `reference/util.se` の行になり、test/step21 の case6 は数える時点のステップがずれ（case5 は同じ）、test/fast3 は条件分岐の速い道に印を付けた Body の数が違い（util.se の Body の数が違う）、test/fast9 は印刷した Closure の中の大域の番号が違う（2026-11-14 に、Rust VM と Python VM で確かめた）。ConSh の参照版（`CONSH_IMPL=reference`）も、このフォルダを先に探す。
 機能を足したり変えたりしたときは、`include` のファイルと、ここにある同じ名前のファイルの両方を直し、両方でテストする。

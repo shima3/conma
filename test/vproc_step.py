@@ -1547,6 +1547,28 @@ def prim_Number_divide(vp, gvenv):
         return
     _prim_return(vp, [Number(a.value / b.value)])
 
+def prim_Number_remainder(vp, gvenv):
+    """__Number_remainder__ onError Number Number ,(Number): fmod of C (% of JavaScript), exact"""
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError("__Number_remainder__: missing argument(s)")
+    on_error = olist.pop(0)
+    a = olist.pop(0)
+    b = olist.pop(0)
+    _check_number("__Number_remainder__", a)
+    _check_number("__Number_remainder__", b)
+    if b.value == 0:
+        _prim_error(vp, on_error, "__Number_remainder__: division by zero")
+        return
+    x, y = a.value, b.value
+    # math.fmod raises for an infinite x; a NaN gives NaN; a finite x and an infinite y give x (as f64 % in Rust)
+    if math.isinf(x) or math.isnan(x) or math.isnan(y):
+        r = math.nan
+    elif math.isinf(y):
+        r = x
+    else:
+        r = math.fmod(x, y)
+    _prim_return(vp, [Number(r)])
+
 def prim_Number_sqrt(vp, gvenv):
     """__Number_sqrt__ onError Number ,(Number)"""
     olist = vp["olist"]
@@ -2804,6 +2826,7 @@ PRIMITIVES = {
     "__Number_subtract__":     prim_Number_subtract,
     "__Number_multiply__":     prim_Number_multiply,
     "__Number_divide__":       prim_Number_divide,
+    "__Number_remainder__":    prim_Number_remainder,
     "__Number_sqrt__":         prim_Number_sqrt,
     "__Number_floor__":        prim_Number_floor,
     "__CChain_get__":          prim_CChain_get,

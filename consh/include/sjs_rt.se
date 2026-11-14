@@ -428,24 +428,11 @@
     __if__ neg (,() Sjs_minus inf ,(m) return m) ,()
     return inf) a b)
 
-;; a % b：a - b * trunc(a / b)（JavaScript の % と同じく、結果の符号は a に合わせる。0 なら a の符号の 0）。
-;; 0 か NaN で割れば NaN。a が 0 なら a、b が無限大なら、a が有限なら a（JavaScript と同じ）
+;; a % b：JavaScript の % と同じ、正確な剰余（__Number_remainder__。C の fmod）。符号は a の符号（0 なら a の符号の 0）、
+;; 無限大の a か NaN なら NaN、有限の a と無限大の b なら a。0 か -0 で割れば NaN（プリミティブは onError）
 (define Sjs_mod ,(a b)
-  __Cont_get__ ,(return)
   Sjs_need2 "%" a b ,()
-  __Number_is_zero__ b ,(zero)
-  Sjs_is_nan b ,(nanB)
-  __or__ zero nanB ,(test__) __if__ test__ (,() Sjs_nan ,(n) return n) ,()
-  __Number_is_zero__ a ,(test__) __if__ test__ (,() return a) ,()
-  Sjs_is_infinite b ,(test__) __if__ test__
-    (,() Sjs_is_finite a ,(fin) __if__ fin (,() return a) ,() Sjs_nan ,(n) return n) ,()
-  __Number_divide__ __print_exit_error__ a b ,(q)
-  Sjs_trunc q ,(t)
-  __Number_multiply__ b t ,(m)
-  __Number_subtract__ a m ,(r)
-  __Number_is_zero__ r ,(test__) __unless__ test__ (,() return r) ,()
-  __Number_is_negative__ a ,(neg)
-  __if_then_else__ neg (,() Sjs_minus r) (,() Sjs_zero))
+  __Number_remainder__ (,(msg) Sjs_nan) a b)
 
 ;; 有限の数か（無限大と NaN は x - x が NaN）
 (define Sjs_is_finite ,(x)
@@ -3544,17 +3531,20 @@
 
 ;; Sjs_wasm_fn の本体。shapes は引数の形（深さ。0 は数、1 は数の配列、2 は数の配列の配列、…）を空白で区切ったもの
 ;; （配列の計画の段階 A2）。writes が偽なら、配列に書かない関数なので、呼んだ後に書き戻さない（写す費用の改善）。
-;; check は、wasm 版を使ってよいかを返す thunk
+;; check は、wasm 版を使ってよいかを返す thunk。
+;; busy は、ConMa 版を動かしている深さと、それを数えている VProc の番号（Sjs_wasm_busy）。ConMa 版の途中で VProc を止める
+;; （(( )) を Ctrl-C で止める）と、深さが戻らないまま残るが、別の VProc（次の評価）からは 0 に見える
 (define Sjs_wasm_fn_core ,(W name shapes writes void f check)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
+  __Ref_new__ __NULL__ ,(busyOwner)
   Sjs_wasm_depths shapes ,(depths n arrays)
   __NULL__ (,(args)
     __Cont_get__ ,(return)
     __is_null__ W ,(none)
     __if__ none (,() f args ,(r) return r) ,()
     ;; ConMa 版で動かしている間は、確かめずに ConMa 版（check はその後。再帰の各段で確かめない）
-    __Ref_get__ busy ,(b)
+    Sjs_wasm_busy busy busyOwner ,(b me)
     __Number_is_zero__ b ,(free)
     __unless__ free (,() f args ,(r) return r) ,()
     check ,(allowed)
@@ -3570,12 +3560,29 @@
         Sjs_wasm_run W name nums fuel) ,(done value)
     __if__ done (,() __if_then_else__ void (,() __NULL__ __NULL__) (,() __NULL__ value) ,(r) return r) ,()
     Sjs_inc b ,(b1)
+    __Ref_set__ busyOwner me ,()
     __Ref_set__ busy b1 ,()
     f args ,(r)
-    __Ref_get__ busy ,(b2)
-    Sjs_dec b2 ,(b3)
+    Sjs_wasm_busy busy busyOwner ,(b2 me2)
+    ;; 別の VProc が数え直していれば 0（負にしない）
+    __Number_is_zero__ b2 ,(z2)
+    __if_then_else__ z2 (,() __NULL__ b2) (,() Sjs_dec b2) ,(b3)
+    __Ref_set__ busyOwner me2 ,()
     __Ref_set__ busy b3 ,()
     __NULL__ r))
+
+;; 今の VProc の番号 me と、その VProc が数えている深さ（busy を数えたのが別の VProc なら 0）
+(define Sjs_wasm_busy ,(busy busyOwner)
+  __Cont_get__ ,(return)
+  __VProc_current__ ,(vp)
+  __VProc_id__ vp ,(me)
+  __Ref_get__ busyOwner ,(owner)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __is_null__ owner ,(test__) __if__ test__ (,() return zero me) ,()
+  __Number_subtract__ owner me ,(d)
+  __Number_is_zero__ d ,(test__) __unless__ test__ (,() return zero me) ,()
+  __Ref_get__ busy ,(b)
+  __NULL__ b me)
 
 ;; 燃料 fuel で wasm 版を呼ぶ。使い切れば 2 倍にしてやり直す。結果が出れば真とその値、上限を超えるか trap なら偽
 (define Sjs_wasm_run ,(W name nums fuel)

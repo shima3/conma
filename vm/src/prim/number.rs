@@ -220,6 +220,29 @@ pub fn divide(_m: &mut Machine, vp: &mut VProc) -> PResult {
     Ok(())
 }
 
+/// __Number_remainder__ onError a b ,(Number): the remainder of a divided by b, a - b * n for the
+/// integer n of a / b rounded toward zero, computed exactly (fmod of C, % of JavaScript): its sign
+/// is that of a (a zero keeps the sign of a), an infinite a or a NaN gives NaN, a finite a and an
+/// infinite b give a; b zero (or -0) applies onError, as __Number_divide__ does.
+pub fn remainder(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__Number_remainder__";
+    check_args(vp, name, 3)?;
+    let xy = check_number(name, &vp.olist[1]).and_then(|x| check_number(name, &vp.olist[2]).map(|y| (x, y)));
+    let (x, y) = match xy {
+        Ok(xy) => xy,
+        Err(e) => return in_place_failed(vp, 3, e),
+    };
+    if y == 0.0 {
+        let on_error = std::mem::replace(&mut vp.olist[0], Value::Null);
+        vp.olist.drain(..3);
+        vp.prim_error(on_error, "__Number_remainder__: division by zero");
+        return Ok(());
+    }
+    // % of f64 is fmod, exact
+    vp.prim_return1(num(x % y));
+    Ok(())
+}
+
 /// __Number_sqrt__ onError Number ,(Number): the square root; a negative
 /// Number (not -0) applies onError.
 pub fn sqrt(_m: &mut Machine, vp: &mut VProc) -> PResult {

@@ -1,0 +1,59 @@
+;; Step44: __Number_remainder__ onError a b ,(Number)。a - b * n（n は a / b を 0 の方へ丸めた整数）を正確に求める
+;; （C の fmod、JavaScript の %）。符号は a の符号（0 も a の符号の 0）。b が 0 なら onError
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+;; label: 結果（-0 なら "-0"）
+(define show ,(label n)
+  __Number_toString__ n ,(s)
+  __Number_is_negative_zero__ n ,(nz)
+  __if_then_else__ nz (,() __NULL__ "-0") (,() __NULL__ s) ,(s)
+  __String_concat__ label ": " ,(t)
+  __String_concat__ t s ,(t)
+  println t)
+
+(define rem ,(label a b)
+  __Cont_get__ ,(return)
+  __String_concat__ label ": " ,(head)
+  __Number_remainder__ (,(msg) __String_concat__ head msg ,(s) println s ,() return) a b ,(r)
+  show label r)
+
+;; case1: 正確な剰余（a - b * trunc(a / b) では 0 になるもの）、符号、0、無限大、NaN
+(define case1 ,()
+  num "5.5" ,(a) num "1.1" ,(b) rem "5.5 % 1.1" a b ,()
+  num "1e17" ,(a) num "3" ,(b) rem "1e17 % 3" a b ,()
+  num "1e300" ,(a) num "7" ,(b) rem "1e300 % 7" a b ,()
+  num "-7" ,(a) num "3" ,(b) rem "-7 % 3" a b ,()
+  num "7" ,(a) num "-3" ,(b) rem "7 % -3" a b ,()
+  num "-0" ,(a) num "5" ,(b) rem "-0 % 5" a b ,()
+  num "-4" ,(a) num "2" ,(b) rem "-4 % 2" a b ,()
+  num "4" ,(a) num "-2" ,(b) rem "4 % -2" a b ,()
+  num "0.3" ,(a) num "0.1" ,(b) rem "0.3 % 0.1" a b ,()
+  num "1e-320" ,(a) num "3e-321" ,(b) rem "1e-320 % 3e-321" a b ,()
+  num "1e300" ,(big) __Number_multiply__ big big ,(inf)
+  num "-1" ,(m1) __Number_multiply__ m1 inf ,(ninf)
+  __Number_subtract__ inf inf ,(nan)
+  num "5" ,(five) num "2" ,(two)
+  rem "inf % 5" inf five ,()
+  rem "5 % inf" five inf ,()
+  num "-5" ,(m5) rem "-5 % -inf" m5 ninf ,()
+  rem "nan % 2" nan two ,()
+  rem "2 % nan" two nan)
+
+;; case2: 0 か -0 で割ると onError
+(define case2 ,()
+  num "5" ,(five) num "0" ,(z) num "-0" ,(nz)
+  rem "5 % 0" five z ,()
+  rem "5 % -0" five nz)
+
+;; case3: Number でなければ、VProc をエラーで止める
+(define case3 ,()
+  num "5" ,(five)
+  __Number_remainder__ (,(msg) println msg) five "2" ,(r)
+  println "not reached")

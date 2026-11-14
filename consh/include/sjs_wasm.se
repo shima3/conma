@@ -21,7 +21,7 @@
 ;; ときと同じ関数を指し、Math を使うなら Math のメンバーが元のままかを確かめる（sjs_rt.se の Sjs_wasm_fn_checked）。
 ;; 外の名前で読めるのは、NaN と Infinity だけ（組み込みは書き換えられない）。アロー関数の本体が式なら、それを返す。
 ;; WAT の関数は $f番号、局所の変数は $l番号（引数が先）、ラベルは $b番号（break）、$c番号（continue）、$k番号（ループ）。
-;; % は $__mod、ToUint32 は $__u32、Math.round は $__round、Math.sign は $__sign（sjs_rt.se の Sjs_mod などと同じ手順）
+;; % は $__mod、ToUint32 は $__u32、Math.round は $__round、Math.sign は $__sign（sjs_rt.se の Sjs_mod などと同じ値）
 
 ;; ConSh の (( )) の式 e の WAT（数の関数がなければ ""）。数の関数の fn の節に "wasm"、"wasmCheck"（呼ぶときに確かめる
 ;; 名前を空白で区切ったもの）、"wasmMath"（Math を使うか）を付ける
@@ -2022,10 +2022,12 @@
   __if_then_else__ ok (,() Sjs_get info "wat" ,(w) __String_concat__ acc w) (,() __NULL__ acc) ,(acc)
   Wx_funcs rest acc)
 
-;; 補助の関数（sjs_rt.se の Sjs_mod、ToUint32、Sjs_round、Math.sign と同じ手順）
+;; 補助の関数（sjs_rt.se の ToUint32、Sjs_round、Math.sign と同じ手順。$__mod は、Sjs_mod が使う __Number_remainder__（C の fmod）と
+;; 同じ値を、正確に求める：|b| を |a| を超えない所まで倍にし、それを引けるなら引いて半分にすることを |b| まで繰り返す。
+;; 引く t はいつも t <= 残り < 2t なので、引き算は正確で、倍と半分も正確。WebAssembly には f64 の剰余がない）
 (define Wx_helpers ,()
   Cat5
-    "(func $__mod (param $a f64) (param $b f64) (result f64) (local $r f64) (if (i32.or (f64.eq (local.get $b) (f64.const 0)) (f64.ne (local.get $b) (local.get $b))) (then (return (f64.const nan)))) (if (f64.eq (local.get $a) (f64.const 0)) (then (return (local.get $a)))) (if (f64.eq (f64.abs (local.get $b)) (f64.const inf)) (then (return (select (local.get $a) (f64.const nan) (f64.eq (f64.sub (local.get $a) (local.get $a)) (f64.const 0)))))) (local.set $r (f64.sub (local.get $a) (f64.mul (local.get $b) (f64.trunc (f64.div (local.get $a) (local.get $b)))))) (if (result f64) (f64.eq (local.get $r) (f64.const 0)) (then (f64.copysign (f64.const 0) (local.get $a))) (else (local.get $r)))) "
+    "(func $__mod (param $a f64) (param $b f64) (result f64) (local $r f64) (local $d f64) (local $t f64) (if (i32.or (f64.eq (local.get $b) (f64.const 0)) (f64.ne (local.get $b) (local.get $b))) (then (return (f64.const nan)))) (if (f64.ne (f64.sub (local.get $a) (local.get $a)) (f64.const 0)) (then (return (f64.const nan)))) (if (f64.eq (f64.abs (local.get $b)) (f64.const inf)) (then (return (local.get $a)))) (local.set $r (f64.abs (local.get $a))) (local.set $d (f64.abs (local.get $b))) (if (f64.lt (local.get $r) (local.get $d)) (then (return (local.get $a)))) (local.set $t (local.get $d)) (block $up (loop $double (br_if $up (f64.gt (f64.mul (local.get $t) (f64.const 2)) (local.get $r))) (local.set $t (f64.mul (local.get $t) (f64.const 2))) (br $double))) (block $done (loop $halve (if (f64.ge (local.get $r) (local.get $t)) (then (local.set $r (f64.sub (local.get $r) (local.get $t))))) (br_if $done (f64.eq (local.get $t) (local.get $d))) (local.set $t (f64.mul (local.get $t) (f64.const 0.5))) (br $halve))) (f64.copysign (local.get $r) (local.get $a))) "
     "(func $__u32 (param $x f64) (result f64) (if (f64.ne (f64.sub (local.get $x) (local.get $x)) (f64.const 0)) (then (return (f64.const 0)))) (local.set $x (f64.trunc (local.get $x))) (f64.sub (local.get $x) (f64.mul (f64.const 4294967296) (f64.floor (f64.div (local.get $x) (f64.const 4294967296)))))) "
     "(func $__round (param $x f64) (result f64) (local $r f64) (if (f64.ne (f64.sub (local.get $x) (local.get $x)) (f64.const 0)) (then (return (local.get $x)))) (local.set $r (f64.floor (local.get $x))) (if (f64.ge (f64.sub (local.get $x) (local.get $r)) (f64.const 0.5)) (then (local.set $r (f64.add (local.get $r) (f64.const 1))))) (if (result f64) (f64.eq (local.get $r) (f64.const 0)) (then (f64.copysign (f64.const 0) (local.get $x))) (else (local.get $r)))) "
     "(func $__sign (param $x f64) (result f64) (if (f64.gt (local.get $x) (f64.const 0)) (then (return (f64.const 1)))) (if (f64.lt (local.get $x) (f64.const 0)) (then (return (f64.const -1)))) (local.get $x)) "

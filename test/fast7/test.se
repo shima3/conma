@@ -405,3 +405,21 @@
     num "9000" ,(n9000) count_list n9000 __NULL__ ,(many)
     try_fit "9000 words" w many fuel ,()
     try_call "pages after" w "pages" __NULL__ fuel))
+
+;; case14：case7 と同じく、終わらない関数を呼び続けている間に SIGINT が届く。ただし、SIGINT を送る子プロセスはすぐ終わり、
+;; 裏に残したサブシェルが送るので、VM の外で動くもの（子プロセス、JavaScript、入力）はない。wasm 版の VM のホスト
+;; （consh/js/vm-node.js）は、SIGINT を受け取ると決めた後は、外で動くものがなくても、ときどきイベントを受け取る
+;; （REVIEW-ja.md の 2026-11-14（2）の 7。前は、受け取らずに止まらなかった）
+(define case14 ,()
+  with_module "(module (func (export \"spin\") (result f64) loop $l br $l end f64.const 0))" (,(w)
+    num "0" ,(zero)
+    __Ref_new__ zero ,(ref)
+    __OS_trap_interrupt__ ref ,()
+    num "10000000" ,(fuel)
+    __MSeq_new__ ,(cmd)
+    __MSeq_append__ __print_exit_error__ cmd "sh" ,()
+    __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+    __MSeq_append__ __print_exit_error__ cmd "(sleep 1; kill -INT $PPID) > /dev/null 2>&1 &" ,()
+    __OS_get_envDict__ ,(env)
+    __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+    spin_until w ref fuel))

@@ -27,3 +27,5 @@ run case9 case9.sh < /dev/null
 run case10 case10.sh < /dev/null
 # case11：呼ぶときに確かめる Math のメンバーは、使うものだけ（呼ぶ数の関数が使うものも）。wasm 版の VM とほかの VM で同じログ
 run case11 case11.sh < /dev/null
+# case12：値が undefined の $(( )) はエラー。null は空の文字列、文の (( )) はエラーにしない
+run case12 case12.sh < /dev/null

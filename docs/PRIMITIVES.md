@@ -207,6 +207,12 @@ Primitives for floating-point arithmetic and numeric utilities.
 * **Returns**: The resulting `Number`.
 * **Error**: If `bNumber` is zero, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
 
+### **`__Number_remainder__ onError aNumber bNumber ,(remainderNumber)`**
+* **Description**: The remainder of `aNumber` divided by `bNumber`: `a - b * n` for the integer `n` of `a / b` rounded toward zero, computed exactly (`fmod` of C, `%` of JavaScript; since 2026-11-14, Step 44). The sign of the result is that of `aNumber` (a zero keeps the sign of `aNumber`); an infinite `aNumber` or a NaN gives NaN, and a finite `aNumber` with an infinite `bNumber` gives `aNumber`.
+* **Returns**: The resulting `Number`.
+* **Error**: If `bNumber` is zero (or `-0`), the interpreter invokes `onError` as the next operator with a single error message string as its argument, as `__Number_divide__` does.
+* It belongs to concise ConMa: a replacement definition could not be written in ConMa with `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1`, `1e17 % 3`).
+
 ### **`__Number_sqrt__ onError Number ,(rootNumber)`**
 * **Description**: Returns the square root of `Number` (the root of `-0` is `-0`, of infinity infinity, of NaN NaN).
 * **Error**: If `Number` is negative, the interpreter invokes `onError` as the next operator with a single error message string as its argument.

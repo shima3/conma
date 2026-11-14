@@ -60,7 +60,7 @@ ConMa 版は、11 で JavaScript に合わせた後のものとする。
 |---|---|---|
 | `+ - *` | `__Number_add__` など | `f64.add` など |
 | `/` | `Sjs_div`：JavaScript と同じ（`1 / -0` は `-Infinity`） | `f64.div` |
-| `%` | `Sjs_mod`：割る数が 0 なら `NaN`。割られる数が 0 か、割る数が無限大なら、割られる数。ほかは `a - b * Sjs_trunc(a / b)` で、結果が 0 なら割られる数の符号を付ける | 同じ手順（`f64.div`、`f64.trunc`、`f64.mul`、`f64.sub`、`f64.copysign`）。wasm には f64 の剰余がない。大きな数で下の桁が JavaScript と違うことは、今の ConMa 版と同じ（consh/sjs/README-ja.md） |
+| `%` | `Sjs_mod`：割る数が 0 なら `NaN`。割られる数が 0 か、割る数が無限大なら、割られる数。ほかは `a - b * Sjs_trunc(a / b)` で、結果が 0 なら割られる数の符号を付ける（2026-11-14 から、正確な剰余のプリミティブ `__Number_remainder__`。docs/ROADMAP.md の Step 44） | 同じ手順（`f64.div`、`f64.trunc`、`f64.mul`、`f64.sub`、`f64.copysign`）。wasm には f64 の剰余がない。大きな数で下の桁が JavaScript と違うことは、今の ConMa 版と同じ（consh/sjs/README-ja.md）。2026-11-14 から、`$__mod` は、割る数を倍にして引き、半分にすることを繰り返して、正確な剰余を求める |
 | `< >` | 差が負か（`__Number_subtract__`、`__Number_is_negative__`。`Gen_arith`、`Sjs_less`） | `f64.lt`、`f64.gt`。違う 2 つの有限の数の差は 0 にならず、無限大どうしと NaN の差は NaN（負でない）なので、同じ結果になる |
 | `<= >=` | 今の変換器の手順 | 今の手順と同じ結果になる wasm の命令を、作るときに決める |
 | `=== !==`（数どうし） | | `f64.eq`、`f64.ne`（`NaN !== NaN`、`0 === -0`） |

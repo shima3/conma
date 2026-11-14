@@ -844,6 +844,17 @@ No new primitive.
 * `__Number_floor__` of the Python VM now returns a float, keeping `-0` as the Rust VM does (`math.floor` gave an int, which lost the sign).
 * Tests: `test/step42` (written and computed `-0`, `+0`, NaN, infinities, subnormals, and that the other primitives treat `-0` as `0`).
 
+## Step 44: The exact remainder
+
+| Primitive | Status |
+|---|---|
+| `__Number_remainder__` | implemented |
+
+* Goal: `%` of SJS was `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1` gave `0` where JavaScript gives `1.0999999999999996`, `1e17 % 3` and `1e300 % 7` `0` where it gives `1`; REVIEW-ja.md 2026-11-14 (2)). Decided with the user on 2026-11-14: a primitive of concise ConMa, since the exact remainder cannot be written in ConMa with its primitives in a reasonable number of steps.
+* `__Number_remainder__ onError a b ,(Number)` is `fmod` of C (`%` of Rust's f64, `math.fmod` on the Python VM with infinities and NaN handled as fmod does): the sign of `a`, a zero of the sign of `a`, NaN for an infinite `a` or a NaN, `a` for a finite `a` and an infinite `b`; a zero `b` applies onError as `__Number_divide__` does (PRIMITIVES.md). The transpiled code calls it through the OList as the other primitives of `CHAIN`.
+* `Sjs_mod` of `consh/include/sjs_rt.se` uses it, and the WebAssembly version of `%` (`$__mod` of `consh/include/sjs_wasm.se`, WebAssembly having no remainder of f64) finds the same value exactly by subtracting `b` doubled as far as it fits, then halved, each step exact.
+* Tests: `test/step44` (the values above, signs, zeros, infinities, NaN, subnormals, a zero `b`, a non-Number).
+
 ## Step 43: WebAssembly in fast ConMa
 
 | Primitive | Status |

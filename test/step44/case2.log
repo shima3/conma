@@ -1,0 +1,3 @@
+5 % 0: __Number_remainder__: division by zero
+5 % -0: __Number_remainder__: division by zero
+exit: 0

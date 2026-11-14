@@ -1,0 +1,4 @@
+null: []
+statement: 1
+consh: case12.sh:7:14: sjs: the value of $(( )) is undefined
+exit: 2

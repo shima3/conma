@@ -24,6 +24,7 @@
 ;;                最初の VProc では null
 ;;   "cancelIn"   この VProc が終わったときに cancel する、標準入力のチャネル。なければ null
 ;;   "procRef"    この VProc で実行中の外部コマンドの OSProc を入れる Ref（kill で SIGTERM を送る）
+;;   "sjsRef"     この VProc が評価を待っている (( )) と $(( )) の SJS の VProc を入れる Ref（kill と Ctrl-C で止める。Kill_tree）
 ;;   "owned"      パイプラインの外部コマンドの要素が、起動したら閉じる OS のパイプの端の LList（Pipe_element）
 ;;   "pipeEnds"   パイプラインの外部コマンドでない要素が、終わるまで持つ OS のパイプの端の LList（Pipe_element）
 ;;   "bgCaptures" & の文の変数リストへのリダイレクトで、外に渡す遅延の値の LList（Bg_captures）。なければ null
@@ -114,6 +115,8 @@
   __Dict_put__ sh "pipeRef" pipeRef ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ sh "procRef" procRef ,()
+  __Ref_new__ __NULL__ ,(sjsRef)
+  __Dict_put__ sh "sjsRef" sjsRef ,()
   __Ref_new__ __NULL__ ,(meta)
   __Dict_put__ sh "meta" meta ,()
   __Dict_put__ sh "redirected" __FALSE__ ,()
@@ -1324,6 +1327,8 @@
   __Dict_put__ child "finished" finished ,()
   __Ref_new__ __NULL__ ,(procRef)
   __Dict_put__ child "procRef" procRef ,()
+  __Ref_new__ __NULL__ ,(sjsRef)
+  __Dict_put__ child "sjsRef" sjsRef ,()
   __Ref_new__ __NULL__ ,(meta)
   __Dict_put__ child "meta" meta ,()
   __Dict_put__ child "redirected" __FALSE__ ,()
@@ -2625,9 +2630,16 @@
   __VProc_start__ (,() __OS_wait__ (,(msg) __nop__) proc ,(code) __nop__) ,(reaper)
   __nop__)
 
-;; ctx の VProc が起動して、まだ終わっていないパイプラインの要素と $( ) を止める。
+;; ctx の VProc が起動して、まだ終わっていないパイプラインの要素と $( ) と、評価を待っている (( )) の SJS の VProc を止める。
 ;; cmdNo が null でなければ、$( ) は、対話モードのその番号のコマンドが起動したものだけにする
 (define Kill_tree ,(ctx cmdNo)
+  ;; (( )) の VProc（Bash の Ctrl-C と同じく、評価をやめる）
+  __Dict_lookup_or__ ctx "sjsRef" (,(key) __NULL__ __NULL__) ,(sjsRef)
+  __unless__ (,() __is_null__ sjsRef)
+    (,()
+      __Ref_get__ sjsRef ,(sjs)
+      __Ref_set__ sjsRef __NULL__ ,()
+      __unless__ (,() __is_null__ sjs) (,() __VProc_kill__ sjs)) ,()
   Sh_get ctx "pipeRef" ,(pipeRef)
   __Ref_get__ pipeRef ,(members)
   __Ref_set__ pipeRef __NULL__ ,()
@@ -2724,9 +2736,11 @@
   __type_name__ value ,(type)
   __String_equal__ type "Dict" ,(condition)
   __unless__ condition (,() return value) ,()
-  ;; SJS の段階 B の値（consh_jsstmt.se の Sjsb_to_raw）は、読むたびにシェルの値にする
-  __Dict_lookup_or__ value "sjsv" (,(key) __NULL__ __NULL__) ,(sjsv)
-  __is_null__ sjsv ,(noSjsv)
+  ;; SJS の段階 B の値（consh_jsstmt.se の Sjsb_to_raw）は、読むたびにシェルの値にする。値が undefined（ConMa の null）でも
+  ;; "sjsv" はあるので、キーがあるかで見分ける（undefined は ""）
+  __Ref_new__ __FALSE__ ,(missing)
+  __Dict_lookup_or__ value "sjsv" (,(key) __Ref_set__ missing __TRUE__ ,() __NULL__ __NULL__) ,(sjsv)
+  __Ref_get__ missing ,(noSjsv)
   __unless__ noSjsv (,() Sjsb_to_shell sjsv ,(v) return v) ,()
   ;; JS の値の変数（consh_jsstmt.se）は、読むたびにホストに直してもらう
   __Dict_lookup_or__ value "js" (,(key) __NULL__ __NULL__) ,(id)

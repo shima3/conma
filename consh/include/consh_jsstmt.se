@@ -179,11 +179,22 @@
   Sh_set_status sh status)
 
 ;; 語の算術置換 (arithsubst 位置 コード (names 位置 名前 ...)) の値（String か、JS の値の Dict）。
-;; エラーなら、文を止めて $? を 2 にする（Sjs_abort）
+;; エラーなら、文を止めて $? を 2 にする（Sjs_abort）。値が undefined のときも、エラーにする（2026-11-14 にユーザーと決めた。
+;; 前は、シェルの値にできずに ConSh が止まった。REVIEW-ja.md の 2026-11-14（2））
 (define Sjs_subst ,(sh pos children)
   __LList_uncons__ __print_exit_error__ children ,(code rest)
   List_first rest ,(namesNode)
-  Ar_eval sh pos code namesNode (,(msg) Sjs_abort sh pos msg))
+  Ar_eval sh pos code namesNode (,(msg) Sjs_abort sh pos msg) ,(value)
+  Sjs_subst_defined sh pos value)
+
+;; 段階 B の値 {"sjsv": v} の v が undefined（ConMa の null）なら、エラーにする。ほかの値はそのまま返す
+(define Sjs_subst_defined ,(sh pos value)
+  __Cont_get__ ,(return)
+  __type_name__ value ,(type)
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ (,() return value) ,()
+  __Dict_lookup_or__ value "sjsv" (,(key) return value) ,(v)
+  __is_null__ v ,(test__) __unless__ test__ (,() return value) ,()
+  Sjs_abort sh pos "the value of $(( )) is undefined")
 
 ;; 算術置換のエラー。Sh_error と同じく止めるが、$? は 2。対話モードでなければ、ConSh を終了ステータス 2 で終える
 (define Sjs_abort ,(sh pos msg)
@@ -531,7 +542,12 @@
       __Ref_set__ result r ,()
       exit)) ,()
   __VProc_spawn__ (,(msg) spawnFail msg) "Sjs_entry" path __NULL__ ctx __NULL__ __NULL__ ,(vproc)
+  ;; 待っている間、この VProc を止めると（kill、Ctrl-C）、評価の VProc も止める（Kill_tree）
+  __Dict_lookup_or__ sh "sjsRef" (,(key) __NULL__ __NULL__) ,(sjsRef)
+  __is_null__ sjsRef ,(noRef)
+  __unless__ noRef (,() __Ref_set__ sjsRef vproc) ,()
   __VProc_wait__ __print_exit_error__ vproc ,()
+  __unless__ noRef (,() __Ref_set__ sjsRef __NULL__) ,()
   __Ref_get__ result ,(r)
   __is_null__ r ,(test__) __if__ test__ (,() fail "the evaluation stopped") ,()
   __LList_uncons__ __print_exit_error__ r ,(tag rest)

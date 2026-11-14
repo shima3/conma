@@ -34,7 +34,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * **SJS の範囲の外**（`not in SJS`、終了ステータス 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ（計算したキーも実行時に確かめる）、正規表現、`==` と `!=`、getter と setter、`instanceof`
 * **まだないもの**：整数でも 0.5 でもない指数の `**`（`TypeError: not yet translated to ConMa`）と、`Math` の `exp`、`log`、`sin` など（ConMa の VM にプリミティブがない）。`Promise.race`、`allSettled`、`any`。論理の代入（`&&=`、`||=`、`??=`。`not yet translated`）。数にすると無限大になる数のリテラル（`1e999`）は `SyntaxError: a bad number`
 * **プロトタイプがない**：メソッドは名前で選ぶ。`"toString" in {}` は偽（JavaScript は真）。関数の `length` と `name` は、`in` では真だが、読むと `undefined`
-* **値**：`-0` は JavaScript と同じに作り（単項の `-`、`Math.trunc`、`ceil`、`round`、`min`、`%` など）、`1 / -0` は `-Infinity`（2026-11-14 から。経緯の「-0」）。ただし、`console.log(-0)` は `0` と書く（`String(-0)` と同じ。Node.js の `console.log` は `-0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は `a - b * trunc(a / b)` で求めるので、大きな数では下の桁が違うことがある（0、無限大、NaN の場合と結果の符号は JavaScript と同じ）
+* **値**：`-0` は JavaScript と同じに作り（単項の `-`、`Math.trunc`、`ceil`、`round`、`min`、`%` など）、`1 / -0` は `-Infinity`（2026-11-14 から。経緯の「-0」）。ただし、`console.log(-0)` は `0` と書く（`String(-0)` と同じ。Node.js の `console.log` は `-0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は正確な剰余で、JavaScript と同じ値になる（2026-11-14 から。前は `a - b * trunc(a / b)` で、大きな数では下の桁が違った）。数を文字列にするとき、17 桁目からの書き方が JavaScript と違うことがある（`String(85715430223118340)` は `85715430223118336`。値は同じ）
 * **表示**：関数は `function () { [native code] }`、`console.log` では `[Function (anonymous)]`
 * **ジェネレータ**：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない（async ジェネレータの `yield*` は `next(x)` の `x` だけを渡す）
 * **`typeof` を定義されていない名前に使う**と、`"undefined"` でなく `ReferenceError`
@@ -113,7 +113,7 @@ consh/include/
 * **async**：async 関数を呼ぶと、本体の thunk をジェネレータの本体にして、最初の `await` まで動かし（`Sjs_async`）、結果の Promise を返す。`await v` は `yield v` と同じで（`Sjs_await`）、止まるたびに、`v` の Promise に、本体を続ける（拒否なら、本体に投げる）受け手を付ける（`Sjs_async_step`）。Promise の決着は、受け手を呼ぶジョブを PDict の列（`"sjs_jobs"`）に入れ、`Sjs_run_jobs` が動かす
 * **位置**：字句解析が行と桁を数え、変換器が、実行時の支えを呼ぶ Body に `(__SInfo__ ファイル 行 桁 "sjs")` を付ける（段階 B9）。受け手のない例外の位置は、投げたときに CChain から取る（`Sjs_raise_pos`）。
 * **数の書き方**：ConMa の `__Number_toString__` は最も短い桁を出すが、指数の形（`1e-07`）と指数にする範囲が JavaScript と違うので、`Sjs_num_str` が桁と小数点の位置に分けて、JavaScript の `Number::toString` の規則で書き直す。`Infinity`、`-Infinity`、`NaN` も同じ。
-* **`/` と `%`**：`__Number_divide__` は 0 で割るとエラーなので、`Sjs_div` が JavaScript と同じく `Infinity`、`-Infinity`、`NaN` にする。`%` のプリミティブはないので、`a - b * trunc(a / b)` で求める（大きな数では、JavaScript の `%` と下の桁が違うことがある）。
+* **`/` と `%`**：`__Number_divide__` は 0 で割るとエラーなので、`Sjs_div` が JavaScript と同じく `Infinity`、`-Infinity`、`NaN` にする。`%` は、正確な剰余のプリミティブ `__Number_remainder__`（C の fmod。2026-11-14 から。docs/ROADMAP.md の Step 44）で求め、JavaScript と同じ値になる（前は `a - b * trunc(a / b)` で、`5.5 % 1.1` や `1e17 % 3` が 0 になった）。
 
 ## テスト
 

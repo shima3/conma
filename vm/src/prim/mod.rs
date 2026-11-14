@@ -68,6 +68,7 @@ prims! {
     "__Number_subtract__"  => "prim_Number_subtract", number::subtract;
     "__Number_multiply__"  => "prim_Number_multiply", number::multiply;
     "__Number_divide__"    => "prim_Number_divide", number::divide;
+    "__Number_remainder__" => "prim_Number_remainder", number::remainder;
     "__Number_sqrt__"      => "prim_Number_sqrt", number::sqrt;
     "__Number_floor__"     => "prim_Number_floor", number::floor;
     "__Number_and32__"     => "prim_Number_and32", number::and32;

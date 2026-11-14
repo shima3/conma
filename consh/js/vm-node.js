@@ -139,6 +139,9 @@ function notify() {
 
 // Standard input read without blocking the loop, while a VProc waits for it.
 let reading = false;
+// The VM traps SIGINT (__OS_trap_interrupt__): the run loop lets events come now and then even
+// when nothing outside the VM runs, so that the handler gets Ctrl-C during a long computation
+let sigintTrapped = false;
 function readInputAsync(vm) {
   if (reading || inputEnded) return;
   reading = true;
@@ -353,6 +356,7 @@ async function main() {
     // As the native VM: SIGINT ends this process until the VM traps it.
     trapInterrupt: (v) => {
       if (process.listenerCount("SIGINT") > 0) return;
+      sigintTrapped = true;
       process.on("SIGINT", () => {
         v.interrupt();
         notify();
@@ -388,8 +392,8 @@ async function main() {
     if (vm.wantsInput()) readInputAsync(vm);
     const outside = vm.jsPending() > 0 || processesActive() || reading;
     if (code === ConMaVM.RUNNING) {
-      // Let events (JavaScript, processes, input) come now and then.
-      if (outside && ++slices % 4 === 0) await new Promise((resolve) => setImmediate(resolve));
+      // Let events (JavaScript, processes, input, and SIGINT once it is trapped) come now and then.
+      if ((outside || sigintTrapped) && ++slices % 4 === 0) await new Promise((resolve) => setImmediate(resolve));
       continue;
     }
     // IDLE: every VProc waits for something outside the VM.
