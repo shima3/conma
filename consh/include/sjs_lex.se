@@ -452,26 +452,34 @@
 (define Sjs_puncts ,()
   __NULL__ ">>>= ... === !== **= <<= >>= >>> &&= ||= ??= => == != <= >= += -= *= /= %= &= |= ^= && || ?? ?. ++ -- ** << >>")
 
-;; 最初の記号と残り。記号でなければ null
+;; 最初の記号と残り。記号でなければ null。Sjs_puncts は長いものから並ぶので、先頭の 4、3、2 文字を順に、空白で囲んで
+;; 候補の中から __String_find__ で探す（候補を語に分けて 1 つずつ比べるのと同じ結果）
 (define Sjs_lex_punct ,(chars)
   __Cont_get__ ,(return)
-  Sjs_take_chars chars "4" "" ,(s4)
-  Sjs_puncts ,(list)
-  Sjs_words list ,(words)
-  Sjs_match_punct words s4 ,(p)
-  __is_null__ p ,(test__) __unless__ test__
-    (,() __String_length__ p ,(len) Sjs_drop chars len ,(rest) return p rest) ,()
   Sjs_peek_char chars ,(c)
   Sjs_in c "{}()[];,<>+-*/%&|^!~?:=." ,(test__) __unless__ test__ (,() return __NULL__ chars) ,()
+  Sjs_take_chars chars "4" "" ,(s4)
+  Sjs_puncts ,(list)
+  Cat3s " " list " " ,(list)
+  __String_length__ s4 ,(n)
+  Sjs_punct_prefix list s4 n ,(p)
+  __is_null__ p ,(test__) __unless__ test__
+    (,() __String_length__ p ,(len) Sjs_drop chars len ,(rest) return p rest) ,()
   Sjs_rest chars ,(rest)
   __NULL__ c rest)
 
-(define Sjs_match_punct ,(words s)
+;; s の先頭の n 文字（n が 1 より大きい間、1 文字ずつ短くする）のうち、空白で囲んだ list の中にある一番長いもの。なければ null
+(define Sjs_punct_prefix ,(list s n)
   __Cont_get__ ,(return)
-  __is_null__ words ,(test__) __if__ test__ (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ words ,(w rest)
-  Sjs_starts s w ,(test__) __if__ test__ (,() return w) ,()
-  Sjs_match_punct rest s)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(m)
+  __Number_is_positive__ m ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_substring__ __print_exit_error__ s zero n ,(p)
+  Cat3s " " p " " ,(key)
+  __String_find__ __print_exit_error__ list key zero ,(at)
+  __is_null__ at ,(test__) __unless__ test__ (,() return p) ,()
+  Sjs_punct_prefix list s m)
 
 (define Sjs_starts ,(s prefix)
   __Cont_get__ ,(return)
@@ -483,25 +491,25 @@
   __String_substring__ __print_exit_error__ s zero plen ,(head)
   __String_equal__ head prefix)
 
-;; 空白で区切った語の LList
+;; 空白で区切った語の LList（空白を __String_find__ で探す）
 (define Sjs_words ,(s)
-  Sjs_chars s ,(chars)
-  Sjs_words_loop chars "" __NULL__ ,(rev)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Sjs_words_from s zero __NULL__ ,(rev)
   Sjs_reverse rev)
 
-(define Sjs_words_loop ,(chars word acc)
+(define Sjs_words_from ,(s i acc)
   __Cont_get__ ,(return)
-  __is_null__ chars ,(test__) __if__ test__
-    (,() __String_equal__ word "" ,(empty) __if__ empty (,() return acc) ,() __LList_cons__ word acc ,(acc) return acc) ,()
-  __LList_uncons__ __print_exit_error__ chars ,(c rest)
-  __String_equal__ c " " ,(test__) __if__ test__
-    (,()
-      __String_equal__ word "" ,(empty)
-      __if_then_else__ empty (,() __NULL__ acc) (,() __LList_cons__ word acc) ,(acc)
-      Sjs_words_loop rest "" acc ,(t)
-      return t) ,()
-  __String_concat__ word c ,(word)
-  Sjs_words_loop rest word acc)
+  __String_length__ s ,(len)
+  __String_find__ __print_exit_error__ s " " i ,(at)
+  __is_null__ at ,(last)
+  __if_then_else__ last (,() __NULL__ len) (,() __NULL__ at) ,(end)
+  __String_substring__ __print_exit_error__ s i end ,(word)
+  __String_equal__ word "" ,(empty)
+  __if_then_else__ empty (,() __NULL__ acc) (,() __LList_cons__ word acc) ,(acc)
+  __if__ last (,() return acc) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ at one ,(next)
+  Sjs_words_from s next acc)
 
 (define Sjs_take_chars ,(chars count acc)
   __Number_fromString__ __print_exit_error__ count ,(n)
