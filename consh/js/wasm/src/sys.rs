@@ -56,9 +56,11 @@ extern "C" {
     /// message for host_wasm_error.
     fn host_wasm_compile(ptr: *const u8, len: usize) -> i32;
     /// Call the exported function name of module id with the n f64 at args
-    /// and the fuel (__Wasm_call__): 0 with the result written at out, 1 when
-    /// the fuel ran out, or 2 with the message for host_wasm_error.
-    fn host_wasm_call(id: i32, name_ptr: *const u8, name_len: usize, args: *const f64, n: usize, fuel: f64, out: *mut f64) -> i32;
+    /// and the fuel (__Wasm_call__, __Wasm_call_memory__), after filling its
+    /// memory, if it has one, with zeros and then with the words f64 at mem:
+    /// 0 with the result written at out and the words of the memory at mem,
+    /// 1 when the fuel ran out, or 2 with the message for host_wasm_error.
+    fn host_wasm_call(id: i32, name_ptr: *const u8, name_len: usize, args: *const f64, n: usize, mem: *mut f64, words: usize, fuel: f64, out: *mut f64) -> i32;
     /// The message of the last failure of host_wasm_compile or host_wasm_call,
     /// written to out (cap bytes); its length.
     fn host_wasm_error(out: *mut u8, cap: usize) -> i32;
@@ -572,10 +574,11 @@ pub fn wasm_compile(bytes: &[u8]) -> Result<i32, String> {
     }
 }
 
-/// __Wasm_call__: call the exported function name of module host.
-pub fn wasm_call(host: i32, name: &str, args: &[f64], fuel: f64) -> WasmResult {
+/// __Wasm_call__ and __Wasm_call_memory__: call the exported function name of
+/// module host; memory gets the words of its memory after an "ok" call.
+pub fn wasm_call(host: i32, name: &str, args: &[f64], memory: &mut [f64], fuel: f64) -> WasmResult {
     let mut out = 0.0f64;
-    match unsafe { host_wasm_call(host, name.as_ptr(), name.len(), args.as_ptr(), args.len(), fuel, &mut out) } {
+    match unsafe { host_wasm_call(host, name.as_ptr(), name.len(), args.as_ptr(), args.len(), memory.as_mut_ptr(), memory.len(), fuel, &mut out) } {
         0 => WasmResult::Ok(out),
         1 => WasmResult::Fuel,
         _ => WasmResult::Trap(wasm_error()),

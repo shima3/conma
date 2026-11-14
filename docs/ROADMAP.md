@@ -849,11 +849,13 @@ No new primitive.
 | Primitive | Status |
 |---|---|
 | `__Wasm_compile__`, `__Wasm_call__` (feature `"wasm"` of fast ConMa) | implemented |
+| `__Wasm_call_memory__` and the memory of a module (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1) | implemented |
 
 * Goal: stage 1 of consh/SJS-WASM-PLAN-ja.md, the base for running the numeric functions of SJS as WebAssembly, and, decided with the user on 2026-11-14, a way for any ConMa program to write functions on numbers in WebAssembly (PRIMITIVES.md, section 16).
 * `vm/src/prim/wasm_asm.rs` assembles a subset of WAT (functions on f64, i32 and i64; no imports, memory, tables or globals) into binary and adds the fuel; `vm/src/prim/wasm.rs` has the primitives and `Value::Wasm`; the VM for wasm32 gives the module to its host (`host_wasm_compile`, `host_wasm_call`, `host_wasm_error`, `host_wasm_free` in `consh/js/conma.js`, for Node.js, JavaScriptCore and the browser), and the native VMs go to `onError` after assembling. A call out of fuel ends the time slice (`Machine::end_slice`).
 * The frontends write `(Uses "wasm")`, and `bin/concise` puts in `include/ref/wasm.se`.
 * Tests: `test/fast7` (calls, fuel and starting again with more fuel, traps, wrong arguments, the forms the assembler refuses, the checks of the host; logs for the wasm VM, the native VMs and the Python VM, and `CONMA_NO_WASM=1`).
+* Stage A1 of consh/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in concise ConMa (`include/ref/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
 
 ## Planned: returning without making the escape continuation
 

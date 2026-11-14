@@ -5,9 +5,13 @@
 ;; と同じメッセージ。ただし、ネイティブの VM は、先に WAT を組み立てて、誤りがあればそれを onError に渡す）。
 ;;   __Wasm_compile__ onError wat ,(module)
 ;;   __Wasm_call__ onError module name args fuel ,(status value)
+;;   __Wasm_call_memory__ onError module name args memory fuel ,(status value memory)（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）
 
 (define __Wasm_compile__ ,(onError wat)
   onError "__Wasm_compile__: WebAssembly is not available")
 
 (define __Wasm_call__ ,(onError module name args fuel)
   onError "__Wasm_call__: WebAssembly is not available")
+
+(define __Wasm_call_memory__ ,(onError module name args memory fuel)
+  onError "__Wasm_call_memory__: WebAssembly is not available")

@@ -1,0 +1,10 @@
+__Wasm_compile__: WebAssembly is not available
+two memories: __Wasm_compile__: WebAssembly is not available
+memory import: __Wasm_compile__: WebAssembly is not available
+memory export: __Wasm_compile__: WebAssembly is not available
+memory max: __Wasm_compile__: WebAssembly is not available
+reserved memory export: __Wasm_compile__: WebAssembly is not available
+bad align: __Wasm_compile__: WebAssembly is not available
+bad offset: __Wasm_compile__: WebAssembly is not available
+fine: __Wasm_compile__: WebAssembly is not available
+exit: 0

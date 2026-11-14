@@ -1734,7 +1734,7 @@ var ConMaVM = (function () {
             return -1;
           }
         },
-        host_wasm_call: (id, namePtr, nameLen, argsPtr, n, fuel, out) => {
+        host_wasm_call: (id, namePtr, nameLen, argsPtr, n, memPtr, words, fuel, out) => {
           const instance = wasmModules.get(id);
           const f = instance && instance.exports[str(namePtr, nameLen)];
           if (typeof f !== "function") {
@@ -1742,11 +1742,28 @@ var ConMaVM = (function () {
             return 2;
           }
           const args = Array.from(new Float64Array(x.memory.buffer, argsPtr, n));
+          // The memory of the module (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
+          // of __Wasm_call_memory__ from address 0 (growing it if they do not fit)
+          const mem = instance.exports.__memory;
+          if (mem) {
+            const need = Math.ceil((words * 8) / 65536) - mem.buffer.byteLength / 65536;
+            if (need > 0) {
+              try {
+                mem.grow(need);
+              } catch (e) {
+                wasmError = errorText(e);
+                return 2;
+              }
+            }
+            new Uint8Array(mem.buffer).fill(0);
+            if (words > 0) new Float64Array(mem.buffer, 0, words).set(new Float64Array(x.memory.buffer, memPtr, words));
+          }
           const fuelGlobal = instance.exports.__fuel;
           fuelGlobal.value = BigInt(fuel);
           try {
             const r = f(...args);
             new Float64Array(x.memory.buffer, out, 1)[0] = r;
+            if (mem && words > 0) new Float64Array(x.memory.buffer, memPtr, words).set(new Float64Array(mem.buffer, 0, words));
             return 0;
           } catch (e) {
             if (fuelGlobal.value === 0n) return 1;

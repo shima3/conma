@@ -39,7 +39,7 @@
 ;; (F ...) の後に (Uses ...) を置く（bin/resolver と同じ）。entries の前に足す。
 ;; "bitwise32" はビット演算のプリミティブ（docs/BITWISE-PLAN-ja.md）、"boolean" は __TRUE__ と __FALSE__、
 ;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__ と、値を自分で確かめる 6 つの条件分岐
-;; （__if_null_then_else__ など）、"wasm" は __Wasm_compile__ と __Wasm_call__
+;; （__if_null_then_else__ など）、"wasm" は __Wasm_compile__、__Wasm_call__、__Wasm_call_memory__
 (define __Resolver_uses__ ,(globals values entries)
   __Resolver_features__ globals values ,(features)
   __is_null__ features ,(none)
@@ -51,7 +51,8 @@
 
 ;; 使う機能の名前の列（bin/resolver の FAST_PRIMITIVES の順）
 (define __Resolver_features__ ,(globals values)
-  __LList_cons__ "__Wasm_call__" __NULL__ ,(wasms)
+  __LList_cons__ "__Wasm_call_memory__" __NULL__ ,(wasms)
+  __LList_cons__ "__Wasm_call__" wasms ,(wasms)
   __LList_cons__ "__Wasm_compile__" wasms ,(wasms)
   __Resolver_uses_prim__ globals values wasms ,(usesWasm)
   __if_then_else__ usesWasm

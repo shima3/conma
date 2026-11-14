@@ -166,6 +166,7 @@ prims! {
     "__JS_value__"         => "prim_JS_value", js::value;
     "__Wasm_compile__"     => "prim_Wasm_compile", wasm::compile;
     "__Wasm_call__"        => "prim_Wasm_call", wasm::call;
+    "__Wasm_call_memory__" => "prim_Wasm_call_memory", wasm::call_memory;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

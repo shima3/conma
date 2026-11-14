@@ -186,3 +186,84 @@
     __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
     spin_until w ref fuel))
 
+;; case8：モジュールのメモリと __Wasm_call_memory__（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。メモリは呼ぶたびに 0 で埋め、
+;; __Wasm_call_memory__ の語を先頭から書き、"ok" なら同じ数の語を返す
+
+;; 数の LList を "a b c" の形にする
+(define show_list ,(l acc)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ l ,(x rest)
+  show_num x ,(t)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ t) (,() Cat3 acc " " t) ,(acc)
+  show_list rest acc)
+
+;; __Wasm_call_memory__ の結果を出す
+(define try_memory ,(label w name args memory fuel)
+  __Cont_get__ ,(return)
+  __String_concat__ label ": " ,(head)
+  __Wasm_call_memory__ (,(msg) __String_concat__ head msg ,(s) println s ,() return) w name args memory fuel ,(status value words)
+  __String_concat__ head status ,(s)
+  __String_equal__ status "ok" ,(ok)
+  __String_equal__ status "trap" ,(trap)
+  __if_then_else__ ok
+    (,() show_num value ,(t) show_list words "" ,(ws) Cat5 s " " t " [" ws ,(s) __String_concat__ s "]")
+    (,() __if_then_else__ trap (,() Cat3 s " " value) (,() __NULL__ s)) ,(s)
+  println s)
+
+;; n 個の数 1, 2, ... の LList
+(define count_list ,(n acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_cons__ n acc ,(acc)
+  num "1" ,(one)
+  __Number_subtract__ n one ,(m)
+  count_list m acc)
+
+(define module8 ,()
+  Cat5 "(module (memory 1) "
+    "(func (export \"sum\") (param $n f64) (result f64) (local $i f64) (local $s f64) block $done loop $next local.get $i local.get $n f64.ge br_if $done (local.set $s (f64.add (local.get $s) (f64.load (i32.mul (i32.trunc_f64_u (local.get $i)) (i32.const 8))))) (local.set $i (f64.add (local.get $i) (f64.const 1))) br $next end end local.get $s) "
+    "(func (export \"double\") (param $n f64) (result f64) (local $i f64) block $done loop $next local.get $i local.get $n f64.ge br_if $done (f64.store (i32.mul (i32.trunc_f64_u (local.get $i)) (i32.const 8)) (f64.mul (f64.const 2) (f64.load (i32.mul (i32.trunc_f64_u (local.get $i)) (i32.const 8))))) (local.set $i (f64.add (local.get $i) (f64.const 1))) br $next end end f64.const 0) "
+    "(func (export \"peek\") (param $a f64) (result f64) (f64.load offset=0 align=8 (i32.trunc_f64_u (local.get $a)))) (func (export \"poke\") (param $a f64) (param $v f64) (result f64) (local.get $a) i32.trunc_f64_u (local.get $v) f64.store offset=8 (f64.const 0)) "
+    "(func (export \"pages\") (result f64) (f64.convert_i32_u (memory.size))) (func (export \"grow\") (param $n f64) (result f64) (f64.convert_i32_s (memory.grow (i32.trunc_f64_u (local.get $n))))))")
+
+(define case8 ,()
+  module8 ,(wat)
+  with_module wat (,(w)
+    big_fuel ,(fuel)
+    num "3" ,(n3) list1 n3 ,(a3)
+    num "1" ,(one) num "2" ,(two) num "1.5" ,(onehalf) num "-0" ,(nz)
+    list3 one two onehalf ,(mem)
+    try_memory "sum" w "sum" a3 mem fuel ,()
+    try_memory "double" w "double" a3 mem fuel ,()
+    ;; 前の呼び出しの語は残らない（0 で埋める）
+    num "0" ,(zero) list1 zero ,(a0)
+    try_call "peek after" w "peek" a0 fuel ,()
+    list1 nz ,(memz) try_memory "peek -0" w "peek" a0 memz fuel ,()
+    ;; poke は offset=8 で 2 つ目の語に書く
+    num "77" ,(v77) list2 zero v77 ,(pa) list2 zero zero ,(two0) try_memory "poke" w "poke" pa two0 fuel ,()
+    try_memory "no words" w "pages" __NULL__ __NULL__ fuel ,()
+    ;; 1 ページ（8192 語）より多い語は、ホストがメモリを広げて書く
+    num "10000" ,(n10000) count_list n10000 __NULL__ ,(big) list1 n10000 ,(a10000)
+    __Wasm_call_memory__ __print_exit_error__ w "sum" a10000 big fuel ,(status value words)
+    show_num value ,(t) Cat3 "sum 10000: " status " " ,(s) __String_concat__ s t ,(s) println s ,()
+    try_call "pages after" w "pages" __NULL__ fuel ,()
+    try_call "grow" w "grow" a3 fuel ,()
+    ;; メモリの外は trap
+    num "1e9" ,(far) list1 far ,(afar) try_call "peek far" w "peek" afar fuel ,()
+    ;; 誤った引数
+    try_memory "memory string" w "sum" a3 "x" fuel ,()
+    list1 "x" ,(sx) try_memory "memory element" w "sum" a3 sx fuel ,()
+    with_module "(module (func (export \"f\") (result f64) f64.const 1))" (,(w2)
+      try_memory "no memory" w2 "f" __NULL__ __NULL__ fuel)) ,()
+  ;; アセンブラが受け付けないメモリ
+  try_compile "two memories" "(module (memory 1) (memory 1))" ,()
+  try_compile "memory import" "(module (memory (import \"m\" \"m\") 1))" ,()
+  try_compile "memory export" "(module (memory (export \"m\") 1))" ,()
+  try_compile "memory max" "(module (memory 2 1))" ,()
+  try_compile "reserved memory export" "(module (memory 1) (func (export \"__memory\") (result f64) f64.const 0))" ,()
+  try_compile "bad align" "(module (memory 1) (func (result f64) i32.const 0 f64.load align=16))" ,()
+  try_compile "bad offset" "(module (memory 1) (func (result f64) i32.const 0 f64.load offset=x))" ,()
+  try_compile "fine" "(module (memory 0 1) (func (export \"f\") (result f64) (f64.load (i32.const 0))))")
+

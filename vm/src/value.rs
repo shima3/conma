@@ -148,6 +148,8 @@ pub struct WasmObj {
     pub host: i32,
     /// The exported functions and their numbers of parameters.
     pub exports: Vec<(String, usize)>,
+    /// The module has a memory (__Wasm_call_memory__).
+    pub memory: bool,
 }
 
 impl Drop for WasmObj {

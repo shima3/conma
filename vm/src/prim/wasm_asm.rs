@@ -2,12 +2,17 @@
 //! WebAssembly text format (WAT) of a module of functions on numbers, made
 //! into the binary format. It reads only this subset:
 //!
-//! * `(module (func ...) ...)`: no import, memory, table, global, start, data
-//!   or elem, so that an exported function depends on its arguments only.
+//! * `(module (memory $m? min max?)? (func ...) ...)`: no import, table,
+//!   global, start, data or elem. The module may have one memory of its own
+//!   (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1), exported as `__memory`, which
+//!   the host fills with zeros before each call (and with the words of
+//!   __Wasm_call_memory__), so that an exported function still depends on its
+//!   arguments (and those words) only.
 //! * `(func $name? (export "name")* (param $x? f64 ...)* (result f64)
 //!   (local $y? T ...)* instruction*)`: parameters are f64, the result is one
 //!   f64, locals are f64, i32 or i64.
-//! * The instructions on f64, i32 and i64 (no f32, no memory), written flat
+//! * The instructions on f64, i32 and i64 (no f32), and `f64.load`,
+//!   `f64.store`, `memory.size` and `memory.grow` on the memory, written flat
 //!   (`block ... end`) or folded (`(f64.add (local.get 0) (local.get 1))`).
 //!
 //! The assembler adds the fuel: a mutable i64 global exported as `__fuel`,
@@ -21,10 +26,15 @@ use std::collections::HashMap;
 /// The name of the exported fuel global.
 pub const FUEL_EXPORT: &str = "__fuel";
 
-/// A module made into binary, with the parameter counts of its exports.
+/// The name of the exported memory.
+pub const MEMORY_EXPORT: &str = "__memory";
+
+/// A module made into binary, with the parameter counts of its exports and
+/// whether it has a memory.
 pub struct Assembled {
     pub bytes: Vec<u8>,
     pub exports: Vec<(String, usize)>,
+    pub memory: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -472,6 +482,47 @@ fn immediates(op: &str) -> usize {
     }
 }
 
+/// An instruction on the memory: its opcode, or for f64.load and f64.store,
+/// the opcode of an instruction with a memarg.
+fn memory_op(op: &str) -> Option<(&'static [u8], bool)> {
+    match op {
+        "f64.load" => Some((&[0x2b], true)),
+        "f64.store" => Some((&[0x39], true)),
+        "memory.size" => Some((&[0x3f, 0x00], false)),
+        "memory.grow" => Some((&[0x40, 0x00], false)),
+        _ => None,
+    }
+}
+
+/// The optional offset=N and align=N of a load or store, from items[*i]
+/// (align is in bytes, 1, 2, 4 or 8, and 8 by default).
+fn memarg(items: &[Sx], i: &mut usize, out: &mut Vec<u8>) -> Result<(), String> {
+    let mut offset: u64 = 0;
+    let mut align: u64 = 3;
+    while let Some(Sx::Atom(a, pos)) = items.get(*i) {
+        if let Some(v) = a.strip_prefix("offset=") {
+            match parse_int(v, 0, u32::MAX as i128) {
+                Some(n) => offset = n as u64,
+                None => return err(*pos, format!("bad offset {}", v)),
+            }
+        } else if let Some(v) = a.strip_prefix("align=") {
+            align = match v {
+                "1" => 0,
+                "2" => 1,
+                "4" => 2,
+                "8" => 3,
+                _ => return err(*pos, format!("bad align {} (1, 2, 4 or 8)", v)),
+            };
+        } else {
+            break;
+        }
+        *i += 1;
+    }
+    uleb(out, align);
+    uleb(out, offset);
+    Ok(())
+}
+
 fn encode_immediate(ctx: &Ctx, op: &str, x: &Sx, out: &mut Vec<u8>) -> Result<(), String> {
     match op {
         "local.get" => {
@@ -604,6 +655,13 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
                         out.push(0x0b);
                     }
                     "else" | "end" => return err(*pos, format!("unexpected {}", a)),
+                    op if memory_op(op).is_some() => {
+                        let (code, has_memarg) = memory_op(op).unwrap();
+                        out.extend_from_slice(code);
+                        if has_memarg {
+                            memarg(items, i, out)?;
+                        }
+                    }
                     op if immediates(op) == 1 => match items.get(*i) {
                         Some(imm) => {
                             *i += 1;
@@ -690,6 +748,21 @@ fn encode_folded(ctx: &mut Ctx, x: &Sx, out: &mut Vec<u8>) -> Result<(), String>
             }
             ctx.labels.pop();
             out.push(0x0b);
+        }
+        op if memory_op(op).is_some() => {
+            let (code, has_memarg) = memory_op(op).unwrap();
+            let mut arg = Vec::new();
+            if has_memarg {
+                memarg(items, &mut i, &mut arg)?;
+            }
+            for y in &items[i..] {
+                match y {
+                    Sx::List(_, _) => encode_folded(ctx, y, out)?,
+                    _ => return err(y.pos(), format!("expected a folded instruction, got {}", y.describe())),
+                }
+            }
+            out.extend_from_slice(code);
+            out.extend_from_slice(&arg);
         }
         _ => {
             let imm = if immediates(op) == 1 {
@@ -815,8 +888,28 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
     }
     let mut funcs = Vec::new();
     let mut names = HashMap::new();
+    // The memory: (min, max)
+    let mut memory: Option<(u64, Option<u64>)> = None;
     for x in &fields[start..] {
         match x.head() {
+            Some("memory") => {
+                let Sx::List(items, p) = x else { unreachable!() };
+                if memory.is_some() {
+                    return err(*p, "a module has at most one memory");
+                }
+                let mut j = 1;
+                if let Some(a) = items.get(j).and_then(|y| y.atom()) {
+                    if a.starts_with('$') {
+                        j += 1;
+                    }
+                }
+                let limits: Vec<Option<i128>> = items[j..].iter().map(|y| y.atom().and_then(|a| parse_int(a, 0, 65536))).collect();
+                memory = Some(match limits.as_slice() {
+                    [Some(min)] => (*min as u64, None),
+                    [Some(min), Some(max)] if max >= min => (*min as u64, Some(*max as u64)),
+                    _ => return err(*p, "expected (memory min max?), the numbers of pages from 0 to 65536 (no import or export)"),
+                });
+            }
             Some("func") => {
                 let Sx::List(items, p) = x else { unreachable!() };
                 let (name, f) = read_func(items, *p)?;
@@ -827,7 +920,7 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
                 }
                 funcs.push(f);
             }
-            Some(h) => return err(x.pos(), format!("({} ...) is not allowed in a module (only func)", h)),
+            Some(h) => return err(x.pos(), format!("({} ...) is not allowed in a module (only func and memory)", h)),
             None => return err(x.pos(), format!("expected (func ...), got {}", x.describe())),
         }
     }
@@ -849,8 +942,8 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
     let mut export_items = Vec::new();
     for (k, f) in funcs.iter().enumerate() {
         for (e, p) in &f.exports {
-            if e == FUEL_EXPORT {
-                return err(*p, format!("the export name {} is reserved", FUEL_EXPORT));
+            if e == FUEL_EXPORT || e == MEMORY_EXPORT {
+                return err(*p, format!("the export name {} is reserved", e));
             }
             if exports.iter().any(|(n, _)| n == e) {
                 return err(*p, format!("the export name \"{}\" is used twice", e));
@@ -908,10 +1001,26 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
         uleb(&mut body, *t as u64);
     }
     section(&mut out, 3, &body);
+    if let Some((min, max)) = memory {
+        body.clear();
+        body.push(0x01);
+        match max {
+            None => {
+                body.push(0x00);
+                uleb(&mut body, min);
+            }
+            Some(m) => {
+                body.push(0x01);
+                uleb(&mut body, min);
+                uleb(&mut body, m);
+            }
+        }
+        section(&mut out, 5, &body);
+    }
     // The fuel: a mutable i64 that starts at 0.
     section(&mut out, 6, &[0x01, I64, 0x01, 0x42, 0x00, 0x0b]);
     body.clear();
-    uleb(&mut body, export_items.len() as u64 + 1);
+    uleb(&mut body, export_items.len() as u64 + 1 + memory.is_some() as u64);
     for (e, k) in &export_items {
         name_bytes(&mut body, e);
         body.push(0x00);
@@ -919,6 +1028,10 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
     }
     name_bytes(&mut body, FUEL_EXPORT);
     body.extend_from_slice(&[0x03, 0x00]);
+    if memory.is_some() {
+        name_bytes(&mut body, MEMORY_EXPORT);
+        body.extend_from_slice(&[0x02, 0x00]);
+    }
     section(&mut out, 7, &body);
     body.clear();
     uleb(&mut body, codes.len() as u64);
@@ -927,5 +1040,5 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
         body.extend_from_slice(c);
     }
     section(&mut out, 10, &body);
-    Ok(Assembled { bytes: out, exports })
+    Ok(Assembled { bytes: out, exports, memory: memory.is_some() })
 }

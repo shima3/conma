@@ -2,10 +2,10 @@ not a String: __Wasm_compile__: expected String, got Number
 empty: __Wasm_compile__: expected (module ...)
 not a module: __Wasm_compile__: line 1 col 1: expected (module ...), got (func ...)
 two modules: __Wasm_compile__: line 1 col 10: expected one (module ...)
-import: __Wasm_compile__: line 1 col 9: (import ...) is not allowed in a module (only func)
-memory: __Wasm_compile__: line 1 col 9: (memory ...) is not allowed in a module (only func)
-global: __Wasm_compile__: line 1 col 9: (global ...) is not allowed in a module (only func)
-start: __Wasm_compile__: line 1 col 9: (start ...) is not allowed in a module (only func)
+import: __Wasm_compile__: line 1 col 9: (import ...) is not allowed in a module (only func and memory)
+memory: compiled
+global: __Wasm_compile__: line 1 col 9: (global ...) is not allowed in a module (only func and memory)
+start: __Wasm_compile__: line 1 col 9: (start ...) is not allowed in a module (only func and memory)
 param i32: __Wasm_compile__: line 1 col 22: a parameter must be f64
 no result: __Wasm_compile__: line 1 col 9: a func must have exactly one (result f64)
 two results: __Wasm_compile__: line 1 col 9: a func must have exactly one (result f64)
@@ -14,7 +14,7 @@ order: __Wasm_compile__: line 1 col 28: (param ...) is out of order in a func
 reserved export: __Wasm_compile__: line 1 col 23: the export name __fuel is reserved
 export twice: __Wasm_compile__: line 1 col 68: the export name "f" is used twice
 unknown instruction: __Wasm_compile__: line 1 col 28: unknown instruction f32.const
-memory instruction: __Wasm_compile__: line 1 col 40: unknown instruction f64.load
+memory instruction: __Wasm_compile__: CompileError: WebAssembly.Module(): Compiling function #0 failed: memory index 0 exceeds number of declared memories (0) @+61
 unknown local: __Wasm_compile__: line 1 col 53: unknown local $y
 local index: __Wasm_compile__: line 1 col 50: unknown local 1
 unknown label: __Wasm_compile__: line 1 col 37: unknown label $out

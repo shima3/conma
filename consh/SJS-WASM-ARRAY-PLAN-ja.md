@@ -2,7 +2,7 @@
 
 consh/SJS-WASM-PLAN-ja.md（以下「前の計画」）の続きで、その 9 節（数の配列）を作る計画である。前の計画の段階 1〜5 で、数だけを扱う関数は WebAssembly（以下 wasm）で動くようになったが、配列を使う関数は、今も ConMa 版で動く。nbody（consh/sjs/bench/nbody.sjs）は、そのために速くならない。2026-11-14 に書いた。
 
-**状態**：案。まだ何も作っていない。2026-11-14 に、8 の決めることをすべて決めた（方式は案 A、プリミティブは高速版 ConMa だけに新しく足す、メモリの命令は手で書いた WAT にも開く、写す大きさの上限は設けない、値を返さない関数と定数の式は先に入れる）。段階 A0 を作った（2026-11-14。10）。次は段階 A1。
+**状態**：案。まだ何も作っていない。2026-11-14 に、8 の決めることをすべて決めた（方式は案 A、プリミティブは高速版 ConMa だけに新しく足す、メモリの命令は手で書いた WAT にも開く、写す大きさの上限は設けない、値を返さない関数と定数の式は先に入れる）。段階 A0 と A1 を作った（2026-11-14。10、11）。次は段階 A2。
 
 ## 1. 目的と、今の様子
 
@@ -85,7 +85,7 @@ VM に、f64 の列を持つ新しい値（数の配列）を足し、SJS の配
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
 | A0（作った、2026-11-14。10） | 値を返さない関数と、一番外の定数の式（4.3。配列がなくても使える。8 の 5） | consh/sjs/test の新しい場合。nbody の `offsetMomentum` は、まだ配列を使うので数の関数にならない |
-| A1 | アセンブラのメモリと読み書きの命令、`__Wasm_call_memory__`、ホスト、PRIMITIVES.md | test/fast7 |
+| A1（作った、2026-11-14。11） | アセンブラのメモリと読み書きの命令、`__Wasm_call_memory__`、ホスト、PRIMITIVES.md | test/fast7 |
 | A2 | 実行時の支え：写す、書き戻す、`Sjs_wasm_fn` の配列の引数 | 手で書いた WAT と配列で確かめる |
 | A3 | 変換器：配列の型、添字、`length`、代入、`for...of` | consh/sjs/test の新しい場合 |
 | A4 | nbody と ConSh の `(( ))` | nbody の出力、consh/test |
@@ -124,4 +124,12 @@ function advance(bodies, pairs, dt, n) {      // bodies：数の配列の配列�
 * **値を返さない関数**：本体に値のある `return` がなく、値のない `return` か最後まで来て終わる関数も、数の関数にする（`Wx_returns` で数える）。wasm 版は 0 を返し、`Sjs_wasm_fn` と `Sjs_wasm_fn_checked` の新しい引数 `void` が真なら、`undefined` を返す。値のある `return` とない `return` が混ざる関数は、数の関数にしない（JavaScript では、道によって `undefined` を返すため）。値を返さない数の関数の呼び出しは型 `"V"` で、式の文としてだけ数の関数の中に書ける（値を使えば、数の関数にしない）。
 * **確かめたこと**：consh/sjs/test/step9 の case3（定数の式 5 つ、値を返さない関数、それを文として呼ぶ関数、数の関数にならない 3 つ）を、Node.js の結果と、Rust 版の VM と wasm 版の VM で比べた。step9 の case1、case2 と、consh/test/step21 も、両方の VM で通る。
 * nbody の `offsetMomentum` は、まだ配列を使うので数の関数にならない（段階 A3 から）。
+
+## 11. 段階 A1 の結果（2026-11-14。ブランチ alpha）
+
+* **アセンブラ**（vm/src/prim/wasm_asm.rs）：`(memory $m? 最小 最大?)`（ページの数。import と export は書けない）を 1 つまで受け付け、`__memory` の名前で export する（予約した名前）。命令に `f64.load` と `f64.store`（`offset=` と、1、2、4、8 バイトの `align=`。既定は 8）、`memory.size`、`memory.grow` を足した。手で書いた WAT でも使える（8 の 3）。
+* **プリミティブ**：`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`（vm/src/prim/wasm.rs。`__Wasm_call__` と、引数を確かめて呼ぶ所を共有する）。高速版 ConMa だけで、include/ref/wasm.se の代わりの定義は onError に進む（8 の 2）。フロントエンドが `(Uses "wasm")` を書く名前にも足した。
+* **ホスト**（consh/js/conma.js の `host_wasm_call`）：メモリのあるモジュールなら、呼ぶたびに 0 で埋めてから語を書き（入らなければ広げる）、`"ok"` なら同じ数の語を VM に写し戻す。`__Wasm_call__` でも 0 で埋める。import の形を、`host_wasm_call(id, 名前, 引数, 語, 語の数, 燃料, 結果)` に変えた。
+* **計画と違うこと**：メモリの大きさは、呼び出しが広げると、次の呼び出しにも残る（0 で埋めるのは中身だけ）。`memory.size` を使う関数は、それより前の呼び出しによって結果が変わりうる。SJS の変換器は `memory.size` を出さないので、数の関数には関わらない。docs/PRIMITIVES.md の 16 節に書いた。
+* **確かめたこと**：test/fast7 の case8（読む、書く、0 で埋めること、`-0`、`offset=`、語のない呼び出し、1 ページより多い 1 万語、`memory.size` と `memory.grow`、メモリの外の trap、誤った引数、メモリのないモジュール、受け付けない形 7 つ）が、wasm 版の VM、ネイティブの VM、Python の VM で通る。case5 のログは、`(module (memory 1))` を受け付け、メモリのない `f64.load` をホストが拒むように変わった。
 

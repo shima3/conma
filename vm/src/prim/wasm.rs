@@ -51,7 +51,7 @@ pub fn compile(m: &mut Machine, vp: &mut VProc) -> PResult {
     match sys::wasm_compile(&asm.bytes) {
         Ok(host) => {
             m.serials.wasms += 1;
-            let w = WasmObj { serial: m.serials.wasms, host, exports: asm.exports };
+            let w = WasmObj { serial: m.serials.wasms, host, exports: asm.exports, memory: asm.memory };
             vp.prim_return(vec![Value::Wasm(Rc::new(w))]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, e)),
@@ -71,6 +71,45 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let fname = a.pop().unwrap();
     let module = a.pop().unwrap();
     let on_error = a.pop().unwrap();
+    call_with(m, vp, pname, on_error, module, fname, args, None, fuel)
+}
+
+/// __Wasm_call_memory__ onError module name args memory fuel ,(status value memory): as __Wasm_call__,
+/// the memory of the module (which must have one) filled with zeros and then with the Numbers of
+/// the LList memory as f64 words from address 0, and, on "ok", the same number of words of the memory
+/// after the call as an LList (null otherwise). consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1.
+pub fn call_memory(m: &mut Machine, vp: &mut VProc) -> PResult {
+    let pname = "__Wasm_call_memory__";
+    let mut a = take_n(vp, pname, 6)?;
+    let fuel = a.pop().unwrap();
+    let memory = a.pop().unwrap();
+    let args = a.pop().unwrap();
+    let fname = a.pop().unwrap();
+    let module = a.pop().unwrap();
+    let on_error = a.pop().unwrap();
+    call_with(m, vp, pname, on_error, module, fname, args, Some(memory), fuel)
+}
+
+/// The Numbers of the LList v, or the type name of what is not one.
+fn numbers(v: &Value) -> Result<Vec<f64>, String> {
+    let mut nums = Vec::new();
+    let mut cur = v.clone();
+    loop {
+        let cell = match &cur {
+            Value::Null => return Ok(nums),
+            Value::LList(c) => c.clone(),
+            other => return Err(value_type_name(other).to_string()),
+        };
+        match &cell.head {
+            Value::Number(x) => nums.push(*x),
+            other => return Err(format!("{} in it", value_type_name(other))),
+        }
+        cur = cell.tail.clone();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn call_with(m: &mut Machine, vp: &mut VProc, pname: &str, on_error: Value, module: Value, fname: Value, args: Value, memory: Option<Value>, fuel: Value) -> PResult {
     let w = match &module {
         Value::Wasm(w) => w.clone(),
         other => {
@@ -83,26 +122,29 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
         return Ok(());
     }
     let fname = value_to_display(&fname).map_err(VmError::Error)?;
-    let mut nums = Vec::new();
-    let mut cur = args.clone();
-    loop {
-        let cell = match &cur {
-            Value::Null => break,
-            Value::LList(c) => c.clone(),
-            other => {
-                vp.prim_error(on_error, &format!("{}: expected an LList of Numbers, got {}", pname, value_type_name(other)));
+    let nums = match numbers(&args) {
+        Ok(n) => n,
+        Err(t) => {
+            vp.prim_error(on_error, &format!("{}: expected an LList of Numbers, got {}", pname, t));
+            return Ok(());
+        }
+    };
+    let mut words = match &memory {
+        None => Vec::new(),
+        Some(mv) => {
+            if !w.memory {
+                vp.prim_error(on_error, &format!("{}: the module has no memory", pname));
                 return Ok(());
             }
-        };
-        match &cell.head {
-            Value::Number(x) => nums.push(*x),
-            other => {
-                vp.prim_error(on_error, &format!("{}: expected an LList of Numbers, got {} in it", pname, value_type_name(other)));
-                return Ok(());
+            match numbers(mv) {
+                Ok(n) => n,
+                Err(t) => {
+                    vp.prim_error(on_error, &format!("{}: expected an LList of Numbers for the memory, got {}", pname, t));
+                    return Ok(());
+                }
             }
         }
-        cur = cell.tail.clone();
-    }
+    };
     let fuel = match fuel {
         Value::Number(f) if f >= 1.0 && f <= MAX_FUEL && f == f.floor() => f,
         other => {
@@ -125,13 +167,28 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
         vp.prim_error(on_error, &format!("{}: \"{}\" takes {} argument(s), got {}", pname, fname, arity, nums.len()));
         return Ok(());
     }
-    match sys::wasm_call(w.host, &fname, &nums, fuel) {
-        sys::WasmResult::Ok(x) => vp.prim_return(vec![string_value("ok"), Value::Number(x)]),
+    let with_memory = memory.is_some();
+    let mut ok = false;
+    let mut results = match sys::wasm_call(w.host, &fname, &nums, &mut words, fuel) {
+        sys::WasmResult::Ok(x) => {
+            ok = true;
+            vec![string_value("ok"), Value::Number(x)]
+        }
         sys::WasmResult::Fuel => {
             m.end_slice = true;
-            vp.prim_return(vec![string_value("fuel"), Value::Null]);
+            vec![string_value("fuel"), Value::Null]
         }
-        sys::WasmResult::Trap(msg) => vp.prim_return(vec![string_value("trap"), string_value(&msg)]),
+        sys::WasmResult::Trap(msg) => vec![string_value("trap"), string_value(&msg)],
+    };
+    if with_memory {
+        let mut list = Value::Null;
+        if ok {
+            for x in words.iter().rev() {
+                list = Value::LList(Rc::new(LList { head: Value::Number(*x), tail: list }));
+            }
+        }
+        results.push(list);
     }
+    vp.prim_return(results);
     Ok(())
 }

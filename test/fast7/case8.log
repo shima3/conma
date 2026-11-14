@@ -1,0 +1,10 @@
+__Wasm_compile__: WebAssembly is not available
+two memories: __Wasm_compile__: line 1 col 20: a module has at most one memory
+memory import: __Wasm_compile__: line 1 col 9: expected (memory min max?), the numbers of pages from 0 to 65536 (no import or export)
+memory export: __Wasm_compile__: line 1 col 9: expected (memory min max?), the numbers of pages from 0 to 65536 (no import or export)
+memory max: __Wasm_compile__: line 1 col 9: expected (memory min max?), the numbers of pages from 0 to 65536 (no import or export)
+reserved memory export: __Wasm_compile__: line 1 col 34: the export name __memory is reserved
+bad align: __Wasm_compile__: line 1 col 60: bad align 16 (1, 2, 4 or 8)
+bad offset: __Wasm_compile__: line 1 col 60: bad offset x
+fine: __Wasm_compile__: WebAssembly is not available
+exit: 0

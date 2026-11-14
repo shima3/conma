@@ -242,9 +242,11 @@ pub fn wasm_compile(_bytes: &[u8]) -> Result<i32, String> {
     Err("WebAssembly is not available".into())
 }
 
-/// __Wasm_call__: call the exported function name of the module of the host
-/// with args and fuel.
-pub fn wasm_call(_host: i32, _name: &str, _args: &[f64], _fuel: f64) -> WasmResult {
+/// __Wasm_call__ and __Wasm_call_memory__: call the exported function name of
+/// the module of the host with args and fuel, its memory (if any) filled with
+/// zeros and then with the words of memory, which get the words of the memory
+/// after an "ok" call.
+pub fn wasm_call(_host: i32, _name: &str, _args: &[f64], _memory: &mut [f64], _fuel: f64) -> WasmResult {
     WasmResult::Trap("WebAssembly is not available".into())
 }
 
