@@ -59,6 +59,8 @@ fn load_body(m: &mut Machine, vp: &mut VProc, body: &BodyDef, mut lvenv: LVEnv, 
             let table = gvenv.transpiled.borrow().clone();
             if let Some(t) = table {
                 if t.fns.get(id).copied().flatten().is_some() {
+                    // the LVEnvs that transpiled code leaves in vp have no scope kept
+                    vp.scope = None;
                     return crate::transpiled::run(m, vp, id, lvenv, gvenv, &t);
                 }
             }
@@ -106,13 +108,11 @@ fn load_const(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gv
     Some(load_body(m, vp, &folded, lvenv.clone(), gvenv))
 }
 
-/// The scope of the LVEnv of vp, with --trace (module::keep_scopes); none otherwise.
+/// The scope of the LVEnv of vp (VProc::scope), for a SeqClosure that keeps that LVEnv: set
+/// wherever the VM loads a Body and sets the LVEnv of vp, so that a printed SeqClosure names its
+/// variables as the Python VM does, with or without --trace; none after transpiled code.
 fn kept_scope(vp: &VProc) -> crate::module::Scope {
-    if crate::module::scopes_kept() {
-        vp.scope.clone()
-    } else {
-        None
-    }
+    vp.scope.clone()
 }
 
 /// True if v is Machine::inline_mark.
@@ -179,6 +179,9 @@ fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &mut LVEnv,
         vp.lcont = None;
         return Some(load_body(m, vp, f.body.as_ref().unwrap(), env, gvenv));
     }
+    // Left to the scheduler with the LVEnv of this Body: its scope too (kept_scope; when the
+    // primitive goes on to its LCont, the Body of the LCont sets it).
+    vp.scope = body.scope.clone();
     if is_mark(m, &vp.operator) {
         vp.operator = make_closure(&f, lvenv, Some(gvenv));
     } else if vp.lcont.as_ref().map_or(false, |l| is_mark(m, l)) {
@@ -249,6 +252,7 @@ fn load_if(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv
             vp.olist.clear();
             vp.lcont = None;
             vp.lvenv = lvenv.clone();
+            vp.scope = body.scope.clone();
             m.steps += 1;
             m.fast_steps -= 1;
             return Some(Ok(()));
@@ -305,9 +309,7 @@ pub fn load_body_interp(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc
     vp.olist = olist;
     vp.lcont = lcont;
     vp.lvenv = lvenv;
-    if crate::module::scopes_kept() {
-        vp.scope = body.scope.clone();
-    }
+    vp.scope = body.scope.clone();
     Ok(())
 }
 

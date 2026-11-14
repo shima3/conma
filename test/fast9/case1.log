@@ -1,0 +1,10 @@
+(__Closure__
+  (Head (0 0) (Variable (0 0) "__Sink__"))
+  (Body
+    (0 0)
+    (__SInfo__ "conma/test/fast9/test.se" "18" "3")
+    (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+    (OList (0 0) (String (17 12) "ab"))
+    (LCont (0 0) (Null (0 0))))
+  (__LVEnv__ ("x" (String (17 12) "ab"))))
+exit: 0

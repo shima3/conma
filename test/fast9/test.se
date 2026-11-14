@@ -1,0 +1,37 @@
+;; 印刷した値の変数の名前（b20f15a。名前は節に持たず、Body ごとのスコープから引く）。SeqClosure は、作ったときの VProc の
+;; LVEnv を持ち、その名前は、VM が Body を読み込むときに覚えるスコープ（VProc::scope）から引く。どの読み込み方の後でも、
+;; --trace がなくても、Python VM と同じ名前を出す（REVIEW-ja.md の 2026-11-14 の 4）
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; 可変長の関数に渡すと、引数の SeqClosure は、呼んだ Body の LVEnv を持つ
+(define show ,(seq)
+  __OS_print__ seq ,()
+  println "")
+
+;; case1: LCont で束縛した変数の後（普通の読み込み）
+(define case1 ,()
+  __NULL__ "ab" ,(x)
+  (, args show args) x)
+
+;; case2: プリミティブの結果を束縛した後（step.rs の load_prim）
+(define case2 ,()
+  __NULL__ "a" ,(a)
+  __String_concat__ a "b" ,(y)
+  (, args show args) y a)
+
+;; case3: その場に書いた節の中（load_if）
+(define case3 ,()
+  __NULL__ "c" ,(z)
+  __String_equal__ z "c" ,(eq)
+  __if_then_else__ eq (,() (, args show args) z) (,() println "no"))
+
+;; case4: 畳み込んだ定数の後（load_const。畳み込んだ変数は LVEnv にない）
+(define case4 ,()
+  __NULL__ "w" ,(w)
+  __Number_fromString__ __print_exit_error__ "2" ,(n)
+  __Number_toString__ n ,(s)
+  (, args show args) s w)

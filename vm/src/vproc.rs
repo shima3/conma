@@ -35,7 +35,8 @@ pub struct VProc {
     pub olist: Vec<Value>,
     pub lcont: Option<Value>,
     pub lvenv: LVEnv,
-    /// The names of the variables of lvenv, kept with --trace (module::keep_scopes).
+    /// The names of the variables of lvenv, set where the VM loads a Body (step.rs; none after
+    /// transpiled code), for traces and for the SeqClosures that keep lvenv.
     pub scope: crate::module::Scope,
     pub gvenv_files: Vec<String>,
     /// An LList of CFrames, or null.

@@ -774,7 +774,7 @@ pub struct SeqClosure {
     pub olist: Vec<Value>,
     pub sinfo: Option<SInfo>,
     pub lvenv: LVEnv,
-    /// The names of the variables of lvenv, kept with --trace (VProc::scope).
+    /// The names of the variables of lvenv (VProc::scope when it was made).
     pub scope: crate::module::Scope,
 }
 
