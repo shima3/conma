@@ -336,3 +336,28 @@
   body "f64.const 1__5" ,(w) try_compile "f64 1__5" w ,()
   body "f64.const 1_5.2_5" ,(w) try_compile "f64 1_5.2_5" w ,()
   body "block br +0 end f64.const 0" ,(w) try_compile "br +0" w)
+
+;; case11：メモリの max に入らない語は、trap でなく onError（REVIEW-ja.md の 2026-11-14（2）の 8）。(memory 0 1) は 1 ページ、
+;; 8192 語まで。max のないメモリは 65536 ページまで
+
+;; __Wasm_call_memory__ の状態と値（語は出さない）
+(define try_fit ,(label w memory fuel)
+  __Cont_get__ ,(return)
+  __String_concat__ label ": " ,(head)
+  __Wasm_call_memory__ (,(msg) __String_concat__ head msg ,(s) println s ,() return) w "pages" __NULL__ memory fuel ,(status value words)
+  show_num value ,(t)
+  Cat3 head status " " ,(s)
+  __String_concat__ s t ,(s)
+  println s)
+
+(define case11 ,()
+  with_module "(module (memory 0 1) (func (export \"pages\") (result f64) (f64.convert_i32_u (memory.size))))" (,(w)
+    big_fuel ,(fuel)
+    num "8192" ,(n8192) count_list n8192 __NULL__ ,(fits)
+    try_fit "8192 words" w fits fuel ,()
+    num "8193" ,(n8193) count_list n8193 __NULL__ ,(over)
+    try_fit "8193 words" w over fuel) ,()
+  with_module "(module (memory 0) (func (export \"pages\") (result f64) (f64.convert_i32_u (memory.size))))" (,(w)
+    big_fuel ,(fuel)
+    num "8193" ,(n8193) count_list n8193 __NULL__ ,(more)
+    try_fit "no max, 8193 words" w more fuel))

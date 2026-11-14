@@ -3,7 +3,7 @@
 # consh/js/build.sh が要る。なければ飛ばす）だけで流す。case1 のログは Node.js の結果、case2 は手で書いた
 cd ${0%/*}
 [ -f ../../../js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null || exit 0
-out=/tmp/sjs-test-$$.log
+out=${TMPDIR:-/tmp}/sjs-test-$$.log
 for f in case*.sjs
 do
   c=${f%.sjs}

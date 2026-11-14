@@ -5,8 +5,8 @@
 cd ${0%/*}
 root=../../../..
 conma=$root/vm/target/release/conma
-out=/tmp/sjs-test-$$.log
-mod=/tmp/sjs-test-$$.module.se
+out=${TMPDIR:-/tmp}/sjs-test-$$.log
+mod=${TMPDIR:-/tmp}/sjs-test-$$.module.se
 "$conma" run --include ../../../include case1.se > $out 2>&1
 echo "exit: $?" >> $out
 diff case1.log $out

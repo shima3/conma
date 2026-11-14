@@ -5,8 +5,8 @@ cd ${0%/*}
 for f in case*.sjs
 do
   c=${f%.sjs}
-  ../../sjs $f > /tmp/sjs-test-$$.log 2>&1
-  echo "exit: $?" >> /tmp/sjs-test-$$.log
-  diff $c.log /tmp/sjs-test-$$.log
+  ../../sjs $f > ${TMPDIR:-/tmp}/sjs-test-$$.log 2>&1
+  echo "exit: $?" >> ${TMPDIR:-/tmp}/sjs-test-$$.log
+  diff $c.log ${TMPDIR:-/tmp}/sjs-test-$$.log
 done
-rm -f /tmp/sjs-test-$$.log
+rm -f ${TMPDIR:-/tmp}/sjs-test-$$.log

@@ -1,0 +1,4 @@
+8192 words: ok 1
+8193 words: __Wasm_call_memory__: 8193 words do not fit in the memory of the module (at most 1 pages, 8192 words)
+no max, 8193 words: ok 2
+exit: 0

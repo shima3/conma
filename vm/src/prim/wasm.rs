@@ -51,7 +51,7 @@ pub fn compile(m: &mut Machine, vp: &mut VProc) -> PResult {
     match sys::wasm_compile(&asm.bytes) {
         Ok(host) => {
             m.serials.wasms += 1;
-            let w = WasmObj { serial: m.serials.wasms, host, exports: asm.exports, memory: asm.memory };
+            let w = WasmObj { serial: m.serials.wasms, host, exports: asm.exports, memory: asm.memory, memory_max: asm.memory_max };
             vp.prim_return(vec![Value::Wasm(Rc::new(w))]);
         }
         Err(e) => vp.prim_error(on_error, &format!("{}: {}", name, e)),
@@ -137,6 +137,12 @@ fn call_with(m: &mut Machine, vp: &mut VProc, pname: &str, on_error: Value, modu
                 return Ok(());
             }
             match numbers(mv) {
+                // words that do not fit in the memory at its max are an error of the arguments (as the
+                // host would fail to grow it), not a trap
+                Ok(n) if n.len() as u64 > w.memory_max * 8192 => {
+                    vp.prim_error(on_error, &format!("{}: {} words do not fit in the memory of the module (at most {} pages, {} words)", pname, n.len(), w.memory_max, w.memory_max * 8192));
+                    return Ok(());
+                }
                 Ok(n) => n,
                 Err(t) => {
                     vp.prim_error(on_error, &format!("{}: expected an LList of Numbers for the memory, got {}", pname, t));

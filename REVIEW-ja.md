@@ -437,4 +437,10 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 * 8 のアセンブラ：直した。vm/src/prim/wasm_asm.rs は、`end` と `else` の後のラベルが、その block（if）のラベルでなければ誤りにし、`else $l` を受け付ける（`end_label`）。数の `_` は数字と数字の間だけ（`digits_ok`。f64 も）、`0x` の後は 16 進の数字だけ、局所の変数、ラベル、関数の番号と offset とページ数は符号なし（`parse_uint`）。test/fast7 に case10 を足した（ログは case9 と同じく 3 つ）。
 * 2、3、8 のアセンブラの後で、test/ を Python、Rust、wasm の VM で（wasm は前からの step40 と、-j 8 で 1 度の step31 だけが違う。step31 は 1 つだけで 3 回通る）、consh/test を Rust VM（速い版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
 * 8 の測った機械（Apple M1 と M2）：直す必要なし。測った人が使っている機械の違いで、速さの記録には機種を書くのがよく、機種が違ってもかまわない（2026-11-14 にユーザーと確かめた）。
-* 6 の後半、4、5、7、8 のほか：まだない（4 と run.sh は、SJS-WASM-ARRAY の段階 A5 の測定と順番を合わせる）。
+* run.sh の WAT の大きさ（8）：239c647（配列の計画の段階 A5）で、ほかの人が直した。
+* 4：直した。consh/include/sjs_rt.se の `Sjs_wasm_fn_checked` は、確かめる Math のメンバーの名前の列を、関数を作るときに 1 度だけ作る（`Sjs_wasm_math_names`。前は呼ぶたびに 1 文字ずつ分けていた）。`Sjs_wasm_fn_core` は、ConMa 版で動かしている間（busy）なら、確かめずに ConMa 版を動かす（前は busy を見る前に確かめていた。busy のときは結果によらず ConMa 版なので、振る舞いは変わらない）。ConSh で `hyp = (a, b) => Math.sqrt(a * a + b * b)` を ConMa の関数から 5 万回呼ぶスクリプトは、wasm 版の VM で 7.12 秒が 2.80〜2.85 秒になった（`CONMA_NO_WASM=1` は 2.16〜2.17 秒、Rust VM は 1.55 秒。実時間、1 回ずつ、Apple M2）。まだ `CONMA_NO_WASM=1` の 1.3 倍なのは、呼ぶたびに 10 個のメンバーを比べるため。関数が使うメンバーだけを比べるには、変換器から名前を渡す必要がある（sjs_gen.se と sjs_wasm.se）ので、していない。
+* 8 の `__Wasm_call_memory__` の語の数：直した。アセンブラはメモリの max のページ数を `Assembled::memory_max` に残し（max がなければ 65536）、`WasmObj` が持つ。`call_with`（vm/src/prim/wasm.rs）は、max のメモリに入らない数の語を、ホストに渡す前に onError にする（ネイティブの VM と wasm 版で同じメッセージ）。test/fast7 に case11 を足した（`(memory 0 1)` に 8192 語と 8193 語、max のない `(memory 0)` に 8193 語）。docs/PRIMITIVES.md の 16 に書いた。
+* 8 の一時ファイル：consh/sjs/test の test.sh は、step10 だけでなく step1〜11 のすべてが `/tmp/sjs-test-$$.log`（step11 はモジュールも）に書いていたので、すべて `${TMPDIR:-/tmp}` にした。
+* 8 の計画 5.6 との違い：consh/SJS-WASM-PLAN-ja.md の 15 に、違いとして書き足した（そのままにする）。
+* 4、8 の後で、test/ を Python、Rust、wasm の VM で、consh/test を Rust VM（速い版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った（wasm 版の test/ は、前からの step40 だけが違う）。
+* 6 の後半、5、7：まだない。

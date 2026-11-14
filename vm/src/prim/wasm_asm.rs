@@ -35,6 +35,8 @@ pub struct Assembled {
     pub bytes: Vec<u8>,
     pub exports: Vec<(String, usize)>,
     pub memory: bool,
+    /// The most pages the memory may grow to (its max, or 65536, all that wasm32 can address).
+    pub memory_max: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -1111,5 +1113,6 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
         body.extend_from_slice(c);
     }
     section(&mut out, 10, &body);
-    Ok(Assembled { bytes: out, exports, memory: memory.is_some() })
+    let memory_max = memory.and_then(|(_, max)| max).unwrap_or(65536);
+    Ok(Assembled { bytes: out, exports, memory: memory.is_some(), memory_max })
 }

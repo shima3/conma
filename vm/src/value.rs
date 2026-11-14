@@ -150,6 +150,8 @@ pub struct WasmObj {
     pub exports: Vec<(String, usize)>,
     /// The module has a memory (__Wasm_call_memory__).
     pub memory: bool,
+    /// The most pages of 64 KiB its memory may have (Assembled::memory_max).
+    pub memory_max: u64,
 }
 
 impl Drop for WasmObj {

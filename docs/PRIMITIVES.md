@@ -799,5 +799,5 @@ A program can write functions on numbers in a subset of the WebAssembly text for
 ### **`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`**
 * **Description**: As `__Wasm_call__`, for a module with a memory (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): before the call, the memory is filled with zeros and then with the Numbers of the LList `memory` as f64 words from address 0 (the host grows the memory if they do not fit).
 * **Returns**: `status` and `value` as `__Wasm_call__`, and, when `status` is `"ok"`, the same number of f64 words of the memory after the call as an LList of Numbers (null for `"fuel"` and `"trap"`, after which the words are thrown away).
-* **Error**: As `__Wasm_call__`, and if the module has no memory or `memory` is not an LList of Numbers.
+* **Error**: As `__Wasm_call__`, and if the module has no memory, `memory` is not an LList of Numbers, or it has more words than the memory can hold at its max (8192 words a page; 65536 pages without a max): onError, not `"trap"` (since 2026-11-14).
 
