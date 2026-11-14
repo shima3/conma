@@ -1048,7 +1048,14 @@ pub fn number_to_str(x: f64) -> String {
 /// same, in fixed notation when the exponent is in -4..16, otherwise as
 /// d.ddde+XX.
 pub fn py_float_repr(x: f64) -> String {
-    let e = format!("{:e}", x); // shortest round-trip digits, e.g. "-1.5e-5"
+    // The shortest round-trip digits, e.g. "-1.5e-5". {:e} finds how many digits, but when two
+    // strings of that length read back the same (a value halfway between them, such as
+    // -126.483917236328125), it does not take the nearer one as repr() does (and JavaScript):
+    // the digits correctly rounded to that length are taken when they read back the same.
+    let shortest = format!("{:e}", x);
+    let ndigits = shortest.split_once('e').unwrap().0.chars().filter(|c| c.is_ascii_digit()).count();
+    let rounded = format!("{:.*e}", ndigits - 1, x);
+    let e = if rounded.parse::<f64>() == Ok(x) { rounded } else { shortest };
     let (mant, exp) = e.split_once('e').unwrap();
     let exp: i32 = exp.parse().unwrap();
     let neg = mant.starts_with('-');

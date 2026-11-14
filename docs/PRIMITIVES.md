@@ -190,7 +190,7 @@ Primitives for floating-point arithmetic and numeric utilities.
 * **Error**: If the `String` is not a valid numeric representation, the interpreter invokes `onError` as the next operator with a single error message string as its argument.
 
 ### **`__Number_toString__ Number ,(String)`**
-* **Description**: Converts a `Number` to its string representation.
+* **Description**: Converts a `Number` to its string representation, as the Python VM writes it: an integer value below 1e21 in magnitude as all its digits, without a decimal point (Python's `str(int(x))`: `85715430223118336` for the Number written `85715430223118340`, which is not JavaScript's shortest `85715430223118340`); any other finite value as Python's `repr` writes it (the shortest digits that read back the same, and of those the nearest, the even one when two are as near; fixed notation for exponents from -4 to 15, otherwise `d.ddde+XX`); and `inf`, `-inf`, `nan`. `-0` is `0` (`__Number_is_negative_zero__` tells it). Until 2026-11-14 the Rust and wasm VMs took the other of two digits halfway apart (`-126.48391723632813` for `-126.48391723632812`, test/step5 case7). SJS writes Numbers as JavaScript does on top of it (consh/include/sjs_rt.se, `Sjs_num_str`).
 
 ### **`__Number_is_zero__ Number ,(Boolean)`** / **`__Number_is_positive__`** / **`__Number_is_negative__`**
 * **Description**: Evaluates the sign property of the given `Number` and returns a boolean value. `-0` is zero and neither positive nor negative.

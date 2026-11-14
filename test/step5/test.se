@@ -116,3 +116,17 @@
   __Number_add__ "1" "2" ,(n)
   println "not reached" ,()
   )
+
+;; case7: 17 桁目がちょうど真ん中になる数は、Python の repr と同じく、近い方（同じなら偶数）の桁を出す（Rust VM は前、
+;; 違う方を出した）。整数の値は、正確な桁を出す（JavaScript の最短の桁とは違う。consh/sjs が JavaScript に直す）
+(define case7 ,()
+  roundTrip "0.0023775100708007812" ,()
+  roundTrip "1.6872329711914062" ,()
+  roundTrip "2.1973342895507812" ,()
+  roundTrip "2.8851089477539062" ,()
+  roundTrip "0.07799148559570312" ,()
+  roundTrip "-126.48391723632812" ,()
+  roundTrip "85715430223118340" ,()
+  roundTrip "9007199254740993" ,()
+  roundTrip "18446744073709551616" ,()
+  )

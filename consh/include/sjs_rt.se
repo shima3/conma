@@ -717,8 +717,102 @@
   Sjs_strip_leading_zeros digits point ,(digits point)
   Sjs_strip_trailing_zeros digits ,(digits)
   __String_equal__ digits "" ,(test__) __if__ test__ (,() return "0") ,()
+  ;; 整数の値は、__Number_toString__ が正確な桁を出す（85715430223118340 は 85715430223118336）が、JavaScript は
+  ;; 読み戻せる最短の桁を出す。2^53 以上の整数（16 桁以上）だけ、最短の桁を探す（Sjs_num_shortest）
+  __and__ noExp noDot ,(integral)
+  __String_length__ digits ,(k)
+  __Number_fromString__ __print_exit_error__ "16" ,(n16)
+  __Number_subtract__ k n16 ,(d16)
+  __Number_is_negative__ d16 ,(fewDigits)
+  __not__ fewDigits ,(manyDigits)
+  __and__ integral manyDigits ,(test__) __if__ test__
+    (,() __Number_is_negative__ n ,(neg) __if_then_else__ neg (,() Sjs_minus n) (,() __NULL__ n) ,(abs) Sjs_num_shortest digits point abs one ,(d p) Sjs_render d p ,(s) __String_concat__ sign s ,(s) return s) ,()
   Sjs_render digits point ,(s)
   __String_concat__ sign s)
+
+;; 桁 digits（正確な値。末尾は 0 でない）と小数点の位置 point（値は 0.digits × 10^point = x）の、読み戻すと x になる最短の桁と
+;; その小数点の位置。桁の数 L を 1 から増やし、L 桁に丸めた（真ん中なら偶数へ。JavaScript の Number::toString と同じ）ものを
+;; __Number_fromString__ で読み戻して比べる
+(define Sjs_num_shortest ,(digits point x L)
+  __Cont_get__ ,(return)
+  __String_length__ digits ,(k)
+  __Number_subtract__ k L ,(left)
+  __Number_is_positive__ left ,(test__) __unless__ test__ (,() return digits point) ,()
+  Sjs_round_digits digits L ,(rd carry)
+  __Number_add__ point carry ,(p)
+  Sjs_strip_trailing_zeros rd ,(rd)
+  Sjs_num_text rd p ,(text)
+  __Number_fromString__ __print_exit_error__ text ,(y)
+  __Number_subtract__ y x ,(diff)
+  __Number_is_zero__ diff ,(test__) __if__ test__ (,() return rd p) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ L one ,(L1)
+  Sjs_num_shortest digits point x L1)
+
+;; "0.桁e位置"
+(define Sjs_num_text ,(digits point)
+  __Number_toString__ point ,(ps)
+  __String_concat__ "0." digits ,(t)
+  __String_concat__ t "e" ,(t)
+  __String_concat__ t ps)
+
+;; 桁 digits の先頭 L 桁に丸めた桁と、繰り上がりで桁が 1 つ増えたか（1 か 0）。残りが真ん中より大きければ切り上げ、
+;; ちょうど真ん中（残りが "5" だけ。digits の末尾は 0 でない）なら、L 桁目が奇数のときだけ切り上げる
+(define Sjs_round_digits ,(digits L)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_length__ digits ,(k)
+  __String_substring__ __print_exit_error__ digits zero L ,(head)
+  __Number_add__ L one ,(L1)
+  __String_substring__ __print_exit_error__ digits L L1 ,(next)
+  Sjs_digit_value next ,(nv)
+  __Number_fromString__ __print_exit_error__ "5" ,(five)
+  __Number_subtract__ nv five ,(c)
+  __Number_is_negative__ c ,(test__) __if__ test__ (,() return head zero) ,()
+  __Number_subtract__ k L1 ,(more)
+  __Number_is_positive__ c ,(above)
+  __Number_is_positive__ more ,(moreDigits)
+  __or__ above moreDigits ,(up)
+  __if__ up (,() Sjs_inc_digits head ,(h carry) return h carry) ,()
+  ;; ちょうど真ん中：偶数へ
+  __Number_subtract__ L one ,(lastAt)
+  __String_substring__ __print_exit_error__ head lastAt L ,(last)
+  Sjs_digit_value last ,(lv)
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __Number_divide__ __print_exit_error__ lv two ,(h2)
+  __Number_floor__ h2 ,(f2)
+  __Number_subtract__ h2 f2 ,(odd)
+  __Number_is_zero__ odd ,(test__) __if__ test__ (,() return head zero) ,()
+  Sjs_inc_digits head)
+
+(define Sjs_digit_value ,(c)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ "0123456789" c zero)
+
+;; 10 進の桁の文字列に 1 を足した桁と、桁が 1 つ増えたか（1 か 0。"999" は "1000" でなく "100" と 1：値は小数点の位置で表す）
+(define Sjs_inc_digits ,(digits)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __String_length__ digits ,(k)
+  __Number_is_zero__ k ,(test__) __if__ test__ (,() return "1" one) ,()
+  __Number_subtract__ k one ,(lastAt)
+  __String_substring__ __print_exit_error__ digits zero lastAt ,(rest)
+  __String_substring__ __print_exit_error__ digits lastAt k ,(last)
+  __String_equal__ last "9" ,(test__) __if__ test__
+    (,()
+      Sjs_inc_digits rest ,(r carry)
+      __String_concat__ r "0" ,(r)
+      ;; 繰り上がって桁が増えたときは、増えた分を末尾から落とす（長さは digits と同じ）
+      __Number_is_zero__ carry ,(test__) __if__ test__ (,() return r zero) ,()
+      __String_substring__ __print_exit_error__ r zero k ,(r)
+      return r one) ,()
+  Sjs_digit_value last ,(v)
+  __Number_add__ v one ,(v1)
+  __Number_toString__ v1 ,(d)
+  __String_concat__ rest d ,(r)
+  __NULL__ r zero)
 
 ;; 10 進の整数の String（+ か - で始まってもよい）を Number にする
 (define Sjs_parse_int ,(s)
