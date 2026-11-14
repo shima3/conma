@@ -15,8 +15,10 @@
 ;;   values   名前から、注釈を加えた Function への Dict（最初の Definition のもの）
 ;;   count    次に振る番号を持つ Ref
 ;;   order    番号を振った名前の LList（新しいものが先頭）を持つ Ref
-;; ローカル変数のスコープは、内側のものが先頭の LList。
-;; 各スコープは Head のパラメータ名の LList で、右のパラメータが先頭（index 0 に近い）。
+;; ローカル変数のスコープ（引数の scopes）は、1 つの Dict：名前から、その名前のパラメータの位置の LList（内側のものが先頭）と、
+;; キー " depth"（名前にならない）に今のパラメータの数の合計。パラメータの位置は、外側の関数の左のパラメータから 1、2、… と
+;; 数えたもので、名前の (L index) は、合計からその位置を引いたもの（右のパラメータが index 0 に近い）。Function に入るときに
+;; パラメータを積み、出るときに下ろす。名前ごとに表を引くので、深く入れ子になった関数の中でも、名前を引く手間は深さによらない
 (include "ast.se")
 
 (define __Resolver_main__ ,(programs)
@@ -25,7 +27,9 @@
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(count)
   __Ref_new__ __NULL__ ,(order)
-  __Resolver_nodes__ globals values count order __NULL__ programs ,(resolved)
+  __Dict_new__ ,(scopes)
+  __Dict_put__ scopes " depth" zero ,()
+  __Resolver_nodes__ globals values count order scopes programs ,(resolved)
   __Resolver_files__ programs ,(files)
   __AST_new__ "F" __NULL__ files ,(f)
   __Ref_get__ order ,(names)
@@ -150,27 +154,52 @@
   __LList_uncons__ __print_exit_error__ node ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
   __Resolver_find__ children "Head" ,(head)
   __is_null__ head ,(test__) __if_then_else__ test__
-    (,() __NULL__ scopes)
+    (,() __Resolver_children__ globals values count order scopes node)
     (,()
       __LList_uncons__ __print_exit_error__ head ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ params)
-      __Resolver_param_names__ params __NULL__ ,(scope)
-      __LList_cons__ scope scopes) ,(scopes)
-  __Resolver_children__ globals values count order scopes node)
+      __Dict_lookup_or__ scopes " depth" __print_exit_error__ ,(depth)
+      __Resolver_push__ scopes params depth ,(inner)
+      __Dict_put__ scopes " depth" inner ,()
+      __Resolver_children__ globals values count order scopes node ,(node)
+      __Resolver_pop__ scopes params ,()
+      __Dict_put__ scopes " depth" depth ,()
+      __NULL__ node))
 
-;; パラメータの Variable の名前を、右のものが先頭になるように acc の前に加える。
+;; パラメータの Variable の名前を、左から順に、位置 depth + 1、depth + 2、… で積む。積んだ後の位置の合計を返す。
 ;; 可変長引数の Head の Rest は Variable でないので、名前は1つになる
-(define __Resolver_param_names__ ,(params acc)
+(define __Resolver_push__ ,(scopes params depth)
   __is_null__ params ,(test__) __if_then_else__ test__
-    (,() __NULL__ acc)
+    (,() __NULL__ depth)
     (,()
       __LList_uncons__ __print_exit_error__ params ,(param rest)
       __LList_uncons__ __print_exit_error__ param ,(kind ast_rest__)
       __String_equal__ kind "Variable" ,(test__) __if_then_else__ test__
         (,()
           __Resolver_name__ param ,(name)
-          __LList_cons__ name acc)
-        (,() __NULL__ acc) ,(acc)
-      __Resolver_param_names__ rest acc))
+          __Number_fromString__ __print_exit_error__ "1" ,(one)
+          __Number_add__ depth one ,(depth)
+          __Dict_lookup_or__ scopes name (,(key) __NULL__ __NULL__) ,(places)
+          __LList_cons__ depth places ,(places)
+          __Dict_put__ scopes name places ,()
+          __NULL__ depth)
+        (,() __NULL__ depth) ,(depth)
+      __Resolver_push__ scopes rest depth))
+
+;; __Resolver_push__ が積んだパラメータの位置を下ろす
+(define __Resolver_pop__ ,(scopes params)
+  __is_null__ params ,(test__) __if_then_else__ test__
+    (,() __nop__)
+    (,()
+      __LList_uncons__ __print_exit_error__ params ,(param rest)
+      __LList_uncons__ __print_exit_error__ param ,(kind ast_rest__)
+      __String_equal__ kind "Variable" ,(test__) __if_then_else__ test__
+        (,()
+          __Resolver_name__ param ,(name)
+          __Dict_lookup_or__ scopes name __print_exit_error__ ,(places)
+          __LList_uncons__ __print_exit_error__ places ,(top below)
+          __Dict_put__ scopes name below)
+        (,() __nop__) ,()
+      __Resolver_pop__ scopes rest))
 
 ;; Definition: 子ノードに注釈を加える。その名前の最初の Definition なら、Function を values に入れる。
 ;; 名前は注釈を加える前に取り出す（__NULL__ という名前の Variable は注釈で Null ノードに変わるため）
@@ -192,8 +221,7 @@
 ;; Variable: ローカルなら (L index)、そうでなければ (G 番号) を加える。__NULL__ は Null にする
 (define __Resolver_variable__ ,(globals values count order scopes node)
   __Resolver_name__ node ,(name)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __Resolver_local__ scopes name zero ,(index)
+  __Resolver_local__ scopes name ,(index)
   __is_null__ index ,(test__) __if_then_else__ test__
     (,()
       __Resolver_global__ globals count order name ,(id)
@@ -210,38 +238,14 @@
       __AST_new__ "Variable" pos children))
 
 ;; scopes の中の name の de Bruijn index。見つからなければ null。
-;; acc は、それまでに調べた（外側でない）スコープのパラメータの数
-(define __Resolver_local__ ,(scopes name acc)
-  __is_null__ scopes ,(test__) __if_then_else__ test__
+(define __Resolver_local__ ,(scopes name)
+  __Dict_lookup_or__ scopes name (,(key) __NULL__ __NULL__) ,(places)
+  __is_null__ places ,(test__) __if_then_else__ test__
     (,() __NULL__ __NULL__)
     (,()
-      __LList_uncons__ __print_exit_error__ scopes ,(scope rest)
-      __Resolver_position__ scope name acc ,(index size)
-      __is_null__ index ,(test__) __if_then_else__ test__
-        (,()
-          __Number_add__ acc size ,(acc)
-          __Resolver_local__ rest name acc)
-        (,() __NULL__ index)))
-
-;; scope の中の name の位置に acc を足したもの（なければ null）と、scope のパラメータの数
-(define __Resolver_position__ ,(scope name acc)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  __Resolver_position_loop__ scope name acc zero __NULL__)
-
-(define __Resolver_position_loop__ ,(scope name acc i found)
-  __is_null__ scope ,(test__) __if_then_else__ test__
-    (,() __NULL__ found i)
-    (,()
-      __LList_uncons__ __print_exit_error__ scope ,(param rest)
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ i one ,(next)
-      __is_null__ found ,(test__) __if_then_else__ test__
-        (,()
-          __String_equal__ param name ,(test__) __if_then_else__ test__
-            (,() __Number_add__ acc i)
-            (,() __NULL__ __NULL__))
-        (,() __NULL__ found) ,(found)
-      __Resolver_position_loop__ rest name acc next found))
+      __LList_uncons__ __print_exit_error__ places ,(place below)
+      __Dict_lookup_or__ scopes " depth" __print_exit_error__ ,(depth)
+      __Number_subtract__ depth place))
 
 ;; name のグローバル変数の番号。まだなければ次の番号を振る
 (define __Resolver_global__ ,(globals count order name)

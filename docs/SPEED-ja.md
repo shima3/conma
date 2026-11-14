@@ -82,6 +82,7 @@
 | 読み飛ばし（sexp.rs の skip_at）で、ASCII のバイトを表（BYTE_CLASS）で見分け、空白かどうかを関数で確かめるのを ASCII でない文字だけにする | 2026-11-14 | ConSh のモジュールを直接動かす `echo hi` が Rust 版の VM で 22.8 → 18.9 ms、wasm 版の VM で 126.1 → 118.5 ms。`console.log(1)` が 8.3 → 7.9 ms と 95.2 → 92.7 ms、nbody の N=1 が 15.8 → 14.8 ms と 111.9 → 108.3 ms（実時間、9 回の最良、Apple M1） | 入れた | vm/README.md「Start-up」 |
 | SJS の数の関数で、添字が変数の配列の読み書きも、範囲と整数の確かめと f64.load / f64.store でその場に書き、`$__get` と `$__set` を呼ばない。`o[i] op= v` は場所を 1 度だけ確かめる（consh/include/sjs_wasm.se の Wx_place。段階 F4） | 2026-11-15 | 長さ 100 の配列への読み書きを 1 億回が wasm 版の VM で 0.64 → 0.51 秒（Node.js 0.16 秒）。nbody N=200000 は 0.17 秒のまま（実時間、5 回の最良、Apple M1） | 入れた | consh/SJS-WASM-ARRAY-PLAN-ja.md の 22 |
 | ConSh の `(( ))` で、変換したモジュールの一時ファイルの名前を、式のコードのハッシュとソースの長さで決め、ソース（コードの何倍も長い）を 1 文字ずつハッシュしない（consh/include/consh_jsstmt.se の Sjsb_module） | 2026-11-15 | consh/examples/nbody.sh の N=1 が Rust 版の VM で 3.46 → 1.62 秒、wasm 版の VM で 4.28 → 2.31 秒。`(( x = 1 ))` を 3 つのスクリプトが 0.53 → 0.32 秒と 0.74 → 0.52 秒（実時間、3 回の最良、Apple M1） | 入れた | consh/SJS-WASM-ARRAY-PLAN-ja.md の 22 |
+| ConMa 版のフロントエンドの resolver（include/resolver.se）が、ローカル変数のスコープを、名前ごとのパラメータの位置の LList の Dict にし、名前を引くたびにスコープの LList をたどらない（vm/frontend.module.se も作り直した。出力は同じ） | 2026-11-15 | `__VProc_spawn__` が作る ConSh の `(( ))` のモジュールのビルドが 8 KB で 0.09 → 0.06 秒、28 KB で 0.23 → 0.15 秒（resolver のステップがビルドの 52% → 12%）。consh/examples/nbody.sh の N=1 が Rust 版の VM で 1.62 → 1.22 秒、wasm 版の VM で 2.31 → 1.79 秒（実時間、3 回の最良、Apple M1） | 入れた | docs/SELFHOST.md |
 
 ## 6. 大きさ
 
