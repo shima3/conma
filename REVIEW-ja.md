@@ -270,3 +270,70 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
   add2 one one
   )
 ```
+
+## 2026-11-14: f4b9702〜4617a89 のコミット
+
+対象は、36a8036（`__TRUE__`、`__FALSE__` と制御の関数を高速版だけの組み込みにしたもの）の前後に入った、ほかの人のコミット 13 個である（f4b9702、3243b7d、89bd100、8471157、61fde4e、1e4c864、edd5945、b20f15a、9d465dc、1dda238、f04c6fd、4617a89、fdf3a11）。その後に入った b361933 と 9a7e69a（機能 `"wasm"`）は見ていない。
+
+### 確かめた方法
+
+* コードの大きいコミット（1e4c864 と edd5945、b20f15a と f04c6fd、9d465dc、4617a89）は、4 つに分けて、それぞれ別のエージェントがコミットの説明と差分と周りのコードを読み、リポジトリの外で小さなプログラムを動かして確かめた。重大なもの（1、2）は、自分でも再現した。
+* 文書だけのコミット（f4b9702 の測定の部分、3243b7d、89bd100、8471157、1dda238、fdf3a11）と 61fde4e は、説明と差分を読んだ。
+* 4617a89 の時点で、Rust VM、wasm 版、変換版の VM を作り直し、test/ を Python、Rust、変換版の VM で、consh/test を Rust VM（速い版と参照版）と変換版の VM で、test/ と consh/test を wasm 版で、consh/js/test と consh/sjs/test を流した。すべて通った（wasm 版は、前からの test/step40、consh/test の step8 と step17 だけが違う）。
+
+### 1. 定数の畳み込みとフレームが重なると、別の変数を読む（高）
+
+* 場所：vm/src/module.rs の `const_fold`、`subst_func`、`subst_body`（edd5945 と 9d465dc の組み合わせ）。
+* `const_fold` は、LCont の Body そのものにフレームがないことしか見ない。LCont の中の関数式が、すでに `frame_chain` でフレームにまとめられていて、その Body がフレームの変数を読まない（`S` がない）と、`subst_func` はその中にも入る。そこでは `L` の添字がフレームの数え方（`L(i-m+1)`）になっているのに、LCont の引数の数だけずらして数え、`new_body` でフレームの印も消す。そのため、置き換えるはずの変数を外し、別の変数を読む。
+* 例：`__Number_fromString__ __print_exit_error__ "3" ,(x)` の後に、`run (,() ...)` の中で 8 つの値を束縛してから `x` を使う。Python VM と `CONMA_NO_FOLD=1` の Rust VM は `3` を出すが、Rust VM は 7 つ目の値（文字列）を読み、`__Number_toString__: expected Number, got String` で止まる。簡潔版のモジュールでも同じで、Python VM と結果が違う。
+* 直し方の案：`subst_body` が、フレームを持つ Body（`b.frame != 0`）や、フレームにまとめた Function を中に含むときは、畳み込みをやめる。
+
+### 2. 畳み込んだ所では、onError を評価しない（中）
+
+* 場所：vm/src/step.rs の `load_const`、vm/conma2rust/conma2rust.py の 754〜760 行（edd5945）。
+* VM は Body を読み込むときに被演算子をすべて評価するので、`__Number_fromString__ noSuchGlobal "1" ,(x)` は、Python VM と、`CONMA_NO_FOLD=1` か `--trace` の Rust VM では `G2 ('noSuchGlobal') Undefined` で止まる。畳み込むと止まらずに進む（`1` を出す）。`--trace` の有無で結果が変わる。
+* 直し方の案：畳み込むときも onError を評価する（`__TRUE__` と `__FALSE__` を融合した連鎖で選ぶ所と同じ）。
+
+### 3. 長い数字の文字列で、変換版の VM が作れない（中）
+
+* 場所：vm/conma2rust/conma2rust.py の `number_literal`（83〜87 行。edd5945）。
+* 正規表現 `-?[0-9]+(\.[0-9]+)?` に合う 400 桁の数字は、`float()` で無限大になり、Rust にない `inf_f64` を書く。VM の `fold_number` は無限大を除いている（onError で "out of range" になる）が、`number_literal` は除いていない。
+
+### 4. 印刷した SeqClosure の変数名が `?` になる（中）
+
+* 場所：vm/src/step.rs の `kept_scope` と、`apply_closure` の可変長と余分な被演算子の所（b20f15a）、vm/src/trace.rs。
+* 変数の名前の情報（スコープ）は `--trace` のときだけ残すが、値の印刷は `__OS_print__` や `__String_concat__` などでも使う。可変長の関数の引数を印刷すると、Python VM は `(__LVEnv__ ("x" "ab"))`、Rust VM は `(__LVEnv__ ("?" "ab"))` を出す。コミットの説明の「印刷した Closure は Python VM と同じ」は、Closure には当てはまるが、SeqClosure には当てはまらない。
+
+### 5. フレームを持つ Closure の印刷が、Python VM と違う（中）
+
+* 場所：vm/src/trace.rs の `closure_to_sexp`、`lvenv_to_sexp`（9d465dc）。
+* トレースのときはフレームを使わないので一致するが、印刷とエラーのメッセージでは、フレームが最後の引数の名前で 1 つの `(__Frame__ ...)` として出る。Python VM は、変数ごとに名前を付けて出す。
+
+### 6. 試しに足した 6 つの条件分岐に、機能の印がない（中）
+
+* 場所：vm/src/prim/mod.rs、vm/src/module.rs の `FAST_FEATURES` のコメント（1e4c864）。
+* `__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__` は、定義のない大域の名前として、`Uses` のない簡潔版のモジュールからも Rust VM と wasm 版で使える。Python VM では Undefined になり、include/ref に代わりの定義もない。`FAST_FEATURES` のコメントはこれらを `"control"` に入れているが、フロントエンドは書かない。
+* 「Rust VM だけ」とあるが、vm/src を共有する wasm 版にも入っている（畳み込みと `CONMA_NO_FOLD` も同じ）。
+* テストがない。ステップとトレースが速い道と遅い道で同じこと、数でない値のエラー、NaN、-0、無限大の比較（引き算して符号を見るのと同じであること）、"-0" や指数の書き方の文字列の畳み込みを確かめるものがない。
+
+### 7. 小さいもの（低）
+
+* `(-0) ** 0.5` が、SJS では -0 になる（JavaScript では +0）。consh/include/sjs_rt.se の 2379 行の `Sjs_pow` が、指数が 0.5 のとき `__Number_sqrt__` を使うからである。前からのコードだが、4617a89 で SJS が -0 を作るようになったので表に出た。
+* 畳み込んだ Body と、その中で作り直す FuncDef は、関数の番号（`func_id`）を持たない。変換版の VM で一度 VM に戻ると、その Function の残りと、その中で作る Closure は、変換したコードに戻らない（速さだけの問題）。
+* フレームにまとめた連鎖の中の `__Number_fromString__` は畳み込まれない（速さだけの問題）。
+* 6 つの条件分岐のうち 4 つは、数でない値のエラーのとき、`in_place_failed` で被演算子を片付けない（今は害がない）。
+* `CONMA_FAST_REPORT` の行（`fast __if_then_else__, __if__, __unless__: N Bodies`）は、新しい種類も数えるので、名前が古い。
+* 4617a89 の `__Number_is_negative_zero__` は、変換版の VM では作り直しも、テストもされていない（表では、ほかの数の述語のような速い道を通らない）。
+* 61fde4e の bench/richards/richards_tuned.se は、リポジトリの外にあった richards2.se と、先頭の名前の行だけが違う。
+
+### 問題なしと確かめたところ
+
+* 36a8036 と b3e99ef は、取り込む前の 93adb34 と 6737cc2 と同じである（`git range-diff`）。
+* b20f15a、f04c6fd：`--trace` のときの Rust VM のトレースは、Python VM と 1 バイトも違わない（可変長と部分適用のプログラムで確かめた）。部分適用の名前の順、変換したコードが作る Closure、VM が作る Closure（`bool_closure` など）、`__VProc_spawn__` で読むモジュールの名前は正しい。新しい道に `unwrap` はなく、名前のない所は `?` になる。f04c6fd で、wasm 版も `--trace` で名前を残す。
+* 9d465dc：フレームを、その場で大きくするのは、Closure、LVNode、Vec のどれもほかから参照されていないときだけで、共有されていれば写す。`__Cont_get__` の継続を Ref に入れて 2 度戻るプログラムは、Python VM と同じ出力になる。`S(m-1-i)` と `L(i-m+1)` の添字、GC がフレームの中の値をたどること、ステップの数は正しい。
+* 1e4c864、edd5945：速い道のステップの数は、遅い道と同じである（条件分岐の 1 か 2 ステップ、`load_const` の 3 ステップ）。
+* 4617a89：Python VM（`copysign`）と Rust VM の `__Number_is_negative_zero__` は、NaN を含めて同じ値になる。-0 の文字列は、どちらも "0" である。SJS の -0 を、ビット演算、`Math` の関数、`%`、比較、`JSON.stringify`、配列とオブジェクトの添字などの式で Node.js と比べ、上の `**` のほかは一致した。
+
+### 対応
+
+* まだない。
