@@ -3455,14 +3455,14 @@
 ;; ConMa 版に替えて動かしている間（busy が正）は、その中からこの関数を呼んでも、wasm 版を試さずに ConMa 版を動かす。
 ;; そうしないと、深い再帰が trap になったとき、ConMa 版の再帰の各段で wasm 版を試し直し、仕事が深さの 2 乗になる
 ;; （wasm の最初の実行は最適化の前のコードでスタックの枠が大きいので、深さ 100 万の再帰は trap になることがある）
-(define Sjs_wasm_fn ,(W name n void f)
-  Sjs_wasm_fn_core W name n void f (,() __NULL__ __TRUE__))
+(define Sjs_wasm_fn ,(W name shapes void f)
+  Sjs_wasm_fn_core W name shapes void f (,() __NULL__ __TRUE__))
 
 ;; ConSh の (( )) の数の関数（段階 4）：呼ぶとき、names（空白で区切った名前）の SJS変数が、作ったときの関数（ids の番号）を
 ;; 指し、usesMath なら Math のメンバーが元のままのときだけ wasm 版を使う（後の (( )) が書き換えることがある）
-(define Sjs_wasm_fn_checked ,(W G ids names usesMath name n void f)
+(define Sjs_wasm_fn_checked ,(W G ids names usesMath name shapes void f)
   Sjs_wasm_words names ,(list)
-  Sjs_wasm_fn_core W name n void f (,()
+  Sjs_wasm_fn_core W name shapes void f (,()
     __Cont_get__ ,(return)
     __if__ usesMath (,() Sjs_wasm_math_ok G ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
     Sjs_wasm_same_fns ids list))
@@ -3525,10 +3525,12 @@
   __unless__ same (,() return __FALSE__) ,()
   Sjs_wasm_same_members snap props rest)
 
-;; Sjs_wasm_fn の本体。check は、wasm 版を使ってよいかを返す thunk
-(define Sjs_wasm_fn_core ,(W name n void f check)
+;; Sjs_wasm_fn の本体。shapes は引数の形（深さ。0 は数、1 は数の配列、2 は数の配列の配列、…）を空白で区切ったもの
+;; （配列の計画の段階 A2）。check は、wasm 版を使ってよいかを返す thunk
+(define Sjs_wasm_fn_core ,(W name shapes void f check)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
+  Sjs_wasm_depths shapes ,(depths n arrays)
   __NULL__ (,(args)
     __Cont_get__ ,(return)
     __is_null__ W ,(none)
@@ -3538,10 +3540,15 @@
     __Ref_get__ busy ,(b)
     __Number_is_zero__ b ,(free)
     __unless__ free (,() f args ,(r) return r) ,()
-    Sjs_wasm_args args n ,(ok nums)
-    __unless__ ok (,() f args ,(r) return r) ,()
     Sjs_wasm_fuel ,(fuel)
-    Sjs_wasm_run W name nums fuel ,(done value)
+    ;; 配列の引数があれば、写して __Wasm_call_memory__ で呼ぶ（写せなければ ConMa 版）
+    __if_then_else__ arrays
+      (,() Sjs_wasm_run_memory W name depths args fuel)
+      (,()
+        __Cont_get__ ,(give)
+        Sjs_wasm_args args n ,(ok nums)
+        __unless__ ok (,() give __FALSE__ __NULL__) ,()
+        Sjs_wasm_run W name nums fuel) ,(done value)
     __if__ done (,() __if_then_else__ void (,() __NULL__ __NULL__) (,() __NULL__ value) ,(r) return r) ,()
     Sjs_inc b ,(b1)
     __Ref_set__ busy b1 ,()
@@ -3562,6 +3569,220 @@
   __Number_subtract__ limit more ,(d)
   __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
   Sjs_wasm_run W name nums more)
+
+;; ── 配列の引数（配列の計画の段階 A2）──
+;; wasm のモジュールのメモリを f64 の語の列として使い、配列 1 つを「長さ、要素 0、要素 1、…」の連続した語に置く。要素が配列なら、
+;; その配列の先頭の語の番号を入れる。子の配列を先に置き、同じ配列（"id"）は 1 回だけ置くので、別名が保たれる。配列の引数は、
+;; 先頭の語の番号として渡す。"ok" なら、数の配列の要素を、元の配列の "items" に書き戻す（"fuel" と "trap" では書き戻さない）。
+;; 形が違う、穴がある、凍っている、数の配列の要素が数でない配列は、写さない（ConMa 版で動かす）
+
+;; 形の文字列から、深さの LList（順のとおり）、その数、配列があるか
+(define Sjs_wasm_depths ,(shapes)
+  Sjs_wasm_words shapes ,(rev)
+  Sjs_wasm_depths_loop rev __NULL__ __FALSE__)
+
+(define Sjs_wasm_depths_loop ,(rev acc arrays)
+  __Cont_get__ ,(return)
+  __is_null__ rev ,(test__) __if__ test__ (,() Sjs_wasm_count acc ,(n) return acc n arrays) ,()
+  __LList_uncons__ __print_exit_error__ rev ,(w rest)
+  __Number_fromString__ __print_exit_error__ w ,(d)
+  __Number_is_zero__ d ,(isNum)
+  __not__ isNum ,(isArray)
+  __or__ arrays isArray ,(arrays)
+  __LList_cons__ d acc ,(acc)
+  Sjs_wasm_depths_loop rest acc arrays)
+
+(define Sjs_wasm_count ,(list)
+  Sjs_zero ,(zero)
+  Sjs_wasm_count_loop list zero)
+
+(define Sjs_wasm_count_loop ,(list n)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return n) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  Sjs_inc n ,(n)
+  Sjs_wasm_count_loop rest n)
+
+(define Sjs_wasm_reverse ,(list acc)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  __LList_cons__ x acc ,(acc)
+  Sjs_wasm_reverse rest acc)
+
+;; 燃料 fuel で、配列を写して wasm 版を呼ぶ。使い切れば 2 倍にして、写し直してやり直す。結果が出れば書き戻して、真とその値。
+;; 写せない、上限を超える、trap なら偽
+(define Sjs_wasm_run_memory ,(W name depths args fuel)
+  __Cont_get__ ,(return)
+  Sjs_wasm_pack depths args ,(ok params words backs)
+  __unless__ ok (,() return __FALSE__ __NULL__) ,()
+  __Wasm_call_memory__ (,(msg) return __FALSE__ __NULL__) W name params words fuel ,(status value out)
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() Sjs_wasm_unpack backs out ,() return __TRUE__ value) ,()
+  __String_equal__ status "fuel" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __Number_add__ fuel fuel ,(more)
+  Sjs_wasm_fuel_limit ,(limit)
+  __Number_subtract__ limit more ,(d)
+  __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  Sjs_wasm_run_memory W name depths args more)
+
+;; 引数を写す：写せれば、真、wasm に渡す引数（数か、配列の先頭の語の番号）の LList、語の LList、書き戻す数の配列の
+;; (配列 先頭の語の番号 長さ) の LList（先頭の語の番号の順）
+(define Sjs_wasm_pack ,(depths args)
+  __Cont_get__ ,(return)
+  __Dict_new__ ,(P)
+  __Ref_new__ __NULL__ ,(words)
+  __Dict_put__ P "words" words ,()
+  Sjs_zero ,(zero)
+  __Ref_new__ zero ,(count)
+  __Dict_put__ P "count" count ,()
+  __Dict_new__ ,(seen)
+  __Dict_put__ P "seen" seen ,()
+  __Ref_new__ __NULL__ ,(backs)
+  __Dict_put__ P "backs" backs ,()
+  Sjs_wasm_pack_args P depths args ,(ok params)
+  __unless__ ok (,() return __FALSE__ __NULL__ __NULL__ __NULL__) ,()
+  __Ref_get__ words ,(wr)
+  Sjs_wasm_reverse wr __NULL__ ,(ws)
+  __Ref_get__ backs ,(br)
+  Sjs_wasm_reverse br __NULL__ ,(bs)
+  __NULL__ __TRUE__ params ws bs)
+
+(define Sjs_wasm_pack_args ,(P depths args)
+  __Cont_get__ ,(return)
+  __is_null__ depths ,(test__) __if__ test__ (,() return __TRUE__ __NULL__) ,()
+  __is_null__ args ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ depths ,(d drest)
+  __LList_uncons__ __print_exit_error__ args ,(a arest)
+  __Number_is_zero__ d ,(isNum)
+  __if_then_else__ isNum
+    (,() __type_name__ a ,(ty) __String_equal__ ty "Number" ,(ok) __NULL__ ok a)
+    (,() Sjs_wasm_pack_array P a d) ,(ok v)
+  __unless__ ok (,() return __FALSE__ __NULL__) ,()
+  Sjs_wasm_pack_args P drest arest ,(ok rest)
+  __LList_cons__ v rest ,(l)
+  __NULL__ ok l)
+
+;; 配列 a を深さ d で写す。写せれば、真と先頭の語の番号
+(define Sjs_wasm_pack_array ,(P a d)
+  __Cont_get__ ,(return)
+  __type_name__ a ,(ty)
+  __String_equal__ ty "Dict" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __Dict_lookup_or__ a "t" (,(k) return __FALSE__ __NULL__) ,(t)
+  __String_equal__ t "array" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __Dict_lookup_or__ a "frozen" (,(k) __NULL__ __FALSE__) ,(frozen)
+  __if__ frozen (,() return __FALSE__ __NULL__) ,()
+  __Dict_lookup_or__ a "id" __print_exit_error__ ,(id)
+  __Number_toString__ id ,(key)
+  __Dict_lookup_or__ P "seen" __print_exit_error__ ,(seen)
+  __Dict_lookup_or__ seen key (,(k) __NULL__ __NULL__) ,(known)
+  __is_null__ known ,(test__) __unless__ test__ (,() return __TRUE__ known) ,()
+  Sjs_array_length a ,(len)
+  __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
+  Sjs_dec d ,(dm1)
+  __Number_is_zero__ dm1 ,(leaf)
+  Sjs_zero ,(zero)
+  __if_then_else__ leaf
+    (,() Sjs_wasm_numbers items len zero __NULL__)
+    (,() Sjs_wasm_children P items len zero dm1 __NULL__) ,(ok rev)
+  __unless__ ok (,() return __FALSE__ __NULL__) ,()
+  ;; 子を置いた後に、この配列を置く
+  __Dict_lookup_or__ P "count" __print_exit_error__ ,(count)
+  __Ref_get__ count ,(addr)
+  __Dict_lookup_or__ P "words" __print_exit_error__ ,(words)
+  __Ref_get__ words ,(ws)
+  __LList_cons__ len ws ,(ws)
+  Sjs_wasm_reverse rev __NULL__ ,(elems)
+  Sjs_wasm_push_all elems ws ,(ws)
+  __Ref_set__ words ws ,()
+  Sjs_inc len ,(size)
+  __Number_add__ addr size ,(next)
+  __Ref_set__ count next ,()
+  __Dict_put__ seen key addr ,()
+  __if__ leaf
+    (,()
+      __Dict_lookup_or__ P "backs" __print_exit_error__ ,(backs)
+      __Ref_get__ backs ,(bs)
+      __LList_cons__ len __NULL__ ,(b)
+      __LList_cons__ addr b ,(b)
+      __LList_cons__ a b ,(b)
+      __LList_cons__ b bs ,(bs)
+      __Ref_set__ backs bs) ,()
+  __NULL__ __TRUE__ addr)
+
+;; elems を、逆順の LList ws の先に積む
+(define Sjs_wasm_push_all ,(elems ws)
+  __Cont_get__ ,(return)
+  __is_null__ elems ,(test__) __if__ test__ (,() return ws) ,()
+  __LList_uncons__ __print_exit_error__ elems ,(x rest)
+  __LList_cons__ x ws ,(ws)
+  Sjs_wasm_push_all rest ws)
+
+;; items の 0 から len - 1 までが、どれも数なら、真とその逆順の LList
+(define Sjs_wasm_numbers ,(items len i acc)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len i ,(left)
+  __Number_is_zero__ left ,(test__) __if__ test__ (,() return __TRUE__ acc) ,()
+  __Number_toString__ i ,(k)
+  __Dict_lookup_or__ items k (,(key) return __FALSE__ __NULL__) ,(v)
+  __type_name__ v ,(ty)
+  __String_equal__ ty "Number" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __LList_cons__ v acc ,(acc)
+  Sjs_inc i ,(i)
+  Sjs_wasm_numbers items len i acc)
+
+;; items の 0 から len - 1 までの配列を、深さ d で写す。写せれば、真と先頭の語の番号の逆順の LList
+(define Sjs_wasm_children ,(P items len i d acc)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len i ,(left)
+  __Number_is_zero__ left ,(test__) __if__ test__ (,() return __TRUE__ acc) ,()
+  __Number_toString__ i ,(k)
+  __Dict_lookup_or__ items k (,(key) return __FALSE__ __NULL__) ,(v)
+  Sjs_wasm_pack_array P v d ,(ok addr)
+  __unless__ ok (,() return __FALSE__ __NULL__) ,()
+  __LList_cons__ addr acc ,(acc)
+  Sjs_inc i ,(i)
+  Sjs_wasm_children P items len i d acc)
+
+;; 書き戻す：backs の (配列 先頭の語の番号 長さ) ごとに、語の列 words の、その配列の要素を "items" に入れる
+(define Sjs_wasm_unpack ,(backs words)
+  Sjs_zero ,(zero)
+  Sjs_wasm_unpack_loop backs words zero)
+
+(define Sjs_wasm_unpack_loop ,(backs words pos)
+  __Cont_get__ ,(return)
+  __is_null__ backs ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ backs ,(b rest)
+  __LList_uncons__ __print_exit_error__ b ,(a b1)
+  __LList_uncons__ __print_exit_error__ b1 ,(addr b2)
+  __LList_uncons__ __print_exit_error__ b2 ,(len b3)
+  ;; 要素は、先頭の語（長さ）の次から
+  Sjs_inc addr ,(start)
+  __Number_subtract__ start pos ,(skip)
+  Sjs_wasm_drop words skip ,(ws)
+  __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
+  Sjs_zero ,(zero)
+  Sjs_wasm_put items ws zero len ,(ws)
+  __Number_add__ start len ,(pos)
+  Sjs_wasm_unpack_loop rest ws pos)
+
+(define Sjs_wasm_drop ,(list k)
+  __Cont_get__ ,(return)
+  __Number_is_positive__ k ,(more)
+  __unless__ more (,() return list) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  Sjs_dec k ,(k)
+  Sjs_wasm_drop rest k)
+
+;; items の i から len - 1 までに、ws の先頭から入れる。残りの ws
+(define Sjs_wasm_put ,(items ws i len)
+  __Cont_get__ ,(return)
+  __Number_subtract__ len i ,(left)
+  __Number_is_zero__ left ,(test__) __if__ test__ (,() return ws) ,()
+  __LList_uncons__ __print_exit_error__ ws ,(x rest)
+  __Number_toString__ i ,(k)
+  __Dict_put__ items k x ,()
+  Sjs_inc i ,(i)
+  Sjs_wasm_put items rest i len)
 
 ;; args の先頭の n 個が、どれも数か。数なら、真とその LList
 (define Sjs_wasm_args ,(args n)

@@ -1,0 +1,28 @@
+[ConMa]
+sum 6
+[ConMa]
+scale undefined
+after scale [2,4,6]
+[ConMa]
+bump undefined
+after bump [[21,0],[13,3],[21,0]]
+[ConMa]
+sum 100000 5000050000
+[ConMa]
+oob 0
+after oob [2,4,6]
+[ConMa]
+number fallback
+[ConMa]
+holes fallback
+[ConMa]
+string fallback
+[ConMa]
+no argument fallback
+[ConMa]
+deeper fallback
+[ConMa]
+shallower fallback
+[ConMa]
+scaled -0 -0
+exit: 0

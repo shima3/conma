@@ -1091,6 +1091,16 @@
   Cat3 acc ac ")" ,(acc)
   Wx_fold cx name rest acc)
 
+;; n 個の "0" を空白で区切ったもの
+(define Wx_zeros ,(n acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return acc) ,()
+  Wx_num "1" ,(one)
+  __Number_subtract__ n one ,(m)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "0") (,() __String_concat__ acc " 0") ,(acc)
+  Wx_zeros m acc)
+
 ;; ── モジュール ──
 
 ;; 呼ぶ関数が数の関数でなくなった関数を、変わらなくなるまで外す
@@ -1191,6 +1201,9 @@
       __Dict_put__ fn "wasm" name ,()
       Sjs_get info "n" ,(n)
       __Dict_put__ fn "wasmParams" n ,()
+      ;; 引数の形（深さ。0 は数、1 は数の配列、…）を空白で区切ったもの。配列の計画の段階 A3 まで、どれも 0
+      __Dict_lookup_or__ info "shapes" (,(k) Wx_zeros n "") ,(shapes)
+      __Dict_put__ fn "wasmShapes" shapes ,()
       Sjs_get info "void" ,(isVoid)
       __Dict_put__ fn "wasmVoid" isVoid) ,()
   __if_then_else__ ok (,() Sjs_get info "wat" ,(w) __String_concat__ acc w) (,() __NULL__ acc) ,(acc)
