@@ -9,7 +9,7 @@
 (include "sjs_wasm.se")
 
 (define main ,(args)
-  __Seq_get__ (,() __print_exit_error__ "usage: sjsc.se <file.sjs>\n") args ,(path rest)
+  __Seq_get__ (,() __print_exit_error__ "usage: sjsc.se <file.safe.js>\n") args ,(path rest)
   __OS_open__ (,(msg) __String_concat__ "sjsc: " msg ,(m) __String_concat__ m "\n" ,(m) __print_exit_error__ m) path "r" ,(stream)
   __LazyList_lines__ stream ,(lines)
   Sjsc_join lines "" ,(text)

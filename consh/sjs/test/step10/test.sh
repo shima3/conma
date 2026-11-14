@@ -4,9 +4,9 @@
 cd ${0%/*}
 [ -f ../../../js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null || exit 0
 out=${TMPDIR:-/tmp}/sjs-test-$$.log
-for f in case*.sjs
+for f in case*.safe.js
 do
-  c=${f%.sjs}
+  c=${f%.safe.js}
   SJS_WASM_STRICT=1 CONMA_VM=wasm ../../sjs $f > $out 2>&1
   echo "exit: $?" >> $out
   diff $c.log $out

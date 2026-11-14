@@ -214,8 +214,8 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 **ConMa にあるもの**（確かめた）
 
 * SInfo は `(__SInfo__ String ...)` で、中身は任意の文字列である（docs/SPEC.md）。Body に明示の SInfo があれば、フロントエンドは自動の位置を入れずにそれを使う（docs/AST.md）。ConMa で書いたパーサー（include/parser.se）も読むので、`conma build`、Node.js の `host_build_module`、ブラウザの `buildModule` のどれでも使える。
-* VM は、エラーを SInfo の先頭の 3 つで `file:line:col: メッセージ` の形に出す（vm/src/step.rs の `format_error`）。`(__SInfo__ "a.sjs" "4" "9") __Number_add__ "x" "y" ,(z) ...` は `a.sjs:4:9: __Number_add__: expected Number, got String` になった。
-* LCont のある呼び出しは、呼んだ Body の SInfo を CFrame に積む。`__CChain_get__` と `__CFrame_get_SInfo__` で、それを `a.sjs:3:7` の形で読める（確かめた）。
+* VM は、エラーを SInfo の先頭の 3 つで `file:line:col: メッセージ` の形に出す（vm/src/step.rs の `format_error`）。`(__SInfo__ "a.safe.js" "4" "9") __Number_add__ "x" "y" ,(z) ...` は `a.safe.js:4:9: __Number_add__: expected Number, got String` になった。
+* LCont のある呼び出しは、呼んだ Body の SInfo を CFrame に積む。`__CChain_get__` と `__CFrame_get_SInfo__` で、それを `a.safe.js:3:7` の形で読める（確かめた）。
 
 **作り方**
 
@@ -227,7 +227,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 
 **決めたこと**（2026-11-12）
 
-* **メッセージの形**：受け手のない例外は、VM のエラーや ConSh のエラーと同じ `a.sjs:4:9: TypeError: ...`（ファイル、行、桁）の形で出す。今の `sjs: line 4: ` の形はやめる。
+* **メッセージの形**：受け手のない例外は、VM のエラーや ConSh のエラーと同じ `a.safe.js:4:9: TypeError: ...`（ファイル、行、桁）の形で出す。今の `sjs: line 4: ` の形はやめる。
 
 **決めたこと（続き。作るときに）**
 

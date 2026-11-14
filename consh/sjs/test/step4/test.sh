@@ -2,9 +2,9 @@
 # SJS の変換器の段階 B5（ジェネレータ：function*、yield、yield*、next、return、throw、for...of、スプレッド、分割代入、関数の宣言）：SJS のプログラムを ConMa に変換して、Rust 版の VM で動かす。
 # 段階 A にはジェネレータがないので、ログは Node.js で同じプログラムを動かした結果と比べた（配列の console.log の形と、エラーの行の前置きを除く）
 cd ${0%/*}
-for f in case*.sjs
+for f in case*.safe.js
 do
-  c=${f%.sjs}
+  c=${f%.safe.js}
   ../../sjs $f > ${TMPDIR:-/tmp}/sjs-test-$$.log 2>&1
   echo "exit: $?" >> ${TMPDIR:-/tmp}/sjs-test-$$.log
   diff $c.log ${TMPDIR:-/tmp}/sjs-test-$$.log

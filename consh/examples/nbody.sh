@@ -3,7 +3,7 @@
 # Each body is an array [x, y, z, vx, vy, vz, mass]. init, energy and advance take numbers and arrays of numbers
 # only, so on the wasm VM (CONMA_VM=wasm) they run as WebAssembly; on other VMs they run as ConMa, with the same output.
 # The bodies are passed as an argument: a function that reads an SJS variable from outside stays ConMa.
-# The operations are in the order of ../sjs/bench/nbody.sjs, so the output is what Node.js prints for it.
+# The operations are in the order of ../sjs/bench/nbody.safe.js, so the output is what Node.js prints for it.
 n=${1-1000}
 (( PI = 3.14159265358979323, SOLAR_MASS = 4 * PI * PI, DAYS_PER_YEAR = 365.24 ))
 (( bodies = [

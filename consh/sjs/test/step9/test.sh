@@ -6,9 +6,9 @@ cd ${0%/*}
 out=${TMPDIR:-/tmp}/sjs-test-$$.log
 vms=(rust)
 if [ -f ../../../js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null; then vms+=(wasm); fi
-for f in case*.sjs
+for f in case*.safe.js
 do
-  c=${f%.sjs}
+  c=${f%.safe.js}
   for vm in "${vms[@]}"
   do
     if [ $vm = wasm ]; then SJS_WASM_STRICT=1 CONMA_VM=wasm ../../sjs $f > $out 2>&1; else ../../sjs $f > $out 2>&1; fi

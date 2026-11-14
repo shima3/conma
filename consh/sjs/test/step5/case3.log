@@ -1,3 +1,3 @@
 before the end
-case3.sjs:2:31: Uncaught (in promise) unhandled in async
+case3.safe.js:2:31: Uncaught (in promise) unhandled in async
 exit: 2

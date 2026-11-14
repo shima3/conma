@@ -1,3 +1,3 @@
 before
-case5.sjs:3:13: TypeError: + needs numbers, not the string "a" (join strings with a template literal)
+case5.safe.js:3:13: TypeError: + needs numbers, not the string "a" (join strings with a template literal)
 exit: 2

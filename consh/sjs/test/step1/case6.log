@@ -1,2 +1,2 @@
-case6.sjs:2:13: ReferenceError: nosuchname is not defined
+case6.safe.js:2:13: ReferenceError: nosuchname is not defined
 exit: 2

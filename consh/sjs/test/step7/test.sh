@@ -2,9 +2,9 @@
 # SJS の言語の残り（タグ付きテンプレート、配列の穴とメソッド、length への代入、let の重なり、async ジェネレータと for await）：
 # ログは Node.js で同じプログラムを動かした結果と比べた
 cd ${0%/*}
-for f in case*.sjs
+for f in case*.safe.js
 do
-  c=${f%.sjs}
+  c=${f%.safe.js}
   ../../sjs $f > ${TMPDIR:-/tmp}/sjs-test-$$.log 2>&1
   echo "exit: $?" >> ${TMPDIR:-/tmp}/sjs-test-$$.log
   diff $c.log ${TMPDIR:-/tmp}/sjs-test-$$.log

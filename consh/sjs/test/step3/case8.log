@@ -1,5 +1,5 @@
 cleanup
 caught first
 cleanup
-case8.sjs:4:5: [object Object]
+case8.safe.js:4:5: [object Object]
 exit: 2

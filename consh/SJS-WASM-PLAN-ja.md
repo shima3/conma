@@ -30,7 +30,7 @@ SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけ�
 
 次のものだけでできている関数（`function` の宣言と式、アロー関数）を、数の関数とする。
 
-* **引数**：名前だけ（既定値、残りの引数、分割代入はない）。引数への代入はよい（loop.sjs の `n -= 1`）。
+* **引数**：名前だけ（既定値、残りの引数、分割代入はない）。引数への代入はよい（loop.safe.js の `n -= 1`）。
 * **値**：数のリテラル、引数、局所の変数（`let`、`const`）。外の名前は、数のリテラルで初期化した `const` で、宣言より前に読まれないもの（今の `Gen_plain_marks` が Ref を作らないもの）だけ。wasm では定数にする。
 * **式**：`+ - * / %`、比較（`< <= > >=`、数どうしの `===`、`!==`）、ビット演算（`& | ^ ~ << >> >>>`）、単項の `-`、`+`、`!`、`++`、`--`、算術とビット演算の複合の代入、条件演算子。`&&` と `||` は、両辺が真偽値と分かるとき（比較の結果など）だけ。
 * **呼び出し**：ほかの数の関数（5.1 の条件を満たす名前で呼ぶもの。自分も含む）と、`Math.floor`、`ceil`、`round`、`trunc`、`abs`、`sqrt`、`sign`、`max`、`min`（引数の数は決まっていること）、`Math.PI`。
@@ -49,8 +49,8 @@ SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけ�
 
 ### 3.3. 例
 
-* consh/sjs/bench/loop.sjs の `loop`、fib.sjs の `fib` は、数の関数になる。
-* nbody.sjs の `advance` と `energy` は、配列（`b[X]`）と `for...of` の分割代入を使うので、数の関数にならない。配列を入れるかどうかは 9 で扱う。
+* consh/sjs/bench/loop.safe.js の `loop`、fib.safe.js の `fib` は、数の関数になる。
+* nbody.safe.js の `advance` と `energy` は、配列（`b[X]`）と `for...of` の分割代入を使うので、数の関数にならない。配列を入れるかどうかは 9 で扱う。
 
 ## 4. ConMa 版と同じ意味にする
 
@@ -181,7 +181,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
 | 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
-| 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
+| 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.safe.js と fib.safe.js が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3（作った、2026-11-14。14） | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4（作った、2026-11-14。15） | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
 | 5（作った、2026-11-14。16） | 測る：consh/sjs/bench の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。consh/sjs/README-ja.md と docs/SPEED-ja.md に書く | 表にする |

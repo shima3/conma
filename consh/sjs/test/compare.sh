@@ -1,7 +1,7 @@
 #!/bin/bash
 # SJS のプログラムを、段階 B（ConMa に変換して動かす。../sjs）と、段階 A（ConSh の (( )) でホストの JavaScript。
 # wasm 版の VM を Node.js で動かす）で動かし、出力が同じか比べる。違えば diff を出す。
-#   consh/sjs/test/compare.sh file.sjs ...
+#   consh/sjs/test/compare.sh file.safe.js ...
 # 段階 A では、プログラムを (( (() => { ... })() )) の関数の本体として動かす。エラーの行の前置き
 # （段階 A の consh: ファイル:行:桁: と、段階 B の ファイル:行:桁: ）は除いて比べる。終了ステータスは比べない（段階 A のスクリプトは続く）
 here="$(cd "$(dirname "$0")"; pwd)"

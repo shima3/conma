@@ -1,6 +1,6 @@
 #!/bin/bash
 # consh/sjs/bench/run.sh NAME N：SJS の段階 B7 の測定（consh/SAFEJS-PLAN-ja.md の 6）。
-# NAME.sjs（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
+# NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
 # 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
 # wasm 版の VM（consh/js/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
@@ -15,7 +15,7 @@ name=$1 n=$2
 inc="${SJS_INCLUDE:-$consh/include}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs-bench.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
-sed "s/N_ARG/$n/" "$sjsbench/$name.sjs" > "$tmp/$name.sjs"
+sed "s/N_ARG/$n/" "$sjsbench/$name.safe.js" > "$tmp/$name.safe.js"
 best() {  # command...：3 回の最良の user + sys 秒
   local b= t
   for i in 1 2 3; do
@@ -28,22 +28,22 @@ size() { wc -c < "$1" | tr -d ' '; }
 lines() { grep -cv '^\s*\(//.*\)\?$' "$1"; }
 # 変換（変換器のモジュールを作る時間を含まないように、変換器を先に作る）
 "$conma" build --include "$inc" "$sjs/sjsc.se" > "$tmp/sjsc.module.se" || exit 1
-"$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.sjs" > "$tmp/$name.se" || exit 1
-translate=$(best "$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.sjs")
+"$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.safe.js" > "$tmp/$name.se" || exit 1
+translate=$(best "$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.safe.js")
 "$conma" build --include "$inc" --include "$root/include" "$tmp/$name.se" > "$tmp/$name.module.se" || exit 1
 "$root/bench/module.sh" "$root/bench/$name/$name.se" "$tmp/hand.module.se" > /dev/null || exit 1
 # 出力
-node "$tmp/$name.sjs" > "$tmp/node.out"
+node "$tmp/$name.safe.js" > "$tmp/node.out"
 "$conma" --main "$tmp/$name.module.se" > "$tmp/sjs.out" 2>&1
 python3 "$root/bench/$name/$name.py" "$n" > "$tmp/py.out"
 "$conma" --main "$tmp/hand.module.se" "$n" > "$tmp/hand.out" 2>&1
 cmp -s "$tmp/node.out" "$tmp/sjs.out" || { echo "SJS prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/sjs.out"; }
 echo "== $name $n"
 printf 'size: SJS %s lines %s bytes; translated ConMa %s bytes (%s lines); module %s bytes (with sjs_rt.se); hand-written ConMa module %s bytes\n' \
-  "$(lines "$sjsbench/$name.sjs")" "$(size "$sjsbench/$name.sjs")" "$(size "$tmp/$name.se")" "$(wc -l < "$tmp/$name.se" | tr -d ' ')" \
+  "$(lines "$sjsbench/$name.safe.js")" "$(size "$sjsbench/$name.safe.js")" "$(size "$tmp/$name.se")" "$(wc -l < "$tmp/$name.se" | tr -d ' ')" \
   "$(size "$tmp/$name.module.se")" "$(size "$tmp/hand.module.se")"
 printf 'translate (sjsc on the Rust VM): %s s\n' "$translate"
-printf '%-24s %s s\n' "Node.js" "$(best node "$tmp/$name.sjs")"
+printf '%-24s %s s\n' "Node.js" "$(best node "$tmp/$name.safe.js")"
 printf '%-24s %s s\n' "CPython" "$(best python3 "$root/bench/$name/$name.py" "$n")"
 printf '%-24s %s s\n' "Rust VM, hand ConMa" "$(best "$conma" --main "$tmp/hand.module.se" "$n")"
 printf '%-24s %s s\n' "Rust VM, SJS" "$(best "$conma" --main "$tmp/$name.module.se")"
@@ -63,8 +63,8 @@ fi
 # 起動の時間（N が SMALL のとき）と、VM のステップの数（CONMA_PROFILE。N が SMALL と SMALL + 10 のときの差を 10 で割る）
 small=${SMALL:-1}
 mk() {  # n file：N_ARG を n にした SJS のモジュール
-  sed "s/N_ARG/$1/" "$sjsbench/$name.sjs" > "$tmp/m.sjs"
-  "$conma" --main "$tmp/sjsc.module.se" "$tmp/m.sjs" > "$tmp/m.se" &&
+  sed "s/N_ARG/$1/" "$sjsbench/$name.safe.js" > "$tmp/m.safe.js"
+  "$conma" --main "$tmp/sjsc.module.se" "$tmp/m.safe.js" > "$tmp/m.se" &&
   "$conma" build --include "$inc" --include "$root/include" "$tmp/m.se" > "$2"
 }
 steps() { CONMA_PROFILE="$tmp/prof" "$conma" --main "$@" > /dev/null 2>&1; python3 "$root/test/vm_profile.py" "$tmp/prof" | sed -n 's/^steps: //p' | tr -d ,; }

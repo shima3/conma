@@ -7,15 +7,15 @@ JavaScript の安全なサブセット SJS（計画と仕様は [../SAFEJS-PLAN-
 ## 使い方
 
 ```
-consh/sjs/sjs file.sjs            # 変換して動かす（Rust 版の VM。vm で cargo build --release しておく）
-consh/sjs/sjs --emit file.sjs     # 変換した ConMa のソースを出す
+consh/sjs/sjs file.safe.js        # 変換して動かす（Rust 版の VM。vm で cargo build --release しておく）
+consh/sjs/sjs --emit file.safe.js # 変換した ConMa のソースを出す
 consh/sjs/test/run_all.sh         # テスト
-consh/sjs/test/compare.sh f.sjs   # 段階 A（ConSh の (( )) でホストの JavaScript）と出力を比べる（Node.js と wasm 版の VM が要る）
+consh/sjs/test/compare.sh f.safe.js # 段階 A（ConSh の (( )) でホストの JavaScript）と出力を比べる（Node.js と wasm 版の VM が要る）
 consh/sjs/bench/run.sh nbody 2000 # 測る（Node.js、CPython、手で書いた ConMa と比べる）
-CONMA_VM=wasm consh/sjs/sjs file.sjs  # wasm 版の VM（Node.js）で動かす。数の関数は WebAssembly で動く（経緯の「数の関数の wasm 版」）
+CONMA_VM=wasm consh/sjs/sjs file.safe.js  # wasm 版の VM（Node.js）で動かす。数の関数は WebAssembly で動く（経緯の「数の関数の wasm 版」）
 ```
 
-SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は Node.js の `console.log`（`util.inspect` の既定の設定：深さ 2、1 行 80 文字、7 個以上の配列は列にそろえる、循環は `<ref *1>` と `[Circular *1]`）と同じで、文字列はそのまま書く（2026-11-14 から。consh/include/sjs_inspect.se。前は配列とオブジェクトを `JSON.stringify` の形で書いた）。ConSh の段階 A（conma.js の `inspect`）も同じ。Node.js と違うのは、エラーのスタックを出さない（一番外では `TypeError: ...`、中では `[TypeError: ...]`）こと、オブジェクトの名前の順（整数の名前を先にしない）、ジェネレータ関数と async 関数も `[Function: 名前]` と書くこと、`console.log("%d", 5)` のような書式を使わないこと。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.sjs:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
+SJS のファイルの拡張子は `.safe.js` にする（2026-11-15 に `.sjs` から変えた。JavaScript のファイルとして、エディタ、GitHub、Node.js でそのまま扱える。JavaScript の部分集合であることも名前で分かる）。SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は Node.js の `console.log`（`util.inspect` の既定の設定：深さ 2、1 行 80 文字、7 個以上の配列は列にそろえる、循環は `<ref *1>` と `[Circular *1]`）と同じで、文字列はそのまま書く（2026-11-14 から。consh/include/sjs_inspect.se。前は配列とオブジェクトを `JSON.stringify` の形で書いた）。ConSh の段階 A（conma.js の `inspect`）も同じ。Node.js と違うのは、エラーのスタックを出さない（一番外では `TypeError: ...`、中では `[TypeError: ...]`）こと、オブジェクトの名前の順（整数の名前を先にしない）、ジェネレータ関数と async 関数も `[Function: 名前]` と書くこと、`console.log("%d", 5)` のような書式を使わないこと。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.safe.js:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
 
 ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモジュールにして、新しい VProc で動かす。ConMa 版の ConSh（`CONSH_IMPL=conma`、ネイティブの VM、Node.js の wasm 版、ブラウザ版）で使える。Rust 版の ConSh（`CONSH_IMPL` の既定）には `(( ))` がない。ホストの JavaScript には触れないので、`CONSH_ENABLE_JS` は要らない。
 
@@ -85,8 +85,8 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
-├── bench/           loop.sjs、fib.sjs、nbody.sjs（bench/ と同じ計算）と run.sh
-└── test/            step1〜step8 の caseN.sjs と caseN.log、run_all.sh、compare.sh
+├── bench/           loop.safe.js、fib.safe.js、nbody.safe.js（bench/ と同じ計算）と run.sh
+└── test/            step1〜step8 の caseN.safe.js と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方。字句は行と桁を持つ）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
@@ -309,7 +309,7 @@ ConMa の Number は `-0` を持てるが、プリミティブでは見えなか
 
 consh/SJS-WASM-PLAN-ja.md の段階 2。プログラムの一番外の function 宣言のうち、数だけを扱うもの（数の関数）を、ConMa 版に加えて WebAssembly の関数にもする（consh/include/sjs_wasm.se。条件は、その始めと計画の 13）。呼ばれたとき、wasm 版の VM で、引数が足りてどれも数なら wasm 版を、そうでなければ ConMa 版を動かす（sjs_rt.se の `Sjs_wasm_fn`）。ほかの VM（Rust 版など）と `--trace`、`CONMA_NO_WASM=1` では、ConMa 版だけで動く。結果は同じになる（f64 の演算は IEEE 754 のとおりで、`%` などは ConMa 版と同じ手順。-0 も上で JavaScript に合わせた）。
 
-* `CONMA_VM=wasm consh/sjs/sjs file.sjs` で、wasm 版の VM で動かす。`--emit` の出力の `Sjs_wasm_module` の文字列がモジュールの WAT で、`Sjs_wasm_fn` で包んだ関数が数の関数である。
+* `CONMA_VM=wasm consh/sjs/sjs file.safe.js` で、wasm 版の VM で動かす。`--emit` の出力の `Sjs_wasm_module` の文字列がモジュールの WAT で、`Sjs_wasm_fn` で包んだ関数が数の関数である。
 * 変換したモジュールを動かす時間は、fib(25) が 1.91 秒から 0.28 秒、loop の 100 万回が 2.38 秒から 0.19 秒になった（wasm 版の VM。計画の 13）。
 * consh/sjs/test/step9 が、Node.js の結果と、両方の VM で比べる。
 * 配列（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1〜A3）：配列を読み書きする関数も数の関数にし、呼ぶときに引数の配列を wasm のメモリに写して、書き換えた数を書き戻す。nbody の `advance` などが数の関数になる。consh/sjs/test/step9 の case4、case5 と step11 が確かめる。テストでは `SJS_WASM_STRICT=1` を付けると、モジュールを作れなかった理由を標準エラーに出す。
