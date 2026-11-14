@@ -1,4 +1,4 @@
-;; console.log の形：Node.js の util.inspect（既定の設定：depth 2、breakLength 80、compact 3、maxArrayLength 100）と同じ手順で、
+;; console.log の形：Node.js の util.inspect（既定の設定：depth 2、breakLength 80、compact 3、maxArrayLength 100、maxStringLength 10000）と同じ手順で、
 ;; SJS の値を文字列にする（2026-11-14 から。前は JSON.stringify の形だった）。sjs_rt.se が include し、Sjs_console_string が呼ぶ。
 ;; consh/js/conma.js の inspect（ConSh の段階 A）も同じ手順。Node.js と違うところ：
 ;;   ・エラーはスタックがないので、一番外では "TypeError: メッセージ"、中では "[TypeError: メッセージ]"（スタックのない Error と同じ）
@@ -216,8 +216,30 @@
   __unless__ ok (,() return __FALSE__) ,()
   Sjs_ins_ident_rest rest)
 
-;; 文字列の値：引用符で囲む。16 文字より長く、80 - indent - 4 文字より長ければ、改行の後で切って ' +\n' でつなぐ
+;; 文字列の値：引用符で囲む。10000 文字（maxStringLength）を超えれば、そこで切って "... n more character(s)" を後ろに付ける。
+;; 16 文字より長く、80 - indent - 4 文字より長ければ、改行の後で切って ' +\n' でつなぐ
 (define Sjs_ins_string ,(s indent)
+  Sjs_ins_cut s ,(s trailer)
+  Sjs_ins_string_body s indent ,(q)
+  __String_concat__ q trailer)
+
+(define Sjs_ins_cut ,(s)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __Number_fromString__ __print_exit_error__ "10000" ,(max)
+  __Number_subtract__ len max ,(remaining)
+  __Number_is_positive__ remaining ,(test__) __unless__ test__ (,() return s "") ,()
+  Sjs_zero ,(zero)
+  __String_substring__ __print_exit_error__ s zero max ,(head)
+  Sjs_one ,(one)
+  __Number_subtract__ remaining one ,(d)
+  __Number_is_zero__ d ,(single)
+  __Number_toString__ remaining ,(rs)
+  __if_then_else__ single (,() __NULL__ " more character") (,() __NULL__ " more characters") ,(tail)
+  Cat3s "... " rs tail ,(trailer)
+  __NULL__ head trailer)
+
+(define Sjs_ins_string_body ,(s indent)
   __Cont_get__ ,(return)
   __String_length__ s ,(len)
   __Number_fromString__ __print_exit_error__ "16" ,(n16)
@@ -237,23 +259,22 @@
   __String_concat__ " +\n" pad ,(sep)
   Sjs_ins_join quoted sep)
 
-;; 改行の後で切った行の LList（改行は前の行に付ける）
+;; 改行の後で切った行の LList（改行は前の行に付ける。最後の空の行は入れない）
 (define Sjs_ins_lines ,(s)
-  Sjs_chars s ,(chars)
-  Sjs_ins_lines_loop chars "" __NULL__)
+  __String_length__ s ,(len)
+  Sjs_zero ,(zero)
+  Sjs_ins_lines_loop s len zero __NULL__)
 
-(define Sjs_ins_lines_loop ,(chars line acc)
+(define Sjs_ins_lines_loop ,(s len start acc)
   __Cont_get__ ,(return)
-  __is_null__ chars ,(test__) __if__ test__
-    (,()
-      __String_equal__ line "" ,(empty)
-      __if_then_else__ empty (,() __NULL__ acc) (,() __LList_cons__ line acc) ,(acc)
-      Sjs_reverse_list acc ,(l)
-      return l) ,()
-  __LList_uncons__ __print_exit_error__ chars ,(c rest)
-  __String_concat__ line c ,(line)
-  __String_equal__ c "\n" ,(test__) __if__ test__ (,() __LList_cons__ line acc ,(acc) Sjs_ins_lines_loop rest "" acc ,(l) return l) ,()
-  Sjs_ins_lines_loop rest line acc)
+  __Number_subtract__ len start ,(left)
+  __Number_is_positive__ left ,(test__) __unless__ test__ (,() Sjs_reverse_list acc ,(l) return l) ,()
+  __String_find__ __print_exit_error__ s "\n" start ,(nl)
+  __is_null__ nl ,(none)
+  __if_then_else__ none (,() __NULL__ len) (,() Sjs_inc nl) ,(end)
+  __String_substring__ __print_exit_error__ s start end ,(line)
+  __LList_cons__ line acc ,(acc)
+  Sjs_ins_lines_loop s len end acc)
 
 (define Sjs_ins_quote_all ,(lines acc)
   __Cont_get__ ,(return)
@@ -279,9 +300,11 @@
   __if_then_else__ noSq (,() __NULL__ "'")
     (,() __if_then_else__ noDq (,() __NULL__ "\"") (,() __if_then_else__ btOk (,() __NULL__ "`") (,() __NULL__ "'"))) ,(quote)
   Sjs_chars s ,(chars)
-  Sjs_ins_escape chars quote quote ,(body)
-  __String_concat__ body quote)
+  __LList_cons__ quote __NULL__ ,(acc)
+  Sjs_ins_escape chars quote acc ,(pieces)
+  __Lines_join__ pieces quote)
 
+;; 逃がした文字を、逆順の断片 acc に足す（__Lines_join__ でつなぐ）
 (define Sjs_ins_escape ,(chars quote acc)
   __Cont_get__ ,(return)
   __is_null__ chars ,(test__) __if__ test__ (,() return acc) ,()
@@ -289,9 +312,9 @@
   __String_equal__ c quote ,(isQuote)
   __String_equal__ c "\\" ,(isBackslash)
   __or__ isQuote isBackslash ,(test__) __if__ test__
-    (,() Cat3s acc "\\" c ,(acc) Sjs_ins_escape rest quote acc ,(r) return r) ,()
+    (,() __String_concat__ "\\" c ,(e) __LList_cons__ e acc ,(acc) Sjs_ins_escape rest quote acc ,(r) return r) ,()
   Sjs_ins_control c ,(e)
-  __String_concat__ acc e ,(acc)
+  __LList_cons__ e acc ,(acc)
   Sjs_ins_escape rest quote acc)
 
 (define Sjs_ins_control ,(c)
@@ -402,16 +425,22 @@
   __Number_is_positive__ d ,(test__) __if__ test__ (,() return __FALSE__) ,()
   Sjs_ins_below_loop rest total limit)
 
+;; list の String を sep をはさんでつなぐ（逆順の断片にして、__Lines_join__ で半分ずつつなぐ）
 (define Sjs_ins_join ,(list sep)
-  Sjs_ins_join_loop list sep "" __TRUE__)
-
-(define Sjs_ins_join_loop ,(list sep acc first)
   __Cont_get__ ,(return)
-  __is_null__ list ,(test__) __if__ test__ (,() return acc) ,()
+  __is_null__ list ,(test__) __if__ test__ (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ list ,(first rest)
+  Sjs_ins_join_loop rest sep first __NULL__ ,(pieces last)
+  __Lines_join__ pieces last)
+
+;; 断片 acc（逆順）と、まだ足していない最後の String last
+(define Sjs_ins_join_loop ,(list sep last acc)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return acc last) ,()
   __LList_uncons__ __print_exit_error__ list ,(s rest)
-  __if_then_else__ first (,() __NULL__ acc) (,() __String_concat__ acc sep) ,(acc)
-  __String_concat__ acc s ,(acc)
-  Sjs_ins_join_loop rest sep acc __FALSE__)
+  __LList_cons__ last acc ,(acc)
+  __LList_cons__ sep acc ,(acc)
+  Sjs_ins_join_loop rest sep s acc)
 
 (define Sjs_spaces ,(n)
   Sjs_ins_repeat " " n "")
@@ -486,7 +515,7 @@
   __Number_is_positive__ cd ,(test__) __unless__ test__ (,() return output) ,()
   ;; 列ごとの幅（その列のいちばん長い項目 + 2）
   Sjs_zero ,(zero)
-  Sjs_ins_widths lens columns zero __NULL__ ,(widths)
+  Sjs_ins_widths lens columns ,(widths)
   ;; 数だけの配列は右に寄せ、ほかは左に寄せる
   Sjs_ins_all_numbers value allLen ,(right)
   Sjs_ins_rows output lens outputLength columns widths right zero __NULL__ ,(rows)
@@ -540,37 +569,52 @@
   __if_then_else__ bigger (,() __NULL__ x) (,() __NULL__ max) ,(max)
   Sjs_ins_sum_max_loop rest sum max)
 
-;; 列 i（0 から columns - 1）の幅：i、i + columns、… 番目の長さの最大 + 2
-(define Sjs_ins_widths ,(lens columns i acc)
-  __Cont_get__ ,(return)
-  __Number_subtract__ i columns ,(d)
-  __Number_is_negative__ d ,(test__) __unless__ test__ (,() Sjs_reverse_list acc ,(l) return l) ,()
-  Sjs_zero ,(zero)
-  Sjs_ins_column_max lens columns i zero zero ,(w)
+;; 列ごとの幅（その列のいちばん長い項目 + 2）の LList。長さを columns 個ずつの行に分け、行ごとに列の最大を取る
+(define Sjs_ins_widths ,(lens columns)
+  Sjs_ins_zeros columns __NULL__ ,(ws)
+  Sjs_ins_widths_loop lens ws ,(ws)
   Sjs_two ,(two)
-  __Number_add__ w two ,(w)
-  __LList_cons__ w acc ,(acc)
-  Sjs_inc i ,(i)
-  Sjs_ins_widths lens columns i acc)
+  Sjs_ins_add_all ws two __NULL__)
 
-(define Sjs_ins_column_max ,(lens columns i j max)
+(define Sjs_ins_zeros ,(n acc)
   __Cont_get__ ,(return)
-  __is_null__ lens ,(test__) __if__ test__ (,() return max) ,()
-  __LList_uncons__ __print_exit_error__ lens ,(x rest)
-  ;; j が i から columns ごとのものか
-  __Number_subtract__ j i ,(d)
-  __Number_divide__ __print_exit_error__ d columns ,(q)
-  __Number_floor__ q ,(f)
-  __Number_subtract__ q f ,(frac)
-  __Number_is_zero__ frac ,(inColumn)
-  __Number_is_negative__ d ,(before)
-  __not__ before ,(after)
-  __and__ inColumn after ,(take)
-  __Number_subtract__ x max ,(dx)
-  __Number_is_positive__ dx ,(bigger)
-  __and__ take bigger ,(test__) __if_then_else__ test__ (,() __NULL__ x) (,() __NULL__ max) ,(max)
-  Sjs_inc j ,(j)
-  Sjs_ins_column_max rest columns i j max)
+  __Number_is_positive__ n ,(test__) __unless__ test__ (,() return acc) ,()
+  Sjs_zero ,(zero)
+  __LList_cons__ zero acc ,(acc)
+  Sjs_dec n ,(n)
+  Sjs_ins_zeros n acc)
+
+(define Sjs_ins_widths_loop ,(lens ws)
+  __Cont_get__ ,(return)
+  __is_null__ lens ,(test__) __if__ test__ (,() return ws) ,()
+  Sjs_ins_row_max lens ws __NULL__ ,(rev lens)
+  Sjs_reverse_list rev ,(ws)
+  Sjs_ins_widths_loop lens ws)
+
+;; ws の各列と、lens の先頭の 1 行の長さの大きいほう（逆順）と、残りの lens
+(define Sjs_ins_row_max ,(lens ws acc)
+  __Cont_get__ ,(return)
+  __is_null__ ws ,(test__) __if__ test__ (,() return acc lens) ,()
+  __LList_uncons__ __print_exit_error__ ws ,(w wrest)
+  __is_null__ lens ,(test__) __if__ test__
+    (,() __LList_cons__ w acc ,(acc) Sjs_ins_row_max lens wrest acc ,(r l) return r l) ,()
+  __LList_uncons__ __print_exit_error__ lens ,(x lrest)
+  Sjs_ins_max x w ,(m)
+  __LList_cons__ m acc ,(acc)
+  Sjs_ins_row_max lrest wrest acc)
+
+(define Sjs_ins_max ,(a b)
+  __Number_subtract__ a b ,(d)
+  __Number_is_positive__ d ,(more)
+  __if_then_else__ more (,() __NULL__ a) (,() __NULL__ b))
+
+(define Sjs_ins_add_all ,(list n acc)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() Sjs_reverse_list acc ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  __Number_add__ x n ,(y)
+  __LList_cons__ y acc ,(acc)
+  Sjs_ins_add_all rest n acc)
 
 ;; 配列 value の先頭 n 個（項目の数。穴も数える）がすべて数か
 (define Sjs_ins_all_numbers ,(value n)

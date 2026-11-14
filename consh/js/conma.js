@@ -1388,7 +1388,7 @@ var ConMaVM = (function () {
 
   // console.log of a value: a string as it is, an error as String() makes it (Node.js also writes
   // its stack), anything else as util.inspect of Node.js makes it with its defaults (depth 2,
-  // breakLength 80, compact 3, maxArrayLength 100), the same steps as consh/include/sjs_inspect.se
+  // breakLength 80, compact 3, maxArrayLength 100, maxStringLength 10000), the same steps as consh/include/sjs_inspect.se
   // for SJS. A Promise is "Promise {}": its state cannot be seen from JavaScript.
   function inspect(v) {
     if (typeof v === "string") return v;
@@ -1458,12 +1458,19 @@ var ConMaVM = (function () {
     return s;
   }
 
+  // Longer than 10000 (maxStringLength): cut there and add "... n more character(s)"
   function inspectString(s, indent) {
+    let trailer = "";
+    if (s.length > 10000) {
+      const remaining = s.length - 10000;
+      s = s.slice(0, 10000);
+      trailer = `... ${remaining} more character${remaining > 1 ? "s" : ""}`;
+    }
     if (s.length > 16 && s.length > 76 - indent) {
       const lines = s.split(/(?<=\n)/);
-      return lines.map(inspectQuote).join(` +\n${" ".repeat(indent + 2)}`);
+      return lines.map(inspectQuote).join(` +\n${" ".repeat(indent + 2)}`) + trailer;
     }
-    return inspectQuote(s);
+    return inspectQuote(s) + trailer;
   }
 
   function inspectQuote(s) {

@@ -27,3 +27,10 @@ o.self = o
 console.log(o, [o])
 console.log({ "": 1, "a b": 2, _x: 3, $y: 4, "9z": 5 })
 console.log([[1, 2, [3, 4, [5, 6, [7]]]], { a: { b: [1, { c: 2 }] } }])
+// 10000 文字（maxStringLength）を超える文字列は、そこで切って "... n more characters" を付ける（改行で切った後ろに）
+const parts = []
+for (let i = 0; i < 700; i++) parts.push(`line ${i} of text\n`)
+const text = parts.join("")
+console.log([text.slice(0, 10000)].length, [text.slice(0, 10001)][0].length)
+console.log({ short: text.slice(9980, 10000), cut: text.slice(0, 10001) })
+console.log([text.slice(0, 10002)])
