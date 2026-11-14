@@ -187,3 +187,29 @@
   __Seq_print__ rest ,()
   __println__ ,()
   __println__ a b)
+
+;; case11: __String_join_lines__ は、行をそれぞれ改行で終えてつなぐ。行がなければ空の String。
+;; 空の行、引用符を含む行（ConMa のコードの断片）、たくさんの行（__Lines_join__ が半分ずつつなぐ）も
+(define showLines ,(label text)
+  __String_length__ text ,(n)
+  __Number_toString__ n ,(ns)
+  __println__ label " (" ns "):" ,()
+  __OS_print__ text ,()
+  __println__ "--")
+
+(define case11 ,()
+  __String_join_lines__ ,(none)
+  showLines "none" none ,()
+  __String_join_lines__ "one" ,(one)
+  showLines "one" one ,()
+  __String_join_lines__ "a" "" "c" ,(three)
+  showLines "three" three ,()
+  __String_join_lines__ "(define main ,()" "  __OS_print__ \"hi\\n\")" ,(code)
+  showLines "code" code ,()
+  __String_join_lines__ "1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" ,(many)
+  showLines "many" many)
+
+;; case12: 行が String でなければ、__String_concat__ のエラーで止まる
+(define case12 ,()
+  __String_join_lines__ "a" __NULL__ ,(text)
+  __println__ "not reached")

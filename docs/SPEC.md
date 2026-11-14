@@ -404,6 +404,8 @@ After the last element there are no such CFrames, so `rest` returns its `Sink` a
 
 `__Seq_print__ Seq` writes the elements of `Seq` with `__OS_print__`, one after another. `__println__` is variadic: it writes all its arguments and then a newline.
 
+`__String_join_lines__ , lines ,(String)` is variadic too: it returns its arguments, each followed by a newline (the last one too), as one String, or the empty String for no arguments. A String literal cannot hold a newline (it is written `\n`), so a text of several lines, such as a piece of ConMa code, can be written one line per literal: `__String_join_lines__ "(define main ,()" "  __OS_print__ \"hi\")" ,(text)`. An argument that is not a String stops the VProc with the error of `__String_concat__`. The pieces are joined two by two (`__Lines_join__`), in time proportional to the whole length times the logarithm of the number of lines. It is defined in `include/util.se` (since 2026-11-14; not in `reference/util.se`).
+
 `__Seq_get__` (with `__Seq_take_CFrames__`, `__Seq_push_CFrames__` and `__LList_length__`), `__Seq_print__` and `__println__` are defined in `include/util.se`; `__Seq_push__` and `__Seq_get_all__` are not yet.
 ---
 
