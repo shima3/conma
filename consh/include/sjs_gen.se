@@ -90,6 +90,8 @@
 ;; モジュールは何も include しないので、作るのは速い（実行時の支えは ConSh のモジュールにある）
 (define Sjs_translate_module ,(text file)
   Sjs_parse_expression text ,(e)
+  ;; 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 4。sjs_wasm.se の Wasm_prepare_expr）
+  Wasm_prepare_expr e ,(wat)
   Gen_state e ,(g)
   Gen_quote file ,(fq)
   __Dict_put__ g "file" fq ,()
@@ -98,6 +100,10 @@
   Gen_expr g scope e ,(code val)
   Gen_const_code g ,(consts)
   __String_concat__ consts code ,(code)
+  ;; モジュールと、数の関数の名前 → 作った関数の番号（Sjs_wasm_fn_checked が、呼ぶとき確かめる）
+  __String_equal__ wat "" ,(noWasm)
+  __if_then_else__ noWasm (,() __NULL__ "") (,() Gen_quote wat ,(q) Cat3 "Sjs_wasm_module " q " ,(Wsjs) __Dict_new__ ,(Wids) ") ,(wc)
+  __String_concat__ wc code ,(code)
   Gen_replace_marks code "" ,(code)
   Sjs_rt_names ,(names)
   Gen_binds names "" ,(binds)
@@ -108,7 +114,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_reraise Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close Sjs_eq_lit Sjs_ne_lit")
+  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_reraise Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close Sjs_eq_lit Sjs_ne_lit Sjs_wasm_module Sjs_wasm_fn_checked")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -2007,6 +2013,30 @@
   __Dict_lookup_or__ e "wasm" (,(k) __NULL__ "") ,(wname)
   __String_equal__ wname "" ,(test__) __unless__ test__
     (,()
+      ;; (( )) の数の関数（"wasmCheck" がある）：呼ぶとき、名前と Math を確かめる。作った関数の番号を Wids に入れる
+      __Dict_lookup_or__ e "wasmCheck" (,(k) __NULL__ __NULL__) ,(check)
+      __is_null__ check ,(test__) __unless__ test__
+        (,()
+          Sjs_get e "wasmParams" ,(np)
+          __Number_toString__ np ,(nps)
+          Gen_const g nps ,(nv)
+          Gen_quote wname ,(wq)
+          Gen_quote check ,(cq)
+          Sjs_get e "wasmMath" ,(usesMath)
+          __if_then_else__ usesMath (,() __NULL__ "__TRUE__") (,() __NULL__ "__FALSE__") ,(mq)
+          Gen_temp g "w" ,(wf)
+          Gen_temp g "i" ,(iv)
+          Cat5 "\tSjs_wasm_fn_checked Wsjs G Wids " cq " " mq " " ,(c)
+          Cat5 c wq " " nv " (,(" ,(c)
+          Cat3 c args ") __Cont_get__ ,(return) " ,(c)
+          Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
+          Cat3 c wf ") " ,(c)
+          Cat5 c "\tSjs_function G " qn " " wf ,(c)
+          Cat3 c " ,(" v ,(c)
+          Cat5 c ") __Dict_lookup_or__ " v " \"id\" __print_exit_error__ ,(" iv ,(c)
+          Cat5 c ") __Dict_put__ Wids " wq " " iv ,(c)
+          __String_concat__ c " ,() " ,(c)
+          return c v) ,()
       Sjs_get e "wasmParams" ,(np)
       __Number_toString__ np ,(nps)
       Gen_const g nps ,(nv)

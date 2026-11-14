@@ -20,3 +20,6 @@ run case6 case6.sh < /dev/null
 run case7 < case7.input
 # case8：エラーの位置（段階 B9）。(( )) の中の失敗した所を、スクリプトの行と桁で出す
 run case8 case8.sh < /dev/null
+# case9：数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 4）。wasm 版の VM では WebAssembly で、ほかの VM では ConMa 版で動き、
+# 同じログになる。後の (( )) が名前や Math のメンバーを書き換えると、ConMa 版で動く
+run case9 case9.sh < /dev/null

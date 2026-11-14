@@ -2,7 +2,7 @@
 
 SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（consh/js）のホストで動かす計画である。2026-11-14 に書いた。
 
-**状態**：段階 1〜3 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9、段階 3 は 14 と consh/sjs/test/step10）。段階 4 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
+**状態**：段階 1〜4 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9、段階 3 は 14 と consh/sjs/test/step10、段階 4 は 15 と consh/test/step21 の case9）。段階 5（測る）はまだ。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
 ## 1. 目的
 
@@ -183,7 +183,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 | 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
 | 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3（作った、2026-11-14。14） | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
-| 4 | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
+| 4（作った、2026-11-14。15） | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
 | 5 | 測る：consh/sjs/bench の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。consh/sjs/README-ja.md と docs/SPEED-ja.md に書く | 表にする |
 
 ## 9. 数の関数の後で作るもの：数の配列
@@ -255,4 +255,15 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
     * test/fast7 の case7：終わらない関数を燃料 10^7 で呼び続ける間に、子のプロセスが送った SIGINT が `__OS_trap_interrupt__` の Ref を変える（wasm 版の VM で約 1 秒。1 回の呼び出しは約 70 ミリ秒）。
     * 燃料が上限を超えて ConMa 版に替わる場合は、ConMa 版で 2^30 回ほど回るものになり時間がかかるので、テストしていない。
 * **単独の SJS の Ctrl-C**：Node.js のホストは、`__OS_trap_interrupt__` を使うまで SIGINT でそのまま終わるので、単独の SJS のプログラムは、wasm 版の中でも Ctrl-C で止まる。区切りが効くのは、ConSh のように SIGINT を受け取るプログラム（段階 4）である。
+
+## 15. 段階 4 の結果（2026-11-14）
+
+* **(( )) の数の関数**：`(( ))` と `$(( ))` は文でなく式なので、function 宣言は書けない。そこで、式の一番外の（コンマ演算子で並べたものも）「名前 = 関数式」（function 式かアロー関数）を候補にする（sjs_wasm.se の `Wasm_prepare_expr`）。名前はその式で 1 回だけ代入され、名前の付いた function 式は、その名前が代入する名前と同じものだけ。アロー関数の本体が式なら、それを返す関数にする。1 つの `(( ))` の中の数の関数どうしは、WebAssembly の中で呼ぶ。別の `(( ))` で作った関数を呼ぶ関数は、数の関数にしない。
+* **呼ぶときの確かめ**（5.2）：名前は SJS変数で、後の `(( ))` が書き換えられ、`Math` のメンバーも書き換えられる（`Math` 自体と NaN、Infinity は組み込みで書き換えられない）。そこで、`Sjs_translate_module` がモジュールの始めで `Wids`（数の関数の名前 → 作った関数の番号）を作り、関数を作るたびに番号を入れる。`Sjs_wasm_fn_checked` は、呼ぶたびに、その関数が（たどって）呼ぶ数の関数の名前の SJS変数が、どれも同じ番号の関数を指しているかと、`Math` を使うなら、`Math` のメンバー（floor、ceil、trunc、abs、sqrt、round、sign、max、min、PI）が、組み込みを作ったときの写し（G の `" math"`）と同じかを確かめ、違えば ConMa 版で動かす。ConMa 版は、JavaScript と同じく、書き換えた後の関数を呼ぶ（`oldFib = fib` の後で `fib` を書き換えると、`oldFib(20)` は新しい `fib` を呼ぶ）。
+* **実行時の支え**：`Sjs_wasm_module` と `Sjs_wasm_fn_checked` を、`(( ))` のモジュールが受け取る関数（`Sjs_rt_names`、`Sjs_rt_dict`）に足した。`Sjs_wasm_fn` と `Sjs_wasm_fn_checked` は、確かめる thunk を受け取る `Sjs_wasm_fn_core` を共有する。
+* **確かめたこと**：
+    * consh/test/step21 の case9（fib、ループ、Math.sqrt、2 つの関数が互いに呼ぶもの、数でない引数と足りない引数、`+$n`、Math のメンバーの書き換え、名前の書き換えと古い関数）が、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）で同じログになる。fib(25) とループ 100 万回を含むスクリプトは、Rust 版の VM で 12.3 秒、wasm 版の VM で 2.6 秒だった。
+    * ブラウザ（serve.py の Worker 版と、ヘッダーのないサーバーでページの中で動く版）で、`(( fib = ... ))` の後の `fib(27)` が 1 秒以内に出た（ConMa 版なら 5 秒ほど）。終わらない数の関数を「中断」で止められた（燃料を使い切るたびに時間の区切りが終わるので、Worker が中断を受け取る）。このモジュールは 4 KB より小さいので、ページの中でも同期で作れた。大きなモジュールがページの中で作れないときは、ConMa 版で動く。
+    * jsc のホストでは、もともと `(( ))` のモジュールを作れない（段階 A だけ。consh/js/README-ja.md）ので、段階 4 の対象にならない。
+* **前からのこと**：対話モードで、コマンド行が `(( 名前 = 関数式 ))` で始まると、値を出そうとして「関数の値は文字列にできない」と出る（変更の前の main でも同じ）。代入はされる。
 

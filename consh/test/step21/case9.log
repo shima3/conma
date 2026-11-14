@@ -1,0 +1,9 @@
+fib: 6765
+count: 100000
+hyp: 5
+even: 1 0
+isZero: 1 1 0 0
+shell: 144
+hyp after Math.sqrt: -1
+fib replaced: 100 200
+exit: 0

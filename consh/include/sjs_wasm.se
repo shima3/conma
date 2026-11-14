@@ -16,8 +16,24 @@
 ;;   abs、sqrt、round、sign、max、min、Math.PI（Math がプログラムで Math.名前 の形でしか使われず、書き換えられないとき）。
 ;;   算術と代入と戻り値は数だけ（真偽値を数として使うと、SJS では TypeError なので、数の関数にしない）。条件は、
 ;;   数なら JavaScript と同じ真偽（0、-0、NaN が偽）。
+;; ConSh の (( )) と $(( ))（段階 4。Wasm_prepare_expr）：式の中の「名前 = 関数式（function かアロー関数）」を候補にする。
+;; 名前は SJS変数で、後の (( )) で書き換えられ、Math のメンバーも書き換えられるので、呼ぶとき、呼ぶ数の関数の名前が作った
+;; ときと同じ関数を指し、Math を使うなら Math のメンバーが元のままかを確かめる（sjs_rt.se の Sjs_wasm_fn_checked）。
+;; 外の名前で読めるのは、NaN と Infinity だけ（組み込みは書き換えられない）。アロー関数の本体が式なら、それを返す。
 ;; WAT の関数は $f番号、局所の変数は $l番号（引数が先）、ラベルは $b番号（break）、$c番号（continue）、$k番号（ループ）。
 ;; % は $__mod、ToUint32 は $__u32、Math.round は $__round、Math.sign は $__sign（sjs_rt.se の Sjs_mod などと同じ手順）
+
+;; ConSh の (( )) の式 e の WAT（数の関数がなければ ""）。数の関数の fn の節に "wasm"、"wasmCheck"（呼ぶときに確かめる
+;; 名前を空白で区切ったもの）、"wasmMath"（Math を使うか）を付ける
+(define Wasm_prepare_expr ,(e)
+  Wx_env_module e ,(E)
+  Wx_candidates_expr E e ,()
+  __Dict_lookup_or__ E "list" __print_exit_error__ ,(listRef)
+  __Ref_get__ listRef ,(infos)
+  Wx_compile_all E infos ,()
+  Wx_fixpoint E infos ,()
+  Wx_mark_checks E infos ,()
+  Wx_module infos)
 
 ;; プログラムの WAT（数の関数がなければ ""）。数の関数の fn の節に "wasm" を付ける
 (define Wasm_prepare ,(program)
@@ -147,6 +163,79 @@
   ;; 代入の先の形（名前、分割代入、for の宣言）のすべての名前
   Wx_walk target (,(x) Wx_t x ,(xt) __String_equal__ xt "id" ,(isId) __if__ isId (,() Sjs_get x "name" ,(nm) __Dict_put__ assigned nm __TRUE__) ,()))
 
+;; (( )) の式の E：Math は呼ぶときに確かめるので使ってよく、一番外の宣言と数の定数はない。"counts" は代入の回数
+(define Wx_env_module ,(e)
+  __Dict_new__ ,(E)
+  __Dict_new__ ,(assigned)
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(r1)
+  __Ref_new__ zero ,(r2)
+  __Ref_new__ __FALSE__ ,(r3)
+  Wx_walk e (,(n) Wx_env_node n assigned r1 r2 r3) ,()
+  __Dict_put__ E "assigned" assigned ,()
+  __Dict_put__ E "math" __TRUE__ ,()
+  __Dict_put__ E "module" __TRUE__ ,()
+  __Dict_new__ ,(consts)
+  __Dict_put__ E "consts" consts ,()
+  __Dict_new__ ,(declared)
+  __Dict_put__ E "declared" declared ,()
+  __Dict_new__ ,(counts)
+  Wx_walk e (,(n) Wx_t n ,(t) __String_equal__ t "assign" ,(isAssign) __if__ isAssign (,() Sjs_get n "target" ,(target) Wx_t target ,(tt) __String_equal__ tt "id" ,(isId) __if__ isId (,() Sjs_get target "name" ,(nm) Wx_count counts nm) ,()) ,()) ,()
+  __Dict_put__ E "counts" counts ,()
+  __Dict_new__ ,(funcs)
+  __Dict_put__ E "funcs" funcs ,()
+  __Ref_new__ __NULL__ ,(list)
+  __Dict_put__ E "list" list ,()
+  __NULL__ E)
+
+;; (( )) の式の候補：一番外の（コンマ演算子で並べたものも）「名前 = 関数式」で、名前はこの式で 1 回だけ代入される
+(define Wx_candidates_expr ,(E e)
+  __Cont_get__ ,(return)
+  Wx_t e ,(t)
+  __String_equal__ t "paren" ,(test__) __if__ test__ (,() Sjs_get e "expr" ,(inner) Wx_candidates_expr E inner ,() return) ,()
+  __String_equal__ t "seq" ,(test__) __if__ test__ (,() Sjs_get e "exprs" ,(es) Wx_candidates_list E es ,() return) ,()
+  __String_equal__ t "assign" ,(test__) __unless__ test__ return ,()
+  Sjs_get e "op" ,(op)
+  __String_equal__ op "=" ,(test__) __unless__ test__ return ,()
+  Sjs_get e "target" ,(target)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __unless__ test__ return ,()
+  Sjs_get target "name" ,(name)
+  Sjs_get e "value" ,(value)
+  Wx_unparen value ,(fn)
+  Wx_t fn ,(ft)
+  Sjs_in_words ft "function arrow" ,(test__) __unless__ test__ return ,()
+  ;; 名前の付いた function 式は、その名前が代入する名前と同じときだけ
+  __Dict_lookup_or__ fn "name" (,(k) __NULL__ "") ,(own)
+  __is_null__ own ,(noOwn)
+  __if_then_else__ noOwn (,() __NULL__ "") (,() __NULL__ own) ,(own)
+  __String_equal__ own "" ,(anonymous)
+  __String_equal__ own name ,(same)
+  __or__ anonymous same ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ E "counts" __print_exit_error__ ,(counts)
+  Wx_once_in counts name ,(test__) __unless__ test__ return ,()
+  Wx_candidate_fn E name fn)
+
+(define Wx_candidates_list ,(E es)
+  __Cont_get__ ,(return)
+  __is_null__ es ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ es ,(e rest)
+  Wx_candidates_expr E e ,()
+  Wx_candidates_list E rest)
+
+(define Wx_unparen ,(e)
+  __Cont_get__ ,(return)
+  Wx_t e ,(t)
+  __String_equal__ t "paren" ,(test__) __if__ test__ (,() Sjs_get e "expr" ,(inner) Wx_unparen inner ,(r) return r) ,()
+  __NULL__ e)
+
+(define Wx_once_in ,(dict name)
+  Wx_num "0" ,(zero)
+  __Dict_lookup_or__ dict name (,(k) __NULL__ zero) ,(c)
+  Wx_num "1" ,(one)
+  __Number_subtract__ c one ,(d)
+  __Number_is_zero__ d)
+
 ;; 一番外で宣言した名前の回数
 (define Wx_declared ,(stmts declared)
   __Cont_get__ ,(return)
@@ -248,12 +337,20 @@
   __Cont_get__ ,(return)
   Sjs_get s "name" ,(name)
   Sjs_get s "fn" ,(fn)
-  __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
-  __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
-  __or__ gen async ,(test__) __if__ test__ return ,()
   Wx_once E name ,(test__) __unless__ test__ return ,()
   __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
   __Dict_lookup_or__ assigned name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ return ,()
+  Wx_candidate_fn E name fn)
+
+;; 関数式 fn（名前 name）を候補にする：ジェネレータでも async でもなく、引数は名前だけ
+(define Wx_candidate_fn ,(E name fn)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs0)
+  __Dict_lookup_or__ funcs0 name (,(k) __NULL__ __NULL__) ,(dup)
+  __is_null__ dup ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
+  __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
+  __or__ gen async ,(test__) __if__ test__ return ,()
   Sjs_get fn "params" ,(params)
   Wx_param_names params __NULL__ ,(ok names)
   __unless__ ok return ,()
@@ -346,14 +443,26 @@
   __Dict_put__ cx "loop" loop ,()
   __Ref_new__ __NULL__ ,(callees)
   __Dict_put__ cx "callees" callees ,()
+  __Ref_new__ __FALSE__ ,(usesMath)
+  __Dict_put__ cx "usesMath" usesMath ,()
   Sjs_get info "params" ,(params)
   Wx_bind_params cx params "" ,(head)
   Sjs_get info "fn" ,(fn)
-  Sjs_get fn "body" ,(body)
-  __is_null__ body ,(test__) __if__ test__ (,() Wx_fail cx) ,()
-  Sjs_get body "body" ,(stmts)
-  Wx_ends_list stmts ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
-  Wx_stmts cx stmts "" ,(code)
+  __Dict_lookup_or__ fn "body" (,(k) __NULL__ __NULL__) ,(body)
+  __is_null__ body ,(concise)
+  ;; アロー関数の本体が式なら、それを返す
+  __if_then_else__ concise
+    (,()
+      __Dict_lookup_or__ fn "expr" (,(k) __NULL__ __NULL__) ,(expr)
+      __is_null__ expr ,(test__) __if__ test__ (,() Wx_fail cx) ,()
+      Wx_num_expr cx expr ,(c)
+      Cat3 "(return " c ") ")
+    (,()
+      Sjs_get body "body" ,(stmts)
+      Wx_ends_list stmts ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
+      Wx_stmts cx stmts "") ,(code)
+  __Ref_get__ usesMath ,(um)
+  __Dict_put__ info "math" um ,()
   Sjs_get info "label" ,(label)
   Sjs_get info "name" ,(name)
   Gen_quote name ,(qn)
@@ -686,6 +795,7 @@
       __and__ mathOk isMath ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
       Sjs_get e "name" ,(name)
       __String_equal__ name "PI" ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
+      Wx_uses_math cx ,()
       return "(f64.const 3.141592653589793)" "N") ,()
   Wx_fail cx)
 
@@ -817,6 +927,7 @@
     (,()
       __Dict_lookup_or__ E "math" __print_exit_error__ ,(mathOk)
       __unless__ mathOk (,() Wx_fail cx) ,()
+      Wx_uses_math cx ,()
       Sjs_get callee "name" ,(name)
       Wx_math cx name args ,(c)
       return c) ,()
@@ -839,6 +950,11 @@
   __Ref_set__ callees cs ,()
   Sjs_get info "label" ,(label)
   Cat5 "(call " label " " ac ")")
+
+;; この関数が Math を使う（(( )) では、呼ぶときに Math のメンバーを確かめる）
+(define Wx_uses_math ,(cx)
+  __Dict_lookup_or__ cx "usesMath" __print_exit_error__ ,(r)
+  __Ref_set__ r __TRUE__)
 
 ;; 引数（どれも数の式）の WAT と数
 (define Wx_args ,(cx args acc)
@@ -926,6 +1042,57 @@
   Sjs_get info "ok" ,(ok)
   __unless__ ok (,() return __FALSE__) ,()
   Wx_all_ok E rest)
+
+;; (( )) の数の関数の fn に、呼ぶときに確かめる名前（呼ぶ数の関数を、呼ぶものの呼ぶものまでたどった名前）と、
+;; そのどれかが Math を使うかを付ける
+(define Wx_mark_checks ,(E infos)
+  __Cont_get__ ,(return)
+  __is_null__ infos ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ infos ,(info rest)
+  Sjs_get info "ok" ,(ok)
+  __if__ ok
+    (,()
+      __Dict_new__ ,(seen)
+      Sjs_get info "callees" ,(cs)
+      Wx_reach E cs seen ,()
+      Sjs_get info "math" ,(m0)
+      __Ref_new__ m0 ,(mathRef)
+      __Dict_keys__ seen ,(keys)
+      __Ref_new__ __NULL__ ,(acc)
+      Gen_collect acc ,(sink)
+      keys sink ,(sk)
+      __Ref_get__ acc ,(names)
+      Wx_names_text E names "" mathRef ,(text)
+      __Ref_get__ mathRef ,(usesMath)
+      Sjs_get info "fn" ,(fn)
+      __Dict_put__ fn "wasmCheck" text ,()
+      __Dict_put__ fn "wasmMath" usesMath) ,()
+  Wx_mark_checks E rest)
+
+(define Wx_reach ,(E names seen)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ seen nm (,(k) __NULL__ __FALSE__) ,(was)
+  __if__ was (,() Wx_reach E rest seen ,() return) ,()
+  __Dict_put__ seen nm __TRUE__ ,()
+  __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs)
+  __Dict_lookup_or__ funcs nm __print_exit_error__ ,(info)
+  Sjs_get info "callees" ,(cs)
+  Wx_reach E cs seen ,()
+  Wx_reach E rest seen)
+
+;; 名前を空白で区切った文字列。どれかが Math を使えば mathRef を真にする
+(define Wx_names_text ,(E names acc mathRef)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs)
+  __Dict_lookup_or__ funcs nm __print_exit_error__ ,(info)
+  Sjs_get info "math" ,(m)
+  __if__ m (,() __Ref_set__ mathRef __TRUE__) ,()
+  Cat3 acc nm " " ,(acc)
+  Wx_names_text E rest acc mathRef)
 
 ;; 数の関数のモジュールの WAT（なければ ""）。数の関数の fn に "wasm" を付ける
 (define Wx_module ,(infos)

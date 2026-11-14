@@ -2195,6 +2195,11 @@
   __Number_fromString__ __print_exit_error__ "3.141592653589793" ,(pi)
   Sjs_obj_set_hidden math "PI" pi ,()
   __Dict_put__ G "Math" math ,()
+  ;; Math のメンバーの写し（数の関数の wasm 版が、Math が書き換えられていないかを確かめる。Sjs_wasm_math_ok）。
+  ;; キーの空白は、SJS の名前にならない
+  __Dict_lookup_or__ math "props" __print_exit_error__ ,(mprops)
+  __Dict_copy__ mprops ,(msnap)
+  __Dict_put__ G " math" msnap ,()
   ;; JSON
   Sjs_object_new G ,(json)
   Sjs_def G json "stringify" (,(args) Sjs_arg args ,(v rest) Sjs_json v) ,()
@@ -2362,6 +2367,7 @@
   put "Sjs_iter_open" Sjs_iter_open ,() put "Sjs_iter_more" Sjs_iter_more ,() put "Sjs_iter_take" Sjs_iter_take ,()
   put "Sjs_try_catch" Sjs_try_catch ,()
   put "Sjs_async" Sjs_async ,() put "Sjs_await" Sjs_await ,() put "Sjs_run_jobs" Sjs_run_jobs ,() put "Sjs_need" Sjs_need ,() put "Sjs_eq_num" Sjs_eq_num ,() put "Sjs_ne_num" Sjs_ne_num ,() put "Sjs_get_index" Sjs_get_index ,() put "Sjs_array_hole" Sjs_array_hole ,() put "Sjs_iter_next" Sjs_iter_next ,() put "Sjs_iter_rest" Sjs_iter_rest ,() put "Sjs_iter_close" Sjs_iter_close ,() put "Sjs_set_index" Sjs_set_index ,() put "Sjs_template_strings" Sjs_template_strings ,() put "Sjs_async_generator" Sjs_async_generator ,() put "Sjs_ag_yield" Sjs_ag_yield ,() put "Sjs_ag_yield_star" Sjs_ag_yield_star ,() put "Sjs_aiter_open" Sjs_aiter_open ,() put "Sjs_aiter_more" Sjs_aiter_more ,() put "Sjs_aiter_close" Sjs_aiter_close ,() put "Sjs_in_op" Sjs_in_op ,() put "Sjs_pattern_open" Sjs_pattern_open ,() put "Sjs_pattern_next" Sjs_pattern_next ,() put "Sjs_pattern_rest" Sjs_pattern_rest ,() put "Sjs_pattern_close" Sjs_pattern_close ,() put "Sjs_eq_lit" Sjs_eq_lit ,() put "Sjs_ne_lit" Sjs_ne_lit ,()
+  put "Sjs_wasm_module" Sjs_wasm_module ,() put "Sjs_wasm_fn_checked" Sjs_wasm_fn_checked ,()
   __NULL__ rt)
 
 
@@ -3443,12 +3449,85 @@
 ;; そうしないと、深い再帰が trap になったとき、ConMa 版の再帰の各段で wasm 版を試し直し、仕事が深さの 2 乗になる
 ;; （wasm の最初の実行は最適化の前のコードでスタックの枠が大きいので、深さ 100 万の再帰は trap になることがある）
 (define Sjs_wasm_fn ,(W name n f)
+  Sjs_wasm_fn_core W name n f (,() __NULL__ __TRUE__))
+
+;; ConSh の (( )) の数の関数（段階 4）：呼ぶとき、names（空白で区切った名前）の SJS変数が、作ったときの関数（ids の番号）を
+;; 指し、usesMath なら Math のメンバーが元のままのときだけ wasm 版を使う（後の (( )) が書き換えることがある）
+(define Sjs_wasm_fn_checked ,(W G ids names usesMath name n f)
+  Sjs_wasm_words names ,(list)
+  Sjs_wasm_fn_core W name n f (,()
+    __Cont_get__ ,(return)
+    __if__ usesMath (,() Sjs_wasm_math_ok G ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
+    Sjs_wasm_same_fns ids list))
+
+;; 空白で区切った語の LList（順は逆。確かめる順は問わない）
+(define Sjs_wasm_words ,(s)
+  Sjs_chars s ,(chars)
+  Sjs_wasm_words_loop chars "" __NULL__)
+
+(define Sjs_wasm_words_loop ,(chars word acc)
+  __Cont_get__ ,(return)
+  __String_equal__ word "" ,(empty)
+  __is_null__ chars ,(test__) __if__ test__
+    (,() __if_then_else__ empty (,() __NULL__ acc) (,() __LList_cons__ word acc) ,(acc) return acc) ,()
+  __LList_uncons__ __print_exit_error__ chars ,(c rest)
+  __String_equal__ c " " ,(test__) __if__ test__
+    (,()
+      __if_then_else__ empty (,() __NULL__ acc) (,() __LList_cons__ word acc) ,(acc)
+      Sjs_wasm_words_loop rest "" acc ,(t)
+      return t) ,()
+  __String_concat__ word c ,(word)
+  Sjs_wasm_words_loop rest word acc)
+
+;; names の SJS変数が、どれも ids の番号の関数か
+(define Sjs_wasm_same_fns ,(ids names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ ids nm (,(k) return __FALSE__) ,(id)
+  Sjs_vars ,(vars)
+  __Dict_lookup_or__ vars nm (,(k) return __FALSE__) ,(v)
+  __type_name__ v ,(t)
+  __String_equal__ t "Dict" ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  __Dict_lookup_or__ v "id" (,(k) return __FALSE__) ,(vid)
+  __Number_subtract__ vid id ,(d)
+  __Number_is_zero__ d ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  Sjs_wasm_same_fns ids rest)
+
+;; Math のメンバー（数の関数が使うもの）が、組み込みを作ったときのままか
+(define Sjs_wasm_math_ok ,(G)
+  __Dict_lookup_or__ G " math" (,(k) __NULL__ __NULL__) ,(snap)
+  __Dict_lookup_or__ G "Math" __print_exit_error__ ,(math)
+  __Dict_lookup_or__ math "props" __print_exit_error__ ,(props)
+  Sjs_wasm_words "floor ceil trunc abs sqrt round sign max min PI" ,(names)
+  Sjs_wasm_same_members snap props names)
+
+(define Sjs_wasm_same_members ,(snap props names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ snap nm (,(k) return __FALSE__) ,(a)
+  __Dict_lookup_or__ props nm (,(k) return __FALSE__) ,(b)
+  __type_name__ a ,(ta)
+  __type_name__ b ,(tb)
+  __String_equal__ ta tb ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  __String_equal__ ta "Number" ,(isNum)
+  __if_then_else__ isNum
+    (,() __Number_subtract__ a b ,(d) __Number_is_zero__ d)
+    (,() __Dict_lookup_or__ a "id" (,(k) return __FALSE__) ,(ia) __Dict_lookup_or__ b "id" (,(k) return __FALSE__) ,(ib) __Number_subtract__ ia ib ,(d) __Number_is_zero__ d) ,(same)
+  __unless__ same (,() return __FALSE__) ,()
+  Sjs_wasm_same_members snap props rest)
+
+;; Sjs_wasm_fn の本体。check は、wasm 版を使ってよいかを返す thunk
+(define Sjs_wasm_fn_core ,(W name n f check)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
   __NULL__ (,(args)
     __Cont_get__ ,(return)
     __is_null__ W ,(none)
     __if__ none (,() f args ,(r) return r) ,()
+    check ,(allowed)
+    __unless__ allowed (,() f args ,(r) return r) ,()
     __Ref_get__ busy ,(b)
     __Number_is_zero__ b ,(free)
     __unless__ free (,() f args ,(r) return r) ,()
