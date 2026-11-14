@@ -739,7 +739,8 @@ impl Machine {
                     self.finished_any = true;
                     break;
                 }
-                if !self.runs_alone(&cell) || self.steps >= limit {
+                // end_slice: a wasm call ran out of fuel (the top of the loop ends the slice).
+                if !self.runs_alone(&cell) || self.steps >= limit || self.end_slice {
                     requeue = true;
                     break;
                 }
