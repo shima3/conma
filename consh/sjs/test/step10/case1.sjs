@@ -1,5 +1,6 @@
-// 数の関数の wasm 版の燃料（consh/SJS-WASM-PLAN-ja.md の段階 3）：燃料 2^16 で始め、使い切るたびに 2 倍にしてやり直す。
-// countdown(30000000) は 2^25 の燃料が要る（10 回やり直す）。ConMa 版では遅すぎるので、wasm 版の VM だけで流す
+// 数の関数の wasm 版の燃料（consh/SJS-WASM-PLAN-ja.md の段階 3）：燃料 2^20 で始め、使い切るたびに 8 倍（上限 2^30 まで）に
+// してやり直す（consh/SJS-WASM-ARRAY-PLAN-ja.md の 19。前は 2^16 から 2 倍ずつ）。countdown(30000000) は 2^25 の燃料が要る
+// （2^20 と 2^23 で切れ、2^26 で終わる）。ConMa 版では遅すぎるので、wasm 版の VM だけで流す
 function countdown(n) {
   let acc = 0
   while (n !== 0) {

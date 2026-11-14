@@ -3537,12 +3537,31 @@
   __String_concat__ line "\n" ,(line)
   __OS_print_error__ line)
 
-;; 最初の燃料と、燃料の上限
+;; 最初の燃料（2^20）、燃料を増やす倍率（8）、燃料の上限（2^30）。consh/SJS-WASM-ARRAY-PLAN-ja.md の 18 と 19（段階 F1）：
+;; 2^20 は、最適化された後のコードで約 1 ms（燃料 1 あたり約 1 ns）。2^16 から 2 倍ずつだと、1 回の呼び出しに 2^16 より多く
+;; 要る関数は、毎回切れてからやり直していた。8 倍にすると、1 回だけ呼ぶ長い関数で捨てる仕事が、平均で要る仕事の約 1.44 倍
+;; から約 0.48 倍になる（その代わり、Ctrl-C が効くまでが、それまでの時間の約 7 倍までのびる）
 (define Sjs_wasm_fuel ,()
-  __Number_fromString__ __print_exit_error__ "65536")
+  __Number_fromString__ __print_exit_error__ "1048576")
+
+(define Sjs_wasm_fuel_factor ,()
+  __Number_fromString__ __print_exit_error__ "8")
 
 (define Sjs_wasm_fuel_limit ,()
   __Number_fromString__ __print_exit_error__ "1073741824")
+
+;; 燃料 fuel が切れた後の燃料：fuel の 8 倍か上限の小さい方。fuel が上限なら偽（ConMa 版に替える）
+(define Sjs_wasm_more_fuel ,(fuel)
+  __Cont_get__ ,(return)
+  Sjs_wasm_fuel_limit ,(limit)
+  __Number_subtract__ limit fuel ,(room)
+  __Number_is_positive__ room ,(test__) __unless__ test__ (,() return __FALSE__ fuel) ,()
+  Sjs_wasm_fuel_factor ,(k)
+  __Number_multiply__ fuel k ,(more)
+  __Number_subtract__ limit more ,(d)
+  __Number_is_negative__ d ,(over)
+  __if_then_else__ over (,() __NULL__ limit) (,() __NULL__ more) ,(next)
+  __NULL__ __TRUE__ next)
 
 ;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版。void が真なら、
 ;; 値を返さない関数で、wasm 版の戻り値（0）の代わりに undefined を返す（配列の計画の段階 A0）。
@@ -3632,6 +3651,8 @@
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
   __Ref_new__ __NULL__ ,(busyOwner)
+  Sjs_wasm_fuel ,(fuel0)
+  __Ref_new__ fuel0 ,(memo)
   Sjs_wasm_depths shapes ,(depths n arrays)
   __NULL__ (,(args)
     __Cont_get__ ,(return)
@@ -3643,15 +3664,16 @@
     __unless__ free (,() f args ,(r) return r) ,()
     check ,(allowed)
     __unless__ allowed (,() f args ,(r) return r) ,()
-    Sjs_wasm_fuel ,(fuel)
+    ;; 前に "ok" になった燃料から始める（この関数で何度も切れてからやり直さないように。段階 F1）
+    __Ref_get__ memo ,(fuel)
     ;; 配列の引数があれば、写して __Wasm_call_memory__ で呼ぶ（写せなければ ConMa 版）
     __if_then_else__ arrays
-      (,() Sjs_wasm_run_memory W name depths writes args fuel)
+      (,() Sjs_wasm_run_memory W name depths writes args memo fuel)
       (,()
         __Cont_get__ ,(give)
         Sjs_wasm_args args n ,(ok nums)
         __unless__ ok (,() give __FALSE__ __NULL__) ,()
-        Sjs_wasm_run W name nums fuel) ,(done value)
+        Sjs_wasm_run W name nums memo fuel) ,(done value)
     __if__ done (,() __if_then_else__ void (,() __NULL__ __NULL__) (,() __NULL__ value) ,(r) return r) ,()
     Sjs_inc b ,(b1)
     __Ref_set__ busyOwner me ,()
@@ -3678,17 +3700,16 @@
   __Ref_get__ busy ,(b)
   __NULL__ b me)
 
-;; 燃料 fuel で wasm 版を呼ぶ。使い切れば 2 倍にしてやり直す。結果が出れば真とその値、上限を超えるか trap なら偽
-(define Sjs_wasm_run ,(W name nums fuel)
+;; 燃料 fuel で wasm 版を呼ぶ。使い切れば 8 倍（上限まで）にしてやり直す。結果が出れば、その燃料を memo（Ref）に入れて、
+;; 真とその値。上限で切れるか trap なら偽
+(define Sjs_wasm_run ,(W name nums memo fuel)
   __Cont_get__ ,(return)
   __Wasm_call__ (,(msg) return __FALSE__ __NULL__) W name nums fuel ,(status value)
-  __String_equal__ status "ok" ,(test__) __if__ test__ (,() return __TRUE__ value) ,()
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() __Ref_set__ memo fuel ,() return __TRUE__ value) ,()
   __String_equal__ status "fuel" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
-  __Number_add__ fuel fuel ,(more)
-  Sjs_wasm_fuel_limit ,(limit)
-  __Number_subtract__ limit more ,(d)
-  __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
-  Sjs_wasm_run W name nums more)
+  Sjs_wasm_more_fuel fuel ,(go more)
+  __unless__ go (,() return __FALSE__ __NULL__) ,()
+  Sjs_wasm_run W name nums memo more)
 
 ;; ── 配列の引数（配列の計画の段階 A2）──
 ;; wasm のモジュールのメモリを f64 の語の列として使い、配列 1 つを「長さ、要素 0、要素 1、…」の連続した語に置く。要素が配列なら、
@@ -3730,20 +3751,19 @@
   __LList_cons__ x acc ,(acc)
   Sjs_wasm_reverse rest acc)
 
-;; 燃料 fuel で、配列を写して wasm 版を呼ぶ。使い切れば 2 倍にして、写し直してやり直す。結果が出れば書き戻して、真とその値。
-;; 写せない、上限を超える、trap なら偽
-(define Sjs_wasm_run_memory ,(W name depths writes args fuel)
+;; 燃料 fuel で、配列を写して wasm 版を呼ぶ。使い切れば 8 倍（上限まで）にして、写し直してやり直す（その間にほかの VProc が
+;; 配列を変えても、最後の 1 回をその時点で一度に動かしたのと同じになる）。結果が出れば書き戻し、その燃料を memo に入れて、
+;; 真とその値。写せない、上限で切れる、trap なら偽
+(define Sjs_wasm_run_memory ,(W name depths writes args memo fuel)
   __Cont_get__ ,(return)
   Sjs_wasm_pack depths args ,(ok params words backs)
   __unless__ ok (,() return __FALSE__ __NULL__) ,()
   __Wasm_call_memory__ (,(msg) return __FALSE__ __NULL__) W name params words fuel ,(status value out)
-  __String_equal__ status "ok" ,(test__) __if__ test__ (,() __if__ writes (,() Sjs_wasm_unpack backs out) ,() return __TRUE__ value) ,()
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() __if__ writes (,() Sjs_wasm_unpack backs out) ,() __Ref_set__ memo fuel ,() return __TRUE__ value) ,()
   __String_equal__ status "fuel" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
-  __Number_add__ fuel fuel ,(more)
-  Sjs_wasm_fuel_limit ,(limit)
-  __Number_subtract__ limit more ,(d)
-  __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
-  Sjs_wasm_run_memory W name depths writes args more)
+  Sjs_wasm_more_fuel fuel ,(go more)
+  __unless__ go (,() return __FALSE__ __NULL__) ,()
+  Sjs_wasm_run_memory W name depths writes args memo more)
 
 ;; 引数を写す：写せれば、真、wasm に渡す引数（数か、配列の先頭の語の番号）の LList、語の LList、書き戻す数の配列の
 ;; (配列 先頭の語の番号 長さ) の LList（先頭の語の番号の順）

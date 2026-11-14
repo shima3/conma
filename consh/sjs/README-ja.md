@@ -71,7 +71,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * nbody は配列を使うので、数の関数がなく、wasm 版の VM では ConMa 版で動く（計画の 9）。
 * 変換の時間（変換器を先に作り、変換だけ。5 回の最良）は、数の関数を探すようになって、loop が 0.041 秒 → 0.048 秒、fib が 0.044 秒 → 0.050 秒、nbody が 0.216 秒 → 0.223 秒になった。
 * `consh/sjs/bench/run.sh` は、wasm 版の VM があれば、この 3 つの列も出す。
-* 配列を使う数の関数（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A5。同じ Mac、4d7400f）：nbody 2000 が wasm 版の VM で 0.204 秒（ConMa 版だけなら 1.657 秒）、nbody 20000 が 0.282 秒（14.563 秒。Rust 版の VM の SJS は 10.642 秒、手で書いた ConMa は 0.863 秒、CPython は 0.087 秒）。大きな配列を ConMa の側から何度も渡すと、写す費用で、ConMa 版より遅くなることがある（計画の 15）。
+* 配列を使う数の関数（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A5。同じ Mac、4d7400f）：nbody 2000 が wasm 版の VM で 0.204 秒（ConMa 版だけなら 1.657 秒）、nbody 20000 が 0.282 秒（14.563 秒。Rust 版の VM の SJS は 10.642 秒、手で書いた ConMa は 0.863 秒、CPython は 0.087 秒）。大きな配列を ConMa の側から何度も渡すと、写す費用で、ConMa 版より遅くなることがある（計画の 15）。燃料を 2^20 から 8 倍ずつにし、関数ごとに覚えるようにした後（計画の 19。user + sys 秒の 3 回の最良）は、nbody 2000 が 0.191 秒、nbody 20000 が 0.225 秒（CPython は 0.088 秒）。実時間では nbody 200000 が 0.801 秒から 0.503 秒になり、CPython（0.696 秒）より速い。
 
 * VM のステップの数は、手で書いた ConMa の 4.8〜9.2 倍（loop の 1 回に 63 と 13、fib の 1 回の呼び出しに 4,383 と 528、nbody の 1 回の刻みに 16,188 と 1,766）。
 * 段階 B7 から、変換器（型の分かる所の確認を省く、Ref のない `const`、数のリテラルとの比較）、実行時の支え（配列の添字と分割代入、オブジェクトのメンバー）、VM（docs/FAST-PLAN-ja.md の F2〜F5 と、その後のプリミティブの読み方）、段階 B9（文ごとの行の記録をなくした）で速くなった（経緯）。
@@ -315,5 +315,5 @@ consh/SJS-WASM-PLAN-ja.md の段階 2。プログラムの一番外の function 
 * 配列（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1〜A3）：配列を読み書きする関数も数の関数にし、呼ぶときに引数の配列を wasm のメモリに写して、書き換えた数を書き戻す。nbody の `advance` などが数の関数になる。consh/sjs/test/step9 の case4、case5 と step11 が確かめる。テストでは `SJS_WASM_STRICT=1` を付けると、モジュールを作れなかった理由を標準エラーに出す。
 * ConSh（計画の段階 4）：`(( 名前 = 関数式 ))` で作った数だけを扱う関数も、wasm 版の VM とブラウザで WebAssembly で動く。後の `(( ))` が名前や `Math` のメンバーを書き換えると、呼ぶときに確かめて ConMa 版で動かす。consh/test/step21 の case9 が確かめる。
 * 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A0：一番外の数の定数の式（`const SOLAR_MASS = 4 * PI * PI`）と、値を返さない関数も、数の関数にする。consh/sjs/test/step9 の case3 が確かめる。
-* 燃料（計画の段階 3）：wasm 版を燃料 2^16 で呼び、使い切れば 2 倍にしてやり直す。上限の 2^30 を超えるか trap になれば（深い再帰など）、ConMa 版を始めから動かし、その中からの同じ関数の呼び出しも ConMa 版で動かす。consh/sjs/test/step10（wasm 版の VM だけ）が確かめる。
+* 燃料（計画の段階 3。consh/SJS-WASM-ARRAY-PLAN-ja.md の 19 で変えた）：wasm 版を燃料 2^20（関数ごとに、前に足りた燃料を覚えていれば、その燃料）で呼び、使い切れば 8 倍（上限まで）にしてやり直す。上限の 2^30 で切れるか trap になれば（深い再帰など）、ConMa 版を始めから動かし、その中からの同じ関数の呼び出しも ConMa 版で動かす。consh/sjs/test/step10（wasm 版の VM だけ）が確かめる。
 
