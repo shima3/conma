@@ -23,3 +23,5 @@ run case8 case8.sh < /dev/null
 # case9：数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 4）。wasm 版の VM では WebAssembly で、ほかの VM では ConMa 版で動き、
 # 同じログになる。後の (( )) が名前や Math のメンバーを書き換えると、ConMa 版で動く
 run case9 case9.sh < /dev/null
+# case10：配列を使う数の関数（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）。wasm 版の VM とほかの VM で同じログ
+run case10 case10.sh < /dev/null

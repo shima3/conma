@@ -1,0 +1,8 @@
+sum: 6
+xs: [10,20,30]
+s: [7,6]
+total: 6
+length: 2
+big sum: 2997
+total after sum changed: -2
+exit: 0
