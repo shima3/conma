@@ -482,6 +482,11 @@ fn subst_func(f: &Rc<FuncDef>, off: usize, v: &Value, scope: &Scope) -> Option<R
 
 /// scope: the scope of the new Body (that of b without the variable).
 fn subst_body(b: &BodyDef, off: usize, v: &Value, scope: &Scope) -> Option<Rc<BodyDef>> {
+    // Not into a frame chain (frame_chain) inside the LCont either: its variables beyond the frame
+    // are counted with the frame as one node, and new_body would drop the frame.
+    if b.frame != 0 {
+        return None;
+    }
     let operator = match &b.operator {
         Some(e) => Some(subst_expr(e, off, v, scope)?),
         None => None,

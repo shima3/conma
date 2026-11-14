@@ -336,4 +336,5 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 対応
 
-* まだない。
+* 1：直した。`subst_body` が、フレームを持つ Body（`b.frame != 0`）に入ったら畳み込みをやめる（vm/src/module.rs）。`const_fold` が LCont の Body そのものを見ていた確かめを、中の関数式の Body にも広げたことになる。フレームの変数を読む Body はもともと `S` で止まっていたので、畳み込まなくなるのは、フレームにまとめた連鎖を中に持ち、その変数を読まない所だけである。test/fast8 を足した（畳み込みにはこれまでテストがなかった）。case1 が指摘の例で、直す前の Rust VM では `expected Number, got String` で止まる。case2 はフレームの先の変数も読む例、case3 はフレームのない関数式に畳み込む例で、Python、Rust、wasm の VM で同じログになり、Rust VM では `CONMA_NO_FOLD=1` と `CONMA_FRAME_MIN=`（フレームなし）でも同じになる。test/ を Python、Rust、wasm の VM で（wasm は前からの step40 だけが違う）、consh/test を Rust VM（速い版と参照版）で、consh/sjs/test と consh/js/test を流して通った。変換版の VM は作り直していない（変換したコードのあるモジュールにはフレームを使わないので、この変更は関わらない）。
+* 2〜7：まだない。

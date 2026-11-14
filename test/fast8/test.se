@@ -1,0 +1,38 @@
+;; 数の定数の畳み込み（edd5945。Rust VM の module::const_fold）と、変数の多い連鎖のフレーム（9d465dc。module::frame_chain）。
+;; `__Number_fromString__ onError "数" ,(x) ...` の x を、LCont の中の関数式にも入れて畳み込むが、その中に、フレームに
+;; まとめた連鎖があれば畳み込まない（フレームの先の変数は、フレームを 1 つの節として数えるので）。
+;; どの VM でも、畳み込んでもしなくても、同じ値を読む（REVIEW-ja.md の 2026-11-14 の 1）
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define run ,(f) f)
+
+;; case1: フレームの変数を読まない連鎖の中で、畳み込む変数を読む
+(define case1 ,()
+  __Number_fromString__ __print_exit_error__ "3" ,(x)
+  run (,()
+    __NULL__ "a" "b" "c" "d" "e" "f" "g" "h" ,(a b c d e f g h)
+    __Number_toString__ x) ,(s)
+  println s)
+
+;; case2: 畳み込む変数の外の変数も、フレームの先から読む
+(define case2 ,()
+  __NULL__ "outer" ,(y)
+  __Number_fromString__ __print_exit_error__ "4.5" ,(x)
+  run (,()
+    __NULL__ "a" "b" "c" "d" "e" "f" "g" "h" ,(a b c d e f g h)
+    __Number_toString__ x ,(s)
+    __String_concat__ y " " ,(t)
+    __String_concat__ t s) ,(s)
+  println s)
+
+;; case3: フレームのない関数式の中には畳み込む（値は同じ）
+(define case3 ,()
+  __Number_fromString__ __print_exit_error__ "7" ,(x)
+  run (,()
+    __NULL__ "a" ,(a)
+    __Number_toString__ x) ,(s)
+  println s)
