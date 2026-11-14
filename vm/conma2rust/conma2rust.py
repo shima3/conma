@@ -36,6 +36,7 @@ between Number primitives), and hands the VProc to the per-Body functions
 ("bail") where it cannot go on.
 """
 
+import math
 import os
 import re
 import sys
@@ -84,7 +85,12 @@ def number_literal(atom):
     text = atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else None
     if text is None or not re.fullmatch(r"-?[0-9]+(\.[0-9]+)?", text):
         return None
-    return f"{float(text)!r}_f64"
+    n = float(text)
+    # too many digits for an f64: left to the primitive, which calls onError ("out of range"),
+    # as the VM does not fold it either (module::fold_number)
+    if math.isinf(n):
+        return None
+    return f"{n!r}_f64"
 
 # Inlining (Fuser.inline): the most Bodies of a Function written in place,
 # and the most calls written in place one in another.
