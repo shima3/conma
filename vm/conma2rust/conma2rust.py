@@ -755,7 +755,11 @@ class Fuser:
             c = self.constant(x, d, b.olist[1], 1, locals_)
             n = number_literal(c[2]) if c is not None else None
             if n is not None:
-                # a Number written as a String in place: an f64 constant (an experiment, docs/SPEED-ja.md)
+                # a Number written as a String in place: an f64 constant (an experiment, docs/SPEED-ja.md);
+                # a global onError is read first, as the VM reads it when it loads the Body (a global
+                # without a value stops the VProc there)
+                if b.olist[0][0] == "G" and args[0] is not None:
+                    out.append(f"let _ = {args[0]};")
                 out.append(f"let {self.xn(d)}: f64 = {n};")
                 return self.emit(lc, d + 1, locals_ + [(lc, 0, "f")], out, J)
         if one and name in NUM_OPS and len(b.olist) == NUM_OPS[name][1]:

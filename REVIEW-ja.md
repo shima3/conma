@@ -337,4 +337,5 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 ### 対応
 
 * 1：直した。`subst_body` が、フレームを持つ Body（`b.frame != 0`）に入ったら畳み込みをやめる（vm/src/module.rs）。`const_fold` が LCont の Body そのものを見ていた確かめを、中の関数式の Body にも広げたことになる。フレームの変数を読む Body はもともと `S` で止まっていたので、畳み込まなくなるのは、フレームにまとめた連鎖を中に持ち、その変数を読まない所だけである。test/fast8 を足した（畳み込みにはこれまでテストがなかった）。case1 が指摘の例で、直す前の Rust VM では `expected Number, got String` で止まる。case2 はフレームの先の変数も読む例、case3 はフレームのない関数式に畳み込む例で、Python、Rust、wasm の VM で同じログになり、Rust VM では `CONMA_NO_FOLD=1` と `CONMA_FRAME_MIN=`（フレームなし）でも同じになる。test/ を Python、Rust、wasm の VM で（wasm は前からの step40 だけが違う）、consh/test を Rust VM（速い版と参照版）で、consh/sjs/test と consh/js/test を流して通った。変換版の VM は作り直していない（変換したコードのあるモジュールにはフレームを使わないので、この変更は関わらない）。
-* 2〜7：まだない。
+* 2：直した。Rust VM の `load_const`（vm/src/step.rs）は、onError が大域の名前なら、畳み込む前にそれを読み、値がなければ畳み込まずに、そのまま読み込む（そこで、畳み込まないときと同じエラーとステップの数で止まる）。局所変数と関数式は、読んでも止まらないので読まない。conma2rust.py も、`__TRUE__` と `__FALSE__` を融合した連鎖で選ぶ所と同じく、大域の onError を先に読んでから f64 の定数を書く。test/fast8 に case4（`__Number_fromString__ noSuchGlobal "1"`）を足した。Python、Rust、wasm の VM で同じログになり、Rust VM では `CONMA_NO_FOLD=1` でも同じになる。変換版の VM は、test/fast8 のコードだけを入れたものを別のディレクトリに作って確かめた（case1〜4 が同じ出力。onError を読む行を消すと、case4 は `1` を出す）。リポジトリの vm/target-transpiled は作り直していない。
+* 3〜7：まだない。

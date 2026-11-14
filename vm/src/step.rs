@@ -92,6 +92,13 @@ fn load_const(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gv
         Ok(Value::Prim(p)) if p.name == "__Number_fromString__" => {}
         _ => return None,
     }
+    // The onError, read as when the Body is loaded as it is: a global without a value stops the
+    // VProc there (loaded as it is). A local or a function expression is always read.
+    if let Some(e @ crate::module::CExpr::G(..)) = body.olist.first() {
+        if eval(e, lvenv, gvenv).is_err() {
+            return None;
+        }
+    }
     let folded = crate::module::const_fold(body)?;
     vp.sinfo = body.sinfo.clone();
     m.steps += 3;

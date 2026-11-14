@@ -7,7 +7,7 @@ envs=("")
 [ "$CONMA_VM" = rust ] && envs+=("CONMA_NO_FOLD=1" "CONMA_FRAME_MIN=")
 for e in "${envs[@]}"
 do
-  for c in case1 case2 case3
+  for c in case1 case2 case3 case4
   do
     env $e PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
