@@ -1,5 +1,5 @@
 ;; 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A2：実行時の支えが、SJS の配列を wasm のモジュールのメモリに写し、
-;; "ok" なら数の配列の要素を書き戻す。手で書いた WAT のモジュールと、ConMa 版（"[ConMa]" を出す）を Sjs_wasm_fn で包んで呼ぶ。
+;; "ok" なら数の配列の要素を書き戻す（配列に書かない関数は書き戻さない）。手で書いた WAT のモジュールと、ConMa 版（"[ConMa]" を出す）を Sjs_wasm_fn で包んで呼ぶ。
 ;; wasm 版の VM では wasm 版が、ほかの VM では ConMa 版が動き、配列の結果は同じになる
 (include "util.se")
 (include "sjs_rt.se")
@@ -83,12 +83,12 @@
   Sjs_init ,(G)
   wat ,(text)
   Sjs_wasm_module text ,(W)
-  Sjs_wasm_fn W "sum" "1" __FALSE__ conma_sum ,(sum)
-  Sjs_wasm_fn W "scale" "1 0" __TRUE__ conma_scale ,(scale)
-  Sjs_wasm_fn W "bump" "2" __TRUE__ conma_bump ,(bump)
-  Sjs_wasm_fn W "oob" "1" __FALSE__ conma_oob ,(oob)
-  Sjs_wasm_fn W "sum" "1" __FALSE__ conma_marker ,(sumM)
-  Sjs_wasm_fn W "bump" "2" __FALSE__ conma_marker ,(bumpM)
+  Sjs_wasm_fn W "sum" "1" __FALSE__ __FALSE__ conma_sum ,(sum)
+  Sjs_wasm_fn W "scale" "1 0" __TRUE__ __TRUE__ conma_scale ,(scale)
+  Sjs_wasm_fn W "bump" "2" __TRUE__ __TRUE__ conma_bump ,(bump)
+  Sjs_wasm_fn W "oob" "1" __TRUE__ __FALSE__ conma_oob ,(oob)
+  Sjs_wasm_fn W "sum" "1" __FALSE__ __FALSE__ conma_marker ,(sumM)
+  Sjs_wasm_fn W "bump" "2" __TRUE__ __FALSE__ conma_marker ,(bumpM)
   num "1" ,(n1) num "2" ,(n2) num "3" ,(n3) num "-0" ,(nz) num "0.5" ,(half)
   list3 n1 n2 n3 ,(l123) Sjs_array G l123 ,(a)
   ;; 読む

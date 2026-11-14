@@ -3468,17 +3468,17 @@
 ;; ConMa 版に替えて動かしている間（busy が正）は、その中からこの関数を呼んでも、wasm 版を試さずに ConMa 版を動かす。
 ;; そうしないと、深い再帰が trap になったとき、ConMa 版の再帰の各段で wasm 版を試し直し、仕事が深さの 2 乗になる
 ;; （wasm の最初の実行は最適化の前のコードでスタックの枠が大きいので、深さ 100 万の再帰は trap になることがある）
-(define Sjs_wasm_fn ,(W name shapes void f)
-  Sjs_wasm_fn_core W name shapes void f (,() __NULL__ __TRUE__))
+(define Sjs_wasm_fn ,(W name shapes writes void f)
+  Sjs_wasm_fn_core W name shapes writes void f (,() __NULL__ __TRUE__))
 
 ;; ConSh の (( )) の数の関数（段階 4）：呼ぶとき、names（空白で区切った名前）の SJS変数が、作ったときの関数（ids の番号）を
 ;; 指し、usesMath なら Math のメンバーが元のままのときだけ wasm 版を使う（後の (( )) が書き換えることがある）
-(define Sjs_wasm_fn_checked ,(W G ids names usesMath name shapes void f)
+(define Sjs_wasm_fn_checked ,(W G ids names usesMath name shapes writes void f)
   Sjs_wasm_words names ,(list)
   ;; 確かめる Math のメンバーの名前の列は、関数を作るときに 1 度だけ作る（呼ぶたびに分けると、Math を使う関数が
   ;; wasm 版を使わないときより遅くなった。REVIEW-ja.md の 2026-11-14（2）の 4）
   Sjs_wasm_math_names ,(mnames)
-  Sjs_wasm_fn_core W name shapes void f (,()
+  Sjs_wasm_fn_core W name shapes writes void f (,()
     __Cont_get__ ,(return)
     __if__ usesMath (,() Sjs_wasm_math_ok G mnames ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
     Sjs_wasm_same_fns ids list))
@@ -3545,8 +3545,9 @@
   Sjs_wasm_same_members snap props rest)
 
 ;; Sjs_wasm_fn の本体。shapes は引数の形（深さ。0 は数、1 は数の配列、2 は数の配列の配列、…）を空白で区切ったもの
-;; （配列の計画の段階 A2）。check は、wasm 版を使ってよいかを返す thunk
-(define Sjs_wasm_fn_core ,(W name shapes void f check)
+;; （配列の計画の段階 A2）。writes が偽なら、配列に書かない関数なので、呼んだ後に書き戻さない（写す費用の改善）。
+;; check は、wasm 版を使ってよいかを返す thunk
+(define Sjs_wasm_fn_core ,(W name shapes writes void f check)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
   Sjs_wasm_depths shapes ,(depths n arrays)
@@ -3563,7 +3564,7 @@
     Sjs_wasm_fuel ,(fuel)
     ;; 配列の引数があれば、写して __Wasm_call_memory__ で呼ぶ（写せなければ ConMa 版）
     __if_then_else__ arrays
-      (,() Sjs_wasm_run_memory W name depths args fuel)
+      (,() Sjs_wasm_run_memory W name depths writes args fuel)
       (,()
         __Cont_get__ ,(give)
         Sjs_wasm_args args n ,(ok nums)
@@ -3632,18 +3633,18 @@
 
 ;; 燃料 fuel で、配列を写して wasm 版を呼ぶ。使い切れば 2 倍にして、写し直してやり直す。結果が出れば書き戻して、真とその値。
 ;; 写せない、上限を超える、trap なら偽
-(define Sjs_wasm_run_memory ,(W name depths args fuel)
+(define Sjs_wasm_run_memory ,(W name depths writes args fuel)
   __Cont_get__ ,(return)
   Sjs_wasm_pack depths args ,(ok params words backs)
   __unless__ ok (,() return __FALSE__ __NULL__) ,()
   __Wasm_call_memory__ (,(msg) return __FALSE__ __NULL__) W name params words fuel ,(status value out)
-  __String_equal__ status "ok" ,(test__) __if__ test__ (,() Sjs_wasm_unpack backs out ,() return __TRUE__ value) ,()
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() __if__ writes (,() Sjs_wasm_unpack backs out) ,() return __TRUE__ value) ,()
   __String_equal__ status "fuel" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
   __Number_add__ fuel fuel ,(more)
   Sjs_wasm_fuel_limit ,(limit)
   __Number_subtract__ limit more ,(d)
   __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
-  Sjs_wasm_run_memory W name depths args more)
+  Sjs_wasm_run_memory W name depths writes args more)
 
 ;; 引数を写す：写せれば、真、wasm に渡す引数（数か、配列の先頭の語の番号）の LList、語の LList、書き戻す数の配列の
 ;; (配列 先頭の語の番号 長さ) の LList（先頭の語の番号の順）
@@ -3701,19 +3702,30 @@
   Sjs_dec d ,(dm1)
   __Number_is_zero__ dm1 ,(leaf)
   Sjs_zero ,(zero)
-  __if_then_else__ leaf
-    (,() Sjs_wasm_numbers items len zero __NULL__)
-    (,() Sjs_wasm_children P items len zero dm1 __NULL__) ,(ok rev)
-  __unless__ ok (,() return __FALSE__ __NULL__) ,()
-  ;; 子を置いた後に、この配列を置く
   __Dict_lookup_or__ P "count" __print_exit_error__ ,(count)
-  __Ref_get__ count ,(addr)
   __Dict_lookup_or__ P "words" __print_exit_error__ ,(words)
-  __Ref_get__ words ,(ws)
-  __LList_cons__ len ws ,(ws)
-  Sjs_wasm_reverse rev __NULL__ ,(elems)
-  Sjs_wasm_push_all elems ws ,(ws)
-  __Ref_set__ words ws ,()
+  ;; 数の配列：長さと要素を、語の列（逆順）に直接積む（1 回なめるだけ。写す費用の改善）。数でない要素があれば、
+  ;; 写すのをやめる（語の列は捨てるので、途中まで積んでよい）。配列の配列：子を先に置いてから、子の先頭の語の番号を積む
+  __if_then_else__ leaf
+    (,()
+      __Ref_get__ count ,(addr0)
+      __Ref_get__ words ,(ws)
+      __LList_cons__ len ws ,(ws)
+      Sjs_wasm_numbers_onto items len zero ws ,(ok ws)
+      __unless__ ok (,() return __FALSE__ __NULL__) ,()
+      __Ref_set__ words ws ,()
+      __NULL__ addr0)
+    (,()
+      Sjs_wasm_children P items len zero dm1 __NULL__ ,(ok rev)
+      __unless__ ok (,() return __FALSE__ __NULL__) ,()
+      ;; 子を置いた後に、この配列を置く
+      __Ref_get__ count ,(addr1)
+      __Ref_get__ words ,(ws)
+      __LList_cons__ len ws ,(ws)
+      Sjs_wasm_reverse rev __NULL__ ,(elems)
+      Sjs_wasm_push_all elems ws ,(ws)
+      __Ref_set__ words ws ,()
+      __NULL__ addr1) ,(addr)
   Sjs_inc len ,(size)
   __Number_add__ addr size ,(next)
   __Ref_set__ count next ,()
@@ -3737,18 +3749,18 @@
   __LList_cons__ x ws ,(ws)
   Sjs_wasm_push_all rest ws)
 
-;; items の 0 から len - 1 までが、どれも数なら、真とその逆順の LList
-(define Sjs_wasm_numbers ,(items len i acc)
+;; items の 0 から len - 1 までが、どれも数なら、それを順に ws（逆順の語の列）に積んで、真と新しい ws
+(define Sjs_wasm_numbers_onto ,(items len i ws)
   __Cont_get__ ,(return)
   __Number_subtract__ len i ,(left)
-  __Number_is_zero__ left ,(test__) __if__ test__ (,() return __TRUE__ acc) ,()
+  __Number_is_zero__ left ,(test__) __if__ test__ (,() return __TRUE__ ws) ,()
   __Number_toString__ i ,(k)
   __Dict_lookup_or__ items k (,(key) return __FALSE__ __NULL__) ,(v)
   __type_name__ v ,(ty)
   __String_equal__ ty "Number" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
-  __LList_cons__ v acc ,(acc)
+  __LList_cons__ v ws ,(ws)
   Sjs_inc i ,(i)
-  Sjs_wasm_numbers items len i acc)
+  Sjs_wasm_numbers_onto items len i ws)
 
 ;; items の 0 から len - 1 までの配列を、深さ d で写す。写せれば、真と先頭の語の番号の逆順の LList
 (define Sjs_wasm_children ,(P items len i d acc)

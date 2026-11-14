@@ -2047,9 +2047,11 @@
           Gen_temp g "w" ,(wf)
           Gen_temp g "i" ,(iv)
           Gen_wasm_void e ,(vq)
+          Gen_wasm_writes e ,(wrq)
           Cat5 "\tSjs_wasm_fn_checked Wsjs G Wids " cq " " mq " " ,(c)
           Cat5 c wq " " nv " " ,(c)
-          Cat3 c vq " (,(" ,(c)
+          Cat4 c wrq " " vq ,(c)
+          __String_concat__ c " (,(" ,(c)
           Cat3 c args ") __Cont_get__ ,(return) " ,(c)
           Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
           Cat3 c wf ") " ,(c)
@@ -2064,8 +2066,10 @@
       Gen_quote wname ,(wq)
       Gen_temp g "w" ,(wf)
       Gen_wasm_void e ,(vq)
+      Gen_wasm_writes e ,(wrq)
       Cat5 "\tSjs_wasm_fn Wsjs " wq " " nv " " ,(c)
-      Cat3 c vq " (,(" ,(c)
+      Cat4 c wrq " " vq ,(c)
+      __String_concat__ c " (,(" ,(c)
       Cat3 c args ") __Cont_get__ ,(return) " ,(c)
       Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
       Cat3 c wf ") " ,(c)
@@ -2077,6 +2081,11 @@
   Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
   Cat3 c v ") " ,(c)
   __NULL__ c v)
+
+;; 数の関数が配列に書くか（sjs_wasm.se の "wasmWrites"）。__TRUE__ か __FALSE__ の名前
+(define Gen_wasm_writes ,(e)
+  __Dict_lookup_or__ e "wasmWrites" (,(k) __NULL__ __TRUE__) ,(w)
+  __if_then_else__ w (,() __NULL__ "__TRUE__") (,() __NULL__ "__FALSE__"))
 
 ;; 数の関数が値を返さないか（sjs_wasm.se の "wasmVoid"）。__TRUE__ か __FALSE__ の名前
 (define Gen_wasm_void ,(e)

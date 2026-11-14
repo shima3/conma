@@ -33,6 +33,7 @@
   Wy_infer_all E infos ,()
   Wx_compile_all E infos ,()
   Wx_fixpoint E infos ,()
+  Wx_mark_writes E infos ,()
   Wx_mark_checks E infos ,()
   Wx_module E infos)
 
@@ -46,6 +47,7 @@
   Wy_infer_all E infos ,()
   Wx_compile_all E infos ,()
   Wx_fixpoint E infos ,()
+  Wx_mark_writes E infos ,()
   Wx_module E infos)
 
 (define Wx_num ,(text)
@@ -976,6 +978,8 @@
   __Dict_put__ cx "callees" callees ,()
   __Ref_new__ __FALSE__ ,(usesMath)
   __Dict_put__ cx "usesMath" usesMath ,()
+  __Ref_new__ __FALSE__ ,(writes)
+  __Dict_put__ cx "writes" writes ,()
   Sjs_get info "void" ,(isVoid)
   __Dict_put__ cx "void" isVoid ,()
   Sjs_get info "params" ,(params)
@@ -998,6 +1002,8 @@
       Wx_stmts cx stmts "") ,(code)
   __Ref_get__ usesMath ,(um)
   __Dict_put__ info "math" um ,()
+  __Ref_get__ writes ,(wr)
+  __Dict_put__ info "writes" wr ,()
   Sjs_get info "label" ,(label)
   Sjs_get info "name" ,(name)
   Gen_quote name ,(qn)
@@ -1440,6 +1446,9 @@
 
 ;; 数の配列の要素への代入 o[i] op value（value が null なら 1。++ と -- のため）。$__set が範囲と整数を確かめる
 (define Wx_member_assign ,(cx target op value)
+  ;; 配列に書く関数（書き戻しが要る。Wx_mark_writes）
+  __Dict_lookup_or__ cx "writes" __print_exit_error__ ,(writesRef)
+  __Ref_set__ writesRef __TRUE__ ,()
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(test__) __if__ test__ (,() Wx_fail cx) ,()
   __Dict_lookup_or__ target "optional" (,(k) __NULL__ __FALSE__) ,(opt)
@@ -1859,6 +1868,39 @@
   Sjs_get info "ok" ,(ok)
   __unless__ ok (,() return __FALSE__) ,()
   Wx_all_ok E rest)
+
+;; 数の関数の fn に、配列に書くか（自分か、たどって呼ぶ数の関数が $__set を使うか）を "wasmWrites" に付ける。書かない関数は、
+;; 呼んだ後に配列を書き戻さない（実行時の支えの Sjs_wasm_run_memory。写す費用の改善）
+(define Wx_mark_writes ,(E infos)
+  __Cont_get__ ,(return)
+  __is_null__ infos ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ infos ,(info rest)
+  Sjs_get info "ok" ,(ok)
+  __if__ ok
+    (,()
+      __Dict_new__ ,(seen)
+      Sjs_get info "callees" ,(cs)
+      Wx_reach E cs seen ,()
+      __Dict_keys__ seen ,(keys)
+      __Ref_new__ __NULL__ ,(acc)
+      Gen_collect acc ,(sink)
+      keys sink ,(sk)
+      __Ref_get__ acc ,(names)
+      Sjs_get info "writes" ,(own)
+      Wx_any_writes E names own ,(writes)
+      Sjs_get info "fn" ,(fn)
+      __Dict_put__ fn "wasmWrites" writes) ,()
+  Wx_mark_writes E rest)
+
+(define Wx_any_writes ,(E names acc)
+  __Cont_get__ ,(return)
+  __if__ acc (,() return __TRUE__) ,()
+  __is_null__ names ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs)
+  __Dict_lookup_or__ funcs nm __print_exit_error__ ,(info)
+  __Dict_lookup_or__ info "writes" (,(k) __NULL__ __FALSE__) ,(w)
+  Wx_any_writes E rest w)
 
 ;; (( )) の数の関数の fn に、呼ぶときに確かめる名前（呼ぶ数の関数を、呼ぶものの呼ぶものまでたどった名前）と、
 ;; そのどれかが Math を使うかを付ける
