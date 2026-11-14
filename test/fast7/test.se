@@ -313,3 +313,26 @@
   deep_blocks limit ,(w) try_compile "blocks 10000" w ,()
   deep_blocks over ,(w) try_compile "blocks 10001" w ,()
   repeat "(" far ,(open) Cat "(module " open ,(w) try_compile "lists 30000" w)
+
+;; case10：アセンブラが受け付けていた正しくない WAT と、拒んでいた正しい WAT（REVIEW-ja.md の 2026-11-14（2）の 8）。
+;; end と else の後のラベルは、その block のラベル。_ は数字と数字の間だけ。0x の後は 16 進の数字だけ。番号に符号は付けない
+(define body ,(code)
+  Cat3 "(module (func (export \"f\") (param f64) (result f64) " code "))")
+
+(define case10 ,()
+  body "block $a nop end $b f64.const 0" ,(w) try_compile "end $b after block $a" w ,()
+  body "block nop end $b f64.const 0" ,(w) try_compile "end $b after block" w ,()
+  body "block $a nop end $a f64.const 0" ,(w) try_compile "end $a" w ,()
+  body "i32.const 1 if $t nop else $t nop end $t f64.const 0" ,(w) try_compile "else $t" w ,()
+  body "i32.const 1 if $t nop else $u nop end f64.const 0" ,(w) try_compile "else $u" w ,()
+  body "i32.const 0x-1 drop f64.const 0" ,(w) try_compile "0x-1" w ,()
+  body "i32.const -0xff_ff drop f64.const 0" ,(w) try_compile "-0xff_ff" w ,()
+  body "local.get +0" ,(w) try_compile "local.get +0" w ,()
+  body "local.get 0" ,(w) try_compile "local.get 0" w ,()
+  body "i32.const 1__0 drop f64.const 0" ,(w) try_compile "1__0" w ,()
+  body "i32.const _1 drop f64.const 0" ,(w) try_compile "_1" w ,()
+  body "i32.const 1_ drop f64.const 0" ,(w) try_compile "1_" w ,()
+  body "i32.const 1_000 drop f64.const 0" ,(w) try_compile "1_000" w ,()
+  body "f64.const 1__5" ,(w) try_compile "f64 1__5" w ,()
+  body "f64.const 1_5.2_5" ,(w) try_compile "f64 1_5.2_5" w ,()
+  body "block br +0 end f64.const 0" ,(w) try_compile "br +0" w)

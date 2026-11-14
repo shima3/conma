@@ -162,8 +162,14 @@
   Wx_t target ,(tt)
   __String_equal__ tt "member" ,(test__) __if__ test__
     (,() Sjs_get target "object" ,(o) Wx_is_id o "Math" ,(m) __if__ m (,() __Ref_set__ mathWritten __TRUE__) ,() return) ,()
-  ;; 代入の先の形（名前、分割代入、for の宣言）のすべての名前
-  Wx_walk target (,(x) Wx_t x ,(xt) __String_equal__ xt "id" ,(isId) __if__ isId (,() Sjs_get x "name" ,(nm) __Dict_put__ assigned nm __TRUE__) ,()))
+  ;; 代入の先の形（名前、分割代入、for の宣言）のすべての名前。分割代入の中の Math.名前 は、Math を書き換える
+  ;; （[Math.floor] = ...。既定値や計算したキーの中で読むだけの Math.名前 も、書き換えとみなす。そのときは数の関数にしない
+  ;; だけで、結果は変わらない）
+  Wx_walk target (,(x)
+    Wx_t x ,(xt)
+    __String_equal__ xt "member" ,(isMember)
+    __if__ isMember (,() Sjs_get x "object" ,(o) Wx_is_id o "Math" ,(m) __if__ m (,() __Ref_set__ mathWritten __TRUE__)) ,()
+    __String_equal__ xt "id" ,(isId) __if__ isId (,() Sjs_get x "name" ,(nm) __Dict_put__ assigned nm __TRUE__) ,()))
 
 ;; (( )) の式の E：Math は呼ぶときに確かめるので使ってよく、一番外の宣言と数の定数はない。"counts" は代入の回数
 (define Wx_env_module ,(e)
@@ -961,6 +967,9 @@
   __Dict_put__ cx "nlab" nlab ,()
   __Ref_new__ "" ,(decls)
   __Dict_put__ cx "decls" decls ,()
+  ;; 今のブロックで宣言した名前（Wx_scoped が、ブロックを出るときに locals から外す）
+  __Ref_new__ __NULL__ ,(scope)
+  __Dict_put__ cx "scope" scope ,()
   __Ref_new__ __NULL__ ,(loop)
   __Dict_put__ cx "loop" loop ,()
   __Ref_new__ __NULL__ ,(callees)
@@ -1082,9 +1091,13 @@
   __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
   __Dict_put__ E "arrays" __TRUE__)
 
-;; 局所の変数を宣言する（引数でない局所の変数）
+;; 局所の変数を宣言する（引数でない局所の変数）。名前は、今のブロックを出るまで有効
 (define Wx_declare ,(cx nm isConst)
   Wx_new_local cx nm isConst ,(l)
+  __Dict_lookup_or__ cx "scope" __print_exit_error__ ,(scope)
+  __Ref_get__ scope ,(names)
+  __LList_cons__ nm names ,(names)
+  __Ref_set__ scope names ,()
   __Dict_lookup_or__ cx "decls" __print_exit_error__ ,(decls)
   __Ref_get__ decls ,(d)
   Cat4 d "(local " l " f64) " ,(d)
@@ -1124,6 +1137,31 @@
 
 ;; ── 文 ──
 
+;; ブロック（{ }、for、for...of）の WAT を body で作る。ブロックの中で宣言した let と const は、ブロックを出ると
+;; 読めない（JavaScript と同じ。外の同じ名前を読むか、名前がなければ数の関数にしない）ので、locals から外す。
+;; WAT の局所の変数（$l番号）は関数で 1 つずつのまま
+(define Wx_scoped ,(cx body)
+  __Dict_lookup_or__ cx "scope" __print_exit_error__ ,(scope)
+  __Ref_get__ scope ,(outer)
+  __Ref_set__ scope __NULL__ ,()
+  body ,(c)
+  __Ref_get__ scope ,(names)
+  Wx_forget cx names ,()
+  __Ref_set__ scope outer ,()
+  __NULL__ c)
+
+(define Wx_forget ,(cx names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  __Dict_remove__ locals nm ,()
+  __String_concat__ "const:" nm ,(ck)
+  __Dict_remove__ locals ck ,()
+  __String_concat__ "type:" nm ,(tk)
+  __Dict_remove__ locals tk ,()
+  Wx_forget cx rest)
+
 (define Wx_stmts ,(cx stmts acc)
   __Cont_get__ ,(return)
   __is_null__ stmts ,(test__) __if__ test__ (,() return acc) ,()
@@ -1137,7 +1175,7 @@
   __is_null__ s ,(test__) __if__ test__ (,() return "") ,()
   Wx_t s ,(t)
   __String_equal__ t "empty" ,(test__) __if__ test__ (,() return "") ,()
-  __String_equal__ t "block" ,(test__) __if__ test__ (,() Sjs_get s "body" ,(b) Wx_stmts cx b "" ,(c) return c) ,()
+  __String_equal__ t "block" ,(test__) __if__ test__ (,() Sjs_get s "body" ,(b) Wx_scoped cx (,() Wx_stmts cx b "") ,(c) return c) ,()
   __String_equal__ t "decl" ,(test__) __if__ test__ (,() Wx_decl cx s ,(c) return c) ,()
   __String_equal__ t "expr" ,(test__) __if__ test__ (,() Sjs_get s "expr" ,(e) Wx_effect cx e ,(c) return c) ,()
   __String_equal__ t "return" ,(test__) __if__ test__
@@ -1169,12 +1207,13 @@
       return c) ,()
   __String_equal__ t "for" ,(test__) __if__ test__
     (,()
-      __Dict_lookup_or__ s "init" (,(k) __NULL__ __NULL__) ,(init)
-      Wx_stmt cx init ,(ic)
-      __Dict_lookup_or__ s "test" (,(k) __NULL__ __NULL__) ,(test)
-      __Dict_lookup_or__ s "update" (,(k) __NULL__ __NULL__) ,(update)
-      Sjs_get s "body" ,(body)
-      Wx_loop cx ic test body update ,(c)
+      Wx_scoped cx (,()
+        __Dict_lookup_or__ s "init" (,(k) __NULL__ __NULL__) ,(init)
+        Wx_stmt cx init ,(ic)
+        __Dict_lookup_or__ s "test" (,(k) __NULL__ __NULL__) ,(test)
+        __Dict_lookup_or__ s "update" (,(k) __NULL__ __NULL__) ,(update)
+        Sjs_get s "body" ,(body)
+        Wx_loop cx ic test body update) ,(c)
       return c) ,()
   __String_equal__ t "dowhile" ,(test__) __if__ test__
     (,()
@@ -1182,7 +1221,7 @@
       Sjs_get s "body" ,(body)
       Wx_dowhile cx test body ,(c)
       return c) ,()
-  __String_equal__ t "forof" ,(test__) __if__ test__ (,() Wx_forof cx s ,(c) return c) ,()
+  __String_equal__ t "forof" ,(test__) __if__ test__ (,() Wx_scoped cx (,() Wx_forof cx s) ,(c) return c) ,()
   Sjs_in_words t "break continue" ,(test__) __if__ test__
     (,()
       Sjs_get s "label" ,(lab)

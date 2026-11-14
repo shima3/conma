@@ -242,21 +242,33 @@ fn section(out: &mut Vec<u8>, id: u8, body: &[u8]) {
     out.extend_from_slice(body);
 }
 
+/// True if s is digits (hexadecimal ones with hex), with single _ between two of them.
+fn digits_ok(s: &str, hex: bool) -> bool {
+    let b = s.as_bytes();
+    let digit = |c: u8| if hex { c.is_ascii_hexdigit() } else { c.is_ascii_digit() };
+    !b.is_empty()
+        && b.iter().enumerate().all(|(k, &c)| {
+            digit(c) || (c == b'_' && k > 0 && k + 1 < b.len() && digit(b[k - 1]) && digit(b[k + 1]))
+        })
+}
+
 /// An integer literal (decimal or 0x hexadecimal, with an optional sign and _
 /// between digits) within [min, max].
 fn parse_int(text: &str, min: i128, max: i128) -> Option<i128> {
-    let t = text.replace('_', "");
-    let (neg, digits) = match t.strip_prefix('-') {
-        Some(d) => (true, d.to_string()),
-        None => (false, t.strip_prefix('+').unwrap_or(&t).to_string()),
+    let (neg, digits) = match text.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
     };
     let v = if let Some(h) = digits.strip_prefix("0x") {
-        i128::from_str_radix(h, 16).ok()?
-    } else {
-        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        if !digits_ok(h, true) {
             return None;
         }
-        digits.parse::<i128>().ok()?
+        i128::from_str_radix(&h.replace('_', ""), 16).ok()?
+    } else {
+        if !digits_ok(digits, false) {
+            return None;
+        }
+        digits.replace('_', "").parse::<i128>().ok()?
     };
     let v = if neg { -v } else { v };
     if v < min || v > max {
@@ -266,9 +278,22 @@ fn parse_int(text: &str, min: i128, max: i128) -> Option<i128> {
     }
 }
 
+/// An unsigned integer literal (an index, an offset, a number of pages: no sign) within [0, max].
+fn parse_uint(text: &str, max: i128) -> Option<i128> {
+    if text.starts_with('+') || text.starts_with('-') {
+        return None;
+    }
+    parse_int(text, 0, max)
+}
+
 /// A float literal: decimal (as Rust reads it, rounded to the nearest), inf,
 /// nan, with an optional sign.
 fn parse_f64(text: &str) -> Option<f64> {
+    // _ only between two digits
+    let b = text.as_bytes();
+    if b.iter().enumerate().any(|(k, &c)| c == b'_' && !(k > 0 && k + 1 < b.len() && b[k - 1].is_ascii_digit() && b[k + 1].is_ascii_digit())) {
+        return None;
+    }
     let t = text.replace('_', "");
     let (neg, body) = match t.strip_prefix('-') {
         Some(b) => (true, b),
@@ -460,7 +485,7 @@ impl<'a> Ctx<'a> {
                 Some(&i) => Ok(i as u64),
                 None => err(x.pos(), format!("unknown local {}", a)),
             },
-            Some(a) => match parse_int(a, 0, self.nlocals as i128 - 1) {
+            Some(a) => match parse_uint(a, self.nlocals as i128 - 1) {
                 Some(i) => Ok(i as u64),
                 None => err(x.pos(), format!("unknown local {}", a)),
             },
@@ -476,7 +501,7 @@ impl<'a> Ctx<'a> {
                 }
             }
             // The function body is the outermost target, at depth labels.len().
-            Some(a) => match parse_int(a, 0, self.labels.len() as i128) {
+            Some(a) => match parse_uint(a, self.labels.len() as i128) {
                 Some(d) => Ok(d as u64),
                 None => err(x.pos(), format!("unknown label {}", a)),
             },
@@ -489,7 +514,7 @@ impl<'a> Ctx<'a> {
                 Some(&i) => Ok(i as u64),
                 None => err(x.pos(), format!("unknown function {}", a)),
             },
-            Some(a) => match parse_int(a, 0, self.nfuncs as i128 - 1) {
+            Some(a) => match parse_uint(a, self.nfuncs as i128 - 1) {
                 Some(i) => Ok(i as u64),
                 None => err(x.pos(), format!("unknown function {}", a)),
             },
@@ -525,7 +550,7 @@ fn memarg(items: &[Sx], i: &mut usize, out: &mut Vec<u8>) -> Result<(), String> 
     let mut align: u64 = 3;
     while let Some(Sx::Atom(a, pos)) = items.get(*i) {
         if let Some(v) = a.strip_prefix("offset=") {
-            match parse_int(v, 0, u32::MAX as i128) {
+            match parse_uint(v, u32::MAX as i128) {
                 Some(n) => offset = n as u64,
                 None => return err(*pos, format!("bad offset {}", v)),
             }
@@ -635,6 +660,20 @@ fn block_head(items: &[Sx], i: &mut usize) -> Result<(Option<String>, u8), Strin
     Ok((label, bt))
 }
 
+/// Skip the $label after end or else (word) at items[*i], if any: it must be the label of the
+/// block.
+fn end_label(items: &[Sx], i: &mut usize, label: &Option<String>, word: &str) -> Result<(), String> {
+    if let Some(Sx::Atom(l, pos)) = items.get(*i) {
+        if l.starts_with('$') {
+            if label.as_deref() != Some(l.as_str()) {
+                return err(*pos, format!("{} {} does not match the label of the block", word, l));
+            }
+            *i += 1;
+        }
+    }
+    Ok(())
+}
+
 /// Encode the flat or folded instructions items[*i..] until one of the atoms
 /// in stop (returned, None at the end of items).
 fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &mut Vec<u8>) -> Result<Option<String>, String> {
@@ -659,11 +698,13 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
                         if a == "loop" {
                             out.extend_from_slice(FUEL_CHECK);
                         }
-                        ctx.labels.push(label);
+                        ctx.labels.push(label.clone());
                         ctx.enter(*pos)?;
                         let stops: &[&str] = if a == "if" { &["else", "end"] } else { &["end"] };
                         let mut found = encode_seq(ctx, items, i, stops, out)?;
                         if found.as_deref() == Some("else") {
+                            // an optional $label after else, the label of the if
+                            end_label(items, i, &label, "else")?;
                             out.push(0x05);
                             found = encode_seq(ctx, items, i, &["end"], out)?;
                         }
@@ -672,12 +713,8 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
                         }
                         ctx.depth -= 1;
                         ctx.labels.pop();
-                        // an optional $label after end
-                        if let Some(l) = items.get(*i).and_then(|y| y.atom()) {
-                            if l.starts_with('$') {
-                                *i += 1;
-                            }
-                        }
+                        // an optional $label after end, the label of the block
+                        end_label(items, i, &label, "end")?;
                         out.push(0x0b);
                     }
                     "else" | "end" => return err(*pos, format!("unexpected {}", a)),
@@ -937,7 +974,7 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
                         j += 1;
                     }
                 }
-                let limits: Vec<Option<i128>> = items[j..].iter().map(|y| y.atom().and_then(|a| parse_int(a, 0, 65536))).collect();
+                let limits: Vec<Option<i128>> = items[j..].iter().map(|y| y.atom().and_then(|a| parse_uint(a, 65536))).collect();
                 memory = Some(match limits.as_slice() {
                     [Some(min)] => (*min as u64, None),
                     [Some(min), Some(max)] if max >= min => (*min as u64, Some(*max as u64)),

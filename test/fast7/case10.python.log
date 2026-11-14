@@ -1,0 +1,17 @@
+end $b after block $a: __Wasm_compile__: WebAssembly is not available
+end $b after block: __Wasm_compile__: WebAssembly is not available
+end $a: __Wasm_compile__: WebAssembly is not available
+else $t: __Wasm_compile__: WebAssembly is not available
+else $u: __Wasm_compile__: WebAssembly is not available
+0x-1: __Wasm_compile__: WebAssembly is not available
+-0xff_ff: __Wasm_compile__: WebAssembly is not available
+local.get +0: __Wasm_compile__: WebAssembly is not available
+local.get 0: __Wasm_compile__: WebAssembly is not available
+1__0: __Wasm_compile__: WebAssembly is not available
+_1: __Wasm_compile__: WebAssembly is not available
+1_: __Wasm_compile__: WebAssembly is not available
+1_000: __Wasm_compile__: WebAssembly is not available
+f64 1__5: __Wasm_compile__: WebAssembly is not available
+f64 1_5.2_5: __Wasm_compile__: WebAssembly is not available
+br +0: __Wasm_compile__: WebAssembly is not available
+exit: 0

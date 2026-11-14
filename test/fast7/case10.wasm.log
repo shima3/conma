@@ -1,0 +1,17 @@
+end $b after block $a: __Wasm_compile__: line 1 col 70: end $b does not match the label of the block
+end $b after block: __Wasm_compile__: line 1 col 67: end $b does not match the label of the block
+end $a: compiled
+else $t: compiled
+else $u: __Wasm_compile__: line 1 col 80: else $u does not match the label of the block
+0x-1: __Wasm_compile__: line 1 col 63: expected an i32, got 0x-1
+-0xff_ff: compiled
+local.get +0: __Wasm_compile__: line 1 col 63: unknown local +0
+local.get 0: compiled
+1__0: __Wasm_compile__: line 1 col 63: expected an i32, got 1__0
+_1: __Wasm_compile__: line 1 col 63: expected an i32, got _1
+1_: __Wasm_compile__: line 1 col 63: expected an i32, got 1_
+1_000: compiled
+f64 1__5: __Wasm_compile__: line 1 col 63: expected an f64, got 1__5
+f64 1_5.2_5: compiled
+br +0: __Wasm_compile__: line 1 col 62: unknown label +0
+exit: 0
