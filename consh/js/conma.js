@@ -1386,17 +1386,173 @@ var ConMaVM = (function () {
   let consoleFallback = null; // write(fd, bytes) of the host
   let consoleOriginal = null;
 
+  // console.log of a value: a string as it is, an error as String() makes it (Node.js also writes
+  // its stack), anything else as util.inspect of Node.js makes it with its defaults (depth 2,
+  // breakLength 80, compact 3, maxArrayLength 100), the same steps as consh/include/sjs_inspect.se
+  // for SJS. A Promise is "Promise {}": its state cannot be seen from JavaScript.
   function inspect(v) {
     if (typeof v === "string") return v;
-    if (typeof v === "object" && v !== null) {
-      try {
-        const j = JSON.stringify(v);
-        if (j !== undefined) return j;
-      } catch (e) {
-        // a cycle: as String() makes it
+    if (v instanceof Error) return String(v);
+    const ctx = { cur: 0, seen: [], refs: new Map(), next: 1 };
+    return inspectValue(ctx, v, 0, 0);
+  }
+
+  function inspectValue(ctx, v, depth, indent) {
+    if (typeof v === "string") return inspectString(v, indent);
+    if (typeof v === "number") return Object.is(v, -0) ? "-0" : String(v);
+    if (typeof v === "bigint") return `${v}n`;
+    if (typeof v === "symbol") return String(v);
+    if (v === undefined || v === null || typeof v === "boolean") return String(v);
+    if (typeof v === "function") {
+      const kind = v.constructor && ["GeneratorFunction", "AsyncFunction", "AsyncGeneratorFunction"].includes(v.constructor.name)
+        ? v.constructor.name : "Function";
+      return v.name ? `[${kind}: ${v.name}]` : `[${kind} (anonymous)]`;
+    }
+    const tag = Object.prototype.toString.call(v);
+    if (tag === "[object Generator]") return "Object [Generator] {}";
+    if (tag === "[object AsyncGenerator]") return "Object [AsyncGenerator] {}";
+    if (tag === "[object Promise]") return "Promise {}";
+    if (v instanceof Error) return `[${String(v)}]`;
+    const isArray = Array.isArray(v);
+    // a cycle, empty, too deep: in this order
+    if (ctx.seen.includes(v)) {
+      if (!ctx.refs.has(v)) ctx.refs.set(v, ctx.next++);
+      return `[Circular *${ctx.refs.get(v)}]`;
+    }
+    const keys = isArray ? null : Object.keys(v);
+    if (isArray ? v.length === 0 : keys.length === 0) return isArray ? "[]" : "{}";
+    if (depth > 2) return isArray ? "[Array]" : "[Object]";
+    ctx.seen.push(v);
+    ctx.cur = depth;
+    const output = [];
+    if (isArray) {
+      let holes = 0;
+      const flush = () => {
+        if (holes > 0) output.push(`<${holes} empty item${holes > 1 ? "s" : ""}>`);
+        holes = 0;
+      };
+      for (let i = 0; i < v.length; i++) {
+        if (!Object.prototype.hasOwnProperty.call(v, i)) {
+          holes++;
+          continue;
+        }
+        flush();
+        if (output.length >= 100) {
+          const left = v.length - i;
+          output.push(`... ${left} more item${left > 1 ? "s" : ""}`);
+          holes = 0;
+          break;
+        }
+        output.push(inspectValue(ctx, v[i], depth + 1, indent + 2));
+      }
+      flush();
+    } else {
+      for (const k of keys) {
+        const ks = /^[a-zA-Z_][a-zA-Z_0-9]*$/.test(k) ? k : inspectQuote(k);
+        output.push(`${ks}: ${inspectValue(ctx, v[k], depth + 1, indent + 2)}`);
       }
     }
-    return String(v);
+    ctx.seen.pop();
+    let s = inspectReduce(ctx, output, isArray ? "[" : "{", isArray ? "]" : "}", isArray, depth, indent, isArray ? v : null);
+    if (ctx.refs.has(v)) s = `<ref *${ctx.refs.get(v)}> ${s}`;
+    return s;
+  }
+
+  function inspectString(s, indent) {
+    if (s.length > 16 && s.length > 76 - indent) {
+      const lines = s.split(/(?<=\n)/);
+      return lines.map(inspectQuote).join(` +\n${" ".repeat(indent + 2)}`);
+    }
+    return inspectQuote(s);
+  }
+
+  function inspectQuote(s) {
+    let q = "'";
+    if (s.includes("'")) {
+      if (!s.includes('"')) q = '"';
+      else if (!s.includes("`") && !s.includes("${")) q = "`";
+    }
+    let out = q;
+    for (const c of s) {
+      const code = c.codePointAt(0);
+      if (c === q || c === "\\") out += "\\" + c;
+      else if (c === "\n") out += "\\n";
+      else if (c === "\t") out += "\\t";
+      else if (c === "\r") out += "\\r";
+      else if (code === 8) out += "\\b";
+      else if (code === 12) out += "\\f";
+      else if (code < 32 || (code >= 127 && code < 160)) out += "\\x" + code.toString(16).toUpperCase().padStart(2, "0");
+      else out += c;
+    }
+    return out + q;
+  }
+
+  // reduceToSingleString of Node.js
+  function inspectReduce(ctx, output, open, close, isArray, depth, indent, value) {
+    const entries = output.length;
+    if (isArray && entries > 6) output = inspectGroup(output, indent, value);
+    if (ctx.cur - depth < 3 && entries === output.length) {
+      const start = output.length + indent + open.length + 10;
+      let total = output.length + start;
+      let fits = total + output.length <= 80;
+      for (let i = 0; fits && i < output.length; i++) {
+        total += output[i].length;
+        if (total > 80) fits = false;
+      }
+      if (fits) {
+        const joined = output.join(", ");
+        if (!joined.includes("\n")) return `${open} ${joined} ${close}`;
+      }
+    }
+    const nl = `\n${" ".repeat(indent)}`;
+    return `${open}${nl}  ${output.join(`,${nl}  `)}${nl}${close}`;
+  }
+
+  // groupArrayElements of Node.js
+  function inspectGroup(output, indent, value) {
+    let total = 0;
+    let maxLength = 0;
+    let outputLength = output.length;
+    if (output[outputLength - 1].startsWith("... ")) outputLength--;
+    const dataLen = [];
+    for (let i = 0; i < outputLength; i++) {
+      const len = output[i].length;
+      dataLen.push(len);
+      total += len + 2;
+      if (maxLength < len) maxLength = len;
+    }
+    const actualMax = maxLength + 2;
+    if (actualMax * 3 + indent < 80 && (total / actualMax > 5 || maxLength <= 6)) {
+      const averageBias = Math.sqrt(actualMax - total / output.length);
+      const biasedMax = Math.max(actualMax - 3 - averageBias, 1);
+      const columns = Math.min(
+        Math.round(Math.sqrt(2.5 * biasedMax * outputLength) / biasedMax),
+        Math.floor((80 - indent) / actualMax), 12, 15);
+      if (columns <= 1) return output;
+      const widths = [];
+      for (let i = 0; i < columns; i++) {
+        let w = 0;
+        for (let j = i; j < outputLength; j += columns) if (dataLen[j] > w) w = dataLen[j];
+        widths.push(w + 2);
+      }
+      let right = value !== null;
+      for (let i = 0; right && i < output.length; i++) if (typeof value[i] !== "number") right = false;
+      const rows = [];
+      for (let i = 0; i < outputLength; i += columns) {
+        const max = Math.min(i + columns, outputLength);
+        let str = "";
+        let j = i;
+        for (; j < max - 1; j++) {
+          const cell = `${output[j]}, `;
+          str += right ? cell.padStart(widths[j - i], " ") : cell.padEnd(widths[j - i], " ");
+        }
+        str += right ? output[j].padStart(widths[j - i] - 2, " ") : output[j];
+        rows.push(str);
+      }
+      if (outputLength < output.length) rows.push(output[outputLength]);
+      return rows;
+    }
+    return output;
   }
 
   function installConsole(write) {

@@ -6,6 +6,6 @@ ReferenceError: nosuch is not defined
 no param
 deep bottom
 bad 2
-[1,"two",3]
+[ 1, 'two', 3 ]
 re-inner
 exit: 0

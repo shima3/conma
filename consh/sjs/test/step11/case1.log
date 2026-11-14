@@ -2,15 +2,15 @@
 sum 6
 [ConMa]
 scale undefined
-after scale [2,4,6]
+after scale [ 2, 4, 6 ]
 [ConMa]
 bump undefined
-after bump [[21,0],[13,3],[21,0]]
+after bump [ [ 21, -0 ], [ 13, 3 ], [ 21, -0 ] ]
 [ConMa]
 sum 100000 5000050000
 [ConMa]
 oob 0
-after oob [2,4,6]
+after oob [ 2, 4, 6 ]
 [ConMa]
 number fallback
 [ConMa]

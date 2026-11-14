@@ -20,6 +20,7 @@
 ;; 実行時のエラー（TypeError など）は、隠した name と message を持つオブジェクト（"error" の印。JSON では {}、
 ;; String では "TypeError: メッセージ"。段階 A の Error と同じ見え方）にして投げる。文脈 G は PDict の "sjs_G" にも置く
 (include "sjs_bits.se")
+(include "sjs_inspect.se")
 
 ;; ── 文脈と大域の名前 ──
 
@@ -1622,23 +1623,17 @@
   __String_concat__ acc s ,(acc)
   Sjs_join_list rest sep acc __FALSE__)
 
-;; ── console.log の形（conma.js の inspect と同じ）──
+;; ── console.log の形（Node.js の util.inspect と同じ手順。sjs_inspect.se。conma.js の inspect も同じ）──
+;; 文字列はそのまま、一番外のエラーは String と同じ（"TypeError: メッセージ"。Node.js はスタックも出す）、ほかは Sjs_inspect
 
 (define Sjs_console_string ,(v)
   __Cont_get__ ,(return)
   Sjs_kind v ,(kind)
-  __String_equal__ kind "array" ,(isArray)
+  __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "object" ,(isObject)
-  __String_equal__ kind "generator" ,(isGen0)
-  __String_equal__ kind "asyncgen" ,(isAg)
-  __or__ isGen0 isAg ,(isGen)
-  __String_equal__ kind "promise" ,(isPromise)
-  __or__ isArray isObject ,(container)
-  __or__ container isGen ,(container)
-  __or__ container isPromise ,(container)
-  __if__ container
-    (,() Sjs_json v ,(j) __is_null__ j ,(none) __unless__ none (,() return j) ,()) ,()
-  Sjs_to_string v)
+  __if__ isObject
+    (,() __Dict_lookup_or__ v "error" (,(k) __NULL__ __FALSE__) ,(isError) __if__ isError (,() Sjs_to_string v ,(s) return s) ,()) ,()
+  Sjs_inspect v)
 
 ;; ── 数にする（Number(x)）──
 

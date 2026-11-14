@@ -12,7 +12,7 @@ one other caught t
 in inner: 50 50
 after inner: 5
 in a pipeline: 5
-log 3 [1,2]
+log 3 [ 1, 2 ]
 to a file
 c=3 status 0
 HELLO

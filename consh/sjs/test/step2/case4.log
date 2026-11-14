@@ -1,7 +1,7 @@
 hello world! 3 and 1,2 and null and [object Object] nested in world
 multi
 line esc ` ${x} 	.
-["a","b","c"] ["a","b","c"] HELLO hello t
+[ 'a', 'b', 'c' ] [ 'a', 'b', 'c' ] HELLO hello t
 bc ef 2 true true true
 ababab b c 3
 exit: 0

@@ -15,7 +15,7 @@ consh/sjs/bench/run.sh nbody 2000 # 測る（Node.js、CPython、手で書いた
 CONMA_VM=wasm consh/sjs/sjs file.sjs  # wasm 版の VM（Node.js）で動かす。数の関数は WebAssembly で動く（経緯の「数の関数の wasm 版」）
 ```
 
-SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は ConSh の段階 A（conma.js の `inspect`）と同じで、文字列はそのまま、配列とオブジェクトは `JSON.stringify`、ほかは `String` にする。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.sjs:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
+SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は Node.js の `console.log`（`util.inspect` の既定の設定：深さ 2、1 行 80 文字、7 個以上の配列は列にそろえる、循環は `<ref *1>` と `[Circular *1]`）と同じで、文字列はそのまま書く（2026-11-14 から。consh/include/sjs_inspect.se。前は配列とオブジェクトを `JSON.stringify` の形で書いた）。ConSh の段階 A（conma.js の `inspect`）も同じ。Node.js と違うのは、エラーのスタックを出さない（一番外では `TypeError: ...`、中では `[TypeError: ...]`）こと、オブジェクトの名前の順（整数の名前を先にしない）、ジェネレータ関数と async 関数も `[Function: 名前]` と書くこと、`console.log("%d", 5)` のような書式を使わないこと。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.sjs:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
 
 ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモジュールにして、新しい VProc で動かす。ConMa 版の ConSh（`CONSH_IMPL=conma`、ネイティブの VM、Node.js の wasm 版、ブラウザ版）で使える。Rust 版の ConSh（`CONSH_IMPL` の既定）には `(( ))` がない。ホストの JavaScript には触れないので、`CONSH_ENABLE_JS` は要らない。
 
@@ -34,7 +34,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * **SJS の範囲の外**（`not in SJS`、終了ステータス 2）：`this`、`new`、`class`、`import`、`eval`、`arguments`、`globalThis`、`Function` などの名前、`__` で始まる名前、`.constructor`、`.prototype`、`.__proto__` などのプロパティ（計算したキーも実行時に確かめる）、正規表現、`==` と `!=`、getter と setter、`instanceof`
 * **まだないもの**：整数でも 0.5 でもない指数の `**`（`TypeError: not yet translated to ConMa`）と、`Math` の `exp`、`log`、`sin` など（ConMa の VM にプリミティブがない）。`Promise.race`、`allSettled`、`any`。論理の代入（`&&=`、`||=`、`??=`。`not yet translated`）。数にすると無限大になる数のリテラル（`1e999`）は `SyntaxError: a bad number`
 * **プロトタイプがない**：メソッドは名前で選ぶ。`"toString" in {}` は偽（JavaScript は真）。関数の `length` と `name` は、`in` では真だが、読むと `undefined`
-* **値**：`-0` は JavaScript と同じに作り（単項の `-`、`Math.trunc`、`ceil`、`round`、`min`、`%` など）、`1 / -0` は `-Infinity`（2026-11-14 から。経緯の「-0」）。ただし、`console.log(-0)` は `0` と書く（`String(-0)` と同じ。Node.js の `console.log` は `-0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は正確な剰余で、JavaScript と同じ値になる（2026-11-14 から。前は `a - b * trunc(a / b)` で、大きな数では下の桁が違った）。数の文字列も JavaScript と同じ（2026-11-14 から。ConMa の `__Number_toString__` は整数の値の正確な桁を出すので、2^53 以上の整数は、読み戻せる最短の桁を探して直す。`String(85715430223118340)` は、前は `85715430223118336` だった）
+* **値**：`-0` は JavaScript と同じに作り（単項の `-`、`Math.trunc`、`ceil`、`round`、`min`、`%` など）、`1 / -0` は `-Infinity`（2026-11-14 から。経緯の「-0」）。`console.log(-0)` は、Node.js と同じく `-0` と書く（2026-11-14 から。`String(-0)` は `0`）。文字列の長さと添字は、文字（コードポイント）で数える（JavaScript は UTF-16 の単位）。`toUpperCase` と `toLowerCase` は ASCII の英字だけ。`%` は正確な剰余で、JavaScript と同じ値になる（2026-11-14 から。前は `a - b * trunc(a / b)` で、大きな数では下の桁が違った）。数の文字列も JavaScript と同じ（2026-11-14 から。ConMa の `__Number_toString__` は整数の値の正確な桁を出すので、2^53 以上の整数は、読み戻せる最短の桁を探して直す。`String(85715430223118340)` は、前は `85715430223118336` だった）
 * **表示**：関数は `function () { [native code] }`、`console.log` では `[Function (anonymous)]`
 * **ジェネレータ**：`yield*` は、`next(x)` の `x`、`throw`、`return` を、委ねた先に渡さない（async ジェネレータの `yield*` は `next(x)` の `x` だけを渡す）
 * **`typeof` を定義されていない名前に使う**と、`"undefined"` でなく `ReferenceError`
@@ -160,7 +160,7 @@ consh/include/
 ### 段階 B5a で足したもの：ジェネレータ（2026/11/11）
 
 * `function*` の式と宣言、オブジェクトのメソッド `*m() { }`、`yield`、`yield 値`、`yield* 値`（配列、文字列、ジェネレータ。値はジェネレータの戻り値）
-* ジェネレータのオブジェクト：`next(x)`、`return(x)`（`finally` を実行し、`catch` は通る）、`throw(x)`、`typeof` は `"object"`、`String` は `[object Generator]`、`JSON.stringify` と `console.log` は `{}`。走っているジェネレータの `next` は `TypeError: Generator is already running`
+* ジェネレータのオブジェクト：`next(x)`、`return(x)`（`finally` を実行し、`catch` は通る）、`throw(x)`、`typeof` は `"object"`、`String` は `[object Generator]`、`JSON.stringify` は `{}`、`console.log` は `Object [Generator] {}`。走っているジェネレータの `next` は `TypeError: Generator is already running`
 * `for...of` は、ジェネレータから値を 1 つずつ読む（終わらないジェネレータも `break` で抜けられる）。スプレッドと分割代入は、すべて読む
 * 関数の宣言（`function f() { }`、`function* g() { }`）：JavaScript と同じく、ブロックの始めで値を入れる
 * ConSh：ジェネレータは、作った `(( ))` の後も、別の `(( ))` で続けられる（継続は、作った VProc が終わった後も、別の VProc で呼べる）。シェルの値（`$g`）にすると、要素を読むたびに `next` を呼ぶ LazyList になる（2026/11/11 にユーザーと決めた）。そのときの本体は、ジェネレータを作ったときの SJS変数、`$名前`、`console.log` の出力先で動き、エラーなら、メッセージを標準エラーに出して、リストをそこで終える
@@ -169,7 +169,7 @@ consh/include/
 ### 段階 B5b で足したもの：async と await（2026/11/11）
 
 * `async function`（式と宣言）、`async (引数) => 本体`、`async 名前 => 本体`、`async` のメソッド、`await 式`（async 関数の本体の中だけ）
-* Promise：`then`、`catch`、`finally`、`Promise.resolve`、`Promise.reject`、`Promise.all`。`typeof` は `"object"`、`String` は `[object Promise]`、`JSON.stringify` と `console.log` は `{}`
+* Promise：`then`、`catch`、`finally`、`Promise.resolve`、`Promise.reject`、`Promise.all`。`typeof` は `"object"`、`String` は `[object Promise]`、`JSON.stringify` は `{}`、`console.log` は `Promise { 値 }`（`<pending>`、`<rejected> 値`）
 * マイクロタスクの列：`await` の後の続きと `then` の受け手は、JavaScript と同じ順で列に入り、`consh/sjs/sjs` はプログラムの最後に、ConSh は `(( ))` と `$(( ))` の評価ごと（SJS関数をコマンドとして呼んだときも）に、列を最後まで動かす（SAFEJS-PLAN-ja.md の 2.2 の 6）。順序は、async 関数が Promise を返すときの 2 つ多い段階や、仕様どおりの `finally` も含めて、Node.js と同じ（step5）
 * 列が空になったとき、受け手のない拒否された Promise があれば、受け手のない例外（`Uncaught (in promise) ...`）にする。ConSh では、その評価のエラー（`$?` は 2）
 * ConSh：シェルの値（`$p`）にした Promise は、成功していればその値、拒否されていれば空文字列になる（評価が終われば決着している）。`(( ))` の `$?` は、Promise は真なので 0

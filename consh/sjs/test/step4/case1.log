@@ -2,7 +2,7 @@ object {"value":0,"done":false} {"value":1,"done":false} {"value":"end","done":t
 of 0
 of 1
 of 2
-[0,1,2,3] 4
+[ 0, 1, 2, 3 ] 4
 0 1
 first got 1 got 2
 5050

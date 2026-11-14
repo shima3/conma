@@ -1,7 +1,7 @@
 5 x two true 1 two
 11 y null undefined
-["2","n","s","nested","dyn","a-b","added"] [1,[2]] [["p",1]]
+[ '2', 'n', 's', 'nested', 'dyn', 'a-b', 'added' ] [ 1, [ 2 ] ] [ [ 'p', 1 ] ]
 {"a":[1,"s",null,true],"b":{},"d":1.5} "q\"uote" [null,null]
-[1,"two"] undefined undefined undefined
+[ 1, 'two' ] undefined undefined undefined
 1 2 2
 exit: 0

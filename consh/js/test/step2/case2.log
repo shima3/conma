@@ -4,7 +4,7 @@ debug
 error
 warn
 result
-{"a":[1,"x"]} null undefined true () => 1
+{ a: [ 1, 'x' ] } null undefined true [Function (anonymous)]
 0
 only the log
 v=the value
