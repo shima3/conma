@@ -1,0 +1,2 @@
+Error in VProc 1 at step 1: conma/test/fast10/test.se:97:3: __Number_unless_zero__: expected Number, got null
+exit: 1

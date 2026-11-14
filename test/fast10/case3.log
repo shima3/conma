@@ -1,0 +1,35 @@
+2 > 1: yes
+2 > 1: if greater
+  then
+  then
+1 > 2: no
+  else
+1 > 1: no
+  else
+0 > -0: no
+  else
+-0 > 0: no
+  else
+inf > inf: no
+  else
+inf > 1: yes
+inf > 1: if greater
+  then
+  then
+-inf > inf: no
+  else
+inf > -inf: yes
+inf > -inf: if greater
+  then
+  then
+nan > 1: no
+  else
+1 > nan: no
+  else
+1e308 > -1e308: yes
+1e308 > -1e308: if greater
+  then
+  then
+-1e308 > 1e308: no
+  else
+exit: 0

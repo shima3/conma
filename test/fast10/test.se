@@ -1,0 +1,106 @@
+;; 値を自分で確かめる 6 つの条件分岐（高速版 ConMa の機能 "control"。docs/PRIMITIVES.md）：
+;; __if_null_then_else__ v then else、__unless_null__ v else、__Number_if_zero_then_else__ n then else、
+;; __Number_unless_zero__ n else、__Number_if_greater__ a b then、__Number_if_greater_then_else__ a b then else。
+;; test.sh は、組み込みを使う test.se と、ConMa 版（include/ref/control.se）を使う conma.se の両方で各 case を実行し、
+;; 同じ出力になることを確かめる（REVIEW-ja.md の 2026-11-14 の 6）
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+(define fail ,()
+  __Ref_get__ "abc" ,(x)
+  __OS_exit_normal__)
+
+;; 節をその場に書いたもの（Rust VM の load_if の速い道）と、変数で渡したもの（遅い道）
+(define nulls ,(label v)
+  __String_concat__ label ": " ,(prefix)
+  __if_null_then_else__ v (,() __String_concat__ prefix "null" ,(s) println s) (,() __String_concat__ prefix "not null" ,(s) println s) ,()
+  __unless_null__ v (,() __String_concat__ prefix "unless null" ,(s) println s) ,()
+  __NULL__ (,() println "  then") ,(then)
+  __NULL__ (,() println "  else") ,(else)
+  __if_null_then_else__ v then else ,()
+  __unless_null__ v else)
+
+;; case1: __NULL__ と、ほかの値（空の文字列、0、Dict）。LCont のない末尾の呼び出しも
+(define case1 ,()
+  nulls "null" __NULL__ ,()
+  nulls "empty string" "" ,()
+  num "0" ,(z) nulls "0" z ,()
+  __Dict_new__ ,(d) nulls "dict" d ,()
+  __if_null_then_else__ __NULL__ (,() println "tail then") (,() println "tail else"))
+
+(define zeros ,(label n)
+  __String_concat__ label ": " ,(prefix)
+  __Number_if_zero_then_else__ n (,() __String_concat__ prefix "zero" ,(s) println s) (,() __String_concat__ prefix "not zero" ,(s) println s) ,()
+  __Number_unless_zero__ n (,() __String_concat__ prefix "unless zero" ,(s) println s) ,()
+  __NULL__ (,() println "  then") ,(then)
+  __NULL__ (,() println "  else") ,(else)
+  __Number_if_zero_then_else__ n then else ,()
+  __Number_unless_zero__ n else)
+
+;; case2: 0、-0、0 でない数、NaN、無限大
+(define case2 ,()
+  num "0" ,(z) zeros "0" z ,()
+  num "-0" ,(nz) zeros "-0" nz ,()
+  num "1" ,(one) zeros "1" one ,()
+  num "-1e-320" ,(tiny) zeros "-1e-320" tiny ,()
+  num "1e300" ,(big) __Number_multiply__ big big ,(inf) zeros "inf" inf ,()
+  __Number_subtract__ inf inf ,(nan) zeros "nan" nan)
+
+(define greater ,(la a lb b)
+  __String_concat__ la " > " ,(s) __String_concat__ s lb ,(s) __String_concat__ s ": " ,(prefix)
+  __Number_if_greater_then_else__ a b (,() __String_concat__ prefix "yes" ,(s) println s) (,() __String_concat__ prefix "no" ,(s) println s) ,()
+  __Number_if_greater__ a b (,() __String_concat__ prefix "if greater" ,(s) println s) ,()
+  __NULL__ (,() println "  then") ,(then)
+  __NULL__ (,() println "  else") ,(else)
+  __Number_if_greater_then_else__ a b then else ,()
+  __Number_if_greater__ a b then)
+
+;; case3: 大きい、小さい、等しい、0 と -0、無限大どうし、NaN、差が無限大になるもの
+;; （組み込みは a > b、ConMa 版は a - b が正かで選び、同じ出力になる）
+(define case3 ,()
+  num "1" ,(one) num "2" ,(two) num "0" ,(z) num "-0" ,(nz)
+  num "1e300" ,(big) __Number_multiply__ big big ,(inf)
+  num "-1" ,(m1) __Number_multiply__ m1 inf ,(ninf)
+  __Number_subtract__ inf inf ,(nan)
+  num "1e308" ,(huge) __Number_multiply__ m1 huge ,(nhuge)
+  greater "2" two "1" one ,()
+  greater "1" one "2" two ,()
+  greater "1" one "1" one ,()
+  greater "0" z "-0" nz ,()
+  greater "-0" nz "0" z ,()
+  greater "inf" inf "inf" inf ,()
+  greater "inf" inf "1" one ,()
+  greater "-inf" ninf "inf" inf ,()
+  greater "inf" inf "-inf" ninf ,()
+  greater "nan" nan "1" one ,()
+  greater "1" one "nan" nan ,()
+  greater "1e308" huge "-1e308" nhuge ,()
+  greater "-1e308" nhuge "1e308" huge)
+
+;; case4〜6: 数でない値は、VProc をエラーで止める（組み込みは自分の名前で、ConMa 版は確かめるプリミティブの名前で）
+(define case4 ,()
+  __Number_if_zero_then_else__ "0" (,() println "then") (,() println "else") ,()
+  println "not reached")
+
+(define case5 ,()
+  num "1" ,(one)
+  __Number_if_greater__ one "2" (,() println "then") ,()
+  println "not reached")
+
+(define case6 ,()
+  __Number_unless_zero__ __NULL__ (,() println "else") ,()
+  println "not reached")
+
+;; case7: case1〜3 の後で VProc 1 をエラーで止める。Rust VM と wasm 版では、速い道（--trace なし）と
+;; 遅い道（--trace。ステップを 1 つずつ行う）でステップの番号が同じになることを確かめる
+(define case7 ,()
+  case1 ,()
+  case2 ,()
+  case3 ,()
+  fail)

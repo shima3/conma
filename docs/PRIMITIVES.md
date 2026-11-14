@@ -723,6 +723,21 @@ The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `incl
 * **Behavior**: As `__if_then_else__`, with the Closure `,()` as the other clause. When that clause is chosen for a Boolean, the primitive returns to the LCont without values in the same step, as `__nop__` does.
 * **Error**: Stops the VProc with an error if there are fewer than two operands.
 
+### **`__if_null_then_else__ Value then else`** / **`__unless_null__ Value else`**
+* **Description**: `__is_null__ Value ,(b) __if_then_else__ b then else` and `__is_null__ Value ,(b) __unless__ b else`, in one step (since 2026-11-13).
+* **Behavior**: As `__if_then_else__` and `__unless__` with a Boolean: the chosen clause becomes the Operator with the LCont; when `__unless_null__` chooses the clause that does nothing, it returns to the LCont without values. Any value may be tested.
+* **Error**: Stops the VProc with an error with too few operands.
+
+### **`__Number_if_zero_then_else__ Number then else`** / **`__Number_unless_zero__ Number else`**
+* **Description**: `__Number_is_zero__ Number ,(b) __if_then_else__ b then else` and `__Number_is_zero__ Number ,(b) __unless__ b else`, in one step (since 2026-11-13). `-0` is zero; NaN and infinities are not.
+* **Error**: Stops the VProc with an error, under the name of the primitive (`__Number_if_zero_then_else__: expected Number, got String`), if `Number` is not a Number, or with too few operands.
+
+### **`__Number_if_greater__ a b then`** / **`__Number_if_greater_then_else__ a b then else`**
+* **Description**: `then` if `a > b`, the clause that does nothing or `else` otherwise: `__Number_subtract__ a b ,(d) __Number_is_positive__ d ,(g) __if__ g then` (or `__if_then_else__ g then else`) in one step (since 2026-11-13). The two agree on every pair of Numbers: a NaN is greater and less than nothing, `0` and `-0` are equal, and two infinities of the same sign are equal (their difference is NaN).
+* **Error**: Stops the VProc with an error, under the name of the primitive, if `a` or `b` is not a Number, or with too few operands.
+
+These six are primitives of the feature `"control"` too (section 16); their replacement definitions, in `include/ref/control.se`, are the Bodies written above, so that they differ from the primitives in the steps, and in the name and step of the error for a value that is not a Number (that of the primitive that tests it). With clauses written as functions in place, the Rust VM chooses the clause when it loads the Body, as for `__if_then_else__` (vm/README.md, "Speed"). test/fast10 runs both versions with Null, 0, -0, NaN, infinities, pairs whose difference overflows and values that are not Numbers, and checks that the Rust and wasm VMs take as many steps choosing in place as one step at a time (`--trace`).
+
 **Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error, and surplus operands, which the primitives drop, are applied to what the definitions return (an `__if__` written with two clauses, which the primitive ran as if the second were not there, fails with the definition: `consh/include/sjs_gen.se` had one, found when concise ConMa got the definitions).
 
 ---
@@ -752,7 +767,7 @@ In a module with this feature, the Booleans the primitives return (`__is_null__`
 
 ### Feature `"control"`: the control functions as primitives (docs/FAST-PLAN-ja.md 4.6)
 
-`__if_then_else__`, `__if__`, `__unless__` (section 15) and `__Cont_get__` (section 4). In concise ConMa they are the ConMa definitions of `include/ref/control.se`, which `include/ref/pure.se` includes; `include/fast/pure.se` does not, so a module of fast ConMa uses them without a definition, and the frontend writes `(Uses "control")`. Replacement definitions: `include/ref/control.se`.
+`__if_then_else__`, `__if__`, `__unless__` (section 15), `__Cont_get__` (section 4), and the six conditionals that test a value themselves, `__if_null_then_else__`, `__unless_null__`, `__Number_if_zero_then_else__`, `__Number_unless_zero__`, `__Number_if_greater__` and `__Number_if_greater_then_else__` (section 15; since 2026-11-14 in the feature, which the frontends write for them too). In concise ConMa they are the ConMa definitions of `include/ref/control.se`, which `include/ref/pure.se` includes; `include/fast/pure.se` does not, so a module of fast ConMa uses them without a definition, and the frontend writes `(Uses "control")`. Replacement definitions: `include/ref/control.se`.
 
 ### **`__TRUE__ then else ,(then)`** / **`__FALSE__ then else ,(else)`**
 * **Description**: Passes `then` (`__TRUE__`) or `else` (`__FALSE__`) to the LCont, without applying it, in one step (the Closure takes two).

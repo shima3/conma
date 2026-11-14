@@ -1,6 +1,6 @@
-;; 制御の関数 __if_then_else__、__if__、__unless__、__Cont_get__ の、簡潔版 ConMa の定義。
+;; 制御の関数 __if_then_else__、__if__、__unless__、__Cont_get__ と、値を確かめる 6 つの条件分岐（下）の、簡潔版 ConMa の定義。
 ;; 簡潔版では、include/ref/pure.se がこのファイルを include するので、どのモジュールもこの定義を使う。
-;; 高速版 ConMa では、この 4 つは組み込みである（機能 "control"。フロントエンドが (Uses "control") を書き、
+;; 高速版 ConMa では、これらは組み込みである（機能 "control"。フロントエンドが (Uses "control") を書き、
 ;; bin/concise がこの定義を入れて簡潔版に直す。docs/FAST-PLAN-ja.md の 4.6）。
 ;; 高速版のプログラムが (include "ref/control.se") とすると、組み込みの代わりにこの定義が使われる
 ;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。ステップを ConMa の関数として追いたいときや、
@@ -32,3 +32,38 @@
         __CChain_set__ cc ,()
         __CChain_pop_LCont__ ,(lc)
         args lc)))
+
+;; 値を自分で確かめる条件分岐（高速版では、確かめ、Boolean の束縛、条件分岐を 1 ステップにする組み込み。
+;; docs/PRIMITIVES.md）。数でない値は、確かめるプリミティブのエラーになる（組み込みは、自分の名前でエラーにする）
+
+;; Value が __NULL__ なら then、そうでなければ else
+(define __if_null_then_else__ ,(Value then else)
+  __is_null__ Value ,(b)
+  __if_then_else__ b then else)
+
+;; Value が __NULL__ でなければ else
+(define __unless_null__ ,(Value else)
+  __is_null__ Value ,(b)
+  __unless__ b else)
+
+;; Number が 0（-0 も）なら then、そうでなければ else
+(define __Number_if_zero_then_else__ ,(Number then else)
+  __Number_is_zero__ Number ,(b)
+  __if_then_else__ b then else)
+
+;; Number が 0 でなければ else
+(define __Number_unless_zero__ ,(Number else)
+  __Number_is_zero__ Number ,(b)
+  __unless__ b else)
+
+;; a が b より大きければ then（a - b が正。NaN の比較は偽、無限大どうしは差が NaN で偽で、a > b と同じ）
+(define __Number_if_greater__ ,(a b then)
+  __Number_subtract__ a b ,(d)
+  __Number_is_positive__ d ,(g)
+  __if__ g then)
+
+;; a が b より大きければ then、そうでなければ else
+(define __Number_if_greater_then_else__ ,(a b then else)
+  __Number_subtract__ a b ,(d)
+  __Number_is_positive__ d ,(g)
+  __if_then_else__ g then else)

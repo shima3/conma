@@ -1,0 +1,21 @@
+0: zero
+  then
+-0: zero
+  then
+1: not zero
+1: unless zero
+  else
+  else
+-1e-320: not zero
+-1e-320: unless zero
+  else
+  else
+inf: not zero
+inf: unless zero
+  else
+  else
+nan: not zero
+nan: unless zero
+  else
+  else
+exit: 0

@@ -38,7 +38,8 @@
 ;; 高速版 ConMa の機能（docs/FAST-PLAN-ja.md の 3.4）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (F ...) の後に (Uses ...) を置く（bin/resolver と同じ）。entries の前に足す。
 ;; "bitwise32" はビット演算のプリミティブ（docs/BITWISE-PLAN-ja.md）、"boolean" は __TRUE__ と __FALSE__、
-;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__、"wasm" は __Wasm_compile__ と __Wasm_call__
+;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__ と、値を自分で確かめる 6 つの条件分岐
+;; （__if_null_then_else__ など）、"wasm" は __Wasm_compile__ と __Wasm_call__
 (define __Resolver_uses__ ,(globals values entries)
   __Resolver_features__ globals values ,(features)
   __is_null__ features ,(none)
@@ -56,7 +57,13 @@
   __if_then_else__ usesWasm
     (,() __LList_cons__ "wasm" __NULL__)
     (,() __NULL__ __NULL__) ,(features)
-  __LList_cons__ "__Cont_get__" __NULL__ ,(controls)
+  __LList_cons__ "__Number_if_greater_then_else__" __NULL__ ,(controls)
+  __LList_cons__ "__Number_if_greater__" controls ,(controls)
+  __LList_cons__ "__Number_unless_zero__" controls ,(controls)
+  __LList_cons__ "__Number_if_zero_then_else__" controls ,(controls)
+  __LList_cons__ "__unless_null__" controls ,(controls)
+  __LList_cons__ "__if_null_then_else__" controls ,(controls)
+  __LList_cons__ "__Cont_get__" controls ,(controls)
   __LList_cons__ "__unless__" controls ,(controls)
   __LList_cons__ "__if__" controls ,(controls)
   __LList_cons__ "__if_then_else__" controls ,(controls)

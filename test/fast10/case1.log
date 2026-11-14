@@ -1,0 +1,16 @@
+null: null
+  then
+empty string: not null
+empty string: unless null
+  else
+  else
+0: not null
+0: unless null
+  else
+  else
+dict: not null
+dict: unless null
+  else
+  else
+tail then
+exit: 0

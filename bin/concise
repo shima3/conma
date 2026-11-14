@@ -25,7 +25,10 @@ The features it knows:
 * "boolean": __TRUE__ and __FALSE__, built in in fast ConMa. Their definitions
   in concise ConMa (include/ref/pure.se) are put in the same way.
 * "control": __if_then_else__, __if__, __unless__ and __Cont_get__, built in in
-  fast ConMa, with their definitions of include/ref/control.se.
+  fast ConMa, and the six conditionals that test a value themselves
+  (__if_null_then_else__, __unless_null__, __Number_if_zero_then_else__,
+  __Number_unless_zero__, __Number_if_greater__, __Number_if_greater_then_else__),
+  with their definitions of include/ref/control.se.
 * "wasm" (consh/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
   which the concise VM cannot run; their definitions (include/ref/wasm.se) go
   to onError with "WebAssembly is not available".
