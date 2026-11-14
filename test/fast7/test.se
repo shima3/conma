@@ -162,3 +162,27 @@
 (define case6 ,()
   try_compile "type" "(module (func (export \"f\") (result f64) i32.const 1))" ,()
   try_compile "stack" "(module (func (export \"f\") (result f64) f64.add))")
+
+;; case7：燃料を使い切ると時間の区切りが終わるので、終わらない関数を呼び続けても、ホストが SIGINT を受け取る
+;; （__OS_trap_interrupt__ の Ref が変わる。consh/SJS-WASM-PLAN-ja.md の段階 3）。呼んだ回数は時間で変わるので出さない
+(define spin_until ,(w ref fuel)
+  __Ref_get__ ref ,(r)
+  __Number_is_zero__ r ,(go)
+  __if_then_else__ go
+    (,() __Wasm_call__ __print_exit_error__ w "spin" __NULL__ fuel ,(status value) spin_until w ref fuel)
+    (,() println "interrupted"))
+
+(define case7 ,()
+  with_module "(module (func (export \"spin\") (result f64) loop $l br $l end f64.const 0))" (,(w)
+    num "0" ,(zero)
+    __Ref_new__ zero ,(ref)
+    __OS_trap_interrupt__ ref ,()
+    num "10000000" ,(fuel)
+    __MSeq_new__ ,(cmd)
+    __MSeq_append__ __print_exit_error__ cmd "sh" ,()
+    __MSeq_append__ __print_exit_error__ cmd "-c" ,()
+    __MSeq_append__ __print_exit_error__ cmd "sleep 1; kill -INT $PPID" ,()
+    __OS_get_envDict__ ,(env)
+    __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
+    spin_until w ref fuel))
+

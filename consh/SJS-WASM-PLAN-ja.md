@@ -2,7 +2,7 @@
 
 SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（consh/js）のホストで動かす計画である。2026-11-14 に書いた。
 
-**状態**：段階 1 と 2 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9）。段階 3 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
+**状態**：段階 1〜3 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9、段階 3 は 14 と consh/sjs/test/step10）。段階 4 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
 ## 1. 目的
 
@@ -182,7 +182,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 |---|---|---|
 | 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
 | 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
-| 3 | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
+| 3（作った、2026-11-14。14） | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4 | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
 | 5 | 測る：consh/sjs/bench の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。consh/sjs/README-ja.md と docs/SPEED-ja.md に書く | 表にする |
 
@@ -245,4 +245,14 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 * **補助の関数**：`%`、ToUint32、`Math.round`、`Math.sign` は、WAT の補助の関数（`$__mod`、`$__u32`、`$__round`、`$__sign`）にした。11 で ConMa 版を JavaScript に合わせたので、`/` は `f64.div`、`Math.max` と `min` は `f64.max` と `f64.min` をそのまま使える。
 * **確かめたこと**：consh/sjs/test/step9 の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test、consh/test（高速版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
 * **速さ**（変換したモジュールを動かす時間だけ。1 回ずつ測った）：fib(25) は、wasm 版の VM で wasm 版が 0.28 秒、ConMa 版（`CONMA_NO_WASM=1`）が 1.91 秒、Rust 版の VM が 1.33 秒。loop の 100 万回は、0.19 秒、2.38 秒、1.58 秒。wasm 版の時間は、ほとんどが VM と実行時の支え（約 1.2 MB）を読む時間である。`consh/sjs/sjs` 全体では、変換器のモジュールを作るのに毎回 2〜3 秒かかるので、差は小さく見える。nbody は配列を使うので、数の関数がない（9）。
+
+## 14. 段階 3 の結果（2026-11-14）
+
+* **作ったもの**：sjs_rt.se の `Sjs_wasm_run`。wasm 版を燃料 2^16 で呼び、`"fuel"` なら燃料を 2 倍にして始めから呼び直す。燃料が上限の 2^30 を超えるか、`"trap"` なら、ConMa 版を始めから動かす。時間の区切りは、段階 1 の `__Wasm_call__` が `"fuel"` のときに終える（`Machine::end_slice`）。
+* **計画と変えたこと**：ConMa 版に替えて動かしている間は、その中から同じ関数を呼んでも wasm 版を試さない（`Sjs_wasm_fn` の `busy`）。深さ 100 万の再帰で見つけた。wasm の最初の実行は最適化の前のコード（V8 の Liftoff）でスタックの枠が大きく、深さ 100 万で trap になる（何度か動かした後なら通る）。trap のあと ConMa 版で動かすと、ConMa 版の再帰の各段が包んだ関数を通って、wasm 版を燃料のやり直し付きで試し直すので、仕事が深さの 2 乗になり、10 分たっても終わらなかった。直した後は 16.8 秒（ConMa 版だけなら 13.7 秒）。
+* **確かめたこと**：
+    * consh/sjs/test/step10（wasm 版の VM だけ）：case1 は燃料のやり直し（`countdown(30000000)` は 2^25 の燃料が要り、10 回やり直す。ConMa 版では遅すぎる）と、繰り返しの呼び出し。ログは Node.js の結果。case2 は深さ 100 万の再帰（trap から ConMa 版）。Node.js では RangeError になるので、ログは手で書いた。
+    * test/fast7 の case7：終わらない関数を燃料 10^7 で呼び続ける間に、子のプロセスが送った SIGINT が `__OS_trap_interrupt__` の Ref を変える（wasm 版の VM で約 1 秒。1 回の呼び出しは約 70 ミリ秒）。
+    * 燃料が上限を超えて ConMa 版に替わる場合は、ConMa 版で 2^30 回ほど回るものになり時間がかかるので、テストしていない。
+* **単独の SJS の Ctrl-C**：Node.js のホストは、`__OS_trap_interrupt__` を使うまで SIGINT でそのまま終わるので、単独の SJS のプログラムは、wasm 版の中でも Ctrl-C で止まる。区切りが効くのは、ConSh のように SIGINT を受け取るプログラム（段階 4）である。
 

@@ -3416,11 +3416,14 @@
   Sjs_gen_resume gen "return" __NULL__ ,(r)
   __nop__)
 
-;; ── 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の 5.2。段階 2）──
+;; ── 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の 5.2、5.5。段階 2、3）──
 ;; 変換器（sjs_gen.se、sjs_wasm.se）が、数の関数をまとめた WAT のモジュールを作り、数の関数を Sjs_wasm_fn で包む。
 ;; 呼ばれたとき、モジュールがあり、引数が足りて、どれも数なら wasm 版を、そうでなければ ConMa 版（f）を動かす。
-;; wasm 版が燃料を使い切るか、trap になれば（深い再帰でスタックがあふれたときなど）、ConMa 版を始めから動かす（数の関数は
-;; 引数だけで結果が決まるので、やり直してよい）。燃料を増やしてやり直すことと、時間の区切りは、段階 3。
+;; 燃料（段階 3）：wasm 版を燃料 2^16 で呼び、使い切れば、燃料を 2 倍にして始めから呼び直す（数の関数は引数だけで結果が
+;; 決まるので、やり直してよい。やり直しを含めた仕事は、最後の 1 回の 2 倍を超えない）。__Wasm_call__ は、燃料を使い切ると
+;; 時間の区切りを終えるので、やり直しの合間に、ほかの VProc が動き、Ctrl-C が届く。燃料が上限の 2^30 を超えるか、
+;; trap になれば（深い再帰でスタックがあふれたときなど）、ConMa 版を始めから動かす（ConMa 版は VProc の区切りで止まり、
+;; CChain を伸ばすだけなので深い再帰も動く）
 
 ;; wat のモジュール。作れなければ（wasm 版の VM でない、--trace、CONMA_NO_WASM など）null
 (define Sjs_wasm_module ,(wat)
@@ -3428,23 +3431,51 @@
   __Wasm_compile__ (,(msg) return __NULL__) wat ,(w)
   __NULL__ w)
 
-;; 一度の呼び出しの燃料（段階 2。使い切れば ConMa 版で動かす）
+;; 最初の燃料と、燃料の上限
 (define Sjs_wasm_fuel ,()
-  __Number_fromString__ __print_exit_error__ "100000000")
+  __Number_fromString__ __print_exit_error__ "65536")
 
-;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版
+(define Sjs_wasm_fuel_limit ,()
+  __Number_fromString__ __print_exit_error__ "1073741824")
+
+;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版。
+;; ConMa 版に替えて動かしている間（busy が正）は、その中からこの関数を呼んでも、wasm 版を試さずに ConMa 版を動かす。
+;; そうしないと、深い再帰が trap になったとき、ConMa 版の再帰の各段で wasm 版を試し直し、仕事が深さの 2 乗になる
+;; （wasm の最初の実行は最適化の前のコードでスタックの枠が大きいので、深さ 100 万の再帰は trap になることがある）
 (define Sjs_wasm_fn ,(W name n f)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(busy)
   __NULL__ (,(args)
     __Cont_get__ ,(return)
     __is_null__ W ,(none)
     __if__ none (,() f args ,(r) return r) ,()
+    __Ref_get__ busy ,(b)
+    __Number_is_zero__ b ,(free)
+    __unless__ free (,() f args ,(r) return r) ,()
     Sjs_wasm_args args n ,(ok nums)
     __unless__ ok (,() f args ,(r) return r) ,()
     Sjs_wasm_fuel ,(fuel)
-    __Wasm_call__ (,(msg) f args ,(r) return r) W name nums fuel ,(status value)
-    __String_equal__ status "ok" ,(done)
+    Sjs_wasm_run W name nums fuel ,(done value)
     __if__ done (,() return value) ,()
-    f args))
+    Sjs_inc b ,(b1)
+    __Ref_set__ busy b1 ,()
+    f args ,(r)
+    __Ref_get__ busy ,(b2)
+    Sjs_dec b2 ,(b3)
+    __Ref_set__ busy b3 ,()
+    __NULL__ r))
+
+;; 燃料 fuel で wasm 版を呼ぶ。使い切れば 2 倍にしてやり直す。結果が出れば真とその値、上限を超えるか trap なら偽
+(define Sjs_wasm_run ,(W name nums fuel)
+  __Cont_get__ ,(return)
+  __Wasm_call__ (,(msg) return __FALSE__ __NULL__) W name nums fuel ,(status value)
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() return __TRUE__ value) ,()
+  __String_equal__ status "fuel" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __Number_add__ fuel fuel ,(more)
+  Sjs_wasm_fuel_limit ,(limit)
+  __Number_subtract__ limit more ,(d)
+  __Number_is_negative__ d ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  Sjs_wasm_run W name nums more)
 
 ;; args の先頭の n 個が、どれも数か。数なら、真とその LList
 (define Sjs_wasm_args ,(args n)
