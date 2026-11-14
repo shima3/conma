@@ -25,3 +25,5 @@ run case8 case8.sh < /dev/null
 run case9 case9.sh < /dev/null
 # case10：配列を使う数の関数（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）。wasm 版の VM とほかの VM で同じログ
 run case10 case10.sh < /dev/null
+# case11：呼ぶときに確かめる Math のメンバーは、使うものだけ（呼ぶ数の関数が使うものも）。wasm 版の VM とほかの VM で同じログ
+run case11 case11.sh < /dev/null

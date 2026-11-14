@@ -1,0 +1,5 @@
+before: 2 3 3 3.141592653589793
+round replaced: 2 3 7 3.141592653589793
+floor replaced: 100 101 7 3.141592653589793
+PI replaced: 3
+exit: 0

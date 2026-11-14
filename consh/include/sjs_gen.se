@@ -2042,8 +2042,9 @@
           Gen_quote shapes ,(nv)
           Gen_quote wname ,(wq)
           Gen_quote check ,(cq)
-          Sjs_get e "wasmMath" ,(usesMath)
-          __if_then_else__ usesMath (,() __NULL__ "__TRUE__") (,() __NULL__ "__FALSE__") ,(mq)
+          ;; 確かめる Math のメンバーの名前（空白で区切る。使わなければ ""）
+          Sjs_get e "wasmMath" ,(mathNames)
+          Gen_quote mathNames ,(mq)
           Gen_temp g "w" ,(wf)
           Gen_temp g "i" ,(iv)
           Gen_wasm_void e ,(vq)

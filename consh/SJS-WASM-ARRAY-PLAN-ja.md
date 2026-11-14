@@ -130,7 +130,7 @@ function advance(bodies, pairs, dt, n) {      // bodies：数の配列の配列�
 * **アセンブラ**（vm/src/prim/wasm_asm.rs）：`(memory $m? 最小 最大?)`（ページの数。import と export は書けない）を 1 つまで受け付け、`__memory` の名前で export する（予約した名前）。命令に `f64.load` と `f64.store`（`offset=` と、1、2、4、8 バイトの `align=`。既定は 8）、`memory.size`、`memory.grow` を足した。手で書いた WAT でも使える（8 の 3）。
 * **プリミティブ**：`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`（vm/src/prim/wasm.rs。`__Wasm_call__` と、引数を確かめて呼ぶ所を共有する）。高速版 ConMa だけで、include/ref/wasm.se の代わりの定義は onError に進む（8 の 2）。フロントエンドが `(Uses "wasm")` を書く名前にも足した。
 * **ホスト**（consh/js/conma.js の `host_wasm_call`）：メモリのあるモジュールなら、呼ぶたびに 0 で埋めてから語を書き（入らなければ広げる）、`"ok"` なら同じ数の語を VM に写し戻す。`__Wasm_call__` でも 0 で埋める。import の形を、`host_wasm_call(id, 名前, 引数, 語, 語の数, 燃料, 結果)` に変えた。
-* **計画と違うこと**：メモリの大きさは、呼び出しが広げると、次の呼び出しにも残る（0 で埋めるのは中身だけ）。`memory.size` を使う関数は、それより前の呼び出しによって結果が変わりうる。SJS の変換器は `memory.size` を出さないので、数の関数には関わらない。docs/PRIMITIVES.md の 16 節に書いた。
+* **計画と違うこと**：メモリの大きさは、呼び出しが広げると、次の呼び出しにも残る（0 で埋めるのは中身だけ）。`memory.size` を使う関数は、それより前の呼び出しによって結果が変わりうる。SJS の変換器は `memory.size` を出さないので、数の関数には関わらない。docs/PRIMITIVES.md の 16 節に書いた。その後（2026-11-14。REVIEW-ja.md の 2026-11-14（2）の 5）、ホスト（consh/js/conma.js）は、呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ、instance を作り直すようにしたので、大きさも次の呼び出しに残らない（燃料が切れた後のやり直しで、`memory.grow` の結果が変わらない）。
 * **確かめたこと**：test/fast7 の case8（読む、書く、0 で埋めること、`-0`、`offset=`、語のない呼び出し、1 ページより多い 1 万語、`memory.size` と `memory.grow`、メモリの外の trap、誤った引数、メモリのないモジュール、受け付けない形 7 つ）が、wasm 版の VM、ネイティブの VM、Python の VM で通る。case5 のログは、`(module (memory 1))` を受け付け、メモリのない `f64.load` をホストが拒むように変わった。
 
 ## 12. 段階 A2 の結果（2026-11-14。ブランチ alpha）

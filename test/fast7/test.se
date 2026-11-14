@@ -383,3 +383,25 @@
   __Dict_new__ ,(e) num "6" ,(n6) __Dict_put_numbers__ e n2 ws ,(rest2) __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) e n2 __NULL__ ,(le) show_list le "" ,(s) Cat "new dict: " s ,(s) println s ,()
   __Dict_put_numbers__ e n0 ws ,(same) show_list same "" ,(s) Cat "put 0 keeps: " s ,(s) println s)
 
+;; case13：呼び出しは前の呼び出しの memory.grow と語の数によらない（REVIEW-ja.md の 2026-11-14（2）の 5）。メモリの大きさは、
+;; 呼ぶたびに、モジュールの大きさか語に要る大きさ。燃料が切れた後で 2 倍の燃料でやり直しても、同じ結果
+(define module13 ,()
+  Cat5 "(module (memory 1 2) "
+    "(func (export \"grow\") (param $n f64) (result f64) (local $r f64) (local.set $r (f64.convert_i32_s (memory.grow (i32.const 1)))) block $done loop $next local.get $n f64.const 0 f64.le br_if $done (local.set $n (f64.sub (local.get $n) (f64.const 1))) br $next end end local.get $r) "
+    "(func (export \"pages\") (result f64) (f64.convert_i32_u (memory.size)))"
+    ")" "")
+
+(define case13 ,()
+  module13 ,(wat)
+  with_module wat (,(w)
+    big_fuel ,(fuel)
+    num "1000" ,(n) list1 n ,(a)
+    try_call "grow" w "grow" a fuel ,()
+    try_call "grow again" w "grow" a fuel ,()
+    num "10" ,(little)
+    try_call "grow, little fuel" w "grow" a little ,()
+    try_call "grow, more fuel" w "grow" a fuel ,()
+    try_call "pages" w "pages" __NULL__ fuel ,()
+    num "9000" ,(n9000) count_list n9000 __NULL__ ,(many)
+    try_fit "9000 words" w many fuel ,()
+    try_call "pages after" w "pages" __NULL__ fuel))

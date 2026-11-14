@@ -3472,15 +3472,17 @@
   Sjs_wasm_fn_core W name shapes writes void f (,() __NULL__ __TRUE__))
 
 ;; ConSh の (( )) の数の関数（段階 4）：呼ぶとき、names（空白で区切った名前）の SJS変数が、作ったときの関数（ids の番号）を
-;; 指し、usesMath なら Math のメンバーが元のままのときだけ wasm 版を使う（後の (( )) が書き換えることがある）
-(define Sjs_wasm_fn_checked ,(W G ids names usesMath name shapes writes void f)
+;; 指し、mathNames（空白で区切った、その関数とそれが呼ぶ数の関数が使う Math のメンバーの名前）のメンバーが元のままの
+;; ときだけ wasm 版を使う（後の (( )) が書き換えることがある）。名前の列は、関数を作るときに 1 度だけ作り、使うメンバー
+;; だけを比べる（呼ぶたびに 10 個のメンバーの名前を分けて比べると、Math を使う関数が wasm 版を使わないときより遅く
+;; なった。REVIEW-ja.md の 2026-11-14（2）の 4）
+(define Sjs_wasm_fn_checked ,(W G ids names mathNames name shapes writes void f)
   Sjs_wasm_words names ,(list)
-  ;; 確かめる Math のメンバーの名前の列は、関数を作るときに 1 度だけ作る（呼ぶたびに分けると、Math を使う関数が
-  ;; wasm 版を使わないときより遅くなった。REVIEW-ja.md の 2026-11-14（2）の 4）
-  Sjs_wasm_math_names ,(mnames)
+  Sjs_wasm_words mathNames ,(mnames)
+  __is_null__ mnames ,(noMath)
   Sjs_wasm_fn_core W name shapes writes void f (,()
     __Cont_get__ ,(return)
-    __if__ usesMath (,() Sjs_wasm_math_ok G mnames ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
+    __unless__ noMath (,() Sjs_wasm_math_ok G mnames ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
     Sjs_wasm_same_fns ids list))
 
 ;; 空白で区切った語の LList（順は逆。確かめる順は問わない）
@@ -3517,11 +3519,7 @@
   __Number_is_zero__ d ,(test__) __unless__ test__ (,() return __FALSE__) ,()
   Sjs_wasm_same_fns ids rest)
 
-;; 数の関数が使う Math のメンバーの名前の列
-(define Sjs_wasm_math_names ,()
-  Sjs_wasm_words "floor ceil trunc abs sqrt round sign max min PI")
-
-;; Math のメンバー（names。Sjs_wasm_math_names）が、組み込みを作ったときのままか
+;; Math のメンバー（names。数の関数が使う名前の LList）が、組み込みを作ったときのままか
 (define Sjs_wasm_math_ok ,(G names)
   __Dict_lookup_or__ G " math" (,(k) __NULL__ __NULL__) ,(snap)
   __Dict_lookup_or__ G "Math" __print_exit_error__ ,(math)

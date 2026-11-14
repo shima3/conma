@@ -976,7 +976,8 @@
   __Dict_put__ cx "loop" loop ,()
   __Ref_new__ __NULL__ ,(callees)
   __Dict_put__ cx "callees" callees ,()
-  __Ref_new__ __FALSE__ ,(usesMath)
+  ;; この関数が使う Math のメンバーの名前の集まり（名前 → 真）
+  __Dict_new__ ,(usesMath)
   __Dict_put__ cx "usesMath" usesMath ,()
   __Ref_new__ __FALSE__ ,(writes)
   __Dict_put__ cx "writes" writes ,()
@@ -1000,8 +1001,7 @@
       Wx_ends_list stmts ,(ends)
       __or__ ends isVoid ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
       Wx_stmts cx stmts "") ,(code)
-  __Ref_get__ usesMath ,(um)
-  __Dict_put__ info "math" um ,()
+  __Dict_put__ info "math" usesMath ,()
   __Ref_get__ writes ,(wr)
   __Dict_put__ info "writes" wr ,()
   Sjs_get info "label" ,(label)
@@ -1563,7 +1563,7 @@
       __and__ mathOk isMath ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
       Sjs_get e "name" ,(name)
       __String_equal__ name "PI" ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
-      Wx_uses_math cx ,()
+      Wx_uses_math cx name ,()
       return "(f64.const 3.141592653589793)" "N") ,()
   Wx_fail cx)
 
@@ -1720,8 +1720,8 @@
     (,()
       __Dict_lookup_or__ E "math" __print_exit_error__ ,(mathOk)
       __unless__ mathOk (,() Wx_fail cx) ,()
-      Wx_uses_math cx ,()
       Sjs_get callee "name" ,(name)
+      Wx_uses_math cx name ,()
       Wx_math cx name args ,(c)
       return c "N") ,()
   Wx_t callee ,(ct)
@@ -1752,10 +1752,10 @@
   __if_then_else__ isVoid (,() __NULL__ "V") (,() __NULL__ "N") ,(ty)
   __NULL__ c ty)
 
-;; この関数が Math を使う（(( )) では、呼ぶときに Math のメンバーを確かめる）
-(define Wx_uses_math ,(cx)
-  __Dict_lookup_or__ cx "usesMath" __print_exit_error__ ,(r)
-  __Ref_set__ r __TRUE__)
+;; この関数が Math のメンバー name を使う（(( )) では、呼ぶときに、使うメンバーだけを確かめる）
+(define Wx_uses_math ,(cx name)
+  __Dict_lookup_or__ cx "usesMath" __print_exit_error__ ,(d)
+  __Dict_put__ d name __TRUE__)
 
 ;; 数の関数の呼び出しの引数：それぞれ、呼ぶ関数の引数と同じ型
 (define Wx_typed_args ,(cx args params pdepths acc)
@@ -1903,7 +1903,7 @@
   Wx_any_writes E rest w)
 
 ;; (( )) の数の関数の fn に、呼ぶときに確かめる名前（呼ぶ数の関数を、呼ぶものの呼ぶものまでたどった名前）と、
-;; そのどれかが Math を使うかを付ける
+;; それらと自分が使う Math のメンバーの名前（空白で区切る。なければ ""）を付ける
 (define Wx_mark_checks ,(E infos)
   __Cont_get__ ,(return)
   __is_null__ infos ,(test__) __if__ test__ return ,()
@@ -1915,17 +1915,17 @@
       Sjs_get info "callees" ,(cs)
       Wx_reach E cs seen ,()
       Sjs_get info "math" ,(m0)
-      __Ref_new__ m0 ,(mathRef)
+      __Dict_copy__ m0 ,(math)
       __Dict_keys__ seen ,(keys)
       __Ref_new__ __NULL__ ,(acc)
       Gen_collect acc ,(sink)
       keys sink ,(sk)
       __Ref_get__ acc ,(names)
-      Wx_names_text E names "" mathRef ,(text)
-      __Ref_get__ mathRef ,(usesMath)
+      Wx_names_text E names "" math ,(text)
+      Wx_keys_text math ,(mathText)
       Sjs_get info "fn" ,(fn)
       __Dict_put__ fn "wasmCheck" text ,()
-      __Dict_put__ fn "wasmMath" usesMath) ,()
+      __Dict_put__ fn "wasmMath" mathText) ,()
   Wx_mark_checks E rest)
 
 (define Wx_reach ,(E names seen)
@@ -1942,16 +1942,46 @@
   Wx_reach E rest seen)
 
 ;; 名前を空白で区切った文字列。どれかが Math を使えば mathRef を真にする
-(define Wx_names_text ,(E names acc mathRef)
+(define Wx_names_text ,(E names acc math)
   __Cont_get__ ,(return)
   __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ names ,(nm rest)
   __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs)
   __Dict_lookup_or__ funcs nm __print_exit_error__ ,(info)
   Sjs_get info "math" ,(m)
-  __if__ m (,() __Ref_set__ mathRef __TRUE__) ,()
+  __Dict_keys__ m ,(mk)
+  __Ref_new__ __NULL__ ,(acc2)
+  Gen_collect acc2 ,(sink)
+  mk sink ,(sk)
+  __Ref_get__ acc2 ,(mnames)
+  Wx_put_all math mnames ,()
   Cat3 acc nm " " ,(acc)
-  Wx_names_text E rest acc mathRef)
+  Wx_names_text E rest acc math)
+
+;; 名前の LList を集まり d に入れる
+(define Wx_put_all ,(d names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_put__ d nm __TRUE__ ,()
+  Wx_put_all d rest)
+
+;; 集まり d の名前を空白で区切った文字列（なければ ""）
+(define Wx_keys_text ,(d)
+  __Dict_keys__ d ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  Gen_collect acc ,(sink)
+  keys sink ,(sk)
+  __Ref_get__ acc ,(names)
+  Wx_join_words names "")
+
+(define Wx_join_words ,(names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ nm) (,() Cat3 acc " " nm) ,(acc)
+  Wx_join_words rest acc)
 
 ;; 数の関数のモジュールの WAT（なければ ""）。数の関数の fn に "wasm" を付ける。配列を使う関数があれば
 ;; （E の "arrays"）、メモリと配列の補助の関数を入れる

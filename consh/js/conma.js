@@ -1725,9 +1725,12 @@ var ConMaVM = (function () {
         host_wasm_compile: (ptr, len) => {
           try {
             const bytes = new Uint8Array(x.memory.buffer, ptr, len).slice();
-            const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
+            const module = new WebAssembly.Module(bytes);
+            const instance = new WebAssembly.Instance(module, {});
+            const mem = instance.exports.__memory;
             const id = wasmNext++;
-            wasmModules.set(id, instance);
+            // the module, to make the instance again with a memory of its first size (host_wasm_call)
+            wasmModules.set(id, { module, instance, minPages: mem ? mem.buffer.byteLength / 65536 : 0 });
             return id;
           } catch (e) {
             wasmError = errorText(e);
@@ -1735,18 +1738,29 @@ var ConMaVM = (function () {
           }
         },
         host_wasm_call: (id, namePtr, nameLen, argsPtr, n, memPtr, words, fuel, out) => {
-          const instance = wasmModules.get(id);
-          const f = instance && instance.exports[str(namePtr, nameLen)];
+          const entry = wasmModules.get(id);
+          let instance = entry && entry.instance;
+          let f = instance && instance.exports[str(namePtr, nameLen)];
           if (typeof f !== "function") {
             wasmError = "no such function";
             return 2;
           }
           const args = Array.from(new Float64Array(x.memory.buffer, argsPtr, n));
           // The memory of the module (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
-          // of __Wasm_call_memory__ from address 0 (growing it if they do not fit)
-          const mem = instance.exports.__memory;
+          // of __Wasm_call_memory__ from address 0 (growing it if they do not fit). Its size is that of
+          // the module or what the words need, whatever the calls before did (memory.grow, more words):
+          // a memory larger than that, which cannot shrink, is made again with the instance, so that a
+          // call gives the same result for the same arguments and words (made again after running out
+          // of fuel, consh/SJS-WASM-PLAN-ja.md 5.5; REVIEW-ja.md 2026-11-14 (2), 5)
+          let mem = instance.exports.__memory;
           if (mem) {
-            const need = Math.ceil((words * 8) / 65536) - mem.buffer.byteLength / 65536;
+            const want = Math.max(entry.minPages, Math.ceil((words * 8) / 65536));
+            if (mem.buffer.byteLength / 65536 > want) {
+              entry.instance = instance = new WebAssembly.Instance(entry.module, {});
+              f = instance.exports[str(namePtr, nameLen)];
+              mem = instance.exports.__memory;
+            }
+            const need = want - mem.buffer.byteLength / 65536;
             if (need > 0) {
               try {
                 mem.grow(need);

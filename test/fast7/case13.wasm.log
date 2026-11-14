@@ -1,0 +1,8 @@
+grow: ok 1
+grow again: ok 1
+grow, little fuel: fuel
+grow, more fuel: ok 1
+pages: ok 1
+9000 words: ok 2
+pages after: ok 1
+exit: 0

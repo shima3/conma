@@ -5,8 +5,8 @@ peek -0: ok -0 [-0]
 poke: ok 0 [0 77]
 no words: ok 1 []
 sum 10000: ok 50005000
-pages after: ok 2
-grow: ok 2
+pages after: ok 1
+grow: ok 1
 peek far: trap RuntimeError: memory access out of bounds
 memory string: __Wasm_call_memory__: expected an LList of Numbers for the memory, got String
 memory element: __Wasm_call_memory__: expected an LList of Numbers for the memory, got String in it
