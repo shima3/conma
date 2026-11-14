@@ -114,6 +114,11 @@ for d in "${dirs[@]}"; do incs+=(--include "$d"); done
 # モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
 # （フロントエンドが変わると、同じソースから違うモジュールができる。インクルードディレクトリを探す順など）
 if [ -x "$conma" ]; then frontend=("$conma"); else frontend=("$root/bin"); fi
+# conma がソースより古ければ（git pull の後など）、警告してから、それを使う。古い conma は、後から足したサブコマンド
+# （build など）を知らず、分かりにくいエラーになる（frontend.module.se は conma に埋め込まれている）
+if [ -x "$conma" ] && [ -n "$(find "$root/vm/src" "$root/vm/Cargo.toml" "$root/vm/Cargo.lock" "$root/vm/frontend.module.se" \( -name '*.rs' -o -name 'Cargo.*' -o -name '*.se' -o -type d \) -newer "$conma" 2>/dev/null)" ]; then
+  echo "consh: warning: $conma is older than its sources (cargo build --release in vm)" >&2
+fi
 # ソースかフロントエンドがモジュールより新しければ、作り直す
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||

@@ -160,7 +160,8 @@ const BYTE_CLASS: [u8; 256] = {
     while i < 256 {
         t[i] = if i >= 0x80 {
             HIGH
-        } else if (i as u8 as char).is_whitespace() {
+        } else if matches!(i, 0x09..=0x0D | 0x20) {
+            // The ASCII characters for which char::is_whitespace is true (it is const only from Rust 1.87)
             SPACE
         } else if i == b'(' as usize {
             OPEN
