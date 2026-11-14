@@ -1,0 +1,19 @@
+(__Closure__
+  (Head (0 0) (Variable (0 0) "__Sink__"))
+  (Body
+    (0 0)
+    (__SInfo__ "conma/test/fast9/test.se" "67" "3")
+    (Operator (0 0) (Variable (0 0) "__Sink__" (L 0)))
+    (OList (0 0) (String (66 40) "h") (String (62 12) "q"))
+    (LCont (0 0) (Null (0 0))))
+  (__LVEnv__
+    ("h" (String (66 40) "h"))
+    ("g" (String (66 36) "g"))
+    ("f" (String (66 32) "f"))
+    ("e" (String (66 28) "e"))
+    ("d" (String (66 24) "d"))
+    ("c" (String (66 20) "c"))
+    ("b" (String (66 16) "b"))
+    ("a" (String (66 12) "a"))
+    ("p" (String (62 12) "q"))))
+exit: 0

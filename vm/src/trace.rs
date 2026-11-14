@@ -73,11 +73,20 @@ fn llist_to_sexp(v: &Value) -> Sexp {
 
 /// An LVEnv, with the name of its node i given by name(i) ("?" if unknown).
 pub fn lvenv_to_sexp(env: &LVEnv, name: impl Fn(usize) -> Option<std::rc::Rc<str>>) -> Sexp {
+    // A frame node (module::frame_chain) is written as its variables, the last bound first, as
+    // the Python VM writes them, each named by its index counted without frames, as the scopes are.
+    let mut values = Vec::new();
+    for n in lv_iter(env) {
+        match &n.value {
+            Value::Frame(f) => values.extend(f.iter().rev()),
+            v => values.push(v),
+        }
+    }
     tagged(
         "__LVEnv__",
-        lv_iter(env).enumerate().map(|(i, n)| {
+        values.into_iter().enumerate().map(|(i, v)| {
             let nm = name(i).unwrap_or_else(|| std::rc::Rc::from("?"));
-            l(vec![a(&quoted(&nm)), value_to_sexp(&n.value)])
+            l(vec![a(&quoted(&nm)), value_to_sexp(v)])
         }),
     )
 }

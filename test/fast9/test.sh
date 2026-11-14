@@ -1,5 +1,5 @@
 #!/bin/bash
-# 印刷した SeqClosure の変数の名前（test.se）。どの VM でも同じログになる。ただし、数の定数を畳み込む VM（Rust、wasm、
+# 印刷した SeqClosure と Closure の変数の名前（test.se。フレームの変数も）。どの VM でも同じログになる。ただし、数の定数を畳み込む VM（Rust、wasm、
 # 変換版。edd5945）では、畳み込んだ変数は LVEnv にないので、case4 は case4.fold.log と比べる（Rust VM は、
 # CONMA_NO_FOLD=1 なら case4.log と同じになることも確かめる）。このコードを入れた変換版の VM では、case4 の畳み込んだ
 # 変数を Null として出す（もう読まない変数）ので違う。vm/target-transpiled には入っていない
@@ -13,9 +13,11 @@ check() {
   echo "exit: $?" >> $tmp/$c.log
   diff $log $tmp/$c.log || echo "$c $*"
 }
-for c in case1 case2 case3 case4
+for c in case1 case2 case3 case4 case5 case6
 do
   check $c
 done
 [ "$CONMA_VM" = rust ] && CONMA_NO_FOLD=1 check case4 CONMA_NO_FOLD=1
+# case5 と case6 は、フレームを使わなくても（CONMA_FRAME_MIN= ）同じ
+[ "$CONMA_VM" = rust ] && for c in case5 case6; do check $c CONMA_FRAME_MIN=; done
 exit 0

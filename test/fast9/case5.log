@@ -1,0 +1,108 @@
+(__Closure__
+  (Head (0 0) Rest (Variable (0 0) "args"))
+  (Body
+    (29 5)
+    (SInfo (29 5) "conma/include/ref/control.se" "29" "5")
+    (Operator (29 5) (Variable (29 5) "__if_then_else__" (G 9)))
+    (OList
+      (29 22)
+      (FuncExp
+        (29 22)
+        (Function
+          (29 23)
+          (Head (29 24))
+          (Body
+            (29 27)
+            (SInfo (29 27) "conma/include/ref/control.se" "29" "27")
+            (Operator (29 27) (Variable (29 27) "__is_null__" (G 54)))
+            (OList (29 39) (Variable (29 39) "cc" (L 1)))
+            (LCont (29 41)))))
+      (FuncExp
+        (30 7)
+        (Function
+          (30 8)
+          (Head (30 9))
+          (Body
+            (30 12)
+            (SInfo (30 12) "conma/include/ref/control.se" "30" "12")
+            (Operator (30 12) (Variable (30 12) "__CChain_set__" (G 86)))
+            (OList (30 27) (Variable (30 27) "cc" (L 1)))
+            (LCont (30 29)))))
+      (FuncExp
+        (31 7)
+        (Function
+          (31 8)
+          (Head (31 9))
+          (Body
+            (32 9)
+            (SInfo (32 9) "conma/include/ref/control.se" "32" "9")
+            (Operator (32 9) (Variable (32 9) "__CChain_set__" (G 86)))
+            (OList (32 24) (Variable (32 24) "cc" (L 1)))
+            (LCont
+              (32 27)
+              (Function
+                (32 27)
+                (Head (32 28))
+                (Body
+                  (33 9)
+                  (SInfo (33 9) "conma/include/ref/control.se" "33" "9")
+                  (Operator (33 9) (Variable (33 9) "__CChain_pop_LCont__" (G 33)))
+                  (OList (33 30))
+                  (LCont
+                    (33 30)
+                    (Function
+                      (33 30)
+                      (Head (33 31) (Variable (33 32) "lc" (L 0)))
+                      (Body
+                        (34 9)
+                        (SInfo (34 9) "conma/include/ref/control.se" "34" "9")
+                        (Operator (34 9) (Variable (34 9) "args" (L 1)))
+                        (OList (34 14) (Variable (34 14) "lc" (L 0)))
+                        (LCont (34 16))))))))))))
+    (LCont (34 17)))
+  (__LVEnv__
+    ("cc"
+      (__LList__
+        (__CFrame__
+          (__Closure__
+            (Head (0 0) (Variable (0 0) "k"))
+            (Body
+              (57 3)
+              (SInfo (57 3) "conma/test/fast9/test.se" "57" "3")
+              (Operator (57 3) (Variable (57 3) "__OS_print__" (G 2)))
+              (OList (57 16) (Variable (57 16) "k" (L 0)))
+              (LCont
+                (57 18)
+                (Function
+                  (57 18)
+                  (Head (57 19))
+                  (Body
+                    (58 3)
+                    (SInfo (58 3) "conma/test/fast9/test.se" "58" "3")
+                    (Operator (58 3) (Variable (58 3) "println" (G 0)))
+                    (OList (58 11) (String (58 11) ""))
+                    (LCont (58 13))))))
+            (__LVEnv__
+              ("i" (String (55 12) "i"))
+              ("h" (String (54 40) "h"))
+              ("g" (String (54 36) "g"))
+              ("f" (String (54 32) "f"))
+              ("e" (String (54 28) "e"))
+              ("d" (String (54 24) "d"))
+              ("c" (String (54 20) "c"))
+              ("b" (String (54 16) "b"))
+              ("a" (String (54 12) "a"))
+              ("p" (String (51 10) "p"))))
+          (__SInfo__ "conma/test/fast9/test.se" "56" "3"))
+        (Null (0 0))))
+    ("lc"
+      (__Closure__
+        (Head (0 0) (Variable (0 0) "r"))
+        (Body
+          (44 3)
+          (SInfo (44 3) "conma/test/fast9/test.se" "44" "3")
+          (Operator (44 3) (Variable (44 3) "r" (L 0)))
+          (OList (44 5) (Variable (44 5) "r" (L 0)))
+          (LCont (44 6)))
+        (__LVEnv__)))))
+exit: 0

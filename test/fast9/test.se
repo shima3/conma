@@ -35,3 +35,33 @@
   __Number_fromString__ __print_exit_error__ "2" ,(n)
   __Number_toString__ n ,(s)
   (, args show args) s w)
+
+;; フレーム（9d465dc。module::frame_chain）にまとめた変数も、Python VM と同じく、変数ごとに名前を付けて出す
+;; （REVIEW-ja.md の 2026-11-14 の 5）。呼んだ所の LCont の Closure（継続）と、可変長の大域関数の SeqClosure
+
+(define getk ,()
+  __Cont_get__ ,(r)
+  r r)
+
+(define showall , args
+  show args)
+
+;; case5: 引数 p、フレームの 8 つ、その後の 1 つ（フレームに足す）を持つ継続
+(define case5 ,()
+  frame5 "p")
+
+(define frame5 ,(p)
+  __NULL__ "a" "b" "c" "d" "e" "f" "g" "h" ,(a b c d e f g h)
+  __NULL__ "i" ,(i)
+  getk ,(k)
+  __OS_print__ k ,()
+  println "")
+
+;; case6: フレームの変数を持つ LVEnv の SeqClosure
+(define case6 ,()
+  __NULL__ "q" ,(q)
+  frame6 q)
+
+(define frame6 ,(p)
+  __NULL__ "a" "b" "c" "d" "e" "f" "g" "h" ,(a b c d e f g h)
+  showall h p)
