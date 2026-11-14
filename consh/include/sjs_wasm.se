@@ -1009,7 +1009,7 @@
   Gen_quote name ,(qn)
   __Ref_get__ decls ,(ld)
   Cat5 "(func " label " (export " qn ") " ,(s)
-  Cat5 s head "(result f64) (local $tmp f64) (local $__o f64) " ld code ,(s)
+  Cat5 s head "(result f64) (local $tmp f64) " ld code ,(s)
   ;; 値を返さない関数は、最後まで来たら 0 を返す（Sjs_wasm_fn が undefined にする）
   __if_then_else__ isVoid (,() __NULL__ "(f64.const 0)) ") (,() __NULL__ "(unreachable)) ") ,(tail)
   __String_concat__ s tail ,(wat)
@@ -1383,7 +1383,7 @@
   Wx_str i ,(is)
   Cat3 "(local.get " el ")" ,(ec)
   Cat3 "(f64.const " is ")" ,(kc)
-  Wx_get ec kc ,(g)
+  Wx_get cx ec kc ,(g)
   Cat5 acc "(local.set " l " " g ,(acc)
   __String_concat__ acc ") " ,(acc)
   Sjs_inc i ,(i)
@@ -1451,7 +1451,7 @@
   Wx_expr cx e ,(c type)
   Cat3 "(drop " c ") ")
 
-;; 数の配列の要素への代入 o[i] op value（value が null なら 1。++ と -- のため）。$__set が範囲と整数を確かめる
+;; 数の配列の要素への代入 o[i] op value（value が null なら 1。++ と -- のため）。Wx_place が範囲と整数を確かめる
 (define Wx_member_assign ,(cx target op value)
   ;; 配列に書く関数（書き戻しが要る。Wx_mark_writes）
   __Dict_lookup_or__ cx "writes" __print_exit_error__ ,(writesRef)
@@ -1464,6 +1464,8 @@
   Wx_expr cx object ,(oc oty)
   __String_equal__ oty "A1" ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
   Wx_num_expr cx key ,(kc)
+  ;; 配列と添字を一度だけ計算して確かめ、o[i] op= v は同じ場所を読んで書く
+  Wx_place cx oc kc ,(pre off addr)
   __is_null__ value ,(one)
   __if_then_else__ one (,() __NULL__ "(f64.const 1)") (,() Wx_num_expr cx value) ,(vc)
   __String_equal__ op "=" ,(isPlain)
@@ -1475,9 +1477,11 @@
       __Number_subtract__ len n1 ,(m)
       Wx_num "0" ,(zero)
       __String_substring__ __print_exit_error__ op zero m ,(bop)
-      Wx_get oc kc ,(cur)
+      Wx_load off addr ,(cur)
       Wx_arith cx bop cur vc) ,(nv)
-  Wx_set oc kc nv)
+  Cat4 "(block " pre "(f64.store " off ,(c)
+  Cat5 c " " addr " " nv ,(c)
+  __String_concat__ c ")) ")
 
 ;; 代入できる名前（const でない局所の変数か引数）の WAT の名前と型
 (define Wx_target ,(cx target)
@@ -1560,7 +1564,7 @@
   __String_equal__ t "call" ,(test__) __if__ test__ (,() Wx_call cx e ,(c ty) return c ty) ,()
   __String_equal__ t "member" ,(test__) __if__ test__
     (,()
-      ;; 配列：o[i] と o.length（$__get が範囲と整数を確かめる）
+      ;; 配列：o[i] と o.length（Wx_place が範囲と整数を確かめる）
       Wx_is_math_member e ,(isMath0)
       __unless__ isMath0 (,() Wx_array_member cx e ,(c ty) return c ty) ,()
       __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
@@ -1592,12 +1596,13 @@
   Wx_num_expr cx key ,(kc)
   Sjs_dec d ,(ed)
   Wx_atype ed ,(ety)
-  Wx_get oc kc ,(c)
+  Wx_get cx oc kc ,(c)
   __NULL__ c ety)
 
-;; ── 配列の要素をその場で読み書きする（consh/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、段階 F2）──
-;; 添字が定数なら、整数で 0 以上なのは変換のときに分かるので、長さと比べるだけをその場に書き、$__get と $__set を呼ばない。
-;; 配列 o の語は、(o × 8) バイトから長さ、要素 k は ((o + 1 + k) × 8) バイト（$__len と $__check と同じ）
+;; ── 配列の要素をその場で読み書きする（consh/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、段階 F2。添字が変数のときは 22、段階 F4）──
+;; 配列 o の語は、(o × 8) バイトから長さ、要素 k は ((o + 1 + k) × 8) バイト（$__len と $__check と同じ）。
+;; 添字が定数なら、整数で 0 以上なのは変換のときに分かるので、長さと比べるだけをその場に書く。添字が変数なら、$__check と
+;; 同じ確かめ（整数で、0 以上で、長さより小さい。NaN は通らない）をその場に書く。どちらも $__get と $__set を呼ばない
 
 ;; kc が (f64.const k) で、k が 0 以上 2^28 未満の整数（-0 は 0）なら、真と、要素の offset の "offset=((k + 1) × 8)"
 (define Wx_const_index ,(kc)
@@ -1629,24 +1634,33 @@
   __String_concat__ "offset=" os ,(o)
   __NULL__ __TRUE__ o)
 
-;; 配列の式 oc を 2 度使うための、前に置く WAT と、使う WAT：局所の変数を読むだけならそのまま、ほかは $__o に入れる
-;; （$__o は、入れてすぐに使う。oc や代入する値の中の読み書きが $__o を入れ直しても、そのときには使い終わっている）
-(define Wx_obj ,(oc)
+;; c が (local.get $名前) か (f64.const 数) だけか（何度読んでも同じで、軽い）
+(define Wx_simple ,(c)
   __Cont_get__ ,(return)
   Wx_num "0" ,(zero)
   Wx_num "11" ,(p)
-  __String_length__ oc ,(n)
+  __String_length__ c ,(n)
   __Number_subtract__ n p ,(room)
   __Number_is_positive__ room ,(long)
-  __unless__ long (,() Cat3 "(local.set $__o " oc ") " ,(pre) return pre "(local.get $__o)") ,()
-  __String_substring__ __print_exit_error__ oc zero p ,(head)
+  __unless__ long (,() return __FALSE__) ,()
+  __String_substring__ __print_exit_error__ c zero p ,(head)
   __String_equal__ head "(local.get " ,(isGet)
+  __String_equal__ head "(f64.const " ,(isConst)
+  __or__ isGet isConst ,(test__) __unless__ test__ (,() return __FALSE__) ,()
   Wx_num "1" ,(one)
-  __String_find__ __print_exit_error__ oc "(" one ,(more)
-  __is_null__ more ,(single)
-  __and__ isGet single ,(test__) __if__ test__ (,() return "" oc) ,()
-  Cat3 "(local.set $__o " oc ") " ,(pre)
-  __NULL__ pre "(local.get $__o)")
+  __String_find__ __print_exit_error__ c "(" one ,(more)
+  __is_null__ more)
+
+;; 式 c を何度か使うための、前に置く WAT と、使う WAT：軽い式ならそのまま、ほかは新しい一時の局所の変数に入れる
+;; （読み書きごとに別の変数なので、後に計算する添字や値の中の読み書きが入れ直すことはない）
+(define Wx_temp ,(cx c)
+  __Cont_get__ ,(return)
+  Wx_simple c ,(test__) __if__ test__ (,() return "" c) ,()
+  Wx_label cx "%t" ,(nm)
+  Wx_declare cx nm __FALSE__ ,(l)
+  Cat5 "(local.set " l " " c ") " ,(pre)
+  Cat3 "(local.get " l ")" ,(use)
+  __NULL__ pre use)
 
 ;; 配列 o の先頭のバイトの番地（i32）
 (define Wx_addr ,(o)
@@ -1657,35 +1671,36 @@
   Wx_addr oc ,(a)
   Cat3 "(f64.load " a ")")
 
-;; 添字 kc（定数）が配列 o の長さ以上なら trap
-(define Wx_len_check ,(o kc)
+;; 配列 oc の添字 kc の要素の場所：前に置く WAT（配列と添字を計算し、範囲の外なら trap）、f64.load と f64.store の offset、
+;; 番地（i32）。配列、添字の順に計算する（JavaScript と同じ）
+(define Wx_place ,(cx oc kc)
+  __Cont_get__ ,(return)
+  Wx_temp cx oc ,(preO o)
   Wx_addr o ,(a)
-  Cat4 "(if (f64.le (f64.load " a ") " kc ,(c)
-  __String_concat__ c ") (then unreachable)) ")
+  Wx_const_index kc ,(isConst off)
+  __if__ isConst
+    (,()
+      Cat4 "(if (f64.le (f64.load " a ") " kc ,(chk)
+      Cat3 preO chk ") (then unreachable)) " ,(pre)
+      return pre off a) ,()
+  Wx_temp cx kc ,(preI i)
+  Cat4 "(if (i32.eqz (i32.and (f64.ge " i " (f64.const 0)) (i32.and (f64.lt " i ,(chk)
+  Cat5 chk " (f64.load " a ")) (f64.eq " i ,(chk)
+  Cat4 chk " (f64.trunc " i "))))) (then unreachable)) " ,(chk)
+  Cat3 preO preI chk ,(pre)
+  Cat4 "(i32.mul (i32.add (i32.trunc_f64_u " o ") (i32.trunc_f64_u " i ,(addr)
+  __String_concat__ addr ")) (i32.const 8))" ,(addr)
+  __NULL__ pre "offset=8" addr)
 
 ;; o[k] を読む WAT
-(define Wx_get ,(oc kc)
-  __Cont_get__ ,(return)
-  Wx_const_index kc ,(isConst off)
-  __unless__ isConst (,() Cat5 "(call $__get " oc " " kc ")" ,(c) return c) ,()
-  Wx_obj oc ,(pre o)
-  Wx_len_check o kc ,(chk)
-  Wx_addr o ,(a)
-  Cat4 "(block (result f64) " pre chk "(f64.load " ,(c)
-  Cat5 c off " " a ")) " ,(c)
-  __NULL__ c)
+(define Wx_get ,(cx oc kc)
+  Wx_place cx oc kc ,(pre off addr)
+  Cat3 "(block (result f64) " pre "(f64.load " ,(c)
+  Cat5 c off " " addr ")) ")
 
-;; o[k] に nv を書く文の WAT
-(define Wx_set ,(oc kc nv)
-  __Cont_get__ ,(return)
-  Wx_const_index kc ,(isConst off)
-  __unless__ isConst (,() Cat5 "(drop (call $__set " oc " " kc " " ,(c) Cat3 c nv ")) " ,(c) return c) ,()
-  Wx_obj oc ,(pre o)
-  Wx_len_check o kc ,(chk)
-  Wx_addr o ,(a)
-  Cat4 "(block " pre chk "(f64.store " ,(c)
-  Cat5 c off " " a " " ,(c)
-  Cat3 c nv ")) ")
+;; 場所の要素を読む WAT（前に置く WAT は済んでいること）
+(define Wx_load ,(off addr)
+  Cat5 "(f64.load " off " " addr ")")
 
 ;; 名前を読む：局所の変数、一番外の数の定数、NaN、Infinity
 (define Wx_id ,(cx e)
@@ -2090,15 +2105,10 @@
   __if_then_else__ arrays (,() Wx_array_helpers) (,() __NULL__ "") ,(ah)
   __if_then_else__ none (,() __NULL__ "") (,() Wx_helpers ,(h) Cat5 "(module " ah h fs ")"))
 
-;; 配列の補助の関数（配列の計画の段階 A3）：メモリの語 a が配列の長さ、a + 1 から要素。$__get と $__set は、添字が整数で
-;; 0 以上、長さより小さいことを確かめ、違えば trap（ConMa 版で動かす）
+;; 配列を使う関数のためのメモリ（配列の計画の段階 A3）：メモリの語 a が配列の長さ、a + 1 から要素。読み書きと長さは
+;; その場に書く（段階 F2 と F4。Wx_place）ので、補助の関数はない
 (define Wx_array_helpers ,()
-  Cat5
-    "(memory 1) (func $__len (param $a f64) (result f64) (f64.load (i32.mul (i32.trunc_f64_u (local.get $a)) (i32.const 8)))) "
-    "(func $__check (param $a f64) (param $i f64) (result f64) (if (i32.or (f64.ne (local.get $i) (f64.trunc (local.get $i))) (i32.or (f64.lt (local.get $i) (f64.const 0)) (f64.ge (local.get $i) (call $__len (local.get $a))))) (then unreachable)) (f64.mul (f64.add (f64.add (local.get $a) (f64.const 1)) (local.get $i)) (f64.const 8))) "
-    "(func $__get (param $a f64) (param $i f64) (result f64) (f64.load (i32.trunc_f64_u (call $__check (local.get $a) (local.get $i))))) "
-    "(func $__set (param $a f64) (param $i f64) (param $v f64) (result f64) (f64.store (i32.trunc_f64_u (call $__check (local.get $a) (local.get $i))) (local.get $v)) (f64.const 0)) "
-    "")
+  __NULL__ "(memory 1) ")
 
 (define Wx_funcs ,(infos acc)
   __Cont_get__ ,(return)

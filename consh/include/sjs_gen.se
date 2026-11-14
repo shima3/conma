@@ -1822,9 +1822,11 @@
   Gen_temp g "t" ,(v)
   Gen_get_fn g kv ,(getFn)
   Gen_set_fn g kv ,(setFn)
-  Cat5 prefix vc getFn ov " " ,(c)
+  ;; JavaScript と同じく、今の値を読んでから右辺を求める（右辺が同じ要素に書いても、読んだ値に足す）
+  Cat4 prefix getFn ov " " ,(c)
   Cat5 c kv " ,(" old ") " ,(c)
-  Cat5 c f " " old " " ,(c)
+  Cat4 c vc f " " ,(c)
+  Cat3 c old " " ,(c)
   Cat5 c vv " ,(" v ") " ,(c)
   Cat4 c setFn ov " " ,(c)
   __String_concat__ c kv ,(c)
