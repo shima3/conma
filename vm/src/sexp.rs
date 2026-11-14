@@ -144,38 +144,78 @@ pub fn parse_at(text: &str, pos: &mut usize) -> Result<Sexp, String> {
     Err("EOF".into())
 }
 
+/// What a byte is to skip_at: OTHER, an ASCII byte of a bare token; SPACE, ASCII white space;
+/// OPEN and CLOSE, the parentheses; QUOTE; and HIGH, a byte of a character that is not ASCII
+/// (decoded by space_at to tell white space).
+const OTHER: u8 = 0;
+const SPACE: u8 = 1;
+const OPEN: u8 = 2;
+const CLOSE: u8 = 3;
+const QUOTE: u8 = 4;
+const HIGH: u8 = 5;
+
+const BYTE_CLASS: [u8; 256] = {
+    let mut t = [OTHER; 256];
+    let mut i = 0;
+    while i < 256 {
+        t[i] = if i >= 0x80 {
+            HIGH
+        } else if (i as u8 as char).is_whitespace() {
+            SPACE
+        } else if i == b'(' as usize {
+            OPEN
+        } else if i == b')' as usize {
+            CLOSE
+        } else if i == b'"' as usize {
+            QUOTE
+        } else {
+            OTHER
+        };
+        i += 1;
+    }
+    t
+};
+
 /// Skip one S-expression of text from byte *pos, as parse_at reads it, without making it: the
-/// tokens of next_token, looked at byte by byte without taking them.
+/// tokens of next_token, looked at byte by byte without taking them, the ASCII bytes by a table.
 pub fn skip_at(text: &str, pos: &mut usize) -> Result<(), String> {
     let b = text.as_bytes();
     let mut i = *pos;
     let mut depth = 0usize;
     while i < b.len() {
-        let c = b[i];
-        if c == b'(' {
-            depth += 1;
-            i += 1;
-            continue;
-        }
-        if c == b')' {
-            if depth == 0 {
-                return Err("unexpected )".into());
+        match BYTE_CLASS[b[i] as usize] {
+            OPEN => {
+                depth += 1;
+                i += 1;
+                continue;
             }
-            depth -= 1;
-            i += 1;
-            if depth == 0 {
-                *pos = i;
-                return Ok(());
+            CLOSE => {
+                if depth == 0 {
+                    return Err("unexpected )".into());
+                }
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    *pos = i;
+                    return Ok(());
+                }
+                continue;
             }
-            continue;
-        }
-        let (space, len) = space_at(text, i);
-        if space {
-            i += len;
-            continue;
+            SPACE => {
+                i += 1;
+                continue;
+            }
+            HIGH => {
+                let (space, len) = space_at(text, i);
+                if space {
+                    i += len;
+                    continue;
+                }
+            }
+            _ => {}
         }
         let mut closed = false;
-        if c == b'"' {
+        if b[i] == b'"' {
             // A quoted string, as next_token reads it
             let mut j = i + 1;
             while let Some(k) = b[j..].iter().position(|&d| d == b'"' || d == b'\\') {
@@ -195,15 +235,17 @@ pub fn skip_at(text: &str, pos: &mut usize) -> Result<(), String> {
         if !closed {
             // A bare token: up to white space or a parenthesis
             while i < b.len() {
-                let d = b[i];
-                if d == b'(' || d == b')' {
-                    break;
+                match BYTE_CLASS[b[i] as usize] {
+                    OTHER | QUOTE => i += 1,
+                    HIGH => {
+                        let (space, len) = space_at(text, i);
+                        if space {
+                            break;
+                        }
+                        i += len;
+                    }
+                    _ => break,
                 }
-                let (space, len) = space_at(text, i);
-                if space {
-                    break;
-                }
-                i += len;
             }
         }
         if depth == 0 {
@@ -281,4 +323,40 @@ pub fn to_string(x: &Sexp) -> String {
     let mut out = String::new();
     write(x, 0, &mut out);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// skip_at stops where parse_at does, on texts with strings, escapes, quotes inside bare
+    /// tokens, strings that are not closed, and white space that is not ASCII.
+    #[test]
+    fn skip_at_stops_where_parse_at_does() {
+        let texts = [
+            "(a b c) rest",
+            "((a (b)) \"x y\" (c)) rest",
+            "(G 1 \"name\" (Function (1 2) (Body (SInfo (1 2) \"/a b/c.se\" \"1\" \"2\")))) rest",
+            "(a \"esc \\\" ( ) \\\\\" b) rest",
+            "(a\"b c\"d e) rest",
+            "(a \"not closed\\\n x) rest",
+            "(a\u{3000}b\u{00a0}(c)\u{2028}) rest",
+            "(\u{3042}\u{3044} \"\u{3046} (\" x) rest",
+            "(a \"x\" \"\" ()) rest",
+            "atom rest",
+            "\"str\" rest",
+        ];
+        for t in texts {
+            let mut p = 0;
+            parse_at(t, &mut p).unwrap();
+            let mut q = 0;
+            skip_at(t, &mut q).unwrap();
+            assert_eq!(p, q, "{:?}", t);
+        }
+        for t in ["(a (b)", "(a \"(\"", ")"] {
+            let mut p = 0;
+            let mut q = 0;
+            assert!(parse_at(t, &mut p).is_err() && skip_at(t, &mut q).is_err(), "{:?}", t);
+        }
+    }
 }
