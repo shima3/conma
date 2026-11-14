@@ -236,6 +236,34 @@ pub fn js_value(_id: &str) -> io::Result<String> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
 }
 
+/// __Wasm_compile__: make the binary module into a module of the host; its
+/// number. The native VM has no WebAssembly.
+pub fn wasm_compile(_bytes: &[u8]) -> Result<i32, String> {
+    Err("WebAssembly is not available".into())
+}
+
+/// __Wasm_call__: call the exported function name of the module of the host
+/// with args and fuel.
+pub fn wasm_call(_host: i32, _name: &str, _args: &[f64], _fuel: f64) -> WasmResult {
+    WasmResult::Trap("WebAssembly is not available".into())
+}
+
+/// Remove a module from the host.
+pub fn wasm_free(_host: i32) {}
+
+/// The VM can run WebAssembly (the VM for wasm32 only).
+pub fn wasm_available() -> bool {
+    false
+}
+
+/// How a call of __Wasm_call__ ended.
+#[allow(dead_code)]
+pub enum WasmResult {
+    Ok(f64),
+    Fuel,
+    Trap(String),
+}
+
 /// The error of what this system cannot do (starting a process on wasm32).
 #[allow(dead_code)]
 pub fn unsupported() -> io::Error {

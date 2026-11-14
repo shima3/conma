@@ -11,6 +11,8 @@ mod cchain;
 pub mod collections;
 pub mod control;
 mod js;
+mod wasm;
+pub mod wasm_asm;
 pub mod lazy;
 pub mod llist;
 pub mod number;
@@ -162,6 +164,8 @@ prims! {
     "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
     "__JS_call__"          => "prim_JS_call", js::call;
     "__JS_value__"         => "prim_JS_value", js::value;
+    "__Wasm_compile__"     => "prim_Wasm_compile", wasm::compile;
+    "__Wasm_call__"        => "prim_Wasm_call", wasm::call;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

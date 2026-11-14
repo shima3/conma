@@ -1606,6 +1606,11 @@ var ConMaVM = (function () {
     const wake = () => {
       if (jsDone) Promise.resolve().then(() => jsDone(vm));
     };
+    // The WebAssembly modules of __Wasm_compile__ by number, and the message of the last failure
+    const wasmModules = new Map();
+    let wasmNext = 1;
+    let wasmError = "";
+    const errorText = (e) => (e instanceof Error ? e.name + ": " + e.message : String(e));
     // The calls of JavaScript (__JS_call__): the fd of the pipe of each job, and their lines
     const jsFds = new Map();
     const jsOut = {
@@ -1714,6 +1719,45 @@ var ConMaVM = (function () {
         },
         host_js_input: (id, ptr, len) => js.input(id, str(ptr, len)),
         host_js_input_end: (id) => js.inputEnd(id),
+        // __Wasm_compile__ and __Wasm_call__ (consh/SJS-WASM-PLAN-ja.md 5.4): modules of functions on
+        // numbers, without imports, made by the assembler of the VM (vm/src/prim/wasm_asm.rs), which
+        // exports the fuel as the mutable i64 global __fuel
+        host_wasm_compile: (ptr, len) => {
+          try {
+            const bytes = new Uint8Array(x.memory.buffer, ptr, len).slice();
+            const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
+            const id = wasmNext++;
+            wasmModules.set(id, instance);
+            return id;
+          } catch (e) {
+            wasmError = errorText(e);
+            return -1;
+          }
+        },
+        host_wasm_call: (id, namePtr, nameLen, argsPtr, n, fuel, out) => {
+          const instance = wasmModules.get(id);
+          const f = instance && instance.exports[str(namePtr, nameLen)];
+          if (typeof f !== "function") {
+            wasmError = "no such function";
+            return 2;
+          }
+          const args = Array.from(new Float64Array(x.memory.buffer, argsPtr, n));
+          const fuelGlobal = instance.exports.__fuel;
+          fuelGlobal.value = BigInt(fuel);
+          try {
+            const r = f(...args);
+            new Float64Array(x.memory.buffer, out, 1)[0] = r;
+            return 0;
+          } catch (e) {
+            if (fuelGlobal.value === 0n) return 1;
+            wasmError = errorText(e);
+            return 2;
+          }
+        },
+        host_wasm_error: (out, cap) => give(wasmError, out, cap),
+        host_wasm_free: (id) => {
+          wasmModules.delete(id);
+        },
       },
     });
     x = instance.exports;

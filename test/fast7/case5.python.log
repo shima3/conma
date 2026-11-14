@@ -1,0 +1,29 @@
+not a String: __Wasm_compile__: WebAssembly is not available
+empty: __Wasm_compile__: WebAssembly is not available
+not a module: __Wasm_compile__: WebAssembly is not available
+two modules: __Wasm_compile__: WebAssembly is not available
+import: __Wasm_compile__: WebAssembly is not available
+memory: __Wasm_compile__: WebAssembly is not available
+global: __Wasm_compile__: WebAssembly is not available
+start: __Wasm_compile__: WebAssembly is not available
+param i32: __Wasm_compile__: WebAssembly is not available
+no result: __Wasm_compile__: WebAssembly is not available
+two results: __Wasm_compile__: WebAssembly is not available
+result i32: __Wasm_compile__: WebAssembly is not available
+order: __Wasm_compile__: WebAssembly is not available
+reserved export: __Wasm_compile__: WebAssembly is not available
+export twice: __Wasm_compile__: WebAssembly is not available
+unknown instruction: __Wasm_compile__: WebAssembly is not available
+memory instruction: __Wasm_compile__: WebAssembly is not available
+unknown local: __Wasm_compile__: WebAssembly is not available
+local index: __Wasm_compile__: WebAssembly is not available
+unknown label: __Wasm_compile__: WebAssembly is not available
+unknown function: __Wasm_compile__: WebAssembly is not available
+bad number: __Wasm_compile__: WebAssembly is not available
+i32 range: __Wasm_compile__: WebAssembly is not available
+no end: __Wasm_compile__: WebAssembly is not available
+unclosed: __Wasm_compile__: WebAssembly is not available
+extra ): __Wasm_compile__: WebAssembly is not available
+string: __Wasm_compile__: WebAssembly is not available
+fine: __Wasm_compile__: WebAssembly is not available
+exit: 0

@@ -38,7 +38,7 @@
 ;; 高速版 ConMa の機能（docs/FAST-PLAN-ja.md の 3.4）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (F ...) の後に (Uses ...) を置く（bin/resolver と同じ）。entries の前に足す。
 ;; "bitwise32" はビット演算のプリミティブ（docs/BITWISE-PLAN-ja.md）、"boolean" は __TRUE__ と __FALSE__、
-;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__
+;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__、"wasm" は __Wasm_compile__ と __Wasm_call__
 (define __Resolver_uses__ ,(globals values entries)
   __Resolver_features__ globals values ,(features)
   __is_null__ features ,(none)
@@ -50,14 +50,20 @@
 
 ;; 使う機能の名前の列（bin/resolver の FAST_PRIMITIVES の順）
 (define __Resolver_features__ ,(globals values)
+  __LList_cons__ "__Wasm_call__" __NULL__ ,(wasms)
+  __LList_cons__ "__Wasm_compile__" wasms ,(wasms)
+  __Resolver_uses_prim__ globals values wasms ,(usesWasm)
+  __if_then_else__ usesWasm
+    (,() __LList_cons__ "wasm" __NULL__)
+    (,() __NULL__ __NULL__) ,(features)
   __LList_cons__ "__Cont_get__" __NULL__ ,(controls)
   __LList_cons__ "__unless__" controls ,(controls)
   __LList_cons__ "__if__" controls ,(controls)
   __LList_cons__ "__if_then_else__" controls ,(controls)
   __Resolver_uses_prim__ globals values controls ,(usesControl)
   __if_then_else__ usesControl
-    (,() __LList_cons__ "control" __NULL__)
-    (,() __NULL__ __NULL__) ,(features)
+    (,() __LList_cons__ "control" features)
+    (,() __NULL__ features) ,(features)
   __LList_cons__ "__FALSE__" __NULL__ ,(bools)
   __LList_cons__ "__TRUE__" bools ,(bools)
   __Resolver_uses_prim__ globals values bools ,(usesBoolean)

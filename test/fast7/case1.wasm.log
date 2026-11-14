@@ -1,0 +1,12 @@
+Wasm
+fib 20: ok 6765
+sum 100: ok 5050
+xor 5 3: ok 6
+xor -7.9 3: ok -6
+three 2 3 4: ok 10
+negzero: ok -0
+neginf: ok -inf
+nan: ok nan
+big: ok 18446744073709551616
+tenth: ok 1
+exit: 0

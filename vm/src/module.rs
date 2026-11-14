@@ -678,8 +678,9 @@ pub fn module_files(module: &Sexp) -> String {
 /// "boolean", the primitives __TRUE__ and __FALSE__, and "control", __if_then_else__, __if__,
 /// __unless__, __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__,
 /// __Number_if_greater__, __Number_if_greater_then_else__ and __Cont_get__ (prim/control.rs,
-/// prim/cchain.rs).
-pub const FAST_FEATURES: &[&str] = &["bitwise32", "boolean", "control"];
+/// prim/cchain.rs), and "wasm", __Wasm_compile__ and __Wasm_call__ (prim/wasm.rs; the native VM
+/// has them and fails as it has no WebAssembly).
+pub const FAST_FEATURES: &[&str] = &["bitwise32", "boolean", "control", "wasm"];
 
 /// True if the module uses the feature "boolean" of fast ConMa: __TRUE__ and
 /// __FALSE__ are primitives (prim/control.rs), and so are the Booleans the

@@ -23,6 +23,7 @@ pub struct Serials {
     pub conts: usize,
     pub streams: usize,
     pub osprocs: usize,
+    pub wasms: usize,
 }
 
 pub struct Machine {
@@ -49,6 +50,9 @@ pub struct Machine {
     /// Load `__Number_fromString__ onError "text" ,(x) ...` with the Number in place of x
     /// (step.rs, load_const; an experiment): off with CONMA_NO_FOLD=1.
     pub fold_constants: bool,
+    /// End the time slice after this step (__Wasm_call__ out of fuel), so that the host
+    /// gets the events, as a Ctrl-C, before the VProc calls again.
+    pub end_slice: bool,
     /// The Rust calls of native code that are running (vm/src/native.rs).
     pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
@@ -233,6 +237,7 @@ impl Machine {
             profile: crate::profile::Profile::from_env(),
             fast_steps: 0,
             fold_constants: std::env::var_os("CONMA_NO_FOLD").is_none(),
+            end_slice: false,
             nctx: Default::default(),
             joining: Vec::new(),
             lazy: Vec::new(),
@@ -596,6 +601,12 @@ impl Machine {
         loop {
             if self.steps >= limit {
                 return Slice::Paused;
+            }
+            if self.end_slice {
+                self.end_slice = false;
+                if budget != u64::MAX {
+                    return Slice::Paused;
+                }
             }
             if crate::gc::due() {
                 // Between two steps no RefCell is borrowed.

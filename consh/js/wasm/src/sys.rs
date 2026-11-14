@@ -51,6 +51,19 @@ extern "C" {
     /// The JS value numbered id (__JS_value__) as an S-expression of a value
     /// of ConSh, written to out (cap bytes); the length, or -errno.
     fn host_js_value(id_ptr: *const u8, id_len: usize, out: *mut u8, cap: usize) -> i32;
+    /// Make the binary WebAssembly module of len bytes at ptr into a module
+    /// of the host (__Wasm_compile__); its number (> 0), or -1 with the
+    /// message for host_wasm_error.
+    fn host_wasm_compile(ptr: *const u8, len: usize) -> i32;
+    /// Call the exported function name of module id with the n f64 at args
+    /// and the fuel (__Wasm_call__): 0 with the result written at out, 1 when
+    /// the fuel ran out, or 2 with the message for host_wasm_error.
+    fn host_wasm_call(id: i32, name_ptr: *const u8, name_len: usize, args: *const f64, n: usize, fuel: f64, out: *mut f64) -> i32;
+    /// The message of the last failure of host_wasm_compile or host_wasm_call,
+    /// written to out (cap bytes); its length.
+    fn host_wasm_error(out: *mut u8, cap: usize) -> i32;
+    /// Forget module id.
+    fn host_wasm_free(id: i32);
 
     // Files of the host (after conma_use_host_fs): paths are absolute and as
     // the VM has them (the host resolves . and .. and symbolic links), and a
@@ -547,6 +560,45 @@ pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
 
 pub fn js_value(id: &str) -> io::Result<String> {
     host_text(|out, cap| unsafe { host_js_value(id.as_ptr(), id.len(), out, cap) })
+}
+
+/// __Wasm_compile__: make the binary module into a module of the host.
+pub fn wasm_compile(bytes: &[u8]) -> Result<i32, String> {
+    let id = unsafe { host_wasm_compile(bytes.as_ptr(), bytes.len()) };
+    if id > 0 {
+        Ok(id)
+    } else {
+        Err(wasm_error())
+    }
+}
+
+/// __Wasm_call__: call the exported function name of module host.
+pub fn wasm_call(host: i32, name: &str, args: &[f64], fuel: f64) -> WasmResult {
+    let mut out = 0.0f64;
+    match unsafe { host_wasm_call(host, name.as_ptr(), name.len(), args.as_ptr(), args.len(), fuel, &mut out) } {
+        0 => WasmResult::Ok(out),
+        1 => WasmResult::Fuel,
+        _ => WasmResult::Trap(wasm_error()),
+    }
+}
+
+fn wasm_error() -> String {
+    host_text(|out, cap| unsafe { host_wasm_error(out, cap) }).unwrap_or_else(|e| strerror(&e))
+}
+
+pub fn wasm_free(host: i32) {
+    unsafe { host_wasm_free(host) }
+}
+
+pub fn wasm_available() -> bool {
+    true
+}
+
+/// How a call of __Wasm_call__ ended.
+pub enum WasmResult {
+    Ok(f64),
+    Fuel,
+    Trap(String),
 }
 
 pub fn setsid() -> c_int {

@@ -40,6 +40,8 @@ pub enum Value {
     Stream(Rc<StreamObj>),
     /// An OS process started by __OS_spawn__.
     OSProc(Rc<OSProcObj>),
+    /// A WebAssembly module made by __Wasm_compile__.
+    Wasm(Rc<WasmObj>),
     /// The values of the variables of a frame (module::frame_chain): only the value of an LVEnv
     /// node, never one that a program sees.
     Frame(Rc<Vec<Value>>),
@@ -135,6 +137,22 @@ impl StreamObj {
         }
         buf.drain(..i);
         out
+    }
+}
+
+/// A WebAssembly module of the host (__Wasm_compile__), removed from the host
+/// when its last reference is dropped.
+pub struct WasmObj {
+    pub serial: usize,
+    /// The number of the module in the host.
+    pub host: i32,
+    /// The exported functions and their numbers of parameters.
+    pub exports: Vec<(String, usize)>,
+}
+
+impl Drop for WasmObj {
+    fn drop(&mut self) {
+        crate::sys::wasm_free(self.host);
     }
 }
 
@@ -612,6 +630,7 @@ pub fn identity(v: &Value) -> usize {
         Value::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Stream(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::OSProc(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Wasm(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Frame(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Prim(p) => *p as *const _ as *const u8 as usize,
         Value::Raw(s) | Value::StrNode(s) => match s {
@@ -1076,6 +1095,7 @@ pub fn value_type_name(v: &Value) -> String {
         Value::VProc(_) => "VProc".into(),
         Value::Stream(s) => s.kind().into(),
         Value::OSProc(_) => "OSProc".into(),
+        Value::Wasm(_) => "Wasm".into(),
         Value::Frame(_) => "Frame".into(),
         Value::Null => "null".into(),
     }
@@ -1098,6 +1118,7 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
         Value::VProc(_) => "VProc",
         Value::Stream(_) => "Stream",
         Value::OSProc(_) => "OSProc",
+        Value::Wasm(_) => "Wasm",
         Value::Raw(_) | Value::Null | Value::Frame(_) => return Err("__type_name__: unknown value".into()),
     })
 }

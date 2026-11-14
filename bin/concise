@@ -26,6 +26,9 @@ The features it knows:
   in concise ConMa (include/ref/pure.se) are put in the same way.
 * "control": __if_then_else__, __if__, __unless__ and __Cont_get__, built in in
   fast ConMa, with their definitions of include/ref/control.se.
+* "wasm" (consh/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
+  which the concise VM cannot run; their definitions (include/ref/wasm.se) go
+  to onError with "WebAssembly is not available".
 "control" and "boolean" are done after "bitwise32", whose definitions use them
 (left Undefined in the module of the definitions, which is made with include/),
 and either of them puts the definitions of the other too (include/ref/pure.se
@@ -41,8 +44,9 @@ import sys
 # The features of fast ConMa this translator rewrites (as FAST_FEATURES of
 # vm/src/module.rs), and the file of the replacement definitions of each
 # (under include/ of the repository)
-FEATURES = ("bitwise32", "boolean", "control")
-DEFINITIONS = {"bitwise32": "ref/bitwise32.se", "boolean": "ref/pure.se", "control": "ref/control.se"}
+FEATURES = ("bitwise32", "boolean", "control", "wasm")
+DEFINITIONS = {"bitwise32": "ref/bitwise32.se", "boolean": "ref/pure.se", "control": "ref/control.se",
+               "wasm": "ref/wasm.se"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -232,7 +236,7 @@ def concise(text):
     # "control" and "boolean" after "bitwise32": its definitions use them (left Undefined in them)
     if "bitwise32" in used:
         used += [f for f in ("control", "boolean") if f not in used]
-    for name in sorted(used, key=lambda n: ("bitwise32", "control", "boolean").index(n)):
+    for name in sorted(used, key=lambda n: ("wasm", "bitwise32", "control", "boolean").index(n)):
         text = put_definitions(text, name)
     return remove_uses(text)
 

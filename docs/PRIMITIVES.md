@@ -664,6 +664,7 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 | a Closure or a primitive | `"Closure"` |
 | a Ref, CFrame, LList, MSeq, Dict, VProc or OSProc | `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` |
 | a Stream, for input or output | `"Stream"` |
+| a WebAssembly module of `__Wasm_compile__` (fast ConMa, section 16) | `"Wasm"` |
 
 * **Behavior**: A type is tested by comparing the result with `__String_equal__`:
 ```
@@ -756,4 +757,27 @@ In a module with this feature, the Booleans the primitives return (`__is_null__`
 ### **`__TRUE__ then else ,(then)`** / **`__FALSE__ then else ,(else)`**
 * **Description**: Passes `then` (`__TRUE__`) or `else` (`__FALSE__`) to the LCont, without applying it, in one step (the Closure takes two).
 * **Error**: Stops the VProc with `__TRUE__: missing argument(s)` with fewer than two operands, where the Closure would be applied partially. Operands after the second are dropped, as by other primitives.
+
+### Feature `"wasm"`: functions on numbers in WebAssembly (consh/SJS-WASM-PLAN-ja.md)
+
+A program can write functions on numbers in a subset of the WebAssembly text format (WAT), as a kind of inline assembler, and call them. Only the VM for wasm32 (`consh/js`) runs them, with the WebAssembly of its host (Node.js, JavaScriptCore or a browser); the native VMs (Rust, transpiled) assemble the text and then apply `onError` with `"__Wasm_compile__: WebAssembly is not available"`, or with the error of the assembler. The replacement definitions (`include/ref/wasm.se`) apply `onError` with the same message without assembling. The VM for wasm32 does the same with `--trace` or `CONMA_PROFILE`, whose steps are those of ConMa, and when the environment variable `CONMA_NO_WASM` is not empty.
+
+**The subset of WAT** (`vm/src/prim/wasm_asm.rs`):
+
+* One `(module ...)` of `(func ...)` only: no `import`, `memory`, `table`, `global`, `start`, `data` or `elem`. A function cannot reach anything but its arguments, so an exported function always gives the same result for the same arguments, and a call can be made again from the start.
+* `(func $name? (export "name")* (param $x? f64 ...)* (result f64) (local $y? type ...)* instruction*)`, the parts in this order: the parameters are `f64`, the result is exactly one `f64`, the locals are `f64`, `i32` or `i64`. The export name `__fuel` is reserved.
+* The instructions on `f64`, `i32` and `i64` without memory: `local.get`, `local.set`, `local.tee`, the constants, arithmetic, comparisons, bitwise operations, conversions (also `trunc_sat`), `select`, `drop`, `nop`, `block`, `loop`, `if`/`else`, `br`, `br_if`, `call`, `return` and `unreachable`, written flat (`block $l ... end`) or folded (`(f64.add (local.get 0) (f64.const 1))`). Locals, labels and functions are named (`$x`) or numbered. Constants are decimal (also `inf` and `nan` for `f64.const`) or hexadecimal integers. Comments `;; ...` and `(; ... ;)` are allowed.
+* A ConMa String cannot hold a newline, so a module is written on one line, with `\n`, or put together with `__String_concat__`.
+* The assembler adds the **fuel**, an `i64` global that is taken by one at the start of each function and each loop; when it is 0, the function stops (status `"fuel"`). So a loop that does not end comes back to the VM.
+* The types of the instructions are checked by the host when it compiles the module; its message is passed to `onError` (for example `CompileError: WebAssembly.Module(): ...` on Node.js).
+
+### **`__Wasm_compile__ onError wat ,(module)`**
+* **Description**: Makes the module of the String `wat`.
+* **Returns**: The module, of type `"Wasm"`. The host forgets it when the last reference to it is dropped.
+* **Error**: Applies `onError` with a message if `wat` is not a String, is not in the subset (`"__Wasm_compile__: line L col C: ..."`), does not pass the checks of the host, or WebAssembly is not available.
+
+### **`__Wasm_call__ onError module name args fuel ,(status value)`**
+* **Description**: Calls the function exported as the String `name` of `module` with the Numbers of the LList `args` (as many as its parameters), giving it `fuel` (an integer from 1 to 2^53).
+* **Returns**: `"ok"` and the result (a Number), `"fuel"` and null if the fuel ran out before the function returned, or `"trap"` and the message of the host (a String; for example `RuntimeError: unreachable` or `RuntimeError: divide by zero` on Node.js). On `"fuel"`, the VM ends the time slice, so that the host gets its events (such as Ctrl-C) and other VProcs run before the program calls again, for example with twice the fuel. A call with `"fuel"` has no effect, as the function depends on its arguments only.
+* **Error**: Applies `onError` with a message if `module` is not a module, `name` is not a String or not an exported function, `args` is not an LList of Numbers or has another length, or `fuel` is not an integer from 1 to 2^53.
 

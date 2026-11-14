@@ -1,0 +1,4 @@
+spin: fuel
+fib 25 with 100: fuel
+ok 75025 after 12 times out of fuel
+exit: 0

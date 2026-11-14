@@ -1,0 +1,13 @@
+not a module: __Wasm_call__: expected a Wasm module, got String
+name: __Wasm_call__: expected String name, got Number
+args: __Wasm_call__: expected an LList of Numbers, got String
+element: __Wasm_call__: expected an LList of Numbers, got String in it
+fuel string: __Wasm_call__: expected fuel, an integer from 1 to 2^53, got String
+fuel 0: __Wasm_call__: expected fuel, an integer from 1 to 2^53, got 0
+fuel 1.5: __Wasm_call__: expected fuel, an integer from 1 to 2^53, got 1.5
+fuel 1e300: __Wasm_call__: expected fuel, an integer from 1 to 2^53, got 1e+300
+unknown: __Wasm_call__: no exported function "di"
+too few: __Wasm_call__: "id" takes 1 argument(s), got 0
+too many: __Wasm_call__: "id" takes 1 argument(s), got 2
+fuel 1: ok 1
+exit: 0

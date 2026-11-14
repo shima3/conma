@@ -1,0 +1,13 @@
+;; 高速版 ConMa の機能 "wasm" の代わりの定義（consh/SJS-WASM-PLAN-ja.md の 5.3、docs/PRIMITIVES.md の 16）。
+;; 簡潔版 ConMa のファイルなので include/ref に置く。
+;; __Wasm_compile__ と __Wasm_call__ は、wasm 版の VM（consh/js）のホストの WebAssembly で動く。簡潔版の VM（Python）には
+;; WebAssembly がないので、bin/concise がこの定義をモジュールに入れ、どちらも onError を呼ぶ（ネイティブの VM のプリミティブ
+;; と同じメッセージ。ただし、ネイティブの VM は、先に WAT を組み立てて、誤りがあればそれを onError に渡す）。
+;;   __Wasm_compile__ onError wat ,(module)
+;;   __Wasm_call__ onError module name args fuel ,(status value)
+
+(define __Wasm_compile__ ,(onError wat)
+  onError "__Wasm_compile__: WebAssembly is not available")
+
+(define __Wasm_call__ ,(onError module name args fuel)
+  onError "__Wasm_call__: WebAssembly is not available")

@@ -292,7 +292,7 @@ fn value_child(v: &Value, f: &mut dyn FnMut(Node)) {
                 value_child(v, f);
             }
         }
-        // Strings, Numbers, primitives, AST nodes, Streams and OSProcs hold no values.
+        // Strings, Numbers, primitives, AST nodes, Streams, OSProcs and Wasm modules hold no values.
         _ => {}
     }
 }

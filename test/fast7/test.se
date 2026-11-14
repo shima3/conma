@@ -1,0 +1,164 @@
+;; 高速版 ConMa の機能 "wasm"（consh/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
+;; __Wasm_compile__ onError wat ,(module) と __Wasm_call__ onError module name args fuel ,(status value)。
+;; wasm 版の VM（consh/js。Node.js）はホストの WebAssembly で動かす。ネイティブの VM は WAT を組み立ててから onError に
+;; 進み（組み立ての誤りはそのメッセージ）、Python の VM は代わりの定義（include/ref/wasm.se）で onError に進む。
+;; ConMa の文字列は改行を含められないので、WAT は 1 行ずつの文字列を Cat でつなぐ
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+;; 数の文字列。-0 は "-0"
+(define show_num ,(n)
+  __Number_is_negative_zero__ n ,(nz)
+  __if_then_else__ nz (,() __NULL__ "-0") (,() __Number_toString__ n))
+
+;; label と、__Wasm_call__ の結果（status と値）か、onError のメッセージを出す
+(define try_call ,(label w name args fuel)
+  __Cont_get__ ,(return)
+  __String_concat__ label ": " ,(head)
+  __Wasm_call__ (,(msg) __String_concat__ head msg ,(s) println s ,() return) w name args fuel ,(status value)
+  __String_concat__ head status ,(s)
+  __String_equal__ status "ok" ,(ok)
+  __String_equal__ status "trap" ,(trap)
+  __if_then_else__ ok
+    (,() show_num value ,(t) Cat3 s " " t)
+    (,() __if_then_else__ trap (,() Cat3 s " " value) (,() __NULL__ s)) ,(s)
+  println s)
+
+;; wat からモジュールを作って k に渡す。作れなければ、メッセージを出して戻る
+(define with_module ,(wat k)
+  __Cont_get__ ,(return)
+  __Wasm_compile__ (,(msg) println msg ,() return) wat ,(w)
+  k w)
+
+;; wat を作れるか。作れなければメッセージを、作れれば "compiled" を出す
+(define try_compile ,(label wat)
+  __Cont_get__ ,(return)
+  __String_concat__ label ": " ,(head)
+  __Wasm_compile__ (,(msg) __String_concat__ head msg ,(s) println s ,() return) wat ,(w)
+  __String_concat__ head "compiled" ,(s)
+  println s)
+
+;; 文字列をつなぐ
+(define Cat ,(a b) __String_concat__ a b)
+(define Cat3 ,(a b c) __String_concat__ a b ,(ab) __String_concat__ ab c)
+(define Cat5 ,(a b c d e) Cat3 a b c ,(abc) Cat3 abc d e)
+
+(define list1 ,(a) __LList_cons__ a __NULL__)
+(define list2 ,(a b) __LList_cons__ b __NULL__ ,(t) __LList_cons__ a t)
+(define list3 ,(a b c) list2 b c ,(t) __LList_cons__ a t)
+
+(define big_fuel ,() num "1000000000")
+
+;; 数の関数の部品：畳んだ形と平らな形、名前と番号、ラベル、i32 と i64、定数
+(define module1 ,()
+  Cat5 "(module "
+    "(func $fib (export \"fib\") (param $n f64) (result f64) (if (result f64) (f64.lt (local.get $n) (f64.const 2)) (then (local.get $n)) (else (f64.add (call $fib (f64.sub (local.get $n) (f64.const 1))) (call $fib (f64.sub (local.get $n) (f64.const 2))))))) "
+    "(func (export \"sum\") (param $n f64) (result f64) (local $i f64) (local $s f64) block $done loop $next local.get $i local.get $n f64.ge br_if $done local.get $i f64.const 1 f64.add local.tee $i local.get $s f64.add local.set $s br $next end end local.get $s) "
+    "(func (export \"xor\") (param f64 f64) (result f64) (f64.convert_i32_s (i32.xor (i32.trunc_sat_f64_s (local.get 0)) (i32.trunc_sat_f64_s (local.get 1))))) (func (export \"three\") (param f64 f64 f64) (result f64) (f64.add (f64.mul (local.get 0) (local.get 1)) (local.get 2))) "
+    "(func (export \"negzero\") (result f64) (f64.neg (f64.const 0))) (func (export \"neginf\") (result f64) (f64.const -inf)) (func (export \"nan\") (result f64) (f64.const nan)) (func (export \"big\") (result f64) (f64.convert_i64_u (i64.const 0xffffffffffffffff))) (func (export \"tenth\") (result f64) f64.const 0.1 (; a block comment ;) f64.const 1e-1 f64.eq f64.convert_i32_u) ;; a comment\n)")
+
+;; case1: 作って呼ぶ
+(define case1 ,()
+  module1 ,(wat)
+  with_module wat (,(w)
+    big_fuel ,(fuel)
+    __type_name__ w ,(t) println t ,()
+    num "20" ,(n20) list1 n20 ,(a) try_call "fib 20" w "fib" a fuel ,()
+    num "100" ,(n100) list1 n100 ,(a) try_call "sum 100" w "sum" a fuel ,()
+    num "5" ,(n5) num "3" ,(n3) list2 n5 n3 ,(a) try_call "xor 5 3" w "xor" a fuel ,()
+    num "-7.9" ,(m) list2 m n3 ,(a) try_call "xor -7.9 3" w "xor" a fuel ,()
+    num "2" ,(n2) num "4" ,(n4) list3 n2 n3 n4 ,(a) try_call "three 2 3 4" w "three" a fuel ,()
+    try_call "negzero" w "negzero" __NULL__ fuel ,()
+    try_call "neginf" w "neginf" __NULL__ fuel ,()
+    try_call "nan" w "nan" __NULL__ fuel ,()
+    try_call "big" w "big" __NULL__ fuel ,()
+    try_call "tenth" w "tenth" __NULL__ fuel))
+
+;; 燃料が足りるまで、2 倍にしてやり直す（consh/SJS-WASM-PLAN-ja.md の 5.5）。やり直した回数と結果を出す
+(define retry ,(w name args fuel count)
+  __Wasm_call__ __print_exit_error__ w name args fuel ,(status value)
+  __String_equal__ status "fuel" ,(again)
+  __if_then_else__ again
+    (,() __Number_add__ fuel fuel ,(f) num "1" ,(one) __Number_add__ count one ,(c) retry w name args f c)
+    (,() __Number_toString__ count ,(cs) show_num value ,(vs) Cat5 status " " vs " after " cs ,(s) Cat s " times out of fuel" ,(s) println s))
+
+;; case2: 燃料：終わらないループ、足りない燃料、やり直し
+(define case2 ,()
+  Cat3 "(module (func (export \"spin\") (result f64) loop $l br $l end f64.const 0) " "(func $fib (export \"fib\") (param $n f64) (result f64) (if (result f64) (f64.lt (local.get $n) (f64.const 2)) (then (local.get $n)) (else (f64.add (call $fib (f64.sub (local.get $n) (f64.const 1))) (call $fib (f64.sub (local.get $n) (f64.const 2)))))))" ")" ,(wat)
+  with_module wat (,(w)
+    num "100000" ,(fuel)
+    try_call "spin" w "spin" __NULL__ fuel ,()
+    num "25" ,(n25) list1 n25 ,(a)
+    num "100" ,(small) try_call "fib 25 with 100" w "fib" a small ,()
+    num "0" ,(zero) retry w "fib" a small zero))
+
+;; case3: trap（メッセージは Node.js のもの）
+(define case3 ,()
+  Cat3 "(module (func (export \"stop\") (result f64) unreachable) " "(func (export \"div\") (param f64 f64) (result f64) (f64.convert_i32_s (i32.div_s (i32.trunc_f64_s (local.get 0)) (i32.trunc_f64_s (local.get 1))))) (func (export \"int\") (param f64) (result f64) (f64.convert_i32_s (i32.trunc_f64_s (local.get 0))))" ")" ,(wat)
+  with_module wat (,(w)
+    big_fuel ,(fuel)
+    try_call "stop" w "stop" __NULL__ fuel ,()
+    num "7" ,(n7) num "0" ,(n0) list2 n7 n0 ,(a) try_call "div 7 0" w "div" a fuel ,()
+    num "-7" ,(m7) num "2" ,(n2) list2 m7 n2 ,(a) try_call "div -7 2" w "div" a fuel ,()
+    num "1e300" ,(huge) list1 huge ,(a) try_call "int 1e300" w "int" a fuel))
+
+;; case4: __Wasm_call__ の誤った引数
+(define case4 ,()
+  with_module "(module (func (export \"id\") (param f64) (result f64) local.get 0))" (,(w)
+    big_fuel ,(fuel)
+    num "1" ,(one) list1 one ,(a)
+    try_call "not a module" "w" "id" a fuel ,()
+    try_call "name" w one a fuel ,()
+    try_call "args" w "id" "1" fuel ,()
+    list1 "1" ,(sa) try_call "element" w "id" sa fuel ,()
+    try_call "fuel string" w "id" a "1" ,()
+    num "0" ,(zero) try_call "fuel 0" w "id" a zero ,()
+    num "1.5" ,(half) try_call "fuel 1.5" w "id" a half ,()
+    num "1e300" ,(huge) try_call "fuel 1e300" w "id" a huge ,()
+    try_call "unknown" w "di" a fuel ,()
+    try_call "too few" w "id" __NULL__ fuel ,()
+    list2 one one ,(b) try_call "too many" w "id" b fuel ,()
+    try_call "fuel 1" w "id" a one))
+
+;; case5: アセンブラが受け付けない WAT（ネイティブの VM と wasm 版の VM で同じメッセージ）
+(define case5 ,()
+  num "1" ,(one)
+  try_compile "not a String" one ,()
+  try_compile "empty" "" ,()
+  try_compile "not a module" "(func)" ,()
+  try_compile "two modules" "(module) (module)" ,()
+  try_compile "import" "(module (import \"m\" \"f\" (func)))" ,()
+  try_compile "memory" "(module (memory 1))" ,()
+  try_compile "global" "(module (global $g (mut f64) (f64.const 0)))" ,()
+  try_compile "start" "(module (start 0))" ,()
+  try_compile "param i32" "(module (func (param i32) (result f64) f64.const 0))" ,()
+  try_compile "no result" "(module (func (param f64)))" ,()
+  try_compile "two results" "(module (func (result f64) (result f64) f64.const 0))" ,()
+  try_compile "result i32" "(module (func (result i32) i32.const 0))" ,()
+  try_compile "order" "(module (func (result f64) (param f64) f64.const 0))" ,()
+  try_compile "reserved export" "(module (func (export \"__fuel\") (result f64) f64.const 0))" ,()
+  try_compile "export twice" "(module (func (export \"f\") (result f64) f64.const 0) (func (export \"f\") (result f64) f64.const 1))" ,()
+  try_compile "unknown instruction" "(module (func (result f64) f32.const 0))" ,()
+  try_compile "memory instruction" "(module (func (result f64) i32.const 0 f64.load))" ,()
+  try_compile "unknown local" "(module (func (param $x f64) (result f64) local.get $y))" ,()
+  try_compile "local index" "(module (func (param f64) (result f64) local.get 1))" ,()
+  try_compile "unknown label" "(module (func (result f64) block br $out end f64.const 0))" ,()
+  try_compile "unknown function" "(module (func (result f64) call $g))" ,()
+  try_compile "bad number" "(module (func (result f64) f64.const 0x10))" ,()
+  try_compile "i32 range" "(module (func (result f64) i32.const 4294967296 drop f64.const 0))" ,()
+  try_compile "no end" "(module (func (result f64) block f64.const 0))" ,()
+  try_compile "unclosed" "(module (func (result f64) f64.const 0)" ,()
+  try_compile "extra )" "(module))" ,()
+  try_compile "string" "(module (func (export \"f) (result f64) f64.const 0))" ,()
+  try_compile "fine" "(module (func (export \"f\") (result f64) f64.const 0))")
+
+;; case6: ホストが型を確かめる（メッセージは Node.js のもの）
+(define case6 ,()
+  try_compile "type" "(module (func (export \"f\") (result f64) i32.const 1))" ,()
+  try_compile "stack" "(module (func (export \"f\") (result f64) f64.add))")

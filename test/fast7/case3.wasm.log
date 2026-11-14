@@ -1,0 +1,5 @@
+stop: trap RuntimeError: unreachable
+div 7 0: trap RuntimeError: divide by zero
+div -7 2: ok -3
+int 1e300: trap RuntimeError: float unrepresentable in integer range
+exit: 0

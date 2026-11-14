@@ -13,6 +13,9 @@ FAST_PRIMITIVES = [
     # __if_then_else__, __if__, __unless__ and __Cont_get__, built in in fast ConMa (concise ConMa defines
     # them in include/ref/control.se)
     ("control", ("__if_then_else__", "__if__", "__unless__", "__Cont_get__")),
+    # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/SJS-WASM-PLAN-ja.md 5.3;
+    # concise ConMa defines them in include/ref/wasm.se, going to onError)
+    ("wasm", ("__Wasm_compile__", "__Wasm_call__")),
 ]
 
 class ASTNode:
@@ -269,8 +272,8 @@ class Resolver:
         f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
         # The features of fast ConMa the module uses (docs/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
         # bitwise primitive (docs/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
-        # when it uses __if_then_else__, __if__, __unless__ or __Cont_get__, as a global of that name without a
-        # definition
+        # when it uses __if_then_else__, __if__, __unless__ or __Cont_get__, "wasm" when it uses __Wasm_compile__
+        # or __Wasm_call__, as a global of that name without a definition
         uses = [f for f, prims in FAST_PRIMITIVES
                 if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
         if uses:

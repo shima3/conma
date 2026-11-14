@@ -2,7 +2,7 @@
 
 SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（consh/js）のホストで動かす計画である。2026-11-14 に書いた。
 
-**状態**：案。wasm の部分は、まだ何も作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
+**状態**：段階 1 を作った（2026-11-14。docs/ROADMAP.md の Step 43、test/fast7）。段階 2 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
 ## 1. 目的
 
@@ -180,7 +180,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
-| 1 | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
+| 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
 | 2 | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3 | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4 | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
@@ -223,3 +223,13 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 **簡潔版 ConMa にも足す**（2026-11-14 に決めた）：簡潔版 ConMa では、このプリミティブの代わりの定義を書けない（ConMa のプログラムからは `-0` が見えないので）。ビット演算（docs/BITWISE-PLAN-ja.md）は、高速版のプリミティブに、簡潔版の代わりの定義（include/ref/bitwise32.se）を付けたが、同じ形にはできない。そこで、高速版だけでなく、簡潔版 ConMa のプリミティブ（docs/PRIMITIVES.md、Python の VM を含むすべての VM）として足した。
 
 **作った**（2026-11-14）：docs/ROADMAP.md の Step 42（プリミティブと test/step42）と、consh/sjs/README-ja.md の経緯の「-0」（SJS の変更と consh/sjs/test/step8 の case10）。
+
+## 12. 段階 1 の結果（2026-11-14）
+
+* **作ったもの**：vm/src/prim/wasm_asm.rs（アセンブラ。燃料を入れる）、vm/src/prim/wasm.rs（2 つのプリミティブ）、`Value::Wasm`（vm/src/value.rs）、`Machine::end_slice`（燃料が切れたら時間の区切りを終える）、consh/js/conma.js のホストの import（Node.js、jsc、ブラウザで共通）、include/ref/wasm.se、bin/resolver と include/resolver.se の `(Uses "wasm")`、bin/concise。文書は docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md の Step 43。
+* **計画と変えたこと**：
+    * `"trap"` の値は null でなく、ホストのメッセージ（String）にした（どこで止まったかが分かるように）。
+    * 型の確かめは、アセンブラでなくホスト（`WebAssembly.Module`）がする。メッセージはホストのもの（Node.js と jsc で違う）。ネイティブの VM は型を確かめず、組み立てた後に「使えない」で onError に進む。
+    * ConMa の文字列は改行を含められないので、WAT は 1 行に書くか、`__String_concat__` でつなぐ。
+* **確かめたこと**：test/fast7 が Python、Rust、wasm 版の VM で通る（wasm 版の VM で `CONMA_NO_WASM=1` も）。jsc（`CONMA_WASM_HOST=jsc`）でも、fib(20) と燃料切れが Node.js と同じになった（test/fast7 は Node.js のメッセージなので、jsc では trap と型のメッセージが違う）。ブラウザでは確かめていない。
+
