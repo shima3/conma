@@ -352,3 +352,81 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * 変換版の VM の `__Number_is_negative_zero__`：test/transpiled の case1 に、融合した連鎖で -0 を作り、その Boolean を 2 つの値に適用し、`__if_then_else__` の条件にもする `negzero` を足した。Python、Rust、wasm の VM で通り、case1 のコードだけを入れた変換版の VM を別のディレクトリに作って、同じ出力になることを確かめた（変換したコードは、このプリミティブを OList を通して呼ぶ。vm/target-transpiled は作り直していないので、そこでは変換したコードを使わない）。
     * 畳み込んだ Body の `func_id` と、フレームにまとめた連鎖の中の畳み込み：速さだけの問題なので、直していない。
     * richards_tuned.se と richards2.se：61fde4e の説明のとおり、リポジトリの外で手で直したものを入れたので、そのままにする。
+
+## 2026-11-14（2）: SJS-WASM のコミット
+
+対象は、consh/SJS-WASM-PLAN-ja.md と consh/SJS-WASM-ARRAY-PLAN-ja.md を作ったほかの人のコミット 9 個である（b361933、9a7e69a、959ee3b、d22dc3b、fe4d82e、94fc307、881e76c、aaeafb1、df26f30）。その間に入ったレビューへの対応のコミットは見ていない。
+
+### 確かめた方法
+
+* 3 つに分けて、それぞれ別のエージェントが、コミットの説明と差分と周りのコードを読んだ。分け方は、9a7e69a と df26f30（プリミティブとアセンブラ）、959ee3b と aaeafb1（SJS から WAT への変換）、d22dc3b、fe4d82e、94fc307 と計画の 2 つ（燃料、ConSh、測定）である。それぞれ自分の worktree で Rust VM と wasm 版（Node.js）を作り、小さなプログラムを Node.js、Rust VM、wasm 版で比べた。
+* 重大なもの（1〜3）は、alpha（df26f30 の後）の worktree で、自分でも再現した。4、9 はコードを読んで確かめた。
+
+### 1. WAT に `;` が 1 つだけあると、アセンブラが止まらない（高）
+
+* 場所：vm/src/prim/wasm_asm.rs の 180〜187 行（読み込みのアトムの枝。9a7e69a）。
+* `;` の次が `;` でないと、コメントでなくアトムの枝に入る。しかし、アトムを読むループは `;` で止まるので、1 文字も進まず、空のアトムを積み続ける。`(module a;b)` のような 1 文字の誤りでも起きる。
+* 例：`__Wasm_compile__ onError "(module ;)"`。Rust VM は返らない（エージェントの測定では、2 秒で RSS が約 730 MB）。wasm 版は、メモリを確保できずに VM ごと落ちる（`RuntimeError: unreachable`）。onError に位置とメッセージを渡すべきところ。
+* 直し方の案：アトムが空なら、`;` の誤りとして onError にする。
+
+### 2. ブロックを出た let と const を、wasm 版は局所の変数のまま読む（高）
+
+* 場所：consh/include/sjs_wasm.se の `Wx_id`（878〜883 行）、`Wx_new_local`（562〜582 行）、ブロックと for の変換（639、669〜677 行。959ee3b）。
+* 局所の変数の表（`locals`）が関数で 1 つで、ブロックや for を出ても名前が消えない。そのため、ブロックの外の同じ名前が、外の変数でなく、ブロックの中の変数を読む。
+* 例：`let t = 100; function f(a) { { let t = a; } return t }; console.log(f(7))` は、Node.js と Rust VM が 100、wasm 版が 7。for の `let k` をループの後で読むと、Node.js と Rust VM は外の `k`（-1）、wasm 版は 2。ループの変数 `i` を後で読むと、Node.js と Rust VM は `ReferenceError`、wasm 版は 3。
+* 直し方の案：ブロックごとに名前の表を重ね、出るときに戻す（WAT の局所の変数は、名前を変えて使い分ける）。または、ブロックで宣言した名前を外で読む関数を、数の関数にしない。
+
+### 3. 分割代入で Math を書き換えても、数の関数のままになる（高）
+
+* 場所：consh/include/sjs_wasm.se の `Wx_env_node`（158〜162 行。959ee3b）。
+* `mathWritten` が立つのは、代入の先そのものが `Math.名前` のときだけで、分割代入の中の `Math.floor` は見ない。段階 2 の `Sjs_wasm_fn` は呼ぶときに Math を確かめないので、wasm 版は組み込みの floor で計算する。
+* 例：`function fl(x) { return Math.floor(x) }; [Math.floor] = [(x) => 42]; console.log(fl(1.5))` は、Node.js と Rust VM が 42、wasm 版が 1。`({ floor: Math.floor } = ...)` も同じ。普通の代入、`Math['floor'] = ...`、`const M = Math; M.floor = ...` は、正しく数の関数から外れる。
+* 直し方の案：分割代入の先もたどる（`Wx_walk` が集める先に、メンバーの式を入れる）。
+
+### 4. Math を使う数の関数を ConMa から呼ぶと、wasm を使わないときより遅い（中）
+
+* 場所：consh/include/sjs_rt.se の `Sjs_wasm_math_ok`（3505〜3510 行）と `Sjs_wasm_fn_core`（d22dc3b、fe4d82e）。
+* 呼ぶたびに、メンバーの名前の文字列を 1 文字ずつ分け直し（`Sjs_wasm_words`）、10 個のメンバーを比べる。この確かめは busy を見る前に動くので、ConMa 版で動いている再帰の各段でも行う。
+* エージェントの測定：ConSh で `hyp = (a,b) => Math.sqrt(a*a+b*b)` を ConMa の関数から 5 万回呼ぶと、wasm 版 7.04 秒、`CONMA_NO_WASM=1` 2.18 秒、Rust VM 1.59 秒（出力は同じ）。Math を使わない関数では差がない。
+* 直し方の案：名前の LList を一度だけ作って持つ。Math の書き換えに番号を付け、番号だけを比べる。
+
+### 5. 燃料を使い切らせても、memory.grow の結果は戻らない（中）
+
+* 場所：consh/js/conma.js の `host_wasm_call`（df26f30）。メモリの中身は 0 で埋め直すが、大きさは戻さない。docs/PRIMITIVES.md の 16 は memory.size しか書いていない。
+* エージェントの例：`(memory 1 2)` で `memory.grow 1` の結果を返す関数は、十分な燃料なら 1 を返すが、燃料 10 で切れた後に 2 倍の燃料でやり直すと -1 を返す。「同じ引数なら同じ結果」「燃料の切れた呼び出しは何も残さない」（計画 5.5 のやり直しの前提）が崩れる。今の SJS の変換は memory.grow を書かないので、SJS では起きない。
+* 直し方の案：呼ぶたびにメモリを作り直すか、大きさを最小に戻す。そうしないなら、文書に書く。
+
+### 6. 深い入れ子と深い再帰で、wasm 版が落ちる（中）
+
+* WAT：`(f64.neg ...)` を 30 万重ねた関数を `__Wasm_compile__` に渡すと、wasm_asm.rs の `encode_folded` と `encode_seq` の再帰で、ホストのスタックが足りず、Node.js ごと終わる（Rust VM は onError に進む）。深さに上限を設け、onError にするのがよい。
+* ConSh：2 つの引数を持つ数の関数を `(( ))` で作り、`$(( g(0, 1000000) ))` で 100 万段の再帰をさせると、wasm 版は ConMa 版に替わった後、GC の中でメモリを確保できずに落ちる（`CONMA_NO_WASM=1` と Rust VM では通る。90 万段なら通る）。原因は分かっていない（4 GB の上限の近くで、wasm を使う道が余分に使っている）。
+
+### 7. Ctrl-C（前からの問題。段階 3 の説明と食い違う）（中）
+
+* Node.js の wasm 版の対話モードでは、終わらない `(( ))` に Ctrl-C が届かない。consh/js/vm-node.js の 392 行は、子プロセス、JS、入力待ちがあるときしかイベントループに戻らないので、SIGINT の受け手が動かない（`CONMA_NO_WASM=1` でも同じ）。d22dc3b の「やり直しの合間に SIGINT が届く」を確かめた test/fast7 の case7 は、子プロセスが動いているときだけ成り立つ。
+* Rust VM でも、Ctrl-C で止めた `(( ))` の SJS の VProc（consh/include/consh_jsstmt.se の 533 行の `__VProc_spawn__`）は止まらず、裏で CPU を使い続ける（`__VProc_kill__` も `Kill_tree` も届かない）。これを直すと、`Sjs_wasm_fn_core` の busy が減らないまま残る（その関数は、その後ずっと ConMa 版で動く）ことも直す必要がある。
+* 時間の区切り：燃料の切れ目で区切りを終える仕組み（vm/src/sched.rs の `end_slice`）は、VProc が 1 つで、ほかに何も待っていないときは働かない（内側のループが budget まで続ける）。trap を登録している ConSh では働く。
+
+### 8. 小さいもの（低）
+
+* アセンブラが、正しくない WAT を受け付ける：`end` の後の違うラベル（`block $a nop end $b`）、`i32.const 0x-1`、`local.get +0`、`1__0`。逆に、正しい `else $l` を拒む。
+* `__Wasm_call_memory__` に、メモリの max に入らない数の語を渡すと、onError でなく `trap` になる。
+* consh/sjs/bench/run.sh の 55 行の WAT の大きさは、`grep -o 'Sjs_wasm_module "[^"]*"'` が最初の `\"` で止まるので、補助の関数の分しか数えない（fib の WAT は 2,038 バイトだが 1,700 と出る）。consh/sjs/README-ja.md と計画の 16 の「1,700 バイト」もそのため。
+* 測った機械：docs/SPEED-ja.md、計画の 16、consh/sjs/README-ja.md は「Apple M1」と書くが、測った機械は Apple M2 と見られる（同じ機械で run.sh を流すと、記録とほぼ同じ数が出る）。
+* 計画 5.6 は、wasm のモジュールも ConMa のモジュールと一緒に覚えるとするが、実装は評価のたびに `__Wasm_compile__` で作り直す（差は小さい）。計画の 15 に、この違いがない。
+* consh/sjs/test/step10/test.sh は、TMPDIR を見ずに `/tmp/sjs-test-$$.log` に書く。
+
+### SJS-WASM のコミットより前からの、JavaScript との違い
+
+* `%` は `a - b * trunc(a / b)` で求めるので、`5.5 % 1.1` は 0（Node.js は 1.0999999999999996）、`1e17 % 3` と `1e300 % 7` は 0（Node.js は 1）。ConMa 版も wasm 版も同じ値を出す（consh/sjs/README-ja.md が「大きな数では下の桁が違うことがある」と書くものより広い）。
+* 値が undefined の `$(( ... ))`（値を返さない数の関数の呼び出しも）は、ConSh を `ref` と出して終了ステータス 1 で終える。
+
+### 問題なしと確かめたところ
+
+* 9a7e69a、df26f30：test/fast7 は Rust VM と wasm 版で通る。LEB128、i32 と i64 の定数の範囲、ラベルの深さ、引数と局所の変数と関数の番号、セクションの順序、燃料の大域変数と、関数の入口と各 loop での燃料の確かめ、memarg、予約した export の名前、引数の数と型と燃料の確かめ（NaN、無限大、2^53）、"ok" のときだけ語を書き戻すこと、-0、メモリのないモジュールへの `__Wasm_call_memory__` の onError、`Value::Wasm` の GC と解放、フロントエンドと bin/concise の `"wasm"`。import、memory（A1 の前）、global、start を受け付けないのは、b361933 の決定どおり。
+* 959ee3b、aaeafb1：Math の関数、ビット演算と ToInt32、比較、複合代入、++ と --、三項演算子、`&&` と `||`、break と continue のあるループ、再帰（深さ 10 万も）、燃料を倍にしてやり直す長いループを、0、-0、±0.5、2^31 と 2^32 の前後、2^53+1、NaN、±Infinity、非正規化数で試し、上の 2、3 と `%` のほかは、Node.js、Rust VM、wasm 版が一致した。数でない引数、足りない引数と余る引数では ConMa 版に戻る。A0 の、値を返さない関数と、一番上の定数の式。数の関数から外れるべきもの（`**=`、`||` の値、ラベル付きの continue、関数名への代入）は外れる。step9 の数の関数の一覧は .wasm.txt と同じ。不正な WAT は一度も出なかった。
+* d22dc3b、fe4d82e、94fc307：燃料は 2^16 から 2^30 まで倍にし、超えるか trap なら ConMa 版に替わるので、やり直しは止まり、あふれない。step10 と consh/test/step21 の case9 は wasm 版で通る。外の変数に代入する関数、宣言していない名前に代入する関数、自由変数を読む関数は数の関数にならない。`(( ))` で作った関数や Math を後で書き換えても、Rust VM と同じ出力になる。パイプと `&` の中の `$(( ))` も同じ。run.sh の fib 27 と loop 10^7 の時間は、記録とほぼ同じ比で再現した。
+
+### 対応
+
+* まだない。
