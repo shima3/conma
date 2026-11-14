@@ -39,35 +39,47 @@ impl Sexp {
     }
 }
 
-/// Tokens as the regular expression `"(?:[^"\\]|\\.)*"|\(|\)|[^\s()]+` finds them.
-fn tokenize(text: &str) -> Vec<&str> {
-    let b: Vec<(usize, char)> = text.char_indices().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    let end_of = |k: usize| if k < b.len() { b[k].0 } else { text.len() };
+/// Whether the character at byte i of text (the start of a character) is white space, and its
+/// length in bytes. ASCII is looked at as a byte; the rest is decoded.
+fn space_at(text: &str, i: usize) -> (bool, usize) {
+    let c = text.as_bytes()[i];
+    if c < 0x80 {
+        return ((c as char).is_whitespace(), 1);
+    }
+    let ch = text[i..].chars().next().unwrap();
+    (ch.is_whitespace(), ch.len_utf8())
+}
+
+/// The next token of text from byte *pos, as the regular expression
+/// `"(?:[^"\\]|\\.)*"|\(|\)|[^\s()]+` finds them, or None at the end. It looks at the bytes,
+/// which is enough, as the delimiters are ASCII and the bytes of a character that is not ASCII
+/// are all 0x80 or more (decoding only to test white space), instead of making the vector of
+/// every character of a module.
+fn next_token<'a>(text: &'a str, pos: &mut usize) -> Option<&'a str> {
+    let b = text.as_bytes();
+    let mut i = *pos;
     while i < b.len() {
-        let c = b[i].1;
-        if c == '(' || c == ')' {
-            out.push(&text[b[i].0..end_of(i + 1)]);
-            i += 1;
+        let c = b[i];
+        if c == b'(' || c == b')' {
+            *pos = i + 1;
+            return Some(&text[i..i + 1]);
+        }
+        let (space, len) = space_at(text, i);
+        if space {
+            i += len;
             continue;
         }
-        if c.is_whitespace() {
-            i += 1;
-            continue;
-        }
-        if c == '"' {
+        if c == b'"' {
             // A quoted string: any character but " and \, or \ and any character but a newline.
             let mut j = i + 1;
-            let mut closed = false;
             while j < b.len() {
-                let d = b[j].1;
-                if d == '"' {
-                    closed = true;
-                    break;
+                let d = b[j];
+                if d == b'"' {
+                    *pos = j + 1;
+                    return Some(&text[i..j + 1]);
                 }
-                if d == '\\' {
-                    if j + 1 < b.len() && b[j + 1].1 != '\n' {
+                if d == b'\\' {
+                    if j + 1 < b.len() && b[j + 1] != b'\n' {
                         j += 2;
                         continue;
                     }
@@ -75,29 +87,34 @@ fn tokenize(text: &str) -> Vec<&str> {
                 }
                 j += 1;
             }
-            if closed {
-                out.push(&text[b[i].0..end_of(j + 1)]);
-                i = j + 1;
-                continue;
-            }
+            // not closed: a bare token
         }
         // A bare token: up to whitespace or a parenthesis.
         let mut j = i;
-        while j < b.len() && !(b[j].1.is_whitespace() || b[j].1 == '(' || b[j].1 == ')') {
-            j += 1;
+        while j < b.len() {
+            let d = b[j];
+            if d == b'(' || d == b')' {
+                break;
+            }
+            let (space, len) = space_at(text, j);
+            if space {
+                break;
+            }
+            j += len;
         }
-        out.push(&text[b[i].0..end_of(j)]);
-        i = j;
+        *pos = j;
+        return Some(&text[i..j]);
     }
-    out
+    *pos = i;
+    None
 }
 
 /// Read one S-expression from the front of text. Without recursion, so that
 /// the deep nesting of a module does not overflow the stack.
 pub fn parse(text: &str) -> Result<Sexp, String> {
-    let toks = tokenize(text);
     let mut stack: Vec<Vec<Sexp>> = Vec::new();
-    for t in toks {
+    let mut pos = 0;
+    while let Some(t) = next_token(text, &mut pos) {
         match t {
             "(" => stack.push(Vec::new()),
             ")" => {

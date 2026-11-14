@@ -73,6 +73,7 @@
 | 手法 | 日付 | 効果 | 採否 | 詳細 |
 |---|---|---|---|---|
 | ConSh の変換版のコードを wasm 版に入れる | 2026-11-12 | ループが 0.73〜0.83 倍。wasm が 0.83 MB → 78 MB（gzip で 0.22 MB → 12.5 MB）、起動が +0.09 s で、短いスクリプトは 1.10〜1.17 倍に遅くなる | 入れなかった | FAST-PLAN 8.3 |
+| 起動を短くする：vm-wasm.sh で Node.js を `node -e 0` で確かめず `command -v node` にする。モジュールの S 式を、全文字の `Vec<(usize, char)>` を作らずにバイトで区切り（vm/src/sexp.rs）、UTF-8 を `str::from_utf8` で先に確かめる（consh/js/wasm/src/lib.rs の text） | 2026-11-14 | SJS の nbody N=1（モジュール 1.67 MB）が 0.191 → 0.117 s、小さなモジュールが 0.140 → 0.076 s（5〜9 回の最良、Apple M1）。うち約 0.06 s が `node -e 0`（Node.js の起動 1 回分）、約 0.01 s が解析。Rust VM は 0.026 → 0.021 s。同じアトムを共有する（HashMap）と wasm 版では 0.005 s 遅く、LTO、V8 の `--wasm-tiering-budget` や `--no-liftoff` も速くならない（一度だけ呼ばれる解析は最適化されたコードに移らない） | 入れた（共有はしない） | この表 |
 
 ## 6. 大きさ
 

@@ -164,7 +164,7 @@ consh/js/
   vm-node.js        Node.js で VM を動かす（vm/target/release/conma と同じ引数）。ファイルは、このプロセスの
                     ファイルシステムのものを読み書きする（段階 7 の 1。hostFs）
   vm-jsc.js         jsc で VM を動かす（同じ引数に、今のディレクトリ、環境変数、ディレクトリとファイルの名前のファイルを足す）
-  vm-wasm.sh        node が動けば vm-node.js、動かなければ vm-jsc.js を起動する（CONMA_WASM_HOST=node か jsc で選べる）。
+  vm-wasm.sh        PATH に node があれば vm-node.js、なければ vm-jsc.js を起動する（CONMA_WASM_HOST=node か jsc で選べる）。
                     jsc では、標準入出力と終了コードをつなぎ、今のディレクトリの下と /tmp の下の
                     ディレクトリとファイルの名前を渡す（中身は VM が開いたときに jsc が読む）。test/vm.sh が CONMA_VM=wasm で使う
   wasm/

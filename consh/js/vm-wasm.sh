@@ -2,7 +2,8 @@
 # ConMa の VM の wasm32 版（consh/js/wasm）を Node.js（vm-node.js）か、macOS の JavaScriptCore のシェル
 # （jsc、vm-jsc.js）で動かす。引数は vm/target/release/conma と同じ（[--trace] [--main] <module_file> <func_name | arg ...>）。
 # test/vm.sh が CONMA_VM=wasm のときに使う。wasm は consh/js/build.sh で作っておく。
-# 環境変数 CONMA_WASM_HOST が node なら Node.js、jsc なら jsc。なければ、node が動けば Node.js、動かなければ jsc
+# 環境変数 CONMA_WASM_HOST が node なら Node.js、jsc なら jsc。なければ、PATH に node があれば Node.js、なければ jsc
+# （node -e 0 で動くか確かめると、それだけで Node.js の起動の約 0.06 秒がかかる）
 # 標準入力は、VM がそれを待つときに、読めた分ずつ渡す。
 dir="$(cd "${0%/*}"; pwd)"
 jsc="${JSC:-/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc}"
@@ -13,7 +14,7 @@ if [ ! -f "$wasm" ]; then
 fi
 host="$CONMA_WASM_HOST"
 if [ -z "$host" ]; then
-  if node -e 0 > /dev/null 2>&1; then host=node; else host=jsc; fi
+  if command -v node > /dev/null 2>&1; then host=node; else host=jsc; fi
 fi
 case "$host" in
   node)

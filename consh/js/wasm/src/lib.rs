@@ -79,7 +79,13 @@ unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
 }
 
 unsafe fn text(ptr: *const u8, len: usize) -> String {
-    String::from_utf8_lossy(bytes(ptr, len)).into_owned()
+    // str::from_utf8 first: it goes over ASCII a word at a time, from_utf8_lossy a byte at a time
+    // (4 ms of the start for a module of 1.7 MB)
+    let b = bytes(ptr, len);
+    match std::str::from_utf8(b) {
+        Ok(s) => s.to_owned(),
+        Err(_) => String::from_utf8_lossy(b).into_owned(),
+    }
 }
 
 /// len bytes of memory for the host to write into.
