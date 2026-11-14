@@ -423,3 +423,22 @@
     __OS_get_envDict__ ,(env)
     __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
     spin_until w ref fuel))
+
+;; case15：燃料を減らすのは、ループの始めと、呼び出しのグラフの輪に入る関数（自分を呼ぶもの、ほかを通って呼び戻すもの）の入口だけ
+;; （consh/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、段階 F3）。輪に入らない関数を何度呼んでも燃料を使わないので、燃料 1 で終わる。
+;; 輪に入る関数（$even と $odd、名前でも番号でも呼ぶ）は、呼ぶたびに減らすので、足りなければ "fuel" になり、やり直すと終わる
+(define case15 ,()
+  Cat5 "(module (func $h (param $x f64) (result f64) (f64.add (local.get $x) (f64.const 1))) "
+    "(func (export \"chain\") (result f64) f64.const 0 call $h call 0 (call $h)) "
+    "(func $even (export \"even\") (param $n f64) (result f64) (if (result f64) (f64.eq (local.get $n) (f64.const 0)) (then (f64.const 1)) (else (call $odd (f64.sub (local.get $n) (f64.const 1)))))) "
+    "(func $odd (param $n f64) (result f64) (if (result f64) (f64.eq (local.get $n) (f64.const 0)) (then (f64.const 0)) (else (call 2 (f64.sub (local.get $n) (f64.const 1)))))) "
+    "(func (export \"loop\") (param $n f64) (result f64) (local $s f64) (block $b (loop $l (br_if $b (f64.le (local.get $n) (f64.const 0))) (local.set $s (call $h (local.get $s))) (local.set $n (f64.sub (local.get $n) (f64.const 1))) (br $l))) (local.get $s)))" ,(wat)
+  with_module wat (,(w)
+    num "1" ,(one)
+    try_call "chain with 1" w "chain" __NULL__ one ,()
+    num "10" ,(n10) list1 n10 ,(a)
+    try_call "even 10 with 1" w "even" a one ,()
+    num "0" ,(zero) retry w "even" a one zero ,()
+    num "3" ,(n3) list1 n3 ,(a3)
+    try_call "loop 3 with 1" w "loop" a3 one ,()
+    retry w "loop" a3 one zero))

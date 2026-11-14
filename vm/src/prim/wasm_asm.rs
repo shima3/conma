@@ -16,9 +16,13 @@
 //!   (`block ... end`) or folded (`(f64.add (local.get 0) (local.get 1))`).
 //!
 //! The assembler adds the fuel: a mutable i64 global exported as `__fuel`,
-//! taken by one at the start of each function and of each loop, the function
-//! reaching `unreachable` when it is 0 (5.5), so that a loop that does not end
-//! comes back to the VM. The host checks the types of the instructions when it
+//! taken by one at the start of each loop and of each function in a cycle of
+//! the call graph (calling itself or calling back through others), the function
+//! reaching `unreachable` when it is 0 (5.5), so that a loop or a recursion that
+//! does not end comes back to the VM. A function in no cycle takes no fuel at
+//! its start: the subset has no call_indirect, so its calls go only to functions
+//! in no cycle with it, and any loop in them takes fuel
+//! (consh/SJS-WASM-ARRAY-PLAN-ja.md 18.2, stage F3). The host checks the types of the instructions when it
 //! compiles the module (WebAssembly.Module).
 
 use std::collections::HashMap;
@@ -867,6 +871,89 @@ fn encode_folded_in(ctx: &mut Ctx, x: &Sx, out: &mut Vec<u8>) -> Result<(), Stri
     Ok(())
 }
 
+/// The functions a function calls by `call` (names or indexes that are not
+/// functions are left out; encoding the body reports them).
+fn callees(items: &[Sx], names: &HashMap<String, usize>, nfuncs: usize, out: &mut Vec<usize>) {
+    for (k, y) in items.iter().enumerate() {
+        match y {
+            Sx::Atom(a, _) if a == "call" => {
+                let target = match items.get(k + 1).and_then(|z| z.atom()) {
+                    Some(t) if t.starts_with('$') => names.get(t).copied(),
+                    Some(t) => parse_uint(t, nfuncs as i128 - 1).map(|i| i as usize),
+                    None => None,
+                };
+                if let Some(t) = target {
+                    out.push(t);
+                }
+            }
+            Sx::List(inner, _) => callees(inner, names, nfuncs, out),
+            _ => {}
+        }
+    }
+}
+
+/// For each function, whether it is in a cycle of the call graph (Tarjan's
+/// strongly connected components, without recursion in Rust: a component of
+/// more than one function, or one function calling itself).
+fn in_cycle(calls: &[Vec<usize>]) -> Vec<bool> {
+    let n = calls.len();
+    let mut index = vec![usize::MAX; n];
+    let mut low = vec![0; n];
+    let mut on_stack = vec![false; n];
+    let mut stack = Vec::new();
+    let mut result = vec![false; n];
+    let mut next = 0;
+    for root in 0..n {
+        if index[root] != usize::MAX {
+            continue;
+        }
+        // (function, the next of its calls to look at)
+        let mut work = vec![(root, 0)];
+        index[root] = next;
+        low[root] = next;
+        next += 1;
+        stack.push(root);
+        on_stack[root] = true;
+        while let Some(&mut (v, ref mut e)) = work.last_mut() {
+            if *e < calls[v].len() {
+                let w = calls[v][*e];
+                *e += 1;
+                if index[w] == usize::MAX {
+                    index[w] = next;
+                    low[w] = next;
+                    next += 1;
+                    stack.push(w);
+                    on_stack[w] = true;
+                    work.push((w, 0));
+                } else if on_stack[w] {
+                    low[v] = low[v].min(index[w]);
+                }
+                continue;
+            }
+            work.pop();
+            if let Some(&(u, _)) = work.last() {
+                low[u] = low[u].min(low[v]);
+            }
+            if low[v] == index[v] {
+                let mut comp = Vec::new();
+                loop {
+                    let w = stack.pop().unwrap();
+                    on_stack[w] = false;
+                    comp.push(w);
+                    if w == v {
+                        break;
+                    }
+                }
+                let cyclic = comp.len() > 1 || calls[v].contains(&v);
+                for w in comp {
+                    result[w] = cyclic;
+                }
+            }
+        }
+    }
+    result
+}
+
 /// Read a (func ...) into its parts.
 fn read_func(items: &[Sx], pos: Pos) -> Result<(Option<String>, Func), String> {
     let mut i = 1;
@@ -1025,8 +1112,17 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
             export_items.push((e.clone(), k));
         }
     }
+    let calls: Vec<Vec<usize>> = funcs
+        .iter()
+        .map(|f| {
+            let mut out = Vec::new();
+            callees(&f.body, &names, funcs.len(), &mut out);
+            out
+        })
+        .collect();
+    let cyclic = in_cycle(&calls);
     let mut codes = Vec::new();
-    for f in &funcs {
+    for (fi, f) in funcs.iter().enumerate() {
         let mut locals = HashMap::new();
         for (k, n) in f.params.iter().map(|n| n.as_ref()).chain(f.locals.iter().map(|(n, _)| n.as_ref())).enumerate() {
             if let Some(n) = n {
@@ -1050,7 +1146,9 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
             uleb(&mut code, c);
             code.push(t);
         }
-        code.extend_from_slice(FUEL_CHECK);
+        if cyclic[fi] {
+            code.extend_from_slice(FUEL_CHECK);
+        }
         let mut i = 0;
         if let Some(s) = encode_seq(&mut ctx, &f.body, &mut i, &[], &mut code)? {
             return err(f.pos, format!("unexpected {}", s));

@@ -1,0 +1,6 @@
+chain with 1: ok 3
+even 10 with 1: fuel
+ok 1 after 4 times out of fuel
+loop 3 with 1: fuel
+ok 3 after 2 times out of fuel
+exit: 0

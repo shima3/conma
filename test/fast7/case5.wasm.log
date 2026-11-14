@@ -14,7 +14,7 @@ order: __Wasm_compile__: line 1 col 28: (param ...) is out of order in a func
 reserved export: __Wasm_compile__: line 1 col 23: the export name __fuel is reserved
 export twice: __Wasm_compile__: line 1 col 68: the export name "f" is used twice
 unknown instruction: __Wasm_compile__: line 1 col 28: unknown instruction f32.const
-memory instruction: __Wasm_compile__: CompileError: WebAssembly.Module(): Compiling function #0 failed: memory index 0 exceeds number of declared memories (0) @+61
+memory instruction: __Wasm_compile__: CompileError: WebAssembly.Module(): Compiling function #0 failed: memory index 0 exceeds number of declared memories (0) @+47
 unknown local: __Wasm_compile__: line 1 col 53: unknown local $y
 local index: __Wasm_compile__: line 1 col 50: unknown local 1
 unknown label: __Wasm_compile__: line 1 col 37: unknown label $out
