@@ -22,6 +22,8 @@
 ;; file は、SInfo のファイル名（エラーの位置に出る）
 (define Sjs_translate_file ,(text file)
   Sjs_parse text ,(program)
+  ;; 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 2。sjs_wasm.se）：モジュールの WAT と、数の関数の fn の印
+  Wasm_prepare program ,(wat)
   Gen_state program ,(g)
   Gen_quote file ,(fq)
   __Dict_put__ g "file" fq ,()
@@ -32,6 +34,9 @@
   Gen_block_code g scope body cx ,(code)
   Gen_const_code g ,(consts)
   __String_concat__ consts code ,(code)
+  __String_equal__ wat "" ,(noWasm)
+  __if_then_else__ noWasm (,() __NULL__ "") (,() Gen_quote wat ,(q) Cat3 "\tSjs_wasm_module " q " ,(Wsjs) ") ,(wc)
+  __String_concat__ wc code ,(code)
   ;; 位置の入らなかった印を消す
   Gen_replace_marks code "" ,(code)
   __String_concat__ ";; SJS を変換したもの（consh/include/sjs_gen.se）\n(include \"util.se\")\n(include \"sjs_rt.se\")\n(define main ,(args)\n  Sjs_init ,(G)\n" code ,(s)
@@ -1997,6 +2002,23 @@
       Cat5 "\tSjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)
       Cat4 c bind bodyCode ") ,(" ,(c)
       Cat3 c v ") " ,(c)
+      return c v) ,()
+  ;; 数の関数（sjs_wasm.se が印を付けたもの）：ConMa 版を Sjs_wasm_fn で包む（実行時の支えが wasm 版と選ぶ）
+  __Dict_lookup_or__ e "wasm" (,(k) __NULL__ "") ,(wname)
+  __String_equal__ wname "" ,(test__) __unless__ test__
+    (,()
+      Sjs_get e "wasmParams" ,(np)
+      __Number_toString__ np ,(nps)
+      Gen_const g nps ,(nv)
+      Gen_quote wname ,(wq)
+      Gen_temp g "w" ,(wf)
+      Cat5 "\tSjs_wasm_fn Wsjs " wq " " nv " (,(" ,(c)
+      Cat3 c args ") __Cont_get__ ,(return) " ,(c)
+      Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
+      Cat3 c wf ") " ,(c)
+      Cat5 c "\tSjs_function G " qn " " wf ,(c)
+      Cat3 c " ,(" v ,(c)
+      __String_concat__ c ") " ,(c)
       return c v) ,()
   Cat5 "\tSjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)
   Cat4 c bind bodyCode "return __NULL__) ,(" ,(c)

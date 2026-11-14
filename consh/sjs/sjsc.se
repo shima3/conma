@@ -6,6 +6,7 @@
 (include "sjs_lex.se")
 (include "sjs_parse.se")
 (include "sjs_gen.se")
+(include "sjs_wasm.se")
 
 (define main ,(args)
   __Seq_get__ (,() __print_exit_error__ "usage: sjsc.se <file.sjs>\n") args ,(path rest)

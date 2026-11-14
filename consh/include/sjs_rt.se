@@ -3415,3 +3415,47 @@
   __String_equal__ state "done" ,(test__) __if__ test__ return ,()
   Sjs_gen_resume gen "return" __NULL__ ,(r)
   __nop__)
+
+;; ── 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の 5.2。段階 2）──
+;; 変換器（sjs_gen.se、sjs_wasm.se）が、数の関数をまとめた WAT のモジュールを作り、数の関数を Sjs_wasm_fn で包む。
+;; 呼ばれたとき、モジュールがあり、引数が足りて、どれも数なら wasm 版を、そうでなければ ConMa 版（f）を動かす。
+;; wasm 版が燃料を使い切るか、trap になれば（深い再帰でスタックがあふれたときなど）、ConMa 版を始めから動かす（数の関数は
+;; 引数だけで結果が決まるので、やり直してよい）。燃料を増やしてやり直すことと、時間の区切りは、段階 3。
+
+;; wat のモジュール。作れなければ（wasm 版の VM でない、--trace、CONMA_NO_WASM など）null
+(define Sjs_wasm_module ,(wat)
+  __Cont_get__ ,(return)
+  __Wasm_compile__ (,(msg) return __NULL__) wat ,(w)
+  __NULL__ w)
+
+;; 一度の呼び出しの燃料（段階 2。使い切れば ConMa 版で動かす）
+(define Sjs_wasm_fuel ,()
+  __Number_fromString__ __print_exit_error__ "100000000")
+
+;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版
+(define Sjs_wasm_fn ,(W name n f)
+  __NULL__ (,(args)
+    __Cont_get__ ,(return)
+    __is_null__ W ,(none)
+    __if__ none (,() f args ,(r) return r) ,()
+    Sjs_wasm_args args n ,(ok nums)
+    __unless__ ok (,() f args ,(r) return r) ,()
+    Sjs_wasm_fuel ,(fuel)
+    __Wasm_call__ (,(msg) f args ,(r) return r) W name nums fuel ,(status value)
+    __String_equal__ status "ok" ,(done)
+    __if__ done (,() return value) ,()
+    f args))
+
+;; args の先頭の n 個が、どれも数か。数なら、真とその LList
+(define Sjs_wasm_args ,(args n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return __TRUE__ __NULL__) ,()
+  __is_null__ args ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ args ,(a rest)
+  __type_name__ a ,(t)
+  __String_equal__ t "Number" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  Sjs_dec n ,(m)
+  Sjs_wasm_args rest m ,(ok tail)
+  __LList_cons__ a tail ,(l)
+  __NULL__ ok l)
+

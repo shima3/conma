@@ -1,7 +1,7 @@
 #!/bin/bash
 # SJS のファイルを ConMa に変換して動かす（consh/SAFEJS-PLAN-ja.md の段階 B1）。Rust 版の VM（vm/target/release/conma）を使う。
 #   consh/sjs/sjs [--emit] file.sjs
-# --emit を付けると、動かさずに、変換した ConMa のソースを出す
+# --emit を付けると、動かさずに、変換した ConMa のソースを出す。CONMA_VM=wasm なら wasm 版の VM で動かす
 sjs="$(cd "$(dirname "$0")"; pwd)"
 consh="${sjs%/*}"
 root="${consh%/*}"
@@ -13,4 +13,10 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 "$conma" run --include "$consh/include" "$sjs/sjsc.se" "$1" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
+# CONMA_VM=wasm：変換したプログラムを wasm 版の VM（consh/js/vm-wasm.sh。Node.js）で動かす。数の関数は wasm 版で動く
+# （consh/SJS-WASM-PLAN-ja.md の段階 2）。ほかの VM では、数の関数も ConMa 版で動く
+if [ "$CONMA_VM" = wasm ]; then
+  "$conma" build --include "$consh/include" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
+  exec "$consh/js/vm-wasm.sh" --main "$tmp/prog.module.se"
+fi
 "$conma" run --include "$consh/include" "$tmp/prog.se"

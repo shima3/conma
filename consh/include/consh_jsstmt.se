@@ -12,6 +12,7 @@
 (include "sjs_lex.se")
 (include "sjs_parse.se")
 (include "sjs_gen.se")
+(include "sjs_wasm.se")
 
 ;; JavaScript の状態（consh/js/PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
 ;;   js なら "js"（js と算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、

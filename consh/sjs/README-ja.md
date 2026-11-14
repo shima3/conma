@@ -12,6 +12,7 @@ consh/sjs/sjs --emit file.sjs     # 変換した ConMa のソースを出す
 consh/sjs/test/run_all.sh         # テスト
 consh/sjs/test/compare.sh f.sjs   # 段階 A（ConSh の (( )) でホストの JavaScript）と出力を比べる（Node.js と wasm 版の VM が要る）
 consh/sjs/bench/run.sh nbody 2000 # 測る（Node.js、CPython、手で書いた ConMa と比べる）
+CONMA_VM=wasm consh/sjs/sjs file.sjs  # wasm 版の VM（Node.js）で動かす。数の関数は WebAssembly で動く（経緯の「数の関数の wasm 版」）
 ```
 
 SJS のファイルは、文の並びである（関数の本体と同じ。宣言していない名前への代入は、大域の名前になる）。`console.log` で出力する。出力の形は ConSh の段階 A（conma.js の `inspect`）と同じで、文字列はそのまま、配列とオブジェクトは `JSON.stringify`、ほかは `String` にする。受け手のない例外は、投げた所のファイル、行、桁と一緒に `a.sjs:4:9: TypeError: ...` のように標準エラーに出し、終了ステータス 2 で終える。
@@ -287,4 +288,12 @@ ConMa の Number は `-0` を持てるが、プリミティブでは見えなか
 * 同じ関数を直すときに、`Math.round(0.49999999999999994)`（`floor(x + 0.5)` では `1`）と、無限大で割る `%`（`5 % Infinity` が `NaN`）も JavaScript に合わせた。
 * Python の VM の `__Number_floor__` は、`math.floor` の int を返していて `-0` の符号を落としたので、Rust の VM と同じく float を返すようにした。
 * consh/sjs/test/step8 の case10 が、これらを Node.js の結果と比べる。
+
+### 数の関数の wasm 版（2026-11-14）
+
+consh/SJS-WASM-PLAN-ja.md の段階 2。プログラムの一番外の function 宣言のうち、数だけを扱うもの（数の関数）を、ConMa 版に加えて WebAssembly の関数にもする（consh/include/sjs_wasm.se。条件は、その始めと計画の 13）。呼ばれたとき、wasm 版の VM で、引数が足りてどれも数なら wasm 版を、そうでなければ ConMa 版を動かす（sjs_rt.se の `Sjs_wasm_fn`）。ほかの VM（Rust 版など）と `--trace`、`CONMA_NO_WASM=1` では、ConMa 版だけで動く。結果は同じになる（f64 の演算は IEEE 754 のとおりで、`%` などは ConMa 版と同じ手順。-0 も上で JavaScript に合わせた）。
+
+* `CONMA_VM=wasm consh/sjs/sjs file.sjs` で、wasm 版の VM で動かす。`--emit` の出力の `Sjs_wasm_module` の文字列がモジュールの WAT で、`Sjs_wasm_fn` で包んだ関数が数の関数である。
+* 変換したモジュールを動かす時間は、fib(25) が 1.91 秒から 0.28 秒、loop の 100 万回が 2.38 秒から 0.19 秒になった（wasm 版の VM。計画の 13）。
+* consh/sjs/test/step9 が、Node.js の結果と、両方の VM で比べる。ConSh の `(( ))` では、まだ使わない（計画の段階 4）。
 

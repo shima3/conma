@@ -1,0 +1,20 @@
+add 3 0.30000000000000004 Infinity -Infinity Infinity
+sub mul -2 -Infinity Infinity -Infinity -21
+div Infinity -Infinity -Infinity NaN -Infinity 3.5
+mod 1 -1 -Infinity -Infinity 5 -5 NaN NaN NaN NaN 1.5
+neg pos -Infinity Infinity NaN -3
+bits 2 7 5 -2147483648 1 -4 2147483644 4294967295 -1 0
+bits2 1 -2147483648 1 0 -2147483648 0 0
+cmp 35 44 26 26 32 32 35
+truthy 0 0 0 1 1 1 0 1 0 1 0
+floor ceil trunc -1 -Infinity -Infinity 2 -Infinity -1 1e+300
+abs sqrt 3 Infinity 1.4142135623730951 NaN -Infinity Infinity
+round 3 -2 0 -Infinity -Infinity -1 1e+300 NaN
+sign -1 1 -Infinity Infinity NaN
+max min 2 Infinity Infinity NaN 1 -Infinity NaN -Infinity 31.41592653589793
+loops 37 867 1 1 8 32 1000
+calls 3628800 7.257415615307994e+306 Infinity 5000
+compound 20 24 30
+consts NaN -Infinity
+not numbers abc true undefined 0 1 0 3
+exit: 0

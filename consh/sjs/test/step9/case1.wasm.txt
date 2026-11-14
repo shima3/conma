@@ -1,0 +1,1 @@
+add sub mul div mod neg pos band bor bxor shl shr ushr bnot cmp truthy not logic floor ceil trunc abs sqrt round sign max2 min3 max0 pi sum bits fact deep countdown compound nan ninf id 

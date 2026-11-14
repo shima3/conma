@@ -2,7 +2,7 @@
 
 SJS（consh/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（consh/js）のホストで動かす計画である。2026-11-14 に書いた。
 
-**状態**：段階 1 を作った（2026-11-14。docs/ROADMAP.md の Step 43、test/fast7）。段階 2 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
+**状態**：段階 1 と 2 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9）。段階 3 からはまだ作っていない。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
 ## 1. 目的
 
@@ -181,7 +181,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
 | 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
-| 2 | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
+| 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.sjs と fib.sjs が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3 | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4 | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
 | 5 | 測る：consh/sjs/bench の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。consh/sjs/README-ja.md と docs/SPEED-ja.md に書く | 表にする |
@@ -232,4 +232,17 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
     * 型の確かめは、アセンブラでなくホスト（`WebAssembly.Module`）がする。メッセージはホストのもの（Node.js と jsc で違う）。ネイティブの VM は型を確かめず、組み立てた後に「使えない」で onError に進む。
     * ConMa の文字列は改行を含められないので、WAT は 1 行に書くか、`__String_concat__` でつなぐ。
 * **確かめたこと**：test/fast7 が Python、Rust、wasm 版の VM で通る（wasm 版の VM で `CONMA_NO_WASM=1` も）。jsc（`CONMA_WASM_HOST=jsc`）でも、fib(20) と燃料切れが Node.js と同じになった（test/fast7 は Node.js のメッセージなので、jsc では trap と型のメッセージが違う）。ブラウザでは確かめていない。
+
+## 13. 段階 2 の結果（2026-11-14）
+
+* **作ったもの**：consh/include/sjs_wasm.se（`Wasm_prepare`：数の関数を見つけ、fn の節に印を付け、モジュールの WAT を作る）、sjs_gen.se（`Sjs_translate_file` が `main` の始めでモジュールを作り（`Sjs_wasm_module`、変数 `Wsjs`）、印の付いた関数を `Sjs_wasm_fn` で包む）、sjs_rt.se（`Sjs_wasm_module`、`Sjs_wasm_fn`、`Sjs_wasm_args`）、consh/sjs/sjs の `CONMA_VM=wasm`（変換したプログラムを wasm 版の VM で動かす）。
+* **数の関数**は、3 の条件を、段階 2 では次のように狭めた（sjs_wasm.se の始めに書いた）：
+    * 単独の SJS のファイルだけ（ConSh の `(( ))` は段階 4）。プログラムの一番外の function 宣言だけ（関数式とアロー関数は数の関数にしない）。
+    * 名前は一番外で 1 回だけ宣言され、どこでも代入されない。Math は `Math.名前` の形でしか使われず、書き換えられない。どちらも単独のファイルなら変換のときに分かるので、5.2 の呼ぶときの確かめ（大域の名前と `Math` の書き換え）は、段階 4 まで要らない。呼ぶときは、モジュールがあるか、引数が足りて数か、だけを確かめる。
+    * 局所の変数の名前は、関数の中で重ならず、引数、一番外の数の定数、数の関数の名前とも違う。外の名前で読めるのは、一番外の最初の呼び出しより前の、数のリテラルの const だけ。
+    * 代入は文としてだけ（式の中の代入は数の関数にしない）。真偽値は条件の中だけ。
+* **燃料**：段階 2 は 1 回の呼び出しに 10^8 の燃料を与え、使い切るか trap になれば、ConMa 版を始めから動かす（数の関数は引数だけで結果が決まるので、やり直してよい）。燃料を増やしてのやり直しと時間の区切りは段階 3。
+* **補助の関数**：`%`、ToUint32、`Math.round`、`Math.sign` は、WAT の補助の関数（`$__mod`、`$__u32`、`$__round`、`$__sign`）にした。11 で ConMa 版を JavaScript に合わせたので、`/` は `f64.div`、`Math.max` と `min` は `f64.max` と `f64.min` をそのまま使える。
+* **確かめたこと**：consh/sjs/test/step9 の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test、consh/test（高速版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
+* **速さ**（変換したモジュールを動かす時間だけ。1 回ずつ測った）：fib(25) は、wasm 版の VM で wasm 版が 0.28 秒、ConMa 版（`CONMA_NO_WASM=1`）が 1.91 秒、Rust 版の VM が 1.33 秒。loop の 100 万回は、0.19 秒、2.38 秒、1.58 秒。wasm 版の時間は、ほとんどが VM と実行時の支え（約 1.2 MB）を読む時間である。`consh/sjs/sjs` 全体では、変換器のモジュールを作るのに毎回 2〜3 秒かかるので、差は小さく見える。nbody は配列を使うので、数の関数がない（9）。
 
