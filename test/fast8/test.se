@@ -49,3 +49,38 @@
   __Number_fromString__ (,(msg) println "out of range" ,() return __NULL__) "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999" ,(x)
   __Number_toString__ x ,(s)
   println s)
+
+;; case6: いろいろな書き方の数を、その場に書いた文字列から畳み込む（REVIEW-ja.md の 2026-11-14 の 6 で、テストがないとされたもの）。
+;; -0 は -0 のまま、指数、小数点だけの書き方、0 になる小さすぎる数（-1e-400 は -0）。範囲の外と、数でない文字列は
+;; 畳み込まず、プリミティブが onError を呼ぶ（onError の返す値は、LCont に渡る）
+(define show ,(label n)
+  __Number_toString__ n ,(s)
+  __Number_is_negative_zero__ n ,(nz)
+  nz " (-0)" "" ,(t)
+  __String_concat__ label ": " ,(line)
+  __String_concat__ line s ,(line)
+  __String_concat__ line t ,(line)
+  println line)
+
+(define fallback ,(msg)
+  println msg ,()
+  __Number_fromString__ __print_exit_error__ "-1")
+
+(define case6 ,()
+  __Number_fromString__ fallback "-0" ,(a) show "-0" a ,()
+  __Number_fromString__ fallback "-0.0" ,(a) show "-0.0" a ,()
+  __Number_fromString__ fallback "0" ,(a) show "0" a ,()
+  __Number_fromString__ fallback "+5" ,(a) show "+5" a ,()
+  __Number_fromString__ fallback "1e3" ,(a) show "1e3" a ,()
+  __Number_fromString__ fallback "-2.5E-3" ,(a) show "-2.5E-3" a ,()
+  __Number_fromString__ fallback ".5" ,(a) show ".5" a ,()
+  __Number_fromString__ fallback "5." ,(a) show "5." a ,()
+  __Number_fromString__ fallback "-.25" ,(a) show "-.25" a ,()
+  __Number_fromString__ fallback "1e+2" ,(a) show "1e+2" a ,()
+  __Number_fromString__ fallback "1e-400" ,(a) show "1e-400" a ,()
+  __Number_fromString__ fallback "-1e-400" ,(a) show "-1e-400" a ,()
+  __Number_fromString__ fallback "1e400" ,(a) show "1e400" a ,()
+  __Number_fromString__ fallback "1e" ,(a) show "1e" a ,()
+  __Number_fromString__ fallback "." ,(a) show "." a ,()
+  __Number_fromString__ fallback "" ,(a) show "empty" a ,()
+  __Number_fromString__ fallback " 1" ,(a) show " 1" a)
