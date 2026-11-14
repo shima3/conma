@@ -39,8 +39,18 @@
   __String_concat__ wc code ,(code)
   ;; 位置の入らなかった印を消す
   Gen_replace_marks code "" ,(code)
-  __String_concat__ ";; SJS を変換したもの（consh/include/sjs_gen.se）\n(include \"util.se\")\n(include \"sjs_rt.se\")\n(define main ,(args)\n  Sjs_init ,(G)\n" code ,(s)
-  __String_concat__ s "\n  Sjs_run_jobs ,()\n  __nop__)\n")
+  __String_join_lines__
+    ";; SJS を変換したもの（consh/include/sjs_gen.se）"
+    "(include \"util.se\")"
+    "(include \"sjs_rt.se\")"
+    "(define main ,(args)"
+    "  Sjs_init ,(G)" ,(head)
+  ;; code の最後の行に続けて、改行してから閉じる
+  __String_join_lines__
+    ""
+    "  Sjs_run_jobs ,()"
+    "  __nop__)" ,(tail)
+  Cat3 head code tail)
 
 ;; 文の文脈 cx：関数の中か（"fn"）と、return、break、continue で呼ぶ継続の変数名（"ret"、"brk"、"cnt"。使えなければ ""）、
 ;; その継続を呼ぶ前に戻す、例外の受け手のスタックの変数名（"retH"、"brkH"、"cntH"。継続が try の finally を通す
@@ -107,7 +117,18 @@
   Gen_replace_marks code "" ,(code)
   Sjs_rt_names ,(names)
   Gen_binds names "" ,(binds)
-  Cat3 ";; SJS の (( )) を変換したもの（consh/include/sjs_gen.se の Sjs_translate_module）\n(define Sjs_entry ,(err ctx in out)\n  __Dict_lookup_or__ ctx \"rt\" (,(k) __NULL__ __NULL__) ,(rt)\n" binds "  __Dict_lookup_or__ ctx \"G\" (,(k) __NULL__ __NULL__) ,(G)\n  __Dict_lookup_or__ ctx \"done\" (,(k) __NULL__ __NULL__) ,(done)\n  __Dict_lookup_or__ ctx \"setup\" (,(k) __NULL__ __NULL__) ,(setup)\n  __Cont_get__ ,(sjsExit)\n  setup sjsExit ,()\n  " ,(s)
+  __String_join_lines__
+    ";; SJS の (( )) を変換したもの（consh/include/sjs_gen.se の Sjs_translate_module）"
+    "(define Sjs_entry ,(err ctx in out)"
+    "  __Dict_lookup_or__ ctx \"rt\" (,(k) __NULL__ __NULL__) ,(rt)" ,(head)
+  __String_join_lines__
+    "  __Dict_lookup_or__ ctx \"G\" (,(k) __NULL__ __NULL__) ,(G)"
+    "  __Dict_lookup_or__ ctx \"done\" (,(k) __NULL__ __NULL__) ,(done)"
+    "  __Dict_lookup_or__ ctx \"setup\" (,(k) __NULL__ __NULL__) ,(setup)"
+    "  __Cont_get__ ,(sjsExit)"
+    "  setup sjsExit ,()" ,(entry)
+  ;; 本体の最初の行の字下げ
+  Cat4 head binds entry "  " ,(s)
   ;; マイクロタスクの列を最後まで動かしてから、値を渡す
   Cat4 s code "Sjs_run_jobs ,() done " val ,(s)
   __String_concat__ s ")\n")

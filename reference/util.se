@@ -657,3 +657,18 @@
 (define __println__ , args
   __Seq_print__ args ,()
   __OS_print__ "\n")
+
+;; 行を改行でつないだ String（可変長引数）。各行の後に改行を付ける（最後の行の後にも）。行がなければ空の String。
+;; 文字列のリテラルには改行を書けない（\n と書く）ので、複数行の文章や ConMa のコードの断片を 1 行ずつ書くために使う：
+;;   __String_join_lines__ "(define main ,()" "  __OS_print__ \"hi\")" ,(text)
+;; 行が String でなければ、__String_concat__ のエラーで止まる。つなぐ手間は全体の長さ × log(行の数)（__Lines_join__）
+(define __String_join_lines__ , lines
+  __String_join_lines_loop__ lines __NULL__)
+
+;; pieces は、改行を付けた行の逆順の LList
+(define __String_join_lines_loop__ ,(lines pieces)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() __Lines_join__ pieces "" ,(text) return text) lines ,(line rest)
+  __String_concat__ line "\n" ,(piece)
+  __LList_cons__ piece pieces ,(pieces)
+  __String_join_lines_loop__ rest pieces)
