@@ -7,7 +7,7 @@ out=/tmp/sjs-test-$$.log
 for f in case*.sjs
 do
   c=${f%.sjs}
-  CONMA_VM=wasm ../../sjs $f > $out 2>&1
+  SJS_WASM_STRICT=1 CONMA_VM=wasm ../../sjs $f > $out 2>&1
   echo "exit: $?" >> $out
   diff $c.log $out
 done

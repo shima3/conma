@@ -11,7 +11,7 @@ do
   c=${f%.sjs}
   for vm in "${vms[@]}"
   do
-    if [ $vm = wasm ]; then CONMA_VM=wasm ../../sjs $f > $out 2>&1; else ../../sjs $f > $out 2>&1; fi
+    if [ $vm = wasm ]; then SJS_WASM_STRICT=1 CONMA_VM=wasm ../../sjs $f > $out 2>&1; else ../../sjs $f > $out 2>&1; fi
     echo "exit: $?" >> $out
     diff $c.log $out
   done

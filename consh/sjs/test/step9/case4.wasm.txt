@@ -1,0 +1,1 @@
+sum sumIdx scale inc dot first total swap bumpPairs lenOnly count maxOf firstNeg grow returnsArray 

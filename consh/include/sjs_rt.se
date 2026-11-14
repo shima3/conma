@@ -3440,8 +3440,21 @@
 ;; wat のモジュール。作れなければ（wasm 版の VM でない、--trace、CONMA_NO_WASM など）null
 (define Sjs_wasm_module ,(wat)
   __Cont_get__ ,(return)
-  __Wasm_compile__ (,(msg) return __NULL__) wat ,(w)
+  __Wasm_compile__ (,(msg) Sjs_wasm_strict msg ,() return __NULL__) wat ,(w)
   __NULL__ w)
+
+;; 環境変数 SJS_WASM_STRICT があれば、モジュールを作れなかった理由（WebAssembly がない場合を除く）を標準エラーに出す。
+;; 変換器の作った WAT の誤りを、テストで見つけるため（ConMa 版で動くので、出力は変わらない）
+(define Sjs_wasm_strict ,(msg)
+  __Cont_get__ ,(return)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "SJS_WASM_STRICT" (,(k) return) ,(v)
+  Sjs_zero ,(zero)
+  __String_find__ (,(m) return) msg "not available" zero ,(at)
+  __is_null__ at ,(test__) __unless__ test__ return ,()
+  __String_concat__ "sjs: wasm: " msg ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
 
 ;; 最初の燃料と、燃料の上限
 (define Sjs_wasm_fuel ,()
