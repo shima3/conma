@@ -1,4 +1,4 @@
-// -0：JavaScript と同じ（consh/SJS-WASM-PLAN-ja.md の 11）。1 を -0 で割ると -Infinity になることで見る。Math.round(0.49999999999999994) と 5 % Infinity も
+// -0：JavaScript と同じ（consh/SJS-WASM-PLAN-ja.md の 11）。1 を -0 で割ると -Infinity になることで見る。Math.round(0.49999999999999994) と 5 % Infinity、(-0) ** 0.5 と (-Infinity) ** 0.5 も
 const inv = (x) => 1 / x
 const z = 0
 const nz = -z
@@ -18,6 +18,8 @@ console.log("min", inv(Math.min(nz, 0)), inv(Math.min(0, nz)), inv(Math.min(0, 0
 console.log("mod", inv(-1 % 1), inv(nz % 5), inv(0 % -5), inv(-4 % 2), 5 % Infinity, -5 % -Infinity, Infinity % 5, 5 % 0, nz % 0, -7 % 3)
 console.log("str", String(nz), `${nz}`, JSON.stringify([nz]), nz === 0, [1, 2][nz])
 console.log("number", inv(Number("-0")), inv(Number("-0.0")), inv(parseInt("-0")))
+const ninf = -Infinity
+console.log("pow", inv(nz ** 0.5), inv(0 ** 0.5), ninf ** 0.5, Infinity ** 0.5, 4 ** 0.5, (-4) ** 0.5, inv(nz ** 3), nz ** -1, inv(nz ** 2))
 let a = 0
 a = -a
 a /= 0

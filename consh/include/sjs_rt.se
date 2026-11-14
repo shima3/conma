@@ -2382,7 +2382,13 @@
     (,()
       __Number_fromString__ __print_exit_error__ "0.5" ,(half)
       __Number_subtract__ b half ,(d)
-      __Number_is_zero__ d ,(test__) __if__ test__ (,() __Number_sqrt__ (,(m) Sjs_nan) a ,(r) return r) ,()
+      ;; 指数 0.5 は平方根。ただし JavaScript と同じく、0 と -0 は +0、-Infinity は Infinity（平方根では -0 と NaN）
+      __Number_is_zero__ d ,(test__) __if__ test__
+        (,()
+          __Number_is_zero__ a ,(test__) __if__ test__ (,() Sjs_zero ,(z) return z) ,()
+          Sjs_is_infinite a ,(infA) __Number_is_negative__ a ,(negA) __and__ infA negA ,(test__)
+          __if__ test__ (,() Sjs_infinity ,(inf) return inf) ,()
+          __Number_sqrt__ (,(m) Sjs_nan) a ,(r) return r) ,()
       Sjs_type_error "not yet translated to ConMa: ** with an exponent that is not an integer") ,()
   __Number_is_negative__ b ,(neg)
   __if_then_else__ neg (,() Sjs_neg b) (,() __NULL__ b) ,(n)

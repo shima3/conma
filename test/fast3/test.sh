@@ -11,6 +11,6 @@ done
 # 印が付かなくてもステップの番号は同じなので、ここで数を確かめる
 conma="$root/vm/target/release/conma"
 if [ -x "$conma" ]; then
-  CONMA_FAST_REPORT=1 "$conma" $tmp/test.module.se case1 2>&1 | grep "^fast __if" > $tmp/report.log
+  CONMA_FAST_REPORT=1 "$conma" $tmp/test.module.se case1 2>&1 | grep "^fast conditionals" > $tmp/report.log
   diff report.log $tmp/report.log
 fi

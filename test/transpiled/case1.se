@@ -66,6 +66,16 @@
   neg "-" "+" ,(s)
   __String_concat__ s n)
 
+;; __Number_is_negative_zero__ (a predicate of PURE) in a fused chain: -0 made by multiplying by -1,
+;; its Boolean applied to two values and used as the condition of __if_then_else__
+(define negzero ,(n)
+  num n ,(v)
+  num "-1" ,(m1)
+  __Number_multiply__ v m1 ,(w)
+  __Number_is_negative_zero__ w ,(nz)
+  nz "-0" "not -0" ,(s)
+  __if_then_else__ nz (,() __String_concat__ s "!") (,() __NULL__ s))
+
 (define line ,(s)
   __OS_print__ s ,()
   __OS_print__ "\n")
@@ -127,4 +137,10 @@
   sign "-3" ,(s1)
   line s1 ,()
   sign "4" ,(s2)
-  line s2)
+  line s2 ,()
+  negzero "0" ,(z1)
+  line z1 ,()
+  negzero "-0" ,(z2)
+  line z2 ,()
+  negzero "2" ,(z3)
+  line z3)

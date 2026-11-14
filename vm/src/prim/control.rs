@@ -135,7 +135,10 @@ pub fn unless_null(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// an error, as __Number_is_zero__ gives, if it is not a Number.
 pub fn number_if_zero_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
     check_n(vp, "__Number_if_zero_then_else__", 3)?;
-    let x = crate::prim::number::check_number("__Number_if_zero_then_else__", &vp.olist[0])?;
+    let x = match crate::prim::number::check_number("__Number_if_zero_then_else__", &vp.olist[0]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 3, e),
+    };
     let els = take_at(vp, 2);
     let then = take_at(vp, 1);
     choose_clause(m, vp, x == 0.0, then, els);
@@ -146,7 +149,10 @@ pub fn number_if_zero_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// (`__Number_is_zero__ Number ,(b) __unless__ b else` in one step).
 pub fn number_unless_zero(m: &mut Machine, vp: &mut VProc) -> PResult {
     check_n(vp, "__Number_unless_zero__", 2)?;
-    let x = crate::prim::number::check_number("__Number_unless_zero__", &vp.olist[0])?;
+    let x = match crate::prim::number::check_number("__Number_unless_zero__", &vp.olist[0]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 2, e),
+    };
     let els = take_at(vp, 1);
     let nop = m.nop_closure();
     choose_clause(m, vp, x == 0.0, nop, els);
@@ -159,8 +165,14 @@ pub fn number_unless_zero(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// a Number.
 pub fn number_if_greater(m: &mut Machine, vp: &mut VProc) -> PResult {
     check_n(vp, "__Number_if_greater__", 3)?;
-    let a = crate::prim::number::check_number("__Number_if_greater__", &vp.olist[0])?;
-    let b = crate::prim::number::check_number("__Number_if_greater__", &vp.olist[1])?;
+    let a = match crate::prim::number::check_number("__Number_if_greater__", &vp.olist[0]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 3, e),
+    };
+    let b = match crate::prim::number::check_number("__Number_if_greater__", &vp.olist[1]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 3, e),
+    };
     let then = take_at(vp, 2);
     let nop = m.nop_closure();
     choose_clause(m, vp, a > b, then, nop);
@@ -173,8 +185,14 @@ pub fn number_if_greater(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// error if one is not a Number.
 pub fn number_if_greater_then_else(m: &mut Machine, vp: &mut VProc) -> PResult {
     check_n(vp, "__Number_if_greater_then_else__", 4)?;
-    let a = crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[0])?;
-    let b = crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[1])?;
+    let a = match crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[0]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 4, e),
+    };
+    let b = match crate::prim::number::check_number("__Number_if_greater_then_else__", &vp.olist[1]) {
+        Ok(v) => v,
+        Err(e) => return crate::prim::in_place_failed(vp, 4, e),
+    };
     let els = take_at(vp, 3);
     let then = take_at(vp, 2);
     choose_clause(m, vp, a > b, then, els);

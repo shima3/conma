@@ -14,5 +14,6 @@ min -Infinity -Infinity Infinity Infinity 1
 mod -Infinity -Infinity Infinity -Infinity 5 -5 NaN NaN NaN -1
 str 0 0 [0] true 1
 number -Infinity -Infinity -Infinity
+pow Infinity Infinity Infinity Infinity 2 NaN -Infinity -Infinity Infinity
 assign NaN
 exit: 0

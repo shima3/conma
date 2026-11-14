@@ -867,7 +867,8 @@ fn mark_fast(module: &Sexp, vals: &[Option<Value>]) {
                 r.borrow().as_ref().map_or(0, |v| v.iter().flatten().filter(|f| f.body.as_deref().map_or(false, p)).count())
             })
         };
-        eprintln!("fast __if_then_else__, __if__, __unless__: {} Bodies", count(&|b| b.if_site != 0));
+        // __if_then_else__, __if__, __unless__ and the six conditionals that test a value (load_if)
+        eprintln!("fast conditionals: {} Bodies", count(&|b| b.if_site != 0));
         eprintln!("fast primitives with an LCont: {} Bodies", count(&|b| b.prim_site));
     }
 }
