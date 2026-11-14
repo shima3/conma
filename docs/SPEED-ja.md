@@ -78,6 +78,7 @@
 | SJS の数の関数で、添字が定数の配列の読み書きを、長さの確かめと `f64.load` / `f64.store` でその場に書き、`for...of` の要素は確かめずに読み、長さも `$__len` を呼ばずに読む（consh/include/sjs_wasm.se） | 2026-11-14 | wasm 版の VM で、nbody N=200000 が 0.507 → 0.176 s（CPython 0.696 s、Node.js 0.091 s）、N=20000 が 0.160 → 0.129 s（実時間、3 回の最良、Apple M1）。1 ステップに要る燃料が減り、燃料のやり直しもほとんどなくなった。WAT は 9,758 → 20,471 バイト | 入れた | consh/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、20 |
 | WebAssembly のアセンブラが、関数の入口で燃料を減らすのを、呼び出しのグラフの輪に入る関数だけにする（vm/src/prim/wasm_asm.rs） | 2026-11-14 | wasm 版の VM で、nbody は変わらない（N=200000 が 0.178 s、`advance` の燃料は 3,600,002 → 3,600,001）。添字が変数の読み書きを 30 万回ずつする SJS が 0.375 → 0.337 s（燃料が 4〜7 分の 1 になり、やり直しが関数ごとに 1 回減った。実時間、5 回の最良、Apple M1） | 入れた | consh/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、21 |
 | SJS の `Number(文字列)` と `trim()`：10 進の書き方を、文字の LList を作らずに添字で確かめ、前後が空白でなければ trim を省く（consh/include/sjs_rt.se） | 2026-11-14 | nbody の N=1 が 173,757 → 103,397 ステップ、起動の時間は wasm 版の VM で 120.6 → 118.6 ms（実時間、Apple M1）。`Number()` の 2 万回が wasm 版の VM で 1,758 → 995 ms、ネイティブ版の VM で 1,284 → 683 ms | 入れた | consh/sjs/README-ja.md「起動の時間と Number()」 |
+| VM がモジュールの各 Function を、はじめは読み飛ばして範囲だけ覚え、その大域変数を初めて引いたときに読んでコンパイルする。transpiled コードがなければ、モジュールのテキストのハッシュも求めない（vm/src/module.rs の parse_module、sexp.rs の skip_at） | 2026-11-14 | ConSh（ConMa 版、6.2 MB のモジュール）の `echo hi` が Rust 版の VM で 69 → 32 ms、wasm 版の VM で 175 → 135 ms。SJS の `console.log(1)`（1.6 MB）が 15.2 → 8.2 ms と 105 → 95 ms、nbody の N=1 が 20.8 → 16.2 ms と 119 → 112 ms（実時間、7 回の最良、Apple M1） | 入れた | vm/README.md「Start-up」 |
 
 ## 6. 大きさ
 

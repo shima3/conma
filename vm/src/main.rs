@@ -168,7 +168,8 @@ fn run(args: Vec<String>) -> i32 {
 /// Run the function func_name of the module text (module_file: its name for
 /// the VProc), with program_args as a Seq of Strings if given.
 fn run_text(text: String, module_file: &str, func_name: String, program_args: Option<Vec<String>>, trace: bool) -> i32 {
-    let module_sexp = match sexp::parse(&text) {
+    let hash = transpiled::module_hash(text.as_bytes());
+    let (module_sexp, lazy) = match module::parse_module(&text, hash) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -193,7 +194,7 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
     let prim_booleans = module::uses_boolean(&module_sexp);
     // a module of concise ConMa: __VProc_spawn__ makes modules of concise ConMa too
     prim::vprocs::set_concise(module::fast_features(&module_sexp).is_empty());
-    let gvenv = match module::load_module_transpiled(&module_sexp, Some(transpiled::fnv1a(text.as_bytes()))) {
+    let gvenv = match module::load_module_transpiled(&module_sexp, lazy, hash) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("Error: {}", e);

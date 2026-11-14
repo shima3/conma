@@ -112,9 +112,14 @@ fn next_token<'a>(text: &'a str, pos: &mut usize) -> Option<&'a str> {
 /// Read one S-expression from the front of text. Without recursion, so that
 /// the deep nesting of a module does not overflow the stack.
 pub fn parse(text: &str) -> Result<Sexp, String> {
-    let mut stack: Vec<Vec<Sexp>> = Vec::new();
     let mut pos = 0;
-    while let Some(t) = next_token(text, &mut pos) {
+    parse_at(text, &mut pos)
+}
+
+/// Read one S-expression of text from byte *pos, leaving *pos after it.
+pub fn parse_at(text: &str, pos: &mut usize) -> Result<Sexp, String> {
+    let mut stack: Vec<Vec<Sexp>> = Vec::new();
+    while let Some(t) = next_token(text, pos) {
         match t {
             "(" => stack.push(Vec::new()),
             ")" => {
@@ -137,6 +142,83 @@ pub fn parse(text: &str) -> Result<Sexp, String> {
         }
     }
     Err("EOF".into())
+}
+
+/// Skip one S-expression of text from byte *pos, as parse_at reads it, without making it: the
+/// tokens of next_token, looked at byte by byte without taking them.
+pub fn skip_at(text: &str, pos: &mut usize) -> Result<(), String> {
+    let b = text.as_bytes();
+    let mut i = *pos;
+    let mut depth = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'(' {
+            depth += 1;
+            i += 1;
+            continue;
+        }
+        if c == b')' {
+            if depth == 0 {
+                return Err("unexpected )".into());
+            }
+            depth -= 1;
+            i += 1;
+            if depth == 0 {
+                *pos = i;
+                return Ok(());
+            }
+            continue;
+        }
+        let (space, len) = space_at(text, i);
+        if space {
+            i += len;
+            continue;
+        }
+        let mut closed = false;
+        if c == b'"' {
+            // A quoted string, as next_token reads it
+            let mut j = i + 1;
+            while let Some(k) = b[j..].iter().position(|&d| d == b'"' || d == b'\\') {
+                j += k;
+                if b[j] == b'"' {
+                    i = j + 1;
+                    closed = true;
+                    break;
+                }
+                if j + 1 < b.len() && b[j + 1] != b'\n' {
+                    j += 2;
+                    continue;
+                }
+                break;
+            }
+        }
+        if !closed {
+            // A bare token: up to white space or a parenthesis
+            while i < b.len() {
+                let d = b[i];
+                if d == b'(' || d == b')' {
+                    break;
+                }
+                let (space, len) = space_at(text, i);
+                if space {
+                    break;
+                }
+                i += len;
+            }
+        }
+        if depth == 0 {
+            *pos = i;
+            return Ok(());
+        }
+    }
+    Err("EOF".into())
+}
+
+/// The next token of text from byte pos and the byte where it starts, without consuming it.
+pub fn peek_at(text: &str, pos: usize) -> Option<(&str, usize)> {
+    let mut p = pos;
+    let t = next_token(text, &mut p)?;
+    Some((t, t.as_ptr() as usize - text.as_ptr() as usize))
 }
 
 /// Length of x on one line, stopping early once it exceeds limit.

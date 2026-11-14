@@ -3,7 +3,7 @@
 use super::{err, take_n, PResult};
 use crate::module::{build_name_index, load_module, GVEnv};
 use crate::sched::Machine;
-use crate::sexp::{self, Sexp};
+use crate::sexp::Sexp;
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::{State, VProc, VProcRef};
@@ -199,8 +199,8 @@ pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), S
         return Err(format!("file not found: {}", source_file));
     }
     let text = build_module(source_file, cwd)?;
-    let module = sexp::parse(&text)?;
-    let gvenv = load_module(&module)?;
+    let (module, lazy) = crate::module::parse_module(&text, None)?;
+    let gvenv = load_module(&module, lazy)?;
     Ok((module, gvenv))
 }
 

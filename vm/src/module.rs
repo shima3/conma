@@ -15,12 +15,115 @@ pub struct GVEnv {
     pub vals: RefCell<Vec<Option<Value>>>,
     /// The transpiled code of the module (vm/conma2rust), if the binary has it.
     pub transpiled: RefCell<Option<Rc<crate::transpiled::Table>>>,
+    /// The Functions of the module not read yet (parse_module), read and compiled when their
+    /// global variable is first looked up.
+    pub lazy: RefCell<Option<LazyFuncs>>,
 }
 
 impl GVEnv {
-    pub fn get(&self, gid: usize) -> Option<Value> {
-        self.vals.borrow().get(gid).cloned().flatten()
+    pub fn get(self: &Rc<Self>, gid: usize) -> Option<Value> {
+        if let Some(Some(v)) = self.vals.borrow().get(gid) {
+            return Some(v.clone());
+        }
+        self.read_lazy(gid)
     }
+
+    /// The Closure of the Function of gid that parse_module left in the text, read and
+    /// compiled now (and kept), or None when there is none (an undefined variable).
+    fn read_lazy(self: &Rc<Self>, gid: usize) -> Option<Value> {
+        let (text, (start, end)) = {
+            let mut lazy = self.lazy.borrow_mut();
+            let l = lazy.as_mut()?;
+            let span = l.spans.get_mut(gid)?.take()?;
+            (l.text.clone(), span)
+        };
+        let node = crate::sexp::parse(&text[start..end]).ok()?;
+        let v = make_closure(&frame_chain(compile_function(&node)), &None, Some(self));
+        let mut vals = self.vals.borrow_mut();
+        if vals.len() <= gid {
+            vals.resize(gid + 1, None);
+        }
+        vals[gid] = Some(v.clone());
+        Some(v)
+    }
+}
+
+/// The text of a module and, by GID, the bytes of the Functions that parse_module did not read.
+pub struct LazyFuncs {
+    text: Rc<str>,
+    spans: Vec<Option<(usize, usize)>>,
+}
+
+/// The definitions that parse_module always reads: mark_fast compares them with the text of
+/// include/util.se.
+const READ_AT_ONCE: &[&str] = &["\"__LazyList_force__\"", "\"__LazyList_force_claim__\""];
+
+/// Read the text of a module. The Function of each (G gid "name" (Function ...)) is not read but
+/// left in the text (its place in the Module is the atom Lazy), to be read when its global
+/// variable is first looked up (GVEnv::get): a program runs only a few of the Functions of its
+/// module, most of which come from the libraries it includes. All of it is read at once when
+/// the binary has transpiled code for the module (hash), whose Functions are numbered in the
+/// order load_module compiles them, and with CONMA_FAST_REPORT, which counts the Bodies
+/// compiled, or CONMA_READ_ALL.
+pub fn parse_module(text: &str, hash: Option<u64>) -> Result<(Sexp, Option<LazyFuncs>), String> {
+    let all = hash.is_some_and(crate::transpiled::has_code)
+        || std::env::var_os("CONMA_FAST_REPORT").is_some()
+        || std::env::var_os("CONMA_READ_ALL").is_some();
+    if all {
+        return Ok((crate::sexp::parse(text)?, None));
+    }
+    use crate::sexp::{parse_at, peek_at, skip_at};
+    // (Module: anything else is read as it is
+    let mut pos = match (peek_at(text, 0), peek_at(text, 0).and_then(|(_, p)| peek_at(text, p + 1))) {
+        (Some(("(", _)), Some(("Module", p))) => p + "Module".len(),
+        _ => return Ok((crate::sexp::parse(text)?, None)),
+    };
+    let mut items = vec![Sexp::atom("Module")];
+    let mut spans: Vec<Option<(usize, usize)>> = Vec::new();
+    loop {
+        let (t, at) = peek_at(text, pos).ok_or_else(|| "EOF".to_string())?;
+        if t == ")" {
+            break;
+        }
+        // (G gid "name" (Function ...)), with no more items after the Function
+        let lazy = (|| {
+            if t != "(" {
+                return None;
+            }
+            let (g, p) = peek_at(text, at + 1)?;
+            let (gid, p) = peek_at(text, p + g.len()).filter(|_| g == "G")?;
+            let (name, p) = peek_at(text, p + gid.len())?;
+            let (open, f) = peek_at(text, p + name.len())?;
+            let (func, _) = peek_at(text, f + 1)?;
+            let gid: usize = gid.parse().ok()?;
+            if open != "(" || func != "Function" || READ_AT_ONCE.contains(&name) {
+                return None;
+            }
+            let mut end = f;
+            skip_at(text, &mut end).ok()?;
+            let (close, c) = peek_at(text, end)?;
+            if close != ")" {
+                return None;
+            }
+            Some((gid, name, f, end, c + 1))
+        })();
+        match lazy {
+            Some((gid, name, start, end, next)) => {
+                if spans.len() <= gid {
+                    spans.resize(gid + 1, None);
+                }
+                spans[gid] = Some((start, end));
+                items.push(Sexp::list(vec![Sexp::atom("G"), Sexp::atom(&gid.to_string()), Sexp::atom(name), Sexp::atom("Lazy")]));
+                pos = next;
+            }
+            None => {
+                pos = at;
+                items.push(parse_at(text, &mut pos)?);
+            }
+        }
+    }
+    let lazy = LazyFuncs { text: Rc::from(text), spans };
+    Ok((Sexp::list(items), Some(lazy)))
 }
 
 /// A Function AST, compiled.
@@ -628,13 +731,13 @@ pub fn build_name_index(module: &Sexp) -> HashMap<String, usize> {
     index
 }
 
-pub fn load_module(module: &Sexp) -> Result<Rc<GVEnv>, String> {
-    load_module_transpiled(module, None)
+pub fn load_module(module: &Sexp, lazy: Option<LazyFuncs>) -> Result<Rc<GVEnv>, String> {
+    load_module_transpiled(module, lazy, None)
 }
 
 /// load_module, and if the binary has transpiled code for the module whose file
 /// has this hash (vm/conma2rust), attach it to the GVEnv.
-pub fn load_module_transpiled(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
+pub fn load_module_transpiled(module: &Sexp, lazy: Option<LazyFuncs>, hash: Option<u64>) -> Result<Rc<GVEnv>, String> {
     // Frames only where the LVEnvs are not those of transpiled code or of traces.
     FRAME_MIN.with(|c| {
         c.set(if hash.is_some_and(crate::transpiled::has_code) || scopes_kept() {
@@ -647,7 +750,7 @@ pub fn load_module_transpiled(module: &Sexp, hash: Option<u64>) -> Result<Rc<GVE
         })
     });
     REGISTRY.with(|r| *r.borrow_mut() = Some(Vec::new()));
-    let result = load_module_inner(module);
+    let result = load_module_inner(module, lazy);
     let funcs = REGISTRY.with(|r| r.borrow_mut().take()).unwrap_or_default();
     let gvenv = result?;
     if let Some(h) = hash {
@@ -722,9 +825,9 @@ fn check_features(module: &Sexp) -> Result<(), String> {
     }
 }
 
-fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
+fn load_module_inner(module: &Sexp, lazy: Option<LazyFuncs>) -> Result<Rc<GVEnv>, String> {
     check_features(module)?;
-    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), transpiled: RefCell::new(None) });
+    let gvenv = crate::gc::new_gvenv(GVEnv { vals: RefCell::new(Vec::new()), transpiled: RefCell::new(None), lazy: RefCell::new(None) });
     let mut vals: Vec<Option<Value>> = Vec::new();
     if let Some(l) = module.as_list() {
         for item in l.iter().skip(2) {
@@ -737,7 +840,9 @@ fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
                 None => return Err(format!("bad GID in {}", crate::sexp::to_string(item))),
             };
             let name = il.get(2).and_then(|a| a.as_atom()).map(unquote).unwrap_or("");
+            let left = lazy.as_ref().is_some_and(|l| matches!(l.spans.get(gid), Some(Some(_))));
             let val = match il.get(3) {
+                _ if left => None,
                 None => prim::lookup(name).map(Value::Prim),
                 Some(v) if v.as_atom() == Some("Undefined") => prim::lookup(name).map(Value::Prim),
                 Some(v) => match v.tag() {
@@ -761,6 +866,7 @@ fn load_module_inner(module: &Sexp) -> Result<Rc<GVEnv>, String> {
     }
     mark_fast(module, &vals);
     *gvenv.vals.borrow_mut() = vals;
+    *gvenv.lazy.borrow_mut() = lazy;
     Ok(gvenv)
 }
 

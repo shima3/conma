@@ -220,6 +220,16 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/transpiled_gen.rs"));
 }
 
+/// The hash of a module file (fnv1a) to look for its transpiled code, or None when the binary
+/// has no transpiled code at all and CONMA_TRANSPILED_REPORT does not ask about it: hashing
+/// the text takes about 1.4 ms a megabyte.
+pub fn module_hash(bytes: &[u8]) -> Option<u64> {
+    if generated::MODULES.is_empty() && std::env::var_os("CONMA_TRANSPILED_REPORT").is_none() {
+        return None;
+    }
+    Some(fnv1a(bytes))
+}
+
 /// FNV-1a (64 bits) of a module file, as vm/conma2rust/conma2rust.py computes it.
 pub fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
