@@ -3704,15 +3704,15 @@
   Sjs_zero ,(zero)
   __Dict_lookup_or__ P "count" __print_exit_error__ ,(count)
   __Dict_lookup_or__ P "words" __print_exit_error__ ,(words)
-  ;; 数の配列：長さと要素を、語の列（逆順）に直接積む（1 回なめるだけ。写す費用の改善）。数でない要素があれば、
+  ;; 数の配列：長さと要素を、語の列（逆順）に直接積む（写す費用の改善。計画の 16、17）。数でない要素があれば、
   ;; 写すのをやめる（語の列は捨てるので、途中まで積んでよい）。配列の配列：子を先に置いてから、子の先頭の語の番号を積む
   __if_then_else__ leaf
     (,()
       __Ref_get__ count ,(addr0)
       __Ref_get__ words ,(ws)
       __LList_cons__ len ws ,(ws)
-      Sjs_wasm_numbers_onto items len zero ws ,(ok ws)
-      __unless__ ok (,() return __FALSE__ __NULL__) ,()
+      ;; __Dict_numbers__（高速版 ConMa の機能 "wasm" のプリミティブ）が、"0"〜 の値を積む（要素がないか、数でなければ onError）
+      __Dict_numbers__ (,(msg) return __FALSE__ __NULL__) items len ws ,(ws)
       __Ref_set__ words ws ,()
       __NULL__ addr0)
     (,()
@@ -3749,19 +3749,6 @@
   __LList_cons__ x ws ,(ws)
   Sjs_wasm_push_all rest ws)
 
-;; items の 0 から len - 1 までが、どれも数なら、それを順に ws（逆順の語の列）に積んで、真と新しい ws
-(define Sjs_wasm_numbers_onto ,(items len i ws)
-  __Cont_get__ ,(return)
-  __Number_subtract__ len i ,(left)
-  __Number_is_zero__ left ,(test__) __if__ test__ (,() return __TRUE__ ws) ,()
-  __Number_toString__ i ,(k)
-  __Dict_lookup_or__ items k (,(key) return __FALSE__ __NULL__) ,(v)
-  __type_name__ v ,(ty)
-  __String_equal__ ty "Number" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
-  __LList_cons__ v ws ,(ws)
-  Sjs_inc i ,(i)
-  Sjs_wasm_numbers_onto items len i ws)
-
 ;; items の 0 から len - 1 までの配列を、深さ d で写す。写せれば、真と先頭の語の番号の逆順の LList
 (define Sjs_wasm_children ,(P items len i d acc)
   __Cont_get__ ,(return)
@@ -3792,8 +3779,7 @@
   __Number_subtract__ start pos ,(skip)
   Sjs_wasm_drop words skip ,(ws)
   __Dict_lookup_or__ a "items" __print_exit_error__ ,(items)
-  Sjs_zero ,(zero)
-  Sjs_wasm_put items ws zero len ,(ws)
+  __Dict_put_numbers__ items len ws ,(ws)
   __Number_add__ start len ,(pos)
   Sjs_wasm_unpack_loop rest ws pos)
 
@@ -3804,17 +3790,6 @@
   __LList_uncons__ __print_exit_error__ list ,(x rest)
   Sjs_dec k ,(k)
   Sjs_wasm_drop rest k)
-
-;; items の i から len - 1 までに、ws の先頭から入れる。残りの ws
-(define Sjs_wasm_put ,(items ws i len)
-  __Cont_get__ ,(return)
-  __Number_subtract__ len i ,(left)
-  __Number_is_zero__ left ,(test__) __if__ test__ (,() return ws) ,()
-  __LList_uncons__ __print_exit_error__ ws ,(x rest)
-  __Number_toString__ i ,(k)
-  __Dict_put__ items k x ,()
-  Sjs_inc i ,(i)
-  Sjs_wasm_put items rest i len)
 
 ;; args の先頭の n 個が、どれも数か。数なら、真とその LList
 (define Sjs_wasm_args ,(args n)

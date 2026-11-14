@@ -856,6 +856,7 @@ No new primitive.
 * The frontends write `(Uses "wasm")`, and `bin/concise` puts in `include/ref/wasm.se`.
 * Tests: `test/fast7` (calls, fuel and starting again with more fuel, traps, wrong arguments, the forms the assembler refuses, the checks of the host; logs for the wasm VM, the native VMs and the Python VM, and `CONMA_NO_WASM=1`).
 * Stage A1 of consh/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in concise ConMa (`include/ref/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
+* For copying the arrays of SJS faster (consh/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/ref/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
 
 ## Planned: returning without making the escape continuation
 

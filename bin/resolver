@@ -17,7 +17,7 @@ FAST_PRIMITIVES = [
                  "__Number_if_greater__", "__Number_if_greater_then_else__")),
     # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/SJS-WASM-PLAN-ja.md 5.3;
     # concise ConMa defines them in include/ref/wasm.se, going to onError)
-    ("wasm", ("__Wasm_compile__", "__Wasm_call__", "__Wasm_call_memory__")),
+    ("wasm", ("__Wasm_compile__", "__Wasm_call__", "__Wasm_call_memory__", "__Dict_numbers__", "__Dict_put_numbers__")),
 ]
 
 class ASTNode:
@@ -276,7 +276,8 @@ class Resolver:
         # bitwise primitive (docs/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
         # when it uses __if_then_else__, __if__, __unless__, __Cont_get__ or one of the six conditionals that
         # test a value (__if_null_then_else__ ...), "wasm" when it uses __Wasm_compile__,
-        # __Wasm_call__ or __Wasm_call_memory__, as a global of that name without a definition
+        # __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ or __Dict_put_numbers__, as a global of that name without
+        # a definition
         uses = [f for f, prims in FAST_PRIMITIVES
                 if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
         if uses:

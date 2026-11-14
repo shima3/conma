@@ -5,7 +5,8 @@
 # onError。組み立ての誤りはそのメッセージ）。ないものは caseN.log を使う。
 # wasm 版の VM で CONMA_NO_WASM=1 なら、ネイティブの VM と同じ（WebAssembly を使わない）。
 # case7 は、燃料を使い切るたびに時間の区切りが終わり、SIGINT が届くこと（段階 3）。case8 は、モジュールのメモリと
-# __Wasm_call_memory__（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。
+# __Wasm_call_memory__（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。case12 は __Dict_numbers__ と __Dict_put_numbers__（同じ計画の 17。
+# どの VM でも同じログ）。
 # フロントエンド（bin/resolver と conma build）が (Uses "boolean" "control" "wasm") を付け、bin/concise が代わりの定義を入れる
 . "$(dirname "$0")/../common.sh"
 CONMA_FAST=1 resolve test.se
@@ -20,7 +21,7 @@ grep -q '(Uses' $tmp/concise.module.se && echo "bin/concise left (Uses ...)"
 grep -q '(G [0-9]* "__Wasm_call__"$' $tmp/concise.module.se || echo "bin/concise did not put the definition of __Wasm_call__"
 vm="${CONMA_VM:-python}"
 [ "$vm" = transpiled ] && vm=rust
-for c in case1 case2 case3 case4 case5 case6 case7 case8 case9 case10 case11
+for c in case1 case2 case3 case4 case5 case6 case7 case8 case9 case10 case11 case12
 do
   log=$c.$vm.log
   [ -f $log ] || log=$c.log

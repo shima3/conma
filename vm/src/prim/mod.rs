@@ -167,6 +167,8 @@ prims! {
     "__Wasm_compile__"     => "prim_Wasm_compile", wasm::compile;
     "__Wasm_call__"        => "prim_Wasm_call", wasm::call;
     "__Wasm_call_memory__" => "prim_Wasm_call_memory", wasm::call_memory;
+    "__Dict_numbers__"     => "prim_Dict_numbers", collections::dict_numbers;
+    "__Dict_put_numbers__" => "prim_Dict_put_numbers", collections::dict_put_numbers;
 }
 
 pub fn lookup(name: &str) -> Option<&'static PrimDef> {

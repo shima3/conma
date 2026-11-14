@@ -6,6 +6,10 @@
 ;;   __Wasm_compile__ onError wat ,(module)
 ;;   __Wasm_call__ onError module name args fuel ,(status value)
 ;;   __Wasm_call_memory__ onError module name args memory fuel ,(status value memory)（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）
+;; SJS の配列を写す 2 つ（同じ計画の 17）は、Dict の操作なので、簡潔版 ConMa で同じものを書いた（使う名前は Wasm_ref_ で始める）：
+;;   __Dict_numbers__ onError dict n words ,(words)      "0"〜"n-1" の値（どれも数）を順に words の先に積む。なければ onError
+;;   __Dict_put_numbers__ dict n words ,(rest)            words の先頭の n 個の数を "0"〜"n-1" に入れ、残りを返す
+(include "pure.se")
 
 (define __Wasm_compile__ ,(onError wat)
   onError "__Wasm_compile__: WebAssembly is not available")
@@ -15,3 +19,39 @@
 
 (define __Wasm_call_memory__ ,(onError module name args memory fuel)
   onError "__Wasm_call_memory__: WebAssembly is not available")
+
+(define __Dict_numbers__ ,(onError dict n words)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Wasm_ref_numbers onError dict n zero words)
+
+(define Wasm_ref_numbers ,(onError dict n i words)
+  __Cont_get__ ,(return)
+  __Number_subtract__ n i ,(left)
+  __Number_is_zero__ left ,(done)
+  __if__ done (,() return words) ,()
+  __Number_toString__ i ,(k)
+  __Dict_lookup_or__ dict k (,(key) __String_concat__ "__Dict_numbers__: no key \"" key ,(m) __String_concat__ m "\"" ,(m) onError m ,(r) return r) ,(v)
+  __type_name__ v ,(t)
+  __String_equal__ t "Number" ,(isNum)
+  __unless__ isNum (,() __String_concat__ "__Dict_numbers__: the value of \"" k ,(m) __String_concat__ m "\" is not a Number" ,(m) onError m ,(r) return r) ,()
+  __LList_cons__ v words ,(words)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(i)
+  Wasm_ref_numbers onError dict n i words)
+
+(define __Dict_put_numbers__ ,(dict n words)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Wasm_ref_put_numbers dict n zero words)
+
+(define Wasm_ref_put_numbers ,(dict n i words)
+  __Cont_get__ ,(return)
+  __Number_subtract__ n i ,(left)
+  __Number_is_zero__ left ,(done)
+  __if__ done (,() return words) ,()
+  __LList_uncons__ __print_exit_error__ words ,(v rest)
+  __Number_toString__ i ,(k)
+  __Dict_put__ dict k v ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(i)
+  Wasm_ref_put_numbers dict n i rest)
+

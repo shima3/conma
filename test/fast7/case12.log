@@ -1,0 +1,10 @@
+numbers 3: -0 2.5 1
+numbers 2 onto (4): 2.5 1 4
+numbers 0: []
+missing: __Dict_numbers__: no key "3"
+string: __Dict_numbers__: the value of "3" is not a Number
+rest: 10
+after put: 9 8 7
+new dict: 8 7
+put 0 keeps: 7 8 9 10
+exit: 0

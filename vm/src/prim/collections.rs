@@ -242,3 +242,82 @@ pub fn dict_keys(_m: &mut Machine, vp: &mut VProc) -> PResult {
     vp.prim_return(vec![Value::Seq(Rc::new(SeqClosure { olist: keys, sinfo: None, lvenv: None, scope: None }))]);
     Ok(())
 }
+
+/// __Dict_numbers__ onError dict n words ,(words): the values of the keys "0", "1", ... "n-1" of
+/// dict, each a Number, put one by one in front of the LList words (so that the value of "n-1"
+/// comes first); onError with a message if a key is missing or its value is not a Number. For
+/// copying the arrays of SJS into the memory of a WebAssembly module (feature "wasm";
+/// consh/SJS-WASM-ARRAY-PLAN-ja.md, section 17).
+pub fn dict_numbers(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__Dict_numbers__";
+    let mut a = take_args(vp, name, 4)?;
+    let mut list = a.pop().unwrap();
+    let n = a.pop().unwrap();
+    let d = a.pop().unwrap();
+    let on_error = a.pop().unwrap();
+    let Value::Dict(d) = d else {
+        return err(format!("{}: expected Dict, got {}", name, value_type_name(&d)));
+    };
+    let n = count_arg(name, &n)?;
+    for i in 0..n {
+        let key = i.to_string();
+        let value = match d.find_str(&key) {
+            Some(j) => d.entries.borrow()[j].1.clone(),
+            None => {
+                vp.prim_error(on_error, &format!("{}: no key \"{}\"", name, key));
+                return Ok(());
+            }
+        };
+        if !matches!(value, Value::Number(_)) {
+            vp.prim_error(on_error, &format!("{}: the value of \"{}\" is not a Number", name, key));
+            return Ok(());
+        }
+        list = Value::LList(Rc::new(LList { head: value, tail: list }));
+    }
+    vp.prim_return(vec![list]);
+    Ok(())
+}
+
+/// __Dict_put_numbers__ dict n words ,(rest): put the first n Numbers of the LList words under the
+/// keys "0", "1", ... "n-1" of dict, and return the rest of words (writing back the arrays of SJS
+/// from the memory of a WebAssembly module; feature "wasm").
+pub fn dict_put_numbers(_m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__Dict_put_numbers__";
+    let mut a = take_args(vp, name, 3)?;
+    let mut list = a.pop().unwrap();
+    let n = a.pop().unwrap();
+    let d = a.pop().unwrap();
+    let Value::Dict(d) = d else {
+        return err(format!("{}: expected Dict, got {}", name, value_type_name(&d)));
+    };
+    let n = count_arg(name, &n)?;
+    for i in 0..n {
+        let cell = match &list {
+            Value::LList(c) => c.clone(),
+            other => return err(format!("{}: expected an LList of {} Numbers, got {} after {}", name, n, value_type_name(other), i)),
+        };
+        if !matches!(cell.head, Value::Number(_)) {
+            return err(format!("{}: expected Numbers, got {}", name, value_type_name(&cell.head)));
+        }
+        let key = i.to_string();
+        match d.find_str(&key) {
+            Some(j) => d.entries_mut()[j].1 = cell.head.clone(),
+            None => d.append(string_value(&key), cell.head.clone()).map_err(VmError::Error)?,
+        }
+        list = cell.tail.clone();
+    }
+    vp.prim_return(vec![list]);
+    Ok(())
+}
+
+/// A count: a Number that is an integer from 0 to 2^32.
+fn count_arg(name: &str, n: &Value) -> Result<usize, VmError> {
+    match n {
+        Value::Number(x) if *x >= 0.0 && *x <= 4294967296.0 && *x == x.floor() => Ok(*x as usize),
+        other => err(format!("{}: expected a count, got {}", name, match other {
+            Value::Number(x) => number_to_str(*x),
+            v => value_type_name(v).to_string(),
+        })),
+    }
+}
+

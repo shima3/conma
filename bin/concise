@@ -31,7 +31,9 @@ The features it knows:
   with their definitions of include/ref/control.se.
 * "wasm" (consh/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
   which the concise VM cannot run; their definitions (include/ref/wasm.se) go
-  to onError with "WebAssembly is not available".
+  to onError with "WebAssembly is not available". __Dict_numbers__ and
+  __Dict_put_numbers__ are defined there in ConMa, using "control" and
+  "boolean", which are put in after them.
 "control" and "boolean" are done after "bitwise32", whose definitions use them
 (left Undefined in the module of the definitions, which is made with include/),
 and either of them puts the definitions of the other too (include/ref/pure.se
@@ -237,7 +239,7 @@ def concise(text):
                 if name in DEFINITIONS:
                     used.append(name)
     # "control" and "boolean" after "bitwise32": its definitions use them (left Undefined in them)
-    if "bitwise32" in used:
+    if "bitwise32" in used or "wasm" in used:
         used += [f for f in ("control", "boolean") if f not in used]
     for name in sorted(used, key=lambda n: ("wasm", "bitwise32", "control", "boolean").index(n)):
         text = put_definitions(text, name)

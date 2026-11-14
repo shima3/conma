@@ -361,3 +361,25 @@
     big_fuel ,(fuel)
     num "8193" ,(n8193) count_list n8193 __NULL__ ,(more)
     try_fit "no max, 8193 words" w more fuel))
+
+;; case12：__Dict_numbers__ と __Dict_put_numbers__（consh/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
+;; どの VM でも同じ。Python の VM は include/ref/wasm.se の代わりの定義）
+(define case12 ,()
+  __Dict_new__ ,(d)
+  num "1" ,(n1) num "2.5" ,(n25) num "-0" ,(nz) num "3" ,(n3) num "0" ,(n0) num "2" ,(n2) num "4" ,(n4)
+  __Dict_put__ d "0" n1 ,() __Dict_put__ d "1" n25 ,() __Dict_put__ d "2" nz ,() __Dict_put__ d "x" "skip" ,()
+  ;; 値を、"2" が先頭になるように積む
+  __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) d n3 __NULL__ ,(l3) show_list l3 "" ,(s) Cat "numbers 3: " s ,(s) println s ,()
+  __LList_cons__ n4 __NULL__ ,(tail) __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) d n2 tail ,(l2) show_list l2 "" ,(s) Cat "numbers 2 onto (4): " s ,(s) println s ,()
+  __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) d n0 __NULL__ ,(l0) show_list l0 "" ,(s) Cat "numbers 0: [" s ,(s) Cat s "]" ,(s) println s ,()
+  ;; ない、数でない
+  __Dict_numbers__ (,(m) Cat "missing: " m ,(s) println s ,() __NULL__ __NULL__) d n4 __NULL__ ,(r) __nop__ ,()
+  __Dict_put__ d "3" "three" ,() __Dict_numbers__ (,(m) Cat "string: " m ,(s) println s ,() __NULL__ __NULL__) d n4 __NULL__ ,(r) __nop__ ,()
+  ;; 書く：先頭の 3 つを "0"〜"2" に入れ、残りを返す（新しい Dict ならキーを足す。0 個なら何もしない）
+  num "7" ,(n7) num "8" ,(n8) num "9" ,(n9) num "10" ,(n10)
+  list3 n8 n9 n10 ,(rest3) __LList_cons__ n7 rest3 ,(ws)
+  __Dict_put_numbers__ d n3 ws ,(rest) show_list rest "" ,(s) Cat "rest: " s ,(s) println s ,()
+  __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) d n3 __NULL__ ,(l3b) show_list l3b "" ,(s) Cat "after put: " s ,(s) println s ,()
+  __Dict_new__ ,(e) num "6" ,(n6) __Dict_put_numbers__ e n2 ws ,(rest2) __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) e n2 __NULL__ ,(le) show_list le "" ,(s) Cat "new dict: " s ,(s) println s ,()
+  __Dict_put_numbers__ e n0 ws ,(same) show_list same "" ,(s) Cat "put 0 keeps: " s ,(s) println s)
+
