@@ -317,3 +317,23 @@ consh/SJS-WASM-PLAN-ja.md の段階 2。プログラムの一番外の function 
 * 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A0：一番外の数の定数の式（`const SOLAR_MASS = 4 * PI * PI`）と、値を返さない関数も、数の関数にする。consh/sjs/test/step9 の case3 が確かめる。
 * 燃料（計画の段階 3。consh/SJS-WASM-ARRAY-PLAN-ja.md の 19 で変えた）：wasm 版を燃料 2^20（関数ごとに、前に足りた燃料を覚えていれば、その燃料）で呼び、使い切れば 8 倍（上限まで）にしてやり直す。上限の 2^30 で切れるか trap になれば（深い再帰など）、ConMa 版を始めから動かし、その中からの同じ関数の呼び出しも ConMa 版で動かす。consh/sjs/test/step10（wasm 版の VM だけ）が確かめる。
 
+### 起動の時間と Number()（2026-11-14）
+
+wasm 版の VM で、nbody の N=1 を動かす時間（実時間、7 回の最良、Apple M1）を分けて測った。全体は約 120 ms で、内訳は次のとおり。
+
+| 部分 | 時間 |
+|---|---|
+| Node.js 自身の起動と終了（`node -e 0`。約 45 ms は、スクリプトの時計が始まる前） | 約 60 ms |
+| consh/js/vm-wasm.sh（bash） | 約 4 ms |
+| vm-node.js と conma.js の読み込み、VM の wasm のコンパイル、環境変数などの準備 | 約 10 ms |
+| モジュール（1.6〜1.9 MB）を読む。約 6 割が S 式を読む時間 | 約 21〜24 ms |
+| SJS の初期化（`console.log(1)` だけのプログラム。約 2,800 ステップ） | 約 4〜5 ms |
+| nbody の N=1 の処理（約 17 万ステップ、最初の `__Wasm_compile__` は約 2〜5 ms） | 約 16 ms |
+
+* V8 の wasm のコンパイルの設定（遅延コンパイル、Liftoff、段階の引き上げ）を変えても速くならない。`console.log(1)` だけでも、モジュールの 517 の定義のうち使うのは 324 で、使わない定義を手で除くと 4〜6 ms、文ごとの SInfo のファイルのパスを空にすると 2〜7 ms 速くなった（試しただけで、変えていない）。
+* nbody の約 17 万ステップの約半分は、`Number("4.84143144246472090e+00")` の 28 個だった（ネイティブ版の VM の `CONMA_PROFILE`）。`Sjs_trim` と `Sjs_decimal_text` が、文字列を 1 文字ずつの LList にしてから確かめていた。
+* そこで、`Sjs_decimal_text` は文字の LList を作らずに添字で 1 文字ずつ見るようにし（1 文字約 38 ステップ）、`Sjs_trim` は最初と最後の文字が空白でなければそのまま返すようにした（parseInt と `trim()` も同じ道を通る）。結果は前と同じ。
+    * nbody の N=1 のステップは 173,757 → 103,397、起動の時間は wasm 版の VM で 120.6 → 118.6 ms、ネイティブ版の VM で 23.0 → 21.2 ms。ステップの数ほどは縮まない（起動の時間の多くは、モジュールを読むことと、関数を初めて呼ぶときの準備）。
+    * 5 つの数の文字列の `Number()` を 4000 回ずつ（2 万回）：wasm 版の VM で 1,758 → 995 ms、ネイティブ版の VM で 1,284 → 683 ms。
+* consh/sjs/test/step8 の case13 が、`Number()` の 52 の文字列と `trim()` を Node.js の結果と比べる。`"0x10"`、`"+Infinity"`、`"1e400"` は、SJS では前から NaN になり（Node.js は 16、Infinity、Infinity）、比べていない。
+
