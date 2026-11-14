@@ -27,6 +27,9 @@ extern "C" {
     /// Write len bytes at ptr to the host's standard output (fd 1) or
     /// standard error (fd 2).
     fn host_write(fd: i32, ptr: *const u8, len: usize);
+    /// An allocation of size bytes failed (the memory of wasm32 is at most 4 GB): the host tells it when
+    /// the trap that follows (Rust's handler of allocation errors) comes out of conma_run.
+    fn host_out_of_memory(size: usize);
     /// A read of standard input found it empty before its end: the host may
     /// give input now (conma_input, conma_input_end), if it can without
     /// waiting for events (the JavaScriptCore shell can; a browser cannot).
@@ -122,6 +125,11 @@ extern "C" {
     /// the same arguments, and the host gives the same text without making it
     /// again.
     fn host_build_module(src_ptr: *const u8, src_len: usize, cwd_ptr: *const u8, cwd_len: usize, out: *mut u8, cap: usize, concise: i32) -> i32;
+}
+
+/// Tell the host that an allocation of size bytes failed.
+pub fn out_of_memory(size: usize) {
+    unsafe { host_out_of_memory(size) }
 }
 
 /// A result of a host_fs_ function: the value, or the error of minus it.

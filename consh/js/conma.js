@@ -1773,6 +1773,8 @@ var ConMaVM = (function () {
     const wasmModules = new Map();
     let wasmNext = 1;
     let wasmError = "";
+    // The size of the last allocation of the VM that failed (host_out_of_memory), or null
+    let failedAlloc = null;
     const errorText = (e) => (e instanceof Error ? e.name + ": " + e.message : String(e));
     // The calls of JavaScript (__JS_call__): the fd of the pipe of each job, and their lines
     const jsFds = new Map();
@@ -1799,6 +1801,9 @@ var ConMaVM = (function () {
     const instance = new WebAssembly.Instance(wasmModule, {
       env: {
         host_write: (fd, ptr, len) => write(fd, bytesAt(ptr, len).slice()),
+        host_out_of_memory: (size) => {
+          failedAlloc = size >>> 0;
+        },
         host_input_needed: () => {
           if (inputNeeded) inputNeeded(vm);
         },
@@ -1999,7 +2004,18 @@ var ConMaVM = (function () {
       // their UTF-8 bytes separated by NUL). Returns 0, or an exit code.
       start: (module, argv) => pass2(module, Array.isArray(argv) ? argv.join("\0") : argv, x.conma_start),
       // Run about budget steps: RUNNING, IDLE, or the exit code.
-      run: (budget) => x.conma_run(budget),
+      // A trap after a failed allocation (the memory of wasm32 is at most 4 GB) comes out as an Error
+      // with outOfMemory true and the message of the native VM; another trap as it is
+      run: (budget) => {
+        try {
+          return x.conma_run(budget);
+        } catch (e) {
+          if (failedAlloc === null) throw e;
+          const err = new Error(`memory allocation of ${failedAlloc} bytes failed (the wasm VM has at most 4 GB)`);
+          err.outOfMemory = true;
+          throw err;
+        }
+      },
       input: (data) => pass(data, x.conma_input),
       inputEnd: () => x.conma_input_end(),
       // The number of calls of JavaScript whose results the VM has not got yet.

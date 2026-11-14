@@ -49,7 +49,33 @@ mod value;
 mod vproc;
 
 #[global_allocator]
-static GLOBAL: alloc::Pool = alloc::Pool::new();
+static GLOBAL: Reporting = Reporting(alloc::Pool::new());
+
+/// The allocator of the VM, telling the host the size of an allocation that fails before Rust stops:
+/// on wasm32, Rust's handler of allocation errors only traps (unreachable), with no message.
+struct Reporting(alloc::Pool);
+
+unsafe impl std::alloc::GlobalAlloc for Reporting {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        let p = unsafe { self.0.alloc(layout) };
+        if p.is_null() {
+            sys::out_of_memory(layout.size());
+        }
+        p
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        unsafe { self.0.dealloc(ptr, layout) }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
+        let p = unsafe { self.0.realloc(ptr, layout, new_size) };
+        if p.is_null() {
+            sys::out_of_memory(new_size);
+        }
+        p
+    }
+}
 
 use std::cell::RefCell;
 use std::rc::Rc;

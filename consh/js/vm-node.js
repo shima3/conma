@@ -412,4 +412,12 @@ async function main() {
 }
 
 // Exit without waiting for processes that are still running (the native VM leaves them).
-main().then((code) => process.exit(code));
+// Out of memory: one line, as the native VM writes, and the status of abort (134), as the native VM
+main().then(
+  (code) => process.exit(code),
+  (e) => {
+    if (!(e && e.outOfMemory)) throw e;
+    writeAll(2, ConMaVM.utf8(`${e.message}\n`));
+    process.exit(134);
+  },
+);
