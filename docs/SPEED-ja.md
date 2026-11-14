@@ -3,7 +3,7 @@
 これまでに試した高速化の手法を、効果（時間、大きさ、ステップの数）と、入れたかどうかとともに一覧にする。詳しい計測と理由は、それぞれの「詳細」のドキュメントにある。
 
 * 数は、**記録した時点のもの**である。測った VM、モジュール、機械の負荷が違うので、表どうしの数を比べるときは、詳細のドキュメントの条件を見る。
-* 時間はふつう user + sys（3 回か 5 回のうち最速）、wasm 版は実時間。機械は Apple M4 か Apple M2 で、ドキュメントによって違う（bench/README.md の 2026-11-08 までの表、vm/README.md、consh/sjs/README-ja.md は M4。consh/bench/README-ja.md、ビット演算の W5〜W7、wasm 版の実験、bench/README.md の 2026-11-12 の表は M2）。違う機械の時間は比べず、CPython や Rust 版との比で比べる。
+* 時間はふつう user + sys（3 回か 5 回のうち最速）、wasm 版は実時間（SJS の数の関数の wasm 版の表は user + sys）。機械は Apple M4 か Apple M2（SJS の数の関数の wasm 版の表だけ Apple M1）で、ドキュメントによって違う（bench/README.md の 2026-11-08 までの表、vm/README.md、consh/sjs/README-ja.md は M4。consh/bench/README-ja.md、ビット演算の W5〜W7、wasm 版の実験、bench/README.md の 2026-11-12 の表は M2）。違う機械の時間は比べず、CPython や Rust 版との比で比べる。
 * 比は「後 ÷ 前」の時間（0.80 なら 2 割速い）。
 * 古くなった数と、測り直しが要るものは 5 にまとめた。測り直しは、必要になったものだけ行う。
 
@@ -51,6 +51,7 @@
 | 呼び出しごとに 1 ステップしか減らない書き換え（よく呼ばれる関数から `__Cont_get__` を除くなど） | — | ほとんど効果なし | 入れなかった | consh/include/README-ja.md |
 | richards を手で調整して書き直す（`bench/richards/richards_tuned.se`。定数を実行ごとに 1 回だけ引いて Closure の変数に持つ、スケジューラがフラグを 1 回ずつ読む、変わるフラグだけを書くなど） | 2026-11-13 | richards 2 が 20,110,425 → 15,199,166 ステップ（0.76）。richards 20 が Rust VM で 5.17 s → 3.93 s（0.76）、変換版で 0.590 s → 0.476 s（0.81）。Apple M2 | 別のファイルとして入れた（richards.se は Python の写しのまま） | bench/README.md「A tuned richards」 |
 | SJS の変換器と実行時の支えの改良（型の分かる所の確認を省く、配列の添字、Ref のない `const`、数のリテラルとの比較、行の記録を減らす） | 2026-11-11〜12 | 段階 B7 と比べて、loop 100000 が 1.28 s → 0.166 s、fib 20 が 0.50 s → 0.123 s、nbody 2000 が 9.94 s → 1.098 s | 入れた | consh/sjs/README-ja.md「速さ」「経緯」 |
+| SJS の数だけを扱う関数を WebAssembly にする（高速版 ConMa の `"wasm"`、wasm 版の VM のホストで動かす。段階 1〜4） | 2026-11-14 | wasm 版の VM で、loop 10000000 が 22.14 s → 0.172 s（起動を含む。Rust 版の VM の SJS は 15.77 s、手で書いた ConMa は 2.738 s）、fib 27 が 4.729 s → 0.149 s。Apple M1。配列を使う nbody は変わらない | 入れた | consh/SJS-WASM-PLAN-ja.md 16、consh/sjs/README-ja.md「速さ」 |
 
 ## 4. 言語とプリミティブ
 
