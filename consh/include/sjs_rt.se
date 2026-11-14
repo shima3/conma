@@ -3450,18 +3450,19 @@
 (define Sjs_wasm_fuel_limit ,()
   __Number_fromString__ __print_exit_error__ "1073741824")
 
-;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版。
+;; 数の関数 name（引数は n 個）の、引数の LList を受け取る Closure。W はモジュールか null、f は ConMa 版。void が真なら、
+;; 値を返さない関数で、wasm 版の戻り値（0）の代わりに undefined を返す（配列の計画の段階 A0）。
 ;; ConMa 版に替えて動かしている間（busy が正）は、その中からこの関数を呼んでも、wasm 版を試さずに ConMa 版を動かす。
 ;; そうしないと、深い再帰が trap になったとき、ConMa 版の再帰の各段で wasm 版を試し直し、仕事が深さの 2 乗になる
 ;; （wasm の最初の実行は最適化の前のコードでスタックの枠が大きいので、深さ 100 万の再帰は trap になることがある）
-(define Sjs_wasm_fn ,(W name n f)
-  Sjs_wasm_fn_core W name n f (,() __NULL__ __TRUE__))
+(define Sjs_wasm_fn ,(W name n void f)
+  Sjs_wasm_fn_core W name n void f (,() __NULL__ __TRUE__))
 
 ;; ConSh の (( )) の数の関数（段階 4）：呼ぶとき、names（空白で区切った名前）の SJS変数が、作ったときの関数（ids の番号）を
 ;; 指し、usesMath なら Math のメンバーが元のままのときだけ wasm 版を使う（後の (( )) が書き換えることがある）
-(define Sjs_wasm_fn_checked ,(W G ids names usesMath name n f)
+(define Sjs_wasm_fn_checked ,(W G ids names usesMath name n void f)
   Sjs_wasm_words names ,(list)
-  Sjs_wasm_fn_core W name n f (,()
+  Sjs_wasm_fn_core W name n void f (,()
     __Cont_get__ ,(return)
     __if__ usesMath (,() Sjs_wasm_math_ok G ,(ok) __unless__ ok (,() return __FALSE__) ,()) ,()
     Sjs_wasm_same_fns ids list))
@@ -3525,7 +3526,7 @@
   Sjs_wasm_same_members snap props rest)
 
 ;; Sjs_wasm_fn の本体。check は、wasm 版を使ってよいかを返す thunk
-(define Sjs_wasm_fn_core ,(W name n f check)
+(define Sjs_wasm_fn_core ,(W name n void f check)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Ref_new__ zero ,(busy)
   __NULL__ (,(args)
@@ -3541,7 +3542,7 @@
     __unless__ ok (,() f args ,(r) return r) ,()
     Sjs_wasm_fuel ,(fuel)
     Sjs_wasm_run W name nums fuel ,(done value)
-    __if__ done (,() return value) ,()
+    __if__ done (,() __if_then_else__ void (,() __NULL__ __NULL__) (,() __NULL__ value) ,(r) return r) ,()
     Sjs_inc b ,(b1)
     __Ref_set__ busy b1 ,()
     f args ,(r)

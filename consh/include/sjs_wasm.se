@@ -283,7 +283,7 @@
   Wx_walk node (,(x) Wx_t x ,(t) Sjs_in_words t "call tagged" ,(c) __if__ c (,() __Ref_set__ found __TRUE__) ,()) ,()
   __Ref_get__ found)
 
-;; 一番外の数の定数：最初の呼び出しのある文より前の const で、名前と数のリテラル
+;; 一番外の数の定数：最初の呼び出しのある文より前の const で、名前と、数の定数の式（Wx_const_expr。配列の計画の段階 A0）
 (define Wx_consts ,(stmts consts declared)
   __Cont_get__ ,(return)
   __is_null__ stmts ,(test__) __if__ test__ return ,()
@@ -307,16 +307,53 @@
   Wx_t target ,(tt)
   __String_equal__ tt "id" ,(isId)
   __is_null__ init ,(none)
-  __if_then_else__ none (,() __NULL__ "") (,() Wx_t init) ,(it)
-  __String_equal__ it "num" ,(isNum)
-  __and__ isId isNum ,(test__) __if__ test__
+  __not__ none ,(hasInit)
+  __and__ isId hasInit ,(test__) __if__ test__
     (,()
       Sjs_get target "name" ,(nm)
-      Sjs_get init "text" ,(text)
-      __Number_fromString__ (,(msg) __NULL__ __NULL__) text ,(v)
-      __is_null__ v ,(bad)
-      __unless__ bad (,() Wx_f64 v ,(c) __Dict_put__ consts nm c) ,()) ,()
+      Wx_const_expr consts init ,(ok c)
+      __if__ ok (,() __Dict_put__ consts nm c) ,()) ,()
   Wx_const_decls rest consts)
+
+;; 数の定数の式 e の WAT：数のリテラル、それまでの一番外の数の定数、括弧、単項の - と +、+ - * / %（配列の計画の段階 A0）。
+;; WAT では、使う所に同じ順の算術を書くので、ConMa 版（実行のときに求める）と同じ丸めになる。式でなければ偽
+(define Wx_const_expr ,(consts e)
+  __Cont_get__ ,(return)
+  Wx_t e ,(t)
+  __String_equal__ t "num" ,(test__) __if__ test__
+    (,()
+      Sjs_get e "text" ,(text)
+      __Number_fromString__ (,(msg) return __FALSE__ "") text ,(v)
+      Wx_f64 v ,(c)
+      return __TRUE__ c) ,()
+  __String_equal__ t "paren" ,(test__) __if__ test__ (,() Sjs_get e "expr" ,(inner) Wx_const_expr consts inner ,(ok c) return ok c) ,()
+  __String_equal__ t "id" ,(test__) __if__ test__
+    (,()
+      Sjs_get e "name" ,(nm)
+      __Dict_lookup_or__ consts nm (,(k) return __FALSE__ "") ,(c)
+      return __TRUE__ c) ,()
+  __String_equal__ t "unary" ,(test__) __if__ test__
+    (,()
+      Sjs_get e "op" ,(op)
+      Sjs_get e "arg" ,(arg)
+      Wx_const_expr consts arg ,(ok c)
+      __unless__ ok (,() return __FALSE__ "") ,()
+      __String_equal__ op "+" ,(test__) __if__ test__ (,() return __TRUE__ c) ,()
+      __String_equal__ op "-" ,(test__) __if__ test__ (,() Cat3 "(f64.neg " c ")" ,(n) return __TRUE__ n) ,()
+      return __FALSE__ "") ,()
+  __String_equal__ t "binary" ,(test__) __unless__ test__ (,() return __FALSE__ "") ,()
+  Sjs_get e "op" ,(op)
+  Sjs_get e "left" ,(left)
+  Sjs_get e "right" ,(right)
+  Wx_const_expr consts left ,(lok lc)
+  Wx_const_expr consts right ,(rok rc)
+  __and__ lok rok ,(test__) __unless__ test__ (,() return __FALSE__ "") ,()
+  __String_equal__ op "%" ,(test__) __if__ test__ (,() Cat5 "(call $__mod " lc " " rc ")" ,(c) return __TRUE__ c) ,()
+  Wx_f64_op op ,(ins)
+  __String_equal__ ins "" ,(test__) __if__ test__ (,() return __FALSE__ "") ,()
+  Cat5 "(" ins " " lc " " ,(c)
+  Cat3 c rc ")" ,(c)
+  __NULL__ __TRUE__ c)
 
 ;; 数 v の WAT の定数
 (define Wx_f64 ,(v)
@@ -351,6 +388,15 @@
   __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
   __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
   __or__ gen async ,(test__) __if__ test__ return ,()
+  ;; 値を返さない関数（値のある return がない。配列の計画の段階 A0）。値のある return とない return が混ざれば候補にしない
+  Wx_returns fn ,(withValue bare)
+  __Number_is_zero__ withValue ,(noValue)
+  __Number_is_zero__ bare ,(noBare)
+  __or__ noValue noBare ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ fn "body" (,(k) __NULL__ __NULL__) ,(body0)
+  __is_null__ body0 ,(concise0)
+  __not__ concise0 ,(block0)
+  __and__ block0 noValue ,(isVoid)
   Sjs_get fn "params" ,(params)
   Wx_param_names params __NULL__ ,(ok names)
   __unless__ ok return ,()
@@ -368,6 +414,7 @@
   __String_concat__ "$f" is ,(label)
   __Dict_put__ info "label" label ,()
   __Dict_put__ info "ok" __FALSE__ ,()
+  __Dict_put__ info "void" isVoid ,()
   __Dict_lookup_or__ E "funcs" __print_exit_error__ ,(funcs)
   __Dict_put__ funcs name info ,()
   ;; list は宣言の順（後ろに足す）
@@ -382,6 +429,24 @@
   Wx_num "1" ,(one)
   __Number_add__ n one ,(m)
   Wx_length rest m)
+
+;; 関数 fn の本体の、値のある return と、値のない return の数
+(define Wx_returns ,(fn)
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(withValue)
+  __Ref_new__ zero ,(bare)
+  __Dict_lookup_or__ fn "body" (,(k) __NULL__ __NULL__) ,(body)
+  Wx_walk body (,(n)
+    Wx_t n ,(t)
+    __String_equal__ t "return" ,(isReturn)
+    __if__ isReturn
+      (,()
+        __Dict_lookup_or__ n "value" (,(k) __NULL__ __NULL__) ,(v)
+        __is_null__ v ,(none)
+        __if_then_else__ none (,() Wx_inc bare) (,() Wx_inc withValue)) ,()) ,()
+  __Ref_get__ withValue ,(w)
+  __Ref_get__ bare ,(b)
+  __NULL__ w b)
 
 ;; 引数がすべて名前で重ならなければ、真と名前の LList（順のとおり）
 (define Wx_param_names ,(params acc)
@@ -445,6 +510,8 @@
   __Dict_put__ cx "callees" callees ,()
   __Ref_new__ __FALSE__ ,(usesMath)
   __Dict_put__ cx "usesMath" usesMath ,()
+  Sjs_get info "void" ,(isVoid)
+  __Dict_put__ cx "void" isVoid ,()
   Sjs_get info "params" ,(params)
   Wx_bind_params cx params "" ,(head)
   Sjs_get info "fn" ,(fn)
@@ -459,7 +526,9 @@
       Cat3 "(return " c ") ")
     (,()
       Sjs_get body "body" ,(stmts)
-      Wx_ends_list stmts ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
+      ;; 値を返す関数は、最後の文で必ず return する。値を返さない関数は、最後まで来てもよい
+      Wx_ends_list stmts ,(ends)
+      __or__ ends isVoid ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
       Wx_stmts cx stmts "") ,(code)
   __Ref_get__ usesMath ,(um)
   __Dict_put__ info "math" um ,()
@@ -469,7 +538,9 @@
   __Ref_get__ decls ,(ld)
   Cat5 "(func " label " (export " qn ") " ,(s)
   Cat5 s head "(result f64) (local $tmp f64) " ld code ,(s)
-  __String_concat__ s "(unreachable)) " ,(wat)
+  ;; 値を返さない関数は、最後まで来たら 0 を返す（Sjs_wasm_fn が undefined にする）
+  __if_then_else__ isVoid (,() __NULL__ "(f64.const 0)) ") (,() __NULL__ "(unreachable)) ") ,(tail)
+  __String_concat__ s tail ,(wat)
   __Ref_get__ callees ,(cs)
   __NULL__ __TRUE__ wat cs)
 
@@ -571,7 +642,10 @@
   __String_equal__ t "return" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ s "value" (,(k) __NULL__ __NULL__) ,(v)
-      __is_null__ v ,(test__) __if__ test__ (,() Wx_fail cx) ,()
+      __Dict_lookup_or__ cx "void" __print_exit_error__ ,(isVoid)
+      __is_null__ v ,(none)
+      __and__ none isVoid ,(test__) __if__ test__ (,() return "(return (f64.const 0)) ") ,()
+      __if__ none (,() Wx_fail cx) ,()
       Wx_num_expr cx v ,(c)
       Cat3 "(return " c ") " ,(c)
       return c) ,()
@@ -781,12 +855,13 @@
       Wx_expr cx yes ,(yc yt)
       Wx_expr cx no ,(nc nt)
       __String_equal__ yt nt ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
+      __String_equal__ yt "V" ,(test__) __if__ test__ (,() Wx_fail cx) ,()
       __String_equal__ yt "N" ,(isNum)
       __if_then_else__ isNum (,() __NULL__ "f64") (,() __NULL__ "i32") ,(rt)
       Cat5 "(if (result " rt ") " tc " (then " ,(c)
       Cat5 c yc ") (else " nc ")) " ,(c)
       return c yt) ,()
-  __String_equal__ t "call" ,(test__) __if__ test__ (,() Wx_call cx e ,(c) return c "N") ,()
+  __String_equal__ t "call" ,(test__) __if__ test__ (,() Wx_call cx e ,(c ty) return c ty) ,()
   __String_equal__ t "member" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
@@ -930,7 +1005,7 @@
       Wx_uses_math cx ,()
       Sjs_get callee "name" ,(name)
       Wx_math cx name args ,(c)
-      return c) ,()
+      return c "N") ,()
   Wx_t callee ,(ct)
   __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Wx_fail cx) ,()
   Sjs_get callee "name" ,(nm)
@@ -949,7 +1024,11 @@
   __LList_cons__ nm cs ,(cs)
   __Ref_set__ callees cs ,()
   Sjs_get info "label" ,(label)
-  Cat5 "(call " label " " ac ")")
+  Cat5 "(call " label " " ac ")" ,(c)
+  ;; 値を返さない数の関数の呼び出しは、型 "V"（値を使えば数の関数にしない。式の文としてだけ呼べる）
+  Sjs_get info "void" ,(isVoid)
+  __if_then_else__ isVoid (,() __NULL__ "V") (,() __NULL__ "N") ,(ty)
+  __NULL__ c ty)
 
 ;; この関数が Math を使う（(( )) では、呼ぶときに Math のメンバーを確かめる）
 (define Wx_uses_math ,(cx)
@@ -1111,7 +1190,9 @@
       Sjs_get info "name" ,(name)
       __Dict_put__ fn "wasm" name ,()
       Sjs_get info "n" ,(n)
-      __Dict_put__ fn "wasmParams" n) ,()
+      __Dict_put__ fn "wasmParams" n ,()
+      Sjs_get info "void" ,(isVoid)
+      __Dict_put__ fn "wasmVoid" isVoid) ,()
   __if_then_else__ ok (,() Sjs_get info "wat" ,(w) __String_concat__ acc w) (,() __NULL__ acc) ,(acc)
   Wx_funcs rest acc)
 

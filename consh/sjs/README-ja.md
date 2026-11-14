@@ -312,5 +312,6 @@ consh/SJS-WASM-PLAN-ja.md の段階 2。プログラムの一番外の function 
 * 変換したモジュールを動かす時間は、fib(25) が 1.91 秒から 0.28 秒、loop の 100 万回が 2.38 秒から 0.19 秒になった（wasm 版の VM。計画の 13）。
 * consh/sjs/test/step9 が、Node.js の結果と、両方の VM で比べる。
 * ConSh（計画の段階 4）：`(( 名前 = 関数式 ))` で作った数だけを扱う関数も、wasm 版の VM とブラウザで WebAssembly で動く。後の `(( ))` が名前や `Math` のメンバーを書き換えると、呼ぶときに確かめて ConMa 版で動かす。consh/test/step21 の case9 が確かめる。
+* 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A0：一番外の数の定数の式（`const SOLAR_MASS = 4 * PI * PI`）と、値を返さない関数も、数の関数にする。consh/sjs/test/step9 の case3 が確かめる。
 * 燃料（計画の段階 3）：wasm 版を燃料 2^16 で呼び、使い切れば 2 倍にしてやり直す。上限の 2^30 を超えるか trap になれば（深い再帰など）、ConMa 版を始めから動かし、その中からの同じ関数の呼び出しも ConMa 版で動かす。consh/sjs/test/step10（wasm 版の VM だけ）が確かめる。
 
