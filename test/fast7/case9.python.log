@@ -1,0 +1,10 @@
+lone ;: __Wasm_compile__: WebAssembly is not available
+; in an atom: __Wasm_compile__: WebAssembly is not available
+;; comment: __Wasm_compile__: WebAssembly is not available
+folded 9990: __Wasm_compile__: WebAssembly is not available
+folded 10001: __Wasm_compile__: WebAssembly is not available
+folded 30000: __Wasm_compile__: WebAssembly is not available
+blocks 10000: __Wasm_compile__: WebAssembly is not available
+blocks 10001: __Wasm_compile__: WebAssembly is not available
+lists 30000: __Wasm_compile__: WebAssembly is not available
+exit: 0

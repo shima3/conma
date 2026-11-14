@@ -429,4 +429,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 対応
 
-* まだない。
+* 1：直した。vm/src/prim/wasm_asm.rs の読み込みは、アトムが空なら（コメントを始めない `;` の上で止まったとき）`unexpected ;` で onError に渡す。
+* 6 の前半：直した。リストの入れ子（読み込み）と、block、loop、if と folded の命令の入れ子（`encode_seq`、`encode_folded`。`Ctx::depth`）を、10000 段までにし、超えれば `nested more than 10000 deep` で onError に渡す（読み込み、組み立て、リストを捨てるときの再帰の深さが、これで決まる。wasm 版の VM で 3 万段まで動いたので、余裕をとった）。リストの段数は module と func の分も数える。
+    * test/fast7 に case9 を足した。`(module ;)`、アトムの中の `;`、行コメント、f64.neg を 9990 段（作れる）、10001 段、3 万段重ねた folded の命令、block を 10000 段（作れる）と 10001 段重ねたもの、3 万段のリスト。ネイティブの VM（case9.log）は組み立ててから "not available"、wasm 版（case9.wasm.log）は作れるものを "compiled"、Python VM（case9.python.log）はすべて "not available" になる。直す前の wasm 版の VM では、case9 の最初の `;` で、メモリを確保できずに VM ごと落ちた。test/ を Python、Rust、wasm の VM で（wasm は前からの step40 だけが違う）、consh/test を Rust VM（速い版）で、consh/sjs/test と consh/js/test を流して通った。
+* 6 の後半、2〜5、7、8：まだない（2〜4 は consh/include/sjs_wasm.se と sjs_rt.se にあり、SJS-WASM-ARRAY の段階で今も変わっているので、後にする）。

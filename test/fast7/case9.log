@@ -1,0 +1,10 @@
+lone ;: __Wasm_compile__: line 1 col 9: unexpected ;
+; in an atom: __Wasm_compile__: line 1 col 52: unexpected ;
+;; comment: __Wasm_compile__: WebAssembly is not available
+folded 9990: __Wasm_compile__: WebAssembly is not available
+folded 10001: __Wasm_compile__: line 1 col 90023: nested more than 10000 deep
+folded 30000: __Wasm_compile__: line 1 col 90023: nested more than 10000 deep
+blocks 10000: __Wasm_compile__: WebAssembly is not available
+blocks 10001: __Wasm_compile__: line 1 col 60041: nested more than 10000 deep
+lists 30000: __Wasm_compile__: line 1 col 10008: nested more than 10000 deep
+exit: 0

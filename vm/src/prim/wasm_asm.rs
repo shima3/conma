@@ -87,6 +87,11 @@ impl Sx {
 
 // ── Reading the text ──
 
+/// The deepest nesting of lists in the text, and of blocks (block, loop, if) and folded
+/// instructions in a function: the reader, the encoder and the dropping of the lists recurse
+/// that deep, which would overflow the stack of the host for a text nested much deeper.
+const MAX_NEST: usize = 10000;
+
 fn read(text: &str) -> Result<Vec<Sx>, String> {
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -136,6 +141,9 @@ fn read(text: &str) -> Result<Vec<Sx>, String> {
                 }
             }
         } else if c == '(' {
+            if stack.len() > MAX_NEST {
+                return err(pos, format!("nested more than {} deep", MAX_NEST));
+            }
             stack.push((Vec::new(), pos));
             advance!();
         } else if c == ')' {
@@ -182,6 +190,10 @@ fn read(text: &str) -> Result<Vec<Sx>, String> {
             while i < chars.len() && !chars[i].is_whitespace() && !"()\";".contains(chars[i]) {
                 a.push(chars[i]);
                 advance!();
+            }
+            if a.is_empty() {
+                // only a ';' that begins no comment stops an atom before its first character
+                return err(pos, "unexpected ;");
             }
             stack.last_mut().unwrap().0.push(Sx::Atom(a, pos));
         }
@@ -427,6 +439,18 @@ struct Ctx<'a> {
     nlocals: usize,
     /// The labels of the blocks around, innermost last.
     labels: Vec<Option<String>>,
+    /// The blocks and folded instructions being encoded (at most MAX_NEST).
+    depth: usize,
+}
+
+impl Ctx<'_> {
+    fn enter(&mut self, pos: Pos) -> Result<(), String> {
+        if self.depth >= MAX_NEST {
+            return err(pos, format!("nested more than {} deep", MAX_NEST));
+        }
+        self.depth += 1;
+        Ok(())
+    }
 }
 
 impl<'a> Ctx<'a> {
@@ -636,6 +660,7 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
                             out.extend_from_slice(FUEL_CHECK);
                         }
                         ctx.labels.push(label);
+                        ctx.enter(*pos)?;
                         let stops: &[&str] = if a == "if" { &["else", "end"] } else { &["end"] };
                         let mut found = encode_seq(ctx, items, i, stops, out)?;
                         if found.as_deref() == Some("else") {
@@ -645,6 +670,7 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
                         if found.is_none() {
                             return err(*pos, format!("{} without end", a));
                         }
+                        ctx.depth -= 1;
                         ctx.labels.pop();
                         // an optional $label after end
                         if let Some(l) = items.get(*i).and_then(|y| y.atom()) {
@@ -687,6 +713,14 @@ fn encode_seq(ctx: &mut Ctx, items: &[Sx], i: &mut usize, stop: &[&str], out: &m
 
 /// Encode a folded instruction (op immediates... operands...).
 fn encode_folded(ctx: &mut Ctx, x: &Sx, out: &mut Vec<u8>) -> Result<(), String> {
+    let Sx::List(_, pos) = x else { unreachable!() };
+    ctx.enter(*pos)?;
+    let r = encode_folded_in(ctx, x, out);
+    ctx.depth -= 1;
+    r
+}
+
+fn encode_folded_in(ctx: &mut Ctx, x: &Sx, out: &mut Vec<u8>) -> Result<(), String> {
     let Sx::List(items, pos) = x else { unreachable!() };
     let op = match items.first().and_then(|h| h.atom()) {
         Some(op) => op,
@@ -962,7 +996,7 @@ pub fn assemble(text: &str) -> Result<Assembled, String> {
                 }
             }
         }
-        let mut ctx = Ctx { funcs: &names, nfuncs: funcs.len(), locals, nlocals: f.params.len() + f.locals.len(), labels: Vec::new() };
+        let mut ctx = Ctx { funcs: &names, nfuncs: funcs.len(), locals, nlocals: f.params.len() + f.locals.len(), labels: Vec::new(), depth: 0 };
         let mut code = Vec::new();
         // Locals, in runs of the same type.
         let mut runs: Vec<(u64, u8)> = Vec::new();

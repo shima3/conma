@@ -267,3 +267,49 @@
   try_compile "bad offset" "(module (memory 1) (func (result f64) i32.const 0 f64.load offset=x))" ,()
   try_compile "fine" "(module (memory 0 1) (func (export \"f\") (result f64) (f64.load (i32.const 0))))")
 
+
+;; case9：アセンブラが止まらなかった WAT と、深すぎる入れ子（REVIEW-ja.md の 2026-11-14（2）の 1 と 6）。コメントを始めない
+;; ; は誤り（前は止まらなかった）。リスト、block、folded の命令の入れ子は 10000 段まで（前は、wasm 版の VM がホストの
+;; スタックを使い切って落ちた）
+
+;; s を n 回つなぐ（倍々につなぐ）
+(define repeat ,(s n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(z) __if__ z (,() return "") ,()
+  num "2" ,(two)
+  __Number_divide__ __print_exit_error__ n two ,(h)
+  __Number_floor__ h ,(half)
+  repeat s half ,(r)
+  __String_concat__ r r ,(rr)
+  __Number_multiply__ half two ,(even)
+  __Number_subtract__ n even ,(odd)
+  __Number_is_zero__ odd ,(isEven)
+  __if_then_else__ isEven (,() __NULL__ rr) (,() __String_concat__ rr s))
+
+;; f64.neg を n 段重ねた folded の命令の関数
+(define deep_folded ,(n)
+  repeat "(f64.neg " n ,(open)
+  repeat ")" n ,(close)
+  Cat5 "(module (func (export \"f\") (result f64) " open "(f64.const 1)" close "))")
+
+;; block を n 段重ねた（括弧のない）関数
+(define deep_blocks ,(n)
+  repeat "block " n ,(open)
+  repeat "end " n ,(close)
+  Cat5 "(module (func (export \"f\") (result f64) " open "" close "f64.const 1))")
+
+(define case9 ,()
+  try_compile "lone ;" "(module ;)" ,()
+  try_compile "; in an atom" "(module (func (export \"f\") (result f64) f64.const 1;2))" ,()
+  try_compile ";; comment" "(module (func (export \"f\") (result f64) f64.const 1 ;; one\n))" ,()
+  num "9990" ,(inside)
+  num "10000" ,(limit)
+  num "10001" ,(over)
+  num "30000" ,(far)
+  ;; リストは module と func の分も数えるので、folded の命令は 9990 段まで
+  deep_folded inside ,(w) try_compile "folded 9990" w ,()
+  deep_folded over ,(w) try_compile "folded 10001" w ,()
+  deep_folded far ,(w) try_compile "folded 30000" w ,()
+  deep_blocks limit ,(w) try_compile "blocks 10000" w ,()
+  deep_blocks over ,(w) try_compile "blocks 10001" w ,()
+  repeat "(" far ,(open) Cat "(module " open ,(w) try_compile "lists 30000" w)

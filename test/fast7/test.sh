@@ -20,7 +20,7 @@ grep -q '(Uses' $tmp/concise.module.se && echo "bin/concise left (Uses ...)"
 grep -q '(G [0-9]* "__Wasm_call__"$' $tmp/concise.module.se || echo "bin/concise did not put the definition of __Wasm_call__"
 vm="${CONMA_VM:-python}"
 [ "$vm" = transpiled ] && vm=rust
-for c in case1 case2 case3 case4 case5 case6 case7 case8
+for c in case1 case2 case3 case4 case5 case6 case7 case8 case9
 do
   log=$c.$vm.log
   [ -f $log ] || log=$c.log
