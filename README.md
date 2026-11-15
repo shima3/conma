@@ -27,7 +27,7 @@ test/run_all.sh -j 8
 CONMA_VM=rust test/run_all.sh -j 8
 ```
 
-[docs/TESTS-ja.md](docs/TESTS-ja.md) (in Japanese) lists every test suite with what to build first, the known differences, and a record of who ran which tests on which commit; add a line there when you run them, rather than recording the results in a commit message only.
+[docs/TESTS-ja.md](docs/TESTS-ja.md) (in Japanese) lists every test suite with what to build first, the known differences, and a record of who ran every suite on which commit. Say in the commit message what you ran to check a change; when you run every suite, also add a line there.
 
 ## Git settings
 
