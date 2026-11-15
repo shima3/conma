@@ -10,9 +10,9 @@ tmp=$(mktemp -d /tmp/vm_compare.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 for vm in python rust
 do
-  CONMA_VM=$vm PYTHONUNBUFFERED=1 "$dir/vm.sh" "$@" < /dev/null > "$tmp/$vm.out" 2>&1
+  CONMA_VM=$vm PYTHONUNBUFFERED=1 "$dir/../bin/vm" "$@" < /dev/null > "$tmp/$vm.out" 2>&1
   echo "exit: $?" >> "$tmp/$vm.out"
-  CONMA_VM=$vm PYTHONUNBUFFERED=1 "$dir/vm.sh" --trace "$@" < /dev/null 2>&1 > /dev/null | head -c $limit > "$tmp/$vm.trace"
+  CONMA_VM=$vm PYTHONUNBUFFERED=1 "$dir/../bin/vm" --trace "$@" < /dev/null 2>&1 > /dev/null | head -c $limit > "$tmp/$vm.trace"
 done
 diff "$tmp/python.out" "$tmp/rust.out"
 cmp -s "$tmp/python.trace" "$tmp/rust.trace" || diff "$tmp/python.trace" "$tmp/rust.trace" | head -40

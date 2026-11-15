@@ -2,13 +2,13 @@
 # 各 case を、組み込みの __Cont_get__（test.se）と ConMa 版（conma.se）の両方で実行して比べる
 . "$(dirname "$0")/../common.sh"
 # どちらも拡張 ConMa で作る（include/ext を先に探す）。test.se は組み込み（(Uses "control")）を、conma.se は
-# include/core/control.se の定義を使う。Python VM（コア ConMa）では、test/vm.sh が bin/to-core で直すので、どちらも定義になる
+# include/core/control.se の定義を使う。Python VM（コア ConMa）では、bin/vm が bin/to-core で直すので、どちらも定義になる
 CONMA_EXT=1 resolve test.se conma.se
 for c in case1 case2 case3 case4 case5 case6
 do
   for m in test conma
   do
-    PYTHONUNBUFFERED=1 ../vm.sh $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
+    PYTHONUNBUFFERED=1 ../../bin/vm $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
     diff $c.log $tmp/$c.log
   done

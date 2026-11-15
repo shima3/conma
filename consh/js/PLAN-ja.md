@@ -166,7 +166,7 @@ consh/js/
   vm-jsc.js         jsc で VM を動かす（同じ引数に、今のディレクトリ、環境変数、ディレクトリとファイルの名前のファイルを足す）
   vm-wasm.sh        PATH に node があれば vm-node.js、なければ vm-jsc.js を起動する（CONMA_WASM_HOST=node か jsc で選べる）。
                     jsc では、標準入出力と終了コードをつなぎ、今のディレクトリの下と /tmp の下の
-                    ディレクトリとファイルの名前を渡す（中身は VM が開いたときに jsc が読む）。test/vm.sh が CONMA_VM=wasm で使う
+                    ディレクトリとファイルの名前を渡す（中身は VM が開いたときに jsc が読む）。bin/vm が CONMA_VM=wasm で使う
   wasm/
     Cargo.toml      crate conma-wasm（2.2 の 1）
     src/lib.rs      export する関数（conma_start、conma_run など）

@@ -9,7 +9,7 @@ for e in "${envs[@]}"
 do
   for c in case1 case2 case3 case4 case5 case6
   do
-    env $e PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
+    env $e PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
     diff $c.log $tmp/$c.log || echo "$c ${e:-(default)}"
   done

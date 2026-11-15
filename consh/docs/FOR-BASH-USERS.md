@@ -16,7 +16,7 @@ The full specification is in [PLAN-ja.md](PLAN-ja.md) (Japanese), section 1; sec
 * **Errors are found early.** Referring to an undefined variable stops the script with the file, line and column, like Bash's `set -u` but always on; defaults are written explicitly with `${x-default}`.
 * **Named `break` and `continue`.** `continue i` names the loop by its variable instead of counting levels as Bash's `continue 2` does.
 * **Functions and external commands mix freely in pipes.** Between functions, whole values, lists included, flow through the pipe; when one side is an external command, ConSh connects them with an OS pipe, so bytes flow at full speed.
-* **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, whose `--trace` option (`test/vm.sh --trace`) shows every step.
+* **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, whose `--trace` option (`bin/vm --trace`) shows every step.
 
 The scripts in [examples](../examples/README.md) show several of these next to the Bash code they replace.
 

@@ -12,7 +12,7 @@ parse() {
     if [ $mode = file ]; then opt="--file $1"; else opt=""; fi
     ../../bin/lexer $1 2> /dev/null | ../../bin/comment_remover 2> /dev/null | ../../bin/parser $opt > $tmp/selfhost5.py.txt 2> $tmp/selfhost5.py.err
     py=$?
-    PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $mode $1 > $tmp/selfhost5.conma.txt 2> $tmp/selfhost5.conma.err
+    PYTHONUNBUFFERED=1 ../../bin/vm --main $tmp/test.module.se $mode $1 > $tmp/selfhost5.conma.txt 2> $tmp/selfhost5.conma.err
     echo "$mode: exit python $py, conma $?"
     if [ $py = 0 ]
     then
@@ -60,7 +60,7 @@ case5() {
 # also for an error deep in the recursion
 case6() {
   echo "== recover"
-  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se recover err_end.se err_toplevel.se empty.se 2>&1
+  PYTHONUNBUFFERED=1 ../../bin/vm --main $tmp/test.module.se recover err_end.se err_toplevel.se empty.se 2>&1
   echo "exit: $?"
 }
 # case7: an unterminated String that is only a double quote, at the end of a line,

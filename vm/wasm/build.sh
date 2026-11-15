@@ -1,6 +1,6 @@
 #!/bin/bash
 # ConMa の VM を wasm32 でビルドする（vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm）。
-# vm-wasm.sh（test/vm.sh の CONMA_VM=wasm）が使う。ブラウザ版の ConSh は consh/js/build.sh で作り、それがこれを呼ぶ。
+# vm-wasm.sh（bin/vm の CONMA_VM=wasm）が使う。ブラウザ版の ConSh は consh/js/build.sh で作り、それがこれを呼ぶ。
 # rustup target add wasm32-unknown-unknown で、wasm32 のターゲットを入れておく
 set -e
 dir="$(cd "$(dirname "$0")"; pwd)"

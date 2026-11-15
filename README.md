@@ -20,7 +20,7 @@ cd vm && cargo build --release && cd ..
 CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh
 ```
 
-Run the tests with the Python VM (the default) or another VM (`test/vm.sh`); they pass when nothing but the `== name` line of each test is printed:
+Run the tests with the Python VM (the default) or another VM (`bin/vm`); they pass when nothing but the `== name` line of each test is printed:
 
 ```
 test/run_all.sh -j 8

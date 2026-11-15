@@ -3,7 +3,7 @@
 resolve test.se
 for c in case1 case2 case3 case4 case5
 do
-  PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c > $tmp/$c.log 2>&1
+  PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c > $tmp/$c.log 2>&1
   echo "exit: $?" >> $tmp/$c.log
   diff $c.log $tmp/$c.log
 done

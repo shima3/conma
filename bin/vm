@@ -21,7 +21,7 @@ case "${CONMA_VM:-python}" in
           module="${args[$i]}"
           if [ -f "$module" ] && grep -q '(Uses "' "$module"; then
             core="$(mktemp "${TMPDIR:-/tmp}/conma-core.XXXXXX")" || exit 1
-            if "$dir/../bin/to-core" "$module" > "$core" 2>/dev/null; then
+            if "$dir/to-core" "$module" > "$core" 2>/dev/null; then
               args[$i]="$core"
               python3 "$dir/../vm/python/vproc_run.py" "${args[@]}"
               status=$?

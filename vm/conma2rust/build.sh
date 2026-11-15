@@ -2,7 +2,7 @@
 # vm/conma2rust/build.sh MODULE.module.se ...
 # Transpile the modules to Rust (conma2rust.py, the ConMa-to-Rust transpiler)
 # and build the VM with that code in
-# vm/target-transpiled (CONMA_VM=transpiled in test/vm.sh). The modules are files made
+# vm/target-transpiled (CONMA_VM=transpiled in bin/vm). The modules are files made
 # by bin/resolver; their transpiled code is used only for files with the same text.
 set -e
 vm="$(cd "$(dirname "$0")/.."; pwd)"

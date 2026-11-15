@@ -15,7 +15,7 @@ resolve() {
   for d in "$@"; do opts="$opts --include $d"; done
   ../../bin/includer $opts $source 2> /dev/null | ../../bin/resolver --warn-arity > $tmp/selfhost7.py.txt 2> $tmp/selfhost7.py.err
   py=$?
-  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $source "$@" > $tmp/selfhost7.conma.txt 2> $tmp/selfhost7.conma.err
+  PYTHONUNBUFFERED=1 ../../bin/vm --main $tmp/test.module.se $source "$@" > $tmp/selfhost7.conma.txt 2> $tmp/selfhost7.conma.err
   echo "exit: python $py, conma $?"
   python3 ../selfhost_compare.py ast $tmp/selfhost7.py.txt $tmp/selfhost7.conma.txt
   echo "compare: $?"

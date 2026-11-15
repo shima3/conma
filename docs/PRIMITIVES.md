@@ -750,7 +750,7 @@ These six are primitives of the feature `"control"` too (section 16); their repl
 
 ## 16. Primitives of Extended ConMa
 
-These primitives are not part of core ConMa, the language defined above and in docs/SPEC.md. They belong to **extended ConMa** (docs/FAST-PLAN-ja.md): a module that uses one of them as a global without a definition is marked by the frontend with `(Uses "feature")` after its `(F ...)`. The VMs of extended ConMa (Rust, wasm, transpiled) run the primitives; the VM of core ConMa (Python) refuses such a module, and `bin/to-core` translates it into core ConMa by putting in the replacement definitions of the feature, functions of core ConMa with the same names and meaning (`test/vm.sh` does this for the Python VM). A global that a module defines is used before a primitive of the same name on every VM.
+These primitives are not part of core ConMa, the language defined above and in docs/SPEC.md. They belong to **extended ConMa** (docs/FAST-PLAN-ja.md): a module that uses one of them as a global without a definition is marked by the frontend with `(Uses "feature")` after its `(F ...)`. The VMs of extended ConMa (Rust, wasm, transpiled) run the primitives; the VM of core ConMa (Python) refuses such a module, and `bin/to-core` translates it into core ConMa by putting in the replacement definitions of the feature, functions of core ConMa with the same names and meaning (`bin/vm` does this for the Python VM). A global that a module defines is used before a primitive of the same name on every VM.
 
 ### Feature `"bitwise32"`: bitwise operations (docs/BITWISE-PLAN-ja.md)
 

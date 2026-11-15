@@ -8,7 +8,7 @@
 #                 作っていなければ、そう出して ConMa 版で実行する。ソースより古ければ、警告を出してから、それで実行する
 #   conma         ConMa 版の最適化版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
-#                 （test/vm.sh。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
+#                 （bin/vm。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
 #   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
@@ -143,14 +143,14 @@ if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \)
   mv -f "$module_tmp" "$module"
 fi
 if [ -n "$interactive" ]; then
-  exec "$root/test/vm.sh" --main "$module" interactive - stdin
+  exec "$root/bin/vm" --main "$module" interactive - stdin
 fi
 if [ -n "$src" ]; then
-  exec "$root/test/vm.sh" --main "$module" $mode$src "$1" "$@"
+  exec "$root/bin/vm" --main "$module" $mode$src "$1" "$@"
 fi
 ast=$(mktemp /tmp/consh.XXXXXX)
 trap 'rm -f "$ast"' EXIT
 if ! python3 "$consh/bin/consh_parse" --pos "$1" > "$ast"
 then exit 1
 fi
-"$root/test/vm.sh" --main "$module" $mode "$ast" "$@"
+"$root/bin/vm" --main "$module" $mode "$ast" "$@"

@@ -64,7 +64,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 | `CONSH_IMPL` | 版 |
 |---|---|
 | `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、docs/PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（最適化版）で実行する。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
-| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
 | `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`consh/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（最適化版）で実行する。

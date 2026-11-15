@@ -12,7 +12,7 @@ perl -pe 's/^(\(Module \(F [^)]*\))/$1\n  (Uses "if" "return")/ if $. == 1' $m >
   for c in uses0 uses1
   do
     echo "== run $c"
-    PYTHONUNBUFFERED=1 ../vm.sh $tmp/$c.module.se main < /dev/null 2>&1 | sed "s|$tmp/||g"
+    PYTHONUNBUFFERED=1 ../../bin/vm $tmp/$c.module.se main < /dev/null 2>&1 | sed "s|$tmp/||g"
     echo "exit: ${PIPESTATUS[0]}"
   done
   for c in uses0 uses1

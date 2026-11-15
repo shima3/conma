@@ -6,7 +6,7 @@ for c in case1 case2 case3 case4
 do
   for m in test conma
   do
-    PYTHONUNBUFFERED=1 ../vm.sh $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
+    PYTHONUNBUFFERED=1 ../../bin/vm $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
     diff $c.log $tmp/$c.log
   done

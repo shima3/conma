@@ -69,7 +69,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
 ## Node.js で使う
 
-`test/vm.sh` は、`CONMA_VM=wasm` のとき wasm 版の VM を Node.js で動かす（vm/wasm の `vm-wasm.sh`、`vm-node.js`。VM だけなら vm/wasm/build.sh で作れる）。ConSh も同じく動かせる。
+`bin/vm` は、`CONMA_VM=wasm` のとき wasm 版の VM を Node.js で動かす（vm/wasm の `vm-wasm.sh`、`vm-node.js`。VM だけなら vm/wasm/build.sh で作れる）。ConSh も同じく動かせる。
 
 ```
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh

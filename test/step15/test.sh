@@ -2,7 +2,7 @@
 . "$(dirname "$0")/../common.sh"
 resolve test.se worker.se
 run() {
-  PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $1 < /dev/null > $tmp/$1.log 2>&1
+  PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $1 < /dev/null > $tmp/$1.log 2>&1
   echo "exit: $?" >> $tmp/$1.log
   diff $1.log $tmp/$1.log
 }
@@ -13,7 +13,7 @@ steps() {
   for delay in 0.2 1
   do
     echo "delay: $delay" >> $tmp/$1.log
-    DELAY=$delay PYTHONUNBUFFERED=1 ../vm.sh --trace $tmp/test.module.se $1 < /dev/null 2>$tmp/$1.trace >> $tmp/$1.log
+    DELAY=$delay PYTHONUNBUFFERED=1 ../../bin/vm --trace $tmp/test.module.se $1 < /dev/null 2>$tmp/$1.trace >> $tmp/$1.log
     echo "exit: $?" >> $tmp/$1.log
     grep '^\[done\]' $tmp/$1.trace >> $tmp/$1.log
   done

@@ -3,7 +3,7 @@
 resolve main.se
 run() {
   local c=$1; shift
-  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/main.module.se "$@" > $tmp/$c.log 2>&1
+  PYTHONUNBUFFERED=1 ../../bin/vm --main $tmp/main.module.se "$@" > $tmp/$c.log 2>&1
   echo "exit: $?" >> $tmp/$c.log
   diff $c.log $tmp/$c.log
 }

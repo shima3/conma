@@ -1,6 +1,6 @@
 #!/bin/bash
 # 値を自分で確かめる 6 つの条件分岐（test.se）。各 case を、組み込み（test.se。(Uses "control")）と ConMa 版
-# （conma.se。include/core/control.se の定義）の両方で実行して比べる。Python VM（コア ConMa）では、test/vm.sh が bin/to-core
+# （conma.se。include/core/control.se の定義）の両方で実行して比べる。Python VM（コア ConMa）では、bin/vm が bin/to-core
 # で直すので、どちらも定義になる。数でない値のエラー（case4〜6）は、組み込みでは組み込みの名前とステップの番号に
 # なる（caseN.log）。ConMa 版と Python VM は、確かめるプリミティブの名前とその番号になる（caseN.python.log）
 . "$(dirname "$0")/../common.sh"
@@ -28,15 +28,15 @@ do
   do
     log=$c.log
     [ -f $c.python.log ] && { [ $m = conma ] || [ "${CONMA_VM:-python}" = python ]; } && log=$c.python.log
-    PYTHONUNBUFFERED=1 ../vm.sh $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
+    PYTHONUNBUFFERED=1 ../../bin/vm $tmp/$m.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
     diff $log $tmp/$c.log || echo "$c $m"
   done
 done
 # 速い道と遅い道のステップの番号
 if [ "$CONMA_VM" = rust ] || [ "$CONMA_VM" = wasm ]; then
-  ../vm.sh $tmp/test.module.se case7 < /dev/null 2>&1 | grep '^Error in VProc' > $tmp/fast.log
-  ../vm.sh -t $tmp/test.module.se case7 < /dev/null 2>&1 | grep '^Error in VProc' > $tmp/slow.log
+  ../../bin/vm $tmp/test.module.se case7 < /dev/null 2>&1 | grep '^Error in VProc' > $tmp/fast.log
+  ../../bin/vm -t $tmp/test.module.se case7 < /dev/null 2>&1 | grep '^Error in VProc' > $tmp/slow.log
   [ -s $tmp/fast.log ] || echo "case7: no error"
   diff $tmp/fast.log $tmp/slow.log || echo "case7: the steps differ with --trace"
 fi

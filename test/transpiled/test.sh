@@ -8,6 +8,6 @@
 for c in case1
 do
   "$root/bench/module.sh" "$PWD/$c.se" $tmp/$c.module.se || exit 1
-  { "$root/test/vm.sh" --main $tmp/$c.module.se; echo "exit: $?"; } > $tmp/$c.log 2>&1
+  { "$root/bin/vm" --main $tmp/$c.module.se; echo "exit: $?"; } > $tmp/$c.log 2>&1
   diff $c.log $tmp/$c.log
 done

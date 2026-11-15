@@ -6,7 +6,7 @@ resolve test.se
 lex() {
   echo "== $1"
   ../../bin/lexer $1 > $tmp/selfhost3.py.txt 2> $tmp/selfhost3.py.err
-  PYTHONUNBUFFERED=1 ../vm.sh --main $tmp/test.module.se $1 > $tmp/selfhost3.conma.txt 2> $tmp/selfhost3.conma.err
+  PYTHONUNBUFFERED=1 ../../bin/vm --main $tmp/test.module.se $1 > $tmp/selfhost3.conma.txt 2> $tmp/selfhost3.conma.err
   echo "exit: $?"
   python3 ../selfhost_compare.py tokens $tmp/selfhost3.py.txt $tmp/selfhost3.conma.txt
   echo "compare: $?"

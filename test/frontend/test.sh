@@ -7,7 +7,7 @@ seed="$root/vm/frontend.module.se"
 rootreal="$(cd "$root"; pwd -P)"
 relative() { sed -e "s|\"$rootreal/|\"conma/|g"; }
 # case1: the frontend in the repository makes itself the same, byte for byte (on the VM of CONMA_VM)
-(cd "$root" && PYTHONUNBUFFERED=1 test/vm.sh --main -- "$seed" --include include/ext --include include include/frontend.se) | relative > $tmp/self.se
+(cd "$root" && PYTHONUNBUFFERED=1 bin/vm --main -- "$seed" --include include/ext --include include include/frontend.se) | relative > $tmp/self.se
 cmp -s $tmp/self.se "$seed"
 echo "fixed point: $?" > $tmp/case1.log
 diff case1.log $tmp/case1.log

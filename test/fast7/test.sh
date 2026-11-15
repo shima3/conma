@@ -26,14 +26,14 @@ for c in case1 case2 case3 case4 case5 case6 case7 case8 case9 case10 case11 cas
 do
   log=$c.$vm.log
   [ -f $log ] || log=$c.log
-  PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
+  PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
   echo "exit: $?" >> $tmp/$c.log
   diff $log $tmp/$c.log
 done
 if [ "$vm" = wasm ]; then
   for c in case1 case5
   do
-    CONMA_NO_WASM=1 PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
+    CONMA_NO_WASM=1 PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
     echo "exit: $?" >> $tmp/$c.log
     diff $c.log $tmp/$c.log
   done

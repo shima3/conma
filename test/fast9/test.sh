@@ -9,7 +9,7 @@ check() {
   local c=$1 log=$1.log
   shift
   [ -f $c.fold.log ] && [ "${CONMA_VM:-python}" != python ] && [ -z "$CONMA_NO_FOLD" ] && log=$c.fold.log
-  env "$@" PYTHONUNBUFFERED=1 ../vm.sh $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
+  env "$@" PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1
   echo "exit: $?" >> $tmp/$c.log
   diff $log $tmp/$c.log || echo "$c $*"
 }
