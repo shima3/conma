@@ -169,12 +169,12 @@ def unquote(atom):
     return atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else atom
 
 
-# The features of fast ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
-# as FAST_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
+# The features of extended ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
+# as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
 # (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
 # "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
 # __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before).
-FAST_FEATURES = ("bitwise32", "boolean", "control")
+EXT_FEATURES = ("bitwise32", "boolean", "control")
 
 
 def tag(x):
@@ -1220,8 +1220,8 @@ def translate(index, path, prim_names, out):
         raise ValueError("no Module")
     for item in module[2:]:
         for f in (item[1:] if tag(item) == "Uses" else []):
-            if not isinstance(f, str) or unquote(f) not in FAST_FEATURES:
-                raise ValueError(f"{path}: the module uses a feature of fast ConMa that this translator "
+            if not isinstance(f, str) or unquote(f) not in EXT_FEATURES:
+                raise ValueError(f"{path}: the module uses a feature of extended ConMa that this translator "
                                  f"does not know: {f}")
     funcs, prims, tops, gfun = load(module, prim_names)
     used = []

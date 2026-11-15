@@ -1,5 +1,5 @@
 ;; SJS のビット演算（& | ^ ~ << >> >>>。JavaScript と同じ 32 ビット）の参照版：算術で 1 ビットずつ求める。
-;; 高速版（consh/include/sjs_bits.se）は、高速版 ConMa のプリミティブ（"bitwise32"。docs/BITWISE-PLAN-ja.md）を使う。
+;; 高速版（consh/include/sjs_bits.se）は、拡張 ConMa のプリミティブ（"bitwise32"。docs/BITWISE-PLAN-ja.md）を使う。
 ;; sjs_rt.se が include する（Sjs_need2、Sjs_need、Sjs_pow_loop、Sjs_trunc などは sjs_rt.se にある）
 
 (define Sjs_two32 ,() __Number_fromString__ __print_exit_error__ "4294967296")

@@ -309,18 +309,18 @@ def is_variadic_head(head_node):
     """True for the Head of a variadic Function: (Head pos Rest (Variable ...))."""
     return isinstance(head_node, list) and "Rest" in head_node[2:]
 
-def check_concise(module_sexp):
-    """Raise LoadError if the module uses a feature of fast ConMa (a String of a
-    (Uses ...) item, docs/FAST-PLAN-ja.md 3.4): this VM runs concise ConMa only.
+def check_core(module_sexp):
+    """Raise LoadError if the module uses a feature of extended ConMa (a String of a
+    (Uses ...) item, docs/FAST-PLAN-ja.md 3.4): this VM runs core ConMa only.
     The message is that of the Rust VM (check_features of vm/src/module.rs)."""
     for item in module_sexp[2:]:
         if isinstance(item, list) and item and item[0] == "Uses" and len(item) > 1:
             f = item[1] if isinstance(item[1], str) else sexp_to_str(item[1])
-            raise LoadError(f"the module uses a feature of fast ConMa that this VM does not run: {f} "
-                            "(bin/concise translates the module into concise ConMa)")
+            raise LoadError(f"the module uses a feature of extended ConMa that this VM does not run: {f} "
+                            "(bin/to-core translates the module into core ConMa)")
 
 def load_module(module_sexp):
-    check_concise(module_sexp)
+    check_core(module_sexp)
     gvenv = {}
     for item in module_sexp[2:]:
         if not isinstance(item, list) or item[0] != "G": continue
@@ -1638,8 +1638,8 @@ def prim_CChain_pop_CFrame(vp, gvenv):
         _prim_return(vp, [cf])
 
 
-# __Cont_get__, __if_then_else__, __if__ and __unless__ are not primitives of concise ConMa: their
-# definitions are in include/ref/control.se (built in in fast ConMa, the feature "control";
+# __Cont_get__, __if_then_else__, __if__ and __unless__ are not primitives of core ConMa: their
+# definitions are in include/core/control.se (built in in extended ConMa, the feature "control";
 # docs/FAST-PLAN-ja.md 4.6).
 
 
@@ -2461,7 +2461,7 @@ def load_program(source_file, cwd=None):
     if not os.path.isfile(os.path.join(cwd or os.getcwd(), source_file)):
         raise LoadError(f"file not found: {source_file}")
     try:
-        inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR / "ref"), "--include", str(INCLUDE_DIR), source_file],
+        inc = subprocess.run([str(BIN_DIR / "includer"), "--include", str(INCLUDE_DIR / "core"), "--include", str(INCLUDE_DIR), source_file],
                              capture_output=True, text=True, cwd=cwd)
     except OSError as e:
         raise LoadError(f"cannot run includer: {e}")
@@ -2479,16 +2479,16 @@ def load_program(source_file, cwd=None):
         raise LoadError(f"cannot run resolver: {e}")
     if res.returncode != 0:
         raise LoadError(f"resolver failed: {first_line(res.stderr)}")
-    # a name used as a built-in of fast ConMa that include/ref does not define (a file that does not
-    # include pure.se): bin/concise puts in its definition, so that the module is of concise ConMa
+    # a name used as a built-in of extended ConMa that include/core does not define (a file that does not
+    # include pure.se): bin/to-core puts in its definition, so that the module is of core ConMa
     text = res.stdout
     if "(Uses " in text.split("\n", 1)[0]:
         try:
-            con = subprocess.run([str(BIN_DIR / "concise")], input=text, capture_output=True, text=True)
+            con = subprocess.run([str(BIN_DIR / "to-core")], input=text, capture_output=True, text=True)
         except OSError as e:
-            raise LoadError(f"cannot run concise: {e}")
+            raise LoadError(f"cannot run to-core: {e}")
         if con.returncode != 0:
-            raise LoadError(f"concise failed: {first_line(con.stderr)}")
+            raise LoadError(f"to-core failed: {first_line(con.stderr)}")
         text = con.stdout
     module_sexp = parse_sexp(text)
     return module_sexp, load_module(module_sexp)

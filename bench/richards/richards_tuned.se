@@ -13,7 +13,7 @@
 ;;   packet is pending), and the worker keeps its count in a variable while it fills a packet.
 ;; * Looking up a task does not make a function for the missing case at each lookup.
 ;; Tasks, packets and records are still Dicts (ConMa has no records), the data of a packet a Dict from
-;; 0 1 2 3, and the idle task uses the bitwise primitives of fast ConMa, as in richards.se.
+;; 0 1 2 3, and the idle task uses the bitwise primitives of extended ConMa, as in richards.se.
 (include "util.se")
 
 (define num ,(s)

@@ -211,7 +211,7 @@ Primitives for floating-point arithmetic and numeric utilities.
 * **Description**: The remainder of `aNumber` divided by `bNumber`: `a - b * n` for the integer `n` of `a / b` rounded toward zero, computed exactly (`fmod` of C, `%` of JavaScript; since 2026-11-14, Step 44). The sign of the result is that of `aNumber` (a zero keeps the sign of `aNumber`); an infinite `aNumber` or a NaN gives NaN, and a finite `aNumber` with an infinite `bNumber` gives `aNumber`.
 * **Returns**: The resulting `Number`.
 * **Error**: If `bNumber` is zero (or `-0`), the interpreter invokes `onError` as the next operator with a single error message string as its argument, as `__Number_divide__` does.
-* It belongs to concise ConMa: a replacement definition could not be written in ConMa with `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1`, `1e17 % 3`).
+* It belongs to core ConMa: a replacement definition could not be written in ConMa with `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1`, `1e17 % 3`).
 
 ### **`__Number_sqrt__ onError Number ,(rootNumber)`**
 * **Description**: Returns the square root of `Number` (the root of `-0` is `-0`, of infinity infinity, of NaN NaN).
@@ -339,7 +339,7 @@ The LCont of the application of `return` is never used.
 
 `__type_name__` gives `Closure` for `return`; in traces it is written `(__Cont__ "n")`, where `n` numbers the continuations made so far, as a Ref is written (the kept CChain may contain `return` itself).
 
-**Fast ConMa only (since 2026-11-13):** `__Cont_get__` is a primitive of fast ConMa (the feature `"control"`, section 16). In concise ConMa it is the ConMa definition of `include/ref/control.se`, with the same behavior, on top of `__CChain_pop_LCont__`, `__CChain_get__` and `__CChain_set__`; a program of fast ConMa that includes `ref/control.se` uses that definition instead of the primitive.
+**Extended ConMa only (since 2026-11-13):** `__Cont_get__` is a primitive of extended ConMa (the feature `"control"`, section 16). In core ConMa it is the ConMa definition of `include/core/control.se`, with the same behavior, on top of `__CChain_pop_LCont__`, `__CChain_get__` and `__CChain_set__`; a program of extended ConMa that includes `core/control.se` uses that definition instead of the primitive.
 A program that includes `control.se` uses that definition instead of the built-in one, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
 The two versions differ only in what can be seen of the steps: the ConMa version takes more than 30 steps for `__Cont_get__` and its `return` together, where the primitive takes 2 (one each), and its `return` is a variadic Closure with the CFrames of `control.se` in traces and in the CChain while it runs.
 
@@ -670,7 +670,7 @@ A non-String argument (or, for `__String_substring__`, a non-Number position, an
 | a Closure or a primitive | `"Closure"` |
 | a Ref, CFrame, LList, MSeq, Dict, VProc or OSProc | `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` |
 | a Stream, for input or output | `"Stream"` |
-| a WebAssembly module of `__Wasm_compile__` (fast ConMa, section 16) | `"Wasm"` |
+| a WebAssembly module of `__Wasm_compile__` (extended ConMa, section 16) | `"Wasm"` |
 
 * **Behavior**: A type is tested by comparing the result with `__String_equal__`:
 ```
@@ -710,11 +710,11 @@ With the mark, the interpreter keeps the CChain of the VProc at the claim (not a
 
 ## 15. Control Primitives
 
-`__if_then_else__`, `__if__` and `__unless__` are primitives of fast ConMa (the feature `"control"`, section 16, since 2026-11-13) that do what their ConMa definitions in `include/ref/control.se` do (see "Control flow" in SPEC.md), in fewer steps. In concise ConMa they are those definitions: `include/ref/pure.se` includes `control.se`, and the Python VM has no such primitives.
-A program of fast ConMa that includes `ref/control.se` uses those definitions instead, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
+`__if_then_else__`, `__if__` and `__unless__` are primitives of extended ConMa (the feature `"control"`, section 16, since 2026-11-13) that do what their ConMa definitions in `include/core/control.se` do (see "Control flow" in SPEC.md), in fewer steps. In core ConMa they are those definitions: `include/core/pure.se` includes `control.se`, and the Python VM has no such primitives.
+A program of extended ConMa that includes `core/control.se` uses those definitions instead, because only global variables without a definition are looked up among the primitives (`Undefined` in [RESOLVER.md](RESOLVER.html)).
 
 A **Boolean** here is a Closure that is one of the two Closures `,(t f) __NULL__ t` and `,(t f) __NULL__ f`, whatever its parameters are named: two parameters (left after a partial application), a Body whose Operator is null, whose OList is the first or the second parameter, and without an LCont.
-The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `include/ref/pure.se`, are of this form. In fast ConMa, the primitives `__TRUE__` and `__FALSE__` of the feature `"boolean"` (section 16) are Booleans too, and a module with that feature gets them from the primitives instead.
+The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `include/core/pure.se`, are of this form. In extended ConMa, the primitives `__TRUE__` and `__FALSE__` of the feature `"boolean"` (section 16) are Booleans too, and a module with that feature gets them from the primitives instead.
 
 ### **`__if_then_else__ Boolean then else`**
 * **Description**: Applies `then` or `else`, as `Boolean` chooses, with the LCont.
@@ -742,19 +742,19 @@ The Booleans returned by the primitives, and `__TRUE__` and `__FALSE__` of `incl
 * **Description**: `then` if `a > b`, the clause that does nothing or `else` otherwise: `__Number_subtract__ a b ,(d) __Number_is_positive__ d ,(g) __if__ g then` (or `__if_then_else__ g then else`) in one step (since 2026-11-13). The two agree on every pair of Numbers: a NaN is greater and less than nothing, `0` and `-0` are equal, and two infinities of the same sign are equal (their difference is NaN).
 * **Error**: Stops the VProc with an error, under the name of the primitive, if `a` or `b` is not a Number, or with too few operands.
 
-These six are primitives of the feature `"control"` too (section 16); their replacement definitions, in `include/ref/control.se`, are the Bodies written above, so that they differ from the primitives in the steps, and in the name and step of the error for a value that is not a Number (that of the primitive that tests it). With clauses written as functions in place, the Rust VM chooses the clause when it loads the Body, as for `__if_then_else__` (vm/README.md, "Speed"). test/fast10 runs both versions with Null, 0, -0, NaN, infinities, pairs whose difference overflows and values that are not Numbers, and checks that the Rust and wasm VMs take as many steps choosing in place as one step at a time (`--trace`).
+These six are primitives of the feature `"control"` too (section 16); their replacement definitions, in `include/core/control.se`, are the Bodies written above, so that they differ from the primitives in the steps, and in the name and step of the error for a value that is not a Number (that of the primitive that tests it). With clauses written as functions in place, the Rust VM chooses the clause when it loads the Body, as for `__if_then_else__` (vm/README.md, "Speed"). test/fast10 runs both versions with Null, 0, -0, NaN, infinities, pairs whose difference overflows and values that are not Numbers, and checks that the Rust and wasm VMs take as many steps choosing in place as one step at a time (`--trace`).
 
-**Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error, and surplus operands, which the primitives drop, are applied to what the definitions return (an `__if__` written with two clauses, which the primitive ran as if the second were not there, fails with the definition: `consh/include/sjs_gen.se` had one, found when concise ConMa got the definitions).
+**Steps:** with a Boolean, choosing takes one step besides the clause, where the ConMa definitions take 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`); when `__if__` or `__unless__` chooses the clause that does nothing, that one step is all. A condition written as a function still has to be applied, so it saves only 1 step (`__if_then_else__`) or 3 (`__if__`, `__unless__`): to choose in one step, compute the Boolean first (`__is_null__ x ,(b) __if__ b ...`). The two versions differ only in the steps and in what traces show; with too few operands, the ConMa definitions are partially applied instead of stopping with an error, and surplus operands, which the primitives drop, are applied to what the definitions return (an `__if__` written with two clauses, which the primitive ran as if the second were not there, fails with the definition: `consh/include/sjs_gen.se` had one, found when core ConMa got the definitions).
 
 ---
 
-## 16. Primitives of Fast ConMa
+## 16. Primitives of Extended ConMa
 
-These primitives are not part of concise ConMa, the language defined above and in docs/SPEC.md. They belong to **fast ConMa** (docs/FAST-PLAN-ja.md): a module that uses one of them as a global without a definition is marked by the frontend with `(Uses "feature")` after its `(F ...)`. The fast VMs (Rust, wasm, transpiled) run the primitives; the concise VM (Python) refuses such a module, and `bin/concise` translates it into concise ConMa by putting in the replacement definitions of the feature, functions of concise ConMa with the same names and meaning (`test/vm.sh` does this for the Python VM). A global that a module defines is used before a primitive of the same name on every VM.
+These primitives are not part of core ConMa, the language defined above and in docs/SPEC.md. They belong to **extended ConMa** (docs/FAST-PLAN-ja.md): a module that uses one of them as a global without a definition is marked by the frontend with `(Uses "feature")` after its `(F ...)`. The VMs of extended ConMa (Rust, wasm, transpiled) run the primitives; the VM of core ConMa (Python) refuses such a module, and `bin/to-core` translates it into core ConMa by putting in the replacement definitions of the feature, functions of core ConMa with the same names and meaning (`test/vm.sh` does this for the Python VM). A global that a module defines is used before a primitive of the same name on every VM.
 
 ### Feature `"bitwise32"`: bitwise operations (docs/BITWISE-PLAN-ja.md)
 
-The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/ref/bitwise32.se`.
+The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/core/bitwise32.se`.
 
 ### **`__Number_and32__ a b ,(Number)`** / **`__Number_or32__`** / **`__Number_xor32__`**
 * **Description**: `a & b`, `a | b`, `a ^ b` of JavaScript.
@@ -767,13 +767,13 @@ The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integ
 
 ### Feature `"boolean"`: the Booleans as primitives (docs/FAST-PLAN-ja.md 4.6)
 
-In concise ConMa, `__TRUE__` and `__FALSE__` are the Closures `,(then else) __NULL__ then` and `,(then else) __NULL__ else`, defined in `include/ref/pure.se`. A module of fast ConMa is made with `include/fast` before `include/` (`conma build`, `bin/update-frontend`, `bench/module.sh`, ConSh), where `include/fast/pure.se` does not define them, so they are globals without a definition, and the frontend writes `(Uses "boolean")`. Modules of concise ConMa are made with `include/ref` before `include/` (test/resolver.sh, the Python VM). Replacement definitions: `include/ref/pure.se`.
+In core ConMa, `__TRUE__` and `__FALSE__` are the Closures `,(then else) __NULL__ then` and `,(then else) __NULL__ else`, defined in `include/core/pure.se`. A module of extended ConMa is made with `include/ext` before `include/` (`conma build`, `bin/update-frontend`, `bench/module.sh`, ConSh), where `include/ext/pure.se` does not define them, so they are globals without a definition, and the frontend writes `(Uses "boolean")`. Modules of core ConMa are made with `include/core` before `include/` (test/resolver.sh, the Python VM). Replacement definitions: `include/core/pure.se`.
 
 In a module with this feature, the Booleans the primitives return (`__is_null__`, the Number predicates, `__String_equal__` and the others) are these primitives too, not the Closures. `__type_name__` gives `"Closure"` for both, and `__if_then_else__`, `__if__` and `__unless__` take both.
 
 ### Feature `"control"`: the control functions as primitives (docs/FAST-PLAN-ja.md 4.6)
 
-`__if_then_else__`, `__if__`, `__unless__` (section 15), `__Cont_get__` (section 4), and the six conditionals that test a value themselves, `__if_null_then_else__`, `__unless_null__`, `__Number_if_zero_then_else__`, `__Number_unless_zero__`, `__Number_if_greater__` and `__Number_if_greater_then_else__` (section 15; since 2026-11-14 in the feature, which the frontends write for them too). In concise ConMa they are the ConMa definitions of `include/ref/control.se`, which `include/ref/pure.se` includes; `include/fast/pure.se` does not, so a module of fast ConMa uses them without a definition, and the frontend writes `(Uses "control")`. Replacement definitions: `include/ref/control.se`.
+`__if_then_else__`, `__if__`, `__unless__` (section 15), `__Cont_get__` (section 4), and the six conditionals that test a value themselves, `__if_null_then_else__`, `__unless_null__`, `__Number_if_zero_then_else__`, `__Number_unless_zero__`, `__Number_if_greater__` and `__Number_if_greater_then_else__` (section 15; since 2026-11-14 in the feature, which the frontends write for them too). In core ConMa they are the ConMa definitions of `include/core/control.se`, which `include/core/pure.se` includes; `include/ext/pure.se` does not, so a module of extended ConMa uses them without a definition, and the frontend writes `(Uses "control")`. Replacement definitions: `include/core/control.se`.
 
 ### **`__TRUE__ then else ,(then)`** / **`__FALSE__ then else ,(else)`**
 * **Description**: Passes `then` (`__TRUE__`) or `else` (`__FALSE__`) to the LCont, without applying it, in one step (the Closure takes two).
@@ -781,7 +781,7 @@ In a module with this feature, the Booleans the primitives return (`__is_null__`
 
 ### Feature `"wasm"`: functions on numbers in WebAssembly (consh/docs/SJS-WASM-PLAN-ja.md)
 
-A program can write functions on numbers in a subset of the WebAssembly text format (WAT), as a kind of inline assembler, and call them. Only the VM for wasm32 (`consh/js`) runs them, with the WebAssembly of its host (Node.js, JavaScriptCore or a browser); the native VMs (Rust, transpiled) assemble the text and then apply `onError` with `"__Wasm_compile__: WebAssembly is not available"`, or with the error of the assembler. The replacement definitions (`include/ref/wasm.se`) apply `onError` with the same message without assembling. The VM for wasm32 does the same with `--trace` or `CONMA_PROFILE`, whose steps are those of ConMa, and when the environment variable `CONMA_NO_WASM` is not empty.
+A program can write functions on numbers in a subset of the WebAssembly text format (WAT), as a kind of inline assembler, and call them. Only the VM for wasm32 (`consh/js`) runs them, with the WebAssembly of its host (Node.js, JavaScriptCore or a browser); the native VMs (Rust, transpiled) assemble the text and then apply `onError` with `"__Wasm_compile__: WebAssembly is not available"`, or with the error of the assembler. The replacement definitions (`include/core/wasm.se`) apply `onError` with the same message without assembling. The VM for wasm32 does the same with `--trace` or `CONMA_PROFILE`, whose steps are those of ConMa, and when the environment variable `CONMA_NO_WASM` is not empty.
 
 **The subset of WAT** (`vm/src/prim/wasm_asm.rs`):
 
@@ -808,6 +808,6 @@ A program can write functions on numbers in a subset of the WebAssembly text for
 * **Error**: As `__Wasm_call__`, and if the module has no memory, `memory` is not an LList of Numbers, or it has more words than the memory can hold at its max (8192 words a page; 65536 pages without a max): onError, not `"trap"` (since 2026-11-14).
 
 ### **`__Dict_numbers__ onError dict n words ,(words)`** / **`__Dict_put_numbers__ dict n words ,(rest)`**
-* **Description**: For copying the arrays of SJS into the memory of a module (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, section 17), in the feature `"wasm"` though they do not use WebAssembly. `__Dict_numbers__` puts the values of the keys `"0"`, `"1"`, ... `"n-1"` (Strings) of the Dict `dict`, one by one, in front of the LList `words`, so that the value of `"n-1"` comes first, and returns the new LList. `__Dict_put_numbers__` puts the first `n` Numbers of the LList `words` under the keys `"0"` to `"n-1"` of `dict` and returns the rest of `words`. `n` is an integer from 0 to 2^32. The replacement definitions in `include/ref/wasm.se` do the same in ConMa, so all the VMs give the same results.
+* **Description**: For copying the arrays of SJS into the memory of a module (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, section 17), in the feature `"wasm"` though they do not use WebAssembly. `__Dict_numbers__` puts the values of the keys `"0"`, `"1"`, ... `"n-1"` (Strings) of the Dict `dict`, one by one, in front of the LList `words`, so that the value of `"n-1"` comes first, and returns the new LList. `__Dict_put_numbers__` puts the first `n` Numbers of the LList `words` under the keys `"0"` to `"n-1"` of `dict` and returns the rest of `words`. `n` is an integer from 0 to 2^32. The replacement definitions in `include/core/wasm.se` do the same in ConMa, so all the VMs give the same results.
 * **Error**: `__Dict_numbers__` applies `onError` with a message if a key is missing or its value is not a Number. Either stops the VProc if `dict` is not a Dict, `n` is not such an integer, or (`__Dict_put_numbers__`) `words` has fewer than `n` Numbers.
 

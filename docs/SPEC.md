@@ -327,7 +327,7 @@ It is defined as follow:
 ---
 
 ### `Continuation`
-In concise ConMa, `__Cont_get__` is the following ConMa definition, which `include/ref/control.se` provides (`include/ref/pure.se` includes it). In fast ConMa it is a primitive of the VM that behaves as this definition (see PRIMITIVES.md); a program of fast ConMa that includes `ref/control.se` uses this definition instead of the primitive.
+In core ConMa, `__Cont_get__` is the following ConMa definition, which `include/core/control.se` provides (`include/core/pure.se` includes it). In extended ConMa it is a primitive of the VM that behaves as this definition (see PRIMITIVES.md); a program of extended ConMa that includes `core/control.se` uses this definition instead of the primitive.
 ```
 (define __Cont_get__ ,()
   __CChain_pop_LCont__ ,(lc)
@@ -622,7 +622,7 @@ A thunk may leave `__LazyList_force__` without returning, for example by the `re
 ---
 
 ### `Control flow`
-In concise ConMa, `__if_then_else__`, `__if__` and `__unless__` are the following ConMa definitions, which `include/ref/control.se` provides (`include/ref/pure.se` includes it). In fast ConMa they are primitives of the VM that behave as these definitions (see "Control Primitives" in PRIMITIVES.md); a program of fast ConMa that includes `ref/control.se` uses these definitions instead of the primitives. The other definitions are in `include/pure.se`, except `__TRUE__` and `__FALSE__`, which are in `include/ref/pure.se` (concise ConMa; in fast ConMa they are primitives, PRIMITIVES.md section 16).
+In core ConMa, `__if_then_else__`, `__if__` and `__unless__` are the following ConMa definitions, which `include/core/control.se` provides (`include/core/pure.se` includes it). In extended ConMa they are primitives of the VM that behave as these definitions (see "Control Primitives" in PRIMITIVES.md); a program of extended ConMa that includes `core/control.se` uses these definitions instead of the primitives. The other definitions are in `include/pure.se`, except `__TRUE__` and `__FALSE__`, which are in `include/core/pure.se` (core ConMa; in extended ConMa they are primitives, PRIMITIVES.md section 16).
 ```
 (define __if_then_else__ ,(Boolean then else)
   Boolean then else ,(clause)

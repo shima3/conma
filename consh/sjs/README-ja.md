@@ -75,7 +75,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 
 * VM のステップの数は、手で書いた ConMa の 4.8〜9.2 倍（loop の 1 回に 63 と 13、fib の 1 回の呼び出しに 4,383 と 528、nbody の 1 回の刻みに 16,188 と 1,766）。
 * 段階 B7 から、変換器（型の分かる所の確認を省く、Ref のない `const`、数のリテラルとの比較）、実行時の支え（配列の添字と分割代入、オブジェクトのメンバー）、VM（docs/FAST-PLAN-ja.md の F2〜F5 と、その後のプリミティブの読み方）、段階 B9（文ごとの行の記録をなくした）で速くなった（経緯）。
-* ビット演算（`& | ^ ~ << >> >>>`）は、高速版 ConMa のプリミティブ（docs/BITWISE-PLAN-ja.md）で求めるので、足し算とほぼ同じ手間（ループの 1 回に、`x = x + i` が 45 ステップ、`x = x ^ i` が 68、`x = x & 1023` が 65、`x = x << 1` が 63。前は 4,573、4,505、359）。
+* ビット演算（`& | ^ ~ << >> >>>`）は、拡張 ConMa のプリミティブ（docs/BITWISE-PLAN-ja.md）で求めるので、足し算とほぼ同じ手間（ループの 1 回に、`x = x + i` が 45 ステップ、`x = x ^ i` が 68、`x = x & 1023` が 65、`x = x << 1` が 63。前は 4,573、4,505、359）。
 * 変換は、loop（9 行）が 0.04 秒、nbody（81 行）が 0.23 秒。モジュールは、実行時の支え（sjs_rt.se）を含んで 1.2〜1.5 MB。ConSh の `(( ))` のモジュールは、実行時の支えを含まない（ConSh のモジュールにある）ので、式の大きさだけになる。
 * `consh/sjs/sjs` は、変換器のモジュールを毎回作るので、1 つのファイルに 2 秒くらいかかる。ConSh の `(( ))` は、初めての式ごとに変換してモジュールを作り、同じ式は覚えておいたモジュールを使う。
 
@@ -91,7 +91,7 @@ consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方。字句は行と桁を持つ）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
 ├── sjs_gen.se       ConMa のソースを作る（Sjs_translate_file、ConSh の (( )) は Sjs_translate_module）
-├── sjs_bits.se      ビット演算（高速版 ConMa のプリミティブ。参照版の consh/reference/sjs_bits.se は算術で求める）
+├── sjs_bits.se      ビット演算（拡張 ConMa のプリミティブ。参照版の consh/reference/sjs_bits.se は算術で求める）
 └── sjs_rt.se        実行時の支え：値の種類、演算の型の確認、比較、関数、配列、オブジェクト、メンバー、メソッド、組み込み、
                      例外とその位置、ジェネレータ、Promise、数の書き方、JSON.stringify、console.log
 ```
@@ -297,7 +297,7 @@ consh/docs/SAFEJS-PLAN-ja.md の 4.4 のとおりに作った。受け手のな�
 
 ### -0（2026-11-14）
 
-ConMa の Number は `-0` を持てるが、プリミティブでは見えなかった（`__Number_is_negative__` は偽、`__Number_toString__` は `"0"`、0 で割るとエラー）ので、SJS は `-0` を作らず、`1 / -0` を `Infinity` にしていた。ユーザーと、JavaScript に合わせると決め（consh/docs/SJS-WASM-PLAN-ja.md の 11）、簡潔版 ConMa に `__Number_is_negative_zero__` を足した（docs/ROADMAP.md の Step 42）。
+ConMa の Number は `-0` を持てるが、プリミティブでは見えなかった（`__Number_is_negative__` は偽、`__Number_toString__` は `"0"`、0 で割るとエラー）ので、SJS は `-0` を作らず、`1 / -0` を `Infinity` にしていた。ユーザーと、JavaScript に合わせると決め（consh/docs/SJS-WASM-PLAN-ja.md の 11）、コア ConMa に `__Number_is_negative_zero__` を足した（docs/ROADMAP.md の Step 42）。
 
 * `Sjs_div`：0 で割ると、`a` の符号と、割る数が `-0` か（`__Number_is_negative_zero__`）で、無限大の符号を決める。プリミティブが要るのは、ここだけである。
 * `-0` を作る所は、今のプリミティブで足りる：単項の `-` と `Sjs_trunc` は `0 - x` でなく `-1` を掛ける（`Sjs_minus`）。`Math.round` は `Sjs_round`（`x - floor(x)` が 0.5 以上なら切り上げ、結果が 0 で `x` が負か `-0` なら `-0`）。`Math.abs(-0)` は `0`。`Math.max` と `min` は、0 どうしなら、和と `-(-a + -b)` で求める（`max(-0, 0)` は `0`、`min(-0, 0)` は `-0`）。`%` は、結果が 0 なら割られる数の符号を付ける。

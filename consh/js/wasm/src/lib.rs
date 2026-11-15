@@ -193,8 +193,8 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
         }
     };
     let prim_booleans = module::uses_boolean(&module_sexp);
-    // a module of concise ConMa: __VProc_spawn__ makes modules of concise ConMa too (as vm/src/main.rs)
-    prim::vprocs::set_concise(module::fast_features(&module_sexp).is_empty());
+    // a module of core ConMa: __VProc_spawn__ makes modules of core ConMa too (as vm/src/main.rs)
+    prim::vprocs::set_core(module::ext_features(&module_sexp).is_empty());
     let gvenv = match module::load_module_transpiled(&module_sexp, lazy, hash) {
         Ok(g) => g,
         Err(e) => {

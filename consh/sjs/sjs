@@ -16,7 +16,7 @@ trap 'rm -rf "$tmp"' EXIT
 # <リポジトリのパスのチェックサム>。持ち主だけが読み書きでき、別のチェックアウトとは分かれる）。一時ファイルに作ってから
 # mv で置き換えるので、同時に動く sjs が作りかけのモジュールを読むことはない
 module="$("$root/bin/cache-dir")/sjsc.module.se" || exit 1
-dirs=("$consh/include" "$root/include/fast" "$root/include")
+dirs=("$consh/include" "$root/include/ext" "$root/include")
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$sjs/sjsc.se" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    [ "$conma" -nt "$module" ]; then
   module_tmp=$(mktemp "$module.XXXXXX") || exit 1

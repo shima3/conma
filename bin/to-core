@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""concise: translate a module of fast ConMa into a module of concise ConMa
+"""to-core: translate a module of extended ConMa into a module of core ConMa
 (docs/FAST-PLAN-ja.md 3.4 and 5).
 
-    concise [<module_file>]
+    to-core [<module_file>]
 
-Reads the module (standard input without a file) and writes the concise module
-to standard output. A module of fast ConMa names the features it uses in a
-(Uses "feature" ...) item; the translator rewrites each of them into concise
+Reads the module (standard input without a file) and writes the module of core ConMa
+to standard output. A module of extended ConMa names the features it uses in a
+(Uses "feature" ...) item; the translator rewrites each of them into core
 ConMa and removes the item, and stops with an error on a feature it does not
 know. The rest of the text is written as it is read, so a module without
 (Uses ...) comes out the same.
@@ -14,30 +14,30 @@ know. The rest of the text is written as it is read, so a module without
 The features it knows:
 
 * "bitwise32" (docs/BITWISE-PLAN-ja.md): the bitwise primitives __Number_and32__
-  and the others. Their replacement definitions, functions of concise ConMa with
-  the same names (include/ref/bitwise32.se, made into a module with
+  and the others. Their replacement definitions, functions of core ConMa with
+  the same names (include/core/bitwise32.se, made into a module with
   bin/includer and bin/resolver), are put into the module: a global of the
   module that is a primitive of the feature (Undefined) gets the definition, and
   the other globals of the definitions are matched to the globals of the module
   of the same names, or added after them. A global the module defines itself is
   kept. On every VM, a global with a definition is used before a primitive of
   the same name.
-* "boolean": __TRUE__ and __FALSE__, built in in fast ConMa. Their definitions
-  in concise ConMa (include/ref/pure.se) are put in the same way.
+* "boolean": __TRUE__ and __FALSE__, built in in extended ConMa. Their definitions
+  in core ConMa (include/core/pure.se) are put in the same way.
 * "control": __if_then_else__, __if__, __unless__ and __Cont_get__, built in in
-  fast ConMa, and the six conditionals that test a value themselves
+  extended ConMa, and the six conditionals that test a value themselves
   (__if_null_then_else__, __unless_null__, __Number_if_zero_then_else__,
   __Number_unless_zero__, __Number_if_greater__, __Number_if_greater_then_else__),
-  with their definitions of include/ref/control.se.
+  with their definitions of include/core/control.se.
 * "wasm" (consh/docs/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
-  which the concise VM cannot run; their definitions (include/ref/wasm.se) go
+  which the VMs of core ConMa cannot run; their definitions (include/core/wasm.se) go
   to onError with "WebAssembly is not available". __Dict_numbers__ and
   __Dict_put_numbers__ are defined there in ConMa, using "control" and
   "boolean", which are put in after them.
 "control" and "boolean" are done after "bitwise32", whose definitions use them
 (left Undefined in the module of the definitions, which is made with include/),
-and either of them puts the definitions of the other too (include/ref/pure.se
-includes include/ref/control.se, which includes pure.se).
+and either of them puts the definitions of the other too (include/core/pure.se
+includes include/core/control.se, which includes pure.se).
 
 Errors go to standard error, with exit code 1.
 """
@@ -46,16 +46,16 @@ import re
 import subprocess
 import sys
 
-# The features of fast ConMa this translator rewrites (as FAST_FEATURES of
+# The features of extended ConMa this translator rewrites (as EXT_FEATURES of
 # vm/src/module.rs), and the file of the replacement definitions of each
 # (under include/ of the repository)
 FEATURES = ("bitwise32", "boolean", "control", "wasm")
-DEFINITIONS = {"bitwise32": "ref/bitwise32.se", "boolean": "ref/pure.se", "control": "ref/control.se",
-               "wasm": "ref/wasm.se"}
+DEFINITIONS = {"bitwise32": "core/bitwise32.se", "boolean": "core/pure.se", "control": "core/control.se",
+               "wasm": "core/wasm.se"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-class ConciseError(Exception):
+class CoreError(Exception):
     pass
 
 
@@ -70,7 +70,7 @@ def skip_string(text, i):
             return i + 1
         else:
             i += 1
-    raise ConciseError("unterminated string")
+    raise CoreError("unterminated string")
 
 
 def atom_end(text, i):
@@ -106,7 +106,7 @@ def item_end(text, i):
             if depth == 1:
                 atoms.append(text[i:j])
             i = j
-    raise ConciseError("unbalanced parentheses")
+    raise CoreError("unbalanced parentheses")
 
 
 def top_items(text, i, end):
@@ -133,7 +133,7 @@ def module_items(text):
     while i < len(text) and text[i] in " \t\r\n":
         i += 1
     if not text.startswith("(Module", i):
-        raise ConciseError("not a Module")
+        raise CoreError("not a Module")
     end, _ = item_end(text, i)
     return i, end, top_items(text, i + len("(Module"), end)
 
@@ -145,7 +145,7 @@ def definitions_module(feature):
     ast = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "includer"), "--include", include, source],
                          capture_output=True, text=True)
     if ast.returncode != 0:
-        raise ConciseError(f"the definitions of {feature}: {ast.stderr.strip()}")
+        raise CoreError(f"the definitions of {feature}: {ast.stderr.strip()}")
     # the file names of SInfo relative to the directory above the repository, as consh/bin/consh and
     # test/resolver.sh write them
     above = os.path.dirname(ROOT)
@@ -153,7 +153,7 @@ def definitions_module(feature):
     module = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "resolver")], input=text,
                             capture_output=True, text=True)
     if module.returncode != 0:
-        raise ConciseError(f"the definitions of {feature}: {module.stderr.strip()}")
+        raise CoreError(f"the definitions of {feature}: {module.stderr.strip()}")
     return module.stdout
 
 
@@ -228,8 +228,8 @@ def put_definitions(text, feature):
     return "".join(out)
 
 
-def concise(text):
-    """The concise module of the text of a module."""
+def to_core(text):
+    """The module of core ConMa of the text of a module."""
     _, _, items = module_items(text)
     used = []
     for (j, k, atoms) in items:
@@ -252,7 +252,7 @@ def remove_uses(text):
     while i < len(text) and text[i] in " \t\r\n":
         i += 1
     if not text.startswith("(Module", i):
-        raise ConciseError("not a Module")
+        raise CoreError("not a Module")
     end, _ = item_end(text, i)
     out = []
     last = 0          # the text before this index has been copied to out
@@ -267,7 +267,7 @@ def remove_uses(text):
                 for f in atoms[1:]:
                     name = f[1:-1] if f and f.startswith('"') else f
                     if name not in FEATURES:
-                        raise ConciseError("cannot translate a feature of fast ConMa: "
+                        raise CoreError("cannot translate a feature of extended ConMa: "
                                            + (f if f is not None else "(a list)"))
                 # remove the item and the white space before it
                 w = j
@@ -285,17 +285,17 @@ def remove_uses(text):
 def main():
     args = sys.argv[1:]
     if len(args) > 1 or (args and args[0].startswith("-")):
-        print("usage: concise [<module_file>]", file=sys.stderr)
+        print("usage: to-core [<module_file>]", file=sys.stderr)
         sys.exit(1)
     try:
         text = open(args[0], encoding="utf-8").read() if args else sys.stdin.read()
     except OSError as e:
-        print(f"concise: {e}", file=sys.stderr)
+        print(f"to-core: {e}", file=sys.stderr)
         sys.exit(1)
     try:
-        sys.stdout.write(concise(text))
-    except ConciseError as e:
-        print(f"concise: {e}", file=sys.stderr)
+        sys.stdout.write(to_core(text))
+    except CoreError as e:
+        print(f"to-core: {e}", file=sys.stderr)
         sys.exit(1)
 
 

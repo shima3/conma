@@ -1,8 +1,8 @@
-;; 制御の関数 __if_then_else__、__if__、__unless__、__Cont_get__ と、値を確かめる 6 つの条件分岐（下）の、簡潔版 ConMa の定義。
-;; 簡潔版では、include/ref/pure.se がこのファイルを include するので、どのモジュールもこの定義を使う。
-;; 高速版 ConMa では、これらは組み込みである（機能 "control"。フロントエンドが (Uses "control") を書き、
-;; bin/concise がこの定義を入れて簡潔版に直す。docs/FAST-PLAN-ja.md の 4.6）。
-;; 高速版のプログラムが (include "ref/control.se") とすると、組み込みの代わりにこの定義が使われる
+;; 制御の関数 __if_then_else__、__if__、__unless__、__Cont_get__ と、値を確かめる 6 つの条件分岐（下）の、コア ConMa の定義。
+;; コア ConMa では、include/core/pure.se がこのファイルを include するので、どのモジュールもこの定義を使う。
+;; 拡張 ConMa では、これらは組み込みである（機能 "control"。フロントエンドが (Uses "control") を書き、
+;; bin/to-core がこの定義を入れてコア ConMa に直す。docs/FAST-PLAN-ja.md の 4.6）。
+;; 拡張 ConMa のプログラムが (include "core/control.se") とすると、組み込みの代わりにこの定義が使われる
 ;; （定義のない大域変数だけが組み込みになる。RESOLVER.md, PRIMITIVES.md）。ステップを ConMa の関数として追いたいときや、
 ;; 組み込みと結果を比べるときに使う。__Cont_get__ の定義が使う __CChain_pop_LCont__ は util.se にある
 (include "util.se")
@@ -33,7 +33,7 @@
         __CChain_pop_LCont__ ,(lc)
         args lc)))
 
-;; 値を自分で確かめる条件分岐（高速版では、確かめ、Boolean の束縛、条件分岐を 1 ステップにする組み込み。
+;; 値を自分で確かめる条件分岐（拡張 ConMa では、確かめ、Boolean の束縛、条件分岐を 1 ステップにする組み込み。
 ;; docs/PRIMITIVES.md）。数でない値は、確かめるプリミティブのエラーになる（組み込みは、自分の名前でエラーにする）
 
 ;; Value が __NULL__ なら then、そうでなければ else

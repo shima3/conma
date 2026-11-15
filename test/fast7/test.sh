@@ -1,25 +1,25 @@
 #!/bin/bash
-# 高速版 ConMa の機能 "wasm"（consh/docs/SJS-WASM-PLAN-ja.md の段階 1）：__Wasm_compile__ と __Wasm_call__。
+# 拡張 ConMa の機能 "wasm"（consh/docs/SJS-WASM-PLAN-ja.md の段階 1）：__Wasm_compile__ と __Wasm_call__。
 # ログは VM ごとに違う：caseN.wasm.log は wasm 版の VM（Node.js。ホストの WebAssembly で動かす）、caseN.python.log は
-# Python の VM（代わりの定義 include/ref/wasm.se で onError）、caseN.log はそれ以外（ネイティブの VM は WAT を組み立ててから
+# Python の VM（代わりの定義 include/core/wasm.se で onError）、caseN.log はそれ以外（ネイティブの VM は WAT を組み立ててから
 # onError。組み立ての誤りはそのメッセージ）。ないものは caseN.log を使う。
 # wasm 版の VM で CONMA_NO_WASM=1 なら、ネイティブの VM と同じ（WebAssembly を使わない）。
 # case15 は、燃料を減らすのがループの始めと呼び出しのグラフの輪に入る関数の入口だけであること（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 F3）。
 # case7 は、燃料を使い切るたびに時間の区切りが終わり、SIGINT が届くこと（段階 3。case14 は、外で動くものがないときも）。case8 は、モジュールのメモリと
 # __Wasm_call_memory__（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。case12 は __Dict_numbers__ と __Dict_put_numbers__（同じ計画の 17。
 # どの VM でも同じログ）。
-# フロントエンド（bin/resolver と conma build）が (Uses "boolean" "control" "wasm") を付け、bin/concise が代わりの定義を入れる
+# フロントエンド（bin/resolver と conma build）が (Uses "boolean" "control" "wasm") を付け、bin/to-core が代わりの定義を入れる
 . "$(dirname "$0")/../common.sh"
-CONMA_FAST=1 resolve test.se
+CONMA_EXT=1 resolve test.se
 head -1 $tmp/test.module.se | grep -q '(Uses "boolean" "control" "wasm")$' || echo "bin/resolver did not write (Uses \"boolean\" \"control\" \"wasm\")"
 conma="$root/vm/target/release/conma"
 if [ -x "$conma" ]; then
   (cd "$root" && "$conma" build test/fast7/test.se) | sed -e "s|\"$(cd "$root/.."; pwd -P)/|\"|g" > $tmp/built.module.se
   python3 ../selfhost_compare.py ast $tmp/test.module.se $tmp/built.module.se > /dev/null || echo "conma build made another module"
 fi
-"$root/bin/concise" $tmp/test.module.se > $tmp/concise.module.se || exit 1
-grep -q '(Uses' $tmp/concise.module.se && echo "bin/concise left (Uses ...)"
-grep -q '(G [0-9]* "__Wasm_call__"$' $tmp/concise.module.se || echo "bin/concise did not put the definition of __Wasm_call__"
+"$root/bin/to-core" $tmp/test.module.se > $tmp/core.module.se || exit 1
+grep -q '(Uses' $tmp/core.module.se && echo "bin/to-core left (Uses ...)"
+grep -q '(G [0-9]* "__Wasm_call__"$' $tmp/core.module.se || echo "bin/to-core did not put the definition of __Wasm_call__"
 vm="${CONMA_VM:-python}"
 [ "$vm" = transpiled ] && vm=rust
 for c in case1 case2 case3 case4 case5 case6 case7 case8 case9 case10 case11 case12 case13 case14 case15

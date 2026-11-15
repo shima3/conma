@@ -5,8 +5,8 @@ Usage: consh/bench/run.py [-n N] [-v VERSION,...] [script ...]
 
 VERSION is one of
   rust                  the Rust version (consh/rust/target/release/consh-rs)
-  conma:rust            the fast ConMa version on the Rust VM (vm/target/release/conma)
-  conma:transpiled      the fast ConMa version on the transpiled VM (vm/target-transpiled/release/conma)
+  conma:rust            the extended ConMa version on the Rust VM (vm/target/release/conma)
+  conma:transpiled      the extended ConMa version on the transpiled VM (vm/target-transpiled/release/conma)
   reference:rust        the reference ConMa version on the Rust VM
   reference:transpiled  the reference ConMa version on the transpiled VM
 (by default rust,conma:transpiled). Each script (by default, all the scripts NN_*.sh here) is run N times

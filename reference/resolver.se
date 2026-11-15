@@ -35,7 +35,7 @@
   __LList_cons__ f children ,(children)
   __AST_new__ "Module" __NULL__ children)
 
-;; 高速版 ConMa の機能（docs/FAST-PLAN-ja.md の 3.4）：その組み込みを定義のない大域の名前として使うモジュールは、
+;; 拡張 ConMa の機能（docs/FAST-PLAN-ja.md の 3.4）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (F ...) の後に (Uses ...) を置く（bin/resolver と同じ）。entries の前に足す。
 ;; "bitwise32" はビット演算のプリミティブ（docs/BITWISE-PLAN-ja.md）、"boolean" は __TRUE__ と __FALSE__、
 ;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__ と、値を自分で確かめる 6 つの条件分岐
@@ -49,7 +49,7 @@
       __AST_new__ "Uses" __NULL__ features ,(uses)
       __LList_cons__ uses entries))
 
-;; 使う機能の名前の列（bin/resolver の FAST_PRIMITIVES の順）
+;; 使う機能の名前の列（bin/resolver の EXT_PRIMITIVES の順）
 (define __Resolver_features__ ,(globals values)
   __LList_cons__ "__Dict_put_numbers__" __NULL__ ,(wasms)
   __LList_cons__ "__Dict_numbers__" wasms ,(wasms)

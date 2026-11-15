@@ -1,12 +1,12 @@
 //! __TRUE__, __FALSE__, __if_then_else__, __if__, __unless__,
 //! __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__ and
-//! __Number_unless_zero__: the ConMa definitions of include/ref/control.se (and of
+//! __Number_unless_zero__: the ConMa definitions of include/core/control.se (and of
 //! a test with __is_null__ or __Number_is_zero__ before them) in fewer steps.
 //!
 //! A Boolean is one of the two Closures `,(t f) __NULL__ t` and
-//! `,(t f) __NULL__ f` (as the primitives return them in concise ConMa, and as
-//! include/ref/pure.se defines __TRUE__ and __FALSE__), or one of the
-//! primitives __TRUE__ and __FALSE__ of fast ConMa (the feature "boolean",
+//! `,(t f) __NULL__ f` (as the primitives return them in core ConMa, and as
+//! include/core/pure.se defines __TRUE__ and __FALSE__), or one of the
+//! primitives __TRUE__ and __FALSE__ of extended ConMa (the feature "boolean",
 //! which the primitives then return); it chooses its clause at once. Any other value is
 //! applied to the two clauses, as the ConMa definition does, and the clause it
 //! passes back is applied.

@@ -1,12 +1,12 @@
-;; 高速版 ConMa の機能 "wasm" の代わりの定義（consh/docs/SJS-WASM-PLAN-ja.md の 5.3、docs/PRIMITIVES.md の 16）。
-;; 簡潔版 ConMa のファイルなので include/ref に置く。
-;; __Wasm_compile__ と __Wasm_call__ は、wasm 版の VM（consh/js）のホストの WebAssembly で動く。簡潔版の VM（Python）には
-;; WebAssembly がないので、bin/concise がこの定義をモジュールに入れ、どちらも onError を呼ぶ（ネイティブの VM のプリミティブ
+;; 拡張 ConMa の機能 "wasm" の代わりの定義（consh/docs/SJS-WASM-PLAN-ja.md の 5.3、docs/PRIMITIVES.md の 16）。
+;; コア ConMa のファイルなので include/core に置く。
+;; __Wasm_compile__ と __Wasm_call__ は、wasm 版の VM（consh/js）のホストの WebAssembly で動く。コア ConMa の VM（Python）には
+;; WebAssembly がないので、bin/to-core がこの定義をモジュールに入れ、どちらも onError を呼ぶ（ネイティブの VM のプリミティブ
 ;; と同じメッセージ。ただし、ネイティブの VM は、先に WAT を組み立てて、誤りがあればそれを onError に渡す）。
 ;;   __Wasm_compile__ onError wat ,(module)
 ;;   __Wasm_call__ onError module name args fuel ,(status value)
 ;;   __Wasm_call_memory__ onError module name args memory fuel ,(status value memory)（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）
-;; SJS の配列を写す 2 つ（同じ計画の 17）は、Dict の操作なので、簡潔版 ConMa で同じものを書いた（使う名前は Wasm_ref_ で始める）：
+;; SJS の配列を写す 2 つ（同じ計画の 17）は、Dict の操作なので、コア ConMa で同じものを書いた（使う名前は Wasm_ref_ で始める）：
 ;;   __Dict_numbers__ onError dict n words ,(words)      "0"〜"n-1" の値（どれも数）を順に words の先に積む。なければ onError
 ;;   __Dict_put_numbers__ dict n words ,(rest)            words の先頭の n 個の数を "0"〜"n-1" に入れ、残りを返す
 (include "pure.se")

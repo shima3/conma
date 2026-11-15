@@ -1,15 +1,15 @@
-# 高速版 ConMa と簡潔版 ConMa の計画
+# 拡張 ConMa とコア ConMa の計画
 
-ConMa を、今の言語である**簡潔版 ConMa** と、それに構文とプリミティブを足した**高速版 ConMa** に分ける計画である。高速版から簡潔版への変換器を用意して、互換性を保つ。2026-11-11 に決めた方針を書いたもので、段階 F5 まで作り、F8 で測った。F6 ではレコードを、F7 では変換版の VM の変更を、作らないと決めた。4.4 の脱出の継続を作らないことも、作らないと決めた。これまでの高速化の手法と効果の一覧は docs/SPEED-ja.md にある。
+ConMa を、今の言語である**コア ConMa** と、それに構文とプリミティブを足した**拡張 ConMa** に分ける計画である。拡張 ConMa からコア ConMa への変換器を用意して、互換性を保つ。2026-11-11 に決めた方針を書いたもので、段階 F5 まで作り、F8 で測った。F6 ではレコードを、F7 では変換版の VM の変更を、作らないと決めた。4.4 の脱出の継続を作らないことも、作らないと決めた。これまでの高速化の手法と効果の一覧は docs/SPEED-ja.md にある。
 
 ## 1. 目的
 
 1. **速くする**
     * 今の ConMa は、小さな中間言語であることを優先している。そのため、速さのための構文やプリミティブを足すと、言語が大きくなり、すべての VM と文書を直すことになる。
-    * 速さのための拡張を高速版に置けば、簡潔版（言語の定義と、トレースの基準）を変えずに速くできる。
+    * 速さのための拡張を拡張 ConMa に置けば、コア ConMa（言語の定義と、トレースの基準）を変えずに速くできる。
 2. **互換性を保つ**
-    * 高速版のプログラムは、変換器で簡潔版に直せば、どの VM でも動き、同じ結果になる。
-    * 簡潔版の Python VM のトレースは、今までどおり言語の定義の基準として使える。
+    * 拡張 ConMa のプログラムは、変換器でコア ConMa に直せば、どの VM でも動き、同じ結果になる。
+    * コア ConMa の Python VM のトレースは、今までどおり言語の定義の基準として使える。
 
 これは、今のプロジェクトのやり方と同じ考え方である。
 
@@ -18,21 +18,21 @@ ConMa を、今の言語である**簡潔版 ConMa** と、それに構文とプ
 
 ## 2. 2 つの版
 
-| | 簡潔版 ConMa | 高速版 ConMa |
+| | コア ConMa | 拡張 ConMa |
 |---|---|---|
-| 言語 | 今の ConMa（docs/SPEC.md、docs/PRIMITIVES.md） | 簡潔版に、4 の構文とプリミティブを足したもの |
+| 言語 | 今の ConMa（docs/SPEC.md、docs/PRIMITIVES.md） | コア ConMa に、4 の構文とプリミティブを足したもの |
 | 役割 | 言語の定義。トレースの基準 | 速く動かすための形 |
-| 動かす VM | すべての VM（Python VM、Rust VM、変換版、wasm 版） | 高速版に対応した VM（Rust VM、変換版、wasm 版） |
-| トレース | Python VM と Rust VM で一致する（今までどおり） | 出さなくてよい。出すなら、簡潔版に直したプログラムのトレースを使う |
+| 動かす VM | すべての VM（Python VM、Rust VM、変換版、wasm 版） | 拡張 ConMa に対応した VM（Rust VM、変換版、wasm 版） |
+| トレース | Python VM と Rust VM で一致する（今までどおり） | 出さなくてよい。出すなら、コア ConMa に直したプログラムのトレースを使う |
 
-* 簡潔版のプログラムは、そのまま高速版のプログラムでもある（高速版は簡潔版を含む）。
-* 高速版のプログラムは、変換器で簡潔版に直してから、簡潔版の VM で動かせる。
+* コア ConMa のプログラムは、そのまま拡張 ConMa のプログラムでもある（拡張 ConMa はコア ConMa を含む）。
+* 拡張 ConMa のプログラムは、変換器でコア ConMa に直してから、コア ConMa の VM で動かせる。
 
 ## 3. 互換性
 
 ### 3.1. 同じにするもの
 
-高速版のプログラムを高速版の VM で動かした結果と、変換器で簡潔版に直して簡潔版の VM で動かした結果は、次が同じになるようにする。
+拡張 ConMa のプログラムを拡張 ConMa の VM で動かした結果と、変換器でコア ConMa に直してコア ConMa の VM で動かした結果は、次が同じになるようにする。
 
 * 標準出力、標準エラー出力、終了ステータス、ファイルなどへの作用
 * エラーのメッセージと、その位置（ファイル、行、桁）
@@ -47,7 +47,7 @@ ConMa を、今の言語である**簡潔版 ConMa** と、それに構文とプ
 VM は、決まったステップ数ごとに VProc を切り替える。そのため、ステップの数が変わると、並行する VProc の出力の順序が変わることがある。次のどちらにするかを決める。
 
 * 案 1：順序がステップの数によるプログラムは、互換の範囲の外とする。テストは、順序によらない形にする。
-* 案 2：高速版の VM も、簡潔版と同じステップ数で切り替える（拡張の 1 回を、簡潔版で何ステップに当たるかで数える）。手間がかかる。
+* 案 2：拡張 ConMa の VM も、コア ConMa と同じステップ数で切り替える（拡張の 1 回を、コア ConMa で何ステップに当たるかで数える）。手間がかかる。
 
 **決定（2026-11-11）：案 1 とする。** VProc を切り替える時は、3.1 の「同じにするもの」に入れない。理由は次のとおり。
 
@@ -58,14 +58,14 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 ### 3.4. モジュールに印を付ける
 
-高速版の機能を使うモジュールには、使った機能を書いておく。
+拡張 ConMa の機能を使うモジュールには、使った機能を書いておく。
 
 ```
 (Module (F "a.se" ...) (Uses "if" "return") (G 0 "main" ...) ...)
 ```
 
-* 高速版の VM は、知らない機能があれば、エラーにする。
-* 簡潔版の VM は、`Uses` があれば、「変換器で簡潔版に直してから動かす」というエラーにする。黙って誤動作するより安全である。
+* 拡張 ConMa の VM は、知らない機能があれば、エラーにする。
+* コア ConMa の VM は、`Uses` があれば、「変換器でコア ConMa に直してから動かす」というエラーにする。黙って誤動作するより安全である。
 * 変換器の出力には `Uses` を付けない。
 
 **作ったもの（F1、2026-11-11）**
@@ -74,12 +74,12 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * 機能を挙げない `(Uses)` は、何も使っていないので、どの VM も動かす。機能を挙げていれば、その VM が動かせない機能の最初のものについて、どの VM も同じメッセージでエラーにする（終了ステータス 1）。
 
     ```
-    Error: the module uses a feature of fast ConMa that this VM does not run: "if" (bin/concise translates the module into concise ConMa)
+    Error: the module uses a feature of extended ConMa that this VM does not run: "if" (bin/to-core translates the module into core ConMa)
     ```
 
-    * Python VM（test/vproc_step.py の `check_concise`）は、簡潔版だけを動かすので、どの機能でもエラーにする。
-    * Rust VM と wasm 版（vm/src/module.rs の `check_features`）は、`FAST_FEATURES` にない機能をエラーにする。今は空である。変換版の VM も同じ確かめ方をし、vm/conma2rust/conma2rust.py は知らない機能のあるモジュールを変換しない。
-* 変換器は bin/concise（Python）とした。`bin/concise [<module_file>]` は、モジュール（ファイルがなければ標準入力）を読み、簡潔版のモジュールを標準出力に書く。今は、空の `(Uses)` を前の空白ごと消し、残りは読んだとおりに書く。機能を挙げていれば、エラーにする（`concise: cannot translate a feature of fast ConMa: "if"`）。
+    * Python VM（test/vproc_step.py の `check_core`）は、コア ConMa だけを動かすので、どの機能でもエラーにする。
+    * Rust VM と wasm 版（vm/src/module.rs の `check_features`）は、`EXT_FEATURES` にない機能をエラーにする。今は空である。変換版の VM も同じ確かめ方をし、vm/conma2rust/conma2rust.py は知らない機能のあるモジュールを変換しない。
+* 変換器は bin/to-core（Python）とした。`bin/to-core [<module_file>]` は、モジュール（ファイルがなければ標準入力）を読み、コア ConMa のモジュールを標準出力に書く。今は、空の `(Uses)` を前の空白ごと消し、残りは読んだとおりに書く。機能を挙げていれば、エラーにする（`to-core: cannot translate a feature of extended ConMa: "if"`）。
 * ConMa で書いた変換器と、フロントエンドから呼ぶことは、フロントエンドが初めて `Uses` を書く段階（F3 か F4）で作る。
 * テストは test/fast1 である。
 
@@ -92,8 +92,8 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 ### 4.1. 引数の数がちょうど合う適用を 1 ステップにする
 
 * **今**：Closure の適用は、まず被演算子の数だけ引数を束縛した Closure（部分適用）を作り、次のステップで Body に入る（docs/VPROC_STEP.md の Case 2）。
-* **高速版**：被演算子の数が残りの引数の数とちょうど同じなら、束縛と Body の読み込みを 1 ステップで行う。足りないときは、今までどおり部分適用にする。
-* **簡潔版への変換**：要らない（構文もプリミティブも変わらない。ステップの数え方だけが違う）。
+* **拡張 ConMa**：被演算子の数が残りの引数の数とちょうど同じなら、束縛と Body の読み込みを 1 ステップで行う。足りないときは、今までどおり部分適用にする。
+* **コア ConMa への変換**：要らない（構文もプリミティブも変わらない。ステップの数え方だけが違う）。
 * **効果の見込み**：上の 3 ステップが 2 ステップになり、解釈する VM（Rust VM、wasm 版）で、全ステップの 3 分の 1 近くが消える。変換版は、すでに内部で同じことをしているので、ほとんど変わらない。
 * **注意**：3.3 の VProc の切り替えに影響する。
 
@@ -122,8 +122,8 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 ### 4.2. LazyList を評価するプリミティブ
 
 * **今**：LazyList は、include/util.se の ConMa のコード（`__LazyList_force__`、`__LazyList_force_claim__`、`__LazyList_uncons__`）が、`__LazyList_claim__`、サンクの呼び出し、`__LazyList_publish__` を組み合わせて評価する。上の計測では、`__LazyList_force_claim__` と `__LazyList_uncons__` で全ステップの 8.4% だった。
-* **高速版**：「LazyList を評価してセルを返す」プリミティブ（たとえば `__LazyList_force__`）を足す。評価済みならその場でセルを返し、サンクがあれば VM がそれを呼んでから publish する。
-* **簡潔版への変換**：今の include/util.se の `__LazyList_force__` の呼び出しにする（代わりの定義が、すでにある）。
+* **拡張 ConMa**：「LazyList を評価してセルを返す」プリミティブ（たとえば `__LazyList_force__`）を足す。評価済みならその場でセルを返し、サンクがあれば VM がそれを呼んでから publish する。
+* **コア ConMa への変換**：今の include/util.se の `__LazyList_force__` の呼び出しにする（代わりの定義が、すでにある）。
 * **注意**：サンクの評価中のエラー（自分に依存する LazyList、評価せずに終わった VProc）のメッセージを、util.se のものと同じにする。
 
 **作ったもの（F3、2026-11-11）**
@@ -138,8 +138,8 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 ### 4.3. 条件分岐の構文
 
 * **今**：`__if_then_else__ c (,() a) (,() b)` は、評価のたびに節の Closure を作り、それに入るステップも要る。`__if_then_else__`、`__if__`、`__unless__` で、全ステップの約 7% に当たる。
-* **高速版**：条件分岐を、言語の構文として持つ（書き方は決める。たとえば `(if c a b)`）。節の Closure を作らず、選んだ節をそのまま読み込む。
-* **簡潔版への変換**：`__if_then_else__` と節の Closure にする。
+* **拡張 ConMa**：条件分岐を、言語の構文として持つ（書き方は決める。たとえば `(if c a b)`）。節の Closure を作らず、選んだ節をそのまま読み込む。
+* **コア ConMa への変換**：`__if_then_else__` と節の Closure にする。
 
 **作ったもの（F4、2026-11-11）**
 
@@ -153,11 +153,11 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 ### 4.4. 関数から戻る構文
 
 * **今**：ConSh の関数の約半分は、`__Cont_get__ ,(return)` で始まり、呼び出しのたびに脱出の継続（`return` の値）を作る。`__Cont_get__` は全ステップの 2.4% である。
-* **高速版**：関数から戻る構文を持つ。継続の値を作らず、CChain の一番上の CFrame に戻る。
-* **簡潔版への変換**：関数の始めの `__Cont_get__ ,(return)` と、`return` の適用にする。
+* **拡張 ConMa**：関数から戻る構文を持つ。継続の値を作らず、CChain の一番上の CFrame に戻る。
+* **コア ConMa への変換**：関数の始めの `__Cont_get__ ,(return)` と、`return` の適用にする。
 * **注意**：`return` の時の CChain が、関数に入った時と同じでなければ、意味が変わる。ConSh の `shift` のように、CChain のプリミティブで LCont を取り出して、別の CChain の上で呼ぶ場合がそうである（consh/docs/SAFEJS-REVIEW-ja.md の 3.1 の 4、docs/ROADMAP.md の「Planned: returning without making the escape continuation」）。次のどちらかにする。
     * 戻る構文は、CChain を取り出す処理の中では使えないと決め、構文解析かフロントエンドで確かめる。
-    * 取り出された場合だけ、簡潔版と同じ意味（入った時の CChain に戻す）になるように作る。
+    * 取り出された場合だけ、コア ConMa と同じ意味（入った時の CChain に戻す）になるように作る。
 * docs/ROADMAP.md の「Planned: returning without making the escape continuation」は、仕様を変えずに同じ効果を得る案である。どちらで行うかを、ここで決める。
 
 **作ったもの（F5、2026-11-11）**
@@ -179,16 +179,16 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 * **今**：ConSh は、文脈を Dict に置き、`__Dict_lookup_or__ sh "global"` のように文字列のキーで引く。`__Dict_lookup_or__` は全ステップの 4.2%、`__Dict_put__` は 1.0% である。
 * **これまでの決定**：REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
-* **高速版**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/REVIEW-ja.md の 1）。
-* **簡潔版への変換**：Dict（または LList）と、それを読み書きする関数にする。
-* **優先度**：上の決定と計測から、速さのためには低い。高速版を作るとしても、綴りの誤りを見つけることが主な理由になる。言語に足さないという方針を変えるかどうかも、ここで決める。
+* **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/REVIEW-ja.md の 1）。
+* **コア ConMa への変換**：Dict（または LList）と、それを読み書きする関数にする。
+* **優先度**：上の決定と計測から、速さのためには低い。拡張 ConMa を作るとしても、綴りの誤りを見つけることが主な理由になる。言語に足さないという方針を変えるかどうかも、ここで決める。
 * **レコードの前に試したこと（2026-11-11）**：レコードで減るのは、キーを探す時間である。その大きさを確かめるため、Rust VM の `__Dict_lookup_or__` と `__Dict_put__` に、定数の文字列のキーで呼ぶ場所ごとのキャッシュ（`DictSite`。変換版の `Ic` と同じもの）を入れた（6936e15）。
     * ConSh のループで、Dict の操作の 83% がキャッシュのある場所を通り、その 86% がキャッシュに当たった。
     * それでも、キャッシュだけでは 1〜2% しか速くならなかった。キーを探す時間は、もともとその程度である。
     * 同時に、被演算子を `Vec` に移さずに読む道を作ると、合わせて 4〜5% 速くなった（consh/bench の 02_for_seq_100000 が 1.29 s から 1.22〜1.24 s）。Dict の操作の時間の多くは、探すことではなく、プリミティブを呼ぶ手間だった。
     * **結論**：レコードを足しても、速さはほとんど上がらない見込みである。速さのためには作らない。F6 は、綴りの誤りを見つけるために作るかどうかを決める段階とする。
 
-**決定（F6、2026-11-12）：レコードは作らない。** 高速版にも足さず、言語に足さないというこれまでの方針を保つ。理由は次のとおり。
+**決定（F6、2026-11-12）：レコードは作らない。** 拡張 ConMa にも足さず、言語に足さないというこれまでの方針を保つ。理由は次のとおり。
 
 * 速さの効果は、上の結論のとおりほとんどない。
 * 綴りの誤りは、今のところ見つかっていない。ConSh の高速版（consh/include）で、定数の文字列のキーで Dict を読む所は 168 種類、書く所は 226 種類ある。読み書きのキーを正規表現で突き合わせても、はっきりした綴りの誤りはなかった。ただし、キーを変数で受け取るヘルパー（AST のノードなど）は、この突き合わせでは追えない。
@@ -198,64 +198,66 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 ### 4.6. `__TRUE__` と `__FALSE__`、制御の関数の組み込み（機能 `"boolean"` と `"control"`）
 
+**名前（2026-11-15）**：はじめは「高速版 ConMa」と「簡潔版 ConMa」と呼び、ディレクトリを `include/fast` と `include/ref`、変換器を `bin/concise` としていた。ConSh の「高速版 / 参照版」（実装の書き方の違い）と紛らわしく、「高速版」は言語の性質（機能を足すこと）を表していないので、言語の分け方の言い方（コア言語と言語拡張）に合わせて、「拡張 ConMa」と「コア ConMa」、`include/ext` と `include/core`、`bin/to-core` に変えた。この文書の前の節も、新しい名前で書き直してある。
+
 **作ったもの（2026-11-13）**
 
-* **探す順**：標準ライブラリを、簡潔版のモジュールは `include/ref`、`include` の順に、高速版のモジュールは `include/fast`、`include` の順に探して作る。簡潔版と高速版で共通の定義は `include/pure.se` に置き、`include/ref/pure.se` と `include/fast/pure.se` は、それを `(include "../pure.se")` で読む。ほかの `reference/` は、今は動かさない（うまくいけば、`include/ref` にまとめていく）。
-    * 高速版：`conma build`（Rust VM。`include/fast` があれば先に探す）、bin/update-frontend、bench/module.sh、ConSh の速い版（consh/bin/consh、consh/js/build.sh）。
-    * 簡潔版：test/resolver.sh（`CONMA_FAST` を付けると高速版）、Python VM が `__VProc_spawn__` で作るモジュール、ConSh の参照版（`include/ref` を `reference/` より先に）。test/ のトレースとステップ数のテストは、7 の「簡潔版のテスト」のとおり、簡潔版のモジュールで行う。
-* **定義**：プリミティブでない `__TRUE__` と `__FALSE__`（`,(then else) __NULL__ then` など）は `include/ref/pure.se` にある。ビット演算の代わりの定義も、簡潔版 ConMa のファイルなので、`include/fast/bitwise32.se` から `include/ref/bitwise32.se` に移した。`include/fast` には、高速版で使うファイル（今は `pure.se` だけ）を置く。`include/fast/pure.se` には定義がないので、高速版のモジュールでは定義のない大域の名前になり、フロントエンド（bin/resolver と include/resolver.se）が `(Uses "boolean")` を書く。
+* **探す順**：標準ライブラリを、コア ConMa のモジュールは `include/core`、`include` の順に、拡張 ConMa のモジュールは `include/ext`、`include` の順に探して作る。コア ConMa と拡張 ConMa で共通の定義は `include/pure.se` に置き、`include/core/pure.se` と `include/ext/pure.se` は、それを `(include "../pure.se")` で読む。ほかの `reference/` は、今は動かさない（うまくいけば、`include/core` にまとめていく）。
+    * 拡張 ConMa：`conma build`（Rust VM。`include/ext` があれば先に探す）、bin/update-frontend、bench/module.sh、ConSh の速い版（consh/bin/consh、consh/js/build.sh）。
+    * コア ConMa：test/resolver.sh（`CONMA_EXT` を付けると拡張 ConMa）、Python VM が `__VProc_spawn__` で作るモジュール、ConSh の参照版（`include/core` を `reference/` より先に）。test/ のトレースとステップ数のテストは、7 の「コア ConMa のテスト」のとおり、コア ConMa のモジュールで行う。
+* **定義**：プリミティブでない `__TRUE__` と `__FALSE__`（`,(then else) __NULL__ then` など）は `include/core/pure.se` にある。ビット演算の代わりの定義も、コア ConMa のファイルなので、`include/ext/bitwise32.se` から `include/core/bitwise32.se` に移した。`include/ext` には、拡張 ConMa で使うファイル（今は `pure.se` だけ）を置く。`include/ext/pure.se` には定義がないので、拡張 ConMa のモジュールでは定義のない大域の名前になり、フロントエンド（bin/resolver と include/resolver.se）が `(Uses "boolean")` を書く。
 * **VM**：
     * Rust VM、wasm 版、変換版の VM は、`__TRUE__` と `__FALSE__` をプリミティブとして持つ（vm/src/prim/control.rs）。2 つの値に適用すると、どちらかを適用せずに、1 ステップで LCont に渡す（Closure では 2 ステップ）。conma2rust.py は、その場で選ぶコードにする。
-    * `(Uses "boolean")` のあるモジュールを動かすときは、プリミティブの返す Boolean も、このプリミティブにする（`Machine::use_prim_booleans`）。印のない簡潔版のモジュールでは、今までどおり Closure の Boolean で、トレースとステップ数は Python VM と同じである。`boolean_choice` は、どちらも Boolean と見る。
-    * Python VM は変えない。bin/concise が、`include/ref/pure.se` の定義を入れて簡潔版に直す（ほかの機能の代わりの定義も `__TRUE__` を使うので、`"boolean"` は最後に直す）。
+    * `(Uses "boolean")` のあるモジュールを動かすときは、プリミティブの返す Boolean も、このプリミティブにする（`Machine::use_prim_booleans`）。印のないコア ConMa のモジュールでは、今までどおり Closure の Boolean で、トレースとステップ数は Python VM と同じである。`boolean_choice` は、どちらも Boolean と見る。
+    * Python VM は変えない。bin/to-core が、`include/core/pure.se` の定義を入れてコア ConMa に直す（ほかの機能の代わりの定義も `__TRUE__` を使うので、`"boolean"` は最後に直す）。
 * **違い**：`__TRUE__ x` のように被演算子が 1 つのときは、Closure なら部分適用になるが、プリミティブは `__TRUE__: missing argument(s)` で止まる。3 つ以上なら、ほかのプリミティブと同じく、余りを捨てる。
-* **テスト**：test/fast6 が、高速版のモジュール（`Uses "boolean"`）と bin/concise で直したモジュールを、それぞれの VM で動かし、同じ出力になることを確かめる。conma build と bin/resolver が同じモジュールを作ることも確かめる。
+* **テスト**：test/fast6 が、拡張 ConMa のモジュール（`Uses "boolean"`）と bin/to-core で直したモジュールを、それぞれの VM で動かし、同じ出力になることを確かめる。conma build と bin/resolver が同じモジュールを作ることも確かめる。
 
 **制御の関数（機能 `"control"`、2026-11-13）**
 
-* `__if_then_else__`、`__if__`、`__unless__`、`__Cont_get__` も、高速版だけの組み込みにした。簡潔版の定義（前の include/control.se）は `include/ref/control.se` に移し、`include/ref/pure.se` が include する。高速版のモジュールでは定義のない名前になり、フロントエンドが `(Uses "control")` を書く。bin/concise は `include/ref/control.se` の定義を入れる。
-* Python VM から 4 つのプリミティブを消した（簡潔版の VM は簡潔版の言語だけを持つ）。Rust VM、wasm 版、変換版の VM は、プリミティブを持ったままで、簡潔版のモジュールでは定義を使う。
-* 簡潔版のモジュールは、どのファイルも include しないとき（test/fast4 など）にも定義がないので、test/resolver.sh と Python VM の `__VProc_spawn__` は、最後に bin/concise を通す。Rust VM と wasm 版の `__VProc_spawn__` は、動かしているモジュールに `Uses` がなければ、子のモジュールも簡潔版（`include/ref` を先に）で作る（wasm 版は、ホストの buildModule に印を渡す）。
-* 簡潔版では条件分岐が ConMa の関数呼び出しになるので、ステップ数とトレースが大きく変わった。test/ の、ステップの番号やトレースを比べるログ（step1、step15、step17、step20、step21、fast2〜4）を、Python VM の出力で作り直した。Rust VM の F3、F4 の速い道は、プリミティブを使う高速版のモジュールでだけ働く。
-* test/step34 と step35 は、どちらも高速版で作り、組み込み（test.se）と `ref/control.se` の定義（conma.se）を比べるようにした。
+* `__if_then_else__`、`__if__`、`__unless__`、`__Cont_get__` も、拡張 ConMa だけの組み込みにした。コア ConMa の定義（前の include/control.se）は `include/core/control.se` に移し、`include/core/pure.se` が include する。拡張 ConMa のモジュールでは定義のない名前になり、フロントエンドが `(Uses "control")` を書く。bin/to-core は `include/core/control.se` の定義を入れる。
+* Python VM から 4 つのプリミティブを消した（コア ConMa の VM はコア ConMa の言語だけを持つ）。Rust VM、wasm 版、変換版の VM は、プリミティブを持ったままで、コア ConMa のモジュールでは定義を使う。
+* コア ConMa のモジュールは、どのファイルも include しないとき（test/fast4 など）にも定義がないので、test/resolver.sh と Python VM の `__VProc_spawn__` は、最後に bin/to-core を通す。Rust VM と wasm 版の `__VProc_spawn__` は、動かしているモジュールに `Uses` がなければ、子のモジュールもコア ConMa（`include/core` を先に）で作る（wasm 版は、ホストの buildModule に印を渡す）。
+* コア ConMa では条件分岐が ConMa の関数呼び出しになるので、ステップ数とトレースが大きく変わった。test/ の、ステップの番号やトレースを比べるログ（step1、step15、step17、step20、step21、fast2〜4）を、Python VM の出力で作り直した。Rust VM の F3、F4 の速い道は、プリミティブを使う拡張 ConMa のモジュールでだけ働く。
+* test/step34 と step35 は、どちらも拡張 ConMa で作り、組み込み（test.se）と `core/control.se` の定義（conma.se）を比べるようにした。
 * 定義とプリミティブの違いが 1 つ見つかった：プリミティブは余分な被演算子を捨てるが、定義では、返したものに余分な被演算子が適用される。consh/include/sjs_gen.se の `Gen_plain_decls` が `__if__` に節を 2 つ渡していて（`__if_then_else__` の書き誤り）、ConSh の参照版の SJS が止まった（consh/test の step21）。`__if_then_else__` に直した（then でない側も、名前を集める）。ConSh と標準ライブラリの構文木を調べて、余分な被演算子を渡す所は、ほかになかった。
-* 簡潔版のモジュールは、Rust VM で遅くなる（richards2 で、control.se を include したときの測定では 1.7〜1.9 倍）。
-* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/ref/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
+* コア ConMa のモジュールは、Rust VM で遅くなる（richards2 で、control.se を include したときの測定では 1.7〜1.9 倍）。
+* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/core/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
 * **速さ**：試作（どの版でもプリミティブにしたもの）で、Rust VM の bench/（nbody、fib、loop、richards）と consh/bench は 0.98〜1.01 倍で、変わらなかった。条件分岐は `__if_then_else__` などが Boolean を見て節を選ぶので、Boolean を適用しないからである。Boolean を直接適用する `none __FALSE__ __TRUE__ ,(pending)` を使う richards の版で、ステップが 1,604 万から 1,595 万（0.6%）減った。
 
 ## 5. 変換器
 
-* **入力と出力**：高速版のモジュール（`Uses` 付き）を読み、簡潔版のモジュールを出す。構文解析と名前の解決（resolver）の後のモジュールの段で行う。
+* **入力と出力**：拡張 ConMa のモジュール（`Uses` 付き）を読み、コア ConMa のモジュールを出す。構文解析と名前の解決（resolver）の後のモジュールの段で行う。
 * **置き場所**：フロントエンド（`conma build` と、bin/ の Python 版の道具）の最後の段にする。ConMa で書いた変換器と、Python で書いた変換器の出力が同じになるようにする（今の includer、resolver と同じ）。
-* **代わりの定義**：新しいプリミティブごとに、同じ意味を簡潔版 ConMa で書いた関数を、ライブラリ（たとえば include/fast.se）に置く。変換器は、プリミティブの呼び出しをその関数の呼び出しにし、ライブラリをモジュールに入れる。エラーのメッセージまで同じにする。
-* **位置**：変換で作るコードの SInfo は、もとの高速版のコードの位置にする。エラーの位置が、高速版と簡潔版で同じになるようにするためである。
+* **代わりの定義**：新しいプリミティブごとに、同じ意味をコア ConMa で書いた関数を、ライブラリ（たとえば include/ext.se）に置く。変換器は、プリミティブの呼び出しをその関数の呼び出しにし、ライブラリをモジュールに入れる。エラーのメッセージまで同じにする。
+* **位置**：変換で作るコードの SInfo は、もとの拡張 ConMa のコードの位置にする。エラーの位置が、拡張 ConMa とコア ConMa で同じになるようにするためである。
 
 ## 6. VM と道具の分担
 
-| | 高速版のモジュール | 簡潔版のモジュール |
+| | 拡張 ConMa のモジュール | コア ConMa のモジュール |
 |---|---|---|
 | Python VM | 動かさない（変換してから） | 動かす。トレースの基準 |
-| Rust VM | 動かす | 動かす。`--trace` は、簡潔版のモジュールで使う |
-| 変換版の VM（vm/conma2rust） | 高速版のモジュールから変換する | 今までどおり |
+| Rust VM | 動かす | 動かす。`--trace` は、コア ConMa のモジュールで使う |
+| 変換版の VM（vm/conma2rust） | 拡張 ConMa のモジュールから変換する | 今までどおり |
 | wasm 版 | 動かす | 動かす |
 
-* ConSh は、速い版（consh/include）を高速版 ConMa で書き、参照版（consh/reference）は簡潔版のまま残す。今の B の規則（include は速い版、reference は書き直す前の元）と合う。
-* 変換版の VM は、高速版のモジュールを入力にすれば、構文の情報（条件分岐、戻る構文、レコードのフィールド）を、そのまま速いコードにできる。
+* ConSh は、速い版（consh/include）を拡張 ConMa で書き、参照版（consh/reference）はコア ConMa のまま残す。今の B の規則（include は速い版、reference は書き直す前の元）と合う。
+* 変換版の VM は、拡張 ConMa のモジュールを入力にすれば、構文の情報（条件分岐、戻る構文、レコードのフィールド）を、そのまま速いコードにできる。
 
-**決定（F7、2026-11-12）：高速版に構文ができるまで、変換版の VM は変えない。** 理由は次のとおり。
+**決定（F7、2026-11-12）：拡張 ConMa に構文ができるまで、変換版の VM は変えない。** 理由は次のとおり。
 
-* 高速版の構文がない。F2〜F5 は構文を足さず、VM の動きとして作った。F6 でレコードも作らないと決めた。そのため、高速版のモジュールは簡潔版と同じ形で、変換器に渡す新しい情報がない。
+* 拡張 ConMa の構文がない。F2〜F5 は構文を足さず、VM の動きとして作った。F6 でレコードも作らないと決めた。そのため、拡張 ConMa のモジュールはコア ConMa と同じ形で、変換器に渡す新しい情報がない。
 * F2〜F5 に当たることは、変換版がすでにしている。vm/conma2rust/conma2rust.py は、`__if__`、`__if_then_else__`、`__unless__` の節を中に展開し（F4）、`__Cont_get__` の継続を Rust の変数に置き（F5）、呼び出しをまとめる（`fused_call`、F2）。F8 でも、変換版は F2〜F5 の前後で 0.98〜1.03 倍だった（8.1）。
-* `Uses` の確かめは、F1 で入れてある（conma2rust.py の `FAST_FEATURES`）。
+* `Uses` の確かめは、F1 で入れてある（conma2rust.py の `EXT_FEATURES`）。
 * 変換版の時間は、構文の情報では減らせない所にかかっている。ConSh の `for i in $(seq 1 600000); do n=$i; done` をサンプリングすると、上位は値の破棄（`drop_glue`、`LVNode` の `drop`）、GC（`gc::collect`）、値の複製だった。
 
-高速版に構文を足すときは、F7 で変換版の VM がそれを入力にすることを、その構文と一緒に考える。
+拡張 ConMa に構文を足すときは、F7 で変換版の VM がそれを入力にすることを、その構文と一緒に考える。
 
 ## 7. テスト
 
-* **比べるテスト**：高速版のプログラムを、高速版の VM で動かした結果と、変換器で簡潔版に直して Python VM で動かした結果を比べる。変換版の VM と Rust VM を比べている今のテストと同じ形である。
-* **簡潔版のテスト**：test/ のトレースのテストは、簡潔版のモジュールで今までどおり行う。
-* **ConSh**：consh/test を、高速版の ConSh（Rust VM）と、変換した ConSh（Python VM、Rust VM）で流す。
+* **比べるテスト**：拡張 ConMa のプログラムを、拡張 ConMa の VM で動かした結果と、変換器でコア ConMa に直して Python VM で動かした結果を比べる。変換版の VM と Rust VM を比べている今のテストと同じ形である。
+* **コア ConMa のテスト**：test/ のトレースのテストは、コア ConMa のモジュールで今までどおり行う。
+* **ConSh**：consh/test を、拡張 ConMa の ConSh（Rust VM）と、変換した ConSh（Python VM、Rust VM）で流す。
 * **代わりの定義**：新しいプリミティブごとに、プリミティブと代わりの定義で同じ結果とエラーになることを確かめるテストを置く。
 
 ## 8. 段階
@@ -264,18 +266,18 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
-| F1 | 3.3 と 3.4 を決め、モジュールの `Uses` と、空の変換器（`Uses` を消すだけ）を作る（作った） | 簡潔版の VM が、`Uses` のあるモジュールをエラーにすること |
+| F1 | 3.3 と 3.4 を決め、モジュールの `Uses` と、空の変換器（`Uses` を消すだけ）を作る（作った） | コア ConMa の VM が、`Uses` のあるモジュールをエラーにすること |
 | F2 | 4.1：引数の数がちょうど合う適用を 1 ステップにする（Rust VM、wasm 版）（作った） | consh/test。ConSh のベンチマークのステップ数と時間を、前と比べる |
 | F3 | 4.2：LazyList を評価するプリミティブと、その代わりの定義（評価済みの場合だけを、VM の動きとして作った） | 比べるテスト。LazyList のエラーのメッセージ |
 | F4 | 4.3：条件分岐の構文と、その変換（構文は足さず、VM の動きとして作った） | 同上。ConSh の速い版を書き換えて、時間を比べる |
 | F5 | 4.4：戻る構文と、その変換。CChain を取り出す場合の扱い（戻る構文は作らず、プリミティブと LCont の適用をまとめた） | 同上。reset と shift のテスト（consh/test/step20） |
 | F6 | 4.5：レコードと、その変換（作るかどうかを、4.5 の優先度から決めてから）（作らないと決めた） | 同上 |
-| F7 | 変換版の VM が、高速版のモジュールを入力にする（高速版に構文ができるまで作らないと決めた。6） | 変換版の VM の比べるテスト |
-| F8 | 測る：高速版と簡潔版の ConSh の速さ、モジュールの大きさ。結果を表にする（測った。8.1） | 表にする |
+| F7 | 変換版の VM が、拡張 ConMa のモジュールを入力にする（拡張 ConMa に構文ができるまで作らないと決めた。6） | 変換版の VM の比べるテスト |
+| F8 | 測る：拡張 ConMa とコア ConMa の ConSh の速さ、モジュールの大きさ。結果を表にする（測った。8.1） | 表にする |
 
 ### 8.1. F8 の結果（2026-11-11）
 
-F2〜F5 は、言語を変えず、Rust VM と wasm 版の動きとして作った。そのため、「高速版と簡潔版」の比べ方を、「F2 の前（F1、a540373）の VM と、F5 の後（2379a68）の VM」に、同じモジュールで比べることに置き換えた。ConSh の高速版（consh/include）と参照版（consh/reference）の両方を測った。
+F2〜F5 は、言語を変えず、Rust VM と wasm 版の動きとして作った。そのため、「拡張 ConMa とコア ConMa」の比べ方を、「F2 の前（F1、a540373）の VM と、F5 の後（2379a68）の VM」に、同じモジュールで比べることに置き換えた。ConSh の高速版（consh/include）と参照版（consh/reference）の両方を測った。
 
 user + sys の時間で、Rust VM と変換版は 5 回、wasm 版（Node.js）は 3 回のうち最速である。出力は、どれも前と同じだった。
 
@@ -310,15 +312,15 @@ user + sys の時間で、Rust VM と変換版は 5 回、wasm 版（Node.js）�
 * Rust VM では、ConSh のループが 0.62〜0.82 倍、bench/ が 0.70〜0.84 倍になった。起動（00_start）は変わらない。
 * wasm 版も、同じ Rust のコードなので、0.68〜0.94 倍になった。起動の時間（Node.js と wasm の読み込み）が大きいので、比は Rust VM より小さい。
 * 参照版も、同じだけ速くなった。F2〜F5 は、util.se や control.se の定義の形を見るのではなく（F3 を除く）、プリミティブの適用の形を見るので、書き方を問わない。F3 の util.se の定義は、参照版でも同じ形である。
-* 変換版の VM は変わらない（0.98〜1.03 倍）。変換したコードは、すでに内部で同じことをしている。今の Rust VM の高速版は、変換版の 1.2〜1.9 倍の時間である（F2 の前は 1.4〜2.8 倍。00_start を除く）。
+* 変換版の VM は変わらない（0.98〜1.03 倍）。変換したコードは、すでに内部で同じことをしている。今の Rust VM の拡張 ConMa は、変換版の 1.2〜1.9 倍の時間である（F2 の前は 1.4〜2.8 倍。00_start を除く）。
 * モジュールの大きさは変わらない（言語を変えていないため）。ConSh の高速版は 5,011,489 バイト、参照版は 4,948,125 バイトである。
 * 変換版の bench/ は、測っていない。F2 の前の変換版の VM を別の場所に作ると、モジュールのファイル名（`(F ...)`）が変わって、変換したコードが使われないためである。
 * Rust VM の参照版の 02_for_seq_100000（2.365 s）が、wasm 版の参照版（1.482 s）より遅い。F2〜F5 の前からそうである。原因は VM ではなく、外部コマンドの出力を受けるパイプの違いである。
     * Rust VM では、`seq` の出力（588,895 バイト）が OS のパイプ（64 KB）に収まらない。そのため `seq` は、ループが読み進めるまで書けずに待ち、ほとんど最後まで終わらない。
-    * 参照版の `Subst_settle_os` は、`$( )` のコマンドが終わっていないあいだ、文を実行するたびに値の先頭から `Pipe_cap`（16）個をたどり直す（consh/include/README-ja.md）。この 02 では `Lazy_ahead` が 150 万回呼ばれ、全体で 1 億 1,259 万ステップになる（高速版は 3,317 万ステップ）。
+    * 参照版の `Subst_settle_os` は、`$( )` のコマンドが終わっていないあいだ、文を実行するたびに値の先頭から `Pipe_cap`（16）個をたどり直す（consh/include/README-ja.md）。この 02 では `Lazy_ahead` が 150 万回呼ばれ、全体で 1 億 1,259 万ステップになる（拡張 ConMa は 3,317 万ステップ）。
     * Node.js の wasm 版では、ホストが子プロセスの出力をすぐに読み、VM の仮想的なパイプ（上限がない）に入れる。そのため `seq` はすぐに終わり、たどり直しは起きない。
     * 確かめ方：出力がパイプに収まる `seq 1 10000`（48,894 バイト）では、Rust VM の参照版は 366 万ステップ、0.11 s で、`Lazy_ahead` は 153 回だった。収まらない `seq 1 20000` では 1,453 万ステップ、0.32 s で、14 万回だった。wasm 版は 0.32 s と 0.45 s で、ほぼ 1 次である。
-    * 高速版は、値の先頭に `Pipe_cap` 個がそろったことを記録に覚えるので、どちらの VM でもたどり直さない。VM の側で直すことはない。
+    * 拡張 ConMa は、値の先頭に `Pipe_cap` 個がそろったことを記録に覚えるので、どちらの VM でもたどり直さない。VM の側で直すことはない。
 
 ### 8.2. F8 の後の Rust VM の時間の内訳（2026-11-12）
 
@@ -391,7 +393,7 @@ F5 の後の Rust VM で、次に速くできる所を探すために、時間�
 
 **変数の多い鎖をフレームにした（2026-11-13）**：上の深さは ConSh のもので、bench/ を数えると、nbody だけは平均 7.45 と深かった（19% が深さ 16 より深い。fib 1.42、loop 2.00、richards 2.03、richards_tuned 2.35）。`pair_step` は LCont で 43 個の変数を束縛し、終わりの方では 20〜40 個の節をたどる。`lv_get` でリストを 2 回たどる VM と比べると、たどる時間は nbody の約 14%、richards_tuned と fib では 2〜3% だった。そこで、変数の多い関数だけフレームにした。モジュールを読み込むときに、Function の Body から LCont（Function として書いたもの）をたどった鎖が、Closure を作らず（Operator と OList に関数式がない）、LCont で 8 個以上の変数を束縛するなら、その変数を LVEnv の 1 つの節（`Value::Frame`、値の列）に置く（`module::frame_chain`）。束縛ごとに新しいスロットにし（同じ名前の束縛も別のスロット）、ほかに節を持つものがなければその場で足し、あればコピーに足す（CChain や継続が持つ節の値は変わらない）。各 Body では、フレームの変数をスロットで読み（`CExpr::S`）、外の変数はフレームを 1 つの節と数えた添字で読む。Function 自身の引数は今までどおり。VM が束縛する所では、持っている LVEnv を手放して、節が共有されないようにした（そうしないと、`,()` の LCont の所でコピーになっていた）。`--trace` のとき（トレースは Python VM と同じ）と、変換版のコードがあるモジュールでは使わない。nbody 100000 が 0.885 倍（4.752 s → 4.203 s）、ほかの bench/ と consh/bench（00〜11）は 0.98〜1.02 倍だった（b20f15a の VM と交互に 5 回の最速、Apple M2）。最初は、フレームを使わない束縛も新しい関数（`value::lv_bind`）に通していて、ほかが 1.01〜1.03 倍遅かったので、そこは元のループに戻した。閾値（`CONMA_FRAME_MIN`）を 0 や 1 にすると、loop と consh/bench の一部（02、10、11）が 1.03〜1.04 倍になる。変数が少ない鎖では、1 個の節の代わりに節、`Rc`、`Vec` の中身の 3 つを確保し、読む深さもほとんど変わらないためである。4 では 11 が 1.03 倍、8 と 16 はフレームなしと同じで、nbody はどれも 0.87 倍前後なので、8 にした。
 
-**高速版の最初のプリミティブ（2026-11-12 に計画し、作った）**：ビット演算の 7 つのプリミティブ（`__Number_xor32__` など、JavaScript と同じ 32 ビット）を、機能 `"bitwise32"` として高速版に足す計画を、docs/BITWISE-PLAN-ja.md に書いた。代わりの定義（同じ名前の簡潔版 ConMa の関数。どの VM でも、大域の名前に定義があればプリミティブより先に使われることを確かめた）、bin/concise の変換、フロントエンドが `Uses` を書くことを、ここで初めて作った（段階 W1〜W7）。test/vm.sh は、Python VM で動かすとき、高速版のモジュールを bin/concise で直す。ConMa で書いた変換器（F1 で「フロントエンドが初めて Uses を書く段階で作る」としたもの）は、簡潔版の VM が Python VM だけなので作らないことにした（docs/BITWISE-PLAN-ja.md の 5）。
+**拡張 ConMa の最初のプリミティブ（2026-11-12 に計画し、作った）**：ビット演算の 7 つのプリミティブ（`__Number_xor32__` など、JavaScript と同じ 32 ビット）を、機能 `"bitwise32"` として拡張 ConMa に足す計画を、docs/BITWISE-PLAN-ja.md に書いた。代わりの定義（同じ名前のコア ConMa の関数。どの VM でも、大域の名前に定義があればプリミティブより先に使われることを確かめた）、bin/to-core の変換、フロントエンドが `Uses` を書くことを、ここで初めて作った（段階 W1〜W7）。test/vm.sh は、Python VM で動かすとき、拡張 ConMa のモジュールを bin/to-core で直す。ConMa で書いた変換器（F1 で「フロントエンドが初めて Uses を書く段階で作る」としたもの）は、コア ConMa の VM が Python VM だけなので作らないことにした（docs/BITWISE-PLAN-ja.md の 5）。
 
 ### 8.3. wasm 版に変換版のコードを入れる実験（2026-11-12）
 
@@ -474,5 +476,5 @@ F5 の後の Rust VM で、次に速くできる所を探すために、時間�
 ## 9. 未決の点
 
 * 4.3 の構文の書き方。今の EBNF（docs/EBNF.md）に、どう足すか（F4 では構文を足さなかったので、今は決めなくてよい）。
-* 高速版の機能を、簡潔版の VM がそのまま動かせる場合に、`Uses` を付けるかどうか（4.1 は VM の動きとしたので、付けない）。
-* 代わりの定義と、高速版の VM のプリミティブが食い違ったときに、どちらを正とするか（簡潔版を正とするのが、今の「Python VM が基準」と合う）。
+* 拡張 ConMa の機能を、コア ConMa の VM がそのまま動かせる場合に、`Uses` を付けるかどうか（4.1 は VM の動きとしたので、付けない）。
+* 代わりの定義と、拡張 ConMa の VM のプリミティブが食い違ったときに、どちらを正とするか（コア ConMa を正とするのが、今の「Python VM が基準」と合う）。

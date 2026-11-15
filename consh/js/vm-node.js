@@ -317,9 +317,9 @@ let frontendBytes = null;
 
 // The module of the ConMa source file (relative to cwd), made by the frontend in another VM, as
 // conma build does (the standard library, CONMA_INCLUDE or include/ of the repository, among the
-// include directories, after include/fast, or include/ref for a module of concise ConMa when the
+// include directories, after include/ext, or include/core for a module of core ConMa when the
 // program runs one); the file names in SInfo relative to the directory above the repository.
-function buildModule(wasm, source, cwd, concise) {
+function buildModule(wasm, source, cwd, core) {
   if (frontendBytes === null) frontendBytes = fs.readFileSync(frontendFile);
   const out = [];
   const err = [];
@@ -329,7 +329,7 @@ function buildModule(wasm, source, cwd, concise) {
   for (const [k, v] of Object.entries(process.env)) sub.setenv(k, v);
   sub.inputEnd();
   const include = process.env.CONMA_INCLUDE || path.join(root, "include");
-  const first = path.join(include, concise ? "ref" : "fast");
+  const first = path.join(include, core ? "core" : "ext");
   const dirs = fs.existsSync(first) ? ["--include", first, "--include", include] : ["--include", include];
   let code = sub.start(frontendBytes, ["--main", "conma/vm/frontend.module.se", ...dirs, source]);
   if (code === 0) {
@@ -352,7 +352,7 @@ async function main() {
     jsDone: notify,
     hostFs,
     hostProc: makeHostProc(() => vm),
-    buildModule: (source, cwd, concise) => buildModule(wasm, source, cwd, concise),
+    buildModule: (source, cwd, core) => buildModule(wasm, source, cwd, core),
     // As the native VM: SIGINT ends this process until the VM traps it.
     trapInterrupt: (v) => {
       if (process.listenerCount("SIGINT") > 0) return;

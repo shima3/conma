@@ -1,5 +1,5 @@
-;; fast5 の own：自分で __Number_and32__ を定義したモジュールは、bin/concise で直しても自分の定義を使う（どの VM でも）。
-;; ほかの名前（__Number_xor32__）は、高速版の VM ではプリミティブ、簡潔版の VM では代わりの定義
+;; fast5 の own：自分で __Number_and32__ を定義したモジュールは、bin/to-core で直しても自分の定義を使う（どの VM でも）。
+;; ほかの名前（__Number_xor32__）は、拡張 ConMa の VM ではプリミティブ、コア ConMa の VM では代わりの定義
 (include "util.se")
 
 (define __Number_and32__ ,(a b)

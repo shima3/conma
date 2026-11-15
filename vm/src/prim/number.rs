@@ -155,11 +155,11 @@ pub fn multiply(_m: &mut Machine, vp: &mut VProc) -> PResult {
     binop(vp, "__Number_multiply__", |a, b| a * b)
 }
 
-// ── Bitwise operations: the feature "bitwise32" of fast ConMa (docs/BITWISE-PLAN-ja.md) ──
+// ── Bitwise operations: the feature "bitwise32" of extended ConMa (docs/BITWISE-PLAN-ja.md) ──
 // The 32-bit meaning of JavaScript: the operands are made 32-bit integers with ToInt32 (NaN and
 // infinities 0, toward 0, the remainder by 2^32), the results are signed 32-bit integers
 // (__Number_ushr32__ unsigned), and a shift count is the low 5 bits of the ToUint32 of the right
-// operand. include/ref/bitwise32.se defines the same in concise ConMa.
+// operand. include/core/bitwise32.se defines the same in core ConMa.
 
 /// ToUint32 of JavaScript.
 pub fn to_uint32(x: f64) -> u32 {

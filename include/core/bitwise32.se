@@ -1,7 +1,7 @@
-;; 高速版 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。簡潔版 ConMa のファイルなので include/ref に置く
-;; （2026-11-13 に include/fast から移した。docs/FAST-PLAN-ja.md の 4.6）。
-;; ビット演算の 7 つのプリミティブと同じ名前、同じ意味の関数を、簡潔版 ConMa で書いたもの。高速版の VM（Rust、
-;; wasm、変換版）はプリミティブで動かし、簡潔版の VM（Python）は、bin/concise がこの定義をモジュールに入れて動かす
+;; 拡張 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。コア ConMa のファイルなので include/core に置く
+;; （2026-11-13 に include/ext から移した。docs/FAST-PLAN-ja.md の 4.6）。
+;; ビット演算の 7 つのプリミティブと同じ名前、同じ意味の関数を、コア ConMa で書いたもの。拡張 ConMa の VM（Rust、
+;; wasm、変換版）はプリミティブで動かし、コア ConMa の VM（Python）は、bin/to-core がこの定義をモジュールに入れて動かす
 ;; （大域の名前に定義があれば、プリミティブより先に使われる）。
 ;;
 ;; 意味は JavaScript と同じ 32 ビット：被演算子を ToInt32（整数でない数は 0 の方へ切り捨て、NaN と無限大は 0、

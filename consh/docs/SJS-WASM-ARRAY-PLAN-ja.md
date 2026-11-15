@@ -2,7 +2,7 @@
 
 consh/docs/SJS-WASM-PLAN-ja.md（以下「前の計画」）の続きで、その 9 節（数の配列）を作る計画である。前の計画の段階 1〜5 で、数だけを扱う関数は WebAssembly（以下 wasm）で動くようになったが、配列を使う関数は、今も ConMa 版で動く。nbody（consh/sjs/bench/nbody.safe.js）は、そのために速くならない。2026-11-14 に書いた。
 
-**状態**：案。まだ何も作っていない。2026-11-14 に、8 の決めることをすべて決めた（方式は案 A、プリミティブは高速版 ConMa だけに新しく足す、メモリの命令は手で書いた WAT にも開く、写す大きさの上限は設けない、値を返さない関数と定数の式は先に入れる）。段階 A0〜A5 を作った（2026-11-14。10〜15）。計画した段階はすべて済んだ。その後、写す費用を減らした（16、17）。
+**状態**：案。まだ何も作っていない。2026-11-14 に、8 の決めることをすべて決めた（方式は案 A、プリミティブは拡張 ConMa だけに新しく足す、メモリの命令は手で書いた WAT にも開く、写す大きさの上限は設けない、値を返さない関数と定数の式は先に入れる）。段階 A0〜A5 を作った（2026-11-14。10〜15）。計画した段階はすべて済んだ。その後、写す費用を減らした（16、17）。
 
 ## 1. 目的と、今の様子
 
@@ -36,7 +36,7 @@ VM に、f64 の列を持つ新しい値（数の配列）を足し、SJS の配
 
 * 写す費用がない。ConMa 版も、Dict でなく f64 の列を読むので速くなる。
 * ただし、SJS の配列の 19 か所以上と配列のメソッドを、2 つの表し方の両方に対応させ、数でない値を入れたときに Dict に戻す（V8 の elements kind の移り変わりと同じ）仕組みが要る。nbody の `pairs` のような「配列の配列」は数の配列でないので、別に参照の配列も要る。
-* VM には、新しい値、そのプリミティブ（作る、読む、書く、長さ、延ばす）、GC、共有するメモリの割り当て（VM の Rust のヒープの外）、ネイティブ、変換版、Python の VM での動きが要る。高速版 ConMa の新しい機能になる。
+* VM には、新しい値、そのプリミティブ（作る、読む、書く、長さ、延ばす）、GC、共有するメモリの割り当て（VM の Rust のヒープの外）、ネイティブ、変換版、Python の VM での動きが要る。拡張 ConMa の新しい機能になる。
 * 共有するメモリを、配列を受け取らない wasm のモジュールからも読めないようにする（安全性）必要がある。
 
 案 A のほうがずっと小さく、nbody は案 A で足りる見込みなので、案 A から作ることを勧める。案 B は、案 A で写す費用が問題になるプログラムが出てきたら考える。
@@ -47,11 +47,11 @@ VM に、f64 の列を持つ新しい値（数の配列）を足し、SJS の配
 
 ## 4. 案 A の仕組み
 
-### 4.1. アセンブラとプリミティブ（高速版 ConMa、機能 `"wasm"` を広げる）
+### 4.1. アセンブラとプリミティブ（拡張 ConMa、機能 `"wasm"` を広げる）
 
 * アセンブラ（vm/src/prim/wasm_asm.rs）が受け付ける部分集合に（手で書いた WAT も使える。8 の 3）、モジュール自身のメモリ（`(memory $m? 初めのページ数)`。import はしない）と、`f64.load`、`f64.store`、`memory.size`、`memory.grow`（i32 の添字と `offset=`、`align=`）を足す。メモリは `__memory` の名前で export する（`__fuel` と同じく予約する）。import、テーブル、大域の変数は、今までどおり受け付けない。
 * メモリを持つモジュールの関数は、引数だけでなくメモリにもよるが、`__Wasm_call__` で呼ぶとき、呼ぶ前にメモリを 0 で埋めることにすれば、今までどおり「同じ引数なら同じ結果」になる（ホストが埋める）。
-* **新しいプリミティブ**（高速版 ConMa だけ。簡潔版 ConMa には足さない。8 の 2）`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`：`memory`（Number の LList。f64 の語）をメモリの先頭に書いてから呼び、`"ok"` なら、終わった後のメモリの同じ長さの語を LList で返す。メモリが足りなければ、ホストが `memory.grow` で広げる。ネイティブの VM は、`__Wasm_call__` と同じく onError に進む。Python の VM は、bin/concise が入れる include/ref/wasm.se の代わりの定義（`__Wasm_call_memory__` も足す）で onError に進む。
+* **新しいプリミティブ**（拡張 ConMa だけ。コア ConMa には足さない。8 の 2）`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`：`memory`（Number の LList。f64 の語）をメモリの先頭に書いてから呼び、`"ok"` なら、終わった後のメモリの同じ長さの語を LList で返す。メモリが足りなければ、ホストが `memory.grow` で広げる。ネイティブの VM は、`__Wasm_call__` と同じく onError に進む。Python の VM は、bin/to-core が入れる include/core/wasm.se の代わりの定義（`__Wasm_call_memory__` も足す）で onError に進む。
 * docs/PRIMITIVES.md の 16 節を直す。
 
 ### 4.2. 実行時の支え（sjs_rt.se）
@@ -94,7 +94,7 @@ VM に、f64 の列を持つ新しい値（数の配列）を足し、SJS の配
 ## 8. 決めること
 
 1. **方式**：案 A（呼ぶときに写す）にする（2026-11-14 に決めた）。案 B は、案 A で写す費用が問題になるプログラムが出てきたら考える。
-2. **プリミティブ**：`__Wasm_call_memory__` を新しく足す。高速版 ConMa（機能 `"wasm"`）には足すが、簡潔版 ConMa には足さない（2026-11-14 に決めた）。簡潔版の VM（Python）では、`__Wasm_call__` と同じく、include/ref/wasm.se の代わりの定義が onError に進む。`__Wasm_call__` は変えない。
+2. **プリミティブ**：`__Wasm_call_memory__` を新しく足す。拡張 ConMa（機能 `"wasm"`）には足すが、コア ConMa には足さない（2026-11-14 に決めた）。コア ConMa の VM（Python）では、`__Wasm_call__` と同じく、include/core/wasm.se の代わりの定義が onError に進む。`__Wasm_call__` は変えない。
 3. **メモリを手で書いた WAT にも開く**（2026-11-14 に決めた）：`(memory ...)` と読み書きの命令は、アセンブラの部分集合に入れるので、ConMa のプログラムが手で書く WAT でも使える。触れられるのは、そのモジュール自身のメモリと、ホストが写した語だけである（5）。
 4. **写す大きさの上限は設けない**（2026-11-14 に決めた）。段階 A5 で、写す費用を測ってから考え直す。
 5. **値を返さない関数と定数の式は、配列より先に入れる**（2026-11-14 に決めた）：段階 A0 として作る（7）。配列がなくても、数の関数が増える。
@@ -128,7 +128,7 @@ function advance(bodies, pairs, dt, n) {      // bodies：数の配列の配列�
 ## 11. 段階 A1 の結果（2026-11-14。ブランチ alpha）
 
 * **アセンブラ**（vm/src/prim/wasm_asm.rs）：`(memory $m? 最小 最大?)`（ページの数。import と export は書けない）を 1 つまで受け付け、`__memory` の名前で export する（予約した名前）。命令に `f64.load` と `f64.store`（`offset=` と、1、2、4、8 バイトの `align=`。既定は 8）、`memory.size`、`memory.grow` を足した。手で書いた WAT でも使える（8 の 3）。
-* **プリミティブ**：`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`（vm/src/prim/wasm.rs。`__Wasm_call__` と、引数を確かめて呼ぶ所を共有する）。高速版 ConMa だけで、include/ref/wasm.se の代わりの定義は onError に進む（8 の 2）。フロントエンドが `(Uses "wasm")` を書く名前にも足した。
+* **プリミティブ**：`__Wasm_call_memory__ onError module name args memory fuel ,(status value memory)`（vm/src/prim/wasm.rs。`__Wasm_call__` と、引数を確かめて呼ぶ所を共有する）。拡張 ConMa だけで、include/core/wasm.se の代わりの定義は onError に進む（8 の 2）。フロントエンドが `(Uses "wasm")` を書く名前にも足した。
 * **ホスト**（consh/js/conma.js の `host_wasm_call`）：メモリのあるモジュールなら、呼ぶたびに 0 で埋めてから語を書き（入らなければ広げる）、`"ok"` なら同じ数の語を VM に写し戻す。`__Wasm_call__` でも 0 で埋める。import の形を、`host_wasm_call(id, 名前, 引数, 語, 語の数, 燃料, 結果)` に変えた。
 * **計画と違うこと**：メモリの大きさは、呼び出しが広げると、次の呼び出しにも残る（0 で埋めるのは中身だけ）。`memory.size` を使う関数は、それより前の呼び出しによって結果が変わりうる。SJS の変換器は `memory.size` を出さないので、数の関数には関わらない。docs/PRIMITIVES.md の 16 節に書いた。その後（2026-11-14。REVIEW-ja.md の 2026-11-14（2）の 5）、ホスト（consh/js/conma.js）は、呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ、instance を作り直すようにしたので、大きさも次の呼び出しに残らない（燃料が切れた後のやり直しで、`memory.grow` の結果が変わらない）。
 * **確かめたこと**：test/fast7 の case8（読む、書く、0 で埋めること、`-0`、`offset=`、語のない呼び出し、1 ページより多い 1 万語、`memory.size` と `memory.grow`、メモリの外の trap、誤った引数、メモリのないモジュール、受け付けない形 7 つ）が、wasm 版の VM、ネイティブの VM、Python の VM で通る。case5 のログは、`(module (memory 1))` を受け付け、メモリのない `f64.load` をホストが拒むように変わった。
@@ -200,10 +200,10 @@ function advance(bodies, pairs, dt, n) {      // bodies：数の配列の配列�
 
 16 の後も、大きな配列を読むだけの関数を何度も呼ぶと ConMa 版より遅かったので、要素ごとの処理を VM のプリミティブにした（ユーザーと決めた）。
 
-* **プリミティブ**（高速版 ConMa の機能 `"wasm"`。vm/src/prim/collections.rs、docs/PRIMITIVES.md の 16 節）：
+* **プリミティブ**（拡張 ConMa の機能 `"wasm"`。vm/src/prim/collections.rs、docs/PRIMITIVES.md の 16 節）：
     * `__Dict_numbers__ onError dict n words ,(words)`：Dict の `"0"`〜`"n-1"` の値（どれも数）を、順に `words` の先に積む。キーがないか、値が数でなければ onError。
     * `__Dict_put_numbers__ dict n words ,(rest)`：`words` の先頭の n 個の数を `"0"`〜`"n-1"` に入れ、残りを返す。
-    * WebAssembly を使わない Dict の操作なので、include/ref/wasm.se の代わりの定義は ConMa で同じことをする（Python の VM でも同じ結果。`"control"` と `"boolean"` を使うので、bin/concise は `"wasm"` の後にそれも入れる）。フロントエンドは、この 2 つでも `(Uses "wasm")` を書く。
+    * WebAssembly を使わない Dict の操作なので、include/core/wasm.se の代わりの定義は ConMa で同じことをする（Python の VM でも同じ結果。`"control"` と `"boolean"` を使うので、bin/to-core は `"wasm"` の後にそれも入れる）。フロントエンドは、この 2 つでも `(Uses "wasm")` を書く。
 * **実行時の支え**：`Sjs_wasm_pack_array` は数の配列を `__Dict_numbers__` で積み、`Sjs_wasm_unpack` は `__Dict_put_numbers__` で書き戻す（`Sjs_wasm_numbers_onto` と `Sjs_wasm_put` はなくした）。
 * **測った結果**（16 と同じプログラム。3 回の最良）：
 

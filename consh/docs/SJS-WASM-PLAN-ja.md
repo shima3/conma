@@ -100,11 +100,11 @@ ConMa 版は、11 で JavaScript に合わせた後のものとする。
 * 確かめたら、`__Wasm_call__` で wasm 版を呼ぶ（燃料とやり直しは 5.5）。
 * VM が `--trace` か `CONMA_PROFILE` で動いているときは、`__Wasm_compile__` が onError を呼ぶので、wasm 版を使わない（トレースとステップ数を ConMa 版のままにする）。環境変数 `CONMA_NO_WASM=1` でも同じにする（`CONMA_NO_FOLD` と同じ形。テストで 2 つの版を比べるため）。
 
-### 5.3. プリミティブ（高速版 ConMa、機能 `"wasm"`）
+### 5.3. プリミティブ（拡張 ConMa、機能 `"wasm"`）
 
-docs/BITWISE-PLAN-ja.md と同じく、高速版 ConMa（docs/FAST-PLAN-ja.md）のプリミティブとして足す。簡潔版 ConMa の言語は変えない。
+docs/BITWISE-PLAN-ja.md と同じく、拡張 ConMa（docs/FAST-PLAN-ja.md）のプリミティブとして足す。コア ConMa の言語は変えない。
 
-**ConMa のプログラムから使える**（2026-11-14 に決めた）：SJS の中だけのものにせず、docs/PRIMITIVES.md の高速版 ConMa のプリミティブ（16 節）として書き、どの ConMa のプログラムからも使えるようにする。ConMa のプログラムに wasm の関数を書ける（インラインアセンブラの代わり）。SJS には、これを呼ぶ書き方を足さない。
+**ConMa のプログラムから使える**（2026-11-14 に決めた）：SJS の中だけのものにせず、docs/PRIMITIVES.md の拡張 ConMa のプリミティブ（16 節）として書き、どの ConMa のプログラムからも使えるようにする。ConMa のプログラムに wasm の関数を書ける（インラインアセンブラの代わり）。SJS には、これを呼ぶ書き方を足さない。
 
 * **受け付けるモジュール**（5.3.1）：import、メモリ、テーブル、大域の変数、start 関数を持たないモジュールだけを受け付ける。引数と戻り値は f64 だけで、戻り値はちょうど 1 つ。そのため、export された関数は、どれも、引数だけで戻り値が決まる関数（状態がない）になる。手で書いた WAT でも、2 の「やり直せる」が成り立ち、5.5 の燃料とやり直しを使える。
 * **燃料はアセンブラが入れる**：関数の入口と、各 `loop` の始めで燃料を減らすコードを（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 F3 から、入口で減らすのは呼び出しのグラフの輪に入る関数だけ）、アセンブラが入れる（5.5）。手で書いた WAT にも入るので、終わらないループを書いても VM は止まらない。燃料の大域の変数は、アセンブラが足すもので、WAT には書けない。
@@ -115,7 +115,7 @@ docs/BITWISE-PLAN-ja.md と同じく、高速版 ConMa（docs/FAST-PLAN-ja.md）
 * **VM ごとの動き**
     * wasm 版の VM（consh/js/wasm）：5.4 のホストに渡す。
     * ネイティブの VM と変換版の VM：`__Wasm_compile__` は、アセンブラで WAT を確かめたあと、`"__Wasm_compile__: WebAssembly is not available"` で onError を呼ぶ（`__JS_call__` と同じ形）。
-    * Python の VM：bin/concise で簡潔版に直したモジュールを動かす。include/ref/wasm.se に、2 つを同じ名前の関数（どちらも onError を呼ぶ）として書く。
+    * Python の VM：bin/to-core でコア ConMa に直したモジュールを動かす。include/core/wasm.se に、2 つを同じ名前の関数（どちらも onError を呼ぶ）として書く。
 * `(Uses "wasm")`：フロントエンドが、2 つを定義のない大域の名前として使うモジュールに付ける（FAST-PLAN-ja.md の 3.4）。
 
 #### 5.3.1. アセンブラ
@@ -180,7 +180,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
-| 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/ref/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
+| 1（作った、2026-11-14） | `__Wasm_compile__`、`__Wasm_call__`、`Value::Wasm`、アセンブラ（燃料を入れることも）、ホストの import（Node.js）。ネイティブの VM、変換版の VM、include/core/wasm.se、`(Uses "wasm")`。docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md | 手で書いた WAT のモジュールを、ConMa から作って呼ぶテスト（Node.js の wasm 版の VM と、onError になるネイティブの VM）。受け付けない形（import、memory、global、f64 でない引数など）が onError になること。終わらないループが `"fuel"` を返すこと |
 | 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.safe.js と fib.safe.js が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3（作った、2026-11-14。14） | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4（作った、2026-11-14。15） | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
@@ -191,7 +191,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 nbody のような計算は、配列を使うので、3 の数の関数では速くならない。配列も対象にする（2026-11-14 に決めた）。段階 5 の後に、別の計画として書いた（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md。2026-11-14）。配列を入れるには、次のどれかが要る。どれを採るかは、段階 5 で測ってから決める。
 
 * **呼ぶときに写す**：配列（`"items"` の Dict）を wasm の線形メモリに写して呼び、戻ったら書き戻す。nbody の `advance` は、`bodies` と `pairs` の中に同じ配列が何度も出てくる（`pairs` の要素は `bodies` の要素そのもの）ので、同じ配列は 1 回だけ写し、別名を保たなければならない。呼ぶたびに全部を写すので、小さな関数では損になる。
-* **数の配列という表し方を足す**：SJS の実行時の支えに、要素がすべて数の配列を、VM の中の f64 の列（新しい値）で持つ表し方を足し、wasm と共有する。ConMa 版も、それを読み書きできなければならない。中身を、数の配列だけを置く `WebAssembly.Memory` に置けば、wasm のモジュールに渡しても VM のほかのメモリには触れない（6 の安全性を保てる）。今の ConMa には配列がない（SJS の配列は Dict）ので、高速版 ConMa に新しい値を足すことになる。
+* **数の配列という表し方を足す**：SJS の実行時の支えに、要素がすべて数の配列を、VM の中の f64 の列（新しい値）で持つ表し方を足し、wasm と共有する。ConMa 版も、それを読み書きできなければならない。中身を、数の配列だけを置く `WebAssembly.Memory` に置けば、wasm のモジュールに渡しても VM のほかのメモリには触れない（6 の安全性を保てる）。今の ConMa には配列がない（SJS の配列は Dict）ので、拡張 ConMa に新しい値を足すことになる。
 * **配列のメソッドを使わないループだけ**：`for` の中で添字で読み書きするだけの配列に限る、など、範囲を狭める。
 
 ## 10. 決めること
@@ -200,7 +200,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 1. **燃料とやり直し**（5.5）：この方式にする。「wasm 版は区切らない（終わるまで VM が止まる）」方式は、終わらないループで Ctrl-C が効かなくなるので採らない。
 2. **値の形**（5.3）：`Value::Wasm` を足す。ホストのモジュールの番号を Number で持つ方式は、いつ消すかが決まらない（JS の値と同じ問題。SAFEJS-PLAN-ja.md の 7）ので採らない。
-3. **プリミティブを誰に見せるか**（5.3）：`__Wasm_compile__` と `__Wasm_call__` を、docs/PRIMITIVES.md に書く高速版 ConMa のプリミティブにし、ConMa のプログラムから使えるようにする（インラインアセンブラの代わり）。受け付ける WAT は 5.3.1 の部分集合だけにし、燃料はアセンブラが入れる。
+3. **プリミティブを誰に見せるか**（5.3）：`__Wasm_compile__` と `__Wasm_call__` を、docs/PRIMITIVES.md に書く拡張 ConMa のプリミティブにし、ConMa のプログラムから使えるようにする（インラインアセンブラの代わり）。受け付ける WAT は 5.3.1 の部分集合だけにし、燃料はアセンブラが入れる。
 4. **配列**（9）：対象にする。段階 5 の後に始める（2026-11-14 に決めた）。
 5. **wasm 版を選ぶ時期**（5.2）：どのモードでも、呼ぶときに選ぶ（2026-11-14 に決めた）。
 6. **`-0`**（11）：SJS を JavaScript に合わせる（2026-11-14 に決めた）。
@@ -220,13 +220,13 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 **プリミティブ**：`__Number_is_negative_zero__ Number ,(Boolean)`（`-0` なら真。NaN を含め、ほかは偽）。結果がどの VM でもちょうど決まり、NaN の符号のビット（VM ごとに違いうる）に触れない形にした。
 
-**簡潔版 ConMa にも足す**（2026-11-14 に決めた）：簡潔版 ConMa では、このプリミティブの代わりの定義を書けない（ConMa のプログラムからは `-0` が見えないので）。ビット演算（docs/BITWISE-PLAN-ja.md）は、高速版のプリミティブに、簡潔版の代わりの定義（include/ref/bitwise32.se）を付けたが、同じ形にはできない。そこで、高速版だけでなく、簡潔版 ConMa のプリミティブ（docs/PRIMITIVES.md、Python の VM を含むすべての VM）として足した。
+**コア ConMa にも足す**（2026-11-14 に決めた）：コア ConMa では、このプリミティブの代わりの定義を書けない（ConMa のプログラムからは `-0` が見えないので）。ビット演算（docs/BITWISE-PLAN-ja.md）は、拡張 ConMa のプリミティブに、コア ConMa の代わりの定義（include/core/bitwise32.se）を付けたが、同じ形にはできない。そこで、拡張 ConMa だけでなく、コア ConMa のプリミティブ（docs/PRIMITIVES.md、Python の VM を含むすべての VM）として足した。
 
 **作った**（2026-11-14）：docs/ROADMAP.md の Step 42（プリミティブと test/step42）と、consh/sjs/README-ja.md の経緯の「-0」（SJS の変更と consh/sjs/test/step8 の case10）。
 
 ## 12. 段階 1 の結果（2026-11-14）
 
-* **作ったもの**：vm/src/prim/wasm_asm.rs（アセンブラ。燃料を入れる）、vm/src/prim/wasm.rs（2 つのプリミティブ）、`Value::Wasm`（vm/src/value.rs）、`Machine::end_slice`（燃料が切れたら時間の区切りを終える）、consh/js/conma.js のホストの import（Node.js、jsc、ブラウザで共通）、include/ref/wasm.se、bin/resolver と include/resolver.se の `(Uses "wasm")`、bin/concise。文書は docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md の Step 43。
+* **作ったもの**：vm/src/prim/wasm_asm.rs（アセンブラ。燃料を入れる）、vm/src/prim/wasm.rs（2 つのプリミティブ）、`Value::Wasm`（vm/src/value.rs）、`Machine::end_slice`（燃料が切れたら時間の区切りを終える）、consh/js/conma.js のホストの import（Node.js、jsc、ブラウザで共通）、include/core/wasm.se、bin/resolver と include/resolver.se の `(Uses "wasm")`、bin/to-core。文書は docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md の Step 43。
 * **計画と変えたこと**：
     * `"trap"` の値は null でなく、ホストのメッセージ（String）にした（どこで止まったかが分かるように）。
     * 型の確かめは、アセンブラでなくホスト（`WebAssembly.Module`）がする。メッセージはホストのもの（Node.js と jsc で違う）。ネイティブの VM は型を確かめず、組み立てた後に「使えない」で onError に進む。

@@ -1,5 +1,5 @@
 //! __Wasm_compile__ and __Wasm_call__, the primitives of the feature "wasm"
-//! of fast ConMa (consh/docs/SJS-WASM-PLAN-ja.md 5.3, docs/PRIMITIVES.md 16): a
+//! of extended ConMa (consh/docs/SJS-WASM-PLAN-ja.md 5.3, docs/PRIMITIVES.md 16): a
 //! module of functions on numbers, written in a subset of the WebAssembly
 //! text format (wasm_asm.rs), run by the host of the VM for wasm32 (consh/js).
 //! The native VM assembles the text and then goes to onError, as it has no

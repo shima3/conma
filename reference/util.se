@@ -53,8 +53,8 @@
   __OS_print_error__ msg ,()
   __OS_exit_error__)
 
-;; __Cont_get__ は高速版の組み込み（PRIMITIVES.md）。簡潔版の定義は include/ref/control.se にあり、
-;; 高速版のプログラムが ref/control.se を include すると、組み込みの代わりにそれが使われる
+;; __Cont_get__ は拡張 ConMa の組み込み（PRIMITIVES.md）。コア ConMa の定義は include/core/control.se にあり、
+;; 拡張 ConMa のプログラムが core/control.se を include すると、組み込みの代わりにそれが使われる
 
 ;; プログラムの入口。__VProc_spawn__ の entryPoint に "__main__" を指定して起動する。
 ;; in は標準入力の行の LazyList。PDict には、その読み出し位置の Ref を置く。

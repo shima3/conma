@@ -1,7 +1,7 @@
-;; 高速版 ConMa の機能 "wasm"（consh/docs/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
+;; 拡張 ConMa の機能 "wasm"（consh/docs/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
 ;; __Wasm_compile__ onError wat ,(module) と __Wasm_call__ onError module name args fuel ,(status value)。
 ;; wasm 版の VM（consh/js。Node.js）はホストの WebAssembly で動かす。ネイティブの VM は WAT を組み立ててから onError に
-;; 進み（組み立ての誤りはそのメッセージ）、Python の VM は代わりの定義（include/ref/wasm.se）で onError に進む。
+;; 進み（組み立ての誤りはそのメッセージ）、Python の VM は代わりの定義（include/core/wasm.se）で onError に進む。
 ;; ConMa の文字列は改行を含められないので、WAT は 1 行ずつの文字列を Cat でつなぐ
 (include "util.se")
 
@@ -363,7 +363,7 @@
     try_fit "no max, 8193 words" w more fuel))
 
 ;; case12：__Dict_numbers__ と __Dict_put_numbers__（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
-;; どの VM でも同じ。Python の VM は include/ref/wasm.se の代わりの定義）
+;; どの VM でも同じ。Python の VM は include/core/wasm.se の代わりの定義）
 (define case12 ,()
   __Dict_new__ ,(d)
   num "1" ,(n1) num "2.5" ,(n25) num "-0" ,(nz) num "3" ,(n3) num "0" ,(n0) num "2" ,(n2) num "4" ,(n4)

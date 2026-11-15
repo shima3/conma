@@ -156,30 +156,30 @@ pub fn include_dir() -> PathBuf {
 }
 
 thread_local! {
-    /// True when the program runs a module of concise ConMa (without (Uses ...)):
-    /// the modules __VProc_spawn__ makes are then of concise ConMa too, as the
+    /// True when the program runs a module of core ConMa (without (Uses ...)):
+    /// the modules __VProc_spawn__ makes are then of core ConMa too, as the
     /// Python VM makes them, so that the steps and traces are the same.
-    static CONCISE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static CORE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Make the modules of __VProc_spawn__ of concise ConMa (main.rs, for a module
+/// Make the modules of __VProc_spawn__ of core ConMa (main.rs, for a module
 /// without (Uses ...)).
-pub fn set_concise(concise: bool) {
-    CONCISE.with(|c| c.set(concise));
+pub fn set_core(core: bool) {
+    CORE.with(|c| c.set(core));
 }
 
-/// True if the modules of __VProc_spawn__ are of concise ConMa (set_concise).
+/// True if the modules of __VProc_spawn__ are of core ConMa (set_core).
 #[allow(dead_code)]
-pub fn is_concise() -> bool {
-    CONCISE.with(|c| c.get())
+pub fn is_core() -> bool {
+    CORE.with(|c| c.get())
 }
 
-/// The include directories of the standard library: for fast ConMa include/fast
-/// (if it is there), then include/; for concise ConMa (set_concise) include/ref,
+/// The include directories of the standard library: for extended ConMa include/ext
+/// (if it is there), then include/; for core ConMa (set_core) include/core,
 /// then include/ (docs/FAST-PLAN-ja.md 4.6).
 pub fn include_args() -> Vec<String> {
     let inc = include_dir();
-    let first = inc.join(if CONCISE.with(|c| c.get()) { "ref" } else { "fast" });
+    let first = inc.join(if CORE.with(|c| c.get()) { "core" } else { "ext" });
     let mut a = Vec::new();
     if first.is_dir() {
         a.push("--include".to_string());

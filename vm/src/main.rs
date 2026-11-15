@@ -53,7 +53,7 @@ fn usage_error(msg: &str) -> ! {
 const FRONTEND: &str = include_str!("../frontend.module.se");
 
 /// conma build: run the embedded frontend with the options and the source,
-/// the standard library last among the include directories (include/fast, then include/).
+/// the standard library last among the include directories (include/ext, then include/).
 fn build(args: Vec<String>) -> i32 {
     let mut a = args;
     let source = match a.pop() {
@@ -192,8 +192,8 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
         }
     };
     let prim_booleans = module::uses_boolean(&module_sexp);
-    // a module of concise ConMa: __VProc_spawn__ makes modules of concise ConMa too
-    prim::vprocs::set_concise(module::fast_features(&module_sexp).is_empty());
+    // a module of core ConMa: __VProc_spawn__ makes modules of core ConMa too
+    prim::vprocs::set_core(module::ext_features(&module_sexp).is_empty());
     let gvenv = match module::load_module_transpiled(&module_sexp, lazy, hash) {
         Ok(g) => g,
         Err(e) => {

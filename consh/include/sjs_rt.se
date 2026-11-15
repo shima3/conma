@@ -2516,7 +2516,7 @@
   __Number_multiply__ x x ,(x)
   Sjs_pow_loop x half acc)
 
-;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：高速版（consh/include）は高速版 ConMa のプリミティブ（"bitwise32"）を、
+;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：高速版（consh/include）は拡張 ConMa のプリミティブ（"bitwise32"）を、
 ;; 参照版（consh/reference）は算術で 1 ビットずつ求める（docs/BITWISE-PLAN-ja.md の W6）
 
 ;; ── 段階 B4：分割代入、スプレッド、switch ──
@@ -3854,7 +3854,7 @@
       __Ref_get__ count ,(addr0)
       __Ref_get__ words ,(ws)
       __LList_cons__ len ws ,(ws)
-      ;; __Dict_numbers__（高速版 ConMa の機能 "wasm" のプリミティブ）が、"0"〜 の値を積む（要素がないか、数でなければ onError）
+      ;; __Dict_numbers__（拡張 ConMa の機能 "wasm" のプリミティブ）が、"0"〜 の値を積む（要素がないか、数でなければ onError）
       __Dict_numbers__ (,(msg) return __FALSE__ __NULL__) items len ws ,(ws)
       __Ref_set__ words ws ,()
       __NULL__ addr0)

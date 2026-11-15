@@ -52,19 +52,19 @@
 | richards を手で調整して書き直す（`bench/richards/richards_tuned.se`。定数を実行ごとに 1 回だけ引いて Closure の変数に持つ、スケジューラがフラグを 1 回ずつ読む、変わるフラグだけを書くなど） | 2026-11-13 | richards 2 が 20,110,425 → 15,199,166 ステップ（0.76）。richards 20 が Rust VM で 5.17 s → 3.93 s（0.76）、変換版で 0.590 s → 0.476 s（0.81）。Apple M2 | 別のファイルとして入れた（richards.se は Python の写しのまま） | bench/README.md「A tuned richards」 |
 | SJS の変換器と実行時の支えの改良（型の分かる所の確認を省く、配列の添字、Ref のない `const`、数のリテラルとの比較、行の記録を減らす） | 2026-11-11〜12 | 段階 B7 と比べて、loop 100000 が 1.28 s → 0.166 s、fib 20 が 0.50 s → 0.123 s、nbody 2000 が 9.94 s → 1.098 s | 入れた | consh/sjs/README-ja.md「速さ」「経緯」 |
 | SJS の配列を使う数の関数も WebAssembly にする（呼ぶたびに配列を wasm のメモリに写し、書き戻す。配列の計画の段階 A0〜A4） | 2026-11-14 | wasm 版の VM で、nbody 20000 が 14.563 s → 0.282 s（Rust 版の VM の SJS は 10.642 s、手で書いた ConMa は 0.863 s）。大きな配列（10 万要素）を ConMa の側から 10 回渡すと、写す費用で 8.178 s → 16.949 s と遅くなる | 入れた | consh/docs/SJS-WASM-ARRAY-PLAN-ja.md 15 |
-| SJS の数だけを扱う関数を WebAssembly にする（高速版 ConMa の `"wasm"`、wasm 版の VM のホストで動かす。段階 1〜4） | 2026-11-14 | wasm 版の VM で、loop 10000000 が 22.14 s → 0.172 s（起動を含む。Rust 版の VM の SJS は 15.77 s、手で書いた ConMa は 2.738 s）、fib 27 が 4.729 s → 0.149 s。Apple M1。配列を使う nbody は変わらない | 入れた | consh/docs/SJS-WASM-PLAN-ja.md 16、consh/sjs/README-ja.md「速さ」 |
+| SJS の数だけを扱う関数を WebAssembly にする（拡張 ConMa の `"wasm"`、wasm 版の VM のホストで動かす。段階 1〜4） | 2026-11-14 | wasm 版の VM で、loop 10000000 が 22.14 s → 0.172 s（起動を含む。Rust 版の VM の SJS は 15.77 s、手で書いた ConMa は 2.738 s）、fib 27 が 4.729 s → 0.149 s。Apple M1。配列を使う nbody は変わらない | 入れた | consh/docs/SJS-WASM-PLAN-ja.md 16、consh/sjs/README-ja.md「速さ」 |
 
 ## 4. 言語とプリミティブ
 
 | 手法 | 日付 | 効果 | 採否 | 詳細 |
 |---|---|---|---|---|
 | 平方根のプリミティブ（Step 39） | 2026-11-07 | nbody が ConMa でニュートン法を書かずに済む | 入れた | docs/ROADMAP.md Step 39 |
-| 高速版 ConMa のビット演算のプリミティブ（`"bitwise32"`、W1〜W7） | 2026-11-12 | richards 20 が Rust VM で 7.53 s → 5.24 s（0.70）、変換版で 0.694 s → 0.626 s（0.90）。SJS の `^` が 1 回 4,573 → 68 ステップ | 入れた | docs/BITWISE-PLAN-ja.md |
+| 拡張 ConMa のビット演算のプリミティブ（`"bitwise32"`、W1〜W7） | 2026-11-12 | richards 20 が Rust VM で 7.53 s → 5.24 s（0.70）、変換版で 0.694 s → 0.626 s（0.90）。SJS の `^` が 1 回 4,573 → 68 ステップ | 入れた | docs/BITWISE-PLAN-ja.md |
 | レコード（F6） | 2026-11-12 | Dict のキャッシュの実験から、速さの効果はほとんどない見込み | 作らないと決めた | FAST-PLAN 4.5 |
 | 脱出の継続を作らずに戻る（F5 の案、段階 B8） | 2026-11-12 | `__Cont_get__` は 02 のステップの 3.2%、全部なくしても約 3%。使える関数も 637 個のうち 48 個 | 作らないと決めた | FAST-PLAN 4.4、consh/sjs/README-ja.md |
-| 変換版の VM が高速版のモジュールを入力にする（F7） | 2026-11-12 | 高速版に構文がないので、渡す情報がない | 構文ができるまで作らない | FAST-PLAN 6 |
+| 変換版の VM が拡張 ConMa のモジュールを入力にする（F7） | 2026-11-12 | 拡張 ConMa に構文がないので、渡す情報がない | 構文ができるまで作らない | FAST-PLAN 6 |
 | 部分適用、完全適用、過剰適用の印をソースやモジュールにつける | 2026-11-12 | 数えると、Closure の適用の 99.7〜100% が引数の数のちょうど合う適用で、部分適用は 0 回だった。VM は整数の比較 1 回で見分けている | 作らない | FAST-PLAN 4.1 |
-| 値を自分で確かめる条件分岐の組み込み（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`）。確かめ、Boolean の束縛、条件分岐を 1 ステップにする | 2026-11-13 | `richards_tuned.se` のコピーで、richards 2 が 15,199,166 → 13,542,821（null の 11 か所）、14,995,439（zero の 5 か所）、15,198,686（`__Number_if_greater__` の 1 か所、初期化だけ）、14,407,034（`__Number_if_greater_then_else__` の 5 か所）、12,546,962（`__Number_if_greater__` 以外の 21 か所）ステップ。richards 20 が Rust VM で 0.903、0.987、0.998、0.955、0.840 倍 | Rust VM と wasm 版に入れた。2026-11-14 から高速版の機能 `"control"` の組み込みで、フロントエンドが `(Uses "control")` を書き、Python VM は `include/ref/control.se` の定義で動かす（変換版のコードは VM に任せる。test/fast10） | vm/README.md「Speed」、コミット 1e4c864 |
+| 値を自分で確かめる条件分岐の組み込み（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`）。確かめ、Boolean の束縛、条件分岐を 1 ステップにする | 2026-11-13 | `richards_tuned.se` のコピーで、richards 2 が 15,199,166 → 13,542,821（null の 11 か所）、14,995,439（zero の 5 か所）、15,198,686（`__Number_if_greater__` の 1 か所、初期化だけ）、14,407,034（`__Number_if_greater_then_else__` の 5 か所）、12,546,962（`__Number_if_greater__` 以外の 21 か所）ステップ。richards 20 が Rust VM で 0.903、0.987、0.998、0.955、0.840 倍 | Rust VM と wasm 版に入れた。2026-11-14 から拡張 ConMa の機能 `"control"` の組み込みで、フロントエンドが `(Uses "control")` を書き、Python VM は `include/core/control.se` の定義で動かす（変換版のコードは VM に任せる。test/fast10） | vm/README.md「Speed」、コミット 1e4c864 |
 | ローカル環境を配列のフレームにする | 2026-11-12 | 変数をたどる深さは平均 2〜3 と浅く、読む速さは上がらない。節を作って捨てる手間は、関数ごとのフレームとエスケープ解析なら減らせる見込み（未検討） | 作っていない | vm/README.md「Speed」、FAST-PLAN 8.2 |
 | Closure を作らず、LCont で 8 個以上の変数を束縛する鎖だけ、その変数を LVEnv の 1 つの節（フレーム）に置き、スロットで読む（モジュールを読み込むときに選ぶ。`--trace` と変換版のコードがあるモジュールでは使わない） | 2026-11-13 | nbody（`pair_step` が 43 個、読む深さの平均 7.45）が 0.87〜0.89 倍。ほかの bench/ と consh/bench は 0.98〜1.02 倍。閾値を 0 や 1 にすると loop と consh/bench の一部が 1.03〜1.04 倍、8 と 16 はフレームなしと同じ | 入れた（`CONMA_FRAME_MIN=n`、空で止める） | vm/README.md「Speed」、FAST-PLAN 8.2 |
 

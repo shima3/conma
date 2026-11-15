@@ -781,7 +781,7 @@ pub fn module_files(module: &Sexp) -> String {
     atoms.join(" ")
 }
 
-/// The features of fast ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
+/// The features of extended ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
 /// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs),
 /// "boolean", the primitives __TRUE__ and __FALSE__, and "control", __if_then_else__, __if__,
 /// __unless__, __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__,
@@ -789,18 +789,18 @@ pub fn module_files(module: &Sexp) -> String {
 /// prim/cchain.rs), and "wasm", __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__ (prim/wasm.rs; the native VM
 /// fails as it has no WebAssembly), __Dict_numbers__ and __Dict_put_numbers__ (prim/collections.rs; the native VM
 /// has them and fails as it has no WebAssembly).
-pub const FAST_FEATURES: &[&str] = &["bitwise32", "boolean", "control", "wasm"];
+pub const EXT_FEATURES: &[&str] = &["bitwise32", "boolean", "control", "wasm"];
 
-/// True if the module uses the feature "boolean" of fast ConMa: __TRUE__ and
+/// True if the module uses the feature "boolean" of extended ConMa: __TRUE__ and
 /// __FALSE__ are primitives (prim/control.rs), and so are the Booleans the
 /// primitives return (sched.rs, Machine::use_prim_booleans).
 pub fn uses_boolean(module: &Sexp) -> bool {
-    fast_features(module).iter().any(|f| unquote(f) == "boolean")
+    ext_features(module).iter().any(|f| unquote(f) == "boolean")
 }
 
-/// The features of fast ConMa that a module uses: the items of its (Uses ...)
+/// The features of extended ConMa that a module uses: the items of its (Uses ...)
 /// items, as written.
-pub fn fast_features(module: &Sexp) -> Vec<String> {
+pub fn ext_features(module: &Sexp) -> Vec<String> {
     let mut features = Vec::new();
     if let Some(l) = module.as_list() {
         for item in l.iter().skip(2) {
@@ -812,13 +812,13 @@ pub fn fast_features(module: &Sexp) -> Vec<String> {
     features
 }
 
-/// An error for the first feature of fast ConMa the module uses that this VM
-/// does not run (the message of check_concise of test/vproc_step.py).
+/// An error for the first feature of extended ConMa the module uses that this VM
+/// does not run (the message of check_core of test/vproc_step.py).
 fn check_features(module: &Sexp) -> Result<(), String> {
-    match fast_features(module).into_iter().find(|f| !FAST_FEATURES.contains(&unquote(f))) {
+    match ext_features(module).into_iter().find(|f| !EXT_FEATURES.contains(&unquote(f))) {
         Some(f) => Err(format!(
-            "the module uses a feature of fast ConMa that this VM does not run: {} \
-             (bin/concise translates the module into concise ConMa)",
+            "the module uses a feature of extended ConMa that this VM does not run: {} \
+             (bin/to-core translates the module into core ConMa)",
             f
         )),
         None => Ok(()),
