@@ -1,6 +1,6 @@
 # ConSh の処理時間
 
-ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust 版の VM、変換した VM）の組み合わせごとに、同じスクリプトの処理時間を測る。
+ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust 版の VM、変換した VM、wasm 版の VM）の組み合わせごとに、同じスクリプトの処理時間を測る。
 
 ## スクリプト
 
@@ -27,6 +27,11 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 | `16_func_varlist_50000.sh` | `add $i x > (r)` を 5 万回（`08` の約 17 倍） |
 | `17_subst_func_20000.sh` | `y=$(f $i)` を 2 万回（`09` の 20 倍） |
 | `18_pipe_funcs.sh` | 関数どうしのパイプ `gen \| inc \| cnt` で 5 万要素を渡す |
+| `19_loop.sh` | `(( ))` の SJS の関数 `loop` で、3000 万回数える |
+| `20_fib.sh` | `(( ))` の SJS の関数 `fib` で、素朴な再帰の `fib(35)` |
+| `21_nbody.sh` | `(( ))` の SJS で、木星型惑星の軌道を 30 万ステップ（`consh/examples/nbody.sh` の N を 300000 にしたもの） |
+
+`19`〜`21` は、計算のすべてを `(( ))` の SJS の関数に書いたもので、`bench/loop`、`bench/fib`、`bench/nbody` の Python と `consh/sjs/bench` の SJS と同じ計算を、CPython で約 1 秒かかる大きさで行う（2026-11-16）。Rust 版には `(( ))` がないので、`-v` に `rust` が入っていてスクリプトを指定しないときは、`(( ))` を含むスクリプトを除く（そう標準エラー出力に出す）。
 
 ## 測る
 
@@ -34,14 +39,28 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 consh/bench/run.py                         # Rust 版と、最適化版＋変換した VM
 consh/bench/run.py -v rust,conma:rust,reference:rust
 consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
+consh/bench/run.py -v conma:wasm,conma:transpiled 19_loop.sh 20_fib.sh 21_nbody.sh
 ```
 
-* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）。既定は `rust,conma:transpiled`。
+* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）、`conma:wasm` と `reference:wasm`（wasm 版の VM、`vm/wasm/vm-wasm.sh` で。`vm/wasm/build.sh` で作っておく）。既定は `rust,conma:transpiled`。
 * 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`consh.module.se` と `consh.reference.module.se`。`CONSH_MODULE_DIR` か、なければ `bin/cache-dir` のディレクトリ）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
 
 ## 結果
+
+### 2026-11-16：`(( ))` の SJS（`19`〜`21`）
+
+Apple M1、2026-11-16（alpha の 22d27ac に `19`〜`21` と run.py の wasm 版の VM を足したもの）。user + sys、起動と `(( ))` の翻訳を含む。wasm 版の VM は 3 回の最小、それ以外は 1 回。CPython 3.12.3 は `bench/loop/loop.py 30000000`、`bench/fib/fib.py 35`、`bench/nbody/nbody.py 300000` の 3 回の最小。括弧の中は CPython の時間を分子とした倍率（CPython の何倍速いか。1 より小さいのは遅い）。どの組み合わせも出力は同じで、CPython の出力とも同じだった。
+
+| スクリプト | CPython | 最適化版＋wasm 版の VM | 参照版＋wasm 版の VM | 最適化版＋Rust 版の VM | 最適化版＋変換した VM | 参照版＋Rust 版の VM | 参照版＋変換した VM |
+|---|---|---|---|---|---|---|---|
+| `19_loop.sh` | 1.007 秒 | 0.472 秒（2.13×） | 0.488 秒（2.06×） | 52.0 秒（0.019×） | 34.8 秒（0.029×） | 156.3 秒（0.0064×） | 162.3 秒（0.0062×） |
+| `20_fib.sh` | 0.994 秒 | 0.524 秒（1.90×） | 0.539 秒（1.84×） | 236.5 秒（0.0042×） | 166.7 秒（0.0060×） | 678.2 秒（0.0015×） | 669.6 秒（0.0015×） |
+| `21_nbody.sh` | 1.025 秒 | 1.634 秒（0.63×） | 1.880 秒（0.55×） | 230.6 秒（0.0044×） | 131.9 秒（0.0078×） | 653.3 秒（0.0016×） | 618.2 秒（0.0017×） |
+
+* wasm 版の VM では、`(( ))` の数だけを扱う関数が WebAssembly で動き、Rust 版の VM の約 100〜450 倍速い。それでも ConSh で書くと、`consh/sjs/README-ja.md` の SJS だけの時間（同じ大きさで 0.157、0.199、0.239 秒）より 0.3〜1.4 秒遅い。差のほとんどは、起動（`00` で約 0.14 秒）と、ConSh が `(( ))` を実行のたびに翻訳する時間と思われる（nbody は関数が大きいので長い。分けて測っていない）。
+* Rust 版の VM と変換した VM では、SJS は ConMa のまま動き、最適化版で CPython の約 35〜240 倍、参照版で約 150〜680 倍遅い。変換した VM は、`(( ))` のモジュールを実行のときに作るので、その変換したコードはない。それでも Rust 版の VM より 1.4〜1.7 倍速い理由は調べていない。
 
 ### 2026-11-15
 

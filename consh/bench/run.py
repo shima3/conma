@@ -9,10 +9,13 @@ VERSION is one of
   conma:transpiled      the extended ConMa version on the transpiled VM (vm/target-transpiled/release/conma)
   reference:rust        the reference ConMa version on the Rust VM
   reference:transpiled  the reference ConMa version on the transpiled VM
+  conma:wasm            the extended ConMa version on the wasm VM (vm/wasm/vm-wasm.sh, vm/wasm/build.sh)
+  reference:wasm        the reference ConMa version on the wasm VM
 (by default rust,conma:transpiled). Each script (by default, all the scripts NN_*.sh here) is run N times
 (3 by default) with each version, and the least user + sys time of the process is printed, including its
 start, as a Markdown table with the ratio of each version to the first one; the outputs of the versions
-must be the same.
+must be the same. The scripts that use (( )) (19 to 21), which the Rust version does not have, are left out of the
+default list when rust is among the versions.
 
 The executables are started as bin/consh starts them, without bin/consh: consh-rs run <script>, and
 conma --main <module> run-src <script> <script>. The modules (consh.module.se and consh.reference.module.se
@@ -36,7 +39,9 @@ MODULE_DIR = os.environ.get("CONSH_MODULE_DIR") or subprocess.run(
 VMS = {
     "rust": os.path.join(ROOT, "vm/target/release/conma"),
     "transpiled": os.path.join(ROOT, "vm/target-transpiled/release/conma"),
+    "wasm": os.path.join(ROOT, "vm/wasm/vm-wasm.sh"),
 }
+WASM = os.path.join(ROOT, "vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm")
 MODULES = {
     "conma": os.path.join(MODULE_DIR, "consh.module.se"),
     "reference": os.path.join(MODULE_DIR, "consh.reference.module.se"),
@@ -57,7 +62,9 @@ def command(version):
         return lambda s: [RUST, "run", s]
     impl, _, vm = version.partition(":")
     if impl not in MODULES or vm not in VMS:
-        fail(f"unknown version {version!r} (rust, conma:rust, conma:transpiled, reference:rust, reference:transpiled)")
+        fail(f"unknown version {version!r} (rust, and conma or reference with :rust, :transpiled or :wasm)")
+    if vm == "wasm" and not os.path.exists(WASM):
+        fail(f"{WASM} is not built (vm/wasm/build.sh)")
     if not os.access(VMS[vm], os.X_OK):
         fail(f"{VMS[vm]} is not built")
     return lambda s: [VMS[vm], "--main", MODULES[impl], "run-src", s, s]
@@ -102,7 +109,14 @@ def main():
     commands = [command(v) for v in versions]
     # A script is a path, or the name of a script here
     scripts = [os.path.abspath(s if os.path.exists(s) else os.path.join(HERE, s)) for s in a.scripts]
-    scripts = scripts or sorted(glob.glob(os.path.join(HERE, "[0-9][0-9]_*.sh")))
+    if not scripts:
+        scripts = sorted(glob.glob(os.path.join(HERE, "[0-9][0-9]_*.sh")))
+        if "rust" in versions:
+            arith = [s for s in scripts if "((" in open(s, encoding="utf-8").read()]
+            scripts = [s for s in scripts if s not in arith]
+            if arith:
+                print("run.py: left out, as the Rust version has no (( )): "
+                      + " ".join(os.path.basename(s) for s in arith), file=sys.stderr)
     prepare(versions)
     print("| script | " + " | ".join(versions) + " |")
     print("|---" * (len(versions) + 1) + "|")
