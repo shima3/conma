@@ -23,3 +23,4 @@ ConMa is an intermediate language that provides higher-order functions and conti
 - [Includer](INCLUDER.html)
 - [Resolver](RESOLVER.html)
 - [Vproc Interpreter](VPROC_STEP.html)
+- [Running the tests and their record](TESTS-ja.html) (in Japanese)

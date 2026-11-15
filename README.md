@@ -27,6 +27,8 @@ test/run_all.sh -j 8
 CONMA_VM=rust test/run_all.sh -j 8
 ```
 
+[docs/TESTS-ja.md](docs/TESTS-ja.md) (in Japanese) lists every test suite with what to build first, the known differences, and a record of who ran which tests on which commit; add a line there when you run them, rather than recording the results in a commit message only.
+
 ## Git settings
 
 Several people and sessions commit to the same branches (`alpha`, then `main`), and the history is kept linear. Run these once in each clone; they go to `.git/config`, which is not committed, so pulling does not set them:
