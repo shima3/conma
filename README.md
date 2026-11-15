@@ -17,7 +17,7 @@ Build the Rust VM and run ConSh, the shell written in ConMa, on it (interactive 
 
 ```
 cd vm && cargo build --release && cd ..
-CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh
+CONSH_IMPL=conma consh/bin/consh
 ```
 
 Run the tests with the Python VM (the default) or another VM (`bin/vm`); they pass when nothing but the `== name` line of each test is printed:

@@ -13,13 +13,15 @@ consh/
 │   ├── RUNNING-ja.md            版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差
 │   ├── AST.md                   consh_parse が出力する構文木の形式（英語）
 │   ├── FOR-BASH-USERS.md        Bash を使う人向けの使い方の説明（英語）
-│   ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
-│   ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
-│   ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
-│   ├── SJS-WASM-ARRAY-PLAN-ja.md  その、配列を使う関数の計画
-│   ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
-│   ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
-│   └── REVIEW-ja.md             ConSh のレビュー
+│   └── dev/                     ConSh の開発者向けの文書
+│       ├── DEVELOPING-ja.md         ConSh を変える人向けの決まり
+│       ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
+│       ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
+│       ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
+│       ├── SJS-WASM-ARRAY-PLAN-ja.md その、配列を使う関数の計画
+│       ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
+│       ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
+│       └── REVIEW-ja.md             ConSh のレビュー
 ├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
@@ -50,9 +52,7 @@ consh/
     └── examples/        examples/ のデモのテスト：ConSh 版と Bash 版を実行し、NAME.log、NAME.bash.log と比べる
 ```
 
-* ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
-* `reference/` と `include/` のファイルには、ルートの `include/` のファイルと名前がぶつからないよう、`consh_` を付ける。
-* 大きくなったら、`consh_lexer.se`、`consh_expand.se`、`consh_builtin.se` などに分ける。
+ConSh を変える人向けの決まり（ファイルの置き場所と名前、最適化版と参照版の両方を直すこと）は、[docs/dev/DEVELOPING-ja.md](docs/dev/DEVELOPING-ja.md) にある。
 
 ## 実行
 
@@ -70,8 +70,6 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 | `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`consh/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（最適化版）で実行する。
-
-機能を足したり変えたりしたときは、`consh/include` のファイルと、`consh/reference` にある同じ名前のファイルの両方を直し、両方でテストする（`CONSH_IMPL=conma` と `CONSH_IMPL=reference`）。速くしただけなら、最適化版のテストだけでよい。
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）と、Tab によるファイル名の補完（`rlwrap -c`）が使える。補完はプロセスのカレントディレクトリからの相対パスなので、Rust 版は `cd` した先をプロセスのカレントディレクトリにもする（ConMa 版は、起動したディレクトリからのまま）。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
