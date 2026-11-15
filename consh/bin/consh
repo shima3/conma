@@ -12,7 +12,8 @@
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
 #   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
-#                 reference）を、高速版の同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。ほかは conma と同じ
+#                 include/ref（簡潔版 ConMa）と reference）を、高速版の同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。
+#                 ほかは conma と同じ
 # --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（高速版）で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
 # Tab でファイル名を補完する（rlwrap -c。Rust 版は cd した先を、rlwrap が見るプロセスのカレントディレクトリにもする）

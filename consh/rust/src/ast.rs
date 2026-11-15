@@ -1,4 +1,4 @@
-//! The syntax tree that `consh_parse --pos` writes (consh/AST.md): one
+//! The syntax tree that `consh_parse --pos` writes (consh/docs/AST.md): one
 //! S-expression per command line. A list whose first element is a symbol is
 //! a node; with --pos, its second element is the location `(line col)`.
 

@@ -2,7 +2,7 @@
 
 ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [PLAN-ja.md](PLAN-ja.md) にある。
 
-**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない。ブラウザ版も段階 B6 から）。変換したモジュールを作れないとき（`frontend.module.se` がないなど）だけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない。ブラウザ版も段階 B6 から）。変換したモジュールを作れないとき（`frontend.module.se` がないなど）だけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/docs/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
 そのため、`js` は、既定では使えない（`js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`js` は `js` と、段階 A の `(( ))` を使えるようにし、`sjs` は段階 A の `(( ))` だけを使えるようにする。
 
@@ -63,7 +63,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
 
-  `config.json` が `js` も `sjs` も使えるようにしていなければ、ページは `eval` と `Function` を使わないので、ブラウザに止めさせる（consh/SAFEJS-PLAN-ja.md の 5）：serve.py は、どの応答にも Content-Security-Policy `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け（Worker にも効く）、ページ（web/consh.js）も、`config.json` を読んだ後、ConSh を動かす前に、同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。WebAssembly は動く（`'wasm-unsafe-eval'`）。そのため、ページの中のスクリプトはファイル（web/boot.js）にした。`config.json` を変えたら、ページを読み直す（serve.py は、ページを 304 でなく、いつも 200 で送るので、新しい設定のポリシーになる）。ほかのサーバーで公開するときは、`js` を使わないなら、このヘッダーを付けるとよい。
+  `config.json` が `js` も `sjs` も使えるようにしていなければ、ページは `eval` と `Function` を使わないので、ブラウザに止めさせる（consh/docs/SAFEJS-PLAN-ja.md の 5）：serve.py は、どの応答にも Content-Security-Policy `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け（Worker にも効く）、ページ（web/consh.js）も、`config.json` を読んだ後、ConSh を動かす前に、同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。WebAssembly は動く（`'wasm-unsafe-eval'`）。そのため、ページの中のスクリプトはファイル（web/boot.js）にした。`config.json` を変えたら、ページを読み直す（serve.py は、ページを 304 でなく、いつも 200 で送るので、新しい設定のポリシーになる）。ほかのサーバーで公開するときは、`js` を使わないなら、このヘッダーを付けるとよい。
 * JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は、ネイティブの VM の ConMa 版では段階 B で動き、Rust 版の ConSh にはない。
 * この設定で守れるのは、主にブラウザ版である。Node.js 版の ConSh は、もともと外部コマンドを起動でき、ファイルも読み書きできるので、`js` を止めても、スクリプトにできることはほとんど減らない。Node.js 版では、信用できないスクリプトを ConSh で動かさないこと。
 
@@ -81,7 +81,7 @@ VM は、ネイティブ版と同じく、実際のファイルを読み書き�
 
 ## (( )) と $(( ))：SJS
 
-算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
+算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/docs/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
 
 ```
 (( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）

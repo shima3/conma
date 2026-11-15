@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
-# 段階 21：SJS の (( )) と $(( )) を、ConMa に変換して動かす（consh/SAFEJS-PLAN-ja.md の段階 B4。consh/sjs/README-ja.md）。
+# 段階 21：SJS の (( )) と $(( )) を、ConMa に変換して動かす（consh/docs/SAFEJS-PLAN-ja.md の段階 B4。consh/sjs/README-ja.md）。
 # JavaScript のない版（ネイティブの VM）でも動く。Rust 版の ConSh には (( )) がないので、確かめない
 [ "$CONSH_IMPL" = rust ] && exit 0
 # case1：値、SJS変数とその写し、$名前、関数、メソッド、console.log とリダイレクト、SJS関数をコマンドとして呼ぶ
@@ -20,10 +20,10 @@ run case6 case6.sh < /dev/null
 run case7 < case7.input
 # case8：エラーの位置（段階 B9）。(( )) の中の失敗した所を、スクリプトの行と桁で出す
 run case8 case8.sh < /dev/null
-# case9：数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 4）。wasm 版の VM では WebAssembly で、ほかの VM では ConMa 版で動き、
+# case9：数の関数の wasm 版（consh/docs/SJS-WASM-PLAN-ja.md の段階 4）。wasm 版の VM では WebAssembly で、ほかの VM では ConMa 版で動き、
 # 同じログになる。後の (( )) が名前や Math のメンバーを書き換えると、ConMa 版で動く
 run case9 case9.sh < /dev/null
-# case10：配列を使う数の関数（consh/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）。wasm 版の VM とほかの VM で同じログ
+# case10：配列を使う数の関数（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）。wasm 版の VM とほかの VM で同じログ
 run case10 case10.sh < /dev/null
 # case11：呼ぶときに確かめる Math のメンバーは、使うものだけ（呼ぶ数の関数が使うものも）。wasm 版の VM とほかの VM で同じログ
 run case11 case11.sh < /dev/null

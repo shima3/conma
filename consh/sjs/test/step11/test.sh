@@ -1,5 +1,5 @@
 #!/bin/bash
-# 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A2：実行時の支え（sjs_rt.se の Sjs_wasm_pack、Sjs_wasm_unpack）が、配列を
+# 配列の計画（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A2：実行時の支え（sjs_rt.se の Sjs_wasm_pack、Sjs_wasm_unpack）が、配列を
 # wasm のモジュールのメモリに写し、"ok" なら書き戻す。手で書いた WAT と、ConMa で書いた ConMa 版（"[ConMa]" を出す）で確かめる。
 # case1.log は Rust 版の VM（ConMa 版で動く）、case1.wasm.log は wasm 版の VM（Node.js と consh/js/build.sh が要る。なければ飛ばす）
 cd ${0%/*}

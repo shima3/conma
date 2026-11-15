@@ -247,7 +247,7 @@ pub fn dict_keys(_m: &mut Machine, vp: &mut VProc) -> PResult {
 /// dict, each a Number, put one by one in front of the LList words (so that the value of "n-1"
 /// comes first); onError with a message if a key is missing or its value is not a Number. For
 /// copying the arrays of SJS into the memory of a WebAssembly module (feature "wasm";
-/// consh/SJS-WASM-ARRAY-PLAN-ja.md, section 17).
+/// consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, section 17).
 pub fn dict_numbers(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__Dict_numbers__";
     let mut a = take_args(vp, name, 4)?;

@@ -1,6 +1,6 @@
 # ConMa のレビュー
 
-ConSh のレビューは consh/REVIEW-ja.md にある。このファイルは、ConMa 本体（言語、VM、フロントエンド、テスト）の設計と実用性についてのレビューである。
+ConSh のレビューは consh/docs/REVIEW-ja.md にある。このファイルは、ConMa 本体（言語、VM、フロントエンド、テスト）の設計と実用性についてのレビューである。
 
 ## 2026-11-06: 設計と、中間言語としての実用性
 
@@ -90,7 +90,7 @@ SPEC.md は、ConMa を「より初心者向けの言語から変換して実行
 
 ### 6. レコード（フィールドを名前で持つ値）がない（中）
 
-ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict であること（consh/REVIEW-ja.md の 1）は、ConMa にレコードがないことの帰結である。
+ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict であること（consh/docs/REVIEW-ja.md の 1）は、ConMa にレコードがないことの帰結である。
 
 * Dict のキーの綴りの誤りは、実行時まで分からない。
 * リゾルバは、変数を de Bruijn 指標（`(L index)`、`(G index)`）にしている。同じように、フィールド名をスロット番号に解決するレコードを足すと、綴りの誤りを静的に見つけられ、Dict の探索も要らなくなる。
@@ -121,7 +121,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 * スケジューラはラウンドロビンで、1 回に 1 ステップ進める。OS の確認は 64 ステップごと（`POLL_INTERVAL`）なので、OS を待つ VProc があるトレースは、実行のたびに違いうる（DESIGN.md に書いてある）。
 * ブロックする入出力（`__OS_get_String__` など）は、すべての VProc を止める（同じく DESIGN.md）。
-* consh/REVIEW-ja.md の 2026-11-04 の 2 のように、ステップ数の偶然に頼って正しく動いていた不具合が、すでに見つかっている。
+* consh/docs/REVIEW-ja.md の 2026-11-04 の 2 のように、ステップ数の偶然に頼って正しく動いていた不具合が、すでに見つかっている。
 * Rust 版 ConSh には、スレッドが出会う所で乱数で止まる `CONSH_JITTER` と、それを種を変えて繰り返す `consh/test/stress.sh` がある。ConMa の VM（Python 版、Rust 版）には、スケジュールを乱す仕組み（種を指定して、実行する VProc の順を変えるなど）が見当たらない（`jitter`、`seed`、`shuffle`、`random` を検索して、見つからなかった）。
 * 提案：VM に、種を指定して VProc を選ぶ順を乱すオプションを足し、step10、17、20（VProc、LazyList）と ConSh のテストを、種を変えて繰り返す。ConSh の Rust 版で効果があった方法を、ConMa の VM に持ってくる形になる。
 
@@ -129,12 +129,12 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 * 各 `test.sh` は、`../resolver.sh test.se` で `/tmp/test.module.se` を作り、各ケースのログを `/tmp/$c.log` に書く（test/step3/test.sh など）。どのステップも同じ名前を使うので、2 つのテストを同時に実行すると、互いに壊しあう。
 * `test/resolver.sh` は、カレントディレクトリにあるファイル名を前提にしている。パスを付けて呼ぶと、`/tmp//tmp/b/bench.ast.se: No such file or directory` になり、`BrokenPipeError` の長い出力が出る。
-* 期待ログが macOS の出力で作られている（consh/REVIEW-ja.md の 5）。
+* 期待ログが macOS の出力で作られている（consh/docs/REVIEW-ja.md の 5）。
 * 修正案：`mktemp -d` で作業ディレクトリを作り、`trap` で消す（`test/vm_compare.sh` はすでにそうしている）。`resolver.sh` は、`base=$(basename ...)` を使う。
 
 ### 11. ビルド条件と README（低）
 
-* `Cargo.lock` が version 4 で、Cargo 1.78 以降が要る。どちらの `Cargo.toml` にも `rust-version` がない（consh/REVIEW-ja.md の 4）。`vm/` は依存クレートがないので、ロックファイルを消すとビルドできる（rustc 1.75 で 19 秒、警告なし）。
+* `Cargo.lock` が version 4 で、Cargo 1.78 以降が要る。どちらの `Cargo.toml` にも `rust-version` がない（consh/docs/REVIEW-ja.md の 4）。`vm/` は依存クレートがないので、ロックファイルを消すとビルドできる（rustc 1.75 で 19 秒、警告なし）。
 * README.md が 2 行で、docs/index.md と vm/README.md、consh/README-ja.md へ誘導していない。新しく見る人の入口がない。ドキュメント自体（DESIGN.md、SPEC.md、PRIMITIVES.md など）は、詳しく、よく書かれている。
 
 ### 問題なしと確かめたところ
@@ -153,7 +153,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 対応
 
-指摘のあと、11 の 1 つ目（`Cargo.lock` と `rust-version`）を直した（consh/REVIEW-ja.md の 4 と同じ。`vm/Cargo.toml` に `rust-version = "1.75"` を書き、1.75 でビルドできることを確かめ、`Cargo.lock` を version 3 にした）。
+指摘のあと、11 の 1 つ目（`Cargo.lock` と `rust-version`）を直した（consh/docs/REVIEW-ja.md の 4 と同じ。`vm/Cargo.toml` に `rust-version = "1.75"` を書き、1.75 でビルドできることを確かめ、`Cargo.lock` を version 3 にした）。
 
 * 3：提案のとおり、最初の VProc（入口の関数を実行するもの、番号 1）がエラーで終わったときは、すべての VProc が終わった後の終了コードを 1 にした。ほかの VProc のエラーは終了コードを変えない（ConSh の `$( )` やパイプラインの要素のように、ほかの VProc のエラーを意図して受け流す使い方があるので）。Python 版（`vproc_step.py` の `Scheduler.main_failed`、`vproc_run.py`）と Rust 版（`sched.rs`、`main.rs`）の両方を直し、DESIGN.md の「Scheduling and Termination」を書き換えた。test/ で、VProc 1 がエラーで終わる 14 ケースの期待ログの `exit: 0` を `exit: 1` にした。差はそれだけで、step4、5、6、8、10、12、19、20、22、24 が両方の VM で通る。consh/test には、VProc 1 がエラーで終わるケースはない。
 * 4：「関数でない値を呼ぶ」エラーを、2 つの VM で `Not a function: 値` にそろえた。値はトレースと同じ S 式の形で書く（`Not a function: (__Number__ 2)`）。Python 版の `operator: …` を出す `print` は消した。モジュールを読むときの、実装されていないプリミティブ（`PrimFunc`）のエラーは、今の `Primitive not implemented` のままである。
@@ -175,19 +175,19 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
     * test/ の全テストを種 1〜20 で、ConSh のテスト（ConMa 版、examples と step1〜20）を種 1〜5 で回した。見つかったのは、step26 の case2 の 1 つだけで、テストの誤りだった。`__Ref_wait_change__` は同じオブジェクトかどうかで比べるが、テストは `__Ref_new__ "a"` と `__Ref_wait_change__ ref "a"` に別の文字列を渡していたので、子の VProc は待たずに進んでいた。ラウンドロビンでは、子が `println "not reached"` に着く前に、親が子を止めていたので通っていた。同じ文字列を渡すように直し、種 1〜40 で通ることを確かめた。
     * そのとき、10 で入れた不具合も直した。`test.sh` をパスを付けずに（`bash test.sh`）呼ぶと、`${0%/*}` が `test.sh` になり、common.sh を読めなかった。`dirname "$0"` を使うようにした。
 * 2 の 2 つ目：リゾルバ（`bin/resolver` と `include/resolver.se`）に、大域の define の関数（Head が k 個で、可変長でない）を、0 < m < k 個の引数で呼ぶ所の警告を足した（`Warning: conma/test/step2/test.se:78:3: too few arguments to add2: 1 of 2 (partial application)`）。ただし、既定では出さず、`bin/resolver --warn-arity` のときだけ標準エラー出力に出す。終了コードは 0 のままである。
-    * 既定で出さないのは、作者の方針による。ConMa では、部分適用と可変長引数のために、引数の数が違う呼び出しは正しく、よくあるものなので、警告しない。引数の数の誤りをエラーにするのは、部分適用（`bind`）と可変長引数（`. rest`）に明示的な構文がある ConSh の側で行う（consh/PLAN-ja.md で扱う）。
+    * 既定で出さないのは、作者の方針による。ConMa では、部分適用と可変長引数のために、引数の数が違う呼び出しは正しく、よくあるものなので、警告しない。引数の数の誤りをエラーにするのは、部分適用（`bind`）と可変長引数（`. rest`）に明示的な構文がある ConSh の側で行う（consh/docs/PLAN-ja.md で扱う）。
     * 警告を「少ない」ときだけにしたのは、ConMa のコードを数えた結果による。ConSh（2,565 の呼び出し）と include/ には、「少ない」呼び出しが 1 つもなかった。「多い」呼び出しは、Sink を返す関数（`stdout str "\n" ,(out)` など）で、引数のない呼び出しは、関数を値として返すのに、意図して使われている。「多い」の誤りは、結果が関数でなければ、VM が呼び出した位置で `Not a function` を出す（1 と 4）。
     * ConMa 版は `__Resolver_warnings__ Module ,(messages)` で、同じ警告を同じ順で返す（出すかどうかは呼ぶ側が決める）。selfhost7 は、`bin/resolver --warn-arity` の警告と ConMa 版の警告も比べ、case6（arity.se）を足した。
     * RESOLVER.md と SELFHOST.md に書いた。
-* 7：作者の方針（memo.txt の 2026-11-06）で、ConMa から Rust への変換を始めた。最初の版（vm/conma2rust の ConMa から Rust への変換器。最初は vm/native と呼んでいた。vm/README.md の「Transpiled code」）は、VM なしで実行できる Body の列（組み込みの呼び出し、`__NULL__`、その場に書いた枝の `__if_then_else__` など）を 1 ステップで実行し、関数の呼び出しで VM に戻る。ConSh のテストはすべて通るが、速さは、単純なループで約 1.5 倍、ConSh で約 1.2 倍にとどまる（ConSh は、単純なコマンド 1 つに約 4,300 ステップかかり、その多くは小さな関数の呼び出しと戻り）。次の版で、関数の呼び出し、戻り、`__Cont_get__` の継続、安全な組み込みも、VM の 1 ステップの中で（1,000 回まで）続けて実行するようにした。単純なループで約 1.7 倍、ConSh で 1.35〜1.45 倍になった。残りの時間は、値の複製と破棄、LVEnv、Closure、循環の回収にかかっていて、さらに速くするには、値の表し方を変える本格的なコンパイル（ローカル変数を Rust の変数にする、組み込みを型ごとに直接呼ぶ、小さな関数のインライン化）が要る。test/step20 の case11 も、実行の順（ステップ数で待つ）に頼っていることが分かった。さらに、よく使う組み込み（`__is_null__`、`__String_equal__`、`__LList_uncons__`、`__Dict_lookup_or__`、数の計算など）を、OList を介さずに直接呼ぶようにした（VM の組み込みと処理を共有する）。単純なループで約 1.9 倍、ConSh で 1.5〜1.6 倍になった。値の持ち方を調べると、`Value` は 24 バイト、ローカル変数の参照は平均 2.1 段で、すぐに直せる無駄はなかった。一方、循環の回収が、ConSh がコマンドごとに誤って作っていた循環（Dict の中の関数がその Dict を取り込む）を回収していたので、ConSh を直した（consh/PLAN-ja.md）。ConSh の関数呼び出しのループは、VM で 3.29 秒から 2.88 秒、ネイティブコードで 1.90 秒（元の 1.7 倍）になった。途中で、`__Ref_set__` をまとめて実行すると、`__Ref_wait_change__` で待つ VProc が値の一時的な変化を見逃すことが分かり、まとめる対象から外した。また、test/step20 の case21 が VProc の実行の順に頼っていることが分かった（普通の VM でも `CONMA_SEED=130` で出力が変わる）。
-* 6：作者の方針で、レコードは言語に足さず、ConMa から Rust への変換器（とそれを動かす VM）の側で作った。Dict に「形」（String のキーを入れた順。同じ形の Dict では、各キーが同じ位置にある）を持たせ、変換したコードの、定数の String のキーで Dict を読み書きする所ごとに、最後に見た形とキーの位置を覚える（インラインキャッシュ）。形が同じなら、索引を引かずにその位置を読む。キーを消した Dict、String でないキーを入れた Dict、キーが 64 個を超える Dict は形を持たない。プログラムのすることは変わらない（test/ の全テストが、普通の VM でトレースまで同じ、変換した VM でも通る。consh/test も変換した VM で通る）。richards 20 は 0.78 秒から 0.69 秒（11.5%）になった。nbody、fib、ループと ConSh は変わらない。作る前に測ると、Dict の操作は richards の約 22%（索引を引くのが 13%）、ConSh の約 1% だった（ConSh の時間は、主に値の複製と破棄、LVEnv、呼び出しにかかる）。memo.txt の「Dict をレコードに変更して、どの程度高速化できるか？」への答えで、ConSh への効果はないという見立てのとおりだった。キーの綴りの誤りを見つけることにはならないので、consh/REVIEW-ja.md の 1 は残る。vm/README.md の「Shapes and inline caches」と bench/README.md の表に書いた。
+* 7：作者の方針（memo.txt の 2026-11-06）で、ConMa から Rust への変換を始めた。最初の版（vm/conma2rust の ConMa から Rust への変換器。最初は vm/native と呼んでいた。vm/README.md の「Transpiled code」）は、VM なしで実行できる Body の列（組み込みの呼び出し、`__NULL__`、その場に書いた枝の `__if_then_else__` など）を 1 ステップで実行し、関数の呼び出しで VM に戻る。ConSh のテストはすべて通るが、速さは、単純なループで約 1.5 倍、ConSh で約 1.2 倍にとどまる（ConSh は、単純なコマンド 1 つに約 4,300 ステップかかり、その多くは小さな関数の呼び出しと戻り）。次の版で、関数の呼び出し、戻り、`__Cont_get__` の継続、安全な組み込みも、VM の 1 ステップの中で（1,000 回まで）続けて実行するようにした。単純なループで約 1.7 倍、ConSh で 1.35〜1.45 倍になった。残りの時間は、値の複製と破棄、LVEnv、Closure、循環の回収にかかっていて、さらに速くするには、値の表し方を変える本格的なコンパイル（ローカル変数を Rust の変数にする、組み込みを型ごとに直接呼ぶ、小さな関数のインライン化）が要る。test/step20 の case11 も、実行の順（ステップ数で待つ）に頼っていることが分かった。さらに、よく使う組み込み（`__is_null__`、`__String_equal__`、`__LList_uncons__`、`__Dict_lookup_or__`、数の計算など）を、OList を介さずに直接呼ぶようにした（VM の組み込みと処理を共有する）。単純なループで約 1.9 倍、ConSh で 1.5〜1.6 倍になった。値の持ち方を調べると、`Value` は 24 バイト、ローカル変数の参照は平均 2.1 段で、すぐに直せる無駄はなかった。一方、循環の回収が、ConSh がコマンドごとに誤って作っていた循環（Dict の中の関数がその Dict を取り込む）を回収していたので、ConSh を直した（consh/docs/PLAN-ja.md）。ConSh の関数呼び出しのループは、VM で 3.29 秒から 2.88 秒、ネイティブコードで 1.90 秒（元の 1.7 倍）になった。途中で、`__Ref_set__` をまとめて実行すると、`__Ref_wait_change__` で待つ VProc が値の一時的な変化を見逃すことが分かり、まとめる対象から外した。また、test/step20 の case21 が VProc の実行の順に頼っていることが分かった（普通の VM でも `CONMA_SEED=130` で出力が変わる）。
+* 6：作者の方針で、レコードは言語に足さず、ConMa から Rust への変換器（とそれを動かす VM）の側で作った。Dict に「形」（String のキーを入れた順。同じ形の Dict では、各キーが同じ位置にある）を持たせ、変換したコードの、定数の String のキーで Dict を読み書きする所ごとに、最後に見た形とキーの位置を覚える（インラインキャッシュ）。形が同じなら、索引を引かずにその位置を読む。キーを消した Dict、String でないキーを入れた Dict、キーが 64 個を超える Dict は形を持たない。プログラムのすることは変わらない（test/ の全テストが、普通の VM でトレースまで同じ、変換した VM でも通る。consh/test も変換した VM で通る）。richards 20 は 0.78 秒から 0.69 秒（11.5%）になった。nbody、fib、ループと ConSh は変わらない。作る前に測ると、Dict の操作は richards の約 22%（索引を引くのが 13%）、ConSh の約 1% だった（ConSh の時間は、主に値の複製と破棄、LVEnv、呼び出しにかかる）。memo.txt の「Dict をレコードに変更して、どの程度高速化できるか？」への答えで、ConSh への効果はないという見立てのとおりだった。キーの綴りの誤りを見つけることにはならないので、consh/docs/REVIEW-ja.md の 1 は残る。vm/README.md の「Shapes and inline caches」と bench/README.md の表に書いた。
 * 8（一部）：作者の判断で、方針を「ConMa 版のフロントエンドのモジュールをリポジトリに入れる」に変えた（memo.txt の 2026-11-06 では「入れず、ビルドのときに作る」だった）。ソースからのビルドにも、ConMa のプログラムの実行にも、Python が要らなくなる。
     * `include/frontend.se`：ConMa 版のフロントエンドのプログラム（`[--warn-arity] [--include <dir>]... <source>`、`bin/includer` と `bin/resolver` を続けたものと同じ）。そのモジュール `vm/frontend.module.se`（520 KB、1 行）をリポジトリに入れた。
     * 欠点を抑えるため：`.gitattributes` で生成物の印を付け、`git diff` に中身を出さない。`bin/update-frontend` だけで作り直す（Python 版のフロントエンドでモジュールを作り、それを VM で動かして自分のモジュールを作る、2 段）。`test/frontend` が、リポジトリのモジュールが自分を 1 バイトも違わずに作ること（不動点）と、Python 版のフロントエンドと同じモジュールになること（`selfhost_compare.py`）を確かめるので、フロントエンドのソースを変えて作り直し忘れると、テストが落ちる。
     * Rust 版の VM はこのモジュールを埋め込み、`conma build <source>` でモジュールを書き、`conma run <source> [<arg>...]` で作って実行する。`__VProc_spawn__` も、`bin/includer` と `bin/resolver` の代わりにこれを使う（別のプロセスとして動かすので、ステップの外で、2 つの VM のトレースは同じまま）。起動に失敗したときの `onError` のメッセージは、2 つの VM とも、フロントエンドのエラーの最初の行にした（`bin/includer` が付け足す `Error: parser exited with code 1` は出さない。step10 の case5 の期待ログから、その行を除いた）。
     * test/ の全テストが両方の VM で通る。基準（Python 版の VM とフロントエンド）は今までどおり Python を使う。変換器（`vm/conma2rust`）は、作者の方針で、改良中のため当面は Python のままとし、将来は ConMa で書く（そのときは、フロントエンドと同じく、Python 版を基準として出力を比べる）。
     * ConMa 版 ConSh の起動からも Python をなくした。スクリプトは ConMa 版の構文解析（`consh_parser.se`）で読み（以前の `--conma-parser`。Python の `consh_parse` は `--python-parser` で使う）、モジュールは、Rust 版の VM があれば `conma build` で作る。`CONMA_VM=rust` なら、ConMa 版 ConSh も Python を使わない（`python3` を、呼ばれたら失敗するものに替えて確かめた）。構文エラーは、Rust 版と同じく `consh:` で始まる。consh/test は、ConMa 版（Rust 版の VM。モジュールを `conma build` で作り直して）と Rust 版で通る。
-* 5：SJS（JavaScript の安全なサブセット。consh/SAFEJS-PLAN-ja.md）から ConMa への変換器を、ConMa で書いた（consh/include の sjs_lex.se、sjs_parse.se、sjs_gen.se と実行時の支え sjs_rt.se。consh/sjs/README-ja.md）。関数、クロージャ、配列とオブジェクト、ループ、例外（`try`、`finally`）、ジェネレータ、`async` と `await` まで変換し、ConSh の `(( ))` で、ネイティブの VM、Node.js、ブラウザで動く。測った結果（consh/sjs/README-ja.md の「段階 B7」）：
+* 5：SJS（JavaScript の安全なサブセット。consh/docs/SAFEJS-PLAN-ja.md）から ConMa への変換器を、ConMa で書いた（consh/include の sjs_lex.se、sjs_parse.se、sjs_gen.se と実行時の支え sjs_rt.se。consh/sjs/README-ja.md）。関数、クロージャ、配列とオブジェクト、ループ、例外（`try`、`finally`）、ジェネレータ、`async` と `await` まで変換し、ConSh の `(( ))` で、ネイティブの VM、Node.js、ブラウザで動く。測った結果（consh/sjs/README-ja.md の「段階 B7」）：
     * 大きさ：SJS 1 行が、ConMa の約 200 バイト（約 9 倍）。実行時の支えは約 1 MB のモジュールになる。
     * 性能（7）：bench/ の loop、fib、nbody を SJS で書くと、手で書いた ConMa の 13〜21 倍のステップになる（直す前は 21〜57 倍。プロファイルで、配列の添字を文字列にして読み戻していた所などを直した）。多くは、動的な型の確認（算術の 1 回に 19 ステップ）と、メンバーの読み書きの種類の判定である。変換器が型を知っている所（数のリテラルとの演算など）で確認を省くこと、添字で読み書きできる列のプリミティブ（6 と同じ問題の、配列の側）が、次に効く。
     * エラーの位置（1）：VM の位置は、変換したコード（1 行の長いソース）を指すので使えない。変換器が、文ごとに SJS の行を記録する（文 1 つと呼び出し 1 つに 2 ステップずつ）。桁と式の中の位置はない。中間言語として使うには、生成したコードに元の言語の位置を付ける仕組み（SInfo に元のファイルと行を書けるようにするなど）があるとよい。
@@ -355,7 +355,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ## 2026-11-14（2）: SJS-WASM のコミット
 
-対象は、consh/SJS-WASM-PLAN-ja.md と consh/SJS-WASM-ARRAY-PLAN-ja.md を作ったほかの人のコミット 9 個である（b361933、9a7e69a、959ee3b、d22dc3b、fe4d82e、94fc307、881e76c、aaeafb1、df26f30）。その間に入ったレビューへの対応のコミットは見ていない。
+対象は、consh/docs/SJS-WASM-PLAN-ja.md と consh/docs/SJS-WASM-ARRAY-PLAN-ja.md を作ったほかの人のコミット 9 個である（b361933、9a7e69a、959ee3b、d22dc3b、fe4d82e、94fc307、881e76c、aaeafb1、df26f30）。その間に入ったレビューへの対応のコミットは見ていない。
 
 ### 確かめた方法
 
@@ -441,9 +441,9 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 * 4：直した。consh/include/sjs_rt.se の `Sjs_wasm_fn_checked` は、確かめる Math のメンバーの名前の列を、関数を作るときに 1 度だけ作る（`Sjs_wasm_math_names`。前は呼ぶたびに 1 文字ずつ分けていた）。`Sjs_wasm_fn_core` は、ConMa 版で動かしている間（busy）なら、確かめずに ConMa 版を動かす（前は busy を見る前に確かめていた。busy のときは結果によらず ConMa 版なので、振る舞いは変わらない）。ConSh で `hyp = (a, b) => Math.sqrt(a * a + b * b)` を ConMa の関数から 5 万回呼ぶスクリプトは、wasm 版の VM で 7.12 秒が 2.80〜2.85 秒になった（`CONMA_NO_WASM=1` は 2.16〜2.17 秒、Rust VM は 1.55 秒。実時間、1 回ずつ、Apple M2）。まだ `CONMA_NO_WASM=1` の 1.3 倍なのは、呼ぶたびに 10 個のメンバーを比べるため。関数が使うメンバーだけを比べるには、変換器から名前を渡す必要がある（sjs_gen.se と sjs_wasm.se）ので、していない。
 * 8 の `__Wasm_call_memory__` の語の数：直した。アセンブラはメモリの max のページ数を `Assembled::memory_max` に残し（max がなければ 65536）、`WasmObj` が持つ。`call_with`（vm/src/prim/wasm.rs）は、max のメモリに入らない数の語を、ホストに渡す前に onError にする（ネイティブの VM と wasm 版で同じメッセージ）。test/fast7 に case11 を足した（`(memory 0 1)` に 8192 語と 8193 語、max のない `(memory 0)` に 8193 語）。docs/PRIMITIVES.md の 16 に書いた。
 * 8 の一時ファイル：consh/sjs/test の test.sh は、step10 だけでなく step1〜11 のすべてが `/tmp/sjs-test-$$.log`（step11 はモジュールも）に書いていたので、すべて `${TMPDIR:-/tmp}` にした。
-* 8 の計画 5.6 との違い：consh/SJS-WASM-PLAN-ja.md の 15 に、違いとして書き足した（そのままにする）。
+* 8 の計画 5.6 との違い：consh/docs/SJS-WASM-PLAN-ja.md の 15 に、違いとして書き足した（そのままにする）。
 * 4、8 の後で、test/ を Python、Rust、wasm の VM で、consh/test を Rust VM（速い版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った（wasm 版の test/ は、前からの step40 だけが違う）。
-* 5：直した。ホスト（consh/js/conma.js）は、モジュールの元（`WebAssembly.Module`）と最初のページ数を覚え、`__Wasm_call__` と `__Wasm_call_memory__` を呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ（前の呼び出しの `memory.grow` や、多い語で広がったとき）、instance を作り直す。メモリは小さくできないので、作り直して新しいメモリにする。同じ大きさで呼び続けるときは作り直さない。memory.size と memory.grow は引数と語だけで決まり、燃料が切れた後のやり直しでも同じ結果になる。test/fast7 に case13 を足した（memory.grow する関数を 2 度、燃料 10 の後に十分な燃料、9000 語の後の memory.size）。直す前は 2 度目から -1 で、ページ数が残った。case8 の wasm 版のログは、1 万語の後の `pages after` と `grow` が 2 から 1 になった（前の呼び出しのメモリが残らないため）。docs/PRIMITIVES.md の 16 と、consh/SJS-WASM-ARRAY-PLAN-ja.md の 11 に書いた。
+* 5：直した。ホスト（consh/js/conma.js）は、モジュールの元（`WebAssembly.Module`）と最初のページ数を覚え、`__Wasm_call__` と `__Wasm_call_memory__` を呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ（前の呼び出しの `memory.grow` や、多い語で広がったとき）、instance を作り直す。メモリは小さくできないので、作り直して新しいメモリにする。同じ大きさで呼び続けるときは作り直さない。memory.size と memory.grow は引数と語だけで決まり、燃料が切れた後のやり直しでも同じ結果になる。test/fast7 に case13 を足した（memory.grow する関数を 2 度、燃料 10 の後に十分な燃料、9000 語の後の memory.size）。直す前は 2 度目から -1 で、ページ数が残った。case8 の wasm 版のログは、1 万語の後の `pages after` と `grow` が 2 から 1 になった（前の呼び出しのメモリが残らないため）。docs/PRIMITIVES.md の 16 と、consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 11 に書いた。
 * 4 の続き：直した。変換器（sjs_wasm.se）は、関数が使う Math のメンバーの名前を集め（`Wx_uses_math` が名前を受け取る。info の `"math"` は名前の集まり）、(( )) の数の関数には、呼ぶ数の関数が使うものも合わせた名前を空白で区切って付ける（`"wasmMath"`。`Wx_names_text`、`Wx_keys_text`）。sjs_gen.se はそれを文字列で `Sjs_wasm_fn_checked` に渡し、`Sjs_wasm_fn_checked` は、関数を作るときにその名前の列を作り、呼ぶたびにそのメンバーだけを比べる（使わなければ比べない）。上の `hyp` のスクリプトは、wasm 版の VM で 2.04〜2.05 秒になり、`CONMA_NO_WASM=1`（2.13〜2.14 秒）より速くなった（実時間、2 回ずつ、Apple M2）。consh/test/step21 に case11 を足した（1 つの (( )) の、Math.floor を使う関数、それを呼ぶ関数、Math.round を使う関数、Math.PI を使う関数に、round、floor、PI の順に書き換えた後で呼ぶ）。Rust VM と wasm 版で同じログで、floor を書き換えると、floor を呼ぶ関数を呼ぶ関数も ConMa 版になる。
 * 5 と 4 の続きの後で、test/ を Python、Rust、wasm の VM で（wasm は前からの step40 と、-j 8 で 1 度の step31 だけが違う。step31 は 1 つだけで 3 回通る）、consh/test を Rust VM（速い版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
 * 7 の前半（Node.js の wasm 版の VM に Ctrl-C が届かない）：直した。consh/js/vm-node.js の実行のループは、外で動くもの（子プロセス、JavaScript、入力）があるときだけ、ときどきイベントループに戻っていた。VM が SIGINT を受け取ると決めた（`__OS_trap_interrupt__`）後は、外で動くものがなくても、4 回の区切り（40 万ステップ）ごとに戻るようにした（`sigintTrapped`）。fifo を標準入力にした対話モードの ConSh で、`(( f = n => { while (1) {} return 0 } ))` の後の `echo "B $(( f(1) ))"` に node へ SIGINT を送ると、直す前は止まらず（プロセスを kill した）、直した後はプロンプトに戻り、次の `echo after` も動いた。test/fast7 に case14 を足した（SIGINT を送る子プロセスはすぐ終わり、裏に残したサブシェルが送る。直す前の wasm 版は 15 秒で打ち切るまで止まらなかった）。consh/bench の 02、10、11 を wasm 版の VM で直す前と後に 3 回ずつ流し、時間は変わらなかった（02 は 1.28〜1.30 秒と 1.29〜1.32 秒、10 は 3.05〜3.15 秒と 3.08〜3.12 秒、11 は 1.29〜1.30 秒と 1.29 秒。実時間、Apple M2）。

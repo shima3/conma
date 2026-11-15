@@ -15,7 +15,7 @@ FAST_PRIMITIVES = [
     ("control", ("__if_then_else__", "__if__", "__unless__", "__Cont_get__",
                  "__if_null_then_else__", "__unless_null__", "__Number_if_zero_then_else__", "__Number_unless_zero__",
                  "__Number_if_greater__", "__Number_if_greater_then_else__")),
-    # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/SJS-WASM-PLAN-ja.md 5.3;
+    # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/docs/SJS-WASM-PLAN-ja.md 5.3;
     # concise ConMa defines them in include/ref/wasm.se, going to onError)
     ("wasm", ("__Wasm_compile__", "__Wasm_call__", "__Wasm_call_memory__", "__Dict_numbers__", "__Dict_put_numbers__")),
 ]

@@ -1,4 +1,4 @@
-# 段階 A2：$名前 でシェル変数を読む（consh/SAFEJS-PLAN-ja.md の 2.2 の 7）
+# 段階 A2：$名前 でシェル変数を読む（consh/docs/SAFEJS-PLAN-ja.md の 2.2 の 7）
 n=3
 echo "a: $(( $n + 1 ))"
 echo "b: $(( `${$n}x` ))"

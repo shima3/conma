@@ -1,4 +1,4 @@
-//! Word expansion, as consh_expand.se (PLAN-ja.md 1.2 and 1.3).
+//! Word expansion, as consh_expand.se (consh/docs/PLAN-ja.md 1.2 and 1.3).
 //!
 //! A word is first made into parts, one for each word element:
 //!   Plain   a String outside quotes (glob applies)

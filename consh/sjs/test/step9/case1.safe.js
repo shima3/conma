@@ -1,4 +1,4 @@
-// 数の関数の wasm 版（consh/SJS-WASM-PLAN-ja.md の段階 2）：境の値。wasm 版の VM（CONMA_VM=wasm）では数の関数が wasm で、
+// 数の関数の wasm 版（consh/docs/SJS-WASM-PLAN-ja.md の段階 2）：境の値。wasm 版の VM（CONMA_VM=wasm）では数の関数が wasm で、
 // ほかの VM では ConMa 版で動き、どちらも Node.js と同じ結果になる。-0 は、1 をそれで割った -Infinity で見る
 const K = 10
 const inv = (x) => 1 / x

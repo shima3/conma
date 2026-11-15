@@ -2,7 +2,7 @@
 
 JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。
 
-**状態（2026-11-12 に一区切り）**：段階 A（ホストの JavaScript で動かす）と、段階 B（ConMa に変換して VM の中で動かす。今の既定）の B1〜B7 と B9 を作り、B8 は作らないと決めた（6）。ブラウザ版では、`js` を使わないとき、Content-Security-Policy で `eval` と `Function` を止める（5）。今の SJS の説明（書けるもの、JavaScript との違い、エラーの位置、速さ）は consh/sjs/README-ja.md、ConSh での使い方は consh/js/README-ja.md、Bash との違いは consh/FOR-BASH-USERS.md。残っていることは 8 にまとめた。段階ごとの経緯は 6 の表と、consh/sjs/README-ja.md の「経緯」、consh/js/PLAN-ja.md の 3.23〜3.30。
+**状態（2026-11-12 に一区切り）**：段階 A（ホストの JavaScript で動かす）と、段階 B（ConMa に変換して VM の中で動かす。今の既定）の B1〜B7 と B9 を作り、B8 は作らないと決めた（6）。ブラウザ版では、`js` を使わないとき、Content-Security-Policy で `eval` と `Function` を止める（5）。今の SJS の説明（書けるもの、JavaScript との違い、エラーの位置、速さ）は consh/sjs/README-ja.md、ConSh での使い方は consh/js/README-ja.md、Bash との違いは consh/docs/FOR-BASH-USERS.md。残っていることは 8 にまとめた。段階ごとの経緯は 6 の表と、consh/sjs/README-ja.md の「経緯」、consh/js/PLAN-ja.md の 3.23〜3.30。
 
 ## 1. 目的
 
@@ -22,7 +22,7 @@ JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の�
 
 ### 2.1. 文法
 
-ConSh の文法（consh/PLAN-ja.md）に、次を足す。
+ConSh の文法（consh/docs/PLAN-ja.md）に、次を足す。
 
 ```
 単純文 = (コマンド | if文 | リストfor文 | reset文 | 算術評価) {スペース+ リダイレクト指定} | shift文 ;

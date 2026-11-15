@@ -1,16 +1,23 @@
 # ConSh
 
-ConSh は ConMa 言語で動作するシェルである。仕様と設計は [PLAN-ja.md](PLAN-ja.md) にある。
-Bash を使う人向けの使い方の説明は [FOR-BASH-USERS.md](FOR-BASH-USERS.md)（英語）にある。
+ConSh は ConMa 言語で動作するシェルである。仕様と設計は [PLAN-ja.md](docs/PLAN-ja.md) にある。
+Bash を使う人向けの使い方の説明は [FOR-BASH-USERS.md](docs/FOR-BASH-USERS.md)（英語）にある。
 
 ## 構成
 
 ```
 consh/
-├── PLAN-ja.md           仕様と設計
-├── AST.md               consh_parse が出力する構文木の形式（英語）
-├── FOR-BASH-USERS.md    Bash を使う人向けの使い方の説明（英語）
-├── SAFEJS-PLAN-ja.md    JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
+├── README-ja.md         この文書
+├── docs/
+│   ├── PLAN-ja.md               仕様と設計
+│   ├── RUNNING-ja.md            版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差
+│   ├── AST.md                   consh_parse が出力する構文木の形式（英語）
+│   ├── FOR-BASH-USERS.md        Bash を使う人向けの使い方の説明（英語）
+│   ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
+│   ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
+│   ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
+│   ├── SJS-WASM-ARRAY-PLAN-ja.md  その、配列を使う関数の計画
+│   └── REVIEW-ja.md             ConSh のレビュー
 ├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
@@ -27,7 +34,7 @@ consh/
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
 │   ├── consh_eval.se    文の実行
-│   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。SAFEJS-PLAN-ja.md）
+│   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/SAFEJS-PLAN-ja.md）
 │   └── sjs_*.se         SJS の変換器（sjs_lex、sjs_parse、sjs_gen）と実行時の支え（sjs_rt、ビット演算の sjs_bits）。sjs/README-ja.md
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
@@ -36,7 +43,7 @@ consh/
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── parse3/          ConMa 版の構文解析のテスト：parse1 と parse2 の各スクリプトで、consh_parse --pos と同じ構文木とエラーになるか
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）、step17 は JavaScript のない版の js
+    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は docs/REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）、step17 は JavaScript のない版の js
     └── examples/        examples/ のデモのテスト：ConSh 版と Bash 版を実行し、NAME.log、NAME.bash.log と比べる
 ```
 
@@ -51,13 +58,13 @@ bin/consh [--conma-parser | --python-parser] [--dump] スクリプト [引数 ..
 bin/consh
 ```
 
-ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と高速版がある。環境変数 `CONSH_IMPL` で選ぶ。
+ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と高速版がある。環境変数 `CONSH_IMPL` で選ぶ。版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差は、[RUNNING-ja.md](docs/RUNNING-ja.md) にまとめてある。
 
 | `CONSH_IMPL` | 版 |
 |---|---|
-| `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（高速版）で実行する。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
+| `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、docs/PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（高速版）で実行する。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
 | `conma` | ConMa 版の高速版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`test/vm.sh`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
-| `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）を、高速版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
+| `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `include/ref`（簡潔版 ConMa）と `reference`）を、高速版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（高速版）で実行する。
 
@@ -67,7 +74,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と高速�
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）と、Tab によるファイル名の補完（`rlwrap -c`）が使える。補完はプロセスのカレントディレクトリからの相対パスなので、Rust 版は `cd` した先をプロセスのカレントディレクトリにもする（ConMa 版は、起動したディレクトリからのまま）。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
 
 ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読む（`--conma-parser` は、それを明示するだけ）。構文木は `consh_parse --pos` と同じで（`test/parse3`）、構文エラーのメッセージは Rust 版と同じく `consh:` で始まる。
-`--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](AST.md)。構文エラーは `consh_parse:` で始まる）。
+`--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](docs/AST.md)。構文エラーは `consh_parse:` で始まる）。
 ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）があれば、その `conma build`（ConMa 版のフロントエンド、vm/README.md）で作り、なければ `bin/includer` と `bin/resolver`（Python）で作る。
 そのため、Rust 版の VM を作っておき、`CONMA_VM=rust`（か `transpiled`）で起動すれば、ConMa 版も Python を使わずに動く（既定の VM は、基準の Python 版のまま）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
@@ -97,7 +104,7 @@ ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-di
     * `$?` は最後の要素の終了ステータス。中の変数定義、`export`、`cd` は外に影響しない
     * 読み手が先に終わると、書き手は次に書いたときに止まる（`yes | head -1` が終わる）
     * パイプに書き手や読み手がいなくなるリダイレクト（`f > file | g`、`f | g < file`）はエラー
-    * 片側でも外部コマンド（先頭の語がクォートか裸文字だけ）なら、OS のパイプでつなぐ（両側は段階 8、片側は段階 15）。関数の中の外部コマンドの出力も、バイト列のまま流れる。両側とも外部コマンドでなければ、要素（LazyList も）を1つずつ受け渡すので遅い（PLAN-ja.md の 2.3）
+    * 片側でも外部コマンド（先頭の語がクォートか裸文字だけ）なら、OS のパイプでつなぐ（両側は段階 8、片側は段階 15）。関数の中の外部コマンドの出力も、バイト列のまま流れる。両側とも外部コマンドでなければ、要素（LazyList も）を1つずつ受け渡すので遅い（docs/PLAN-ja.md の 2.3）
 
 * 変数リストへのリダイレクト（段階 6）
     * `> (a b . rest)`、`2> (a b . rest)`：出力の1つ目、2つ目の値を `a`、`b` に、残りの LazyList を `rest` に入れる。変数の数だけ受け取った後に書くとコマンドを止める（`$?` は 0）
@@ -124,7 +131,7 @@ ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-di
 標準出力は、要素（行）の並びとして扱う。
 
 * トップレベルの標準出力は、要素を1行ずつ書く。
-* 外部コマンドの標準出力が `$( )`、変数リスト、関数や組み込みコマンドとのパイプに行くときは、パイプで受け取って行ごとの要素にする。そのため、最後の行に改行がなければ改行が付き、`\r\n` は改行になる（PLAN-ja.md の 1.3）。
+* 外部コマンドの標準出力が `$( )`、変数リスト、関数や組み込みコマンドとのパイプに行くときは、パイプで受け取って行ごとの要素にする。そのため、最後の行に改行がなければ改行が付き、`\r\n` は改行になる（docs/PLAN-ja.md の 1.3）。
 * 外部コマンドの標準出力が端末やファイルのままなら、バイト列をそのまま書く。トップレベルでも（段階 8）、出力を端末やファイルに向けた関数、if 文、for 文の中でも（`f > ファイル`、`for …; done > ファイル`、段階 10）同じである。外部コマンドどうしのパイプも、バイト列をそのまま渡す。
 * 要素が LazyList のとき（`echo ${list}`）、ストリームに書くときに OFS で文字列化して1行にする。端末に書くときはトップレベルの OFS、`> ファイル` のときはリダイレクトを書いた文の OFS を使う。
 * 標準エラー出力は、要素にせず、そのまま書く。ただし `2>&1` で標準出力と同じ行き先にしたときは、標準出力と同じ要素の並びに入る。
@@ -141,11 +148,11 @@ ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-di
 * `echo` はオプションを取らず、引数を空白で区切って連結した1つの要素を出す。
 * if 文の中の関数定義も、変数定義と同じく if 文の外のスコープに入る。
 * if 文の条件、本体、`else` のスクリプトを実行する前の `$?` は、そのときの値のまま。たとえば `else` の中の `$?` は最後の条件の値になる（Bash と同じ）。
-* キーワードの直後に `)` は置けない（PLAN-ja.md の文法どおり）。そのため `$(if a; then b; fi)` は構文エラーになる。
+* キーワードの直後に `)` は置けない（docs/PLAN-ja.md の文法どおり）。そのため `$(if a; then b; fi)` は構文エラーになる。
 * `cd` は、それを実行した VProc のカレントディレクトリを変える（ConMa の Step 23）。パイプラインの要素と `$( )` の中の `cd` は、シェルのカレントディレクトリを変えない。
 * パイプラインと `$( )` は、ConMa の `__VProc_start__`（Step 24）と `__OS_wait_writable__`（Step 25）を使う。`&`、`kill`、`$!`、`$$` は Step 26 の `__VProc_kill__`、`__OS_kill__`、`__VProc_id__`、`__OS_getpid__` を使う。`ARG_MAX` がないときは Step 27 の `__OS_sysconf__` で OS の値を得る。glob は Step 29 の `__OS_listdir__` を使う。対話モードの Ctrl-C は Step 31 の `__OS_trap_interrupt__` を、`&` のジョブの外部コマンドの起動は Step 32 の `__OS_spawn_detached__` を使う。
 
-構文木と展開の結果を見るには、Python の参照実装を使う。構文木の形式は [AST.md](AST.md)、展開の結果の形式は `bin/consh_parse` の先頭に書いてある。`--pos` を付けると、構文木に行と桁が入る。
+構文木と展開の結果を見るには、Python の参照実装を使う。構文木の形式は [AST.md](docs/AST.md)、展開の結果の形式は `bin/consh_parse` の先頭に書いてある。`--pos` を付けると、構文木に行と桁が入る。
 
 ```
 bin/consh_parse [--pos] スクリプト

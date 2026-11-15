@@ -331,7 +331,7 @@ var ConMaVM = (function () {
     }
   }
 
-  // ── SJS: (( )) and $(( )) of ConSh (consh/SAFEJS-PLAN-ja.md) ──
+  // ── SJS: (( )) and $(( )) of ConSh (consh/docs/SAFEJS-PLAN-ja.md) ──
   // ConSh calls __JS_call__ with SJS and the code of an SJS expression, and as args the SJS variables
   // that the code names, [names, kinds, values] (kinds s and j). The code is
   // first checked to be in SJS and rewritten (sjsCheck), then evaluated with only the SJS variables
@@ -1887,7 +1887,7 @@ var ConMaVM = (function () {
         },
         host_js_input: (id, ptr, len) => js.input(id, str(ptr, len)),
         host_js_input_end: (id) => js.inputEnd(id),
-        // __Wasm_compile__ and __Wasm_call__ (consh/SJS-WASM-PLAN-ja.md 5.4): modules of functions on
+        // __Wasm_compile__ and __Wasm_call__ (consh/docs/SJS-WASM-PLAN-ja.md 5.4): modules of functions on
         // numbers, without imports, made by the assembler of the VM (vm/src/prim/wasm_asm.rs), which
         // exports the fuel as the mutable i64 global __fuel
         host_wasm_compile: (ptr, len) => {
@@ -1914,12 +1914,12 @@ var ConMaVM = (function () {
             return 2;
           }
           const args = Array.from(new Float64Array(x.memory.buffer, argsPtr >>> 0, n));
-          // The memory of the module (consh/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
+          // The memory of the module (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
           // of __Wasm_call_memory__ from address 0 (growing it if they do not fit). Its size is that of
           // the module or what the words need, whatever the calls before did (memory.grow, more words):
           // a memory larger than that, which cannot shrink, is made again with the instance, so that a
           // call gives the same result for the same arguments and words (made again after running out
-          // of fuel, consh/SJS-WASM-PLAN-ja.md 5.5; REVIEW-ja.md 2026-11-14 (2), 5)
+          // of fuel, consh/docs/SJS-WASM-PLAN-ja.md 5.5; REVIEW-ja.md 2026-11-14 (2), 5)
           let mem = instance.exports.__memory;
           if (mem) {
             const want = Math.max(entry.minPages, Math.ceil((words * 8) / 65536));

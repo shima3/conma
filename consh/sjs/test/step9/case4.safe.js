@@ -1,4 +1,4 @@
-// 配列の計画（consh/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A3：配列を使う関数も数の関数になる。引数の配列は wasm のメモリに写され、
+// 配列の計画（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A3：配列を使う関数も数の関数になる。引数の配列は wasm のメモリに写され、
 // 書き換えた数は書き戻される。配列は JSON.stringify で出す（console.log の配列の書き方は Node.js と違う）
 const X = 0, Y = 1
 function sum(a) { let s = 0; for (const v of a) s += v; return s }

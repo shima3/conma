@@ -1,4 +1,4 @@
-# エラーは $? を 2 にする。SJS の範囲の外のコードもエラーにする（consh/SAFEJS-PLAN-ja.md の 3.2）
+# エラーは $? を 2 にする。SJS の範囲の外のコードもエラーにする（consh/docs/SAFEJS-PLAN-ja.md の 3.2）
 (( undefinedName + 1 ))
 echo "status $?"
 (( 1 + ))

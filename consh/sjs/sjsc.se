@@ -1,4 +1,4 @@
-;; SJS の変換器（consh/SAFEJS-PLAN-ja.md の段階 B1）：SJS のファイルを読み、ConMa のソースを標準出力に出す。
+;; SJS の変換器（consh/docs/SAFEJS-PLAN-ja.md の段階 B1）：SJS のファイルを読み、ConMa のソースを標準出力に出す。
 ;;   main の引数: SJS のファイル名
 ;; 変換は consh/include の sjs_lex.se、sjs_parse.se、sjs_gen.se。作ったソースは sjs_rt.se を include する
 (include "util.se")
