@@ -1,4 +1,4 @@
-;; 条件が Boolean の __if_then_else__、__if__、__unless__（docs/FAST-PLAN-ja.md 4.3）。
+;; 条件が Boolean の __if_then_else__、__if__、__unless__（docs/dev/FAST-PLAN-ja.md 4.3）。
 ;; Rust VM と wasm 版は、節を関数で書いた適用を読み込むときに節を選び、選んだ節の Body を読み込むまでのステップを、
 ;; 数えたうえで 1 回で行う。各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる
 (include "pure.se")

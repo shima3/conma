@@ -1,6 +1,6 @@
 # 拡張 ConMa とコア ConMa の計画
 
-ConMa を、今の言語である**コア ConMa** と、それに構文とプリミティブを足した**拡張 ConMa** に分ける計画である。拡張 ConMa からコア ConMa への変換器を用意して、互換性を保つ。2026-11-11 に決めた方針を書いたもので、段階 F5 まで作り、F8 で測った。F6 ではレコードを、F7 では変換版の VM の変更を、作らないと決めた。4.4 の脱出の継続を作らないことも、作らないと決めた。これまでの高速化の手法と効果の一覧は docs/SPEED-ja.md にある。
+ConMa を、今の言語である**コア ConMa** と、それに構文とプリミティブを足した**拡張 ConMa** に分ける計画である。拡張 ConMa からコア ConMa への変換器を用意して、互換性を保つ。2026-11-11 に決めた方針を書いたもので、段階 F5 まで作り、F8 で測った。F6 ではレコードを、F7 では変換版の VM の変更を、作らないと決めた。4.4 の脱出の継続を作らないことも、作らないと決めた。これまでの高速化の手法と効果の一覧は docs/dev/SPEED-ja.md にある。
 
 ## 1. 目的
 
@@ -91,7 +91,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 ### 4.1. 引数の数がちょうど合う適用を 1 ステップにする
 
-* **今**：Closure の適用は、まず被演算子の数だけ引数を束縛した Closure（部分適用）を作り、次のステップで Body に入る（docs/VPROC_STEP.md の Case 2）。
+* **今**：Closure の適用は、まず被演算子の数だけ引数を束縛した Closure（部分適用）を作り、次のステップで Body に入る（docs/dev/VPROC_STEP.md の Case 2）。
 * **拡張 ConMa**：被演算子の数が残りの引数の数とちょうど同じなら、束縛と Body の読み込みを 1 ステップで行う。足りないときは、今までどおり部分適用にする。
 * **コア ConMa への変換**：要らない（構文もプリミティブも変わらない。ステップの数え方だけが違う）。
 * **効果の見込み**：上の 3 ステップが 2 ステップになり、解釈する VM（Rust VM、wasm 版）で、全ステップの 3 分の 1 近くが消える。変換版は、すでに内部で同じことをしているので、ほとんど変わらない。
@@ -155,10 +155,10 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * **今**：ConSh の関数の約半分は、`__Cont_get__ ,(return)` で始まり、呼び出しのたびに脱出の継続（`return` の値）を作る。`__Cont_get__` は全ステップの 2.4% である。
 * **拡張 ConMa**：関数から戻る構文を持つ。継続の値を作らず、CChain の一番上の CFrame に戻る。
 * **コア ConMa への変換**：関数の始めの `__Cont_get__ ,(return)` と、`return` の適用にする。
-* **注意**：`return` の時の CChain が、関数に入った時と同じでなければ、意味が変わる。ConSh の `shift` のように、CChain のプリミティブで LCont を取り出して、別の CChain の上で呼ぶ場合がそうである（consh/docs/SAFEJS-REVIEW-ja.md の 3.1 の 4、docs/ROADMAP.md の「Planned: returning without making the escape continuation」）。次のどちらかにする。
+* **注意**：`return` の時の CChain が、関数に入った時と同じでなければ、意味が変わる。ConSh の `shift` のように、CChain のプリミティブで LCont を取り出して、別の CChain の上で呼ぶ場合がそうである（consh/docs/dev/SAFEJS-REVIEW-ja.md の 3.1 の 4、docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」）。次のどちらかにする。
     * 戻る構文は、CChain を取り出す処理の中では使えないと決め、構文解析かフロントエンドで確かめる。
     * 取り出された場合だけ、コア ConMa と同じ意味（入った時の CChain に戻す）になるように作る。
-* docs/ROADMAP.md の「Planned: returning without making the escape continuation」は、仕様を変えずに同じ効果を得る案である。どちらで行うかを、ここで決める。
+* docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」は、仕様を変えずに同じ効果を得る案である。どちらで行うかを、ここで決める。
 
 **作ったもの（F5、2026-11-11）**
 
@@ -168,18 +168,18 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * `CONMA_FAST_REPORT=1` で、印を付けた Body の数を書く。test/fast4 は、`return` で抜ける関数、onError、Dict で見つからないとき、値の数と引数の数が違うとき、プリミティブの中のエラーで、ステップの番号が Python VM と同じになることと、印の数（24）を確かめる。
 * 速さ（Rust VM、F4 の後と比べて、5 回のうち最速）：consh/bench の 02_for_seq_100000 が 0.959 s から 0.854 s（0.89 倍）、10_pipe_for_stdin が 2.256 s から 1.875 s（0.83 倍）、ほかは 0.91〜1.01 倍。出力は同じだった。
 
-**決定（2026-11-12）：脱出の継続を作らないことは、作らない。** 言語の構文にも、仕様を変えないフロントエンドの最適化（docs/ROADMAP.md）にもしない。理由は次のとおり。
+**決定（2026-11-12）：脱出の継続を作らないことは、作らない。** 言語の構文にも、仕様を変えないフロントエンドの最適化（docs/dev/ROADMAP.md）にもしない。理由は次のとおり。
 
 * 効果が小さい。F5 の後の Rust VM で、ConSh の最適化版の 02_for_seq_100000（10 万回）を数えると、`__Cont_get__` は 3,317 万ステップのうち 106 万ステップ（3.2%）で、1 回のループに約 11 回だった。1 ステップは平均約 26 ns なので、全部なくしても約 27 ms、0.85 s の約 3% である。8.2 のサンプルでも、`__Cont_get__` は 0.7%、`ContObj` の解放は 1.5% だった。
-* 使える所が少ない。`__Cont_get__ ,(return)` で始まる 637 個の関数のうち、条件を満たすのは 48 個である（docs/ROADMAP.md）。ほとんどは、`return` を `__if__` の節の中で使う。そこでは節の LCont のフレームも CChain に積まれているので、そのまま一番上の CFrame に戻ることはできない。shift で CChain を取り出す場合も使えない。そのため、実際の効果は 3% のさらに一部になる。
+* 使える所が少ない。`__Cont_get__ ,(return)` で始まる 637 個の関数のうち、条件を満たすのは 48 個である（docs/dev/ROADMAP.md）。ほとんどは、`return` を `__if__` の節の中で使う。そこでは節の LCont のフレームも CChain に積まれているので、そのまま一番上の CFrame に戻ることはできない。shift で CChain を取り出す場合も使えない。そのため、実際の効果は 3% のさらに一部になる。
 * 手間が大きい。構文かフロントエンドの書き換え、Python・Rust・変換版・wasm の 4 つの VM への新しい命令、CChain を取り出す場合の確かめ、ステップを含むトレースのログの作り直しが要る。
 * `__Cont_get__` と `return` の適用は、もともと軽い。`__Cont_get__` は通し番号を増やして `ContObj` を 1 つ作るだけで、`return` の適用は CChain を戻して一番上の CFrame を取り出すだけである。`,(return)` の LCont は、F5 で Closure を作らずに束縛している。
 
 ### 4.5. レコード
 
 * **今**：ConSh は、文脈を Dict に置き、`__Dict_lookup_or__ sh "global"` のように文字列のキーで引く。`__Dict_lookup_or__` は全ステップの 4.2%、`__Dict_put__` は 1.0% である。
-* **これまでの決定**：docs/REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
-* **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/REVIEW-ja.md の 1）。
+* **これまでの決定**：docs/dev/REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
+* **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/dev/REVIEW-ja.md の 1）。
 * **コア ConMa への変換**：Dict（または LList）と、それを読み書きする関数にする。
 * **優先度**：上の決定と計測から、速さのためには低い。拡張 ConMa を作るとしても、綴りの誤りを見つけることが主な理由になる。言語に足さないという方針を変えるかどうかも、ここで決める。
 * **レコードの前に試したこと（2026-11-11）**：レコードで減るのは、キーを探す時間である。その大きさを確かめるため、Rust VM の `__Dict_lookup_or__` と `__Dict_put__` に、定数の文字列のキーで呼ぶ場所ごとのキャッシュ（`DictSite`。変換版の `Ic` と同じもの）を入れた（6936e15）。
@@ -222,7 +222,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * test/step34 と step35 は、どちらも拡張 ConMa で作り、組み込み（test.se）と `core/control.se` の定義（conma.se）を比べるようにした。
 * 定義とプリミティブの違いが 1 つ見つかった：プリミティブは余分な被演算子を捨てるが、定義では、返したものに余分な被演算子が適用される。consh/include/sjs_gen.se の `Gen_plain_decls` が `__if__` に節を 2 つ渡していて（`__if_then_else__` の書き誤り）、ConSh の参照版の SJS が止まった（consh/test の step21）。`__if_then_else__` に直した（then でない側も、名前を集める）。ConSh と標準ライブラリの構文木を調べて、余分な被演算子を渡す所は、ほかになかった。
 * コア ConMa のモジュールは、Rust VM で遅くなる（richards2 で、control.se を include したときの測定では 1.7〜1.9 倍）。
-* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（docs/REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/core/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
+* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（docs/dev/REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/core/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
 * **速さ**：試作（どの版でもプリミティブにしたもの）で、Rust VM の bench/（nbody、fib、loop、richards）と consh/bench は 0.98〜1.01 倍で、変わらなかった。条件分岐は `__if_then_else__` などが Boolean を見て節を選ぶので、Boolean を適用しないからである。Boolean を直接適用する `none __FALSE__ __TRUE__ ,(pending)` を使う richards の版で、ステップが 1,604 万から 1,595 万（0.6%）減った。
 
 ## 5. 変換器
@@ -393,7 +393,7 @@ F5 の後の Rust VM で、次に速くできる所を探すために、時間�
 
 **変数の多い鎖をフレームにした（2026-11-13）**：上の深さは ConSh のもので、bench/ を数えると、nbody だけは平均 7.45 と深かった（19% が深さ 16 より深い。fib 1.42、loop 2.00、richards 2.03、richards_tuned 2.35）。`pair_step` は LCont で 43 個の変数を束縛し、終わりの方では 20〜40 個の節をたどる。`lv_get` でリストを 2 回たどる VM と比べると、たどる時間は nbody の約 14%、richards_tuned と fib では 2〜3% だった。そこで、変数の多い関数だけフレームにした。モジュールを読み込むときに、Function の Body から LCont（Function として書いたもの）をたどった鎖が、Closure を作らず（Operator と OList に関数式がない）、LCont で 8 個以上の変数を束縛するなら、その変数を LVEnv の 1 つの節（`Value::Frame`、値の列）に置く（`module::frame_chain`）。束縛ごとに新しいスロットにし（同じ名前の束縛も別のスロット）、ほかに節を持つものがなければその場で足し、あればコピーに足す（CChain や継続が持つ節の値は変わらない）。各 Body では、フレームの変数をスロットで読み（`CExpr::S`）、外の変数はフレームを 1 つの節と数えた添字で読む。Function 自身の引数は今までどおり。VM が束縛する所では、持っている LVEnv を手放して、節が共有されないようにした（そうしないと、`,()` の LCont の所でコピーになっていた）。`--trace` のとき（トレースは Python VM と同じ）と、変換版のコードがあるモジュールでは使わない。nbody 100000 が 0.885 倍（4.752 s → 4.203 s）、ほかの bench/ と consh/bench（00〜11）は 0.98〜1.02 倍だった（b20f15a の VM と交互に 5 回の最速、Apple M2）。最初は、フレームを使わない束縛も新しい関数（`value::lv_bind`）に通していて、ほかが 1.01〜1.03 倍遅かったので、そこは元のループに戻した。閾値（`CONMA_FRAME_MIN`）を 0 や 1 にすると、loop と consh/bench の一部（02、10、11）が 1.03〜1.04 倍になる。変数が少ない鎖では、1 個の節の代わりに節、`Rc`、`Vec` の中身の 3 つを確保し、読む深さもほとんど変わらないためである。4 では 11 が 1.03 倍、8 と 16 はフレームなしと同じで、nbody はどれも 0.87 倍前後なので、8 にした。
 
-**拡張 ConMa の最初のプリミティブ（2026-11-12 に計画し、作った）**：ビット演算の 7 つのプリミティブ（`__Number_xor32__` など、JavaScript と同じ 32 ビット）を、機能 `"bitwise32"` として拡張 ConMa に足す計画を、docs/BITWISE-PLAN-ja.md に書いた。代わりの定義（同じ名前のコア ConMa の関数。どの VM でも、大域の名前に定義があればプリミティブより先に使われることを確かめた）、bin/to-core の変換、フロントエンドが `Uses` を書くことを、ここで初めて作った（段階 W1〜W7）。bin/vm は、Python VM で動かすとき、拡張 ConMa のモジュールを bin/to-core で直す。ConMa で書いた変換器（F1 で「フロントエンドが初めて Uses を書く段階で作る」としたもの）は、コア ConMa の VM が Python VM だけなので作らないことにした（docs/BITWISE-PLAN-ja.md の 5）。
+**拡張 ConMa の最初のプリミティブ（2026-11-12 に計画し、作った）**：ビット演算の 7 つのプリミティブ（`__Number_xor32__` など、JavaScript と同じ 32 ビット）を、機能 `"bitwise32"` として拡張 ConMa に足す計画を、docs/dev/BITWISE-PLAN-ja.md に書いた。代わりの定義（同じ名前のコア ConMa の関数。どの VM でも、大域の名前に定義があればプリミティブより先に使われることを確かめた）、bin/to-core の変換、フロントエンドが `Uses` を書くことを、ここで初めて作った（段階 W1〜W7）。bin/vm は、Python VM で動かすとき、拡張 ConMa のモジュールを bin/to-core で直す。ConMa で書いた変換器（F1 で「フロントエンドが初めて Uses を書く段階で作る」としたもの）は、コア ConMa の VM が Python VM だけなので作らないことにした（docs/dev/BITWISE-PLAN-ja.md の 5）。
 
 ### 8.3. wasm 版に変換版のコードを入れる実験（2026-11-12）
 

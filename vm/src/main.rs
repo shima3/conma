@@ -19,7 +19,7 @@
 //! remaining arguments as a Seq of Strings.
 //!
 //! With CONMA_SEED=<n>, the scheduler chooses the VProc to run next at random
-//! (see "Scheduling and Termination" in docs/DESIGN.md).
+//! (see "Scheduling and Termination" in docs/dev/DESIGN.md).
 
 mod alloc;
 mod gc;

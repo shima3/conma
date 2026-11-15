@@ -1,4 +1,4 @@
-;; 配列の計画（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A2：実行時の支えが、SJS の配列を wasm のモジュールのメモリに写し、
+;; 配列の計画（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A2：実行時の支えが、SJS の配列を wasm のモジュールのメモリに写し、
 ;; "ok" なら数の配列の要素を書き戻す（配列に書かない関数は書き戻さない）。手で書いた WAT のモジュールと、ConMa 版（"[ConMa]" を出す）を Sjs_wasm_fn で包んで呼ぶ。
 ;; wasm 版の VM では wasm 版が、ほかの VM では ConMa 版が動き、配列の結果は同じになる
 (include "util.se")

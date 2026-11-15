@@ -1,4 +1,4 @@
-// 段階 F2（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、20）：添字が定数の読み書きを、長さの確かめと f64.load / f64.store で
+// 段階 F2（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、20）：添字が定数の読み書きを、長さの確かめと f64.load / f64.store で
 // その場に書く。範囲の中、長さちょうど（読めば undefined、書けば配列がのびる。wasm 版は trap にして ConMa 版で動かす）、-0、
 // 数の定数の添字、小数の添字、大きな添字、+= と ++、配列の配列の要素（式の配列を $__o に入れる）、値の中の読み書き、
 // 要素が足りない分解、for...of の要素（確かめずに読む）と length

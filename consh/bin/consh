@@ -7,10 +7,11 @@
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
 #                 作っていなければ、そう出して ConMa 版で実行する。ソースより古ければ、警告を出してから、それで実行する
 #   conma         ConMa 版の最適化版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
-#                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
-#                 （bin/vm。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
+#                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ（bin/vm。python なら Python 版、rust なら Rust 版、
+#                 transpiled なら変換したコードを組み込んだ Rust 版、wasm なら wasm 版）。CONMA_VM がなければ Rust 版の VM
+#                 （vm/target/release/conma）を使い、作っていなければエラーにする（気付かずに遅い Python 版で動かさない）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
-#                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
+#                 そのため、CONMA_VM がない（か rust、transpiled）なら Python を使わない
 #   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
 #                 reference）と、コア ConMa 用のファイル（consh/include/core と、標準ライブラリの include/core）を、最適化版の
 #                 同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。ほかは conma と同じ
@@ -81,6 +82,15 @@ if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED"
 fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
+fi
+# ConMa 版の VM：CONMA_VM があれば、それを bin/vm で使う。なければ Rust 版の VM で、作っていなければエラーにする
+# （テストやベンチマークを、気付かずに遅い Python 版の VM で動かさないため。Python 版は CONMA_VM=python で選ぶ）
+if [ -z "$CONMA_VM" ]; then
+  if [ ! -x "$root/vm/target/release/conma" ]; then
+    echo "consh: $root/vm/target/release/conma is not built (cargo build --release in vm); set CONMA_VM=python to use the Python VM" >&2
+    exit 2
+  fi
+  export CONMA_VM=rust
 fi
 # ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は
 # bin/cache-dir の場所。持ち主だけが読み書きできる）。

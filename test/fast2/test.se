@@ -1,4 +1,4 @@
-;; 評価済みの LazyList の __LazyList_force__（docs/FAST-PLAN-ja.md 4.2）。
+;; 評価済みの LazyList の __LazyList_force__（docs/dev/FAST-PLAN-ja.md 4.2）。
 ;; Rust VM と wasm 版は、include/util.se の定義の 16 ステップを 1 回で行い、16 と数える。
 ;; 各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる
 (include "util.se")

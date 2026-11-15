@@ -1,4 +1,4 @@
-;; LCont を関数で書いたプリミティブの適用（docs/FAST-PLAN-ja.md 4.4）。
+;; LCont を関数で書いたプリミティブの適用（docs/dev/FAST-PLAN-ja.md 4.4）。
 ;; Rust VM と wasm 版は、値を LCont に返すだけのプリミティブ（vm/src/module.rs の INLINE_PRIMS）を、
 ;; Body を読み込むときに実行し、LCont の Closure を作らずに、その Body まで読み込む（ステップは数える）。
 ;; 各 case は最後に VProc 1 でエラーを起こし、そのステップの番号が Python VM と同じになることを確かめる

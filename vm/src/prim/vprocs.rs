@@ -176,7 +176,7 @@ pub fn is_core() -> bool {
 
 /// The include directories of the standard library: for extended ConMa include/ext
 /// (if it is there), then include/; for core ConMa (set_core) include/core,
-/// then include/ (docs/FAST-PLAN-ja.md 4.6).
+/// then include/ (docs/dev/FAST-PLAN-ja.md 4.6).
 pub fn include_args() -> Vec<String> {
     let inc = include_dir();
     let first = inc.join(if CORE.with(|c| c.get()) { "core" } else { "ext" });

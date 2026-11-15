@@ -13,13 +13,15 @@ consh/
 │   ├── RUNNING-ja.md            版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差
 │   ├── AST.md                   consh_parse が出力する構文木の形式（英語）
 │   ├── FOR-BASH-USERS.md        Bash を使う人向けの使い方の説明（英語）
-│   ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
-│   ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
-│   ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
-│   ├── SJS-WASM-ARRAY-PLAN-ja.md  その、配列を使う関数の計画
-│   ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
-│   ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
-│   └── REVIEW-ja.md             ConSh のレビュー
+│   └── dev/                     ConSh の開発者向けの文書
+│       ├── DEVELOPING-ja.md         ConSh を変える人向けの決まり
+│       ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
+│       ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
+│       ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
+│       ├── SJS-WASM-ARRAY-PLAN-ja.md その、配列を使う関数の計画
+│       ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
+│       ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
+│       └── REVIEW-ja.md             ConSh のレビュー
 ├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
@@ -37,7 +39,7 @@ consh/
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
 │   ├── consh_eval.se    文の実行
-│   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/SAFEJS-PLAN-ja.md）
+│   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/dev/SAFEJS-PLAN-ja.md）
 │   └── sjs_*.se         SJS の変換器（sjs_lex、sjs_parse、sjs_gen）と実行時の支え（sjs_rt、ビット演算の sjs_bits）。sjs/README-ja.md
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
@@ -46,13 +48,11 @@ consh/
     ├── parse2/          構文木の位置のテスト：consh_parse --pos に渡す
     ├── parse3/          ConMa 版の構文解析のテスト：parse1 と parse2 の各スクリプトで、consh_parse --pos と同じ構文木とエラーになるか
     ├── expand1/         語の展開のテスト：consh_parse --expand に渡す。caseN.args の各行が引数になる
-    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は docs/REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）、step17 は JavaScript のない版の js
+    ├── stepN/           ConMa 版のテスト：test.sh, caseN.log。step1 は構文木の読み込み、step2 は単純な文、step3 は関数など、step4 はコマンド置換、step5 はパイプ、step6 は変数リストへのリダイレクトと stdin、step7 は & と wait、kill、step8 は外部コマンドの出力を直接つなぐ、step9 は ARG_MAX、step10 は関数の中の外部コマンドの出力、step11 は glob、step12 は対話モードと exit、step13 は中断や kill で止めたときの後始末（開いたファイルを閉じ、起動した VProc を止める）、step14 は docs/dev/REVIEW-ja.md の 2026-11-05 の指摘への対応、step15 は片側だけが外部コマンドのパイプ（OS のパイプでつなぐ）、step17 は JavaScript のない版の js
     └── examples/        examples/ のデモのテスト：ConSh 版と Bash 版を実行し、NAME.log、NAME.bash.log と比べる
 ```
 
-* ConSh のために ConMa に足すプリミティブやライブラリは、`consh/` ではなく、リポジトリのルートの `docs/`、`include/`、`test/` に置く。
-* `reference/` と `include/` のファイルには、ルートの `include/` のファイルと名前がぶつからないよう、`consh_` を付ける。
-* 大きくなったら、`consh_lexer.se`、`consh_expand.se`、`consh_builtin.se` などに分ける。
+ConSh を変える人向けの決まり（ファイルの置き場所と名前、最適化版と参照版の両方を直すこと）は、[docs/dev/DEVELOPING-ja.md](docs/dev/DEVELOPING-ja.md) にある。
 
 ## 実行
 
@@ -66,12 +66,10 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 | `CONSH_IMPL` | 版 |
 |---|---|
 | `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、docs/PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（最適化版）で実行する。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
-| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。`python` なら Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版、`wasm` なら wasm 版）。`CONMA_VM` がなければ Rust 版の VM（`vm/target/release/conma`）を使い、作っていなければエラーにする（テストやベンチマークを、気付かずに遅い Python 版で動かさないため） |
 | `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`consh/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（最適化版）で実行する。
-
-機能を足したり変えたりしたときは、`consh/include` のファイルと、`consh/reference` にある同じ名前のファイルの両方を直し、両方でテストする（`CONSH_IMPL=conma` と `CONSH_IMPL=reference`）。速くしただけなら、最適化版のテストだけでよい。
 
 引数なしで起動すると対話モードになり、標準入力から1行ずつ読んで実行する（段階 13）。プロンプトは変数 `PS1` と `PS2`（なければ `$ ` と `> `）。エラーでは終わらず、次のプロンプトに戻る。Ctrl-C は実行中のコマンドだけを止め（`$?` は 130）、`&` で起動したジョブは止めない。入力が終われば（Ctrl-D）終わる。
 標準入力が端末で、[rlwrap](https://github.com/hanslub42/rlwrap) があれば（`brew install rlwrap` など）、rlwrap を通して起動し、行の編集と履歴（`~/.consh_history`）と、Tab によるファイル名の補完（`rlwrap -c`）が使える。補完はプロセスのカレントディレクトリからの相対パスなので、Rust 版は `cd` した先をプロセスのカレントディレクトリにもする（ConMa 版は、起動したディレクトリからのまま）。環境変数 `CONSH_NO_RLWRAP` を空でない値にすると、rlwrap を使わない。
@@ -79,7 +77,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読む（`--conma-parser` は、それを明示するだけ）。構文木は `consh_parse --pos` と同じで（`test/parse3`）、構文エラーのメッセージは Rust 版と同じく `consh:` で始まる。
 `--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](docs/AST.md)。構文エラーは `consh_parse:` で始まる）。
 ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）があれば、その `conma build`（ConMa 版のフロントエンド、vm/README.md）で作り、なければ `bin/includer` と `bin/resolver`（Python）で作る。
-そのため、Rust 版の VM を作っておき、`CONMA_VM=rust`（か `transpiled`）で起動すれば、ConMa 版も Python を使わずに動く（既定の VM は、基準の Python 版のまま）。
+そのため、Rust 版の VM を作っておけば、`CONMA_VM` がなくても（`rust` か `transpiled` でも）、ConMa 版は Python を使わずに動く。基準の Python 版の VM で動かすときは `CONMA_VM=python` を付ける（ConSh の外の `bin/vm` の既定は、Python 版のまま）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-dir` の場所（`${XDG_CACHE_HOME:-$HOME/.cache}/conma/<リポジトリのパスのチェックサム>`。持ち主だけが読み書きでき、別のチェックアウトとは分かれる。環境変数 `CONMA_CACHE_DIR` で変えられる）に作り、`.se` のソースが変わったときだけ作り直す。ConSh のモジュールだけを置くディレクトリは、環境変数 `CONSH_MODULE_DIR` で変えられる（2026-11-15 までの既定は `/tmp` だった）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 
@@ -95,7 +93,7 @@ ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-di
     * 前置の変数定義は、同じ文の語の展開にも反映する（`OFS=, echo "$list"`）
     * 先頭の語が `${list}` なら、要素を順に引数にする（先頭の要素だけは再帰的に展開してコマンド名を取る）。先頭の語の LazyList が空ならエラー
 * 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`、`stdin`、`wait`、`kill`、`exit`、`js`
-    * `js [変数名=] コード {引数}` は JavaScript を評価する（docs/JS-PLAN-ja.md）。JavaScript が動くのは ConMa の VM の wasm32 版（js/。ブラウザと Node.js）だけで、ほかの版では `$?` を 127 にする（test/step17、js/test/step1）
+    * `js [変数名=] コード {引数}` は JavaScript を評価する（docs/dev/JS-PLAN-ja.md）。JavaScript が動くのは ConMa の VM の wasm32 版（js/。ブラウザと Node.js）だけで、ほかの版では `$?` を 127 にする（test/step17、js/test/step1）
 * if 文（`elif`、`else`、`fi` の後のリダイレクト）
 * リストfor文、`break [変数名]`、`continue [変数名]`（`done` の後のリダイレクト）
     * 語は関数の引数と同じ規則で展開し、LazyList の値は1階層だけ開いて要素ごとに回す

@@ -2,7 +2,7 @@
 import sys
 import re
 
-# The features of extended ConMa and the primitives of each (docs/FAST-PLAN-ja.md 3.4): a module that uses one of
+# The features of extended ConMa and the primitives of each (docs/dev/FAST-PLAN-ja.md 3.4): a module that uses one of
 # them as a global without a definition gets (Uses "feature") after its (F ...) (include/resolver.se does the same)
 EXT_PRIMITIVES = [
     ("bitwise32", ("__Number_and32__", "__Number_or32__", "__Number_xor32__", "__Number_not32__",
@@ -15,7 +15,7 @@ EXT_PRIMITIVES = [
     ("control", ("__if_then_else__", "__if__", "__unless__", "__Cont_get__",
                  "__if_null_then_else__", "__unless_null__", "__Number_if_zero_then_else__", "__Number_unless_zero__",
                  "__Number_if_greater__", "__Number_if_greater_then_else__")),
-    # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/docs/SJS-WASM-PLAN-ja.md 5.3;
+    # __Wasm_compile__ and __Wasm_call__, WebAssembly in the VM for wasm32 (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.3;
     # core ConMa defines them in include/core/wasm.se, going to onError)
     ("wasm", ("__Wasm_compile__", "__Wasm_call__", "__Wasm_call_memory__", "__Dict_numbers__", "__Dict_put_numbers__")),
 ]
@@ -272,8 +272,8 @@ class Resolver:
         # Collect filenames from Program nodes in order
         filenames = [root.value for root in roots if root.value]
         f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
-        # The features of extended ConMa the module uses (docs/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
-        # bitwise primitive (docs/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
+        # The features of extended ConMa the module uses (docs/dev/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
+        # bitwise primitive (docs/dev/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
         # when it uses __if_then_else__, __if__, __unless__, __Cont_get__ or one of the six conditionals that
         # test a value (__if_null_then_else__ ...), "wasm" when it uses __Wasm_compile__,
         # __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ or __Dict_put_numbers__, as a global of that name without

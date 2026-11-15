@@ -311,7 +311,7 @@ def is_variadic_head(head_node):
 
 def check_core(module_sexp):
     """Raise LoadError if the module uses a feature of extended ConMa (a String of a
-    (Uses ...) item, docs/FAST-PLAN-ja.md 3.4): this VM runs core ConMa only.
+    (Uses ...) item, docs/dev/FAST-PLAN-ja.md 3.4): this VM runs core ConMa only.
     The message is that of the Rust VM (check_features of vm/src/module.rs)."""
     for item in module_sexp[2:]:
         if isinstance(item, list) and item and item[0] == "Uses" and len(item) > 1:
@@ -1640,7 +1640,7 @@ def prim_CChain_pop_CFrame(vp, gvenv):
 
 # __Cont_get__, __if_then_else__, __if__ and __unless__ are not primitives of core ConMa: their
 # definitions are in include/core/control.se (built in in extended ConMa, the feature "control";
-# docs/FAST-PLAN-ja.md 4.6).
+# docs/dev/FAST-PLAN-ja.md 4.6).
 
 
 # ── LList Primitives ──────────────────────────────────────────────────────────

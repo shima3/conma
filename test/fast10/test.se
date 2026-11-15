@@ -2,7 +2,7 @@
 ;; __if_null_then_else__ v then else、__unless_null__ v else、__Number_if_zero_then_else__ n then else、
 ;; __Number_unless_zero__ n else、__Number_if_greater__ a b then、__Number_if_greater_then_else__ a b then else。
 ;; test.sh は、組み込みを使う test.se と、ConMa 版（include/core/control.se）を使う conma.se の両方で各 case を実行し、
-;; 同じ出力になることを確かめる（docs/REVIEW-ja.md の 2026-11-14 の 6）
+;; 同じ出力になることを確かめる（docs/dev/REVIEW-ja.md の 2026-11-14 の 6）
 (include "util.se")
 
 (define println ,(str)

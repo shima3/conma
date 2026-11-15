@@ -1,6 +1,6 @@
 # Primitive Implementation Roadmap
 
-This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](PRIMITIVES.html).
+This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](../PRIMITIVES.html).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
 The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step34`.
 
@@ -37,7 +37,7 @@ CONMA_VM=rust test/run_all.sh
 
 * Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.html)).
 * `__OS_print__` is needed first because every later test reports its result through standard output.
-* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`); since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/core/pure.se` for core ConMa, and are primitives of extended ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/core/control.se` for core ConMa, the feature `"control"`, docs/FAST-PLAN-ja.md 4.6).
+* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`); since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/core/pure.se` for core ConMa, and are primitives of extended ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/core/control.se` for core ConMa, the feature `"control"`, docs/dev/FAST-PLAN-ja.md 4.6).
 
 ## Step 2: Termination and error output
 
@@ -136,7 +136,7 @@ CONMA_VM=rust test/run_all.sh
 * Dict primitives take no `onError`, so a non-Dict argument stops the VProc with an error.
 * `__Dict_keys__` returns the keys in insertion order. This is a detail of this implementation: PRIMITIVES.md leaves the order implementation-defined, and only the tests (`test/step8` case5) rely on it. Replacing a value keeps the key's position; removing and re-adding a key moves it to the end.
 * In traces an MSeq or Dict is shown as `(__MSeq__ "N")` or `(__Dict__ "N")`, like a Ref.
-* `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](SPEC.html)).
+* `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](../SPEC.html)).
 * Both are needed by Step 11 (`commandMSeq`, `envDict`).
 
 ## Step 9: OS I/O streams
@@ -680,7 +680,7 @@ No new primitive.
 | `__OS_kill__` | fixed: an infinite number or NaN goes to `onError` |
 | `__Sexp_read__` | fixed: no recursion limit; a string ending in `\` is reported at the end of the input |
 
-* Goal: Fix what the review of ConSh (`consh/docs/REVIEW-ja.md`, 2026-11-05) found in ConMa.
+* Goal: Fix what the review of ConSh (`consh/docs/dev/REVIEW-ja.md`, 2026-11-05) found in ConMa.
   * Stopping a VProc while it evaluated a LazyList (a channel element, a line of standard input) left the LazyList without a cell, so every later reader got an error; in the interactive mode of ConSh, Ctrl-C during `stdin` broke the shell's standard input. `__VProc_kill__` now marks such a VProc (`kill_pending`) and stops it when it has evaluated all the LazyLists it claimed with `__LazyList_claim__` (`evaluating_lazy`). LazyLists made by `__LazyList_hold__` do not delay it.
   * ConSh closes the file of a redirection at the end of the statement, but `&` jobs and `$( )` started in it may still write to it. `__OS_dup__ onError Stream ,(Stream)` duplicates the file descriptor, so that each child VProc gets its own Stream and closes it when it ends.
   * `__OS_kill__` with an infinite signal number and `__Sexp_read__` with about 1000 levels of nesting raised Python exceptions and ended the interpreter.
@@ -813,7 +813,7 @@ No new primitive.
 |---|---|
 | `__JS_call__` | implemented (JavaScript only in the VM for wasm32; the native VMs go to `onError`) |
 
-* Goal: The builtin `js` of ConSh evaluates JavaScript in the browser (or Node.js) that runs the ConMa VM built for wasm32 (stages 4 to 6 of consh/docs/JS-PLAN-ja.md).
+* Goal: The builtin `js` of ConSh evaluates JavaScript in the browser (or Node.js) that runs the ConMa VM built for wasm32 (stages 4 to 6 of consh/docs/dev/JS-PLAN-ja.md).
 * `__JS_call__ onError code args ,(inputStream outputStream)` hands `code` and `args` to the host, which writes the result to a pipe as a line of an S-expression, after the lines of `console.log` and `console.error` and the requests for standard input, which the program answers through `outputStream` (see PRIMITIVES.md). In the VM for wasm32, `outputStream` is an fd whose writes and close go to the host (`host_js_input`, `host_js_input_end`). An iterator gives its elements one at a time, when the program asks for each with a line `n`, so that an endless generator gives only as many as are read. Waiting for the result is waiting for a Stream, so the scheduler is unchanged, and a Promise that takes time does not stop the other VProcs. In the VM for wasm32, `sys::js_call` (vm/wasm/src/sys.rs) calls the host's `host_js_call`, and the host gives the result with `conma_write` and `conma_close` after `conma_run` returns (vm/wasm/conma.js); in the native VMs, `sys::js_call` fails, and `__JS_call__` goes to `onError` after checking its arguments.
 * Tests (`test/step40`; the logs are those of the native VMs: on the VM for wasm32, the calls of case1 get a Stream):
 
@@ -828,7 +828,7 @@ No new primitive.
 |---|---|
 | `__Number_and32__`, `__Number_or32__`, `__Number_xor32__`, `__Number_not32__`, `__Number_shl32__`, `__Number_shr32__`, `__Number_ushr32__` (feature `"bitwise32"` of extended ConMa) | implemented |
 
-* Goal: ConMa had no bitwise operations, so richards (`bench/`) and the bitwise operators of SJS computed them with arithmetic, one bit at a time: about 30% of the steps of richards, and about 100 times the steps of an addition for an SJS `^`. Planned and built in docs/BITWISE-PLAN-ja.md (stages W1 to W7), the first primitives of extended ConMa (docs/FAST-PLAN-ja.md): core ConMa is unchanged.
+* Goal: ConMa had no bitwise operations, so richards (`bench/`) and the bitwise operators of SJS computed them with arithmetic, one bit at a time: about 30% of the steps of richards, and about 100 times the steps of an addition for an SJS `^`. Planned and built in docs/dev/BITWISE-PLAN-ja.md (stages W1 to W7), the first primitives of extended ConMa (docs/dev/FAST-PLAN-ja.md): core ConMa is unchanged.
 * The 32-bit meaning of JavaScript (PRIMITIVES.md, section 16). The VMs of extended ConMa run them (the transpiled code computes them on `f64` in fused chains); the frontends (`bin/resolver`, `include/resolver.se`) mark a module that uses them `(Uses "bitwise32")`, and `bin/to-core` puts in the replacement definitions of `include/core/bitwise32.se` (`include/ext/bitwise32.se` until 2026-11-13) for the Python VM, which `bin/vm` does on its own.
 * Tests: `test/step41` (the replacement definitions against the values of Node.js), `test/fast5` (the primitives in a module marked by the frontend, on every VM; the module translated by `bin/to-core`; a module defining one of the names itself), `consh/sjs/test/step8` case9 (SJS).
 * Results: richards 20 on the Rust VM 7.53 s to 5.24 s; one bitwise operation of SJS about 4,500 steps to about 65 (an addition takes 45).
@@ -839,7 +839,7 @@ No new primitive.
 |---|---|
 | `__Number_is_negative_zero__` | implemented |
 
-* Goal: a Number is an IEEE 754 double and can be `-0`, but no primitive told `-0` from `0` (`__Number_toString__` writes `"0"`, `__Number_is_negative__` is false, dividing by either is an error), so SJS (consh/sjs) could not give `-Infinity` for `1 / -0` as JavaScript does. Decided with the user on 2026-11-14 (consh/docs/SJS-WASM-PLAN-ja.md 11): a primitive of core ConMa, since a replacement definition cannot be written in ConMa.
+* Goal: a Number is an IEEE 754 double and can be `-0`, but no primitive told `-0` from `0` (`__Number_toString__` writes `"0"`, `__Number_is_negative__` is false, dividing by either is an error), so SJS (consh/sjs) could not give `-Infinity` for `1 / -0` as JavaScript does. Decided with the user on 2026-11-14 (consh/docs/dev/SJS-WASM-PLAN-ja.md 11): a primitive of core ConMa, since a replacement definition cannot be written in ConMa.
 * `__Number_is_negative_zero__ Number ,(Boolean)` is true for `-0` only (false for NaN whatever its sign bit); a non-Number stops the VProc (PRIMITIVES.md). The transpiled code calls it as the other predicates of `CHAIN` (`vm/conma2rust/conma2rust.py`, `SAFE_PRIMS` of `vm/src/transpiled.rs`).
 * `__Number_floor__` of the Python VM now returns a float, keeping `-0` as the Rust VM does (`math.floor` gave an int, which lost the sign).
 * Tests: `test/step42` (written and computed `-0`, `+0`, NaN, infinities, subnormals, and that the other primitives treat `-0` as `0`).
@@ -850,7 +850,7 @@ No new primitive.
 |---|---|
 | `__Number_remainder__` | implemented |
 
-* Goal: `%` of SJS was `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1` gave `0` where JavaScript gives `1.0999999999999996`, `1e17 % 3` and `1e300 % 7` `0` where it gives `1`; docs/REVIEW-ja.md 2026-11-14 (2)). Decided with the user on 2026-11-14: a primitive of core ConMa, since the exact remainder cannot be written in ConMa with its primitives in a reasonable number of steps.
+* Goal: `%` of SJS was `a - b * trunc(a / b)`, which is not exact (`5.5 % 1.1` gave `0` where JavaScript gives `1.0999999999999996`, `1e17 % 3` and `1e300 % 7` `0` where it gives `1`; docs/dev/REVIEW-ja.md 2026-11-14 (2)). Decided with the user on 2026-11-14: a primitive of core ConMa, since the exact remainder cannot be written in ConMa with its primitives in a reasonable number of steps.
 * `__Number_remainder__ onError a b ,(Number)` is `fmod` of C (`%` of Rust's f64, `math.fmod` on the Python VM with infinities and NaN handled as fmod does): the sign of `a`, a zero of the sign of `a`, NaN for an infinite `a` or a NaN, `a` for a finite `a` and an infinite `b`; a zero `b` applies onError as `__Number_divide__` does (PRIMITIVES.md). The transpiled code calls it through the OList as the other primitives of `CHAIN`.
 * `Sjs_mod` of `consh/include/sjs_rt.se` uses it, and the WebAssembly version of `%` (`$__mod` of `consh/include/sjs_wasm.se`, WebAssembly having no remainder of f64) finds the same value exactly by subtracting `b` doubled as far as it fits, then halved, each step exact.
 * Tests: `test/step44` (the values above, signs, zeros, infinities, NaN, subnormals, a zero `b`, a non-Number).
@@ -860,18 +860,18 @@ No new primitive.
 | Primitive | Status |
 |---|---|
 | `__Wasm_compile__`, `__Wasm_call__` (feature `"wasm"` of extended ConMa) | implemented |
-| `__Wasm_call_memory__` and the memory of a module (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, stage A1) | implemented |
+| `__Wasm_call_memory__` and the memory of a module (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1) | implemented |
 
-* Goal: stage 1 of consh/docs/SJS-WASM-PLAN-ja.md, the base for running the numeric functions of SJS as WebAssembly, and, decided with the user on 2026-11-14, a way for any ConMa program to write functions on numbers in WebAssembly (PRIMITIVES.md, section 16).
+* Goal: stage 1 of consh/docs/dev/SJS-WASM-PLAN-ja.md, the base for running the numeric functions of SJS as WebAssembly, and, decided with the user on 2026-11-14, a way for any ConMa program to write functions on numbers in WebAssembly (PRIMITIVES.md, section 16).
 * `vm/src/prim/wasm_asm.rs` assembles a subset of WAT (functions on f64, i32 and i64; no imports, memory, tables or globals) into binary and adds the fuel; `vm/src/prim/wasm.rs` has the primitives and `Value::Wasm`; the VM for wasm32 gives the module to its host (`host_wasm_compile`, `host_wasm_call`, `host_wasm_error`, `host_wasm_free` in `vm/wasm/conma.js`, for Node.js, JavaScriptCore and the browser), and the native VMs go to `onError` after assembling. A call out of fuel ends the time slice (`Machine::end_slice`).
 * The frontends write `(Uses "wasm")`, and `bin/to-core` puts in `include/core/wasm.se`.
 * Tests: `test/fast7` (calls, fuel and starting again with more fuel, traps, wrong arguments, the forms the assembler refuses, the checks of the host; logs for the wasm VM, the native VMs and the Python VM, and `CONMA_NO_WASM=1`).
-* Stage A1 of consh/docs/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in core ConMa (`include/core/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
-* For copying the arrays of SJS faster (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/core/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
+* Stage A1 of consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in core ConMa (`include/core/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
+* For copying the arrays of SJS faster (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/core/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
 
 ## Planned: returning without making the escape continuation
 
-Not built, and decided not to be built (2026-11-12, docs/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/SAFEJS-REVIEW-ja.md (3.1.4).
+Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/dev/SAFEJS-REVIEW-ja.md (3.1.4).
 
 * Goal: when a function takes its escape continuation with `__Cont_get__ ,(return)` at its start and uses `return` only to return from itself, return through the CChain as a normal return does, without making the value of `return` (a Closure that keeps the CChain). Most functions of ConSh have this form, and so would the functions that SJS is translated into.
 * Now (see `__Cont_get__` in PRIMITIVES.md): `__Cont_get__` makes `return`, which keeps the CChain at that time; applying it sets the CChain back to the kept one, then pops its top CFrame and applies its Closure. `return` is a value: it can be passed to other functions, put in a Ref, or called after the function has returned.

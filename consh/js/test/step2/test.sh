@@ -1,5 +1,5 @@
 #!/bin/bash
-# 段階 5：js の stdin と console（consh/docs/JS-PLAN-ja.md の 2.1 の 7、8）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
+# 段階 5：js の stdin と console（consh/docs/dev/JS-PLAN-ja.md の 2.1 の 7、8）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
 cd ${0%/*}
 export CONMA_VM=wasm
 export CONSH_IMPL=conma

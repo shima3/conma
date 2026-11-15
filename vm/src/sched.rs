@@ -42,7 +42,7 @@ pub struct Machine {
     /// Step counts for CONMA_PROFILE.
     pub profile: Option<crate::profile::Profile>,
     /// How many steps the next step may do at once, counting each of them
-    /// (docs/FAST-PLAN-ja.md 4.1 and 4.2): the steps left in the budget when
+    /// (docs/dev/FAST-PLAN-ja.md 4.1 and 4.2): the steps left in the budget when
     /// nothing shows each step (--trace, CONMA_PROFILE), and 0 otherwise. The
     /// steps are numbered as before; no other VProc runs between them, which
     /// changes only when VProcs are switched (FAST-PLAN 3.3).

@@ -123,7 +123,7 @@ fn is_mark(m: &Machine, v: &Value) -> bool {
 /// Load a Body that applies one of INLINE_PRIMS with an LCont written as a function
 /// (BodyDef::prim_site), run the primitive at once (the next step), and if it passes as
 /// many values as the LCont has parameters, apply the LCont too (binding them and loading
-/// its Body, the steps after), counting each step (docs/FAST-PLAN-ja.md 4.4): the
+/// its Body, the steps after), counting each step (docs/dev/FAST-PLAN-ja.md 4.4): the
 /// Closure of the LCont is not made then. The primitive gets Machine::inline_mark as its
 /// LCont; whatever else it does, the Closure of the LCont is made and put where the mark
 /// is, as if the steps had been taken one by one. None, without changing anything, when
@@ -192,7 +192,7 @@ fn load_prim(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &mut LVEnv,
 
 /// Load a Body that applies __if_then_else__, __if__, __unless__, __if_null_then_else__,
 /// __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__, __Number_if_greater__ or
-/// __Number_if_greater_then_else__ (BodyDef::if_site) and do the next two steps with it, counting them (docs/FAST-PLAN-ja.md 4.3): when its
+/// __Number_if_greater_then_else__ (BodyDef::if_site) and do the next two steps with it, counting them (docs/dev/FAST-PLAN-ja.md 4.3): when its
 /// Operator is that primitive and its condition a Boolean, the primitive would make the
 /// chosen clause the Operator (one step; __if_null_then_else__ and __unless_null__ choose by
 /// whether their first operand is __NULL__, __Number_if_zero_then_else__ and __Number_unless_zero__ by whether
@@ -405,7 +405,7 @@ fn frame_size(c: &Closure) -> u32 {
 fn apply_closure(m: &mut Machine, vp: &mut VProc, mut c: Rc<Closure>) -> PResult {
     // __LazyList_force__ of include/util.se applied to a LazyList that has been evaluated
     // (module.rs, mark_fast): pass its cell to the LCont at once, counting the 16 steps of the
-    // definition (docs/FAST-PLAN-ja.md 4.2). Anything else runs the definition.
+    // definition (docs/dev/FAST-PLAN-ja.md 4.2). Anything else runs the definition.
     if m.fast_steps >= crate::module::LAZY_FORCE_STEPS && vp.olist.len() == 1 && vp.lcont.is_some() && c.skip == 0 {
         if let Some(b) = &c.body {
             if b.fast.get() == crate::module::FAST_LAZY_FORCE {

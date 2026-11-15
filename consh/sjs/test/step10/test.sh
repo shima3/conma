@@ -1,5 +1,5 @@
 #!/bin/bash
-# 数の関数の wasm 版の燃料と trap（consh/docs/SJS-WASM-PLAN-ja.md の段階 3）：wasm 版の VM（CONMA_VM=wasm。Node.js と
+# 数の関数の wasm 版の燃料と trap（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 3）：wasm 版の VM（CONMA_VM=wasm。Node.js と
 # vm/wasm/build.sh が要る。なければ飛ばす）だけで流す。case1 のログは Node.js の結果、case2 は手で書いた
 cd ${0%/*}
 [ -f ../../../../vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null || exit 0

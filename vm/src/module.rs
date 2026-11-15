@@ -182,7 +182,7 @@ pub struct BodyDef {
     /// (step.rs, load_prim).
     pub prim_site: bool,
     /// For a Body `__Number_fromString__ onError "text" ,(x) ...` whose text is a Number (an
-    /// experiment, docs/SPEED-ja.md): the Body of the LCont with the Number in place of x and the
+    /// experiment, docs/dev/SPEED-ja.md): the Body of the LCont with the Number in place of x and the
     /// variables beyond it one nearer, made when it is first needed (const_fold); step.rs
     /// (load_const) loads it in place of the three steps, when the Operator is the primitive.
     pub fold_site: bool,
@@ -781,8 +781,8 @@ pub fn module_files(module: &Sexp) -> String {
     atoms.join(" ")
 }
 
-/// The features of extended ConMa that this VM runs (docs/FAST-PLAN-ja.md 3.4): "bitwise32", the
-/// bitwise primitives __Number_and32__ and the others (docs/BITWISE-PLAN-ja.md, prim/number.rs),
+/// The features of extended ConMa that this VM runs (docs/dev/FAST-PLAN-ja.md 3.4): "bitwise32", the
+/// bitwise primitives __Number_and32__ and the others (docs/dev/BITWISE-PLAN-ja.md, prim/number.rs),
 /// "boolean", the primitives __TRUE__ and __FALSE__, and "control", __if_then_else__, __if__,
 /// __unless__, __if_null_then_else__, __unless_null__, __Number_if_zero_then_else__, __Number_unless_zero__,
 /// __Number_if_greater__, __Number_if_greater_then_else__ and __Cont_get__ (prim/control.rs,
@@ -915,7 +915,7 @@ fn canon(x: &Sexp, out: &mut String) {
     }
 }
 
-/// Mark the Bodies that the VM runs in fewer steps (docs/FAST-PLAN-ja.md 4.2):
+/// Mark the Bodies that the VM runs in fewer steps (docs/dev/FAST-PLAN-ja.md 4.2):
 /// __LazyList_force__, if it and __LazyList_force_claim__ are the definitions of
 /// include/util.se and __LazyList_claim__, __is_null__ and __if_then_else__ are
 /// primitives, so that its steps are those LAZY_FORCE_STEPS counts.

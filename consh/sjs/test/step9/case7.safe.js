@@ -1,4 +1,4 @@
-// let と const はブロックの中だけで有効（docs/REVIEW-ja.md の 2026-11-14（2）の 2）。ブロック、for、for...of を出た後の
+// let と const はブロックの中だけで有効（docs/dev/REVIEW-ja.md の 2026-11-14（2）の 2）。ブロック、for、for...of を出た後の
 // 同じ名前は、外の変数を読む。外になければ ReferenceError（数の関数にしない）。兄弟のブロックの同じ名前は別の変数
 let t = 100
 let k = -1

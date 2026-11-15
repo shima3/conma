@@ -130,7 +130,7 @@ NUM_OPS = {
     "__Number_add__": ("bin", 2), "__Number_subtract__": ("bin", 2), "__Number_multiply__": ("bin", 2),
     "__Number_divide__": ("div", 3), "__Number_sqrt__": ("sqrt", 2), "__Number_floor__": ("floor", 1),
     "__Number_is_zero__": ("pred", 1), "__Number_is_positive__": ("pred", 1), "__Number_is_negative__": ("pred", 1),
-    # the bitwise primitives of the feature "bitwise32" (docs/BITWISE-PLAN-ja.md), as prim/number.rs computes them
+    # the bitwise primitives of the feature "bitwise32" (docs/dev/BITWISE-PLAN-ja.md), as prim/number.rs computes them
     "__Number_and32__": ("bit", 2), "__Number_or32__": ("bit", 2), "__Number_xor32__": ("bit", 2),
     "__Number_shl32__": ("bit", 2), "__Number_shr32__": ("bit", 2), "__Number_ushr32__": ("bit", 2),
     "__Number_not32__": ("not", 1),
@@ -169,12 +169,15 @@ def unquote(atom):
     return atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else atom
 
 
-# The features of extended ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
+# The features of extended ConMa (docs/dev/FAST-PLAN-ja.md 3.4) that the translator knows,
 # as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
-# (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
+# (docs/dev/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
 # "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
-# __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before).
-EXT_FEATURES = ("bitwise32", "boolean", "control")
+# __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before), and "wasm",
+# __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ and __Dict_put_numbers__,
+# which the code applies as other primitives (the native VM has them and fails as it has no WebAssembly;
+# ConSh uses them since 2026-11-14, and without "wasm" here bench/build.sh skipped its modules).
+EXT_FEATURES = ("bitwise32", "boolean", "control", "wasm")
 
 
 def tag(x):
@@ -761,7 +764,7 @@ class Fuser:
             c = self.constant(x, d, b.olist[1], 1, locals_)
             n = number_literal(c[2]) if c is not None else None
             if n is not None:
-                # a Number written as a String in place: an f64 constant (an experiment, docs/SPEED-ja.md);
+                # a Number written as a String in place: an f64 constant (an experiment, docs/dev/SPEED-ja.md);
                 # a global onError is read first, as the VM reads it when it loads the Body (a global
                 # without a value stops the VProc there)
                 if b.olist[0][0] == "G" and args[0] is not None:
@@ -1030,7 +1033,9 @@ class Fuser:
             jn = J + ({"lc": lc, "d": d, "locals": jl, "x": x, "label": label, "p": g.params, "ctx": self.ctx},)
             vs = [self.xn(d + k) for k in range(g.params)]
             tup = "(" + "".join(v + ", " for v in vs) + ")"
-            out.append(f"let {tup} = '{label}: {{")
+            # the values of a block are Values (to_join, olist, Out); written, as Rust cannot infer them
+            # when every clause returns instead of giving them
+            out.append(f"let {tup}: ({'Value, ' * g.params}) = '{label}: {{")
             out.append(f"match {self.cond(x, d, b.olist[0], locals_)} {{")
             for arm, cl, vr in (("Some(true)", then, vrefs[0]), ("Some(false)", els, vrefs[1])):
                 out.append(f"{arm} => {{")
@@ -1192,7 +1197,7 @@ class Fuser:
         vs = [self.xn(d + k) for k in range(L.params)]
         tup = "(" + "".join(v + ", " for v in vs) + ")"
         out.append(f"let f = {f_ref};")
-        out.append(f"let {tup} = '{label}: {{")
+        out.append(f"let {tup}: ({'Value, ' * L.params}) = '{label}: {{")
         out.append(f"if let Some({callee['env']}) = inline_env(vp, &f, {gf}, {g.params}, gv) {{")
         out.extend(binds)
         out.extend(inner)

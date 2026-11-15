@@ -1,4 +1,4 @@
-;; fast5：拡張 ConMa の機能 "bitwise32" のプリミティブ（docs/BITWISE-PLAN-ja.md の W2）。test/step41 と同じ式を、代わりの定義を
+;; fast5：拡張 ConMa の機能 "bitwise32" のプリミティブ（docs/dev/BITWISE-PLAN-ja.md の W2）。test/step41 と同じ式を、代わりの定義を
 ;; 入れずに、モジュールに (Uses "bitwise32") を付けて動かす。ログは step41 と同じ（Node.js の値）
 (include "util.se")
 

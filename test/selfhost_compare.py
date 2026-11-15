@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """selfhost_compare.py — Compare the output of a Python front end tool with
-the output of its ConMa version (see docs/SELFHOST.md).
+the output of its ConMa version (see docs/dev/SELFHOST.md).
 
 Usage:
     selfhost_compare.py tokens <python_output> <conma_output>
