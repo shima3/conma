@@ -104,11 +104,28 @@
   __Lexer_put_all__ handlers "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!?*+-/=<>$%&.^" __Lexer_on_symbol__ ,()
   __NULL__ handlers)
 
-;; SymbolChar の集合（値は __TRUE__）
+;; SymbolChar の集合（値は __TRUE__）。キー "stops"（1 文字でないので SymbolChar と重ならない）には、SymbolChar でない
+;; ASCII の文字（番号 0〜127）と "|"（"|#" の前で止まるため）をつないだ String を入れる（__Lexer_symbol_end__ が使う）
 (define __Lexer_symbol_chars__ ,()
   __Dict_new__ ,(symbols)
   __Lexer_put_all__ symbols "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!?*+-/=<>$%&|.^" __TRUE__ ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Lexer_stops__ symbols zero "|" ,(stops)
+  __Dict_put__ symbols "stops" stops ,()
   __NULL__ symbols)
+
+(define __Lexer_stops__ ,(symbols code acc)
+  __Number_fromString__ __print_exit_error__ "128" ,(limit)
+  __Number_subtract__ limit code ,(left)
+  __Number_is_zero__ left ,(test__) __if_then_else__ test__
+    (,() __NULL__ acc)
+    (,()
+      __String_fromCode__ __print_exit_error__ code ,(c)
+      __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
+      __if_then_else__ isSymbol (,() __NULL__ acc) (,() __String_concat__ acc c) ,(acc)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ code one ,(code)
+      __Lexer_stops__ symbols code acc))
 
 ;; chars の各文字をキーにして value を登録する
 (define __Lexer_put_all__ ,(dict chars value)
@@ -196,17 +213,10 @@
 
 ;; j 文字目から、最初の改行（"\n" または "\r"）の位置。なければ len
 (define __Lexer_line_end__ ,(text len j)
-  __Number_subtract__ len j ,(rest)
-  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
-    (,() __NULL__ j)
-    (,()
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ j one ,(next)
-      __String_substring__ __print_exit_error__ text j next ,(c)
-      __Lexer_is_newline__ c ,(isNewline)
-      __if_then_else__ isNewline
-        (,() __NULL__ j)
-        (,() __Lexer_line_end__ text len next)))
+  __String_find_any__ __print_exit_error__ text "\n\r" j ,(at)
+  __is_null__ at ,(test__) __if_then_else__ test__
+    (,() __NULL__ len)
+    (,() __NULL__ at))
 
 (define __Lexer_is_newline__ ,(c)
   __String_equal__ c "\n" ,(lf)
@@ -232,23 +242,21 @@
   __Lexer_continue__ handlers symbols sink text len end line start)
 
 ;; j 文字目から String の終わりを探す。終わりの位置と、閉じていないかを返す。
-;; "\" の次の文字は読み飛ばす。ただし改行の前の "\" では、"\" までで閉じていないとする
+;; "\" の次の文字は読み飛ばす。ただし改行の前の "\" では、"\" までで閉じていないとする。
+;; 次の " か "\" か改行を __String_find_any__ で探す（その間の文字は見なくてよい）
 (define __Lexer_string_end__ ,(text len j)
-  __Number_subtract__ len j ,(rest)
-  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
-    (,() __NULL__ j __FALSE__)
+  __String_find_any__ __print_exit_error__ text "\"\\\n\r" j ,(at)
+  __is_null__ at ,(test__) __if_then_else__ test__
+    (,() __NULL__ len __FALSE__)
     (,()
       __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ j one ,(next)
-      __String_substring__ __print_exit_error__ text j next ,(c)
+      __Number_add__ at one ,(next)
+      __String_substring__ __print_exit_error__ text at next ,(c)
       __if_then_else__ (,() __String_equal__ c "\"")
         (,() __NULL__ next __FALSE__) (,()
-      __Lexer_is_newline__ c ,(isNewline)
-      __if_then_else__ isNewline
-        (,() __NULL__ j __TRUE__) (,()
       __if_then_else__ (,() __String_equal__ c "\\")
         (,() __Lexer_string_escape__ text len next)
-        (,() __Lexer_string_end__ text len next)))))
+        (,() __NULL__ at __TRUE__))))
 
 ;; "\" の次の文字（next 文字目）を読み飛ばす
 (define __Lexer_string_escape__ ,(text len next)
@@ -273,24 +281,44 @@
   __Lexer_emit__ sink "SYMBOL" value line col ,(sink)
   __Lexer_continue__ handlers symbols sink text len end line start)
 
+;; j 文字目からの SymbolChar の並びの終わり。SymbolChar でない ASCII の文字と "|" を __String_find_any__ で探し、
+;; そこまでの文字は、ASCII でない文字（SymbolChar でない）がないかだけを見る。"|" は、"|#" でなければ SymbolChar なので続ける
 (define __Lexer_symbol_end__ ,(symbols text len j)
-  __Number_subtract__ len j ,(rest)
-  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
-    (,() __NULL__ j)
+  __Dict_lookup_or__ symbols "stops" __print_exit_error__ ,(stops)
+  __String_find_any__ __print_exit_error__ text stops j ,(at)
+  __is_null__ at ,(test__) __if_then_else__ test__ (,() __NULL__ len) (,() __NULL__ at) ,(stop)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Lexer_symbol_run__ symbols text j stop one ,(end)
+  __Number_subtract__ stop end ,(short)
+  __Number_is_zero__ short ,(test__) __if_then_else__ test__
     (,()
-      ;; "|#"（ブロックコメントの終わり）は、1 文字目が "|" のときだけ確かめる
-      __Number_fromString__ __print_exit_error__ "1" ,(one)
-      __Number_add__ j one ,(next)
-      __String_substring__ __print_exit_error__ text j next ,(c)
-      __String_equal__ c "|" ,(bar)
-      __if_then_else__ bar (,() __Lexer_two__ text len j) (,() __NULL__ "") ,(two)
-      __String_equal__ two "|#" ,(test__) __if_then_else__ test__
-        (,() __NULL__ j)
+      __Number_subtract__ len stop ,(rest)
+      __Number_is_zero__ rest ,(test__) __if_then_else__ test__
+        (,() __NULL__ stop)
         (,()
-          __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
-          __if_then_else__ isSymbol
+          __Number_add__ stop one ,(next)
+          __String_substring__ __print_exit_error__ text stop next ,(c)
+          __String_equal__ c "|" ,(bar)
+          __if_then_else__ bar (,() __Lexer_two__ text len stop) (,() __NULL__ "") ,(two)
+          __String_equal__ two "|#" ,(barHash)
+          __not__ barHash ,(more)
+          __and__ bar more ,(test__) __if_then_else__ test__
             (,() __Lexer_symbol_end__ symbols text len next)
-            (,() __NULL__ j))))
+            (,() __NULL__ stop)))
+    (,() __NULL__ end))
+
+;; k 文字目から stop の前までで、最初の SymbolChar でない文字（ASCII でない文字）の位置。なければ stop
+(define __Lexer_symbol_run__ ,(symbols text k stop one)
+  __Number_subtract__ stop k ,(rest)
+  __Number_is_zero__ rest ,(test__) __if_then_else__ test__
+    (,() __NULL__ stop)
+    (,()
+      __Number_add__ k one ,(next)
+      __String_substring__ __print_exit_error__ text k next ,(c)
+      __Dict_lookup_or__ symbols c (,(key) __NULL__ __FALSE__) ,(isSymbol)
+      __if_then_else__ isSymbol
+        (,() __Lexer_symbol_run__ symbols text next stop one)
+        (,() __NULL__ k)))
 
 ;; どの規則にも合わない文字はエラー。読み飛ばして続ける
 (define __Lexer_on_other__ ,(handlers symbols sink text len i line start ch two col)

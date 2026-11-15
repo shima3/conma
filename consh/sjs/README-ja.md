@@ -327,8 +327,9 @@ consh/examples/nbody.sh は、N によらず約 4.3 秒かかった（wasm 版�
 | 一時ファイルの名前のために、変換したソースを 1 文字ずつハッシュしない（consh_jsstmt.se の Sjsb_module。名前はコードのハッシュとソースの長さ） | 1.62 秒 | 2.31 秒 |
 | フロントエンドの resolver（include/resolver.se）が、名前ごとのパラメータの位置の Dict で名前を引く（docs/SELFHOST.md） | 1.22 秒 | 1.79 秒 |
 | 変換器の記号の字句を `__String_find__` で探し（sjs_lex.se の Sjs_lex_punct）、`Gen_quote` が書き換えない文字をまとめて写す（sjs_gen.se） | 1.07 秒 | 1.58 秒 |
+| フロントエンドの字句解析が String の終わりなどを `__String_find_any__` で探し、S 式の書き出しの手順を減らす（include/lexer.se、include/ast.se） | 0.98 秒 | 1.45 秒 |
 
-（nbody.sh の N=1、実時間、3 回の最良、Apple M1。ConSh のステップは、ハッシュをやめる前が 2,175 万、その後が 1,048 万、最後が 538 万）
+（nbody.sh の N=1、実時間、3 回の最良、Apple M1。ConSh のステップは、ハッシュをやめる前が 2,175 万、その後が 1,048 万、変換器を直した後が 538 万）
 
 * 残りは、Rust 版の VM では、7 つの `(( ))` のモジュールを作る時間（合わせて約 0.65 秒。フロントエンドの字句解析と S 式の書き出しが多い）が大きい。ConSh のステップには、目立つ関数がなくなった。
 * `sjs` コマンドは、変換器（sjsc.se と include するもの。3.9 MB のモジュール）を、動かすたびにフロントエンドでモジュールにしていて、それが約 3.95 秒かかっていた（変換そのものは 0.15 秒）。今は、そのモジュールを `$TMPDIR/sjsc-<リポジトリのパスのチェックサム>.module.se` に置き、consh/include、標準ライブラリの include、sjsc.se か VM が新しくなったときだけ作り直す（ConSh のモジュールと同じ）。プログラム 1 つが約 5.4 秒から約 1.5 秒になり、consh/sjs/test/step9 は約 2 分 20 秒から 38 秒、consh/sjs/test 全体は 2 分 31 秒になった。残りの多くは、変換したプログラム（sjs_rt.se を include する）をモジュールにする時間。

@@ -26,31 +26,24 @@
 ;; String は "..." で囲むだけでエスケープしない（ソースのエスケープをそのまま持っているため）。
 ;; 位置も子ノードもないノードは、kind だけを書く（resolver の Undefined）
 (define __AST_toSexp__ ,(node)
-  __LList_uncons__ __print_exit_error__ node ,(kind ast_rest__)
-  __LList_uncons__ __print_exit_error__ node ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(pos ast_children__)
-  __LList_uncons__ __print_exit_error__ node ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
+  __LList_uncons__ __print_exit_error__ node ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(pos children)
   __is_null__ pos ,(noPos)
   __is_null__ children ,(noChildren)
   __and__ noPos noChildren ,(test__) __if_then_else__ test__
     (,() __NULL__ kind)
     (,()
       __String_concat__ "(" kind ,(s)
-      __is_null__ pos ,(test__) __if_then_else__ test__
+      __if_then_else__ noPos
         (,() __NULL__ s)
         (,()
-          __AST_list_toSexp__ pos "(" ,(posStr)
-          __String_concat__ s " " ,(s)
-          __String_concat__ s posStr) ,(s)
+          __LList_uncons__ __print_exit_error__ pos ,(first more)
+          __String_concat__ s " (" ,(s)
+          __AST_value_append__ s first ,(s)
+          __AST_children_toSexp__ more s ,(s)
+          __String_concat__ s ")") ,(s)
       __AST_children_toSexp__ children s ,(s)
       __String_concat__ s ")"))
-
-;; list の要素を空白で区切り、open と ")" で囲む
-(define __AST_list_toSexp__ ,(list open)
-  __LList_uncons__ __print_exit_error__ list ,(first rest)
-  __AST_value_toSexp__ first ,(str)
-  __String_concat__ open str ,(s)
-  __AST_children_toSexp__ rest s ,(s)
-  __String_concat__ s ")")
 
 ;; children の各要素を、空白に続けて acc の後ろにつなげる
 (define __AST_children_toSexp__ ,(children acc)
@@ -58,22 +51,22 @@
     (,() __NULL__ acc)
     (,()
       __LList_uncons__ __print_exit_error__ children ,(child rest)
-      __AST_value_toSexp__ child ,(str)
       __String_concat__ acc " " ,(acc)
-      __String_concat__ acc str ,(acc)
+      __AST_value_append__ acc child ,(acc)
       __AST_children_toSexp__ rest acc))
 
-;; String、Number、ノードを S式の String にする。それ以外の値はエラー
-(define __AST_value_toSexp__ ,(value)
+;; String、Number、ノードの S式を acc の後ろにつなげる（String は引用符と一緒に直接つなげる）。それ以外の値はエラー
+(define __AST_value_append__ ,(acc value)
   __type_name__ value ,(type)
   __String_equal__ type "String" ,(test__) __if_then_else__ test__
     (,()
-      __String_concat__ "\"" value ,(s)
-      __String_concat__ s "\"") (,()
+      __String_concat__ acc "\"" ,(acc)
+      __String_concat__ acc value ,(acc)
+      __String_concat__ acc "\"") (,()
   __String_equal__ type "Number" ,(test__) __if_then_else__ test__
-    (,() __Number_toString__ value) (,()
+    (,() __Number_toString__ value ,(str) __String_concat__ acc str) (,()
   __String_equal__ type "LList" ,(test__) __if_then_else__ test__
-    (,() __AST_toSexp__ value)
+    (,() __AST_toSexp__ value ,(str) __String_concat__ acc str)
     (,()
       __String_concat__ "__AST_toSexp__: unexpected value of type " type ,(msg)
       __String_concat__ msg "\n" ,(msg)
