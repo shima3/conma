@@ -33,6 +33,15 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 
 `19`〜`21` は、計算のすべてを `(( ))` の SJS の関数に書いたもので、`bench/loop`、`bench/fib`、`bench/nbody` の Python と `consh/sjs/bench` の SJS と同じ計算を、CPython で約 1 秒かかる大きさで行う（2026-11-16）。Rust 版には `(( ))` がないので、`-v` に `rust` が入っていてスクリプトを指定しないときは、`(( ))` を含むスクリプトを除く（そう標準エラー出力に出す）。
 
+### Bash 版
+
+`bash/` の `00`〜`18` は、同じ名前のスクリプトの Bash 版で、同じことをして同じ出力（標準出力と終了コード）を出す（2026-11-16）。macOS の `/bin/bash` 3.2 で動くように書いた。ConSh に合わせて、次のように書き換えた。
+
+* 関数の引数は `local x=$1` で受け、関数の中の代入も `local` にする（ConSh の関数の中の代入はローカルなので）。そのため `13` の最後の `echo $n` は、ConSh と同じくエラー（終了コード 1）になる。
+* ConSh で未定義の変数がエラーになるのに合わせ、どれも `set -u` で始める。`defined i` は `[ -n "${i+x}" ]` にした。
+* `$(stdin)` は `$(cat)`、`f > (r)` は `r=$(f)`、`seq … > (first . rest)` は `read` と `$(cat)` にした。Bash の `$( )` は fork する。
+* `15` は、`down ${rest} > (r)` を `r=$(down "$@")` にすると 100 万回 fork して遅すぎるので、結果を大域変数 `r` で返す。それでも、残りのリストを `"$@"` で渡すたびに引数がコピーされるので、深さの 2 乗の手間がかかり、1 回に約 6〜7 分かかる。
+
 ## 測る
 
 ```
@@ -40,14 +49,45 @@ consh/bench/run.py                         # Rust 版と、最適化版＋変換
 consh/bench/run.py -v rust,conma:rust,reference:rust
 consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
 consh/bench/run.py -v conma:wasm,conma:transpiled 19_loop.sh 20_fib.sh 21_nbody.sh
+consh/bench/run.py -v bash,rust,conma:wasm 01_for_seq.sh 13_func_assign_100000.sh
 ```
 
-* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）、`conma:wasm` と `reference:wasm`（wasm 版の VM、`vm/wasm/vm-wasm.sh` で。`vm/wasm/build.sh` で作っておく）。既定は `rust,conma:transpiled`。
-* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。
+* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）、`conma:wasm` と `reference:wasm`（wasm 版の VM、`vm/wasm/vm-wasm.sh` で。`vm/wasm/build.sh` で作っておく）、`bash`（PATH の `bash` で、`bash/` の Bash 版を）。既定は `rust,conma:transpiled`。
+* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。`bash` は、エラーメッセージが ConSh と違うので、終了コードと標準出力だけを比べる。`-v` に `bash` が入っていてスクリプトを指定しないときは、Bash 版のないスクリプト（`19`〜`21`）を除く。
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`consh.module.se` と `consh.reference.module.se`。`CONSH_MODULE_DIR` か、なければ `bin/cache-dir` のディレクトリ）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
 
 ## 結果
+
+### 2026-11-16：Bash 版（`00`〜`18`）
+
+Apple M1、2026-11-16（alpha の 3363fc2 に `bash/` と run.py の `bash` を足したもの）。`run.py -v bash,rust,conma:wasm` で、user + sys（子プロセスを含む）、起動を含む。`15` は 1 回、それ以外は 3 回の最小。括弧の中は Bash の時間に対する倍率（1 より小さいのは Bash より速い）。どの組み合わせも出力（Bash は終了コードと標準出力）は同じだった。
+
+| スクリプト | Bash 3.2.57 | Rust 版 | 最適化版＋wasm 版の VM |
+|---|---|---|---|
+| `00_start.sh` | 0.001 秒 | 0.001 秒（1×） | 0.092 秒（92×） |
+| `01_for_seq.sh` | 0.012 秒 | 0.008 秒（0.67×） | 0.250 秒（21×） |
+| `02_for_seq_100000.sh` | 0.097 秒 | 0.068 秒（0.7×） | 0.986 秒（10×） |
+| `03_nested_for.sh` | 0.008 秒 | 0.004 秒（0.5×） | 0.174 秒（22×） |
+| `04_if_defined.sh` | 0.016 秒 | 0.009 秒（0.56×） | 0.319 秒（20×） |
+| `05_func_assign.sh` | 0.023 秒 | 0.009 秒（0.39×） | 0.344 秒（15×） |
+| `06_func_echo.sh` | 0.017 秒 | 0.010 秒（0.59×） | 0.364 秒（21×） |
+| `07_echo.sh` | 0.020 秒 | 0.016 秒（0.8×） | 0.414 秒（21×） |
+| `08_func_varlist.sh` | 0.834 秒 | 0.011 秒（0.013×） | 0.437 秒（0.52×） |
+| `09_subst_func.sh` | 0.270 秒 | 0.031 秒（0.11×） | 0.334 秒（1.2×） |
+| `10_pipe_for_stdin.sh` | 0.121 秒 | 0.421 秒（3.5×） | 2.500 秒（21×） |
+| `11_seq_varlist.sh` | 0.018 秒 | 0.025 秒（1.4×） | 0.972 秒（54×） |
+| `12_for_seq_500000.sh` | 0.473 秒 | 0.332 秒（0.7×） | 4.288 秒（9.1×） |
+| `13_func_assign_100000.sh` | 0.411 秒 | 0.155 秒（0.38×） | 3.281 秒（8×） |
+| `14_nested_for_if.sh` | 0.598 秒 | 0.176 秒（0.29×） | 6.696 秒（11×） |
+| `15_recursion.sh` | 414.2 秒 | 0.165 秒（0.0004×） | 5.470 秒（0.013×） |
+| `16_func_varlist_50000.sh` | 14.853 秒 | 0.155 秒（0.01×） | 4.405 秒（0.3×） |
+| `17_subst_func_20000.sh` | 5.607 秒 | 0.574 秒（0.1×） | 3.333 秒（0.59×） |
+| `18_pipe_funcs.sh` | 0.520 秒 | 1.093 秒（2.1×） | 6.081 秒（12×） |
+
+* Rust 版は、`10` と `18`（`$(stdin)` で読むパイプ）と `11` を除き、Bash より速い。`$( )` と `> (r)` を使う `08`、`09`、`15`〜`17` では、Bash は fork するので、約 9〜2500 倍速い。
+* wasm 版の VM の最適化版は、起動に約 0.09 秒かかり、ループや関数の呼び出しでは Bash の 8〜22 倍遅い。fork する Bash より速いのは、`08`、`16`、`17` と `15` だけである。
+* `15` で Bash が遅いのは、残りのリストを `"$@"` で渡すたびにコピーするからである（「Bash 版」の節）。
 
 ### 2026-11-16：`(( ))` の SJS（`19`〜`21`）
 
