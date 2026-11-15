@@ -176,7 +176,7 @@ f?o | cat              # one の後、/bin/echo: closed output Stream で、シ�
 
 ### 5. ConMa の実行時エラーにならず、インタプリタ全体が Python の例外で終わる（中）
 
-* `__OS_kill__` に無限大や NaN を渡すと、範囲を調べる前に `int(sig.value)` を呼ぶので、OverflowError や ValueError でインタプリタ全体が終わる（test/vproc_step.py:999）。修正案：先に `math.isfinite` で調べる。
+* `__OS_kill__` に無限大や NaN を渡すと、範囲を調べる前に `int(sig.value)` を呼ぶので、OverflowError や ValueError でインタプリタ全体が終わる（test/vproc_step.py:999（2026-11-15 に vm/python/vproc_step.py へ移動））。修正案：先に `math.isfinite` で調べる。
 * `__Sexp_read__` は入れ子1段ごとに再帰するので、約 1000 段で RecursionError になり、インタプリタ全体が終わる。ConSh は構文木をこれで読むので、深く入れ子にしたスクリプトでシェルが終わりうる。修正案：明示的なスタックで読むか、RecursionError を onError に渡す。
 
 ### 6. `__OS_trap_interrupt__` の Ref だけを待つ VProc があると、Deadlock になる（中）

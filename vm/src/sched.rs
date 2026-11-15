@@ -53,7 +53,7 @@ pub struct Machine {
     /// End the time slice after this step (__Wasm_call__ out of fuel), so that the host
     /// gets the events, as a Ctrl-C, before the VProc calls again.
     pub end_slice: bool,
-    /// The Rust calls of native code that are running (vm/src/native.rs).
+    /// The Rust calls of transpiled code that are running (vm/src/transpiled.rs).
     pub nctx: crate::transpiled::Ctx,
     /// (VProc, VProc) waiting for another VProc to finish.
     joining: Vec<(VProcRef, VProcRef)>,

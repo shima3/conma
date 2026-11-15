@@ -596,11 +596,11 @@ impl DictIndex {
 /// The CChain of the caller of the function that called __Cont_get__.
 pub struct ContObj {
     pub serial: usize,
-    /// Changed only by native code (vm/src/native.rs): a continuation made
-    /// while native code runs a call as a Rust call has a CChain without the
+    /// Changed only by transpiled code (vm/src/transpiled.rs): a continuation made
+    /// while transpiled code runs a call as a Rust call has a CChain without the
     /// CFrames of the pending Rust calls, and gets them when they end.
     pub cchain: RefCell<Value>,
-    /// The Rust call of native code that made it (native::Frame), or 0.
+    /// The Rust call of transpiled code that made it (transpiled::Frame), or 0.
     pub owner: Cell<u64>,
 }
 

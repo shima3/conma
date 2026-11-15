@@ -37,7 +37,7 @@ CONMA_VM=rust test/run_all.sh
 
 * Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.html)).
 * `__OS_print__` is needed first because every later test reports its result through standard output.
-* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se`; since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/core/pure.se` for core ConMa, and are primitives of extended ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/core/control.se` for core ConMa, the feature `"control"`, docs/FAST-PLAN-ja.md 4.6).
+* Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`); since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/core/pure.se` for core ConMa, and are primitives of extended ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/core/control.se` for core ConMa, the feature `"control"`, docs/FAST-PLAN-ja.md 4.6).
 
 ## Step 2: Termination and error output
 
@@ -58,7 +58,7 @@ CONMA_VM=rust test/run_all.sh
 | `__LList_uncons__` | implemented |
 
 * `__LList_uncons__` is the first primitive that takes `onError`, so it tests the convention from Step 2.
-* This must come before Step 4, because a CChain is traversed as an LList of CFrames (`CChain_print` in `test/step4`, the ConMa version of `__Cont_get__` in `include/control.se`).
+* This must come before Step 4, because a CChain is traversed as an LList of CFrames (`CChain_print` in `test/step4`, the ConMa version of `__Cont_get__` in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`)).
 
 ## Step 4: CFrame & CChain
 
@@ -74,7 +74,7 @@ CONMA_VM=rust test/run_all.sh
 
 * Implement in the order above: first read the CChain, then replace it, then pop and push individual CFrames.
 * `__CFrame_new__` takes its SInfo as a colon-separated String, the same form `__CFrame_get_SInfo__` returns (for example `"file.se:12:5"`), or null for no SInfo.
-* Library definitions that become available: `__Cont_get__` (escape continuation; since Step 34 a primitive, with the ConMa version in `include/control.se`), `__CChain_pop_LCont__`, `__noop__`.
+* Library definitions that become available: `__Cont_get__` (escape continuation; since Step 34 a primitive, with the ConMa version in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`)), `__CChain_pop_LCont__`, `__noop__`.
 
 ## Step 5: Number
 
@@ -373,7 +373,7 @@ CONMA_VM=rust test/run_all.sh
 
 ## Step 18: Variadic functions and `__Cont_get__`
 
-No new primitive; the language and `__Cont_get__` (then in `include/util.se`, since Step 34 in `include/control.se`) change.
+No new primitive; the language and `__Cont_get__` (then in `include/util.se`, since Step 34 in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`)) change.
 
 * Goal: Let the `return` of `__Cont_get__` pass values to the caller, as the example in SPEC.md (`return "12" "34"`) intends. Before this Step, `return` was a closure with an empty Head, so its arguments were surplus operands: they were pushed onto the CChain as a Seq Closure and lost when `return` set the CChain back. The definition in SPEC.md and the one in `util.se` differed, and neither passed values. A new kind of continuation value would also fix this, but variadic functions are simpler as a concept and useful elsewhere.
 * Syntax: `Head = "(", { Parameter }, ")" | Parameter`. A Function `, args Body` is variadic: an application binds a Seq of all its operands to `args` (an empty Seq without operands). It is always executed, even without operands, and takes the operands of one application only, so there are never surplus operands. See "Variadic Functions" in SPEC.md.
@@ -702,7 +702,7 @@ No new primitive.
 
 * Goal: Make the early `return` of ConMa functions cheap. A `__Cont_get__` and its `return` took more than 30 steps; in ConSh, an `echo` in a `for` loop took about 4,360 steps, about 39% of them in `__Cont_get__` (about 51 calls per `echo`).
 * `__Cont_get__ ,(return)` is a primitive: it takes the LCont (or, without one, pops the top CFrame), and passes a `return` that keeps the CChain. Applying `return` sets the CChain back, pops its top CFrame and applies the Closure to the operands, in one step. See PRIMITIVES.md.
-* The ConMa definition moved from `include/util.se` to `include/control.se`. A program that includes `control.se` uses it instead of the primitive, because only global variables without a definition (`Undefined`) are looked up among the primitives. It is meant for following the steps as ConMa functions and for comparing the two versions.
+* The ConMa definition moved from `include/util.se` to `include/control.se` (moved on 2026-11-13; now `include/core/control.se`). A program that includes `control.se` uses it instead of the primitive, because only global variables without a definition (`Undefined`) are looked up among the primitives. It is meant for following the steps as ConMa functions and for comparing the two versions.
 * Every test gives the same output with either version, except the step numbers in the error messages of `test/step20` (case10, case15) and the largest number of live line cells in `test/step21` (case5, case6), which `memcheck.py` samples every 2000 steps. These logs were updated. With `(include "control.se")` added to `util.se`, all tests pass with their logs before this Step, `step1` traces included.
 * ConSh: a `for` loop of 1000 `echo` commands takes 2,601,741 steps instead of 4,360,473 (about 2,600 steps per `echo` instead of 4,360), and runs in 4.6 seconds instead of 7.4 (without starting the interpreter).
 * Tests (`test/step34`): each case runs both with the primitive (`test.se`) and with the ConMa version (`conma.se`, which includes `control.se` and `test.se`), and both must give `caseN.log`.
@@ -726,7 +726,7 @@ No new primitive.
 
 * Goal: Make conditionals cheap. Counting the steps of ConSh by function (`CONMA_PROFILE` of the Rust VM, `test/vm_profile.py`) showed that one iteration of `for i in 1 2 ...; do n=1; done` called `__if_then_else__` 88 times, and that the conditionals took about 40% of its steps.
 * The three are primitives (see "Control Primitives" in PRIMITIVES.md). A Boolean (`,(t f) __NULL__ t` or `,(t f) __NULL__ f`, as the primitives return them and as `__TRUE__` and `__FALSE__` are) chooses its clause in one step, where the ConMa definitions took 7 (`__if_then_else__`) or 9 (`__if__`, `__unless__`). Any other value, such as a condition written as a function `(,() __is_null__ x)`, is applied to the two clauses as before, which saves only 1 or 3 steps.
-* The ConMa definitions moved from `include/pure.se` to `include/control.se`, as `__Cont_get__` did in Step 34.
+* The ConMa definitions moved from `include/pure.se` to `include/control.se` (moved on 2026-11-13; now `include/core/control.se`), as `__Cont_get__` did in Step 34.
 * In ConSh and in the ConMa front end, the 222 conditions of the form `(,() __NULL__ x)`, which only pass a Boolean on, are written `x`, so that they are chosen in one step.
 * Every test gives the same output, except the step numbers in the error messages of `test/step15` (case3), `test/step17` (case3, case9) and `test/step20` (case10, case15), the largest number of live line cells in `test/step21` (case5, case6), which `memcheck.py` samples every 2000 steps, and the trace of `test/step1` (case2), where `__if_then_else__` is now a primitive. These logs were updated.
 * ConSh (steps of one iteration, counted over 2000): `for i in 1 2 ...; do n=1; done` takes 681 steps instead of 759, and `for i in $(seq 1 2000); do n=$i; done` 1609 instead of 1824; the example `consh/examples/lazy.sh` takes 509,091 steps instead of 580,441.
@@ -752,7 +752,7 @@ No new primitive.
 | `__String_strip_suffix__` | implemented |
 
 * Goal: Make the data operations that ConSh repeats for every statement cheap. Counting the steps of ConSh by function (`CONMA_PROFILE`, `test/vm_profile.py`) showed that copying its context Dict took 27% of the steps of a script that calls a function in a loop, and that checking words for glob characters, appending lists and removing newlines took 10 to 15% of a loop of `echo`.
-* They work only on data and never apply a Closure, so each is one step (see the LList, Dict and String Primitives in PRIMITIVES.md). The ConMa versions are in `include/data.se`, like `include/control.se` for Step 35: a program that includes it uses them instead of the primitives. With a wrong type of argument, the ConMa versions stop with the error of the primitive they use, not with the same error.
+* They work only on data and never apply a Closure, so each is one step (see the LList, Dict and String Primitives in PRIMITIVES.md). The ConMa versions are in `include/data.se`, like `include/control.se` (moved on 2026-11-13; now `include/core/control.se`) for Step 35: a program that includes it uses them instead of the primitives. With a wrong type of argument, the ConMa versions stop with the error of the primitive they use, not with the same error.
 * ConSh uses them in place of its own `Dict_copy`, `List_append` and `List_length`, and in `Glob_has_meta`, `Glob_has_any`, `Ast_chomp` and `Line_chomp`. With `CONSH_CONMA_DATA=1`, `consh/bin/consh` builds a module that includes `include/data.se` (`/tmp/consh.data.module.se`), and every ConSh test gives the same output with it.
 * ConSh (Rust VM, steps of the benchmarks of `consh/docs/PLAN-ja.md`, stage 18): `y=$(f $i)` 3000 times takes 11,988,797 steps instead of 17,550,750 (0.63 s instead of 0.96 s), `echo $i` 5000 times 4,933,016 instead of 5,565,174, and `for i in 1 2 ... 20000; do n=1; done` 4,898,524 instead of 5,798,940.
 * Tests (`test/step36`): each case runs both with the primitives (`test.se`) and with the ConMa versions (`conma.se`, which includes `data.se` and `test.se`), and both must give `caseN.log`. The traces of the Python VM and the Rust VM are the same.

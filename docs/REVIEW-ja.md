@@ -75,7 +75,7 @@ Python: operator: Number(2.0)
 Rust:   Error in VProc 1 at step 12: Primitive not implemented: (__Number__ 2)
 ```
 
-* Python 版（test/vproc_step.py の 661〜663 行）は、`{operator!r}` で Python の `repr` を出す。さらに、標準出力に `operator: …` というデバッグの行を出している。
+* Python 版（test/vproc_step.py（2026-11-15 に vm/python/vproc_step.py へ移動） の 661〜663 行）は、`{operator!r}` で Python の `repr` を出す。さらに、標準出力に `operator: …` というデバッグの行を出している。
 * Rust 版（vm/src/step.rs の 148〜151 行）は、値を S 式にして出す。
 * vm/README.md は「同じ出力、トレース、エラーメッセージ」を目標にしている。この差は、異常系のテストが少なく、見つからなかったものだと思う。
 * 修正案：Python 版の `print` を消し、2 つの VM のメッセージを S 式の形にそろえる。「関数でない値を呼んだ」ことを言うメッセージ（2 のとおり）にして、test/step2 などに異常系のテストを足す。
@@ -110,7 +110,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 | 部品 | 実装 |
 |---|---|
 | フロントエンド（lexer、comment_remover、parser、includer、resolver） | Python（bin/、1,395 行）、ConMa（include/、2,387 行） |
-| VM | Python（test/vproc_step.py、2,833 行）、Rust（vm/src、5,387 行） |
+| VM | Python（test/vproc_step.py（2026-11-15 に vm/python/vproc_step.py へ移動）、2,833 行）、Rust（vm/src、5,387 行） |
 | ConSh | ConMa（7,670 行）、Rust（5,639 行）。構文解析は、さらに Python（consh_parse、1,602 行）がある |
 
 * 2 つの VM が、ステップごとのトレースまで一致することを確かめる方針（vm/README.md の 129 回の実行）は、強い。4 のような不一致は、この方針のおかげで見つかった。
@@ -198,7 +198,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 付録: 実験に使ったプログラム
 
-ファイルのあるディレクトリで `bash <repo>/test/resolver.sh <file>.se` を実行し（10 のとおり、パスは付けない）、`CONMA_VM=rust <repo>/test/vm.sh /tmp/<file>.module.se <関数名>` で動かす。
+ファイルのあるディレクトリで `bash <repo>/test/resolver.sh <file>.se` を実行し（10 のとおり、パスは付けない）、`CONMA_VM=rust <repo>/test/vm.sh /tmp/<file>.module.se <関数名>`（2026-11-15 に bin/vm へ移動） で動かす。
 
 `bench.se`（実測。関数名は `loop1m` と `fib22`）:
 
@@ -392,7 +392,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 5. 燃料を使い切らせても、memory.grow の結果は戻らない（中）
 
-* 場所：consh/js/conma.js の `host_wasm_call`（df26f30）。メモリの中身は 0 で埋め直すが、大きさは戻さない。docs/PRIMITIVES.md の 16 は memory.size しか書いていない。
+* 場所：consh/js/conma.js（2026-11-15 に vm/wasm/conma.js へ移動） の `host_wasm_call`（df26f30）。メモリの中身は 0 で埋め直すが、大きさは戻さない。docs/PRIMITIVES.md の 16 は memory.size しか書いていない。
 * エージェントの例：`(memory 1 2)` で `memory.grow 1` の結果を返す関数は、十分な燃料なら 1 を返すが、燃料 10 で切れた後に 2 倍の燃料でやり直すと -1 を返す。「同じ引数なら同じ結果」「燃料の切れた呼び出しは何も残さない」（計画 5.5 のやり直しの前提）が崩れる。今の SJS の変換は memory.grow を書かないので、SJS では起きない。
 * 直し方の案：呼ぶたびにメモリを作り直すか、大きさを最小に戻す。そうしないなら、文書に書く。
 
@@ -403,7 +403,7 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 
 ### 7. Ctrl-C（前からの問題。段階 3 の説明と食い違う）（中）
 
-* Node.js の wasm 版の対話モードでは、終わらない `(( ))` に Ctrl-C が届かない。consh/js/vm-node.js の 392 行は、子プロセス、JS、入力待ちがあるときしかイベントループに戻らないので、SIGINT の受け手が動かない（`CONMA_NO_WASM=1` でも同じ）。d22dc3b の「やり直しの合間に SIGINT が届く」を確かめた test/fast7 の case7 は、子プロセスが動いているときだけ成り立つ。
+* Node.js の wasm 版の対話モードでは、終わらない `(( ))` に Ctrl-C が届かない。consh/js/vm-node.js（2026-11-15 に vm/wasm/vm-node.js へ移動） の 392 行は、子プロセス、JS、入力待ちがあるときしかイベントループに戻らないので、SIGINT の受け手が動かない（`CONMA_NO_WASM=1` でも同じ）。d22dc3b の「やり直しの合間に SIGINT が届く」を確かめた test/fast7 の case7 は、子プロセスが動いているときだけ成り立つ。
 * Rust VM でも、Ctrl-C で止めた `(( ))` の SJS の VProc（consh/include/consh_jsstmt.se の 533 行の `__VProc_spawn__`）は止まらず、裏で CPU を使い続ける（`__VProc_kill__` も `Kill_tree` も届かない）。これを直すと、`Sjs_wasm_fn_core` の busy が減らないまま残る（その関数は、その後ずっと ConMa 版で動く）ことも直す必要がある。
 * 時間の区切り：燃料の切れ目で区切りを終える仕組み（vm/src/sched.rs の `end_slice`）は、VProc が 1 つで、ほかに何も待っていないときは働かない（内側のループが budget まで続ける）。trap を登録している ConSh では働く。
 
@@ -443,10 +443,10 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 * 8 の一時ファイル：consh/sjs/test の test.sh は、step10 だけでなく step1〜11 のすべてが `/tmp/sjs-test-$$.log`（step11 はモジュールも）に書いていたので、すべて `${TMPDIR:-/tmp}` にした。
 * 8 の計画 5.6 との違い：consh/docs/SJS-WASM-PLAN-ja.md の 15 に、違いとして書き足した（そのままにする）。
 * 4、8 の後で、test/ を Python、Rust、wasm の VM で、consh/test を Rust VM（最適化版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った（wasm 版の test/ は、前からの step40 だけが違う）。
-* 5：直した。ホスト（consh/js/conma.js）は、モジュールの元（`WebAssembly.Module`）と最初のページ数を覚え、`__Wasm_call__` と `__Wasm_call_memory__` を呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ（前の呼び出しの `memory.grow` や、多い語で広がったとき）、instance を作り直す。メモリは小さくできないので、作り直して新しいメモリにする。同じ大きさで呼び続けるときは作り直さない。memory.size と memory.grow は引数と語だけで決まり、燃料が切れた後のやり直しでも同じ結果になる。test/fast7 に case13 を足した（memory.grow する関数を 2 度、燃料 10 の後に十分な燃料、9000 語の後の memory.size）。直す前は 2 度目から -1 で、ページ数が残った。case8 の wasm 版のログは、1 万語の後の `pages after` と `grow` が 2 から 1 になった（前の呼び出しのメモリが残らないため）。docs/PRIMITIVES.md の 16 と、consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 11 に書いた。
+* 5：直した。ホスト（consh/js/conma.js（2026-11-15 に vm/wasm/conma.js へ移動））は、モジュールの元（`WebAssembly.Module`）と最初のページ数を覚え、`__Wasm_call__` と `__Wasm_call_memory__` を呼ぶ前のメモリが、モジュールの大きさと語に要る大きさの大きいほうより大きければ（前の呼び出しの `memory.grow` や、多い語で広がったとき）、instance を作り直す。メモリは小さくできないので、作り直して新しいメモリにする。同じ大きさで呼び続けるときは作り直さない。memory.size と memory.grow は引数と語だけで決まり、燃料が切れた後のやり直しでも同じ結果になる。test/fast7 に case13 を足した（memory.grow する関数を 2 度、燃料 10 の後に十分な燃料、9000 語の後の memory.size）。直す前は 2 度目から -1 で、ページ数が残った。case8 の wasm 版のログは、1 万語の後の `pages after` と `grow` が 2 から 1 になった（前の呼び出しのメモリが残らないため）。docs/PRIMITIVES.md の 16 と、consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 11 に書いた。
 * 4 の続き：直した。変換器（sjs_wasm.se）は、関数が使う Math のメンバーの名前を集め（`Wx_uses_math` が名前を受け取る。info の `"math"` は名前の集まり）、(( )) の数の関数には、呼ぶ数の関数が使うものも合わせた名前を空白で区切って付ける（`"wasmMath"`。`Wx_names_text`、`Wx_keys_text`）。sjs_gen.se はそれを文字列で `Sjs_wasm_fn_checked` に渡し、`Sjs_wasm_fn_checked` は、関数を作るときにその名前の列を作り、呼ぶたびにそのメンバーだけを比べる（使わなければ比べない）。上の `hyp` のスクリプトは、wasm 版の VM で 2.04〜2.05 秒になり、`CONMA_NO_WASM=1`（2.13〜2.14 秒）より速くなった（実時間、2 回ずつ、Apple M2）。consh/test/step21 に case11 を足した（1 つの (( )) の、Math.floor を使う関数、それを呼ぶ関数、Math.round を使う関数、Math.PI を使う関数に、round、floor、PI の順に書き換えた後で呼ぶ）。Rust VM と wasm 版で同じログで、floor を書き換えると、floor を呼ぶ関数を呼ぶ関数も ConMa 版になる。
 * 5 と 4 の続きの後で、test/ を Python、Rust、wasm の VM で（wasm は前からの step40 と、-j 8 で 1 度の step31 だけが違う。step31 は 1 つだけで 3 回通る）、consh/test を Rust VM（最適化版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
-* 7 の前半（Node.js の wasm 版の VM に Ctrl-C が届かない）：直した。consh/js/vm-node.js の実行のループは、外で動くもの（子プロセス、JavaScript、入力）があるときだけ、ときどきイベントループに戻っていた。VM が SIGINT を受け取ると決めた（`__OS_trap_interrupt__`）後は、外で動くものがなくても、4 回の区切り（40 万ステップ）ごとに戻るようにした（`sigintTrapped`）。fifo を標準入力にした対話モードの ConSh で、`(( f = n => { while (1) {} return 0 } ))` の後の `echo "B $(( f(1) ))"` に node へ SIGINT を送ると、直す前は止まらず（プロセスを kill した）、直した後はプロンプトに戻り、次の `echo after` も動いた。test/fast7 に case14 を足した（SIGINT を送る子プロセスはすぐ終わり、裏に残したサブシェルが送る。直す前の wasm 版は 15 秒で打ち切るまで止まらなかった）。consh/bench の 02、10、11 を wasm 版の VM で直す前と後に 3 回ずつ流し、時間は変わらなかった（02 は 1.28〜1.30 秒と 1.29〜1.32 秒、10 は 3.05〜3.15 秒と 3.08〜3.12 秒、11 は 1.29〜1.30 秒と 1.29 秒。実時間、Apple M2）。
+* 7 の前半（Node.js の wasm 版の VM に Ctrl-C が届かない）：直した。consh/js/vm-node.js（2026-11-15 に vm/wasm/vm-node.js へ移動） の実行のループは、外で動くもの（子プロセス、JavaScript、入力）があるときだけ、ときどきイベントループに戻っていた。VM が SIGINT を受け取ると決めた（`__OS_trap_interrupt__`）後は、外で動くものがなくても、4 回の区切り（40 万ステップ）ごとに戻るようにした（`sigintTrapped`）。fifo を標準入力にした対話モードの ConSh で、`(( f = n => { while (1) {} return 0 } ))` の後の `echo "B $(( f(1) ))"` に node へ SIGINT を送ると、直す前は止まらず（プロセスを kill した）、直した後はプロンプトに戻り、次の `echo after` も動いた。test/fast7 に case14 を足した（SIGINT を送る子プロセスはすぐ終わり、裏に残したサブシェルが送る。直す前の wasm 版は 15 秒で打ち切るまで止まらなかった）。consh/bench の 02、10、11 を wasm 版の VM で直す前と後に 3 回ずつ流し、時間は変わらなかった（02 は 1.28〜1.30 秒と 1.29〜1.32 秒、10 は 3.05〜3.15 秒と 3.08〜3.12 秒、11 は 1.29〜1.30 秒と 1.29 秒。実時間、Apple M2）。
 * 7 の前半の後で、test/ を Python、Rust、wasm の VM で（wasm は前からの step40 と、-j 8 で 1 度の step31 だけが違う。step31 は 1 つだけで 3 回通る）、consh/test を Rust VM（最適化版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
 * 7 の後半（止めた (( )) の SJS の VProc が裏で動き続ける）：直した（Bash の Ctrl-C と同じく、(( )) の評価もやめると、2026-11-14 にユーザーと決めた）。文脈に、評価を待っている (( )) と $(( )) の VProc を入れる Ref `"sjsRef"` を置き（consh/include/consh_eval.se の `Ctx_top` と `Sh_child`。`"procRef"` と同じ）、consh_jsstmt.se の `Sjsb_eval` が、`__VProc_spawn__` で作った VProc を待つ間だけ入れる。`Kill_tree` は、それを `__VProc_kill__` で止める（対話モードの Ctrl-C と、kill やパイプラインの要素を止めるとき）。consh/reference/consh_eval.se も同じに直した。fifo を標準入力にした対話モードで、終わらない数の関数の `$(( f(1) ))` を Ctrl-C で止めると、直す前は Rust VM のプロセスの CPU 時間が 5 秒で 6.49 秒から 9.28 秒に増え続け、直した後は Rust VM（最適化版と参照版）でも wasm 版でも増えない。自動のテストはない（止めた後の CPU を見る必要があるので）。
     * 止めた VProc が ConMa 版の途中なら、`Sjs_wasm_fn_core` の busy（ConMa 版を動かしている深さ）が戻らないまま残り、その関数はその後ずっと ConMa 版で動いた。busy に、数えている VProc の番号を組にし（`Sjs_wasm_busy`）、別の VProc（次の評価）からは 0 に見えるようにした（戻るときに別の VProc が数え直していれば、0 のまま）。
@@ -454,5 +454,5 @@ ConSh の実行文脈 `sh` が、文字列のキーを約 26 個持つ Dict で�
 * SJS-WASM より前からの、値が undefined の `$(( ))`：直した（エラーにして $? を 2 にすると、2026-11-14 にユーザーと決めた）。consh_jsstmt.se の `Sjs_subst` は、値が undefined なら `Sjs_abort` で「the value of $(( )) is undefined」のエラーにする（ほかの `$(( ))` のエラーと同じく、対話モードでなければ ConSh を終了ステータス 2 で終える）。前は、`Value_force`（consh_eval.se）が `{"sjsv": null}` を「sjsv のない値」と取り違えて `ref` と出して止まったので、キーがあるかで見分けるようにも直した（undefined は、`Sjsb_to_shell` の規則どおり ""。consh/reference/consh_eval.se も）。null は "" のまま、文の `(( ))` は、値が undefined でもエラーにしない（偽なので $? は 1）。consh/test/step21 に case12 を足した。
 * 7 の後半、`%`、undefined の `$(( ))` の後で、test/ を Python、Rust、wasm の VM で（wasm は前からの step40 と、-j 8 で 1 度の step31 だけが違う。step31 は 1 つだけで 3 回通る）、`CONMA_REFERENCE=1` の test/ を Rust VM で（reference/README-ja.md に書いた 5 つだけが違う）、consh/test を Rust VM（最適化版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
 * `%` を比べて見つかった数の文字列の違い（2026-11-14）：直した。2 つあった。(1) Rust VM と wasm 版の `__Number_toString__`（vm/src/value.rs の `py_float_repr`）は、17 桁目がちょうど真ん中になる数（`-126.48391723632812`、正確には -126.483917236328125）で、参照の Python VM（`repr`）と違う方の桁を出した。Rust の `{:e}` が選ぶ桁をそのまま使っていたためで、`{:e}` の桁の数で正しく丸めた（真ん中なら偶数へ）桁が読み戻せれば、それを使うようにした。ビットの並びから作った乱数の f64 などの 3006 個で、直す前は 6 個が Python VM と違い、直した後は 0 個（test/step5 の case7）。(2) ConMa の `__Number_toString__` は、Python VM に合わせて整数の値の正確な桁を出す（`85715430223118336`）が、JavaScript は読み戻せる最短の桁を出す（`85715430223118340`）。ConMa は Python のまま、SJS だけ JavaScript に合わせると、2026-11-14 にユーザーと決めた。consh/include/sjs_rt.se の `Sjs_num_str` は、`__Number_toString__` が小数点も指数もない 16 桁以上の桁を出したとき（2^53 以上の整数）だけ、1 桁から順に丸めて（真ん中なら偶数へ）読み戻し、最短の桁を探す（`Sjs_num_shortest`）。大きな整数の乱数 200 個を含む 222 行の `String()`、テンプレート文字列、`join`、`JSON.stringify`、`console.log` が Node.js と同じになり、上の `%` の 668 個も、文字列まで Node.js と一致した（consh/sjs/test/step8 の case11）。docs/PRIMITIVES.md に `__Number_toString__` の規則を書いた。test/ を Python、Rust、wasm の VM で（wasm は前からの step40 だけが違う）、consh/test を Rust VM（最適化版と参照版）で、consh/test/step21 を wasm 版で、consh/sjs/test と consh/js/test を流して通った。
-* 6 の後半：直した。原因は wasm を使う道ではなく、ホスト（consh/js/conma.js）が wasm32 のポインタを符号付きの i32 として受け取っていたこと。VM のメモリが 2 GB を超えると、`host_write` などに渡るポインタが負になり、`new Uint8Array(x.memory.buffer, ptr, len)` が RangeError で落ちた（`CONMA_NO_WASM=1` でも、120 万段で同じく落ちた。wasm を使う道は使うメモリが少し多いので、先に 2 GB を超えた）。メモリを読み書きするところは、`bytesAt` と `putAt`（と `str`、`give`）を通して、ポインタを `>>> 0` で符号なしにする（Float64Array と Int32Array で読むところも）。`(( g = (a, n) => n === 0 ? a : g(a + 1, n - 1) + 0 ))` の `$(( g(0, n) ))` は、wasm 版の VM で、直す前は 120 万段で落ち、直した後は 100 万段（約 19 秒、2.8 GB）、120 万段、200 万段（約 32 秒、3.4 GB）が、wasm を使っても `CONMA_NO_WASM=1` でも通る。300 万段では wasm32 のメモリの上限 4 GB に届き、Rust の割り当ての失敗（`rust_oom` の unreachable）で VM が止まる（Rust VM は通る。wasm32 の上限なので、そのままにする）。その後、wasm 版の VM の割り当て（consh/js/wasm/src/lib.rs の `Reporting`）が、失敗した大きさをホストに伝え（`host_out_of_memory`）、conma.js の `run` が、続く trap を「memory allocation of N bytes failed (the wasm VM has at most 4 GB)」のエラーにし、vm-node.js がその 1 行を出して、ネイティブの VM（abort）と同じ終了ステータス 134 で終えるようにした（前は Rust と JavaScript のスタックが十数行出た）。2 GB を超えるメモリが要るので、自動のテストはない。
+* 6 の後半：直した。原因は wasm を使う道ではなく、ホスト（consh/js/conma.js（2026-11-15 に vm/wasm/conma.js へ移動））が wasm32 のポインタを符号付きの i32 として受け取っていたこと。VM のメモリが 2 GB を超えると、`host_write` などに渡るポインタが負になり、`new Uint8Array(x.memory.buffer, ptr, len)` が RangeError で落ちた（`CONMA_NO_WASM=1` でも、120 万段で同じく落ちた。wasm を使う道は使うメモリが少し多いので、先に 2 GB を超えた）。メモリを読み書きするところは、`bytesAt` と `putAt`（と `str`、`give`）を通して、ポインタを `>>> 0` で符号なしにする（Float64Array と Int32Array で読むところも）。`(( g = (a, n) => n === 0 ? a : g(a + 1, n - 1) + 0 ))` の `$(( g(0, n) ))` は、wasm 版の VM で、直す前は 120 万段で落ち、直した後は 100 万段（約 19 秒、2.8 GB）、120 万段、200 万段（約 32 秒、3.4 GB）が、wasm を使っても `CONMA_NO_WASM=1` でも通る。300 万段では wasm32 のメモリの上限 4 GB に届き、Rust の割り当ての失敗（`rust_oom` の unreachable）で VM が止まる（Rust VM は通る。wasm32 の上限なので、そのままにする）。その後、wasm 版の VM の割り当て（consh/js/wasm/src/lib.rs（2026-11-15 に vm/wasm/src/lib.rs へ移動） の `Reporting`）が、失敗した大きさをホストに伝え（`host_out_of_memory`）、conma.js の `run` が、続く trap を「memory allocation of N bytes failed (the wasm VM has at most 4 GB)」のエラーにし、vm-node.js がその 1 行を出して、ネイティブの VM（abort）と同じ終了ステータス 134 で終えるようにした（前は Rust と JavaScript のスタックが十数行出た）。2 GB を超えるメモリが要るので、自動のテストはない。
 * 7 の時間の区切り：直した。vm/src/sched.rs の `run_slice` の内側のループ（ほかに動けるものも待つものもないとき、同じ VProc を続けて動かす）が `end_slice` を見ていなかったので、立っていればそこで抜けるようにした（外側のループの先頭が区切りを終える）。ネイティブの VM は budget が無限なので、区切りは変わらない。wasm 版の VM で、燃料 2^20 と 2^23 では足りず 2^26 で終わるループ（3000 万回）の SJS の数の関数を動かすと、`conma_run` に戻る回数が 2 回から 4 回になり、一番長い区切りは 356 ms（3 回の呼び出し）から 244 ms（最後の 1 回の呼び出し）になった（vm-node.js に一時的に計測を入れて測った。自動のテストはない）。
