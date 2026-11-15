@@ -87,6 +87,18 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * それでも、loop 10000000 は CPython の 0.40 倍の時間で、fib 27 と nbody 20000 は CPython の 2〜3 倍（その差は起動の差に近い）。Node.js（0.063〜0.075 秒）とは、約 1.9〜2.5 倍。
 * 数の関数を使わない SJS（`CONMA_NO_WASM=1`）は、wasm 版の VM で Rust 版の VM の約 1.4 倍の時間（長い大きさ）。手で書いた ConMa も、wasm 版の VM で 1.4〜1.8 倍。
 
+CPython で約 1 秒かかる大きさでも測った（同じ日、Apple M1、user + sys 秒の 3 回の最良、括弧の中は実時間。モジュールは run.sh と同じ手順で作り、時間は手で測った）。出力は、どれも CPython、Node.js と同じだった。
+
+| | CPython | wasm 版の VM、SJS（数の関数は WebAssembly） | SJS ÷ CPython | Node.js |
+|---|---|---|---|---|
+| loop 30000000 | 0.998 秒 | 0.157 秒（0.146 秒） | 0.16 倍 | 0.080 秒 |
+| fib 35 | 0.993 秒 | 0.199 秒（0.180 秒） | 0.20 倍 | 0.152 秒 |
+| nbody 300000 | 1.022 秒 | 0.239 秒（0.180 秒） | 0.23 倍 | 0.105 秒 |
+
+* SJS は CPython の約 1/4〜1/6 の時間。wasm 版の VM の起動（約 0.11 秒）を引くと、計算そのものは CPython より loop で約 20 倍、fib で約 11 倍、nbody で約 8 倍速い。
+* Node.js とは、fib 35 で 1.3 倍、nbody 300000 で 2.3 倍の時間。
+* wasm 版の VM は Node.js の上で動き、Node.js がいくつものスレッドを使うので、user + sys が実時間より長くなる。
+
 **数の関数の wasm 版**（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 5。2026-11-14、fe4d82e、Apple M1、user + sys 秒の 3 回の最良）。上の表と機械が違うので、時間はこの表の中だけで比べる。wasm 版の VM は Node.js で動き、起動に約 0.13 秒かかる。
 
 | | Node.js | CPython | Rust 版の VM、手で書いた ConMa | Rust 版の VM、SJS | wasm 版の VM、SJS（数の関数は wasm 版） | wasm 版の VM、SJS（`CONMA_NO_WASM=1`） | wasm 版の VM、手で書いた ConMa |
