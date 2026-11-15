@@ -214,7 +214,7 @@ function advance(bodies, pairs, dt, n) {      // bodies：数の配列の配列�
 | 100000、10 | 5.639 秒（12.084 秒） | 8.154 秒 | 6.239 秒（15.544 秒） | 19.068 秒 |
 
 * どの場合も、wasm 版が ConMa 版より速くなった。長さ 10 万の配列の時間の大部分は、配列を `push` で作る時間（どちらにも入る）。8 の 4（上限を設けない）は、このままでよい。
-* **確かめたこと**：test/fast7 の case12（積む、0 個、ないキー、数でない値、書き戻す、新しい Dict、0 個の書き戻し）が、Python、Rust、wasm 版の VM で同じログになる。test/、consh/test（高速版と参照版）、consh/js/test、consh/sjs/test、wasm 版の VM の step21 も通る。
+* **確かめたこと**：test/fast7 の case12（積む、0 個、ないキー、数でない値、書き戻す、新しい Dict、0 個の書き戻し）が、Python、Rust、wasm 版の VM で同じログになる。test/、consh/test（最適化版と参照版）、consh/js/test、consh/sjs/test、wasm 版の VM の step21 も通る。
 
 
 ## 18. 燃料のやり直しと配列の読み書きを軽くする設計（2026-11-14。ブランチ alpha。F1 は 19、F2 は 20、F3 は 21 で作った。添字が変数の読み書きは 22 の F4）

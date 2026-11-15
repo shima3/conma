@@ -441,7 +441,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
 
 - 2.5 を作った（段階 8）。`js 変数名=` を JS の値にすること（2.5 の 4 の最後）は、3.17 で作った。
     - 構文解析（consh/include/consh_parser.se）：`Ps_statement` の先頭で `Ps_at_js` が先頭の語を調べ、JS の文なら `Ps_js` が範囲を読んで節 `(jsstmt 位置 コード 代わりのコマンド行 名前 ...)` にする。テキストの中の `function 名前` は、解析の前に `Funcs_scan` で集める。JavaScript が使えるかは、run-src と対話モードの始めに `Js_probe`（`__JS_call__` で `0` を評価する）で調べ、使えるときだけ `Parse_file_with`、`Parse_text_with` に知らせる。ネイティブ版は onError に進むので、今までと同じ構文木になる。
-    - 評価（consh/include/consh_jsstmt.se。高速版と参照版の consh_eval.se が include する）：`Eval_jsstmt` が、コードに `//@consh-stmt` の行を付けて `__JS_call__` に渡す。引数は、渡す変数の名前、種類、値の 3 つの LList。ホストが書く `(w 名前 番号 種類 値)` の行で変数を入れ、`(f メッセージ)` なら代わりのコマンド行を実行する。
+    - 評価（consh/include/consh_jsstmt.se。最適化版と参照版の consh_eval.se が include する）：`Eval_jsstmt` が、コードに `//@consh-stmt` の行を付けて `__JS_call__` に渡す。引数は、渡す変数の名前、種類、値の 3 つの LList。ホストが書く `(w 名前 番号 種類 値)` の行で変数を入れ、`(f メッセージ)` なら代わりのコマンド行を実行する。
     - JS の値の変数は、`"js"` に番号を入れた Dict で、`Value_force` がシェルの値を取り出す（3.16 からは、読むたびに `Js_force` で直す）。そのため、変数を読むところは変えていない。シェルで代入し直せば、ふつうの値に置き換わる。
     - ホスト（consh/js/conma.js の `evaluateStatement`）：トップレベルの宣言を代入に書き換え（`rewriteDeclarations`。字句解析は `jsTokens`）、シェルの変数の Proxy を `with` のスコープにして評価する。値は `values` の表に置き、関数の JS の値は、`js` のコード `__consh_value(番号)` で呼ぶ。
 - 仕様から変えたところ（2.5 に書いた）：
@@ -450,7 +450,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
     - JS の値の関数は、エラーにせず、`$f` で呼べる関数値にした。循環するオブジェクトは `String()` の文字列にした。
     - 先頭の語は `)` と `}` でも区切り、`/` は名前の部分だけで調べる（2.5 の 2）。`$(true)` の `true)` と `echo a; )` の `)` が JS の文になり、consh/test の step4 と step12 が wasm 版で変わったためである。
 - テスト：consh/js/test/step5（Node.js）。case1 は判定、代入と宣言、`$` での変換、`$( )`、case2 は続きの行、ブロック、`await`、出力の規則、関数の中の局所変数、パイプラインの中の `stdin` と `console`、case3 は JS の値の共有と変換のし直し、関数の呼び出し、関数の写し、シェルで代入し直したとき、case4 はエラー（打ち間違えたコマンド、パイプライン、例外、拒否、どちらとしても読めない文）、case5 は対話モード（PS2 の続きの行、今定義されている関数）。
-- ネイティブ版の consh/test（高速版と参照版、Rust 版の VM）と consh/js/test は通る。`CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh` でネイティブ版と違うのは、今までどおり step8 と step17 だけである。ブラウザで、`n = 3`、`n * 2`、`await fetch(...)`、`$add 1 2`、打ち間違えたコマンドを確かめた。
+- ネイティブ版の consh/test（最適化版と参照版、Rust 版の VM）と consh/js/test は通る。`CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh` でネイティブ版と違うのは、今までどおり step8 と step17 だけである。ブラウザで、`n = 3`、`n * 2`、`await fetch(...)`、`$add 1 2`、打ち間違えたコマンドを確かめた。
 - 名前が PATH にあるコマンドと同じなら、JS の文にならない。macOS には `/opt/X11/bin/x` と `/usr/bin/w` があるので、`x = 1` はシェルの文（外部コマンド `x`）になる。テストでは、そうした名前を使わない。
 
 ### 3.16. レビューへの対応（2026/11/9）

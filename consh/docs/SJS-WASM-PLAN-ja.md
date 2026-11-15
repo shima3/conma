@@ -243,7 +243,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
     * 代入は文としてだけ（式の中の代入は数の関数にしない）。真偽値は条件の中だけ。
 * **燃料**：段階 2 は 1 回の呼び出しに 10^8 の燃料を与え、使い切るか trap になれば、ConMa 版を始めから動かす（数の関数は引数だけで結果が決まるので、やり直してよい）。燃料を増やしてのやり直しと時間の区切りは段階 3。
 * **補助の関数**：`%`、ToUint32、`Math.round`、`Math.sign` は、WAT の補助の関数（`$__mod`、`$__u32`、`$__round`、`$__sign`）にした。11 で ConMa 版を JavaScript に合わせたので、`/` は `f64.div`、`Math.max` と `min` は `f64.max` と `f64.min` をそのまま使える。
-* **確かめたこと**：consh/sjs/test/step9 の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test、consh/test（高速版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
+* **確かめたこと**：consh/sjs/test/step9 の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test、consh/test（最適化版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
 * **速さ**（変換したモジュールを動かす時間だけ。1 回ずつ測った）：fib(25) は、wasm 版の VM で wasm 版が 0.28 秒、ConMa 版（`CONMA_NO_WASM=1`）が 1.91 秒、Rust 版の VM が 1.33 秒。loop の 100 万回は、0.19 秒、2.38 秒、1.58 秒。wasm 版の時間は、ほとんどが VM と実行時の支え（約 1.2 MB）を読む時間である。`consh/sjs/sjs` 全体では、変換器のモジュールを作るのに毎回 2〜3 秒かかるので、差は小さく見える。nbody は配列を使うので、数の関数がない（9）。
 
 ## 14. 段階 3 の結果（2026-11-14）

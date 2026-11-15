@@ -6,15 +6,15 @@
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
 #                 作っていなければ、そう出して ConMa 版で実行する。ソースより古ければ、警告を出してから、それで実行する
-#   conma         ConMa 版の高速版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
+#   conma         ConMa 版の最適化版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ
 #                 （test/vm.sh。既定は Python 版。rust なら Rust 版、transpiled なら変換したコードを組み込んだ Rust 版）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM=rust（か transpiled）なら Python を使わない
 #   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
-#                 include/core（コア ConMa）と reference）を、高速版の同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。
+#                 include/core（コア ConMa）と reference）を、最適化版の同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。
 #                 ほかは conma と同じ
-# --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（高速版）で実行する
+# --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（最適化版）で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
 # Tab でファイル名を補完する（rlwrap -c。Rust 版は cd した先を、rlwrap が見るプロセスのカレントディレクトリにもする）
 # 環境変数 CONSH_NO_RLWRAP を空でない値にすると、rlwrap を使わない
@@ -85,7 +85,7 @@ fi
 # ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は
 # bin/cache-dir の場所。持ち主だけが読み書きできる）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
-# include ディレクトリ：高速版は consh/include と標準ライブラリの include/ext と include。参照版は、consh/reference と
+# include ディレクトリ：最適化版は consh/include と標準ライブラリの include/ext と include。参照版は、consh/reference と
 # 標準ライブラリの include/core（コア ConMa）と reference を先に探す（そこにある、書き直す前のファイルが、同じ名前のファイルの代わりになる）。
 # 最初のファイル consh_main.se も、参照版は consh/reference にあればそれを使う
 if [ -n "$CONSH_MODULE_DIR" ]; then dir="$CONSH_MODULE_DIR"; else dir="$("$root/bin/cache-dir")" || exit 1; fi

@@ -11,7 +11,7 @@ wasm VM をビルドし直して流した。
 
 | テスト | 結果 |
 |---|---|
-| consh/test（速い版と参照版を Rust VM で、Rust 版） | 差分なし |
+| consh/test（最適化版と参照版を Rust VM で、Rust 版） | 差分なし |
 | consh/test（wasm VM） | step8 と step17 だけ違う（step17 は、js が使えないというメッセージになった） |
 | consh/js/test（step1 の case5 も） | 通る |
 

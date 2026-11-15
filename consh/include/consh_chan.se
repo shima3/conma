@@ -1,4 +1,4 @@
-;; 高速版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
+;; 最適化版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
 ;;   * Sh_get sh "key" を __Dict_lookup_or__ sh "key" __print_exit_error__ に、num s を __Number_fromString__
 ;;     __print_exit_error__ s にした（関数の呼び出しを 1 つ減らす）。
 ;;   * 条件が組み込み 1 つの関数（__if__ (,() __is_null__ x) ...）を、先に計算して __if__ に渡す形

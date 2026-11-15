@@ -47,7 +47,7 @@
 | `__Cont_get__` をプリミティブにする（Step 34） | 2026-11-05 | `echo` 1000 回が 4,360,473 → 2,601,741 ステップ、7.4 s → 4.6 s | 入れた | docs/ROADMAP.md Step 34 |
 | `__if_then_else__`、`__if__`、`__unless__` をプリミティブにする（Step 35） | 2026-11-05 | ループ 1 回が 759 → 681 ステップ | 入れた | docs/ROADMAP.md Step 35 |
 | ConSh のためのデータのプリミティブ（Step 36） | 2026-11-05 | `y=$(f $i)` 3000 回が 17,550,750 → 11,988,797 ステップ、0.96 s → 0.63 s | 入れた | docs/ROADMAP.md Step 36 |
-| ConSh の高速版（consh/include）：条件を先に計算する、1 段の LazyList、`Single_list_fields` など | 2026-11-08〜09 | 参照版と比べて、02 が 112.59M → 33.17M ステップ（-71%）、4.000 s → 1.341 s。ほかは -2〜-32% | 入れた | consh/include/README-ja.md |
+| ConSh の最適化版（consh/include）：条件を先に計算する、1 段の LazyList、`Single_list_fields` など | 2026-11-08〜09 | 参照版と比べて、02 が 112.59M → 33.17M ステップ（-71%）、4.000 s → 1.341 s。ほかは -2〜-32% | 入れた | consh/include/README-ja.md |
 | 呼び出しごとに 1 ステップしか減らない書き換え（よく呼ばれる関数から `__Cont_get__` を除くなど） | — | ほとんど効果なし | 入れなかった | consh/include/README-ja.md |
 | richards を手で調整して書き直す（`bench/richards/richards_tuned.se`。定数を実行ごとに 1 回だけ引いて Closure の変数に持つ、スケジューラがフラグを 1 回ずつ読む、変わるフラグだけを書くなど） | 2026-11-13 | richards 2 が 20,110,425 → 15,199,166 ステップ（0.76）。richards 20 が Rust VM で 5.17 s → 3.93 s（0.76）、変換版で 0.590 s → 0.476 s（0.81）。Apple M2 | 別のファイルとして入れた（richards.se は Python の写しのまま） | bench/README.md「A tuned richards」 |
 | SJS の変換器と実行時の支えの改良（型の分かる所の確認を省く、配列の添字、Ref のない `const`、数のリテラルとの比較、行の記録を減らす） | 2026-11-11〜12 | 段階 B7 と比べて、loop 100000 が 1.28 s → 0.166 s、fib 20 が 0.50 s → 0.123 s、nbody 2000 が 9.94 s → 1.098 s | 入れた | consh/sjs/README-ja.md「速さ」「経緯」 |
@@ -94,21 +94,21 @@
 | もの | 大きさ | 備考 |
 |---|---|---|
 | Rust VM（vm/target/release/conma） | 1.9 MB | |
-| 変換版の VM（vm/target-transpiled/release/conma） | 41 MB | 2026-11-13 に作り直したもの（`CONMA_BENCH_REFERENCE=1 bench/build.sh`、34 分。変換した Rust は 86.8 MB）。richards は richards.se と richards_tuned.se を含む（richards_const.se は、その後に bench/ に入れた）。2026-11-12 に同じように作ったものは 190 MB（62 分）で、その間に 36a8036（制御の組み込み）と数の定数化が入ったが、どちらでどれだけ小さくなったかは調べていない。bench/ の 4 つ、test/transpiled、ConSh の高速版と参照版の変換版のコードを含む。前に作ったもの（どちらの版を含めたかは記録がない）は約 100 MB。bench/ と test/transpiled だけなら 8 MB |
+| 変換版の VM（vm/target-transpiled/release/conma） | 41 MB | 2026-11-13 に作り直したもの（`CONMA_BENCH_REFERENCE=1 bench/build.sh`、34 分。変換した Rust は 86.8 MB）。richards は richards.se と richards_tuned.se を含む（richards_const.se は、その後に bench/ に入れた）。2026-11-12 に同じように作ったものは 190 MB（62 分）で、その間に 36a8036（制御の組み込み）と数の定数化が入ったが、どちらでどれだけ小さくなったかは調べていない。bench/ の 4 つ、test/transpiled、ConSh の最適化版と参照版の変換版のコードを含む。前に作ったもの（どちらの版を含めたかは記録がない）は約 100 MB。bench/ と test/transpiled だけなら 8 MB |
 | wasm 版（consh/js/web/conma.wasm） | 0.83 MB（gzip で 0.22 MB） | |
 | wasm 版に ConSh の変換版のコードを入れたもの | 78 MB（gzip で 12.5 MB） | 実験（FAST-PLAN 8.3） |
-| ConSh の高速版のモジュール（bin/includer と bin/resolver、1 行の形） | 5.1 MB | F8 では 5,011,489 バイト、参照版は 4,948,125 バイト |
+| ConSh の最適化版のモジュール（bin/includer と bin/resolver、1 行の形） | 5.1 MB | F8 では 5,011,489 バイト、参照版は 4,948,125 バイト |
 | ブラウザの ConSh のモジュール（consh/js/web/consh.module.se） | 16.6 MB | 中身は上と同じで、字下げのある形 |
 | ConSh のモジュールを変換した Rust | 63 MB | conma2rust.py の出力 |
 | SJS のモジュール | 1.0〜1.5 MB | 実行時の支え（sjs_rt.se、約 1 MB）を含む。SJS 1 行が ConMa の約 200 バイト |
 
 ## 7. 古くなった数と、測り直しが要るもの
 
-2026-11-12 に、変換版の VM を作り直し（ConSh の高速版と参照版を含む）、次を測り直した（Apple M2、3243b7d）。
+2026-11-12 に、変換版の VM を作り直し（ConSh の最適化版と参照版を含む）、次を測り直した（Apple M2、3243b7d）。
 
 * **bench/README.md**：「Now: 2026-11-12, Apple M2」の表を足した。変換版の時間は、CPython 3.9.6 の 0.19〜0.76 倍（nbody 0.42、richards 0.41、fib 0.76、loop 0.19）。2026-11-08 までの表は Apple M4 のもので、そのまま残した。W7 で nbody などを表と比べられなかったのは、負荷より、機械の違いのためだった。
-* **consh/bench/README-ja.md の「結果」の表**：測り直して置き換えた。Rust 版の VM は、2026-11-09 の表より速くなった（高速版の 02 が 1.818 → 1.106 秒、参照版が 5.434 → 3.006 秒）。起動は 0.025 → 0.05 秒に遅くなった（理由は調べていない）。
-* **変換版の VM の ConSh**：W6 の後のモジュールで作り直したので、変換したコードが使われる。test/ と consh/test（高速版、参照版）は、変換版の VM、Rust VM で通った。
+* **consh/bench/README-ja.md の「結果」の表**：測り直して置き換えた。Rust 版の VM は、2026-11-09 の表より速くなった（最適化版の 02 が 1.818 → 1.106 秒、参照版が 5.434 → 3.006 秒）。起動は 0.025 → 0.05 秒に遅くなった（理由は調べていない）。
+* **変換版の VM の ConSh**：W6 の後のモジュールで作り直したので、変換したコードが使われる。test/ と consh/test（最適化版、参照版）は、変換版の VM、Rust VM で通った。
 
 まだ合わないもの：
 
@@ -124,6 +124,6 @@
 | docs/BITWISE-PLAN-ja.md | ビット演算のプリミティブ |
 | vm/README.md「Speed」 | Rust VM の割り当て器、文字列、スケジューラ、OS の確かめ、Dict のキャッシュ、プリミティブの読み方 |
 | docs/ROADMAP.md | プリミティブにしたもの（Step 34〜36、39、41）のステップの数 |
-| consh/include/README-ja.md | ConSh の高速版と参照版のステップの数と時間 |
+| consh/include/README-ja.md | ConSh の最適化版と参照版のステップの数と時間 |
 | consh/bench/README-ja.md | ConSh のスクリプトの、版と VM の組み合わせごとの時間 |
 | consh/sjs/README-ja.md | SJS の時間、ステップの数、大きさ |

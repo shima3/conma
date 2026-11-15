@@ -1,4 +1,4 @@
-;; 高速版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
+;; 最適化版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
 ;;   * Sh_get sh "key" を __Dict_lookup_or__ sh "key" __print_exit_error__ に、num s を __Number_fromString__
 ;;     __print_exit_error__ s にした（関数の呼び出しを 1 つ減らす）。
 ;;   * 条件が組み込み 1 つの関数（__if__ (,() __is_null__ x) ...）を、先に計算して __if__ に渡す形
@@ -273,7 +273,7 @@
 ;; 変数が定義済みか。位置パラメータは引数の数で決まる。特殊な変数は常に定義済み
 (define Sh_defined ,(sh pos name)
   __Cont_get__ ,(return)
-  ;; 高速版：普通の変数を先に調べる（あれば、参照版と同じく __TRUE__）
+  ;; 最適化版：普通の変数を先に調べる（あれば、参照版と同じく __TRUE__）
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars0)
   __Dict_lookup_or__ vars0 name (,(key) __NULL__ __NULL__) ,(value0)
   __is_null__ value0 ,(missing0)
@@ -527,7 +527,7 @@
     (,() Value_toString sh pos line))
 
 ;; input Stream を EOF まで読み、行ごとにターゲットに書く
-;; 高速版：行は、参照版の __LazyList_lines__ の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で読む。
+;; 最適化版：行は、参照版の __LazyList_lines__ の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で読む。
 ;; 改行はそこで除くので、Line_chomp は呼ばない。Stream は呼び出し側が閉じるので、ここでは閉じない（close が偽）
 (define Target_pump ,(sh target stream)
   __Ref_new__ __FALSE__ ,(never)
@@ -1474,7 +1474,7 @@
   __NULL__ input)
 
 ;; Stream から作る標準入力（シェルの標準入力、< ファイル）。要素は、改行を除いた行
-;; 高速版：参照版の __LazyList_lines__ と Lines_chomped の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で
+;; 最適化版：参照版の __LazyList_lines__ と Lines_chomped の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で
 ;; 読む。Stream は、それを開いた側が閉じるので、ここでは閉じない（close が偽）。cancelled は真にならない Ref
 (define Input_stream ,(sh stream)
   __Ref_new__ __FALSE__ ,(never)
@@ -1748,7 +1748,7 @@
   Capture_assign_names vars rest more)
 
 ;; LList items の後に LazyList tail を続けた LazyList
-;; 高速版：再帰ではなく、items を裏返してから、後ろの要素から順に tail の前に付ける（参照版は、要素の数だけ深く
+;; 最適化版：再帰ではなく、items を裏返してから、後ろの要素から順に tail の前に付ける（参照版は、要素の数だけ深く
 ;; 再帰し、その間 CChain が要素の数だけ伸びる）
 (define LazyList_prepend ,(items tail)
   List_reverse items ,(reversed)
@@ -1764,7 +1764,7 @@
       LazyList_prepend_reversed rest tail))
 
 ;; MSeq の要素の LList
-;; 高速版：再帰ではなく、前から順に裏返しの LList に集めてから裏返す（参照版は、要素の数だけ深く再帰する）
+;; 最適化版：再帰ではなく、前から順に裏返しの LList に集めてから裏返す（参照版は、要素の数だけ深く再帰する）
 (define List_fromMSeq ,(mseq)
   List_fromMSeq_onto mseq __NULL__ ,(reversed)
   List_reverse reversed)
@@ -1879,7 +1879,7 @@
     Subst_lines rest reader cancelled ,(rest)
     __LazyList_cons__ line rest))
 
-;; 高速版：OS のパイプから読む $( ) の値（Subst_lines と同じもの）を、1 段の LazyList で作る。参照版は、
+;; 最適化版：OS のパイプから読む $( ) の値（Subst_lines と同じもの）を、1 段の LazyList で作る。参照版は、
 ;; util.se の __LazyList_lines__（改行を含む行の LazyList）を Subst_lines でもう一度包むので、要素ごとに LazyList を
 ;; 2 つたどり、さらに __LazyList_lines_scan__ が、行を取り出すたびに読んだ塊の残り全体を写す（塊の長さと行の数の積の
 ;; 時間がかかる）。ここでは、塊（buf）の中を位置（start）で進め、行の改行（と、その前の \r）を除いて要素にする。
@@ -2019,7 +2019,7 @@
   __Ref_get__ stateRef ,(state)
   __String_equal__ state "done" ,(done)
   __if__ done (,() Lazy_drain value ,() return "done") ,()
-  ;; 高速版：値の先頭に Pipe_cap 個そろったことが一度分かれば（"full"）、たどり直さない。値の LazyList の
+  ;; 最適化版：値の先頭に Pipe_cap 個そろったことが一度分かれば（"full"）、たどり直さない。値の LazyList の
   ;; 先頭は変わらず、評価した要素は残るので、Lazy_ahead は何度呼んでも同じ偽になる
   __Dict_lookup_or__ record "full" (,(key) __NULL__ __FALSE__) ,(full)
   __if__ full (,() return "blocked") ,()

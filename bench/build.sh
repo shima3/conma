@@ -1,7 +1,7 @@
 #!/bin/bash
 # bench/build.sh: build the transpiled VM (vm/target-transpiled) with the transpiled code of every benchmark,
 # of the programs of test/transpiled (whose test then tests that code), and of ConSh (consh.module.se, the
-# fast version, in the directory where consh/bin/consh makes it, CONSH_MODULE_DIR or bin/cache-dir, if it is
+# optimized version, in the directory where consh/bin/consh makes it, CONSH_MODULE_DIR or bin/cache-dir, if it is
 # there, so that ConSh keeps its transpiled code). With CONMA_BENCH_REFERENCE set to a non-empty value, also of
 # the reference version of ConSh (consh.reference.module.se), to compare the two versions on the transpiled VM;
 # the build then takes about twice as long.

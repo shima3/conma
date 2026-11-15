@@ -29,7 +29,7 @@ cp "$js/conma.js" "$js/web/conma.js"
 # (( )) の SJS のモジュールを、ページの中で作るための ConMa のフロントエンド（web/consh-core.js の buildModule）
 cp "$root/vm/frontend.module.se" "$js/web/frontend.module.se"
 module="$js/web/consh.module.se"
-# ConSh は高速版（consh/include と標準ライブラリの include/ext と include。consh/include/README-ja.md）
+# ConSh は最適化版（consh/include と標準ライブラリの include/ext と include。consh/include/README-ja.md）
 main="$consh/include/consh_main.se"
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" \( -name '*.se' -o -type d \) -newer "$module")" ] ||

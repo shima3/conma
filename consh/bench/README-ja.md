@@ -1,6 +1,6 @@
 # ConSh の処理時間
 
-ConSh の版（Rust 版、ConMa 版の高速版と参照版）と VM（Rust 版の VM、変換した VM）の組み合わせごとに、同じスクリプトの処理時間を測る。
+ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust 版の VM、変換した VM）の組み合わせごとに、同じスクリプトの処理時間を測る。
 
 ## スクリプト
 
@@ -24,12 +24,12 @@ ConSh の版（Rust 版、ConMa 版の高速版と参照版）と VM（Rust 版�
 ## 測る
 
 ```
-consh/bench/run.py                         # Rust 版と、高速版＋変換した VM
+consh/bench/run.py                         # Rust 版と、最適化版＋変換した VM
 consh/bench/run.py -v rust,conma:rust,reference:rust
 consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
 ```
 
-* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（高速版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）。既定は `rust,conma:transpiled`。
+* `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）。既定は `rust,conma:transpiled`。
 * 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`/tmp/consh.module.se` と `/tmp/consh.reference.module.se`、`CONSH_MODULE_DIR`）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
@@ -38,7 +38,7 @@ consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
 
 Apple M2、2026-11-12（main の 3243b7d）。user + sys、3 回の最小、起動を含む。括弧の中は Rust 版に対する倍率。変換した VM は `CONMA_BENCH_REFERENCE=1 bench/build.sh` で作った。どの組み合わせも出力は同じだった。
 
-| スクリプト | Rust 版 | 高速版＋変換した VM | 参照版＋変換した VM | 高速版＋Rust 版の VM | 参照版＋Rust 版の VM |
+| スクリプト | Rust 版 | 最適化版＋変換した VM | 参照版＋変換した VM | 最適化版＋Rust 版の VM | 参照版＋Rust 版の VM |
 |---|---|---|---|---|---|
 | `00_start.sh` | 0.002 秒 | 0.055 秒（28.6×） | 0.054 秒（28.3×） | 0.052 秒（27.1×） | 0.052 秒（27.1×） |
 | `01_for_seq.sh` | 0.009 秒 | 0.106 秒（11.3×） | 0.126 秒（13.3×） | 0.137 秒（14.5×） | 0.165 秒（17.6×） |
@@ -54,6 +54,6 @@ Apple M2、2026-11-12（main の 3243b7d）。user + sys、3 回の最小、起�
 | `11_seq_varlist.sh` | 0.030 秒 | 0.509 秒（17.0×） | 1.084 秒（36.3×） | 0.864 秒（29.0×） | 1.041 秒（34.9×） |
 
 * ConMa 版は、起動だけで約 0.05 秒かかる（約 5.1 MB のモジュールを読む）。Rust 版は 0.002 秒。2026-11-09 の表（0.025 秒）から倍になった理由は、調べていない（その間に、`(( ))` の SJS がモジュールに入った。前の表に書いた「約 2.3 MB」は、consh/js/REVIEW-ja.md の指摘のとおり、別のモジュールの大きさだった）。
-* シェルの中だけで動くもの（`01`〜`08`）は、高速版＋変換した VM が Rust 版の約 8〜15 倍、高速版＋Rust 版の VM が約 11〜23 倍。外部コマンドや `$( )` を多く使うもの（`09`、`10`）は、Rust 版もプロセスとパイプに時間がかかるので、差が約 3〜6 倍に縮まる。
-* 2026-11-09（98b885d）の表と比べると、Rust 版の VM は docs/FAST-PLAN-ja.md の F2〜F5 とプリミティブの読み方の変更で速くなった（高速版の `02` が 1.818 → 1.106 秒、`10` が 4.084 → 2.353 秒、参照版の `02` が 5.434 → 3.006 秒）。変換した VM は、ループの長いもの（`02`、`10`、`11`）は同じか少し速く、短いもの（`01`、`03`〜`09`）は約 0.03〜0.04 秒遅い（起動が遅くなった分に近い）。
-* `11_seq_varlist.sh` は、同じ日の 98b885d の前（3927ba4）には、高速版＋変換した VM で 1.467 秒（Rust 版の 40 倍）だった。
+* シェルの中だけで動くもの（`01`〜`08`）は、最適化版＋変換した VM が Rust 版の約 8〜15 倍、最適化版＋Rust 版の VM が約 11〜23 倍。外部コマンドや `$( )` を多く使うもの（`09`、`10`）は、Rust 版もプロセスとパイプに時間がかかるので、差が約 3〜6 倍に縮まる。
+* 2026-11-09（98b885d）の表と比べると、Rust 版の VM は docs/FAST-PLAN-ja.md の F2〜F5 とプリミティブの読み方の変更で速くなった（最適化版の `02` が 1.818 → 1.106 秒、`10` が 4.084 → 2.353 秒、参照版の `02` が 5.434 → 3.006 秒）。変換した VM は、ループの長いもの（`02`、`10`、`11`）は同じか少し速く、短いもの（`01`、`03`〜`09`）は約 0.03〜0.04 秒遅い（起動が遅くなった分に近い）。
+* `11_seq_varlist.sh` は、同じ日の 98b885d の前（3927ba4）には、最適化版＋変換した VM で 1.467 秒（Rust 版の 40 倍）だった。

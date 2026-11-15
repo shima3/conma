@@ -1,4 +1,4 @@
-;; 高速版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
+;; 最適化版（consh/include/README-ja.md）：consh/reference の同じ名前のファイルを、動きを変えずに次のように書き換えたもの。
 ;;   * Sh_get sh "key" を __Dict_lookup_or__ sh "key" __print_exit_error__ に、num s を __Number_fromString__
 ;;     __print_exit_error__ s にした（関数の呼び出しを 1 つ減らす）。
 ;;   * 条件が組み込み 1 つの関数（__if__ (,() __is_null__ x) ...）を、先に計算して __if__ に渡す形
@@ -178,7 +178,7 @@
     (,()
       Single_fields kind value ,(fields done)
       __if__ done (,() return fields) ,()) ,()
-  ;; 高速版：LazyList の部分（$x）1つだけの語は、候補を作らずに、葉ごとに決める（Single_list_fields）
+  ;; 最適化版：LazyList の部分（$x）1つだけの語は、候補を作らずに、葉ごとに決める（Single_list_fields）
   Single_list_fields parts limit nullGlob ,(fields done)
   __if__ done (,() return fields) ,()
   Alt_make "" "" __FALSE__ ,(alt)
@@ -200,7 +200,7 @@
   __LList_cons__ value __NULL__ ,(fields)
   __NULL__ fields __TRUE__)
 
-;; 高速版：部分が LazyList（"leaves" か "list"）1つだけの語。Expand_fields_from と同じ結果を、候補（Alt_make）を
+;; 最適化版：部分が LazyList（"leaves" か "list"）1つだけの語。Expand_fields_from と同じ結果を、候補（Alt_make）を
 ;; 作らずに出す：前後につなぐ文字列はなく、リストを含む語なので空の語も残し（keep が真）、glob の記号を含む葉
 ;; （部分が active のときだけ）には glob を適用し、一致しなければ nullGlob が偽なら葉をそのまま残す。
 ;; 語の LList と、決まったか（部分が LazyList 1つだけか）を返す

@@ -1,4 +1,4 @@
-// ビット演算（& | ^ ~ << >> >>>）：JavaScript と同じ 32 ビット（高速版は拡張 ConMa のプリミティブ、参照版は算術。docs/BITWISE-PLAN-ja.md）
+// ビット演算（& | ^ ~ << >> >>>）：JavaScript と同じ 32 ビット（最適化版は拡張 ConMa のプリミティブ、参照版は算術。docs/BITWISE-PLAN-ja.md）
 const values = [0, 1, -1, 5, -12345, 53256, 2147483647, 2147483648, -2147483649, 4294967295, 4294967297, 1.9, -1.9, -0.5, 1e10, -1e10, 1e300, NaN, Infinity, -Infinity]
 const counts = [0, 1, 31, 32, 33, -1, 1.5, NaN]
 const rows = []

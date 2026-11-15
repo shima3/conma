@@ -66,7 +66,7 @@ PATH と解析時にわかる関数で決まる。そのため、同じスクリ
 
 ## 4. テストと移植性
 
-* JS の文の構文解析は ConMa 版の parser（速い版と参照版）にだけあり、Python 版と Rust 版の ConSh にはない。`x = 1` の行は、Rust 版（製品）ではコマンドが見つからず、JS 版では代入になる。Rust 版には入れない、ずっと JS 版だけ、といった方針を PLAN の 1 に書いておくとよい。
+* JS の文の構文解析は ConMa 版の parser（最適化版と参照版）にだけあり、Python 版と Rust 版の ConSh にはない。`x = 1` の行は、Rust 版（製品）ではコマンドが見つからず、JS 版では代入になる。Rust 版には入れない、ずっと JS 版だけ、といった方針を PLAN の 1 に書いておくとよい。
 * エラーメッセージは JS エンジン（V8、JavaScriptCore、SpiderMonkey）で違う。テストが文言に頼れば、ブラウザごとに結果が変わる。
 * ブラウザの `serverfs.js` は同期の XHR でメインスレッドを止めるので、大きなファイルや遅いサーバーで UI が固まる。Worker に移す案を残りの課題に挙げておく価値がある。
 
@@ -92,12 +92,12 @@ Rust VM と wasm VM（Node.js 26.13.0）をビルドし直して流した。
 | テスト | 結果 |
 |---|---|
 | `test/`（Rust VM、Python VM） | 差分なし |
-| `consh/test`（速い版と参照版を Rust VM で、Rust 版） | 差分なし |
+| `consh/test`（最適化版と参照版を Rust VM で、Rust 版） | 差分なし |
 | `consh/js/test`（step5 の case3、case6、case7 も） | 通る |
 | wasm VM の `test/` | step40 だけ違う（JavaScript がある。予期どおり） |
-| wasm VM の `consh/test`（速い版、参照版） | step8 と step17 だけ違う（前と同じ） |
+| wasm VM の `consh/test`（最適化版、参照版） | step8 と step17 だけ違う（前と同じ） |
 
-`consh_eval.se` の変更（`Js_force`）は、速い版と参照版で同じである。
+`consh_eval.se` の変更（`Js_force`）は、最適化版と参照版で同じである。
 
 ### 6.2 指摘ごとの対応
 

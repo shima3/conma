@@ -2516,7 +2516,7 @@
   __Number_multiply__ x x ,(x)
   Sjs_pow_loop x half acc)
 
-;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：高速版（consh/include）は拡張 ConMa のプリミティブ（"bitwise32"）を、
+;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：最適化版（consh/include）は拡張 ConMa のプリミティブ（"bitwise32"）を、
 ;; 参照版（consh/reference）は算術で 1 ビットずつ求める（docs/BITWISE-PLAN-ja.md の W6）
 
 ;; ── 段階 B4：分割代入、スプレッド、switch ──

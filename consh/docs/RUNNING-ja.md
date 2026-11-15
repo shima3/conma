@@ -10,9 +10,9 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 
 | 軸 | 指定のしかた | 選択肢 | 内容 |
 |---|---|---|---|
-| 実装 | 環境変数 `CONSH_IMPL` | `rust` ★ | Rust 版（`consh/rust` の `consh-rs`）。構文解析も Rust 版。`consh/rust` で `cargo build --release` して作っておく。作っていなければ、そう出して ConMa 版（高速版）で動かす |
-| | | `conma` | ConMa 版の高速版（`consh/include`） |
-| | | `reference` | ConMa 版の参照版。`consh/reference`、標準ライブラリの `include/core`（コア ConMa）と `reference` のファイルを、高速版の同じ名前のファイルの代わりに使う |
+| 実装 | 環境変数 `CONSH_IMPL` | `rust` ★ | Rust 版（`consh/rust` の `consh-rs`）。構文解析も Rust 版。`consh/rust` で `cargo build --release` して作っておく。作っていなければ、そう出して ConMa 版（最適化版）で動かす |
+| | | `conma` | ConMa 版の最適化版（`consh/include`） |
+| | | `reference` | ConMa 版の参照版。`consh/reference`、標準ライブラリの `include/core`（コア ConMa）と `reference` のファイルを、最適化版の同じ名前のファイルの代わりに使う |
 | VM（ConMa 版を動かすもの） | 環境変数 `CONMA_VM`（`test/vm.sh`） | `python` ★ | 基準の Python 版の VM |
 | | | `rust` | Rust 版の VM（`vm/target/release/conma`。`vm` で `cargo build --release`） |
 | | | `transpiled` | ConMa から Rust に変換したコードを組み込んだ Rust 版の VM（`vm/target-transpiled/release/conma`。`bench/build.sh` で作る） |
@@ -23,7 +23,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | | | ブラウザ | `consh/js/serve.py` で `consh/js/web` を出し、http://localhost:8765/ を開く。対話モードだけ |
 | | | Node.js | `CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh ...` |
 
-* `--python-parser`、`--conma-parser`、`CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust`（既定）でも ConMa 版（高速版）で動く。
+* `--python-parser`、`--conma-parser`、`CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust`（既定）でも ConMa 版（最適化版）で動く。
 * ConMa 版のモジュールは、Rust 版の VM があれば、その `conma build` で作る。そのため、`CONMA_VM=rust`（か `transpiled`）なら Python を使わない。
 
 ## 早見表
@@ -52,7 +52,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | 対話モード | 動く | 動く | — | 動く |
 | `--dump` | Rust 版の構文木（`(( ))` は構文エラー） | ConMa 版の構文木 | — | — |
 
-* 参照版（`CONSH_IMPL=reference`）も、高速版と同じ結果になった（Python 版と Rust 版の VM）。
+* 参照版（`CONSH_IMPL=reference`）も、最適化版と同じ結果になった（Python 版と Rust 版の VM）。
 * `(( n = 6 * 7 ))` の `n` は SJS の変数で、`$(( n ))` で読む。`$n` では読めない（`undefined variable: n`）。シェル変数は、`(( ))` の中で `$k` として読める。
 * 対話モードでは、`(( ))` が式の値を出す（`(( n = 6 * 7 ))` で `42`）。スクリプトでは出さない。
 
