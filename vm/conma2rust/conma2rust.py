@@ -173,8 +173,11 @@ def unquote(atom):
 # as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
 # (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
 # "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
-# __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before).
-EXT_FEATURES = ("bitwise32", "boolean", "control")
+# __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before), and "wasm",
+# __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ and __Dict_put_numbers__,
+# which the code applies as other primitives (the native VM has them and fails as it has no WebAssembly;
+# ConSh uses them since 2026-11-14, and without "wasm" here bench/build.sh skipped its modules).
+EXT_FEATURES = ("bitwise32", "boolean", "control", "wasm")
 
 
 def tag(x):
@@ -1030,7 +1033,9 @@ class Fuser:
             jn = J + ({"lc": lc, "d": d, "locals": jl, "x": x, "label": label, "p": g.params, "ctx": self.ctx},)
             vs = [self.xn(d + k) for k in range(g.params)]
             tup = "(" + "".join(v + ", " for v in vs) + ")"
-            out.append(f"let {tup} = '{label}: {{")
+            # the values of a block are Values (to_join, olist, Out); written, as Rust cannot infer them
+            # when every clause returns instead of giving them
+            out.append(f"let {tup}: ({'Value, ' * g.params}) = '{label}: {{")
             out.append(f"match {self.cond(x, d, b.olist[0], locals_)} {{")
             for arm, cl, vr in (("Some(true)", then, vrefs[0]), ("Some(false)", els, vrefs[1])):
                 out.append(f"{arm} => {{")
@@ -1192,7 +1197,7 @@ class Fuser:
         vs = [self.xn(d + k) for k in range(L.params)]
         tup = "(" + "".join(v + ", " for v in vs) + ")"
         out.append(f"let f = {f_ref};")
-        out.append(f"let {tup} = '{label}: {{")
+        out.append(f"let {tup}: ({'Value, ' * L.params}) = '{label}: {{")
         out.append(f"if let Some({callee['env']}) = inline_env(vp, &f, {gf}, {g.params}, gv) {{")
         out.extend(binds)
         out.extend(inner)
