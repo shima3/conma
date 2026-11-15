@@ -13,7 +13,7 @@ JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の�
     - 今の JS の文は、先頭の語がコマンドでない文を JavaScript とするので、PATH の検索、関数の走査、シェルの文への戻しが要り、ConSh の予約語（`if`、`for`、`return` など）とも衝突した。
     - SJS は `(( ))` の中にだけ書くので、先頭の語の判定は要らず、括弧の中では JavaScript の `if`、`for`、`return` もそのまま書ける。
 3. **ConMa を中間言語として確かめる**（段階 B）
-    - REVIEW-ja.md（2026-11-06）の 5 は、ConMa が「より初心者向けの言語から変換して実行する中間言語」として使えることの証拠がまだないとし、小さな言語を 1 つ選んで ConMa に変換する処理を作ることを提案している。
+    - docs/REVIEW-ja.md（2026-11-06）の 5 は、ConMa が「より初心者向けの言語から変換して実行する中間言語」として使えることの証拠がまだないとし、小さな言語を 1 つ選んで ConMa に変換する処理を作ることを提案している。
     - SJS は、その小さな言語に当たる。関数、クロージャ、変更できる変数、例外、ループ、配列とオブジェクトを ConMa に変換することになり、手で書いた ConSh とは違う形のコードで ConMa を試せる。
     - 測るもの（REVIEW の 5 の提案どおり）：生成したコードの大きさ、性能、エラーの位置の対応（REVIEW の 1）。変換で困った点は、REVIEW の 1〜4、6（レコード）への答えにもなる。
     - 段階 B では、ホストの JavaScript を使わないので、ネイティブの VM で動く ConMa 版の ConSh でも、wasm 版でも、同じに動く。
@@ -288,7 +288,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 | B5a（作った。consh/sjs/test/step4、consh/test/step21 の case4） | ジェネレータ（`function*`、`yield`、`yield*`）。シェルの値は LazyList | 段階 A にないので、Node.js の結果と比べる |
 | B5b（作った。consh/sjs/test/step5、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
 | B6（作った。consh/js/PLAN-ja.md の 3.29） | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと（`config.json` なしで確かめた） |
-| B7（作った。consh/sjs/bench） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
+| B7（作った。consh/sjs/bench） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を docs/REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
 | B8（効果が小さいので、作らないと決めた。docs/ROADMAP.md に測った結果、docs/FAST-PLAN-ja.md の 4.4 に決定） | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
 | B9（作った。2026-11-12） | 4.4：変換器が SInfo で SJS の行と桁を示し、`Sjs_line` をなくす。受け手のない例外の位置は CChain から取る | consh/sjs/test の step3 に行と桁。consh/test の step21 に `(( ))` の中の位置。consh/sjs/bench の速さと大きさを、前と比べる |
 

@@ -1,6 +1,6 @@
 ;; 印刷した値の変数の名前（b20f15a。名前は節に持たず、Body ごとのスコープから引く）。SeqClosure は、作ったときの VProc の
 ;; LVEnv を持ち、その名前は、VM が Body を読み込むときに覚えるスコープ（VProc::scope）から引く。どの読み込み方の後でも、
-;; --trace がなくても、Python VM と同じ名前を出す（REVIEW-ja.md の 2026-11-14 の 4）
+;; --trace がなくても、Python VM と同じ名前を出す（docs/REVIEW-ja.md の 2026-11-14 の 4）
 (include "util.se")
 
 (define println ,(str)
@@ -37,7 +37,7 @@
   (, args show args) s w)
 
 ;; フレーム（9d465dc。module::frame_chain）にまとめた変数も、Python VM と同じく、変数ごとに名前を付けて出す
-;; （REVIEW-ja.md の 2026-11-14 の 5）。呼んだ所の LCont の Closure（継続）と、可変長の大域関数の SeqClosure
+;; （docs/REVIEW-ja.md の 2026-11-14 の 5）。呼んだ所の LCont の Closure（継続）と、可変長の大域関数の SeqClosure
 
 (define getk ,()
   __Cont_get__ ,(r)

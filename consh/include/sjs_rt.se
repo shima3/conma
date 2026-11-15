@@ -3600,7 +3600,7 @@
 ;; 指し、mathNames（空白で区切った、その関数とそれが呼ぶ数の関数が使う Math のメンバーの名前）のメンバーが元のままの
 ;; ときだけ wasm 版を使う（後の (( )) が書き換えることがある）。名前の列は、関数を作るときに 1 度だけ作り、使うメンバー
 ;; だけを比べる（呼ぶたびに 10 個のメンバーの名前を分けて比べると、Math を使う関数が wasm 版を使わないときより遅く
-;; なった。REVIEW-ja.md の 2026-11-14（2）の 4）
+;; なった。docs/REVIEW-ja.md の 2026-11-14（2）の 4）
 (define Sjs_wasm_fn_checked ,(W G ids names mathNames name shapes writes void f)
   Sjs_wasm_words names ,(list)
   Sjs_wasm_words mathNames ,(mnames)

@@ -1919,7 +1919,7 @@ var ConMaVM = (function () {
           // the module or what the words need, whatever the calls before did (memory.grow, more words):
           // a memory larger than that, which cannot shrink, is made again with the instance, so that a
           // call gives the same result for the same arguments and words (made again after running out
-          // of fuel, consh/docs/SJS-WASM-PLAN-ja.md 5.5; REVIEW-ja.md 2026-11-14 (2), 5)
+          // of fuel, consh/docs/SJS-WASM-PLAN-ja.md 5.5; docs/REVIEW-ja.md 2026-11-14 (2), 5)
           let mem = instance.exports.__memory;
           if (mem) {
             const want = Math.max(entry.minPages, Math.ceil((words * 8) / 65536));

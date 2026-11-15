@@ -1,7 +1,7 @@
 ;; 数の定数の畳み込み（edd5945。Rust VM の module::const_fold）と、変数の多い連鎖のフレーム（9d465dc。module::frame_chain）。
 ;; `__Number_fromString__ onError "数" ,(x) ...` の x を、LCont の中の関数式にも入れて畳み込むが、その中に、フレームに
 ;; まとめた連鎖があれば畳み込まない（フレームの先の変数は、フレームを 1 つの節として数えるので）。
-;; どの VM でも、畳み込んでもしなくても、同じ値を読み（REVIEW-ja.md の 2026-11-14 の 1）、onError も読む（2）。長すぎる数字は畳み込まない（3）
+;; どの VM でも、畳み込んでもしなくても、同じ値を読み（docs/REVIEW-ja.md の 2026-11-14 の 1）、onError も読む（2）。長すぎる数字は畳み込まない（3）
 (include "util.se")
 
 (define println ,(str)
@@ -50,7 +50,7 @@
   __Number_toString__ x ,(s)
   println s)
 
-;; case6: いろいろな書き方の数を、その場に書いた文字列から畳み込む（REVIEW-ja.md の 2026-11-14 の 6 で、テストがないとされたもの）。
+;; case6: いろいろな書き方の数を、その場に書いた文字列から畳み込む（docs/REVIEW-ja.md の 2026-11-14 の 6 で、テストがないとされたもの）。
 ;; -0 は -0 のまま、指数、小数点だけの書き方、0 になる小さすぎる数（-1e-400 は -0）。範囲の外と、数でない文字列は
 ;; 畳み込まず、プリミティブが onError を呼ぶ（onError の返す値は、LCont に渡る）
 (define show ,(label n)

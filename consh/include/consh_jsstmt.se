@@ -180,7 +180,7 @@
 
 ;; 語の算術置換 (arithsubst 位置 コード (names 位置 名前 ...)) の値（String か、JS の値の Dict）。
 ;; エラーなら、文を止めて $? を 2 にする（Sjs_abort）。値が undefined のときも、エラーにする（2026-11-14 にユーザーと決めた。
-;; 前は、シェルの値にできずに ConSh が止まった。REVIEW-ja.md の 2026-11-14（2））
+;; 前は、シェルの値にできずに ConSh が止まった。docs/REVIEW-ja.md の 2026-11-14（2））
 (define Sjs_subst ,(sh pos children)
   __LList_uncons__ __print_exit_error__ children ,(code rest)
   List_first rest ,(namesNode)

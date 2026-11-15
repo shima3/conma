@@ -2764,7 +2764,7 @@
 ;; ctx の VProc が起動して、まだ終わっていないパイプラインの要素と $( ) と、評価を待っている (( )) の SJS の VProc を止める。
 ;; cmdNo が null でなければ、$( ) は、対話モードのその番号のコマンドが起動したものだけにする
 (define Kill_tree ,(ctx cmdNo)
-  ;; (( )) の VProc（Bash の Ctrl-C と同じく、評価をやめる。REVIEW-ja.md の 2026-11-14（2）の 7）
+  ;; (( )) の VProc（Bash の Ctrl-C と同じく、評価をやめる。docs/REVIEW-ja.md の 2026-11-14（2）の 7）
   __Dict_lookup_or__ ctx "sjsRef" (,(key) __NULL__ __NULL__) ,(sjsRef)
   __is_null__ sjsRef ,(test__) __unless__ test__
     (,()
