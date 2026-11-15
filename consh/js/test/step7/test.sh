@@ -1,6 +1,6 @@
 #!/bin/bash
 # wasm 版の VM を macOS の JavaScriptCore のシェル（jsc、vm-jsc.js）で動かす。ほかのテストは Node.js で動かす
-# （consh/docs/JS-PLAN-ja.md の 2.4）ので、jsc で動くことはここだけで確かめる。jsc がなければ（macOS 以外）、何もしない。
+# （consh/docs/dev/JS-PLAN-ja.md の 2.4）ので、jsc で動くことはここだけで確かめる。jsc がなければ（macOS 以外）、何もしない。
 # ConSh は始めに JavaScript が使えるかを __JS_call__ で調べ、その結果は Promise で VM に渡るので、
 # vm-jsc.js が Promise を動かさないと、VProc が待ったまま止まる（every VProc waits）。
 # 時間を待つ JavaScript（setTimeout）は、jsc のイベントループに戻らないと動かない

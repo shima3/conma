@@ -4,7 +4,7 @@
 ;; A task, a packet and the record of a task are Dicts; a task has under "fn" the function that runs it
 ;; (as a method of its class in richards.py). The work area w is a Dict too, with the constants that
 ;; richards.py has as global variables. The data of a packet is a Dict from 0 1 2 3. The idle task computes
-;; `control & 1`, `control // 2` and `^ 0xD008` with the bitwise primitives of extended ConMa (docs/BITWISE-PLAN-ja.md;
+;; `control & 1`, `control // 2` and `^ 0xD008` with the bitwise primitives of extended ConMa (docs/dev/BITWISE-PLAN-ja.md;
 ;; the frontend marks the module (Uses "bitwise32"), and bin/to-core translates it for the Python VM).
 (include "util.se")
 

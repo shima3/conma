@@ -1,5 +1,5 @@
 #!/bin/bash
-# 数の関数の wasm 版（consh/docs/SJS-WASM-PLAN-ja.md の段階 2）：ログは Node.js で同じプログラムを動かした結果。
+# 数の関数の wasm 版（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 2）：ログは Node.js で同じプログラムを動かした結果。
 # Rust 版の VM（数の関数も ConMa 版で動く）と、wasm 版の VM（CONMA_VM=wasm。数の関数は wasm 版で動く。Node.js と
 # vm/wasm/build.sh が要る。なければ飛ばす）の両方で比べる。--emit の出力で、数の関数になったものを確かめる
 cd ${0%/*}

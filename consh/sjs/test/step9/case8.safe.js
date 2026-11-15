@@ -1,4 +1,4 @@
-// % は正確な剰余（C の fmod。docs/REVIEW-ja.md の 2026-11-14（2）の「前からの違い」、docs/ROADMAP.md の Step 44）。
+// % は正確な剰余（C の fmod。docs/dev/REVIEW-ja.md の 2026-11-14（2）の「前からの違い」、docs/dev/ROADMAP.md の Step 44）。
 // ConMa 版は __Number_remainder__、数の関数の wasm 版は $__mod（倍にして引き、半分にする）で、どちらも JavaScript と同じ
 function m(a, b) { return a % b }
 const r = (x) => (1 / x === -Infinity ? "-0" : String(x))

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 拡張 ConMa の印 (Uses ...)（docs/FAST-PLAN-ja.md 3.4）と、空の変換器 bin/to-core（段階 F1）。
+# 拡張 ConMa の印 (Uses ...)（docs/dev/FAST-PLAN-ja.md 3.4）と、空の変換器 bin/to-core（段階 F1）。
 # どの VM も、機能を挙げない (Uses) は動かし、知らない機能を挙げた (Uses ...) はエラーにする（どの VM も、まだ機能を知らない）。
 # bin/to-core は (Uses) を前の空白ごと消し、ほかは読んだとおりに書く。機能を挙げていればエラーにする
 . "$(dirname "$0")/../common.sh"

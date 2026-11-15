@@ -1,4 +1,4 @@
-;; SJS の字句解析（consh/docs/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の jsTokens と同じ区切り方。
+;; SJS の字句解析（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の jsTokens と同じ区切り方。
 ;; sjs_rt.se（Sjs_chars）を使う
 
 ;; 字句は LList (種類 テキスト 改行 行 桁) で、種類は "id"（名前とキーワード）、"num"、"str"（テキストは逃がしを解いた中身）、

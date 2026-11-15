@@ -1,4 +1,4 @@
-// 数の関数にならない関数（consh/docs/SJS-WASM-PLAN-ja.md の 3.2）：どの VM でも ConMa 版で動く
+// 数の関数にならない関数（consh/docs/dev/SJS-WASM-PLAN-ja.md の 3.2）：どの VM でも ConMa 版で動く
 let counter = 0
 const half = (x) => x / 2
 function str(a) { return `${a}` }

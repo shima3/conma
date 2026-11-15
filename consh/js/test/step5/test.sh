@@ -1,5 +1,5 @@
 #!/bin/bash
-# シェルの変数の JS の値（consh/docs/JS-PLAN-ja.md の 2.5 の 4。JS の文は段階 A3 で消した）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
+# シェルの変数の JS の値（consh/docs/dev/JS-PLAN-ja.md の 2.5 の 4。JS の文は段階 A3 で消した）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
 cd ${0%/*}
 export CONMA_VM=wasm
 export CONSH_IMPL=conma

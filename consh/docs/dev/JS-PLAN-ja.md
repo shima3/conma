@@ -132,7 +132,7 @@ VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けに�
         - 0 以上：終了コード
     - ホストは、この値を見て `setTimeout` か入力のイベントで再び呼ぶ。
     - vm/src/sched.rs の `Machine::run` は `run_slice(budget)` を呼ぶ形にした。`Machine::blocking` が真（ネイティブ版）なら、今までどおり OS で待つ。偽（wasm 版）なら、待つ代わりに `Slice::Idle` を返す。ネイティブ版のステップの順とテストの結果は変わらない。
-4. **js のプリミティブ**（段階 4 で作った形。docs/PRIMITIVES.md、docs/ROADMAP.md の Step 40）
+4. **js のプリミティブ**（段階 4 で作った形。docs/PRIMITIVES.md、docs/dev/ROADMAP.md の Step 40）
     - プリミティブは `__JS_call__ onError code args ,(inputStream)` の 1 つだけにした。新しい型も、スケジューラの変更もいらない。
         - VM は、仮想の OS の中にパイプを作り、書く端の fd と code、args（String と LList の入れ子を JSON の配列にしたもの）をホストの `host_js_call` に渡して、読む端の Stream を返す。
         - ホスト（conma.js）は、code を評価し、結果を 1 行の S 式にして、`conma_run` が戻った後に `conma_write` で書き、`conma_close` で閉じる：`(r s "文字列")`、`(r l (リスト))`、`(r n)`、`(e "メッセージ")`。
@@ -182,7 +182,7 @@ consh/js/
                     consh/test/common.sh の run を使う。run_all.sh ですべて実行する
 ```
 
-（2026-11-15 に、PLAN-ja.md と REVIEW-ja.md は consh/docs/JS-PLAN-ja.md と JS-REVIEW-ja.md へ、conma.js、vm-node.js、vm-jsc.js、vm-wasm.sh と wasm/ は vm/wasm へ移動。この文書の中の `build.sh`、`web/`、`test/` などのパスは、断りがなければ consh/js からのもの）
+（2026-11-15 に、PLAN-ja.md と REVIEW-ja.md は consh/docs/dev/JS-PLAN-ja.md と JS-REVIEW-ja.md へ、conma.js、vm-node.js、vm-jsc.js、vm-wasm.sh と wasm/ は vm/wasm へ移動。この文書の中の `build.sh`、`web/`、`test/` などのパスは、断りがなければ consh/js からのもの）
 
 VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se（参照版は consh/reference/consh_eval.se）と consh/rust/src/eval.rs に置く（2.1 の 10）。
 
@@ -205,7 +205,7 @@ VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.r
 
 ### 2.5. JS の文とシェルの変数の JS の値（2026/11/9 に決めた仕様。作った結果と、仕様から変えたところは 3.15 と 3.16）
 
-**2026/11/11 の注記**：JS の文（下の 1〜3、5〜9 の、先頭の語で JavaScript と判定する文）は、SJS の段階 A3 で消した（3.26）。計算は算術評価 `(( ))` と算術置換 `$(( ))`（consh/docs/SAFEJS-PLAN-ja.md）で、ホストの JavaScript は `js` で書く。シェルの変数の JS の値（下の 4）は、`js 変数名=` と SJS（`v=$(( ... ))`、SJS変数）で、今も使っている。以下は、決めたときの記録として残す。
+**2026/11/11 の注記**：JS の文（下の 1〜3、5〜9 の、先頭の語で JavaScript と判定する文）は、SJS の段階 A3 で消した（3.26）。計算は算術評価 `(( ))` と算術置換 `$(( ))`（consh/docs/dev/SAFEJS-PLAN-ja.md）で、ホストの JavaScript は `js` で書く。シェルの変数の JS の値（下の 4）は、`js 変数名=` と SJS（`v=$(( ... ))`、SJS変数）で、今も使っている。以下は、決めたときの記録として残す。
 
 JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` と書かなくても JavaScript を書けるようにする（2026/11/11 から、`js` と同じく、`CONSH_ENABLE_JS` で有効にしたときだけ。3.22）。先頭の語がコマンドでない文は、行全体を JavaScript のコード（**JS の文**）とする。また、シェルの変数に JavaScript の値をそのまま入れられるようにし、`$` で参照したときに文字列（かリスト）にする。
 
@@ -457,7 +457,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
 
 ### 3.16. レビューへの対応（2026/11/9）
 
-consh/docs/JS-REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
+consh/docs/dev/JS-REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 - 1.1（大域変数と同じ名前への代入が大域変数に入る）：代入される名前は、大域変数にあってもシェルの変数にした（2.5 の 5）。`has` をいつも真にすると、`alert()` や `fetch()` が `with` の Proxy を `this` にして呼ばれ、Illegal invocation になるので、代入される名前だけを先に用意する。
 - 1.2（`await` の間の更新が失われる）：文が終わったときに書き戻すのは、その文が代入した変数だけにした。
@@ -485,7 +485,7 @@ consh/docs/JS-REVIEW-ja.md（e0b2c58）の指摘に、次のように対応し�
 
 ### 3.19. ブラウザ版の VM を Worker で動かす（2026/11/9）
 
-- ブラウザ版の VM を Worker で動かすようにした（consh/docs/JS-REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
+- ブラウザ版の VM を Worker で動かすようにした（consh/docs/dev/JS-REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
 - conma.js：JavaScript の評価を `JsEngine`（呼び出しを job の番号で扱い、行を `out.line`、終わりを `out.end` で返す）にまとめ、VM（`create`）から分けた。`create` は、`hooks.jsRemote` があれば、`host_js_call`、`host_js_input`、`host_js_input_end`、`host_js_value` をそれに渡し、行は `vm.jsLine`、終わりは `vm.jsEnd` で受け取る。なければ、今までどおり同じスレッドの `JsEngine` を使う（Node.js、ページの中で動かすとき）。
 - web/consh-core.js：VM、ファイル、`COMMANDS`、`hostProc`、VM を区切って動かすことを、consh.js から移した。Worker（consh-worker.js）でもページ（consh.js）でも動く。
 - web/consh-worker.js：ページとメッセージでつなぐ。js の呼び出しはページに渡し、ページの `JsEngine` が書く行を VM のパイプに書く。読み手がいなくなったら（EPIPE）ページに知らせる。`__JS_value__` は同期なので、ページに尋ねて、SharedArrayBuffer を `Atomics.wait` で待つ（1 MB ずつ受け取るので、大きな値も渡せる）。
@@ -494,12 +494,12 @@ consh/docs/JS-REVIEW-ja.md（e0b2c58）の指摘に、次のように対応し�
 
 ### 3.20. CONSH_JS_DEBUG（2026/11/9）
 
-- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。consh/docs/JS-REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
+- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。consh/docs/dev/JS-REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
 - テスト：consh/js/test/step5 の case7。
 
 ### 3.21. レビューの 6 への対応（2026/11/9）
 
-consh/docs/JS-REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
+consh/docs/dev/JS-REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
 
 - 1（分割代入では大域変数に入る）：分割代入のパターンが束縛する名前も、代入される名前に数えるようにした（`rewriteDeclarations` の `assigned`。2.5 の 5）。`[performance] = [2]`（Node.js）は、シェルの変数 `performance` になり、`globalThis.performance` は変わらない。
 - 2（括弧で囲んだ分割代入が値を出す）：コード全体を囲む括弧の中の、一番外側の代入も、代入として何も出さないようにした。
@@ -522,7 +522,7 @@ consh/docs/JS-REVIEW-ja.md の 6.3（37274ec）に、次のように対応した
 
 ### 3.23. SJS の段階 A1：(( )) と $(( ))（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の段階 A1 を作った。仕様は SAFEJS-PLAN-ja.md の 2、作り方は 4.1 のとおりで、次のようにした。
+consh/docs/dev/SAFEJS-PLAN-ja.md の段階 A1 を作った。仕様は SAFEJS-PLAN-ja.md の 2、作り方は 4.1 のとおりで、次のようにした。
 
 - **構文解析**（consh_parser.se）：文の始めの `((`（前置の変数定義の後は除く）を算術評価、語の中と `"..."` の中の `$((` を算術置換として読む（`Ps_at_arith`、`Ps_arith`）。`((` の後と `))` の前の空白を確かめ、SJS式の範囲は JS の文の字句解析（`Js_scan`）で、改行も含めて（`"lines"`）、括弧の外の `)` までとする。閉じないまま入力が終われば `unterminated ((`（対話モードでは続きを読む）。構文木は `(arith 位置 コード (names 位置 名前 ...) [(redirs …)])` と、語の要素の `(arithsubst 位置 コード (names …))`。`((` で始まる文は JS の文にしない（`Ps_at_js`）。
 - **評価**（consh_jsstmt.se）：`Eval_arith`（文。リダイレクトは if 文と同じく `Eval_redirected`）と `Sjs_subst`（語）が `Sjs_eval` を呼ぶ。`Sjs_eval` は、`"jsState"` が `"none"` か `"off"` ならエラーにし、コードに現れる名前の SJS変数を、JS の文と同じ形（名前、種類 s か j、値）で `__JS_call__` に渡す（コードの前に `//@consh-sjs`）。ホストが書く `(w ...)` は、`"vars"` でなく `"sjsvars"` に入れる（`Js_stmt_lines` と `Js_store` に入れ先の引数を足した）。結果は `(r s 文字列)` なら String、`(r j 番号)` なら JS の値（`Js_wrap`）。
@@ -537,13 +537,13 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 A1 を作った。仕様は SAFEJS-PLAN-j
 - **ブラウザ版**：SJS も JS の文と同じく、ページの JsEngine で評価する（Worker から jsRemote）。
 - **テスト**：consh/js/test/step6（`CONSH_ENABLE_JS=sjs`）。case1 は値、`$?`、連結、`"..."`、変数定義、シェルの変数との別、関数の本体の `if`/`for`/`return`、関数とパイプラインの写し、複数行、`console.log` とリダイレクト。case2 は範囲の外とエラー。case3 は空白のない `((`。case4 は対話モード。case5 は `CONSH_ENABLE_JS` の値（`js`、なし、ほかの値）。case6 は語の中のエラーで終了ステータス 2 になること。step1 の case5 の `js` のメッセージを変えた。
 - まだないもの（段階 A2）：SJS の関数をシェルのコマンドとして呼ぶこと（戻り値を標準エラーに出す）、引数の JS の値、`$名前` でシェル変数を読むこと、演算の型の確認（SAFEJS-PLAN-ja.md の 2.2 の 7 と 3.1）。
-- consh/docs/SAFEJS-REVIEW-ja.md（0b762b7 のレビュー）への対応（2026/11/11。対応の一覧は、そのファイルの 5）：
+- consh/docs/dev/SAFEJS-REVIEW-ja.md（0b762b7 のレビュー）への対応（2026/11/11。対応の一覧は、そのファイルの 5）：
     - SJS の関数の中の大域の名前が、呼ぶコード（`$(( g() ))`）に現れないと読めなかったので、`Sjs_eval` は、コードに現れる名前だけでなく、SJS変数をすべてホストに渡すようにした（レビューの 3.2 の 7 の例を確かめていて見つけた）。step6 の case1 で確かめる。
     - 段階 A では、`async`、`await`、`yield` を SJS の範囲の外にした（`SJS_NAMES`）。`await` の後で、別の評価の SJS変数を見てしまうため（レビューの 3.1 の 1）。そのため、段階 A の SJS は Promise を作らない。step6 の case2 で確かめる。
 
 ### 3.24. SJS の段階 A2：SJS関数の呼び出しと $名前（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の段階 A2 のうち、演算の型の確認（3.1。式の構文解析器が要る）のほかを作った。
+consh/docs/dev/SAFEJS-PLAN-ja.md の段階 A2 のうち、演算の型の確認（3.1。式の構文解析器が要る）のほかを作った。
 
 - **SJS関数の呼び出し**（SAFEJS-PLAN-ja.md の 2.2 の 3）：SJS の評価が作った JS の値には、`"sjs"` の印を付ける（`Sjs_wrap`。結果と、`"sjsvars"` に入れる値）。`Js_force` は、印のある関数を、`Sjs_call` で呼ぶ関数値にする（印のない関数は、今までどおり `js` で呼ぶ）。`Sjs_call` は、引数を `js` と同じく展開し（`Js_args`）、`//@consh-sjscall` と関数の番号をホストに渡し（`callSjs`）、戻り値を 1 つの要素として標準エラーに書き（`Sjs_output`。`undefined` と `null` は書かない）、`$?` を、エラーなら 2、そうでなければ戻り値の真偽にする。呼ぶ間も、SJS変数は呼び出したときのもの。
 - **先頭の語**：`Cmd_head`（参照版も）の始めで `Sjs_head` を呼ぶ。語が算術置換だけなら、評価して、関数ならそれを呼び（2 度評価しない）、関数でなければ `not a function` のエラー。語が `$f` か `${f}` だけで、SJS の印のある値なら、関数でなければ `not a function: $f` のエラー。エラーは算術置換のエラーと同じく `Sjs_abort`（スクリプトは終了ステータス 2 で終わる）。印のない値（`js` の値や String）は、今までどおり。
@@ -559,7 +559,7 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 A2 のうち、演算の型の確認（3.
 
 ### 3.25. SJS の段階 A2：演算の型の確認と、SJS の構文解析器（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の 3.1 の演算の型を作り、段階 A2 を終えた。
+consh/docs/dev/SAFEJS-PLAN-ja.md の 3.1 の演算の型を作り、段階 A2 を終えた。
 
 - **構文解析器**（conma.js の `sjsParse`）：`jsTokens` の字句（空白とコメントを除き、前に改行があったかを持つ）を、再帰下降で読む。式は、コンマ、代入（`=` と複合の代入。`=` の左の配列とオブジェクトはパターンにする）、アロー関数（`(` の対応する `)` の後が `=>` か、名前の後が `=>`）、条件演算子、二項演算子（優先順位の表 `SJS_BINARY`。`**` は右結合）、単項演算子、`++` と `--`、メンバー（`.`、`?.`、`[ ]`）、呼び出し、タグ付きテンプレート、リテラル（数、文字列、テンプレート、配列、オブジェクト。メソッドの短縮形も）、`function` 式。関数の本体の文は、ブロック、`let`/`const`/`var`（パターンと既定値）、`function` の宣言、`if`、`while`、`do`、`for`（3 つの部分、`of`、`in`）、`switch`、`break`、`continue`、`return`、`throw`、`try`。文の終わりは `;`、`}`、入力の終わり、改行（簡単な ASI。`return` の後の改行も）。getter と setter、`"__proto__"` という文字列のキー、ジェネレータは「not in SJS」にする。ほかの範囲の確認（名前、正規表現、`==`）は、今までどおり字句で行う（`sjsCheck`）。
 - **作り直し**（`sjsGen`）：構文木からコードを作り直す。次を、`__sjs`（`SJS_RUNTIME`）の関数の呼び出しにする。
@@ -573,7 +573,7 @@ consh/docs/SAFEJS-PLAN-ja.md の 3.1 の演算の型を作り、段階 A2 を終
 
 ### 3.26. SJS の段階 A3：JS の文を消す（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の段階 A3。先頭の語で JavaScript と判定する JS の文（2.5）を消した。計算は SJS の `(( ))` と `$(( ))` で、ホストの JavaScript（DOM など）は `js` で書く。
+consh/docs/dev/SAFEJS-PLAN-ja.md の段階 A3。先頭の語で JavaScript と判定する JS の文（2.5）を消した。計算は SJS の `(( ))` と `$(( ))` で、ホストの JavaScript（DOM など）は `js` で書く。
 
 - **構文解析**（consh_parser.se）：`Ps_at_js`、`Ps_js`、`Js_fallback`、先頭の語の判定（`Js_head_word`、`Js_is_command`、`Js_in_path` など）、関数の名前を前もって集める `Funcs_scan`、解析の opts（`Ps_js_opts`、`Parse_file_with`、`Parse_text_with`）を消した。JavaScript の字句解析（`Js_scan` など）は、SJS式の範囲に使うので残した。
 - **評価**：consh_jsstmt.se の `Js_probe`、`Js_parse_opts`、`Eval_jsstmt`、`Js_stmt_vars`、`Js_debug`（`CONSH_JS_DEBUG`）を、`Stmt_compile` の `jsstmt` の枝（参照版も）を、`consh_main.se` と対話モード（参照版も）の JS の文の判定を消した。JS の値（`Js_wrap`、`Js_force`、`Js_store` など）は、`js 変数名=` と SJS が使うので残した。
@@ -588,7 +588,7 @@ SJS の段階 B1 の出力を段階 A と比べていて（consh/sjs/test/compar
 
 ### 3.28. SJS の段階 B4：(( )) を ConMa に変換して動かす（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の段階 B4。`(( ))` と `$(( ))` の SJS式を、consh/include の sjs_gen.se で ConMa のモジュールに変換し、`__VProc_spawn__` で VM の中で動かす（consh/sjs/README-ja.md の「段階 B4 で足したもの」）。
+consh/docs/dev/SAFEJS-PLAN-ja.md の段階 B4。`(( ))` と `$(( ))` の SJS式を、consh/include の sjs_gen.se で ConMa のモジュールに変換し、`__VProc_spawn__` で VM の中で動かす（consh/sjs/README-ja.md の「段階 B4 で足したもの」）。
 
 - consh_jsstmt.se の `Ar_eval` が、まず段階 B（`Sjsb_eval`）で求め、モジュールを作れない版（ブラウザ）では、`CONSH_ENABLE_JS` が `sjs` か `js` なら段階 A（`Sjsa_eval`。前の `Sjs_eval` などを `Sjsa_` に改名した）にする。段階 B は `CONSH_ENABLE_JS` を要らない。
 - SJS変数とシェル変数には、SJS の値が ConMa の値のまま入る（文字列か `{"sjsv": 値}`）。consh_eval.se（参照版も）の `Value_force` が、`$` で読むときにシェルの値にする。
@@ -598,7 +598,7 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 B4。`(( ))` と `$(( ))` の SJS式を�
 
 ### 3.29. SJS の段階 B6：ブラウザ版の (( ))（2026/11/11）
 
-consh/docs/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段階 B（ConMa に変換して VM の中で動かす）で動かす。
+consh/docs/dev/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段階 B（ConMa に変換して VM の中で動かす）で動かす。
 
 - `web/consh-core.js` に `buildModule`（conma.js の `host_build_module` が呼ぶ）を足した。`vm-node.js` と同じく、もう 1 つの VM のインスタンスで、ConMa のフロントエンド（`frontend.module.se`）を、その場で最後まで動かして、モジュールのテキストを返す。フロントエンドは、最初に使うときに同期の XMLHttpRequest で読む（VM がモジュールを同期で求めるため）。SJS のモジュールはファイルを含めないので、含めるファイルのディレクトリは `/tmp`（フロントエンドは、あるディレクトリを要る）。
 - `web/serverfs.js` に、メモリの `/tmp` を足した（ConSh は、変換したソースを `$TMPDIR` か `/tmp` に書く）。
@@ -607,7 +607,7 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段
 
 ### 3.30. js を使わないときの Content-Security-Policy（2026-11-12）
 
-- consh/docs/SAFEJS-PLAN-ja.md の 5 の「ホストの JavaScript を確実に止める」を作った。`config.json` が `js` も `sjs` も使えるようにしていなければ、serve.py はどの応答にも `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け、web/consh.js も、`config.json` を読んで、ConSh を動かす前に同じものを `<meta>` で入れる。ブラウザが `eval` と `Function` を EvalError にする。WebAssembly のコンパイルは `'wasm-unsafe-eval'` で動く。
+- consh/docs/dev/SAFEJS-PLAN-ja.md の 5 の「ホストの JavaScript を確実に止める」を作った。`config.json` が `js` も `sjs` も使えるようにしていなければ、serve.py はどの応答にも `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け、web/consh.js も、`config.json` を読んで、ConSh を動かす前に同じものを `<meta>` で入れる。ブラウザが `eval` と `Function` を EvalError にする。WebAssembly のコンパイルは `'wasm-unsafe-eval'` で動く。
 - index.html の中のスクリプト（ほかのスクリプトを `?Date.now()` を付けて読むもの）は、`'unsafe-inline'` を許さないので、web/boot.js にした。
 - 304 の応答は、キャッシュにあるヘッダーを使うので、`config.json` を変えてもページのポリシーが変わらなかった。serve.py は、ページ（`/` と `.html`）を、`If-Modified-Since` と `If-None-Match` を除いて、いつも 200 で送るようにした（スクリプトと Worker は `?Date.now()` で読むので、いつも新しい）。
 - Chrome（Claude の browser pane）で確かめた：`config.json` がなければ、ヘッダーと `<meta>` があり、`eval` と `Function` は EvalError、`(( a = [1, 2, 3].map(v => v * 7) ))`、`$(( a.reduce(...) ))` は動き（段階 B）、`(( null.x ))` のエラーは `stdin:3:9`（段階 B9）、`js` は使えないと出る。`{"CONSH_ENABLE_JS": "js"}` にすると、ポリシーはなく、`eval` も `js` も動く。サーバーを止めずに `config.json` を消して読み直すと、またポリシーが付く。ヘッダーを付けないサーバー（python3 -m http.server。cross-origin isolated でないので、ConSh はページの中で動く）でも、`<meta>` で `eval` が止まり、`$(( ))` は動く。
@@ -618,5 +618,5 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段
 - JS の値の表の解放と、イテレータの `return()` は、VM が値を捨てたときに行う（3.18）。関数の局所変数の JS の値は、循環の回収まで残る。
 - 当面の制限：変数に入れた遅延の LazyList（終わらないジェネレータなど）を `for e in ${nat}; do break; done` のように途中まで読むと、捨てても、その呼び出しの outputStream が VM に残り、ホストのイテレータと呼び出しも残る（`return()` が呼ばれない）。読まずに捨てたものと、最後まで読んだものは残らない。2026/11/9 に調べたこと：残るのは outputStream そのもので（VM が捨てていない）、関数を 20 万回呼んで循環の回収を走らせても消えない。一方、ConSh を通さずに同じ形の LazyList（評価の中で継続を取り、先頭だけ読んで捨てる）を作ると、ネイティブ版でも wasm 版でも消える。そのため、ConSh の中（`For_lazy`、`Js_iter_lazy`、文脈の Dict など）のどこかが持ち続けていると考えられるが、まだ特定していない。突き止めるには、ある値を参照しているものを VM で調べる仕組みが要る。
 - ブラウザ版は、cross-origin isolated でないサーバーでは、今までどおりページの中で VM を動かすので、ファイルを読む間は画面が止まる（3.19）。
-- `js` と JS の文はサンドボックスなしでホストの権限で動く（consh/js/README-ja.md のセキュリティの注意）。安全に JavaScript を書けるように、JavaScript のサブセット（SJS）を算術評価 `(( ))` と算術置換 `$(( ))` に書き、当面はホストの JavaScript で、将来は ConMa に変換して VM の中で動かす計画を、consh/docs/SAFEJS-PLAN-ja.md に書いた。JS の文（2.5）は、これに置き換えて消す予定である。
+- `js` と JS の文はサンドボックスなしでホストの権限で動く（consh/js/README-ja.md のセキュリティの注意）。安全に JavaScript を書けるように、JavaScript のサブセット（SJS）を算術評価 `(( ))` と算術置換 `$(( ))` に書き、当面はホストの JavaScript で、将来は ConMa に変換して VM の中で動かす計画を、consh/docs/dev/SAFEJS-PLAN-ja.md に書いた。JS の文（2.5）は、これに置き換えて消す予定である。
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。

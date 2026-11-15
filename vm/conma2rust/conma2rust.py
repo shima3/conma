@@ -130,7 +130,7 @@ NUM_OPS = {
     "__Number_add__": ("bin", 2), "__Number_subtract__": ("bin", 2), "__Number_multiply__": ("bin", 2),
     "__Number_divide__": ("div", 3), "__Number_sqrt__": ("sqrt", 2), "__Number_floor__": ("floor", 1),
     "__Number_is_zero__": ("pred", 1), "__Number_is_positive__": ("pred", 1), "__Number_is_negative__": ("pred", 1),
-    # the bitwise primitives of the feature "bitwise32" (docs/BITWISE-PLAN-ja.md), as prim/number.rs computes them
+    # the bitwise primitives of the feature "bitwise32" (docs/dev/BITWISE-PLAN-ja.md), as prim/number.rs computes them
     "__Number_and32__": ("bit", 2), "__Number_or32__": ("bit", 2), "__Number_xor32__": ("bit", 2),
     "__Number_shl32__": ("bit", 2), "__Number_shr32__": ("bit", 2), "__Number_ushr32__": ("bit", 2),
     "__Number_not32__": ("not", 1),
@@ -169,9 +169,9 @@ def unquote(atom):
     return atom[1:-1] if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"' else atom
 
 
-# The features of extended ConMa (docs/FAST-PLAN-ja.md 3.4) that the translator knows,
+# The features of extended ConMa (docs/dev/FAST-PLAN-ja.md 3.4) that the translator knows,
 # as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
-# (docs/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
+# (docs/dev/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
 # "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
 # __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before), and "wasm",
 # __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ and __Dict_put_numbers__,
@@ -764,7 +764,7 @@ class Fuser:
             c = self.constant(x, d, b.olist[1], 1, locals_)
             n = number_literal(c[2]) if c is not None else None
             if n is not None:
-                # a Number written as a String in place: an f64 constant (an experiment, docs/SPEED-ja.md);
+                # a Number written as a String in place: an f64 constant (an experiment, docs/dev/SPEED-ja.md);
                 # a global onError is read first, as the VM reads it when it loads the Body (a global
                 # without a value stops the VProc there)
                 if b.olist[0][0] == "G" and args[0] is not None:

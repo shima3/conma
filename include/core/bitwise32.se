@@ -1,5 +1,5 @@
-;; 拡張 ConMa の機能 "bitwise32" の代わりの定義（docs/BITWISE-PLAN-ja.md）。コア ConMa のファイルなので include/core に置く
-;; （2026-11-13 に include/ext から移した。docs/FAST-PLAN-ja.md の 4.6）。
+;; 拡張 ConMa の機能 "bitwise32" の代わりの定義（docs/dev/BITWISE-PLAN-ja.md）。コア ConMa のファイルなので include/core に置く
+;; （2026-11-13 に include/ext から移した。docs/dev/FAST-PLAN-ja.md の 4.6）。
 ;; ビット演算の 7 つのプリミティブと同じ名前、同じ意味の関数を、コア ConMa で書いたもの。拡張 ConMa の VM（Rust、
 ;; wasm、変換版）はプリミティブで動かし、コア ConMa の VM（Python）は、bin/to-core がこの定義をモジュールに入れて動かす
 ;; （大域の名前に定義があれば、プリミティブより先に使われる）。

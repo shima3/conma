@@ -1,5 +1,5 @@
 #!/bin/bash
-# 拡張 ConMa の機能 "bitwise32"（docs/BITWISE-PLAN-ja.md の W2、W3）：ビット演算の 7 つのプリミティブ。
+# 拡張 ConMa の機能 "bitwise32"（docs/dev/BITWISE-PLAN-ja.md の W2、W3）：ビット演算の 7 つのプリミティブ。
 # step41 と同じ式を、代わりの定義（include/core/bitwise32.se）を入れずに動かす。フロントエンド（bin/resolver と、ConMa 版の
 # include/resolver.se。W4）が、モジュールに (Uses "bitwise32") を付ける。
 # 拡張 ConMa の VM（Rust、wasm、変換版）はプリミティブで、コア ConMa の VM（Python）は bin/vm が bin/to-core でコア ConMa に

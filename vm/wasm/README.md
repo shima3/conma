@@ -13,4 +13,4 @@ CONMA_VM=wasm test/run_all.sh -j 3
 * `conma.js` — the host: it loads the wasm, gives it the files, processes, JavaScript and WebAssembly of Node.js, JavaScriptCore or a browser, and runs the scheduler in slices. Some of it serves ConSh only (the JS values of shell variables, `__consh_value`).
 * `vm-wasm.sh` — run a module as `vm/target/release/conma` does, with the same arguments, in Node.js (`vm-node.js`) or, without `node` or with `CONMA_WASM_HOST=jsc`, in JavaScriptCore (`vm-jsc.js`). `bin/vm` uses it when `CONMA_VM=wasm`.
 
-The design, and how it was built step by step, is in consh/docs/JS-PLAN-ja.md (in Japanese).
+The design, and how it was built step by step, is in consh/docs/dev/JS-PLAN-ja.md (in Japanese).

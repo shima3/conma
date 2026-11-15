@@ -12,7 +12,7 @@ case "${CONMA_VM:-python}" in
   transpiled) exec "$dir/../vm/target-transpiled/release/conma" "$@" ;;
   python)
     # Python VM はコア ConMa の VM なので、拡張 ConMa のモジュール（(Uses "機能" ...) のあるもの）は、bin/to-core で
-    # コア ConMa に直してから動かす（docs/FAST-PLAN-ja.md の 3.4）。直せない機能なら、そのまま動かす（VM がエラーにする）
+    # コア ConMa に直してから動かす（docs/dev/FAST-PLAN-ja.md の 3.4）。直せない機能なら、そのまま動かす（VM がエラーにする）
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       case "${args[$i]}" in

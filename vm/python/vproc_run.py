@@ -17,7 +17,7 @@ Options:
 
 Environment:
     CONMA_SEED      Choose the VProc to run next at random with this seed
-                    (see "Scheduling and Termination" in docs/DESIGN.md).
+                    (see "Scheduling and Termination" in docs/dev/DESIGN.md).
 
 Exit codes:
     0   Every VProc has finished. A VProc that stopped with a runtime error

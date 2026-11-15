@@ -1,4 +1,4 @@
-;; 拡張 ConMa の機能 "wasm"（consh/docs/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
+;; 拡張 ConMa の機能 "wasm"（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
 ;; __Wasm_compile__ onError wat ,(module) と __Wasm_call__ onError module name args fuel ,(status value)。
 ;; wasm 版の VM（consh/js。Node.js）はホストの WebAssembly で動かす。ネイティブの VM は WAT を組み立ててから onError に
 ;; 進み（組み立ての誤りはそのメッセージ）、Python の VM は代わりの定義（include/core/wasm.se）で onError に進む。
@@ -80,7 +80,7 @@
     try_call "big" w "big" __NULL__ fuel ,()
     try_call "tenth" w "tenth" __NULL__ fuel))
 
-;; 燃料が足りるまで、2 倍にしてやり直す（consh/docs/SJS-WASM-PLAN-ja.md の 5.5）。やり直した回数と結果を出す
+;; 燃料が足りるまで、2 倍にしてやり直す（consh/docs/dev/SJS-WASM-PLAN-ja.md の 5.5）。やり直した回数と結果を出す
 (define retry ,(w name args fuel count)
   __Wasm_call__ __print_exit_error__ w name args fuel ,(status value)
   __String_equal__ status "fuel" ,(again)
@@ -164,7 +164,7 @@
   try_compile "stack" "(module (func (export \"f\") (result f64) f64.add))")
 
 ;; case7：燃料を使い切ると時間の区切りが終わるので、終わらない関数を呼び続けても、ホストが SIGINT を受け取る
-;; （__OS_trap_interrupt__ の Ref が変わる。consh/docs/SJS-WASM-PLAN-ja.md の段階 3）。呼んだ回数は時間で変わるので出さない
+;; （__OS_trap_interrupt__ の Ref が変わる。consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 3）。呼んだ回数は時間で変わるので出さない
 (define spin_until ,(w ref fuel)
   __Ref_get__ ref ,(r)
   __Number_is_zero__ r ,(go)
@@ -186,7 +186,7 @@
     __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
     spin_until w ref fuel))
 
-;; case8：モジュールのメモリと __Wasm_call_memory__（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。メモリは呼ぶたびに 0 で埋め、
+;; case8：モジュールのメモリと __Wasm_call_memory__（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。メモリは呼ぶたびに 0 で埋め、
 ;; __Wasm_call_memory__ の語を先頭から書き、"ok" なら同じ数の語を返す
 
 ;; 数の LList を "a b c" の形にする
@@ -268,7 +268,7 @@
   try_compile "fine" "(module (memory 0 1) (func (export \"f\") (result f64) (f64.load (i32.const 0))))")
 
 
-;; case9：アセンブラが止まらなかった WAT と、深すぎる入れ子（docs/REVIEW-ja.md の 2026-11-14（2）の 1 と 6）。コメントを始めない
+;; case9：アセンブラが止まらなかった WAT と、深すぎる入れ子（docs/dev/REVIEW-ja.md の 2026-11-14（2）の 1 と 6）。コメントを始めない
 ;; ; は誤り（前は止まらなかった）。リスト、block、folded の命令の入れ子は 10000 段まで（前は、wasm 版の VM がホストの
 ;; スタックを使い切って落ちた）
 
@@ -314,7 +314,7 @@
   deep_blocks over ,(w) try_compile "blocks 10001" w ,()
   repeat "(" far ,(open) Cat "(module " open ,(w) try_compile "lists 30000" w)
 
-;; case10：アセンブラが受け付けていた正しくない WAT と、拒んでいた正しい WAT（docs/REVIEW-ja.md の 2026-11-14（2）の 8）。
+;; case10：アセンブラが受け付けていた正しくない WAT と、拒んでいた正しい WAT（docs/dev/REVIEW-ja.md の 2026-11-14（2）の 8）。
 ;; end と else の後のラベルは、その block のラベル。_ は数字と数字の間だけ。0x の後は 16 進の数字だけ。番号に符号は付けない
 (define body ,(code)
   Cat3 "(module (func (export \"f\") (param f64) (result f64) " code "))")
@@ -337,7 +337,7 @@
   body "f64.const 1_5.2_5" ,(w) try_compile "f64 1_5.2_5" w ,()
   body "block br +0 end f64.const 0" ,(w) try_compile "br +0" w)
 
-;; case11：メモリの max に入らない語は、trap でなく onError（docs/REVIEW-ja.md の 2026-11-14（2）の 8）。(memory 0 1) は 1 ページ、
+;; case11：メモリの max に入らない語は、trap でなく onError（docs/dev/REVIEW-ja.md の 2026-11-14（2）の 8）。(memory 0 1) は 1 ページ、
 ;; 8192 語まで。max のないメモリは 65536 ページまで
 
 ;; __Wasm_call_memory__ の状態と値（語は出さない）
@@ -362,7 +362,7 @@
     num "8193" ,(n8193) count_list n8193 __NULL__ ,(more)
     try_fit "no max, 8193 words" w more fuel))
 
-;; case12：__Dict_numbers__ と __Dict_put_numbers__（consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
+;; case12：__Dict_numbers__ と __Dict_put_numbers__（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
 ;; どの VM でも同じ。Python の VM は include/core/wasm.se の代わりの定義）
 (define case12 ,()
   __Dict_new__ ,(d)
@@ -383,7 +383,7 @@
   __Dict_new__ ,(e) num "6" ,(n6) __Dict_put_numbers__ e n2 ws ,(rest2) __Dict_numbers__ (,(m) println m ,() __NULL__ __NULL__) e n2 __NULL__ ,(le) show_list le "" ,(s) Cat "new dict: " s ,(s) println s ,()
   __Dict_put_numbers__ e n0 ws ,(same) show_list same "" ,(s) Cat "put 0 keeps: " s ,(s) println s)
 
-;; case13：呼び出しは前の呼び出しの memory.grow と語の数によらない（docs/REVIEW-ja.md の 2026-11-14（2）の 5）。メモリの大きさは、
+;; case13：呼び出しは前の呼び出しの memory.grow と語の数によらない（docs/dev/REVIEW-ja.md の 2026-11-14（2）の 5）。メモリの大きさは、
 ;; 呼ぶたびに、モジュールの大きさか語に要る大きさ。燃料が切れた後で 2 倍の燃料でやり直しても、同じ結果
 (define module13 ,()
   Cat5 "(module (memory 1 2) "
@@ -409,7 +409,7 @@
 ;; case14：case7 と同じく、終わらない関数を呼び続けている間に SIGINT が届く。ただし、SIGINT を送る子プロセスはすぐ終わり、
 ;; 裏に残したサブシェルが送るので、VM の外で動くもの（子プロセス、JavaScript、入力）はない。wasm 版の VM のホスト
 ;; （vm/wasm/vm-node.js）は、SIGINT を受け取ると決めた後は、外で動くものがなくても、ときどきイベントを受け取る
-;; （docs/REVIEW-ja.md の 2026-11-14（2）の 7。前は、受け取らずに止まらなかった）
+;; （docs/dev/REVIEW-ja.md の 2026-11-14（2）の 7。前は、受け取らずに止まらなかった）
 (define case14 ,()
   with_module "(module (func (export \"spin\") (result f64) loop $l br $l end f64.const 0))" (,(w)
     num "0" ,(zero)
@@ -425,7 +425,7 @@
     spin_until w ref fuel))
 
 ;; case15：燃料を減らすのは、ループの始めと、呼び出しのグラフの輪に入る関数（自分を呼ぶもの、ほかを通って呼び戻すもの）の入口だけ
-;; （consh/docs/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、段階 F3）。輪に入らない関数を何度呼んでも燃料を使わないので、燃料 1 で終わる。
+;; （consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、段階 F3）。輪に入らない関数を何度呼んでも燃料を使わないので、燃料 1 で終わる。
 ;; 輪に入る関数（$even と $odd、名前でも番号でも呼ぶ）は、呼ぶたびに減らすので、足りなければ "fuel" になり、やり直すと終わる
 (define case15 ,()
   Cat5 "(module (func $h (param $x f64) (result f64) (f64.add (local.get $x) (f64.const 1))) "

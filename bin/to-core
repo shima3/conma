@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """to-core: translate a module of extended ConMa into a module of core ConMa
-(docs/FAST-PLAN-ja.md 3.4 and 5).
+(docs/dev/FAST-PLAN-ja.md 3.4 and 5).
 
     to-core [<module_file>]
 
@@ -13,7 +13,7 @@ know. The rest of the text is written as it is read, so a module without
 
 The features it knows:
 
-* "bitwise32" (docs/BITWISE-PLAN-ja.md): the bitwise primitives __Number_and32__
+* "bitwise32" (docs/dev/BITWISE-PLAN-ja.md): the bitwise primitives __Number_and32__
   and the others. Their replacement definitions, functions of core ConMa with
   the same names (include/core/bitwise32.se, made into a module with
   bin/includer and bin/resolver), are put into the module: a global of the
@@ -29,7 +29,7 @@ The features it knows:
   (__if_null_then_else__, __unless_null__, __Number_if_zero_then_else__,
   __Number_unless_zero__, __Number_if_greater__, __Number_if_greater_then_else__),
   with their definitions of include/core/control.se.
-* "wasm" (consh/docs/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
+* "wasm" (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
   which the VMs of core ConMa cannot run; their definitions (include/core/wasm.se) go
   to onError with "WebAssembly is not available". __Dict_numbers__ and
   __Dict_put_numbers__ are defined there in ConMa, using "control" and

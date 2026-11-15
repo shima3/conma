@@ -1,10 +1,10 @@
-//! The assembler of __Wasm_compile__ (consh/docs/SJS-WASM-PLAN-ja.md 5.3.1): the
+//! The assembler of __Wasm_compile__ (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.3.1): the
 //! WebAssembly text format (WAT) of a module of functions on numbers, made
 //! into the binary format. It reads only this subset:
 //!
 //! * `(module (memory $m? min max?)? (func ...) ...)`: no import, table,
 //!   global, start, data or elem. The module may have one memory of its own
-//!   (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md, stage A1), exported as `__memory`, which
+//!   (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1), exported as `__memory`, which
 //!   the host fills with zeros before each call (and with the words of
 //!   __Wasm_call_memory__), so that an exported function still depends on its
 //!   arguments (and those words) only.
@@ -22,7 +22,7 @@
 //! does not end comes back to the VM. A function in no cycle takes no fuel at
 //! its start: the subset has no call_indirect, so its calls go only to functions
 //! in no cycle with it, and any loop in them takes fuel
-//! (consh/docs/SJS-WASM-ARRAY-PLAN-ja.md 18.2, stage F3). The host checks the types of the instructions when it
+//! (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md 18.2, stage F3). The host checks the types of the instructions when it
 //! compiles the module (WebAssembly.Module).
 
 use std::collections::HashMap;

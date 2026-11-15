@@ -419,7 +419,7 @@
   __is_null__ more ,(single)
   __unless__ single (,() return (,(sh) Expand_value sh v)) ,()
   Node_split elem ,(kind epos children)
-  ;; 算術置換だけの語は、JS の値のまま変数に入れる（consh/docs/SAFEJS-PLAN-ja.md の 2.2 の 2）
+  ;; 算術置換だけの語は、JS の値のまま変数に入れる（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 2）
   __String_equal__ kind "arithsubst" ,(isArith)
   __if__ isArith (,() return (,(sh) Sjs_subst sh epos children)) ,()
   __String_equal__ kind "var" ,(isVar)

@@ -71,7 +71,7 @@ The entire output is a single `Module` S-expression:
 
 Entries appear in the order variables were first assigned a sequence number. `Program` nodes themselves are not written to the output.
 
-A module of extended ConMa (docs/FAST-PLAN-ja.md) has a `(Uses "feature" ...)` item after `(F ...)`, naming the features of extended ConMa it uses. The resolver writes none, since no feature exists yet. Every VM runs a module with an empty `(Uses)` and stops with an error on a module that names a feature it does not run (`the module uses a feature of extended ConMa that this VM does not run: "if" (bin/to-core translates the module into core ConMa)`): the Python VM runs core ConMa only, and the Rust VM knows no feature yet (`EXT_FEATURES` of `vm/src/module.rs`). `bin/to-core [<module_file>]` translates a module of extended ConMa into core ConMa; for now, it removes an empty `(Uses)` and stops with an error on any feature.
+A module of extended ConMa (docs/dev/FAST-PLAN-ja.md) has a `(Uses "feature" ...)` item after `(F ...)`, naming the features of extended ConMa it uses. The resolver writes none, since no feature exists yet. Every VM runs a module with an empty `(Uses)` and stops with an error on a module that names a feature it does not run (`the module uses a feature of extended ConMa that this VM does not run: "if" (bin/to-core translates the module into core ConMa)`): the Python VM runs core ConMa only, and the Rust VM knows no feature yet (`EXT_FEATURES` of `vm/src/module.rs`). `bin/to-core [<module_file>]` translates a module of extended ConMa into core ConMa; for now, it removes an empty `(Uses)` and stops with an error on any feature.
 
 ---
 

@@ -19,7 +19,7 @@ includer
 → Module (LList)
 ```
 
-* `lexer`, `comment_remover` and `parser` pass tokens to each other as a `Seq` (see "Sequence" in [SPEC.md](SPEC.html)).
+* `lexer`, `comment_remover` and `parser` pass tokens to each other as a `Seq` (see "Sequence" in [SPEC.md](../SPEC.html)).
 * `parser` returns one `Program` as an LList.
 * `resolver` takes an LList of one or more `Program`s and returns one module as an LList.
 
@@ -29,7 +29,7 @@ includer
 
 ### lexer
 
-Follows [LEXER.md](LEXER.html) and gives the same tokens and error messages as `bin/lexer` (`include/lexer.se`).
+Follows [LEXER.md](../LEXER.html) and gives the same tokens and error messages as `bin/lexer` (`include/lexer.se`).
 
 ```
 __Lexer_main__ fileName lines ,(tokens)
@@ -45,12 +45,12 @@ __Lexer_main__ fileName lines ,(tokens)
 * `bin/lexer` reads the source in text mode, so `\r\n` and a lone `\r` become `\n` before it is scanned. The ConMa lexer treats them as newlines in the same way: a `NEWLINE` token always holds `"\n"`, and a newline inside a block comment is added to the text as `"\n"`.
 * Outside a block comment, the first character selects a handler from a Dict (`__Lexer_handlers__`), and SymbolChars are looked up in another Dict, instead of comparing the character with each rule in turn. Lines are scanned one by one, so the String primitives only work on short Strings. The end of a String (the next `"`, `\` or newline) and of a line comment are found with `__String_find_any__`, and so is the next character that can end a Symbol: an ASCII character that is not a SymbolChar, or `|` (which goes on unless `|#` follows); only the characters before it are looked up, for a character above ASCII, which also ends a Symbol (2026-11-15; with the S-expressions written with fewer steps, 22% fewer steps to build a module of 28 KB).
 * Errors are written to standard error with the messages of `bin/lexer`, and scanning goes on. An unexpected character is shown with `__String_repr__` of `util.se`, as Python's `repr` does (for example `"'"` and `'\u3000'`).
-* One difference: a `\` just before a newline inside a String. `bin/lexer` takes the newline into the String and goes on without counting the line (see Limitations in [LEXER.md](LEXER.html)). The ConMa lexer ends the String after the `\` and reports it as unterminated.
+* One difference: a `\` just before a newline inside a String. `bin/lexer` takes the newline into the String and goes on without counting the line (see Limitations in [LEXER.md](../LEXER.html)). The ConMa lexer ends the String after the `\` and reports it as unterminated.
 * Speed: with `vm/python/vproc_run.py`, `include/util.se` (about 120 lines) takes about 3 seconds and `include/lexer.se` (about 360 lines) about 11 seconds.
 
 ### comment_remover
 
-Follows [COMMENT_REMOVER.md](COMMENT_REMOVER.html) and gives the same tokens and error messages as `bin/comment_remover` (`include/comment_remover.se`).
+Follows [COMMENT_REMOVER.md](../COMMENT_REMOVER.html) and gives the same tokens and error messages as `bin/comment_remover` (`include/comment_remover.se`).
 
 ```
 __CommentRemover_main__ tokens ,(tokens)
@@ -68,7 +68,7 @@ __CommentRemover_main__ tokens ,(tokens)
 
 ### parser
 
-Follows [PARSER.md](PARSER.html) and gives the same AST and error messages as `bin/parser` (`include/parser.se`). It returns one `Program` as an LList.
+Follows [PARSER.md](../PARSER.html) and gives the same AST and error messages as `bin/parser` (`include/parser.se`). It returns one `Program` as an LList.
 
 ```
 __Parser_main__ onError fileName tokens ,(Program)
@@ -80,13 +80,13 @@ __Parser_main__ onError fileName tokens ,(Program)
 * The Tokens are collected into an LList first, and the parser is a recursive descent over it. A function for a rule returns the node and the rest of the LList; a function for an expression also returns the last Token it read, because a `Body` without an LCont puts its `LCont` just after that Token.
 * Messages show values as Python's `repr` does, with `__String_repr__` of `util.se`: in single quotes, or in double quotes if the value has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped, and characters that Python does not print, such as control characters and a full-width space, are written as `\xNN`, `\uNNNN` or `\UNNNNNNNN` (Step 19 in [ROADMAP.md](ROADMAP.html)). Unlike Python, unassigned characters are not escaped.
 * `__Parser_expect__` is called for every Token it reads, so it makes the `repr`s only when it writes an error message. `__String_repr__` looks a character up in its table of ranges, which takes many steps; making the `repr` of the kind for every Token made the tests of the parser, the includer and the resolver several times slower.
-* As in `bin/parser`, a `Body` without an LCont has an `LCont` with no children, `(LCont (line col))`. The example in [PARSER.md](PARSER.html) shows `(LCont (2 20) (Null (2 20)))` instead.
+* As in `bin/parser`, a `Body` without an LCont has an `LCont` with no children, `(LCont (line col))`. The example in [PARSER.md](../PARSER.html) shows `(LCont (2 20) (Null (2 20)))` instead.
 * A variadic Head (`, args`, a `SYMBOL` instead of `(` after `,`) is a `Head` node with two children: a node `Rest` without a position and children, which `__AST_toSexp__` writes as the atom `Rest`, and the `Variable` (Step 18 in [ROADMAP.md](ROADMAP.html)).
 * A `String` node holds the value of the `STRING` token without its first and last characters, the double quotes. For a String that the lexer reports as unterminated, this drops its last character, and a String that is only `"` becomes the empty String; `bin/parser` writes such a String without a closing quote, which is not a valid S-expression either.
 
 ### includer
 
-Follows [INCLUDER.md](INCLUDER.html) and gives the same `Program`s and most error messages as `bin/includer` (`include/includer.se`).
+Follows [INCLUDER.md](../INCLUDER.html) and gives the same `Program`s and most error messages as `bin/includer` (`include/includer.se`).
 
 ```
 __Includer_main__ onError sourceName includeDirs ,(Programs)
@@ -119,7 +119,7 @@ If a directory with the name given in an include statement exists in a directory
 
 ### resolver
 
-Follows [RESOLVER.md](RESOLVER.html) and gives the same `Module` as `bin/resolver` (`include/resolver.se`). It takes an LList of one or more `Program`s and returns the `Module`, with its `(F ...)` and `(G id "name" ...)` entries.
+Follows [RESOLVER.md](../RESOLVER.html) and gives the same `Module` as `bin/resolver` (`include/resolver.se`). It takes an LList of one or more `Program`s and returns the `Module`, with its `(F ...)` and `(G id "name" ...)` entries.
 It annotates each `Variable` with `(L n)` or `(G n)` by making a new `Variable` node with `__AST_new__`, with the annotation added at the end of its children.
 
 ```
@@ -130,14 +130,14 @@ __Resolver_main__ programs ,(Module)
 * AST nodes cannot be changed, so the resolver makes a new tree with the annotations. It goes through all `Program`s once, in pre-order. `bin/resolver` first collects the `Definition`s in a pass of its own; here, the annotated `Function` of the first `Definition` of each name is put into a Dict when that `Definition` is reached. The result is the same: a name defined twice gets the `Function` of its first `Definition`, and the second one still numbers the global variables it uses.
 * Global numbers are kept in a Dict from names to numbers, with the next number and the list of numbered names in Refs. The `G` entries are made in the order of their numbers; a name with no `Definition` gets `Undefined`.
 * The scope stack is kept as one Dict: each name maps to the LList of the positions of the parameters with that name (innermost first), and the key `" depth"` (not a name) to the number of parameters of all the enclosing `Head`s. Parameters are numbered 1, 2, ... from the leftmost of the outermost `Head`; entering a `Function` pushes the position of each parameter of its `Head`, left to right, and leaving it pops them. The index of a name is the depth minus the position on top of its LList, which is the number of parameters in the inner scopes plus its position in its scope counted from the right, as in RESOLVER.md. A lookup is one Dict lookup, however deeply the functions are nested (the module of each `(( ))` of ConSh nests about 100 one-parameter functions; walking a list of scopes for each name was about half of the steps of building it, and building took 0.09 s to 0.23 s; 2026-11-15). The `Rest` node of a variadic `Head` is not a `Variable`, so its scope has the one parameter, and the node is copied as it is. As in `bin/resolver`, if a name appears twice in one `Head`, the rightmost one is used (it is pushed last).
-* As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`, and to the name of a `Definition`: `(define __NULL__ ...)` gives `(G n "__NULL__" (Function ...))`, so the name is taken from the `Definition` before its children are annotated. [RESOLVER.md](RESOLVER.html) does not describe this.
+* As in `bin/resolver`, a `Variable` named `__NULL__` is numbered like any other name (so `(G n "__NULL__" Undefined)` is in the `Module`), but is written as `(Null (line col))`. This also applies to a parameter named `__NULL__`, in a `Head` and in a `Body`, and to the name of a `Definition`: `(define __NULL__ ...)` gives `(G n "__NULL__" (Function ...))`, so the name is taken from the `Definition` before its children are annotated. [RESOLVER.md](../RESOLVER.html) does not describe this.
 * `(F)` with no file names would be written as `F` by `__AST_toSexp__` (a node without a position and children). This does not happen, because every `Program` from `__Includer_main__` has a file name.
 
 ```
 __Resolver_warnings__ Module ,(messages)
 ```
 
-* Returns the LList of the warnings of [RESOLVER.md](RESOLVER.html) ("Warnings") for the `Module`, each a String without a newline, in the same order as `bin/resolver` writes them. The caller writes them (`test/selfhost7/test.se` writes them to standard error).
+* Returns the LList of the warnings of [RESOLVER.md](../RESOLVER.html) ("Warnings") for the `Module`, each a String without a newline, in the same order as `bin/resolver` writes them. The caller writes them (`test/selfhost7/test.se` writes them to standard error).
 
 ---
 
@@ -155,7 +155,7 @@ Tokens and AST nodes are passed between components, so their functions are named
 | Function | Description |
 |---|---|
 | `__Token_new__ kind value line col ,(Token)` | Makes a Token. `kind` and `value` are Strings, `line` and `col` are Numbers. |
-| `__Token_get_kind__ Token ,(String)` | The kind, such as `"SYMBOL"` (see [LEXER.md](LEXER.html)). |
+| `__Token_get_kind__ Token ,(String)` | The kind, such as `"SYMBOL"` (see [LEXER.md](../LEXER.html)). |
 | `__Token_get_value__ Token ,(String)` | The source text of the token. A `NEWLINE` token holds the newline itself, always `"\n"` (see the lexer above). |
 | `__Token_get_line__ Token ,(Number)` / `__Token_get_col__ Token ,(Number)` | The position of the first character. The `FILE` token is at `0 0`. |
 | `__Token_toSexp__ Token ,(String)` | `(Token (line col) KIND "value")`, for example `(Token (4 2) SYMBOL "define")`. |
@@ -168,7 +168,7 @@ Tokens and AST nodes are passed between components, so their functions are named
 | Function | Description |
 |---|---|
 | `__AST_new__ kind pos children ,(AST)` | Makes a node. `kind` is a String, `pos` is an LList or null, `children` is an LList or null. |
-| `__AST_get_kind__ AST ,(String)` | The kind, such as `"Variable"` (see [AST.md](AST.html)). |
+| `__AST_get_kind__ AST ,(String)` | The kind, such as `"Variable"` (see [AST.md](../AST.html)). |
 | `__AST_get_pos__ AST ,(pos)` | The position, or null. |
 | `__AST_get_children__ AST ,(children)` | The children, or null if there are none. |
 | `__AST_toSexp__ AST ,(String)` | The node as an S-expression on one line, such as `(Variable (4 26) "x" (L 0))`. |

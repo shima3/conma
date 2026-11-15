@@ -1,10 +1,10 @@
 #!/bin/bash
-# consh/sjs/bench/run.sh NAME N：SJS の段階 B7 の測定（consh/docs/SAFEJS-PLAN-ja.md の 6）。
+# consh/sjs/bench/run.sh NAME N：SJS の段階 B7 の測定（consh/docs/dev/SAFEJS-PLAN-ja.md の 6）。
 # NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
 # 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
 # wasm 版の VM（vm/wasm/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
-# consh/docs/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
+# consh/docs/dev/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
 sjsbench="$(cd "$(dirname "$0")"; pwd)"
 sjs="${sjsbench%/*}"
 consh="${sjs%/*}"
@@ -52,7 +52,7 @@ if [ -f "$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ];
   "$vmw" --main "$tmp/$name.module.se" > "$tmp/wasm.out" 2>&1
   cmp -s "$tmp/node.out" "$tmp/wasm.out" || { echo "SJS on the wasm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/wasm.out"; }
   nfun=$(grep -o 'Sjs_wasm_fn Wsjs "[^"]*"' "$tmp/$name.se" | wc -l | tr -d ' ')
-  # WAT の文字列の長さ（\" などのエスケープを 1 文字と数える。docs/REVIEW-ja.md の 2026-11-14 (2) の 8）
+  # WAT の文字列の長さ（\" などのエスケープを 1 文字と数える。docs/dev/REVIEW-ja.md の 2026-11-14 (2) の 8）
   wat=$(perl -ne 'if (/Sjs_wasm_module "((?:[^"\\]|\\.)*)"/) { ($s = $1) =~ s/\\(.)/$1/g; print length($s) }' "$tmp/$name.se")
   wat=${wat:-0}
   printf 'numeric functions: %s (WAT %s bytes)\n' "$nfun" "$wat"
