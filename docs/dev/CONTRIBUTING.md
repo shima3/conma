@@ -6,6 +6,10 @@ This is for the developers of ConMa and of ConSh. A developer of ConMa changes i
 
 [docs/dev/TESTS-ja.md](TESTS-ja.md) (in Japanese) lists every test suite with what to build first, the known differences, and a record of who ran every suite on which commit. Say in the commit message what you ran to check a change; when you run every suite, also add a line there.
 
+## Languages of the documents
+
+A document in English is named `NAME.md`, and one in Japanese `NAME-ja.md`. When a document is in both, the English one is the original: the Japanese one begins with 「原文は英語。古くなっていることがある」 and a link to `NAME.md`, and a change is made to the English one first.
+
 ## Commit messages
 
 Write the first line as a summary of about 50 to 70 characters, then a blank line, then the details: what changed and why, and what you ran to check it and what you did not (see Tests). Commits before 2026-11-16 are written as one long sentence; they are left as they are.
