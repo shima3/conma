@@ -22,7 +22,8 @@
 # --python-parser を付けると、Python の参照実装 consh_parse --pos で構文木にして渡す（両者が同じになることは test/parse3）
 # 環境変数 CONSH_CONMA_DATA を空でない値にすると、データの組み込み（__Dict_copy__ など）の代わりに ConMa 版
 # （include/data.se）を使う。組み込みと同じ結果になることを確かめるためで、モジュールは別に作る
-# 環境変数 CONSH_MODULE_DIR は、ConMa のモジュールを作るディレクトリ（既定は /tmp）
+# 環境変数 CONSH_MODULE_DIR は、ConMa のモジュールを作るディレクトリ（既定は bin/cache-dir の場所。
+# ${XDG_CACHE_HOME:-$HOME/.cache}/conma/<リポジトリのパスのチェックサム>、CONMA_CACHE_DIR で変えられる）
 set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
@@ -80,12 +81,13 @@ fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
 fi
-# ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は /tmp）。
+# ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は
+# bin/cache-dir の場所。持ち主だけが読み書きできる）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
 # include ディレクトリ：高速版は consh/include と標準ライブラリの include/fast と include。参照版は、consh/reference と
 # 標準ライブラリの include/ref（簡潔版 ConMa）と reference を先に探す（そこにある、書き直す前のファイルが、同じ名前のファイルの代わりになる）。
 # 最初のファイル consh_main.se も、参照版は consh/reference にあればそれを使う
-dir="${CONSH_MODULE_DIR:-/tmp}"
+if [ -n "$CONSH_MODULE_DIR" ]; then dir="$CONSH_MODULE_DIR"; else dir="$("$root/bin/cache-dir")" || exit 1; fi
 if [ $impl = reference ]; then
   dirs=("$consh/reference" "$consh/include" "$root/include/ref" "$root/reference" "$root/include")
   name=consh.reference

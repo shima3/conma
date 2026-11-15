@@ -71,7 +71,7 @@ ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でス
 ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）があれば、その `conma build`（ConMa 版のフロントエンド、vm/README.md）で作り、なければ `bin/includer` と `bin/resolver`（Python）で作る。
 そのため、Rust 版の VM を作っておき、`CONMA_VM=rust`（か `transpiled`）で起動すれば、ConMa 版も Python を使わずに動く（既定の VM は、基準の Python 版のまま）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
-ConMa のモジュールは `/tmp/consh.module.se` に作り、`.se` のソースが変わったときだけ作り直す。作るディレクトリは環境変数 `CONSH_MODULE_DIR` で変えられる（既定は `/tmp`）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
+ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-dir` の場所（`${XDG_CACHE_HOME:-$HOME/.cache}/conma/<リポジトリのパスのチェックサム>`。持ち主だけが読み書きでき、別のチェックアウトとは分かれる。環境変数 `CONMA_CACHE_DIR` で変えられる）に作り、`.se` のソースが変わったときだけ作り直す。ConSh のモジュールだけを置くディレクトリは、環境変数 `CONSH_MODULE_DIR` で変えられる（2026-11-15 までの既定は `/tmp` だった）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 
 ### できること（段階 3〜13）
 

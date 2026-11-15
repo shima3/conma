@@ -12,17 +12,16 @@ if [ $# -ne 1 ]; then echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; fi
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 # 変換器（sjsc.se と include するもの）のモジュールは、ソースか VM（フロントエンドを持つ）が新しくなったときだけ作り直す
-# （作るのに約 4 秒、動かすのは 0.2 秒ほど）。置き場所は $TMPDIR（なければ /tmp）で、名前にこのリポジトリのパスの
-# チェックサムを入れて、別のチェックアウトと分ける。一時ファイルに作ってから mv で置き換えるので、同時に動く sjs が
-# 作りかけのモジュールを読むことはない
-module="${TMPDIR:-/tmp}"
-module="${module%/}/sjsc-$(printf '%s' "$sjs" | cksum | cut -d ' ' -f 1).module.se"
+# （作るのに約 4 秒、動かすのは 0.2 秒ほど）。置き場所は bin/cache-dir の場所（${XDG_CACHE_HOME:-$HOME/.cache}/conma/
+# <リポジトリのパスのチェックサム>。持ち主だけが読み書きでき、別のチェックアウトとは分かれる）。一時ファイルに作ってから
+# mv で置き換えるので、同時に動く sjs が作りかけのモジュールを読むことはない
+module="$("$root/bin/cache-dir")/sjsc.module.se" || exit 1
 dirs=("$consh/include" "$root/include/fast" "$root/include")
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$sjs/sjsc.se" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    [ "$conma" -nt "$module" ]; then
   module_tmp=$(mktemp "$module.XXXXXX") || exit 1
   if ! "$conma" build --include "$consh/include" "$sjs/sjsc.se" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
-  mv -f "$module_tmp" "$module"
+  mv -f "$module_tmp" "$module" || { rm -f "$module_tmp"; exit 1; }
 fi
 "$conma" --main "$module" "$1" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi

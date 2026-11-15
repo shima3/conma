@@ -2,8 +2,10 @@
 cd ${0%/*}
 . ../common.sh
 # bin/consh と同じモジュール（CONSH_CONMA_DATA なら ConMa 版のデータの関数を使うもの）
-module="${CONSH_MODULE_DIR:-/tmp}/consh.module.se"
-[ -n "$CONSH_CONMA_DATA" ] && module="${CONSH_MODULE_DIR:-/tmp}/consh.data.module.se"
+# （CONSH_MODULE_DIR か bin/cache-dir の場所）
+if [ -n "$CONSH_MODULE_DIR" ]; then dir="$CONSH_MODULE_DIR"; else dir="$("$root/bin/cache-dir")" || exit 1; fi
+module="$dir/consh.module.se"
+[ -n "$CONSH_CONMA_DATA" ] && module="$dir/consh.data.module.se"
 # consh_parse --pos の構文木を ConMa 版で読み、書き戻した結果が元と同じになるか。
 # parse1、parse2、expand1 のスクリプトのうち、構文エラーのないものすべてで確かめる。違えば diff を出す
 for f in ../parse1/case*.sh ../parse2/case*.sh ../expand1/case*.sh

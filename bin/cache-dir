@@ -1,0 +1,16 @@
+#!/bin/bash
+# bin/cache-dir: write the path of the directory that keeps the modules made from this repository (those of
+# ConSh, consh/bin/consh, and of the translator of SJS, consh/sjs/sjs), making it if it is not there.
+# It is $CONMA_CACHE_DIR if that is set, else ${XDG_CACHE_HOME:-$HOME/.cache}/conma/<checksum of the path of
+# the repository>, so that two checkouts do not share their modules. The directories it makes can be read and
+# written by their owner only (umask 077), as a module found there is run without being checked.
+set -e -o pipefail
+root="$(cd "$(dirname "$0")/.."; pwd -P)"
+if [ -n "$CONMA_CACHE_DIR" ]; then
+  dir="$CONMA_CACHE_DIR"
+else
+  base="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}/conma"
+  dir="$base/$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)"
+fi
+(umask 077; mkdir -p "$dir")
+printf '%s\n' "$dir"

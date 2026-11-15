@@ -15,8 +15,8 @@ start, as a Markdown table with the ratio of each version to the first one; the 
 must be the same.
 
 The executables are started as bin/consh starts them, without bin/consh: consh-rs run <script>, and
-conma --main <module> run-src <script> <script>. The modules (/tmp/consh.module.se and
-/tmp/consh.reference.module.se, or those of CONSH_MODULE_DIR) are made first by bin/consh, which also warns
+conma --main <module> run-src <script> <script>. The modules (consh.module.se and consh.reference.module.se
+in CONSH_MODULE_DIR, or in the directory bin/cache-dir gives) are made first by bin/consh, which also warns
 when consh-rs is older than its sources. The transpiled code of a module is used only if the transpiled VM
 was built with that very module (bench/build.sh; CONMA_BENCH_REFERENCE=1 for the reference version), which
 is checked before timing (CONMA_TRANSPILED_REPORT).
@@ -31,7 +31,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONSH = os.path.dirname(HERE)
 ROOT = os.path.dirname(CONSH)
-MODULE_DIR = os.environ.get("CONSH_MODULE_DIR", "/tmp")
+MODULE_DIR = os.environ.get("CONSH_MODULE_DIR") or subprocess.run(
+    [os.path.join(ROOT, "bin", "cache-dir")], capture_output=True, text=True, check=True).stdout.strip()
 VMS = {
     "rust": os.path.join(ROOT, "vm/target/release/conma"),
     "transpiled": os.path.join(ROOT, "vm/target-transpiled/release/conma"),
