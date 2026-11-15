@@ -483,7 +483,7 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 ### 3.19. ブラウザ版の VM を Worker で動かす（2026/11/9）
 
-- ブラウザ版の VM を Worker で動かすようにした（REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
+- ブラウザ版の VM を Worker で動かすようにした（consh/js/REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
 - conma.js：JavaScript の評価を `JsEngine`（呼び出しを job の番号で扱い、行を `out.line`、終わりを `out.end` で返す）にまとめ、VM（`create`）から分けた。`create` は、`hooks.jsRemote` があれば、`host_js_call`、`host_js_input`、`host_js_input_end`、`host_js_value` をそれに渡し、行は `vm.jsLine`、終わりは `vm.jsEnd` で受け取る。なければ、今までどおり同じスレッドの `JsEngine` を使う（Node.js、ページの中で動かすとき）。
 - web/consh-core.js：VM、ファイル、`COMMANDS`、`hostProc`、VM を区切って動かすことを、consh.js から移した。Worker（consh-worker.js）でもページ（consh.js）でも動く。
 - web/consh-worker.js：ページとメッセージでつなぐ。js の呼び出しはページに渡し、ページの `JsEngine` が書く行を VM のパイプに書く。読み手がいなくなったら（EPIPE）ページに知らせる。`__JS_value__` は同期なので、ページに尋ねて、SharedArrayBuffer を `Atomics.wait` で待つ（1 MB ずつ受け取るので、大きな値も渡せる）。
@@ -492,7 +492,7 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 ### 3.20. CONSH_JS_DEBUG（2026/11/9）
 
-- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
+- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。consh/js/REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
 - テスト：consh/js/test/step5 の case7。
 
 ### 3.21. レビューの 6 への対応（2026/11/9）

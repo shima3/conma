@@ -178,7 +178,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 ### 4.5. レコード
 
 * **今**：ConSh は、文脈を Dict に置き、`__Dict_lookup_or__ sh "global"` のように文字列のキーで引く。`__Dict_lookup_or__` は全ステップの 4.2%、`__Dict_put__` は 1.0% である。
-* **これまでの決定**：REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
+* **これまでの決定**：docs/REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
 * **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/REVIEW-ja.md の 1）。
 * **コア ConMa への変換**：Dict（または LList）と、それを読み書きする関数にする。
 * **優先度**：上の決定と計測から、速さのためには低い。拡張 ConMa を作るとしても、綴りの誤りを見つけることが主な理由になる。言語に足さないという方針を変えるかどうかも、ここで決める。
@@ -222,7 +222,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * test/step34 と step35 は、どちらも拡張 ConMa で作り、組み込み（test.se）と `core/control.se` の定義（conma.se）を比べるようにした。
 * 定義とプリミティブの違いが 1 つ見つかった：プリミティブは余分な被演算子を捨てるが、定義では、返したものに余分な被演算子が適用される。consh/include/sjs_gen.se の `Gen_plain_decls` が `__if__` に節を 2 つ渡していて（`__if_then_else__` の書き誤り）、ConSh の参照版の SJS が止まった（consh/test の step21）。`__if_then_else__` に直した（then でない側も、名前を集める）。ConSh と標準ライブラリの構文木を調べて、余分な被演算子を渡す所は、ほかになかった。
 * コア ConMa のモジュールは、Rust VM で遅くなる（richards2 で、control.se を include したときの測定では 1.7〜1.9 倍）。
-* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/core/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
+* 値を自分で確かめる 6 つの条件分岐（`__if_null_then_else__`、`__unless_null__`、`__Number_if_zero_then_else__`、`__Number_unless_zero__`、`__Number_if_greater__`、`__Number_if_greater_then_else__`。1e4c864 で、試しに Rust VM に入れたもの）も、2026-11-14 にこの機能に入れた（docs/REVIEW-ja.md の 2026-11-14 の 6）。bin/resolver と include/resolver.se は、これらを定義なしで使うモジュールにも `(Uses "control")` を書き、`include/core/control.se` に、確かめるプリミティブと `__if_then_else__` などで書いた定義を足した。test/fast10 が、組み込みと定義を比べる。
 * **速さ**：試作（どの版でもプリミティブにしたもの）で、Rust VM の bench/（nbody、fib、loop、richards）と consh/bench は 0.98〜1.01 倍で、変わらなかった。条件分岐は `__if_then_else__` などが Boolean を見て節を選ぶので、Boolean を適用しないからである。Boolean を直接適用する `none __FALSE__ __TRUE__ ,(pending)` を使う richards の版で、ステップが 1,604 万から 1,595 万（0.6%）減った。
 
 ## 5. 変換器
