@@ -3,12 +3,12 @@
 # 環境変数 CONMA_VM が rust なら Rust 版（vm/target/release/conma）、transpiled なら ConMa から Rust への変換器
 # （vm/conma2rust）で変換したコードを組み込んだ Rust 版
 # （vm/conma2rust/build.sh で作る vm/target-transpiled/release/conma）、wasm なら wasm32 版を JavaScriptCore で動かす
-# （consh/js/vm-wasm.sh。consh/js/build.sh で作る）、それ以外（既定）は Python 版（vm/python/vproc_run.py。拡張 ConMa の
+# （vm/wasm/vm-wasm.sh。vm/wasm/build.sh で作る）、それ以外（既定）は Python 版（vm/python/vproc_run.py。拡張 ConMa の
 # モジュールは bin/to-core でコア ConMa に直してから動かす）
 dir="$(cd "${0%/*}"; pwd)"
 case "${CONMA_VM:-python}" in
   rust) exec "$dir/../vm/target/release/conma" "$@" ;;
-  wasm) exec "$dir/../consh/js/vm-wasm.sh" "$@" ;;
+  wasm) exec "$dir/../vm/wasm/vm-wasm.sh" "$@" ;;
   transpiled) exec "$dir/../vm/target-transpiled/release/conma" "$@" ;;
   *)
     # Python VM はコア ConMa の VM なので、拡張 ConMa のモジュール（(Uses "機能" ...) のあるもの）は、bin/to-core で

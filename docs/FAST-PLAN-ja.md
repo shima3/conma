@@ -397,7 +397,7 @@ F5 の後の Rust VM で、次に速くできる所を探すために、時間�
 
 ### 8.3. wasm 版に変換版のコードを入れる実験（2026-11-12）
 
-ブラウザの ConSh は wasm 版で動き、変換版のコードを使っていない。wasm 版の crate（consh/js/wasm）は、Rust VM と同じく `CONMA_TRANSPILED` で変換版のコードを取り込めるように作ってあるが（build.rs、src/lib.rs の `load_module_transpiled`）、consh/js/build.sh は渡していない。入れたときの大きさと速さを測った。リポジトリは変えていない。
+ブラウザの ConSh は wasm 版で動き、変換版のコードを使っていない。wasm 版の crate（vm/wasm）は、Rust VM と同じく `CONMA_TRANSPILED` で変換版のコードを取り込めるように作ってあるが（build.rs、src/lib.rs の `load_module_transpiled`）、consh/js/build.sh は渡していない。入れたときの大きさと速さを測った。リポジトリは変えていない。
 
 **作り方**
 

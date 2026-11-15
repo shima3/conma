@@ -341,7 +341,7 @@ wasm 版の VM で、nbody の N=1 を動かす時間（実時間、7 回の最�
 | 部分 | 時間 |
 |---|---|
 | Node.js 自身の起動と終了（`node -e 0`。約 45 ms は、スクリプトの時計が始まる前） | 約 60 ms |
-| consh/js/vm-wasm.sh（bash） | 約 4 ms |
+| vm/wasm/vm-wasm.sh（bash） | 約 4 ms |
 | vm-node.js と conma.js の読み込み、VM の wasm のコンパイル、環境変数などの準備 | 約 10 ms |
 | モジュール（1.6〜1.9 MB）を読む。約 6 割が S 式を読む時間 | 約 21〜24 ms |
 | SJS の初期化（`console.log(1)` だけのプログラム。約 2,800 ステップ） | 約 4〜5 ms |

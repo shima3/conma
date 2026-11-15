@@ -1,6 +1,6 @@
 # SJS の数の関数を WebAssembly にする計画
 
-SJS（consh/docs/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（consh/js）のホストで動かす計画である。2026-11-14 に書いた。
+SJS（consh/docs/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（vm/wasm）のホストで動かす計画である。2026-11-14 に書いた。
 
 **状態**：段階 1〜4 を作った（2026-11-14。段階 1 は docs/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9、段階 3 は 14 と consh/sjs/test/step10、段階 4 は 15 と consh/test/step21 の case9、段階 5 は 16）。計画した段階は、すべて作った。次は配列（9。consh/docs/SJS-WASM-ARRAY-PLAN-ja.md）。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
@@ -113,7 +113,7 @@ docs/BITWISE-PLAN-ja.md と同じく、拡張 ConMa（docs/FAST-PLAN-ja.md）の
 * `__Wasm_call__ onError module name args fuel ,(status value)`：export された関数 `name` を、`args`（Number の LList。数は関数の引数の数と同じ）で呼ぶ。`fuel` は燃料（Number）。`status` は `"ok"`（`value` が戻り値）、`"fuel"`（燃料が切れた）、`"trap"`（スタックがあふれたなど。`value` は null）。
 * **値**（2026-11-14 に、足すと決めた）：`Value` に `Wasm(Rc<WasmObj>)` を足す（`__type_name__` は `"Wasm"`）。`WasmObj` は、ホストのモジュールの番号を持ち、最後の参照がなくなったとき（`Drop`）にホストに消させる（`host_wasm_free`）。GC（vm/src/gc.rs）では、ほかの値を参照しない葉の値として扱う。
 * **VM ごとの動き**
-    * wasm 版の VM（consh/js/wasm）：5.4 のホストに渡す。
+    * wasm 版の VM（vm/wasm）：5.4 のホストに渡す。
     * ネイティブの VM と変換版の VM：`__Wasm_compile__` は、アセンブラで WAT を確かめたあと、`"__Wasm_compile__: WebAssembly is not available"` で onError を呼ぶ（`__JS_call__` と同じ形）。
     * Python の VM：bin/to-core でコア ConMa に直したモジュールを動かす。include/core/wasm.se に、2 つを同じ名前の関数（どちらも onError を呼ぶ）として書く。
 * `(Uses "wasm")`：フロントエンドが、2 つを定義のない大域の名前として使うモジュールに付ける（FAST-PLAN-ja.md の 3.4）。
@@ -128,9 +128,9 @@ WAT をバイナリにするアセンブラを、Rust で vm/src に書く（was
 
 変換器がバイナリを直接出す案は採らない。ConMa の String はテキストで、バイト列を作りにくい。また、`--emit` で読めるテキストのほうが確かめやすい。
 
-### 5.4. ホスト（consh/js/conma.js、vm-node.js、vm-jsc.js）
+### 5.4. ホスト（vm/wasm/conma.js、vm-node.js、vm-jsc.js）
 
-consh/js/wasm/src/sys.rs に import を 3 つ足す。
+vm/wasm/src/sys.rs に import を 3 つ足す。
 
 * `host_wasm_compile(ptr, len) -> id`：バイナリから、同期の `new WebAssembly.Module` と `new WebAssembly.Instance` でインスタンスを作る（import はない）。失敗したら負の数。
     * ブラウザでページの中で動いているとき（Worker を使えないとき）、Chrome はメインスレッドで 4 KB より大きいモジュールを同期で作らせない。そのときは失敗とし、ConMa 版で動く。
@@ -226,7 +226,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 ## 12. 段階 1 の結果（2026-11-14）
 
-* **作ったもの**：vm/src/prim/wasm_asm.rs（アセンブラ。燃料を入れる）、vm/src/prim/wasm.rs（2 つのプリミティブ）、`Value::Wasm`（vm/src/value.rs）、`Machine::end_slice`（燃料が切れたら時間の区切りを終える）、consh/js/conma.js のホストの import（Node.js、jsc、ブラウザで共通）、include/core/wasm.se、bin/resolver と include/resolver.se の `(Uses "wasm")`、bin/to-core。文書は docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md の Step 43。
+* **作ったもの**：vm/src/prim/wasm_asm.rs（アセンブラ。燃料を入れる）、vm/src/prim/wasm.rs（2 つのプリミティブ）、`Value::Wasm`（vm/src/value.rs）、`Machine::end_slice`（燃料が切れたら時間の区切りを終える）、vm/wasm/conma.js のホストの import（Node.js、jsc、ブラウザで共通）、include/core/wasm.se、bin/resolver と include/resolver.se の `(Uses "wasm")`、bin/to-core。文書は docs/PRIMITIVES.md の 16 節と docs/ROADMAP.md の Step 43。
 * **計画と変えたこと**：
     * `"trap"` の値は null でなく、ホストのメッセージ（String）にした（どこで止まったかが分かるように）。
     * 型の確かめは、アセンブラでなくホスト（`WebAssembly.Module`）がする。メッセージはホストのもの（Node.js と jsc で違う）。ネイティブの VM は型を確かめず、組み立てた後に「使えない」で onError に進む。

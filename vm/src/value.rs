@@ -164,7 +164,7 @@ pub struct OSProcObj {
     pub serial: usize,
     #[cfg(unix)]
     pub child: RefCell<std::process::Child>,
-    /// The number of the process in the host (the VM for wasm32, consh/js).
+    /// The number of the process in the host (the VM for wasm32, vm/wasm).
     #[cfg(not(unix))]
     pub host: i32,
     /// The exit code, once the process has been waited for.

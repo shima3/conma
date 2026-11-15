@@ -107,13 +107,13 @@ ConSh の PLAN-ja.md の 1.2 に、次の規則を加える。
 VM は、wasm32-unknown-unknown 向けにも、今の macOS と Linux 向けにもビルドできるようにする。
 
 1. **crate とクレート**
-    - wasm 版は、consh/js/wasm の crate（conma-wasm、cdylib）でビルドする。vm/src のファイルを `#[path]` でそのまま使い、sys だけを consh/js/wasm/src/sys.rs に替える。vm/Cargo.toml とネイティブ版のビルドは変わらない。
+    - wasm 版は、vm/wasm の crate（conma-wasm、cdylib）でビルドする。vm/src のファイルを `#[path]` でそのまま使い、sys だけを vm/wasm/src/sys.rs に替える。vm/Cargo.toml とネイティブ版のビルドは変わらない。
     - vm/ はクレートを使わない方針なので、wasm-bindgen も使わない。
     - 次の 2 つで、ホストの JavaScript とつなぐ。
         - `extern "C"` の import（JavaScript から渡す関数）
         - `#[no_mangle] pub extern "C"` の export
     - 文字列は、wasm のメモリ上のバイト列（UTF-8）と長さで受け渡す。
-    - つなぐための JavaScript（consh/js/conma.js）は手で書く。ブラウザでも、Node.js でも、macOS の JavaScriptCore のシェル（jsc）でも動く。
+    - つなぐための JavaScript（vm/wasm/conma.js）は手で書く。ブラウザでも、Node.js でも、macOS の JavaScriptCore のシェル（jsc）でも動く。
 2. **OS 層**
     - prim の os.rs、stream.rs が直接使っていたファイル、環境変数、標準出力は、vm/src/sys.rs の関数（`open_file`、`is_dir`、`canonicalize`、`read_dir`、`env_vars`、`getpid`、`write_std`）を通す。process.rs と value.rs の Unix にしかないところは `cfg(unix)` で分ける。
     - wasm 版の sys.rs は、同じ関数を、メモリ上の仮想の OS で作る。何も待たない（データのない読み込みは EAGAIN）。
@@ -432,7 +432,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
     - ディレクトリかどうか：`/` のない名前のディレクトリは `/` のある名前にリダイレクトされる（`python3 -m http.server` などと同じ）ので、HEAD の `responseURL` で見分ける。
     - ディレクトリの一覧：`consh/js/serve.py` が `?consh-ls` に JSON で答える（ディレクトリの名前は `/` で終わる）。ほかのサーバーでは、ディレクトリの一覧の HTML のリンクを読む。`python3 -m http.server` は `index.html` のあるディレクトリには一覧を出さないので、serve.py を足した。serve.py は `Cache-Control: no-cache` も付けるので、ブラウザは毎回サーバーに確かめ（変わっていなければ 304）、ディスクで書き換えたファイルがすぐ見える。
     - 書き込み：サーバーには書けないので、書いたファイルはメモリに置き、同じ名前のサーバーのファイルより先に見せる（ユーザーの選択）。`>>` は、サーバーのファイルの中身に足す。「ファイルを置く」もメモリに置く。`/home/user` の外は、`/`、`/home`、`/dev`、`/dev/null` などのメモリのものだけである。
-- serve.py は、`build.sh` が `web/` に作るファイルがないか古いときは、`build.sh` を実行するように言って起動しない（終了コード 1）。`web/conma.js` は `consh/js/conma.js` と中身を比べ、`conma.wasm` は vm/src と consh/js/wasm の、`consh.module.se` は include と consh/include の、ファイルとフォルダの時刻と比べる。git pull で新しい `consh.js` と古い `conma.js` になり、ページが `TypeError: vm.useHostFs is not a function` で止まったためである。
+- serve.py は、`build.sh` が `web/` に作るファイルがないか古いときは、`build.sh` を実行するように言って起動しない（終了コード 1）。`web/conma.js` は `vm/wasm/conma.js` と中身を比べ、`conma.wasm` は vm/src と vm/wasm の、`consh.module.se` は include と consh/include の、ファイルとフォルダの時刻と比べる。git pull で新しい `consh.js` と古い `conma.js` になり、ページが `TypeError: vm.useHostFs is not a function` で止まったためである。
 - ページのディレクトリを置く場所（`/home/user`）は、ページの URL の `?home=絶対パス` で変えられる（ConSh の `HOME` とカレントディレクトリもそこになる）。`/home/user` にしたのは、前の仮想ファイルシステムのホームの名残であり、`/dev` などのメモリのものとサーバーのファイルがぶつからないためである。`?home=/` では、`/dev` と `/dev/null` が同じ名前のサーバーのファイルより先に見える（書いたファイルと同じ規則）。ブラウザで、`?home=/`（`ls -F`、`cd ..`、`/dev/null`、書き込み）、`?home=/work/site/`（途中のディレクトリはメモリにある）、絶対パスでない値（`/home/user` になる）を確かめた。
 - ファイルを ConSh の組み込みコマンド（`cat < file` など、子の標準入出力）に渡すときは、hostFs の fd（`host_proc_spawn` の kind 1）になるので、ページの `hostProc` は、それを `dup` してプロセスが終わるまで持ち、読み書きする。`cat` と `ls` も hostFs を使い、`HOME_FILES` と `conma_list_dir` はなくした。
 - ブラウザで、`ls`（ページのファイルがすべて出る）、`ls -F /`、`cat`、`*.txt`、`>`、`>>`（サーバーのファイルに足す）、`cd` でのサブディレクトリ、エラー（ない名前、ディレクトリを `cat`、ファイルの下、ないディレクトリへの `>`）、`/dev/null`、ディスクでのファイルの書き換えと追加がページを読み直さずに見えること、2 回目からの読み込みが 304 になることを確かめた。
@@ -443,7 +443,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
     - 構文解析（consh/include/consh_parser.se）：`Ps_statement` の先頭で `Ps_at_js` が先頭の語を調べ、JS の文なら `Ps_js` が範囲を読んで節 `(jsstmt 位置 コード 代わりのコマンド行 名前 ...)` にする。テキストの中の `function 名前` は、解析の前に `Funcs_scan` で集める。JavaScript が使えるかは、run-src と対話モードの始めに `Js_probe`（`__JS_call__` で `0` を評価する）で調べ、使えるときだけ `Parse_file_with`、`Parse_text_with` に知らせる。ネイティブ版は onError に進むので、今までと同じ構文木になる。
     - 評価（consh/include/consh_jsstmt.se。最適化版と参照版の consh_eval.se が include する）：`Eval_jsstmt` が、コードに `//@consh-stmt` の行を付けて `__JS_call__` に渡す。引数は、渡す変数の名前、種類、値の 3 つの LList。ホストが書く `(w 名前 番号 種類 値)` の行で変数を入れ、`(f メッセージ)` なら代わりのコマンド行を実行する。
     - JS の値の変数は、`"js"` に番号を入れた Dict で、`Value_force` がシェルの値を取り出す（3.16 からは、読むたびに `Js_force` で直す）。そのため、変数を読むところは変えていない。シェルで代入し直せば、ふつうの値に置き換わる。
-    - ホスト（consh/js/conma.js の `evaluateStatement`）：トップレベルの宣言を代入に書き換え（`rewriteDeclarations`。字句解析は `jsTokens`）、シェルの変数の Proxy を `with` のスコープにして評価する。値は `values` の表に置き、関数の JS の値は、`js` のコード `__consh_value(番号)` で呼ぶ。
+    - ホスト（vm/wasm/conma.js の `evaluateStatement`）：トップレベルの宣言を代入に書き換え（`rewriteDeclarations`。字句解析は `jsTokens`）、シェルの変数の Proxy を `with` のスコープにして評価する。値は `values` の表に置き、関数の JS の値は、`js` のコード `__consh_value(番号)` で呼ぶ。
 - 仕様から変えたところ（2.5 に書いた）：
     - 打ち間違えたコマンドは、メッセージを真似るのでなく、同じテキストをシェルの文として実行する（2.5 の 7）。`nosuch | wc -l` のようなパイプラインも、今までと同じになる。
     - `$x` の変換は、参照するたびでなく、JS の文が終わるたびに行う（2.5 の 4）。参照のたびにホストを同期して呼ぶプリミティブが要らない。（3.16 で、`__JS_value__` を足して、読むたびに直す形に戻した）

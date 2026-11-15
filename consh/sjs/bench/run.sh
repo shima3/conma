@@ -3,7 +3,7 @@
 # NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
 # 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
-# wasm 版の VM（consh/js/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
+# wasm 版の VM（vm/wasm/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
 # consh/docs/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
 sjsbench="$(cd "$(dirname "$0")"; pwd)"
 sjs="${sjsbench%/*}"
@@ -47,8 +47,8 @@ printf '%-24s %s s\n' "Node.js" "$(best node "$tmp/$name.safe.js")"
 printf '%-24s %s s\n' "CPython" "$(best python3 "$root/bench/$name/$name.py" "$n")"
 printf '%-24s %s s\n' "Rust VM, hand ConMa" "$(best "$conma" --main "$tmp/hand.module.se" "$n")"
 printf '%-24s %s s\n' "Rust VM, SJS" "$(best "$conma" --main "$tmp/$name.module.se")"
-vmw="$consh/js/vm-wasm.sh"
-if [ -f "$consh/js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ]; then
+vmw="$root/vm/wasm/vm-wasm.sh"
+if [ -f "$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ]; then
   "$vmw" --main "$tmp/$name.module.se" > "$tmp/wasm.out" 2>&1
   cmp -s "$tmp/node.out" "$tmp/wasm.out" || { echo "SJS on the wasm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/wasm.out"; }
   nfun=$(grep -o 'Sjs_wasm_fn Wsjs "[^"]*"' "$tmp/$name.se" | wc -l | tr -d ' ')

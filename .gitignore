@@ -3,7 +3,7 @@
 __pycache__
 vm/target/
 vm/target-transpiled/
-consh/js/wasm/target/
+vm/wasm/target/
 consh/js/web/conma.wasm
 consh/js/web/conma.js
 consh/js/web/consh.module.se

@@ -177,7 +177,7 @@ pub fn sysconf_name(name: &str) -> Option<c_int> {
 
 // ── Files, the environment and standard output ──────────────────────────────
 // The primitives reach the file system and the interpreter's process only
-// through these, so that the VM for wasm32 (consh/js/wasm) can give its own.
+// through these, so that the VM for wasm32 (vm/wasm) can give its own.
 
 /// Open path with mode "r", "w" (create, truncate) or "a" (create, append);
 /// a directory is EISDIR. Returns the fd.

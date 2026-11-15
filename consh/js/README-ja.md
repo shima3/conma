@@ -16,7 +16,7 @@ rustup target add wasm32-unknown-unknown   # 初めてのときだけ
 consh/js/build.sh
 ```
 
-`build.sh` は、VM を wasm32 でビルドし（consh/js/wasm、約 0.8 MB）、`web/` に wasm、`conma.js`、ConSh のモジュール（`consh.module.se`、bin/includer と bin/resolver で作る。約 7.0 MB）を置く。
+`build.sh` は、VM を wasm32 でビルドし（vm/wasm/build.sh。約 0.8 MB）、`web/` に wasm、ホストの `conma.js`（vm/wasm）、ConSh のモジュール（`consh.module.se`、bin/includer と bin/resolver で作る。約 7.0 MB）を置く。
 
 ## ブラウザで使う
 
@@ -69,7 +69,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
 ## Node.js で使う
 
-`test/vm.sh` は、`CONMA_VM=wasm` のとき wasm 版の VM を Node.js で動かす（`vm-wasm.sh`、`vm-node.js`）。ConSh も同じく動かせる。
+`test/vm.sh` は、`CONMA_VM=wasm` のとき wasm 版の VM を Node.js で動かす（vm/wasm の `vm-wasm.sh`、`vm-node.js`。VM だけなら vm/wasm/build.sh で作れる）。ConSh も同じく動かせる。
 
 ```
 CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh

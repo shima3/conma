@@ -25,10 +25,10 @@ if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$sjs/sjsc.se" \( -name '*.se
 fi
 "$conma" --main "$module" "$1" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
-# CONMA_VM=wasm：変換したプログラムを wasm 版の VM（consh/js/vm-wasm.sh。Node.js）で動かす。数の関数は wasm 版で動く
+# CONMA_VM=wasm：変換したプログラムを wasm 版の VM（vm/wasm/vm-wasm.sh。Node.js）で動かす。数の関数は wasm 版で動く
 # （consh/docs/SJS-WASM-PLAN-ja.md の段階 2）。ほかの VM では、数の関数も ConMa 版で動く
 if [ "$CONMA_VM" = wasm ]; then
   "$conma" build --include "$consh/include" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
-  exec "$consh/js/vm-wasm.sh" --main "$tmp/prog.module.se"
+  exec "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se"
 fi
 "$conma" run --include "$consh/include" "$tmp/prog.se"

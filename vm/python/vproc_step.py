@@ -1061,7 +1061,7 @@ def _js_args_bad(v):
 def prim_JS_call(vp, gvenv):
     """__JS_call__ onError code args ,(inputStream outputStream)
     Evaluate the JavaScript code with args in the host of the VM for wasm32
-    (consh/js). This VM has no JavaScript: after checking the arguments, it
+    (vm/wasm). This VM has no JavaScript: after checking the arguments, it
     goes to onError."""
     name  = "__JS_call__"
     olist = vp["olist"]
@@ -1080,7 +1080,7 @@ def prim_JS_call(vp, gvenv):
 
 def prim_JS_value(vp, gvenv):
     """__JS_value__ onError id ,(String)
-    A JS value numbered id in the host of the VM for wasm32 (consh/js), as the
+    A JS value numbered id in the host of the VM for wasm32 (vm/wasm), as the
     S-expression of a value of ConSh. This VM has no JavaScript: after
     checking the argument, it goes to onError."""
     name  = "__JS_value__"

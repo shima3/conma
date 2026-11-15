@@ -101,13 +101,13 @@ def stale():
     found = []
     built = os.path.join(WEB, "conma.js")
     try:
-        with open(built, "rb") as a, open(os.path.join(JS, "conma.js"), "rb") as b:
+        with open(built, "rb") as a, open(os.path.join(ROOT, "vm", "wasm", "conma.js"), "rb") as b:
             if a.read() != b.read():
                 found.append(built)
     except FileNotFoundError:
         found.append(built)
     sources = {
-        "conma.wasm": newest(os.path.join(ROOT, "vm", "src"), os.path.join(JS, "wasm")),
+        "conma.wasm": newest(os.path.join(ROOT, "vm", "src"), os.path.join(ROOT, "vm", "wasm")),
         # the sources of ConSh, and the frontend that makes the module (bin/includer and the others)
         "consh.module.se": max(
             newest(

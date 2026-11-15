@@ -16,7 +16,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | VM（ConMa 版を動かすもの） | 環境変数 `CONMA_VM`（`test/vm.sh`） | `python` ★ | 基準の Python 版の VM |
 | | | `rust` | Rust 版の VM（`vm/target/release/conma`。`vm` で `cargo build --release`） |
 | | | `transpiled` | ConMa から Rust に変換したコードを組み込んだ Rust 版の VM（`vm/target-transpiled/release/conma`。`bench/build.sh` で作る） |
-| | | `wasm` | wasm32 版の VM を Node.js で動かす（`consh/js/vm-wasm.sh`。`consh/js/build.sh` で作る） |
+| | | `wasm` | wasm32 版の VM を Node.js で動かす（`vm/wasm/vm-wasm.sh`。`vm/wasm/build.sh` で作る） |
 | 構文解析 | オプション | `--conma-parser` ★ | ConMa 版の構文解析（`consh_parser.se`）。ConMa 版の既定で、付けても明示するだけ |
 | | | `--python-parser` | Python の `consh_parse --pos` が作った構文木を読む |
 | 動かす場所 | 起動のしかた | ターミナル ★ | `consh/bin/consh スクリプト [引数 ...]`、引数なしで対話モード |

@@ -1,6 +1,6 @@
 ;; console.log の形：Node.js の util.inspect（既定の設定：depth 2、breakLength 80、compact 3、maxArrayLength 100、maxStringLength 10000）と同じ手順で、
 ;; SJS の値を文字列にする（2026-11-14 から。前は JSON.stringify の形だった）。sjs_rt.se が include し、Sjs_console_string が呼ぶ。
-;; consh/js/conma.js の inspect（ConSh の段階 A）も同じ手順。Node.js と違うところ：
+;; vm/wasm/conma.js の inspect（ConSh の段階 A）も同じ手順。Node.js と違うところ：
 ;;   ・エラーはスタックがないので、一番外では "TypeError: メッセージ"、中では "[TypeError: メッセージ]"（スタックのない Error と同じ）
 ;;   ・オブジェクトの名前の順は SJS の Object.keys の順（整数の名前を先にしない）
 ;;   ・ジェネレータ関数と async 関数も [Function: 名前]

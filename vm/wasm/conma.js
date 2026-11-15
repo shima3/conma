@@ -1,4 +1,4 @@
-// The host side of the ConMa VM for wasm32 (consh/js/wasm). It works in a
+// The host side of the ConMa VM for wasm32 (vm/wasm). It works in a
 // browser (<script src="conma.js">), in Node.js (require) and in the
 // JavaScriptCore shell (load()).
 //
@@ -33,7 +33,7 @@
 //   readdir(path)     an array of names
 // hostProc, if given, starts processes for __OS_spawn__ (the VM calls them):
 //   spawn(argv, env, cwd, stdio, detached)  argv an array of strings, env an
-//       object, stdio 3 pairs {kind, n} (see host_proc_spawn in wasm/src/sys.rs);
+//       object, stdio 3 pairs {kind, n} (see host_proc_spawn in src/sys.rs);
 //       the number of the process, or minus an errno
 //   poll(id)       the exit code (minus a signal number), or null while it runs
 //   kill(id, sig)  0, or minus an errno

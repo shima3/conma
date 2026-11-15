@@ -2,7 +2,7 @@
 //! consh/js/PLAN-ja.md). The modules of vm/src are used as they are, except
 //! sys, which is the virtual OS of src/sys.rs.
 //!
-//! The host (consh/js/conma.js) gives strings as UTF-8 bytes in the memory
+//! The host (vm/wasm/conma.js) gives strings as UTF-8 bytes in the memory
 //! of the module (conma_alloc), and drives the VM:
 //!
 //! * conma_start(module, argv): load the module text and make the first
@@ -22,30 +22,30 @@
 // Parts of vm/src that only the native VM uses (processes, Machine::run).
 #![allow(dead_code)]
 
-#[path = "../../../../vm/src/alloc.rs"]
+#[path = "../../src/alloc.rs"]
 mod alloc;
-#[path = "../../../../vm/src/gc.rs"]
+#[path = "../../src/gc.rs"]
 mod gc;
-#[path = "../../../../vm/src/module.rs"]
+#[path = "../../src/module.rs"]
 mod module;
-#[path = "../../../../vm/src/prim/mod.rs"]
+#[path = "../../src/prim/mod.rs"]
 mod prim;
-#[path = "../../../../vm/src/profile.rs"]
+#[path = "../../src/profile.rs"]
 mod profile;
-#[path = "../../../../vm/src/sched.rs"]
+#[path = "../../src/sched.rs"]
 mod sched;
-#[path = "../../../../vm/src/sexp.rs"]
+#[path = "../../src/sexp.rs"]
 mod sexp;
-#[path = "../../../../vm/src/step.rs"]
+#[path = "../../src/step.rs"]
 mod step;
 mod sys;
-#[path = "../../../../vm/src/trace.rs"]
+#[path = "../../src/trace.rs"]
 mod trace;
-#[path = "../../../../vm/src/transpiled.rs"]
+#[path = "../../src/transpiled.rs"]
 mod transpiled;
-#[path = "../../../../vm/src/value.rs"]
+#[path = "../../src/value.rs"]
 mod value;
-#[path = "../../../../vm/src/vproc.rs"]
+#[path = "../../src/vproc.rs"]
 mod vproc;
 
 #[global_allocator]

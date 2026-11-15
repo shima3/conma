@@ -16,7 +16,7 @@ const os = require("os");
 const ConMaVM = require("./conma.js");
 
 const argv = process.argv.slice(2);
-const wasmFile = path.join(__dirname, "wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm");
+const wasmFile = path.join(__dirname, "target/wasm32-unknown-unknown/release/conma_wasm.wasm");
 
 // Wait for an fd that is not blocking (EAGAIN).
 const sleeper = new Int32Array(new SharedArrayBuffer(4));

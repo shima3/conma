@@ -1,11 +1,11 @@
 #!/bin/bash
 # 数の関数の wasm 版（consh/docs/SJS-WASM-PLAN-ja.md の段階 2）：ログは Node.js で同じプログラムを動かした結果。
 # Rust 版の VM（数の関数も ConMa 版で動く）と、wasm 版の VM（CONMA_VM=wasm。数の関数は wasm 版で動く。Node.js と
-# consh/js/build.sh が要る。なければ飛ばす）の両方で比べる。--emit の出力で、数の関数になったものを確かめる
+# vm/wasm/build.sh が要る。なければ飛ばす）の両方で比べる。--emit の出力で、数の関数になったものを確かめる
 cd ${0%/*}
 out=${TMPDIR:-/tmp}/sjs-test-$$.log
 vms=(rust)
-if [ -f ../../../js/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null; then vms+=(wasm); fi
+if [ -f ../../../../vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null; then vms+=(wasm); fi
 for f in case*.safe.js
 do
   c=${f%.safe.js}

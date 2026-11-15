@@ -1,6 +1,6 @@
 ;; 拡張 ConMa の機能 "wasm" の代わりの定義（consh/docs/SJS-WASM-PLAN-ja.md の 5.3、docs/PRIMITIVES.md の 16）。
 ;; コア ConMa のファイルなので include/core に置く。
-;; __Wasm_compile__ と __Wasm_call__ は、wasm 版の VM（consh/js）のホストの WebAssembly で動く。コア ConMa の VM（Python）には
+;; __Wasm_compile__ と __Wasm_call__ は、wasm 版の VM（vm/wasm）のホストの WebAssembly で動く。コア ConMa の VM（Python）には
 ;; WebAssembly がないので、bin/to-core がこの定義をモジュールに入れ、どちらも onError を呼ぶ（ネイティブの VM のプリミティブ
 ;; と同じメッセージ。ただし、ネイティブの VM は、先に WAT を組み立てて、誤りがあればそれを onError に渡す）。
 ;;   __Wasm_compile__ onError wat ,(module)

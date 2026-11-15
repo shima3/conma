@@ -243,7 +243,7 @@ fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
 }
 
 /// The VM for wasm32: the host runs the ConMa frontend as conma build does
-/// (consh/js), and gives the module text with the file names in SInfo
+/// (vm/wasm), and gives the module text with the file names in SInfo
 /// relative to the directory above the repository, or the first line of its
 /// error.
 #[cfg(not(unix))]

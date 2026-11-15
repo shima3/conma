@@ -1,5 +1,5 @@
 // Run the ConMa VM for wasm32 in the JavaScriptCore shell, as conma (vm/src/main.rs) runs:
-//   jsc vm-jsc.js -- <dir of consh/js> <current directory> <file of `env -0`> <file of dirs> <file of files>
+//   jsc vm-jsc.js -- <dir of vm/wasm> <current directory> <file of `env -0`> <file of dirs> <file of files>
 //       [-t] [-m] <module_file> <func_name | arg ...>
 // The VM starts in the current directory, with the environment variables of the file. The virtual file
 // system has the directories and the files of the two files (paths separated by NUL, from `find -print0`
@@ -16,7 +16,7 @@
     ConMaVM.text(Uint8Array.from(a, (c) => c.charCodeAt(0)))
   );
   const hex = (b) => Array.from(b, (c) => (c < 16 ? "0" : "") + c.toString(16)).join("");
-  const wasm = new WebAssembly.Module(read(jsdir + "/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm", "binary"));
+  const wasm = new WebAssembly.Module(read(jsdir + "/target/wasm32-unknown-unknown/release/conma_wasm.wasm", "binary"));
   const unhex = (h) => Uint8Array.from(h.match(/../g) || [], (b) => parseInt(b, 16));
   let inputEnded = false;
   // Give the next piece of standard input (waiting for it), or its end.

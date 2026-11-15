@@ -1,5 +1,5 @@
 //! __JS_call__: evaluate JavaScript in the host of the VM for wasm32
-//! (consh/js), and __JS_value__: a value of the host as a value of ConSh.
+//! (vm/wasm), and __JS_value__: a value of the host as a value of ConSh.
 //! The native VM has no JavaScript: both go to onError.
 
 use super::stream::new_stream;
