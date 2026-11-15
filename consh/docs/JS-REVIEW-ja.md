@@ -1,6 +1,6 @@
 # JavaScript 版 ConSh の仕様と設計のレビュー
 
-[PLAN-ja.md](PLAN-ja.md)、[README-ja.md](README-ja.md)、`conma.js`（`evaluateStatement`、`keep`）、`consh/include/consh_jsstmt.se` を読んで行った（main の 34b8e84、2026-11-09）。動かして確かめたものではない。重い順に並べる。
+[JS-PLAN-ja.md](JS-PLAN-ja.md)、[consh/js/README-ja.md](../js/README-ja.md)、`conma.js`（`evaluateStatement`、`keep`）、`consh/include/consh_jsstmt.se` を読んで行った（main の 34b8e84、2026-11-09）。動かして確かめたものではない。重い順に並べる。
 
 ## 1. 設計上のリスク（直したほうがよいもの）
 
@@ -83,7 +83,7 @@ PATH と解析時にわかる関数で決まる。そのため、同じスクリ
 
 ## 6. 対応の確認（2026-11-09、main の 35cb001）
 
-PLAN-ja.md の 3.16〜3.20 の対応を、コードと実行で確かめた。対象のコミットは 13aa560、375320b、ae0e19c、0f5a735、35cb001 である。
+JS-PLAN-ja.md の 3.16〜3.20 の対応を、コードと実行で確かめた。対象のコミットは 13aa560、375320b、ae0e19c、0f5a735、35cb001 である。
 
 ### 6.1 テスト
 

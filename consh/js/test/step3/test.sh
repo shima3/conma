@@ -1,5 +1,5 @@
 #!/bin/bash
-# 段階 6：イテレータの結果を1つずつ出す（consh/js/PLAN-ja.md の 2.1 の 5 の最後と、6 の遅延の LazyList）。
+# 段階 6：イテレータの結果を1つずつ出す（consh/docs/JS-PLAN-ja.md の 2.1 の 5 の最後と、6 の遅延の LazyList）。
 # wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
 cd ${0%/*}
 export CONMA_VM=wasm

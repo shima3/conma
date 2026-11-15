@@ -112,7 +112,7 @@
 
 まだ合わないもの：
 
-* **大きさの記述**：consh/js/PLAN-ja.md の「約 7.0 MB」は、計画を書いたときの数で、今の大きさと合わない（consh/js/README-ja.md の「wasm 約 700 KB」は、約 0.8 MB に直した）。
+* **大きさの記述**：consh/docs/JS-PLAN-ja.md の「約 7.0 MB」は、計画を書いたときの数で、今の大きさと合わない（consh/js/README-ja.md の「wasm 約 700 KB」は、約 0.8 MB に直した）。
 * **CPython**：`bench/run.sh` は PATH の最初の `python3` を使う。この機械では Homebrew の 3.15.2 で、表の 3.9.6（/usr/bin/python3）より 2.2〜2.6 倍速い。
 
 ## 8. 記録の場所

@@ -15,7 +15,7 @@ use crate::vproc::VProc;
 /// them), and writes the result to inputStream as lines of S-expressions;
 /// what is written to outputStream goes to the host (the standard input of
 /// the code), and it is closed when the last reference to it is dropped. See
-/// 2.2 of consh/js/PLAN-ja.md.
+/// 2.2 of consh/docs/JS-PLAN-ja.md.
 pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__JS_call__";
     let mut a = take_n(vp, name, 3)?;
@@ -49,7 +49,7 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// (a String that the host gave in a result of __JS_call__), as the
 /// S-expression of a value of ConSh: (s "text"), (l (...)), (n) or (f) for a
 /// function. The host makes it when it is asked, so a change of an object is
-/// seen. See 2.5 of consh/js/PLAN-ja.md.
+/// seen. See 2.5 of consh/docs/JS-PLAN-ja.md.
 pub fn value(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__JS_value__";
     let mut a = take_n(vp, name, 2)?;

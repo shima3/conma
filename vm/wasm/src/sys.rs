@@ -1,5 +1,5 @@
 //! The OS of the VM for wasm32: the same functions as vm/src/sys.rs, on a
-//! virtual OS kept in memory (see 2.2 of consh/js/PLAN-ja.md).
+//! virtual OS kept in memory (see 2.2 of consh/docs/JS-PLAN-ja.md).
 //!
 //! * fds 0, 1, 2: standard input is the bytes the host gives with
 //!   conma_input (and conma_input_end); standard output and standard error go

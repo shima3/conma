@@ -58,7 +58,7 @@
 // run as the body of an async function, whose result is the value of its
 // return (it sees stdin and args); the result (awaited if it is a
 // Promise) is written to the pipe of __JS_call__ as a line, an S-expression
-// that __Sexp_read__ reads (see 2.1 and 2.2 of consh/js/PLAN-ja.md); lines
+// that __Sexp_read__ reads (see 2.1 and 2.2 of consh/docs/JS-PLAN-ja.md); lines
 // before it say what else the call needs:
 //   (o "text")         console.log (and info, debug): an element of standard output
 //   (x "text")         console.error (and warn): an element of standard error
@@ -156,7 +156,7 @@ var ConMaVM = (function () {
     return value;
   }
 
-  // ── JS values of shell variables (2.5.4 of consh/js/PLAN-ja.md) ──
+  // ── JS values of shell variables (2.5.4 of consh/docs/JS-PLAN-ja.md) ──
   // A shell variable (js name=, v=$(( ... ))) or an SJS variable holds a JS value that is not a
   // string only as an id: #n for an object or a function, kept in the table below, or the value
   // itself for a primitive (number:3, boolean:true, bigint:5, undefined, null), so that primitives
@@ -166,7 +166,7 @@ var ConMaVM = (function () {
   // The JS statements of ConSh, which this served first, were removed in stage A3 of SJS (3.26).
 
   // js name= code: the result is given as a JS value, (r j "id"), unless it is a string or an
-  // iterator (2.5 of consh/js/PLAN-ja.md)
+  // iterator (2.5 of consh/docs/JS-PLAN-ja.md)
   const KEEP = "//@consh-keep\n";
   const values = new Map(); // objects and functions of shell variables, by number
   let nextValue = 0;

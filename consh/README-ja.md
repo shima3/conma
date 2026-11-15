@@ -17,6 +17,8 @@ consh/
 │   ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
 │   ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
 │   ├── SJS-WASM-ARRAY-PLAN-ja.md  その、配列を使う関数の計画
+│   ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
+│   ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
 │   └── REVIEW-ja.md             ConSh のレビュー
 ├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
@@ -93,7 +95,7 @@ ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-di
     * 前置の変数定義は、同じ文の語の展開にも反映する（`OFS=, echo "$list"`）
     * 先頭の語が `${list}` なら、要素を順に引数にする（先頭の要素だけは再帰的に展開してコマンド名を取る）。先頭の語の LazyList が空ならエラー
 * 組み込みコマンド `echo`、`cd`、`defined`、`builtin`、`command`、`stdin`、`wait`、`kill`、`exit`、`js`
-    * `js [変数名=] コード {引数}` は JavaScript を評価する（js/PLAN-ja.md）。JavaScript が動くのは ConMa の VM の wasm32 版（js/。ブラウザと Node.js）だけで、ほかの版では `$?` を 127 にする（test/step17、js/test/step1）
+    * `js [変数名=] コード {引数}` は JavaScript を評価する（docs/JS-PLAN-ja.md）。JavaScript が動くのは ConMa の VM の wasm32 版（js/。ブラウザと Node.js）だけで、ほかの版では `$?` を 127 にする（test/step17、js/test/step1）
 * if 文（`elif`、`else`、`fi` の後のリダイレクト）
 * リストfor文、`break [変数名]`、`continue [変数名]`（`done` の後のリダイレクト）
     * 語は関数の引数と同じ規則で展開し、LazyList の値は1階層だけ開いて要素ごとに回す

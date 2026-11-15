@@ -5,7 +5,7 @@ js '('
 echo "status $?"
 js '"x"' extra
 echo "status $?"
-# 変数に入れるときは、結果の関数（外側の関数を呼んだ () => 1）も JS の値として入り（PLAN-ja.md の 2.5 の 4）、$f で呼べる
+# 変数に入れるときは、結果の関数（外側の関数を呼んだ () => 1）も JS の値として入り（consh/docs/JS-PLAN-ja.md の 2.5 の 4）、$f で呼べる
 js f= '() => () => 1'
 echo "status $?"
 $f

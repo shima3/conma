@@ -2272,7 +2272,7 @@ fn builtin_echo(sh: &Ctx, pos: Pos, args: Vec<Value>, _in: Arc<Input>, out: Targ
     Ok(())
 }
 
-/// js [name=] code {arg}: evaluate JavaScript (consh/js/PLAN-ja.md 2.1).
+/// js [name=] code {arg}: evaluate JavaScript (consh/docs/JS-PLAN-ja.md 2.1).
 /// This version has no JavaScript: after the checks of the ConMa version
 /// (code, the name, arguments that are not functions), it writes
 /// "js: JavaScript is not available" and sets $? to 127.

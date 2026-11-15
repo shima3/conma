@@ -182,6 +182,8 @@ consh/js/
                     consh/test/common.sh の run を使う。run_all.sh ですべて実行する
 ```
 
+（2026-11-15 に、PLAN-ja.md と REVIEW-ja.md は consh/docs/JS-PLAN-ja.md と JS-REVIEW-ja.md へ、conma.js、vm-node.js、vm-jsc.js、vm-wasm.sh と wasm/ は vm/wasm へ移動。この文書の中の `build.sh`、`web/`、`test/` などのパスは、断りがなければ consh/js からのもの）
+
 VM の Rust のコードのうち、ネイティブ版と共通のもの（sys.rs の関数を通すようにした変更、スケジューラ、段階 4 の js のプリミティブ）は vm/src に置く。ConSh の `js` の組み込みコマンドは、consh/include/consh_eval.se（参照版は consh/reference/consh_eval.se）と consh/rust/src/eval.rs に置く（2.1 の 10）。
 
 ### 2.4. 当面の制限
@@ -455,7 +457,7 @@ JavaScript のある版（ブラウザと Node.js の wasm 版）では、`js` �
 
 ### 3.16. レビューへの対応（2026/11/9）
 
-consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
+consh/docs/JS-REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 - 1.1（大域変数と同じ名前への代入が大域変数に入る）：代入される名前は、大域変数にあってもシェルの変数にした（2.5 の 5）。`has` をいつも真にすると、`alert()` や `fetch()` が `with` の Proxy を `this` にして呼ばれ、Illegal invocation になるので、代入される名前だけを先に用意する。
 - 1.2（`await` の間の更新が失われる）：文が終わったときに書き戻すのは、その文が代入した変数だけにした。
@@ -483,7 +485,7 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 ### 3.19. ブラウザ版の VM を Worker で動かす（2026/11/9）
 
-- ブラウザ版の VM を Worker で動かすようにした（consh/js/REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
+- ブラウザ版の VM を Worker で動かすようにした（consh/docs/JS-REVIEW-ja.md の 4）。serverfs.js の同期の XMLHttpRequest と VM の実行は Worker で行い、画面は止まらない。JavaScript（`js` と JS の文）は、`document` や `window` を使えるように、ページで評価する（ユーザーの選択）。
 - conma.js：JavaScript の評価を `JsEngine`（呼び出しを job の番号で扱い、行を `out.line`、終わりを `out.end` で返す）にまとめ、VM（`create`）から分けた。`create` は、`hooks.jsRemote` があれば、`host_js_call`、`host_js_input`、`host_js_input_end`、`host_js_value` をそれに渡し、行は `vm.jsLine`、終わりは `vm.jsEnd` で受け取る。なければ、今までどおり同じスレッドの `JsEngine` を使う（Node.js、ページの中で動かすとき）。
 - web/consh-core.js：VM、ファイル、`COMMANDS`、`hostProc`、VM を区切って動かすことを、consh.js から移した。Worker（consh-worker.js）でもページ（consh.js）でも動く。
 - web/consh-worker.js：ページとメッセージでつなぐ。js の呼び出しはページに渡し、ページの `JsEngine` が書く行を VM のパイプに書く。読み手がいなくなったら（EPIPE）ページに知らせる。`__JS_value__` は同期なので、ページに尋ねて、SharedArrayBuffer を `Atomics.wait` で待つ（1 MB ずつ受け取るので、大きな値も渡せる）。
@@ -492,12 +494,12 @@ consh/js/REVIEW-ja.md（e0b2c58）の指摘に、次のように対応した。
 
 ### 3.20. CONSH_JS_DEBUG（2026/11/9）
 
-- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。consh/js/REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
+- JS の文をシェルの文として実行するとき（2.5 の 7）、シェルの変数か環境変数の `CONSH_JS_DEBUG` が空でなければ、JavaScript としてのエラーを `js: SyntaxError: Unexpected identifier 'a' (run as a shell statement)` のように出すようにした（`Js_debug`。consh/docs/JS-REVIEW-ja.md の 2.1）。シェルの文としても解析できない文は、今までどおり、JavaScript のエラーだけを出す。
 - テスト：consh/js/test/step5 の case7。
 
 ### 3.21. レビューの 6 への対応（2026/11/9）
 
-consh/js/REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
+consh/docs/JS-REVIEW-ja.md の 6.3（37274ec）に、次のように対応した。
 
 - 1（分割代入では大域変数に入る）：分割代入のパターンが束縛する名前も、代入される名前に数えるようにした（`rewriteDeclarations` の `assigned`。2.5 の 5）。`[performance] = [2]`（Node.js）は、シェルの変数 `performance` になり、`globalThis.performance` は変わらない。
 - 2（括弧で囲んだ分割代入が値を出す）：コード全体を囲む括弧の中の、一番外側の代入も、代入として何も出さないようにした。
@@ -616,5 +618,5 @@ consh/docs/SAFEJS-PLAN-ja.md の段階 B6。ブラウザ版でも `(( ))` を段
 - JS の値の表の解放と、イテレータの `return()` は、VM が値を捨てたときに行う（3.18）。関数の局所変数の JS の値は、循環の回収まで残る。
 - 当面の制限：変数に入れた遅延の LazyList（終わらないジェネレータなど）を `for e in ${nat}; do break; done` のように途中まで読むと、捨てても、その呼び出しの outputStream が VM に残り、ホストのイテレータと呼び出しも残る（`return()` が呼ばれない）。読まずに捨てたものと、最後まで読んだものは残らない。2026/11/9 に調べたこと：残るのは outputStream そのもので（VM が捨てていない）、関数を 20 万回呼んで循環の回収を走らせても消えない。一方、ConSh を通さずに同じ形の LazyList（評価の中で継続を取り、先頭だけ読んで捨てる）を作ると、ネイティブ版でも wasm 版でも消える。そのため、ConSh の中（`For_lazy`、`Js_iter_lazy`、文脈の Dict など）のどこかが持ち続けていると考えられるが、まだ特定していない。突き止めるには、ある値を参照しているものを VM で調べる仕組みが要る。
 - ブラウザ版は、cross-origin isolated でないサーバーでは、今までどおりページの中で VM を動かすので、ファイルを読む間は画面が止まる（3.19）。
-- `js` と JS の文はサンドボックスなしでホストの権限で動く（README-ja.md のセキュリティの注意）。安全に JavaScript を書けるように、JavaScript のサブセット（SJS）を算術評価 `(( ))` と算術置換 `$(( ))` に書き、当面はホストの JavaScript で、将来は ConMa に変換して VM の中で動かす計画を、consh/docs/SAFEJS-PLAN-ja.md に書いた。JS の文（2.5）は、これに置き換えて消す予定である。
+- `js` と JS の文はサンドボックスなしでホストの権限で動く（consh/js/README-ja.md のセキュリティの注意）。安全に JavaScript を書けるように、JavaScript のサブセット（SJS）を算術評価 `(( ))` と算術置換 `$(( ))` に書き、当面はホストの JavaScript で、将来は ConMa に変換して VM の中で動かす計画を、consh/docs/SAFEJS-PLAN-ja.md に書いた。JS の文（2.5）は、これに置き換えて消す予定である。
 - 結果のオブジェクトを JSON の文字列でなく ConMa の Dict にするか。ConSh にはまだ Dict の値がない（ConSh のレビューの 1、ConMa の 6 のレコードとつながる）。

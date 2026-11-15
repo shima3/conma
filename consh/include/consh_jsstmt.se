@@ -1,10 +1,10 @@
 ;; ConSh の JavaScript：js の JS の値と、SJS の算術評価 (( )) と算術置換 $(( ))（consh/docs/SAFEJS-PLAN-ja.md）。
 ;; 文字列でない JavaScript の値は、シェルの変数（js 変数名=、v=$(( ... ))）と SJS変数に、その番号（オブジェクトと関数は
 ;; ホストの表の #n、プリミティブは number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう
-;; （Js_store、Js_force。consh/js/PLAN-ja.md の 2.5 の 4）。
+;; （Js_store、Js_force。consh/docs/JS-PLAN-ja.md の 2.5 の 4）。
 ;; JS の値の変数は、値を作った __JS_call__ の outputStream（toHost）も持つ。VM は、この Stream が捨てられたら閉じるので
 ;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
-;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（consh/js/PLAN-ja.md の 3.26）。
+;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（consh/docs/JS-PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
 ;; SJS の変換器と実行時の支え（段階 B。consh/sjs/README-ja.md）
@@ -14,7 +14,7 @@
 (include "sjs_gen.se")
 (include "sjs_wasm.se")
 
-;; JavaScript の状態（consh/js/PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
+;; JavaScript の状態（consh/docs/JS-PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
 ;;   js なら "js"（js と算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、
 ;;   ないかほかの値なら "off"（どれも使えない）。JavaScript がない版は "none"。
 ;; 環境変数は、シェルの export でなく、VM のプロセスのものを見るので、起動した後には変わらない

@@ -118,7 +118,7 @@ consh/include/
 ## テスト
 
 * consh/sjs/test：step1（基本）、step2（配列、オブジェクト、ループ、組み込み）、step3（例外とエラーの位置）、step4（ジェネレータ）、step5（async と Promise）、step6（残りの書き方）、step7（言語の残り）、step8（`in`、配列のメンバー、分割代入、Ref のない `const` など）。step1 と step2 の多くは、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの位置の前置きを除く）。段階 A にない書き方（step4〜step8）とエラーの位置は、Node.js の結果と比べた。
-* ConSh の `(( ))` と `$(( ))`：consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）。ブラウザ版はページで確かめた（consh/js/PLAN-ja.md の 3.29、3.30）。
+* ConSh の `(( ))` と `$(( ))`：consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）。ブラウザ版はページで確かめた（consh/docs/JS-PLAN-ja.md の 3.29、3.30）。
 
 ## 経緯
 
