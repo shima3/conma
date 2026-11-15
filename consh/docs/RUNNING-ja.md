@@ -2,7 +2,7 @@
 
 ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方があり、その説明は consh/README-ja.md の「実行」、consh/js/README-ja.md、consh/bench/README-ja.md などに分かれている。この文書は、それを 1 か所にまとめたものである。
 
-ここに書いたことは、2026-11-15 に alpha（92a959f）を実際に動かして確かめた。環境は macOS（Apple Silicon）、Python 3.9.6、Node.js v26.13.0、rlwrap 0.48 である。確かめていないことは、最後の節に分けて書いた。
+ここに書いたことは、2026-11-15 に alpha（92a959f）を実際に動かして確かめた。ただし、`CONMA_VM` がないときの ConMa 版の VM（Rust 版で、作っていなければエラー）は、その後の 6ca266e で変え、そのときに確かめた。環境は macOS（Apple Silicon）、Python 3.9.6、Node.js v26.13.0、rlwrap 0.48 である。確かめていないことは、最後の節に分けて書いた。
 
 ## 4 つの軸
 
