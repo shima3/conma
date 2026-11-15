@@ -1,4 +1,4 @@
-//! conma — run a ConMa VProc to completion, as test/vproc_run.py does.
+//! conma — run a ConMa VProc to completion, as vm/python/vproc_run.py does.
 //!
 //! Usage:
 //!     conma [-t|--trace] <module_file> <func_name>

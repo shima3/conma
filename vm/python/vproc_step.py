@@ -2433,7 +2433,7 @@ SCHEDULER = Scheduler()
 
 # ── Program loading ───────────────────────────────────────────────────────────
 
-ROOT_DIR    = pathlib.Path(__file__).resolve().parent.parent   # the repository
+ROOT_DIR    = pathlib.Path(__file__).resolve().parents[2]      # the repository
 BIN_DIR     = ROOT_DIR / "bin"
 INCLUDE_DIR = ROOT_DIR / "include"
 

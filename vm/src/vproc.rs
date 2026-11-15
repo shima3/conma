@@ -1,4 +1,4 @@
-//! The state of a Virtual Process (the class VProc of test/vproc_step.py).
+//! The state of a Virtual Process (the class VProc of vm/python/vproc_step.py).
 
 use crate::module::GVEnv;
 use crate::value::*;

@@ -1,4 +1,4 @@
-//! ConMa values. They mirror the Python classes of test/vproc_step.py, so that
+//! ConMa values. They mirror the Python classes of vm/python/vproc_step.py, so that
 //! traces and error messages come out the same.
 
 use crate::module::{BodyDef, GVEnv};

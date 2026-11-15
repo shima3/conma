@@ -1,7 +1,7 @@
 //! The table of primitives. A primitive is looked up by its ConMa name for a
 //! global variable without a definition, and by the name of its Python
 //! function for `(PrimFunc "...")`; traces write the Python name, so that they
-//! match test/vproc_step.py.
+//! match vm/python/vproc_step.py.
 
 use crate::sched::Machine;
 use crate::vproc::VProc;

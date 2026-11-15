@@ -1,6 +1,6 @@
 # ConMa VM in Rust
 
-A second implementation of the ConMa VM. It reads the same modules (the output of `bin/resolver`) and takes the same arguments as `test/vproc_run.py`. The goal is to give the same output, traces and error messages as `test/vproc_step.py`, step by step, and to be much faster. It is the product, the Python VM the reference; with the ConMa frontend it embeds, it runs ConMa source files without Python.
+A second implementation of the ConMa VM. It reads the same modules (the output of `bin/resolver`) and takes the same arguments as `vm/python/vproc_run.py`. The goal is to give the same output, traces and error messages as `vm/python/vproc_step.py`, step by step, and to be much faster. It is the product, the Python VM the reference; with the ConMa frontend it embeds, it runs ConMa source files without Python. The Python VM is in [python/](python/README.md).
 
 ## Build and run
 

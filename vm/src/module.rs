@@ -1,6 +1,6 @@
 //! Loading a module (the output of bin/resolver) and compiling its Functions
 //! and Bodies once, as `load_module`, `compile_body` and `closure_from_function`
-//! in test/vproc_step.py do.
+//! in vm/python/vproc_step.py do.
 
 use crate::prim;
 use crate::sexp::Sexp;
@@ -813,7 +813,7 @@ pub fn ext_features(module: &Sexp) -> Vec<String> {
 }
 
 /// An error for the first feature of extended ConMa the module uses that this VM
-/// does not run (the message of check_core of test/vproc_step.py).
+/// does not run (the message of check_core of vm/python/vproc_step.py).
 fn check_features(module: &Sexp) -> Result<(), String> {
     match ext_features(module).into_iter().find(|f| !EXT_FEATURES.contains(&unquote(f))) {
         Some(f) => Err(format!(

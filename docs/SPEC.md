@@ -682,7 +682,7 @@ The interpreter starts the first VProc with `__start__` (also in `include/util.s
 * in: a LazyList of the lines of standard input, each including its newline (`__LazyList_lines__`). A last line without a newline is an element as it is. Standard input is read only as far as the `LazyList` is walked, and only once.
 * args: a Seq of the program arguments given on the command line, as Strings.
 
-The test runner does this with `test/vproc_run.py --main <module_file> [<arg> ...]`; without `--main`, it applies a named function to no arguments.
+The test runner does this with `vm/python/vproc_run.py --main <module_file> [<arg> ...]`; without `--main`, it applies a named function to no arguments.
 
 `__main__` calls the user-defined `main` function with the argumentSeq.
 The read position of the inputSeq, the outputSink, and the errorSink are passed via `PDict`.

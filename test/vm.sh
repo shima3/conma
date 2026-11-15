@@ -1,9 +1,9 @@
 #!/bin/bash
-# ConMa の VM を起動する。引数は vproc_run.py と同じ（[--trace] [--main] <module_file> <func_name | arg ...>）。
+# ConMa の VM を起動する。引数は vm/python/vproc_run.py と同じ（[--trace] [--main] <module_file> <func_name | arg ...>）。
 # 環境変数 CONMA_VM が rust なら Rust 版（vm/target/release/conma）、transpiled なら ConMa から Rust への変換器
 # （vm/conma2rust）で変換したコードを組み込んだ Rust 版
 # （vm/conma2rust/build.sh で作る vm/target-transpiled/release/conma）、wasm なら wasm32 版を JavaScriptCore で動かす
-# （consh/js/vm-wasm.sh。consh/js/build.sh で作る）、それ以外（既定）は Python 版（vproc_run.py。拡張 ConMa の
+# （consh/js/vm-wasm.sh。consh/js/build.sh で作る）、それ以外（既定）は Python 版（vm/python/vproc_run.py。拡張 ConMa の
 # モジュールは bin/to-core でコア ConMa に直してから動かす）
 dir="$(cd "${0%/*}"; pwd)"
 case "${CONMA_VM:-python}" in
@@ -23,7 +23,7 @@ case "${CONMA_VM:-python}" in
             core="$(mktemp "${TMPDIR:-/tmp}/conma-core.XXXXXX")" || exit 1
             if "$dir/../bin/to-core" "$module" > "$core" 2>/dev/null; then
               args[$i]="$core"
-              python3 "$dir/vproc_run.py" "${args[@]}"
+              python3 "$dir/../vm/python/vproc_run.py" "${args[@]}"
               status=$?
               rm -f "$core"
               exit $status
@@ -33,5 +33,5 @@ case "${CONMA_VM:-python}" in
           break ;;
       esac
     done
-    exec python3 "$dir/vproc_run.py" "$@" ;;
+    exec python3 "$dir/../vm/python/vproc_run.py" "$@" ;;
 esac

@@ -1,5 +1,5 @@
 //! The machine: the VProcs and the round-robin scheduler (class Scheduler of
-//! test/vproc_step.py). Each scheduling step runs one Operator application of
+//! vm/python/vproc_step.py). Each scheduling step runs one Operator application of
 //! the VProc at the front of the ready queue.
 
 use crate::module::{compile_body, GVEnv};
@@ -110,7 +110,7 @@ pub enum Slice {
 }
 
 /// The pseudo-random numbers of CONMA_SEED (the same as SplitMix64 in
-/// test/vproc_step.py).
+/// vm/python/vproc_step.py).
 pub struct SplitMix64(u64);
 
 impl SplitMix64 {
@@ -151,7 +151,7 @@ pub enum OsTarget {
 }
 
 /// The Boolean Closures `,(t f) t` and `,(t f) f`, with the AST that
-/// test/vproc_step.py builds for them.
+/// vm/python/vproc_step.py builds for them.
 fn bool_closure(param: &str) -> Value {
     let a = Sexp::atom;
     let l = Sexp::list;
@@ -180,7 +180,7 @@ fn bool_closure(param: &str) -> Value {
 
 /// The Closures that __if_then_else__, __if__ and __unless__ use: `,(clause)
 /// clause`, which applies the clause a Boolean passes back, and `,()`, the
-/// clause that does nothing. They have the AST that test/vproc_step.py builds.
+/// clause that does nothing. They have the AST that vm/python/vproc_step.py builds.
 fn select_closure() -> Value {
     let a = Sexp::atom;
     let l = Sexp::list;

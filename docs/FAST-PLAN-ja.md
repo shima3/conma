@@ -77,7 +77,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
     Error: the module uses a feature of extended ConMa that this VM does not run: "if" (bin/to-core translates the module into core ConMa)
     ```
 
-    * Python VM（test/vproc_step.py の `check_core`）は、コア ConMa だけを動かすので、どの機能でもエラーにする。
+    * Python VM（vm/python/vproc_step.py の `check_core`）は、コア ConMa だけを動かすので、どの機能でもエラーにする。
     * Rust VM と wasm 版（vm/src/module.rs の `check_features`）は、`EXT_FEATURES` にない機能をエラーにする。今は空である。変換版の VM も同じ確かめ方をし、vm/conma2rust/conma2rust.py は知らない機能のあるモジュールを変換しない。
 * 変換器は bin/to-core（Python）とした。`bin/to-core [<module_file>]` は、モジュール（ファイルがなければ標準入力）を読み、コア ConMa のモジュールを標準出力に書く。今は、空の `(Uses)` を前の空白ごと消し、残りは読んだとおりに書く。機能を挙げていれば、エラーにする（`to-core: cannot translate a feature of extended ConMa: "if"`）。
 * ConMa で書いた変換器と、フロントエンドから呼ぶことは、フロントエンドが初めて `Uses` を書く段階（F3 か F4）で作る。

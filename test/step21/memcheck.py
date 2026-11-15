@@ -15,7 +15,7 @@ import gc, sys, pathlib, importlib.util
 INTERVAL = 2000
 
 spec = importlib.util.spec_from_file_location(
-    "vproc_run", pathlib.Path(__file__).parent.parent / "vproc_run.py")
+    "vproc_run", pathlib.Path(__file__).resolve().parents[2] / "vm" / "python" / "vproc_run.py")
 vproc_run = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vproc_run)
 vs = vproc_run.vs

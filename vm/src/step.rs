@@ -1,4 +1,4 @@
-//! One step of a VProc: one Operator application (step in test/vproc_step.py).
+//! One step of a VProc: one Operator application (step in vm/python/vproc_step.py).
 
 use crate::module::{make_closure, BodyDef, CExpr, CLCont, GVEnv};
 use crate::prim::{err, PResult, VmError};

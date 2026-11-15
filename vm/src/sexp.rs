@@ -1,5 +1,5 @@
 //! S-expressions: reading a module and writing traces, as `parse_sexp` and
-//! `sexp_to_str` in test/vproc_step.py do.
+//! `sexp_to_str` in vm/python/vproc_step.py do.
 
 use std::rc::Rc;
 

@@ -46,7 +46,7 @@ __Lexer_main__ fileName lines ,(tokens)
 * Outside a block comment, the first character selects a handler from a Dict (`__Lexer_handlers__`), and SymbolChars are looked up in another Dict, instead of comparing the character with each rule in turn. Lines are scanned one by one, so the String primitives only work on short Strings. The end of a String (the next `"`, `\` or newline) and of a line comment are found with `__String_find_any__`, and so is the next character that can end a Symbol: an ASCII character that is not a SymbolChar, or `|` (which goes on unless `|#` follows); only the characters before it are looked up, for a character above ASCII, which also ends a Symbol (2026-11-15; with the S-expressions written with fewer steps, 22% fewer steps to build a module of 28 KB).
 * Errors are written to standard error with the messages of `bin/lexer`, and scanning goes on. An unexpected character is shown with `__String_repr__` of `util.se`, as Python's `repr` does (for example `"'"` and `'\u3000'`).
 * One difference: a `\` just before a newline inside a String. `bin/lexer` takes the newline into the String and goes on without counting the line (see Limitations in [LEXER.md](LEXER.html)). The ConMa lexer ends the String after the `\` and reports it as unterminated.
-* Speed: with `test/vproc_run.py`, `include/util.se` (about 120 lines) takes about 3 seconds and `include/lexer.se` (about 360 lines) about 11 seconds.
+* Speed: with `vm/python/vproc_run.py`, `include/util.se` (about 120 lines) takes about 3 seconds and `include/lexer.se` (about 360 lines) about 11 seconds.
 
 ### comment_remover
 

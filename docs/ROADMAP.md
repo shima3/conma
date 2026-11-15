@@ -4,11 +4,11 @@ This document gives an order for implementing (or re-implementing) the built-in 
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
 The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step34`.
 
-Status shows whether `test/vproc_step.py` currently has the primitive (as of 2026-10-30).
+Status shows whether `vm/python/vproc_step.py` currently has the primitive (as of 2026-10-30).
 
 ## Tests
 
-Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `test/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
+Each `test/stepN/test.sh` builds `test.se` with `test/resolver.sh`, runs each case function with `vm/python/vproc_run.py` (`test/step13` also starts programs with `--main`), and compares the output with `caseN.log`. From `step2` on, `exit: <code>` is appended to the output; `step1` compares the full `--trace` output instead. No output means every case passed.
 
 ```
 test/run_all.sh
@@ -20,7 +20,7 @@ CONMA_VM=rust test/run_all.sh
 * Each `test.sh` sources `test/common.sh`, which moves to the test directory and makes a temporary directory `$tmp` (`mktemp -d`, removed when the test ends); `resolve test.se` builds `$tmp/test.module.se` with `test/resolver.sh`, and the logs of the cases are written in `$tmp`. So tests of different steps can run at the same time. The same test cannot run twice at the same time, since some tests make a `work/` directory or links in their own directory (`step14`, `step16`, `step23`, `step24`, `selfhost6`, `selfhost7`). (`step33` writes its file in `$tmp`, which it passes in `STEP33_DIR`.) The ConSh tests (`consh/test`) do the same with their own `consh/test/common.sh`, and `bin/consh` builds its module in `CONSH_MODULE_DIR` (`/tmp` by default) through a temporary file, so that ConSh started at the same time never reads a half-written module. Where an output holds a path in `$tmp` (the module file in the trace of `step1`, file names in `selfhost2` and `selfhost5`), it is written as `<tmp>`.
 * `test/resolver.sh [path/]file.se [dir]` writes `dir/file.ast.se` and `dir/file.module.se` (`dir` is `/tmp` by default).
 
-* `test.sh` starts the VM through `test/vm.sh`: the Python VM (`test/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`. The Python VM runs only core ConMa, so `test/vm.sh` first translates a module of extended ConMa (with `(Uses "...")`) with `bin/to-core` (Step 41).
+* `test.sh` starts the VM through `test/vm.sh`: the Python VM (`vm/python/vproc_run.py`) by default, the Rust VM (`vm/`, see `vm/README.md`) when `CONMA_VM=rust`. The Python VM runs only core ConMa, so `test/vm.sh` first translates a module of extended ConMa (with `(Uses "...")`) with `bin/to-core` (Step 41).
 * Standard output and standard error go to the same log, so `PYTHONUNBUFFERED=1` keeps their order.
 * Standard input is empty (`/dev/null`) unless a case needs it (`test/step9` case5 reads `input.txt`; `test/step13` gives several cases an input file; `test/step20` case6 reads `input.txt`; `test/step21` gives each case its own input).
 * Cases that write files (`test/step14`) write only in a `work/` directory that `test.sh` empties before each case and removes at the end. Absolute paths of the test directory are printed as `<dir>`, so that the logs do not depend on where the repository is.
@@ -112,7 +112,7 @@ CONMA_VM=rust test/run_all.sh
 | `__PDict_lookup_or__` | implemented |
 
 * Depends on Step 4: the `onMissing` example uses `__CChain_pop_LCont__`.
-* Key equality (`values_equal` in `test/vproc_step.py`, shared with Dict in Step 8): Strings compare by content (String literals at different source positions are different AST nodes; see the 2026/4/24 entry in `memo.txt`), Numbers by value, null equals null, and any other value (Ref, Closure, LList, ...) only to itself. A String and a Number are never equal.
+* Key equality (`values_equal` in `vm/python/vproc_step.py`, shared with Dict in Step 8): Strings compare by content (String literals at different source positions are different AST nodes; see the 2026/4/24 entry in `memo.txt`), Numbers by value, null equals null, and any other value (Ref, Closure, LList, ...) only to itself. A String and a Number are never equal.
 * `stdin`, `stdout`, `stderr` and `__exit__` in `include/util.se` look up the PDict.
 
 ## Step 8: MSeq & Dict
@@ -165,8 +165,8 @@ CONMA_VM=rust test/run_all.sh
 | `__VProc_resume__` | implemented |
 | `__VProc_spawn__` | implemented |
 
-* Round-robin scheduler (`Scheduler` in `test/vproc_step.py`); each scheduling step is one Operator application.
-* `__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)`: `onError` and `entryPoint` were added to the signature. It runs `bin/includer` and `bin/resolver` (found relative to `test/vproc_step.py`; `include/` is the include path) on `sourceFileName` (relative to the current directory).
+* Round-robin scheduler (`Scheduler` in `vm/python/vproc_step.py`); each scheduling step is one Operator application.
+* `__VProc_spawn__ onError entryPoint sourceFileName errorSink argumentSeq inputSeq outputSink ,(VProc)`: `onError` and `entryPoint` were added to the signature. It runs `bin/includer` and `bin/resolver` (found relative to `vm/python/vproc_step.py`; `include/` is the include path) on `sourceFileName` (relative to the current directory).
 * Memory is shared between VProcs (TERMS.md was changed). Each closure keeps the GVEnv of the module it was defined in, so a closure passed from a parent still refers to the parent's globals when a child runs it.
 * Termination and exit codes are described under "Runtime Model" in SPEC.md: a runtime error finishes only that VProc; `__OS_exit_*__` exits the interpreter; a deadlock exits with code 2.
 * `__main__` was added to `include/util.se`. How the first VProc gets its err/args/in/out from the OS streams was left open here and decided in Step 13.
@@ -257,7 +257,7 @@ CONMA_VM=rust test/run_all.sh
   * `__Stream_sink__ stream`: a Sink that writes each value to an output Stream.
   * `__Stream_lines__ stream`: a Seq that reads an input Stream to EOF and passes each line, including its newline; a last line without a newline is passed as it is. While no data is available it waits with `__OS_wait_readable__` (Step 15; before that, it read again in a loop).
   * `__start__ args`: builds err, in and out from the three Streams and calls `__main__`.
-* `test/vproc_run.py --main <module_file> [<arg> ...]` applies `__start__` to a Seq of the `arg` Strings. The Seq holds only the arguments, not the program name. Without `--main`, it runs a named function with no arguments as before.
+* `vm/python/vproc_run.py --main <module_file> [<arg> ...]` applies `__start__` to a Seq of the `arg` Strings. The Seq holds only the arguments, not the program name. Without `--main`, it runs a named function with no arguments as before.
 * `__OS_get_String__` reads through Python's own buffer, so a program should not mix it with the stdin Stream.
 * Tests (`test/step13`): case1 to case7 run functions of `test.se`, with `input.txt` or `lines.txt` as standard input where needed. case8 to case10 run `args.se` and `exit.se` with `--main`. Reading input that arrives later (`(sleep 1; echo x) | ...`) was checked by hand and is not covered by a test.
 
@@ -332,7 +332,7 @@ CONMA_VM=rust test/run_all.sh
 * Goal: Provide what the ConMa versions of the front end tools need (see [SELFHOST.md](SELFHOST.html)). `__AST_toSexp__` uses `__type_name__` to tell Strings, Numbers and AST nodes apart, and `includer` uses `__OS_realpath__` to check that a file exists and to find duplicate files.
 * `__type_name__ Value ,(String)` returns `"null"` (also for `__NULL__`, an empty LList and an empty CChain), `"String"` (a literal or one made at run time), `"Number"`, `"Closure"` (also for a primitive function), `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` or `"Stream"` (the same for input and output Streams). A Boolean, a Seq and a Sink are Closures, and a CChain is an LList. It takes no `onError`, because every value has a type.
 * `__OS_realpath__ onError path ,(String)` returns the absolute path with `..`, `.` and symbolic links resolved. A relative path is relative to the current directory (Step 14). A path that does not exist, or a non-String argument, goes to `onError`. Python 3.9 has no `strict` mode for `os.path.realpath`, so the path is checked with `os.stat` first; a path through a missing directory (`none/..`) is therefore an error, as in the OS.
-* `value_type_name` in `test/vproc_step.py` gives type names for error messages, but it returns `"input Stream"` / `"output Stream"` and Python class names for other values, so `__type_name__` needs its own fixed list of names.
+* `value_type_name` in `vm/python/vproc_step.py` gives type names for error messages, but it returns `"input Stream"` / `"output Stream"` and Python class names for other values, so `__type_name__` needs its own fixed list of names.
 * Tests (`test/step16`): `test.sh` gives every case a new `work/` directory with `sub/` and a symbolic link `up` to the test directory, and removes it at the end. The test directory is printed as `<dir>`.
 
 | Case | What it checks |
@@ -378,7 +378,7 @@ No new primitive; the language and `__Cont_get__` (then in `include/util.se`, si
 * Goal: Let the `return` of `__Cont_get__` pass values to the caller, as the example in SPEC.md (`return "12" "34"`) intends. Before this Step, `return` was a closure with an empty Head, so its arguments were surplus operands: they were pushed onto the CChain as a Seq Closure and lost when `return` set the CChain back. The definition in SPEC.md and the one in `util.se` differed, and neither passed values. A new kind of continuation value would also fix this, but variadic functions are simpler as a concept and useful elsewhere.
 * Syntax: `Head = "(", { Parameter }, ")" | Parameter`. A Function `, args Body` is variadic: an application binds a Seq of all its operands to `args` (an empty Seq without operands). It is always executed, even without operands, and takes the operands of one application only, so there are never surplus operands. See "Variadic Functions" in SPEC.md.
 * AST: a variadic Head is `(Head (line col) Rest (Variable (line col) "args"))` at the position of the parameter. `bin/parser`, `bin/resolver`, `include/parser.se` and `include/resolver.se` handle it; `test/selfhost5` and `test/selfhost7` compare a source with variadic Heads.
-* VM (`test/vproc_step.py`): a Closure has a `variadic` flag, set from a Head with `Rest`. Applying a variadic Closure pushes the LCont, binds a SeqClosure of the OList to the parameter, and runs the Body. Traces write the Head with `Rest` and read it back.
+* VM (`vm/python/vproc_step.py`): a Closure has a `variadic` flag, set from a Head with `Rest`. Applying a variadic Closure pushes the LCont, binds a SeqClosure of the OList to the parameter, and runs the Body. Traces write the Head with `Rest` and read it back.
 * `__Cont_get__` gives a variadic `return`: it sets the CChain back to that of the caller, pops the caller's LCont and applies the Seq of its arguments to it, so the LCont gets all the values (none without arguments). If there is no caller (the CChain is empty), `return` empties the CChain and the VProc finishes, as before (for example `exit` in `__main__`).
 * Library definitions in `include/util.se` that use it:
   * `__Seq_get__ onEmpty Seq ,(first rest)` (from SPEC.md). The definition in SPEC.md took as `rest`, after the last element, the LCont that calls `onEmpty`, so a later `__Seq_get__` on that `rest` applied the first `onEmpty`, not its own. Now that LCont applies `onEmpty` only for an empty Seq.
@@ -440,7 +440,7 @@ No new primitive; the language and `__Cont_get__` (then in `include/util.se`, si
 * Primitives: the mark that a thunk is being evaluated is read and set by `__LazyList_claim__` and `__LazyList_publish__`, each in one Operator application, so that several VProcs may evaluate the same `LazyList`. With `__Ref_get__` and `__Ref_set__`, the scheduler could switch VProcs between reading the value and setting the mark, and the thunk could run twice. A general compare-and-set of a `Ref` would prevent that, but a VProc that finds the mark could then only wait by polling: adding itself to a list of waiters and `__VProc_suspend__` are two applications, and a `__VProc_resume__` between them would be lost. `__LazyList_claim__` makes the VProc wait in the scheduler (as `__VProc_wait__` does) and runs again when the mark is gone or its VProc has finished.
 * The mark is the evaluating VProc, so `__LazyList_claim__` tells a `LazyList` that depends on itself (the mark is the current VProc) from one that another VProc is evaluating, and gives `onError` when the evaluating VProc has finished without setting the cell (for example, after a runtime error in the thunk).
 * Leaving the evaluation: a thunk may leave `__LazyList_force__` by a continuation (an `onError`, or the `return` of a function outside it). Then the mark would stay: the same VProc would be told that the `LazyList` depends on itself, and another VProc would wait until the first one finished, which a long-running VProc (a shell) never does. So `__LazyList_claim__` also keeps the CChain at the claim. While the thunk runs, that CChain is the bottom of the VProc's CChain (identical `LList` cells, since a CChain is only consed onto); when it is not, the VProc has left the evaluation, and the `LazyList` is claimed again with its thunk. `__LazyList_force__` claims inside `__LazyList_force_claim__`, called with an LCont, so that the CChain at the claim is not empty (an empty CChain is the bottom of every CChain). A held `LazyList` (`__LazyList_hold__`) has no thunk and is never left; it waits for its VProc to publish it.
-* VM (`test/vproc_step.py`): `Scheduler.wait_lazy` puts a VProc in `lazy` without returning from the primitive, so that it runs `__LazyList_claim__` again when it wakes; `check_lazy` wakes it at the next scheduling step after the value of the `Ref` is no longer a VProc that has not finished and has not left the evaluation (`lazy_abandoned` walks the CChain of that VProc down to the CChain at the claim). The `Ref` keeps the CChain and the thunk in `lazy_chain` and `lazy_thunk` (`HELD` for `__LazyList_hold__`). `wait_change` and `check_changes` do the same for `__Ref_wait_change__`, which returns before waiting. A VProc waiting for a `LazyList` or a `Ref` is counted as blocked for deadlock detection.
+* VM (`vm/python/vproc_step.py`): `Scheduler.wait_lazy` puts a VProc in `lazy` without returning from the primitive, so that it runs `__LazyList_claim__` again when it wakes; `check_lazy` wakes it at the next scheduling step after the value of the `Ref` is no longer a VProc that has not finished and has not left the evaluation (`lazy_abandoned` walks the CChain of that VProc down to the CChain at the claim). The `Ref` keeps the CChain and the thunk in `lazy_chain` and `lazy_thunk` (`HELD` for `__LazyList_hold__`). `wait_change` and `check_changes` do the same for `__Ref_wait_change__`, which returns before waiting. A VProc waiting for a `LazyList` or a `Ref` is counted as blocked for deadlock detection.
 * Tests (`test/step20`):
 
 | Case | What it checks |
@@ -512,7 +512,7 @@ No new primitive.
 * Goal: Let each VProc have its own current directory, so that a VProc that changes its directory does not move the others. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc, and `cd` there must not change the directory of the shell (see `consh/docs/PLAN-ja.md`).
 * Each VProc keeps its current directory as an absolute path. The first VProc starts in the directory where the interpreter was started, and a VProc made by `__VProc_spawn__` starts in the current directory of the VProc that made it. `__OS_chdir__` changes only the current VProc's, to the real path of the directory (symbolic links resolved), as the OS gives after `chdir`. The interpreter itself never changes its own directory.
 * The current directory of the current VProc is used for relative paths in `__OS_open__`, `__OS_chdir__`, `__OS_realpath__` and the `sourceFileName` of `__VProc_spawn__`, and as the working directory of `__OS_spawn__`; `__OS_getcwd__` returns it. The empty path is not joined to it, so that it stays an error.
-* `test/vproc_step.py` keeps the directory outside the S-expression of a VProc, so a VProc read from an S-expression (`vproc_step.sh`) starts in the interpreter's directory.
+* `vm/python/vproc_step.py` keeps the directory outside the S-expression of a VProc, so a VProc read from an S-expression (`vproc_step.sh`) starts in the interpreter's directory.
 * Tests (`test/step23`): `test.sh` gives every case a new `work/` directory with a subdirectory `a` and a symbolic link `link` to it. The current directory is printed as `<dir>`.
 
 | Case | What it checks |

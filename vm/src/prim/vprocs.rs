@@ -192,7 +192,7 @@ pub fn include_args() -> Vec<String> {
 
 /// Make the module of source_file (relative to cwd) with the ConMa frontend
 /// that this VM embeds (conma build, in another process of this executable),
-/// and load it, as load_program in test/vproc_step.py does with bin/includer
+/// and load it, as load_program in vm/python/vproc_step.py does with bin/includer
 /// and bin/resolver. On an error, the first line of what the frontend wrote.
 pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), String> {
     if !is_file(&Path::new(cwd).join(source_file)) {

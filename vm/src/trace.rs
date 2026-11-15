@@ -1,5 +1,5 @@
 //! Values and VProcs as S-expressions, for traces and for printing values
-//! (value_to_sexp and vproc_to_sexp of test/vproc_step.py).
+//! (value_to_sexp and vproc_to_sexp of vm/python/vproc_step.py).
 
 use crate::sexp::Sexp;
 use crate::value::*;

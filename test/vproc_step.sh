@@ -18,7 +18,7 @@ step=0
     do
         step="$((step+1))"
         echo "Step $step"
-        if ! python3 "$dir/vproc_step.py" "test.module.se" < "$work/in.vproc.se" > "$work/out.vproc.se"
+        if ! python3 "$dir/../vm/python/vproc_step.py" "test.module.se" < "$work/in.vproc.se" > "$work/out.vproc.se"
         then exit 1
         fi
         cat "$work/out.vproc.se"
