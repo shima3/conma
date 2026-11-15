@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-comment_remover.py -- ConMa comment remover
+comment_remover -- ConMa comment remover
 
-Reads lexer2 output (tab-separated: line TAB col TAB kind TAB value)
+Reads the output of lexer (tab-separated: line TAB col TAB kind TAB value)
 from a file or stdin, removes all comment tokens and NEWLINE tokens,
 and writes the remaining tokens to stdout in the same format.
 
@@ -28,8 +28,8 @@ Removed constructs (per SPEC.md "Comment Removing"):
     All NEWLINE tokens are removed (not used by the parser).
 
 Usage:
-    python comment_remover.py [<lexer_output_file>]
-    python lexer2.py source.se | python comment_remover.py
+    comment_remover [<lexer_output_file>]
+    lexer source.se | comment_remover
 """
 
 import sys
