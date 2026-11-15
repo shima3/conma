@@ -27,6 +27,21 @@ test/run_all.sh -j 8
 CONMA_VM=rust test/run_all.sh -j 8
 ```
 
+## Git settings
+
+Several people and sessions commit to the same branches (`alpha`, then `main`), and the history is kept linear. Run these once in each clone; they go to `.git/config`, which is not committed, so pulling does not set them:
+
+```
+git config pull.ff true
+git config pull.rebase true
+git config pull.autostash true
+git config merge.ff only
+```
+
+* `git pull` fast-forwards when it can, and otherwise puts your local commits on top of what was pulled (rebase) instead of making a merge commit; changes in the working tree are stashed and put back.
+* `git merge` only fast-forwards (merging `alpha` into `main`), and stops when the branches have diverged; give `--no-ff` for a merge commit when you want one.
+* `pull.ff true` is there to override a global `pull.ff only` (`git config --global`), which would stop `git pull` before it could rebase; a setting of the clone comes before a global one (`git config --show-origin --get-regexp '^(merge|pull)\.'` shows which applies).
+
 ## Where to start
 
 - [docs/index.md](docs/index.md): the specification, the design, the primitives and the tools.
