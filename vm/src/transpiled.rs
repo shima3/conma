@@ -281,7 +281,7 @@ pub fn stale_for(hash: u64, files: &str) -> bool {
 // "run" each time the VM enters transpiled code, and "leave" each time a
 // step is left to the VM, by what it applies. Written to the file as
 // `count<TAB>kind<TAB>file<TAB>line<TAB>column` (by Body) and
-// `count<TAB>leave<TAB>what` when the VM ends; test/transpiled_counts.py sums
+// `count<TAB>leave<TAB>what` when the VM ends; vm/tools/transpiled_counts.py sums
 // them by function. Counting does not change what the program does.
 
 static COUNTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

@@ -3,7 +3,7 @@
 the transpiled code hands the VProc back, by Body and by function.
 
     CONMA_TRANSPILED_COUNTS=/tmp/counts.tsv vm/target-transpiled/release/conma ...
-    python3 test/transpiled_counts.py [--top N] /tmp/counts.tsv
+    python3 vm/tools/transpiled_counts.py [--top N] /tmp/counts.tsv
 
 Kinds (vm/src/transpiled.rs, "Counts"):
   bail   a fused chain entered the code of the Body above (it could not go on)

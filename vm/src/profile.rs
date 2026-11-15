@@ -2,7 +2,7 @@
 //! SInfo (file, line, column) of the Body that the VProc is running, and the
 //! steps that apply a primitive also under the name of the primitive. The
 //! counts are written to the file when the VM ends. Profiling changes nothing
-//! else; the counts can be summed by function with test/vm_profile.py.
+//! else; the counts can be summed by function with vm/tools/vm_profile.py.
 
 use crate::value::{SInfo, Value};
 use crate::vproc::VProc;

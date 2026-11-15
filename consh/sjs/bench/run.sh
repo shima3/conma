@@ -67,7 +67,7 @@ mk() {  # n file：N_ARG を n にした SJS のモジュール
   "$conma" --main "$tmp/sjsc.module.se" "$tmp/m.safe.js" > "$tmp/m.se" &&
   "$conma" build --include "$inc" --include "$root/include" "$tmp/m.se" > "$2"
 }
-steps() { CONMA_PROFILE="$tmp/prof" "$conma" --main "$@" > /dev/null 2>&1; python3 "$root/test/vm_profile.py" "$tmp/prof" | sed -n 's/^steps: //p' | tr -d ,; }
+steps() { CONMA_PROFILE="$tmp/prof" "$conma" --main "$@" > /dev/null 2>&1; python3 "$root/vm/tools/vm_profile.py" "$tmp/prof" | sed -n 's/^steps: //p' | tr -d ,; }
 mk "$small" "$tmp/s1.module.se"
 mk "$((small + 10))" "$tmp/s2.module.se"
 printf '%-24s %s s (N = %s)\n' "Rust VM, SJS, start" "$(best "$conma" --main "$tmp/s1.module.se")" "$small"

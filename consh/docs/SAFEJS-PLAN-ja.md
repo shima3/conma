@@ -253,7 +253,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 * **受け手のない例外**：`Sjs_raise` は、投げるときに CChain の CFrame を上から調べ、SInfo が `"sjs"` で終わるいちばん上のものの位置を PDict の `"sjs_pos"` に置く（`Sjs_raise_pos`。CFrame を取り出して調べ、`__CChain_set__` で元に戻す）。finally の後とジェネレータの境で投げ直すときと、内部の印は `Sjs_reraise` で、位置を変えない。catch が受けると位置を消す。`Sjs_uncaught` は `ファイル:行:桁: メッセージ` の形で出す。こうしたので、末尾の `throw`（4）も、`Sjs_raise` を LCont 付きで呼ぶので位置が残り、引数で渡す必要はなかった。
 * **ConSh**：`(( ))` のモジュールの SInfo のファイル名は `sjs-コードのハッシュ`。`Sjsb_eval` が、ファイル名ごとに、そのコードの始まりの位置（`((` の 2 文字後）を覚え（"places"）、受け手のない例外の位置（コードの中の行と桁）を足してスクリプトの行と桁にする（`Sjsb_map_pos`。1 行目は桁も足す）。エラーを出す所（`Eval_arith_run`、`Sjs_abort`、`Sjsb_call`）は、`Sjs_fail_pos` でその位置を使う。SJS関数をコマンドとして呼んだときも、関数を作った `(( ))` の中の位置になる。同じコードが別の場所にもあれば、最後に動かした場所になる。
 * **エラーのオブジェクトと Promise の拒否**（同じ日に足した）：実行時のエラーのオブジェクトは、作った所の位置を隠して持つ（`Sjs_throw`）。受け手のない Promise の拒否は、Node.js と同じく、エラーのオブジェクトなら作った所の位置を出し、ほかの値なら、拒否のもとになった `throw` の位置（async 関数の本体など）を出す（`Sjs_promise_reject` が Promise に覚える。`"sjs_pos"` は使ったら消すので、`Promise.reject(値)` のように投げずに拒否したものは、前の例外の位置を出さずに `sjs: ` になる）。catch したエラーを後で投げたときは、Node.js と同じく投げた所。consh/sjs/test の step3 の case10 と step5 の case4、case5 で確かめる。
-* **VM**：`CONMA_PROFILE` の出力は、SInfo の先頭の 3 つだけを書くようにした（vm/src/profile.rs。4 番目の `"sjs"` で test/vm_profile.py が読めなくなったため）。
+* **VM**：`CONMA_PROFILE` の出力は、SInfo の先頭の 3 つだけを書くようにした（vm/src/profile.rs。4 番目の `"sjs"` で test/vm_profile.py（2026-11-15 に vm/tools/vm_profile.py へ移動） が読めなくなったため）。
 * **結果**（Rust 版の VM、66e40e4 と比べた。5 回の最良）：
 
 | | 前 | 今 |

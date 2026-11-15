@@ -2,7 +2,7 @@
 """Sum the step counts of the Rust VM (CONMA_PROFILE=<file>) by function.
 
     CONMA_PROFILE=/tmp/prof.tsv vm/target/release/conma ...
-    python3 test/vm_profile.py [--top N] /tmp/prof.tsv
+    python3 vm/tools/vm_profile.py [--top N] /tmp/prof.tsv
 
 Each Body is counted under the top-level (define NAME ...) that contains its
 line. A call is the start of the first Body of a function; --callers NAME shows
@@ -16,7 +16,7 @@ import re
 import sys
 from collections import defaultdict
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFINE = re.compile(r'^\(define\s+([^\s()]+)')
 
 
