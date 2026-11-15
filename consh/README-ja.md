@@ -66,7 +66,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 | `CONSH_IMPL` | 版 |
 |---|---|
 | `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、docs/PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して ConMa 版（最適化版）で実行する。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
-| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。既定は Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版） |
+| `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。`python` なら Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版、`wasm` なら wasm 版）。`CONMA_VM` がなければ Rust 版の VM（`vm/target/release/conma`）を使い、作っていなければエラーにする（テストやベンチマークを、気付かずに遅い Python 版で動かさないため） |
 | `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`consh/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（最適化版）で実行する。
@@ -79,7 +79,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 ConMa 版は、ConMa 版の構文解析（`consh_parser.se`、段階 12）でスクリプトを読む（`--conma-parser` は、それを明示するだけ）。構文木は `consh_parse --pos` と同じで（`test/parse3`）、構文エラーのメッセージは Rust 版と同じく `consh:` で始まる。
 `--python-parser` を付けると、Python の参照実装 `consh_parse --pos` が作った構文木のファイルを、ConMa の `__Sexp_read__`（Step 30）で読む（形式は [AST.md](docs/AST.md)。構文エラーは `consh_parse:` で始まる）。
 ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）があれば、その `conma build`（ConMa 版のフロントエンド、vm/README.md）で作り、なければ `bin/includer` と `bin/resolver`（Python）で作る。
-そのため、Rust 版の VM を作っておき、`CONMA_VM=rust`（か `transpiled`）で起動すれば、ConMa 版も Python を使わずに動く（既定の VM は、基準の Python 版のまま）。
+そのため、Rust 版の VM を作っておけば、`CONMA_VM` がなくても（`rust` か `transpiled` でも）、ConMa 版は Python を使わずに動く。基準の Python 版の VM で動かすときは `CONMA_VM=python` を付ける（ConSh の外の `bin/vm` の既定は、Python 版のまま）。
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-dir` の場所（`${XDG_CACHE_HOME:-$HOME/.cache}/conma/<リポジトリのパスのチェックサム>`。持ち主だけが読み書きでき、別のチェックアウトとは分かれる。環境変数 `CONMA_CACHE_DIR` で変えられる）に作り、`.se` のソースが変わったときだけ作り直す。ConSh のモジュールだけを置くディレクトリは、環境変数 `CONSH_MODULE_DIR` で変えられる（2026-11-15 までの既定は `/tmp` だった）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 

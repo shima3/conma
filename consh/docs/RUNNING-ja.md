@@ -13,7 +13,8 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | 実装 | 環境変数 `CONSH_IMPL` | `rust` ★ | Rust 版（`consh/rust` の `consh-rs`）。構文解析も Rust 版。`consh/rust` で `cargo build --release` して作っておく。作っていなければ、そう出して ConMa 版（最適化版）で動かす |
 | | | `conma` | ConMa 版の最適化版（`consh/include`） |
 | | | `reference` | ConMa 版の参照版。`consh/reference` と標準ライブラリの `reference`（最適化する前の版）、`consh/include/core` と標準ライブラリの `include/core`（コア ConMa 用）のファイルを、最適化版の同じ名前のファイルの代わりに使う |
-| VM（ConMa 版を動かすもの） | 環境変数 `CONMA_VM`（`bin/vm`） | `python` ★ | 基準の Python 版の VM |
+| VM（ConMa 版を動かすもの） | 環境変数 `CONMA_VM`（`bin/vm`） | なし ★ | Rust 版の VM。作っていなければエラーにする（気付かずに遅い Python 版で動かさないため。2026-11-15 までは Python 版だった） |
+| | | `python` | 基準の Python 版の VM |
 | | | `rust` | Rust 版の VM（`vm/target/release/conma`。`vm` で `cargo build --release`） |
 | | | `transpiled` | ConMa から Rust に変換したコードを組み込んだ Rust 版の VM（`vm/target-transpiled/release/conma`。`bench/build.sh` で作る） |
 | | | `wasm` | wasm32 版の VM を Node.js で動かす（`vm/wasm/vm-wasm.sh`。`vm/wasm/build.sh` で作る） |
@@ -24,7 +25,8 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | | | Node.js | `CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh ...` |
 
 * `--python-parser`、`--conma-parser`、`CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust`（既定）でも ConMa 版（最適化版）で動く。
-* ConMa 版のモジュールは、Rust 版の VM があれば、その `conma build` で作る。そのため、`CONMA_VM=rust`（か `transpiled`）なら Python を使わない。
+* ConMa 版のモジュールは、Rust 版の VM があれば、その `conma build` で作る。そのため、`CONMA_VM` がない（か `rust`、`transpiled`）なら Python を使わない。
+* `CONMA_VM` にほかの値を書くと、`bin/vm` がエラーにする。
 
 ## 早見表
 
@@ -32,13 +34,13 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 |---|---|
 | ふつうに動かす（速い） | `consh/bin/consh script.sh` |
 | 対話モード | `consh/bin/consh` |
-| `(( ))` と `$(( ))` を使う | `CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh script.sh` |
-| ConMa 版を Python を使わずに動かす | `CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh script.sh` |
-| ConMa 版を基準の VM で動かす | `CONSH_IMPL=conma consh/bin/consh script.sh` |
-| 参照版で動かす | `CONSH_IMPL=reference CONMA_VM=rust consh/bin/consh script.sh` |
+| `(( ))` と `$(( ))` を使う | `CONSH_IMPL=conma consh/bin/consh script.sh` |
+| ConMa 版を Python を使わずに動かす | `CONSH_IMPL=conma consh/bin/consh script.sh` |
+| ConMa 版を基準の VM で動かす | `CONSH_IMPL=conma CONMA_VM=python consh/bin/consh script.sh` |
+| 参照版で動かす | `CONSH_IMPL=reference consh/bin/consh script.sh` |
 | `js` を使う（Node.js） | `CONSH_ENABLE_JS=js CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh` |
 | ブラウザで使う | `consh/js/build.sh` の後に `consh/js/serve.py`、http://localhost:8765/ を開く |
-| 構文木を見る | `consh/bin/consh --dump script.sh`（Rust 版）、`CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh --dump script.sh`（ConMa 版） |
+| 構文木を見る | `consh/bin/consh --dump script.sh`（Rust 版）、`CONSH_IMPL=conma consh/bin/consh --dump script.sh`（ConMa 版） |
 
 ## 版ごとの機能の差
 

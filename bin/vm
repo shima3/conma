@@ -3,14 +3,14 @@
 # 環境変数 CONMA_VM が rust なら Rust 版（vm/target/release/conma）、transpiled なら ConMa から Rust への変換器
 # （vm/conma2rust）で変換したコードを組み込んだ Rust 版
 # （vm/conma2rust/build.sh で作る vm/target-transpiled/release/conma）、wasm なら wasm32 版を JavaScriptCore で動かす
-# （vm/wasm/vm-wasm.sh。vm/wasm/build.sh で作る）、それ以外（既定）は Python 版（vm/python/vproc_run.py。拡張 ConMa の
-# モジュールは bin/to-core でコア ConMa に直してから動かす）
+# （vm/wasm/vm-wasm.sh。vm/wasm/build.sh で作る）、python か空（既定）なら Python 版（vm/python/vproc_run.py。拡張 ConMa の
+# モジュールは bin/to-core でコア ConMa に直してから動かす）。ほかの値はエラー（書き間違えて気付かずに Python 版で動かさない）
 dir="$(cd "${0%/*}"; pwd)"
 case "${CONMA_VM:-python}" in
   rust) exec "$dir/../vm/target/release/conma" "$@" ;;
   wasm) exec "$dir/../vm/wasm/vm-wasm.sh" "$@" ;;
   transpiled) exec "$dir/../vm/target-transpiled/release/conma" "$@" ;;
-  *)
+  python)
     # Python VM はコア ConMa の VM なので、拡張 ConMa のモジュール（(Uses "機能" ...) のあるもの）は、bin/to-core で
     # コア ConMa に直してから動かす（docs/FAST-PLAN-ja.md の 3.4）。直せない機能なら、そのまま動かす（VM がエラーにする）
     args=("$@")
@@ -34,4 +34,5 @@ case "${CONMA_VM:-python}" in
       esac
     done
     exec python3 "$dir/../vm/python/vproc_run.py" "$@" ;;
+  *) echo "vm: CONMA_VM must be python, rust, wasm or transpiled, not \"$CONMA_VM\"" >&2; exit 2 ;;
 esac
