@@ -27,5 +27,10 @@ Files and directories have been moved and renamed. A text that describes the pre
 - [Includer](INCLUDER.html)
 - [Resolver](RESOLVER.html)
 - [Vproc Interpreter](VPROC_STEP.html)
-- [Running the tests and their record](TESTS-ja.html) (in Japanese)
-- [Reviews of ConMa](REVIEW-ja.html) (in Japanese; ConSh's are in consh/docs)
+
+## Plans and records (in Japanese)
+- [Core ConMa and extended ConMa](FAST-PLAN-ja.html): the plan of the two levels of ConMa
+- [Bitwise primitives](BITWISE-PLAN-ja.html): the plan of the bitwise operations of extended ConMa
+- [Speed-ups](SPEED-ja.html): every speed-up tried, with its effect and whether it was kept
+- [Running the tests and their record](TESTS-ja.html)
+- [Reviews of ConMa](REVIEW-ja.html) (ConSh's are in consh/docs)
