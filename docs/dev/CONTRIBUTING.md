@@ -1,6 +1,6 @@
 # Contributing
 
-This is for the developers of ConMa and of ConSh. A developer of ConMa changes its VMs, its front end or its standard library; one who only runs ConMa programs is a user of ConMa. A developer of ConSh changes ConSh, and is a user of ConMa unless they also change the VM. The documents for the users are in [docs](../index.md) (and consh/docs for ConSh), and those for the developers in docs/dev (and consh/docs/dev); a document for both is in docs.
+This is for the developers of ConMa and of ConSh. A developer of ConMa changes its VMs, its front end or its standard library; one who only runs ConMa programs is a user of ConMa. A developer of ConSh changes ConSh, and is a user of ConMa unless they also change the VM. The documents for the users are in [docs](../index.md) (and consh/docs for ConSh), and those for the developers in docs/dev (and consh/docs/dev); a document for both is in docs. The rules only for ConSh (where its files go, and changing both its optimized and reference versions) are in [consh/docs/dev/DEVELOPING-ja.md](../../consh/docs/dev/DEVELOPING-ja.md) (in Japanese).
 
 ## Tests
 
