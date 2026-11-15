@@ -7,7 +7,7 @@ ConMa 版の ConSh には、2 つの版がある。
 
 2 つの版は、2026-11-15 までは「高速版」（「速い版」とも）と参照版と呼んでいた。参照実装（reference implementation）と、それを最適化した実装（optimized implementation）という、よく使われる言い方に合わせて「最適化版」にした。
 
-参照版は、`consh/reference`、このフォルダの順に include ディレクトリを指定して作る（`--include consh/reference --include consh/include`）。
+参照版は、`consh/reference`、`consh/include/core`（コア ConMa 用。今は `sjs_bits.se` だけ）、このフォルダの順に include ディレクトリを指定して作る（`--include consh/reference --include consh/include/core --include consh/include`）。
 include は、include ディレクトリを指定の順に探すので（docs/INCLUDER.md）、`consh/reference` にあるファイルは、どのファイルから include されても、このフォルダの同じ名前のファイルの代わりになる。
 標準ライブラリも同じ形で、参照版は、リポジトリのルートの `reference`（書き直す前の `util.se` など）を `include` より先に探す。
 
@@ -20,7 +20,7 @@ include は、include ディレクトリを指定の順に探すので（docs/IN
 
 ## 今の最適化版
 
-`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（書き直す前のものは `consh/reference` にある）（各ファイルの先頭にも書いてある）。また、SJS のビット演算の `sjs_bits.se` は、拡張 ConMa のプリミティブ（`"bitwise32"`。docs/BITWISE-PLAN-ja.md）を使い、`consh/reference/sjs_bits.se` は算術で求める（2026-11-12。最適化版のモジュールには、フロントエンドが `(Uses "bitwise32")` を付け、Python VM は bin/to-core で直して動かす）。動きは変えていない（consh/test が最適化版と参照版の両方で通り、下のスクリプトの出力も同じ）。
+`consh_eval.se`、`consh_expand.se`、`consh_chan.se`、`consh_repl.se` を、次のように書き換えた（書き直す前のものは `consh/reference` にある）（各ファイルの先頭にも書いてある）。また、SJS のビット演算の `sjs_bits.se` は、拡張 ConMa のプリミティブ（`"bitwise32"`。docs/BITWISE-PLAN-ja.md）を使う（2026-11-12。最適化版のモジュールには、フロントエンドが `(Uses "bitwise32")` を付け、Python VM は bin/to-core で直して動かす）。コア ConMa で作る参照版では、`core/sjs_bits.se` が、標準ライブラリの `include/core/bitwise32.se`（7 つをコア ConMa の関数として定義する）を読んでから `sjs_bits.se` を読む（2026-11-15。それまでは `consh/reference/sjs_bits.se` が、同じものを SJS の側で算術で求めていた）。`consh/include/core` は、言語の分け方（コア ConMa 用の版）で、`consh/reference`（最適化する前の版）とは別の軸である。動きは変えていない（consh/test が最適化版と参照版の両方で通り、下のスクリプトの出力も同じ）。
 
 * `Sh_get sh "key"` を `__Dict_lookup_or__ sh "key" __print_exit_error__` に、`num s` を `__Number_fromString__ __print_exit_error__ s` にした（関数の呼び出しを 1 つ減らす）。
 * 条件が組み込み 1 つの関数（`__if__ (,() __is_null__ x) ...`）を、先に計算して渡す形（`__is_null__ x ,(test__) __if__ test__ ...`）にした（条件の関数を作って呼ぶ分を減らす）。

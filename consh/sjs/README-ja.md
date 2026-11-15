@@ -91,7 +91,7 @@ consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方。字句は行と桁を持つ）
 ├── sjs_parse.se     構文解析（conma.js の sjsParse と同じ形の再帰下降。節は "t" を持つ Dict）
 ├── sjs_gen.se       ConMa のソースを作る（Sjs_translate_file、ConSh の (( )) は Sjs_translate_module）
-├── sjs_bits.se      ビット演算（拡張 ConMa のプリミティブ。参照版の consh/reference/sjs_bits.se は算術で求める）
+├── sjs_bits.se      ビット演算（拡張 ConMa のプリミティブ。コア ConMa で作るときは core/sjs_bits.se が include/core/bitwise32.se の定義を入れる）
 └── sjs_rt.se        実行時の支え：値の種類、演算の型の確認、比較、関数、配列、オブジェクト、メンバー、メソッド、組み込み、
                      例外とその位置、ジェネレータ、Promise、数の書き方、JSON.stringify、console.log
 ```
