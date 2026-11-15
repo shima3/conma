@@ -13,13 +13,14 @@ consh/
 │   ├── RUNNING-ja.md            版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差
 │   ├── AST.md                   consh_parse が出力する構文木の形式（英語）
 │   ├── FOR-BASH-USERS.md        Bash を使う人向けの使い方の説明（英語）
-│   ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
-│   ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
-│   ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
-│   ├── SJS-WASM-ARRAY-PLAN-ja.md  その、配列を使う関数の計画
-│   ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
-│   ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
-│   └── REVIEW-ja.md             ConSh のレビュー
+│   └── dev/                     ConSh の開発者向けの文書
+│       ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
+│       ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
+│       ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
+│       ├── SJS-WASM-ARRAY-PLAN-ja.md その、配列を使う関数の計画
+│       ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
+│       ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
+│       └── REVIEW-ja.md             ConSh のレビュー
 ├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
