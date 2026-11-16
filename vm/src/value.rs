@@ -417,8 +417,13 @@ impl std::hash::Hasher for FxHasher {
     fn write_usize(&mut self, i: usize) {
         self.add(i as u64);
     }
+    /// The product rotated, as rustc-hash 2 does: the hash maps pick a bucket by the low
+    /// bits, which the multiplication fills only from the low bits of the input, and the
+    /// f64 bits of a small integer (DictKey::Num) have only zeros there, so that without
+    /// it every such key went to the same bucket and a lookup took time in proportion to
+    /// the Number keys of the Dict.
     fn finish(&self) -> u64 {
-        self.0
+        self.0.rotate_left(26)
     }
 }
 
