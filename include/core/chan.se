@@ -12,7 +12,8 @@
 ;;                                             最後に __Chan_close__ する
 ;;   __Chan_of__ writer ,(chan)              書き手のチャネル
 ;;   __Chan_put__ onCancelled writer item ,() item を書く。取り出されていない要素が cap 個あれば、取り出されるまで
-;;                                             待つ。読み手が cancel していれば、書かずに onCancelled を（引数なしで）呼ぶ
+;;                                             待つ。読み手が cancel していれば、書かずに、onCancelled を引数なしで、
+;;                                             __Chan_put__ の継続で呼ぶ（戻るなら、値を返さずに戻ること）
 ;;   __Chan_close__ writer ,()               書き手を閉じる。2 回目は何もしない
 ;;   __Chan_cancel__ chan ,()                読み手がもう読まないことを書き手に知らせ、待っている書き手を起こす
 ;;   __Chan_reader__ chan ,(reader)          読み位置を作る。読み手は 1 つで、読み位置を同時に 2 つの VProc が使わない
@@ -88,7 +89,10 @@
   __Dict_lookup_or__ writer "chan" Chan_core_error)
 
 (define __Chan_put__ ,(onCancelled writer item)
-  Chan_core_wait_room writer onCancelled ,()
+  Chan_core_wait_room writer ,(cancelled)
+  __if_then_else__ cancelled onCancelled (,() Chan_core_write writer item))
+
+(define Chan_core_write ,(writer item)
   __Dict_lookup_or__ writer "tail" Chan_core_error ,(tail)
   __Ref_new__ __NULL__ ,(next)
   __LList_cons__ item next ,(cell)
@@ -102,29 +106,30 @@
   __Dict_new__ ,(token)
   __Ref_set__ wake token)
 
+;; 書ける所があるまで待ち、読み手が cancel していれば __TRUE__、書けるなら __FALSE__ を返す。
 ;; consumed を cancelled より先に読む。cancelled を先に読むと、その後で読み手が cancel して consumed を
 ;; 書き換えたとき、書き換えた後の consumed が変わるのを待ってしまい、二度と起きない。
 ;; consumed を先に読めば、その後の cancel は consumed を変えるので、__Ref_wait_change__ は待たずに戻る。
-(define Chan_core_wait_room ,(writer onCancelled)
+(define Chan_core_wait_room ,(writer)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ writer "consumed" Chan_core_error ,(consumedRef)
   __Ref_get__ consumedRef ,(consumed)
   __Dict_lookup_or__ writer "cancelled" Chan_core_error ,(cancelledRef)
   __Ref_get__ cancelledRef ,(cancelled)
-  __if__ cancelled onCancelled ,()
+  __if__ cancelled (,() return __TRUE__) ,()
   __Dict_lookup_or__ writer "produced" Chan_core_error ,(produced)
   __Dict_lookup_or__ writer "cap" Chan_core_error ,(cap)
   __Number_subtract__ produced consumed ,(ahead)
   __Number_subtract__ ahead cap ,(over)
   __Number_is_negative__ over ,(condition)
-  __if__ condition return ,()
+  __if__ condition (,() return __FALSE__) ,()
   __Dict_lookup_or__ writer "state" Chan_core_error ,(state)
   __is_null__ state ,(condition)
   __unless__ condition (,() __Ref_set__ state "blocked") ,()
   __Ref_wait_change__ consumedRef consumed ,()
   __is_null__ state ,(condition)
   __unless__ condition (,() __Ref_set__ state "running") ,()
-  Chan_core_wait_room writer onCancelled)
+  Chan_core_wait_room writer)
 
 (define __Chan_close__ ,(writer)
   __Cont_get__ ,(return)

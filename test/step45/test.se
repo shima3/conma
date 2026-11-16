@@ -130,7 +130,9 @@
     write_from wa "a" four twenty ,()
     __Chan_close__ wa ,()
     __Chan_close__ wa ,()
-    __VProc_wait__ __print_exit_error__ vb) ,(va)
+    ;; 継続を付ける（最後の __VProc_wait__ から起きた VProc が、終わったと扱われずにエラーになることがあるため）
+    __VProc_wait__ __print_exit_error__ vb ,()
+    ) ,(va)
   __Chan_reader__ chan ,(reader)
   drain reader ,(items)
   __LList_length__ items ,(n)

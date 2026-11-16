@@ -8,6 +8,7 @@ use crate::vproc::VProc;
 
 pub mod basic;
 mod cchain;
+mod chan;
 pub mod collections;
 pub mod control;
 mod js;
@@ -168,6 +169,14 @@ prims! {
     "__Wasm_compile__"     => "prim_Wasm_compile", wasm::compile;
     "__Wasm_call__"        => "prim_Wasm_call", wasm::call;
     "__Wasm_call_memory__" => "prim_Wasm_call_memory", wasm::call_memory;
+    "__Chan_new__"         => "prim_Chan_new", chan::chan_new;
+    "__Chan_writer__"      => "prim_Chan_writer", chan::chan_writer;
+    "__Chan_of__"          => "prim_Chan_of", chan::chan_of;
+    "__Chan_put__"         => "prim_Chan_put", chan::chan_put;
+    "__Chan_close__"       => "prim_Chan_close", chan::chan_close;
+    "__Chan_cancel__"      => "prim_Chan_cancel", chan::chan_cancel;
+    "__Chan_reader__"      => "prim_Chan_reader", chan::chan_reader;
+    "__Chan_take__"        => "prim_Chan_take", chan::chan_take;
     "__Dict_numbers__"     => "prim_Dict_numbers", collections::dict_numbers;
     "__Dict_put_numbers__" => "prim_Dict_put_numbers", collections::dict_put_numbers;
 }
