@@ -61,15 +61,6 @@ fn text(v: &Value) -> Result<std::borrow::Cow<'_, str>, VmError> {
     }
 }
 
-/// The number of code points of s (the length of a String).
-fn char_count(s: &str) -> usize {
-    if s.is_ascii() {
-        s.len()
-    } else {
-        s.chars().count()
-    }
-}
-
 /// The byte offset of the code point at char index i, or None if s has fewer
 /// than i code points (i == the length gives s.len()). When the first i bytes
 /// are ASCII, it is i, found without walking the string.
@@ -101,10 +92,67 @@ fn chars_in(s: &str) -> usize {
     }
 }
 
+/// What a text is made of (StrInfo, docs/dev/STRING-INDEX-PLAN-ja.md), found by looking at all of it.
+fn info_of(t: &str) -> StrInfo {
+    if t.is_ascii() {
+        StrInfo::Ascii
+    } else {
+        StrInfo::Chars(t.chars().count())
+    }
+}
+
+/// What is known of the characters of a String value without looking at a String made at run time
+/// (Unknown if it has not been looked at); a String of the program (a short literal) is looked at.
+fn known(v: &Value, t: &str) -> StrInfo {
+    match v {
+        Value::Str(s) => s.info.get(),
+        _ => info_of(t),
+    }
+}
+
+/// What a String value is made of: what is known of a String made at run time, or found once and kept
+/// in it (t is its text).
+fn info(v: &Value, t: &str) -> StrInfo {
+    match v {
+        Value::Str(s) => match s.info.get() {
+            StrInfo::Unknown => {
+                let i = info_of(t);
+                s.info.set(i);
+                i
+            }
+            i => i,
+        },
+        _ => info_of(t),
+    }
+}
+
+/// The number of characters of a text whose StrInfo is known.
+fn count(t: &str, i: StrInfo) -> usize {
+    match i {
+        StrInfo::Chars(n) => n,
+        _ => t.len(),
+    }
+}
+
+/// char_to_byte for a text whose StrInfo is known: in an ASCII text, a position in characters is the
+/// same in bytes.
+fn char_to_byte_info(t: &str, i: usize, info: StrInfo) -> Option<usize> {
+    if info == StrInfo::Ascii {
+        if i <= t.len() {
+            Some(i)
+        } else {
+            None
+        }
+    } else {
+        char_to_byte(t, i)
+    }
+}
+
 pub fn length(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let s = string_values(vp, "__String_length__", 1)?;
     let t = text(&s[0])?;
-    vp.prim_return(vec![num(char_count(&t) as f64)]);
+    let i = info(&s[0], &t);
+    vp.prim_return(vec![num(count(&t, i) as f64)]);
     Ok(())
 }
 
@@ -148,7 +196,13 @@ pub fn concat_core(a: &Value, b: &Value) -> Result<Value, VmError> {
     let mut s = String::with_capacity(x.len() + y.len());
     s.push_str(&x);
     s.push_str(&y);
-    Ok(string_value(&s))
+    // What is known of both is known of the two put together
+    let i = match (known(a, &x), known(b, &y)) {
+        (StrInfo::Ascii, StrInfo::Ascii) => StrInfo::Ascii,
+        (StrInfo::Unknown, _) | (_, StrInfo::Unknown) => StrInfo::Unknown,
+        (p, q) => StrInfo::Chars(count(&x, p) + count(&y, q)),
+    };
+    Ok(string_value_info(&s, i))
 }
 
 /// The result of __String_equal__ (also for vm/src/transpiled.rs).
@@ -179,14 +233,17 @@ pub fn substring(_m: &mut Machine, vp: &mut VProc) -> PResult {
         }
     }
     let (i, j) = (idx[0], idx[1]);
-    let bj = if 0 <= i && i <= j && j <= s.len() as i128 { char_to_byte(&s, j as usize) } else { None };
+    let si = info(&sv[0], &s);
+    let bj = if 0 <= i && i <= j && j <= s.len() as i128 { char_to_byte_info(&s, j as usize, si) } else { None };
     let Some(bj) = bj else {
-        let len = char_count(&s) as i128;
+        let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} {} (length {})", name, i, j, len));
         return Ok(());
     };
-    let bi = char_to_byte(&s, i as usize).expect("i <= j");
-    vp.prim_return(vec![string_value(&s[bi..bj])]);
+    let bi = char_to_byte_info(&s, i as usize, si).expect("i <= j");
+    // A part of an ASCII String is ASCII
+    let ri = if si == StrInfo::Ascii { StrInfo::Ascii } else { StrInfo::Unknown };
+    vp.prim_return(vec![string_value_info(&s[bi..bj], ri)]);
     Ok(())
 }
 
@@ -206,14 +263,16 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
             return Ok(());
         }
     };
-    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte(&s, i as usize) } else { None };
+    let si = info(&sp[0], &s);
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_info(&s, i as usize, si) } else { None };
     let Some(b) = b else {
-        let len = char_count(&s) as i128;
+        let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
         return Ok(());
     };
     let r = match s[b..].find(&*pattern) {
         None => Value::Null,
+        Some(off) if si == StrInfo::Ascii => num((b + off) as f64),
         Some(off) => num((i as usize + chars_in(&s[b..b + off])) as f64),
     };
     vp.prim_return(vec![r]);
@@ -238,9 +297,10 @@ pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
             return Ok(());
         }
     };
-    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte(&s, i as usize) } else { None };
+    let si = info(&sp[0], &s);
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_info(&s, i as usize, si) } else { None };
     let Some(b) = b else {
-        let len = char_count(&s) as i128;
+        let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
         return Ok(());
     };
@@ -261,7 +321,11 @@ pub fn strip_suffix(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let s = text(&sp[0])?;
     let suffix = text(&sp[1])?;
     let r = match s.strip_suffix(&*suffix) {
-        Some(t) if !suffix.is_empty() => string_value(t),
+        // A part of an ASCII String is ASCII
+        Some(t) if !suffix.is_empty() => {
+            let ri = if known(&sp[0], &s) == StrInfo::Ascii { StrInfo::Ascii } else { StrInfo::Unknown };
+            string_value_info(t, ri)
+        }
         _ => sp[0].clone(),
     };
     vp.prim_return(vec![r]);
@@ -297,7 +361,10 @@ pub fn from_code(_m: &mut Machine, vp: &mut VProc) -> PResult {
         None
     };
     match c {
-        Some(c) => vp.prim_return(vec![string_value(&c.to_string())]),
+        Some(c) => {
+            let i = if c.is_ascii() { StrInfo::Ascii } else { StrInfo::Chars(1) };
+            vp.prim_return(vec![string_value_info(&c.to_string(), i)])
+        }
         None => vp.prim_error(on_error, &format!("{}: not a code point: {}", name, number_to_str(x))),
     }
     Ok(())
