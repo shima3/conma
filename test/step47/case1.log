@@ -1,0 +1,13 @@
+[0]
+[3] x y 3
+[3] x Y 3
+Y
+popped 3
+[2] x Y
+Y
+x
+[0]
+onError: __Array_pop__: empty Array
+error
+[1] again
+exit: 0

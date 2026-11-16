@@ -1,0 +1,112 @@
+;; 拡張 ConMa の機能 "array" の代わりの定義（docs/dev/ARRAY-PLAN-ja.md）。配列の 6 つのプリミティブと同じ名前、
+;; 同じ意味の関数を、コア ConMa で書いたもの。拡張 ConMa の VM（Rust、wasm、変換版）はプリミティブで動かし、
+;; コア ConMa の VM（Python）は、bin/to-core がこの定義をモジュールに入れて動かす（大域の名前に定義があれば、
+;; プリミティブより先に使われる）。
+;;
+;; 配列は、添字 0 から長さ - 1 までの値の列で、変えられる（書き換えは、同じ配列を持つ所すべてから見える）。
+;;   __Array_new__ ,(array)                    長さ 0 の配列を作る
+;;   __Array_length__ array ,(n)               長さ（Number）
+;;   __Array_get__ onError array i ,(value)    添字 i の値
+;;   __Array_set__ onError array i value ,()   添字 i を value に書き換える（長さは変えない）
+;;   __Array_push__ array value ,()            末尾に value を足す
+;;   __Array_pop__ onError array ,(value)      末尾を取り除いて返す
+;; 添字は、0 以上、長さ未満の整数の Number（-0 は 0）。そうでなければ、__Array_get__ と __Array_set__ は、
+;; onError を "名前: index is not a Number"、"名前: index is not an integer"、"名前: index out of range" で呼ぶ。
+;; __Array_pop__ は、長さ 0 なら onError を "__Array_pop__: empty Array" で呼ぶ。onError を取る 3 つは、
+;; 配列でない値なら、onError を "名前: not an Array" で呼ぶ。onError は、プリミティブと同じく、そのプリミティブの
+;; 継続で呼ぶ。
+;;
+;; 配列は Dict で、添字の Number のキー（文字列の "0" とは別のキー）に値を、文字列のキー "length" に長さを置く。
+;; そのため、ここでは __type_name__ が "Dict" になり、Dict のプリミティブも使えるが、拡張 ConMa の VM の配列は
+;; "Array" で、Dict のプリミティブはエラーになる。配列には、配列のプリミティブだけを使う（docs/PRIMITIVES.md の 16）。
+;; 使うのはプリミティブと自分の関数だけで、プリミティブにない誤り（配列の長さが読めない）は、Array_core_error が
+;; メッセージを出して止める。
+
+(define __Array_new__ ,()
+  __Dict_new__ ,(array)
+  __Number_fromString__ Array_core_error "0" ,(zero)
+  __Dict_put__ array "length" zero ,()
+  __NULL__ array)
+
+(define __Array_length__ ,(array)
+  __Dict_lookup_or__ array "length" (,(key) Array_core_error "__Array_length__: not an Array"))
+
+(define __Array_get__ ,(onError array i)
+  Array_core_is array ,(isArray)
+  __if_then_else__ isArray
+    (,()
+      Array_core_index array i ,(k error)
+      __is_null__ error ,(ok)
+      __if_then_else__ ok
+        (,() __Dict_lookup_or__ array k (,(key) Array_core_error "__Array_get__: no element"))
+        (,() __String_concat__ "__Array_get__" error ,(msg) onError msg))
+    (,() onError "__Array_get__: not an Array"))
+
+(define __Array_set__ ,(onError array i value)
+  Array_core_is array ,(isArray)
+  __if_then_else__ isArray
+    (,()
+      Array_core_index array i ,(k error)
+      __is_null__ error ,(ok)
+      __if_then_else__ ok
+        (,() __Dict_put__ array k value)
+        (,() __String_concat__ "__Array_set__" error ,(msg) onError msg))
+    (,() onError "__Array_set__: not an Array"))
+
+(define __Array_push__ ,(array value)
+  __Dict_lookup_or__ array "length" (,(key) Array_core_error "__Array_push__: not an Array") ,(n)
+  __Dict_put__ array n value ,()
+  __Number_fromString__ Array_core_error "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Dict_put__ array "length" n)
+
+(define __Array_pop__ ,(onError array)
+  Array_core_is array ,(isArray)
+  __if_then_else__ isArray
+    (,()
+      __Dict_lookup_or__ array "length" Array_core_error ,(n)
+      __Number_is_zero__ n ,(empty)
+      __if_then_else__ empty
+        (,() onError "__Array_pop__: empty Array")
+        (,()
+          __Number_fromString__ Array_core_error "1" ,(one)
+          __Number_subtract__ n one ,(last)
+          __Dict_lookup_or__ array last (,(key) Array_core_error "__Array_pop__: no element") ,(value)
+          __Dict_remove__ array last ,()
+          __Dict_put__ array "length" last ,()
+          __NULL__ value))
+    (,() onError "__Array_pop__: not an Array"))
+
+;; 配列（"length" のある Dict）か
+(define Array_core_is ,(array)
+  __Cont_get__ ,(return)
+  __type_name__ array ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __unless__ isDict (,() return __FALSE__) ,()
+  __Dict_lookup_or__ array "length" (,(key) return __FALSE__) ,(n)
+  __NULL__ __TRUE__)
+
+;; i が配列 array の添字なら、そのキー（-0 は 0）と null を、そうでなければ null とエラーのメッセージの名前の後の部分を返す
+(define Array_core_index ,(array i)
+  __Cont_get__ ,(return)
+  __type_name__ i ,(type)
+  __String_equal__ type "Number" ,(isNumber)
+  __unless__ isNumber (,() return __NULL__ ": index is not a Number") ,()
+  __Number_floor__ i ,(whole)
+  __Number_subtract__ i whole ,(fraction)
+  __Number_is_zero__ fraction ,(isInteger)
+  __unless__ isInteger (,() return __NULL__ ": index is not an integer") ,()
+  __Number_is_negative__ i ,(negative)
+  __if__ negative (,() return __NULL__ ": index out of range") ,()
+  __Dict_lookup_or__ array "length" Array_core_error ,(n)
+  __Number_subtract__ i n ,(d)
+  __Number_is_negative__ d ,(inRange)
+  __unless__ inRange (,() return __NULL__ ": index out of range") ,()
+  __Number_fromString__ Array_core_error "0" ,(zero)
+  __Number_add__ i zero ,(k)
+  __NULL__ k __NULL__)
+
+(define Array_core_error ,(msg)
+  __OS_print_error__ msg ,()
+  __OS_print_error__ "\n" ,()
+  __OS_exit_error__)

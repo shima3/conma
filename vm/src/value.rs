@@ -33,6 +33,8 @@ pub enum Value {
     Ref(Rc<RefObj>),
     MSeq(Rc<MSeqObj>),
     Dict(Rc<DictObj>),
+    /// An array of the feature "array" of extended ConMa (prim/array.rs, docs/dev/ARRAY-PLAN-ja.md).
+    Array(Rc<ArrayObj>),
     /// The escape continuation that __Cont_get__ passes.
     Cont(Rc<ContObj>),
     /// A VProc, as __VProc_current__ and __VProc_spawn__ return it.
@@ -235,6 +237,12 @@ pub struct LazyInfo {
 /// taken from (one more start) instead of copying them, and an MSeq copies its
 /// items (from its start) before it changes them when another MSeq shares them
 /// (items_mut), so that each behaves as an MSeq of its own.
+/// An array (feature "array"): its values by index, from 0.
+pub struct ArrayObj {
+    pub serial: usize,
+    pub items: RefCell<Vec<Value>>,
+}
+
 pub struct MSeqObj {
     pub serial: usize,
     pub items: RefCell<Rc<Vec<Value>>>,
@@ -631,6 +639,7 @@ pub fn identity(v: &Value) -> usize {
         Value::Ref(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::MSeq(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Array(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Cont(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Stream(r) => Rc::as_ptr(r) as *const u8 as usize,
@@ -1132,6 +1141,7 @@ pub fn value_type_name(v: &Value) -> String {
         Value::Ref(_) => "Ref".into(),
         Value::MSeq(_) => "MSeq".into(),
         Value::Dict(_) => "Dict".into(),
+        Value::Array(_) => "Array".into(),
         Value::StrNode(n) | Value::Raw(n) => match n.tag() {
             Some(t) => t.to_string(),
             None => "list".into(),
@@ -1160,6 +1170,7 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
         Value::Ref(_) => "Ref",
         Value::MSeq(_) => "MSeq",
         Value::Dict(_) => "Dict",
+        Value::Array(_) => "Array",
         Value::CFrame(_) => "CFrame",
         Value::LList(_) => "LList",
         Value::VProc(_) => "VProc",

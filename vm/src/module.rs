@@ -791,7 +791,7 @@ pub fn module_files(module: &Sexp) -> String {
 /// and "wasm", __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__ (prim/wasm.rs; the native VM
 /// fails as it has no WebAssembly), __Dict_numbers__ and __Dict_put_numbers__ (prim/collections.rs; the native VM
 /// has them and fails as it has no WebAssembly).
-pub const EXT_FEATURES: &[&str] = &["bitwise32", "boolean", "chan", "control", "wasm"];
+pub const EXT_FEATURES: &[&str] = &["array", "bitwise32", "boolean", "chan", "control", "wasm"];
 
 /// True if the module uses the feature "boolean" of extended ConMa: __TRUE__ and
 /// __FALSE__ are primitives (prim/control.rs), and so are the Booleans the

@@ -6,6 +6,7 @@
 use crate::sched::Machine;
 use crate::vproc::VProc;
 
+pub mod array;
 pub mod basic;
 mod cchain;
 pub mod chan;
@@ -178,6 +179,12 @@ prims! {
     "__Chan_reader__"      => "prim_Chan_reader", chan::chan_reader;
     "__Chan_take__"        => "prim_Chan_take", chan::chan_take;
     "__Dict_numbers__"     => "prim_Dict_numbers", collections::dict_numbers;
+    "__Array_new__"        => "prim_Array_new", array::new;
+    "__Array_length__"     => "prim_Array_length", array::length;
+    "__Array_get__"        => "prim_Array_get", array::get;
+    "__Array_set__"        => "prim_Array_set", array::set;
+    "__Array_push__"       => "prim_Array_push", array::push;
+    "__Array_pop__"        => "prim_Array_pop", array::pop;
     "__Dict_put_numbers__" => "prim_Dict_put_numbers", collections::dict_put_numbers;
 }
 
