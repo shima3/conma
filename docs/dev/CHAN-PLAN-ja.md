@@ -68,3 +68,5 @@ ConSh のチャネル（consh/include/consh_chan.se。関数どうしのパイ�
 ## 6. 今の状態
 
 計画を書き、4 を決めた（2026-11-16）。
+
+* **C1（作った、2026-11-16）**：include/core/chan.se に、8 つを同じ名前のコア ConMa の関数として書いた（consh/reference/consh_chan.se から、ConSh によらない部分。使う関数の名前は `Chan_core_` で始める。`Sh_get`、`num`、`List_reverse` の代わりに、プリミティブと自分の関数だけを使い、誤りは `Chan_core_error` がメッセージを出して止める）。`__Chan_new__` は `"state"` を必ず置く（null のこともある）。`__Chan_close__` は、書き手に写した `"wake"` を使う（チャネルのものと同じ Ref）。`__Chan_take__` は、LazyList を作らずに、次の要素と、あったかを返す。test/step45 の 6 つのケース（書き手 1 つ、3 つ、後から加わる書き手と 16 個ごとの探し直し、cancel、状態の Ref、書かずに閉じた書き手と書き手のないチャネル）が、Python 版、Rust 版、変換した、wasm 版の VM で同じログになる。VProc の切り替わる時期は VM によって違うので、鎖のあいだの順には左右されない形で出す（書き手ごとに分けた順、数、終わり方）。
