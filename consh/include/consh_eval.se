@@ -13,6 +13,10 @@
 ;;   * List_fromMSeq と LazyList_prepend を、要素の数だけ深く再帰しない形（前から裏返しに集めて裏返す）にした。
 ;;   * Subst_settle_os で、値の先頭に Pipe_cap 個そろったことを記録（"full"）に覚え、コマンドのたびに
 ;;     たどり直さないようにした。
+;;   * Func_make で、変数リストの名前と本体の文を取り出して関数の Dict に置き（"names"、"restName"、"lines"）、
+;;     Func_call は、引数の数を調べながら渡す（Func_bind_args）ようにした。
+;;   * Subst_settle で、残った $( ) がどれも "full" なら global の "substsParked" に覚え、次からは状態が
+;;     "done" になったものがないかだけを見るようにした。
 ;;
 ;; ConSh の実行（段階 3〜13）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
@@ -746,7 +750,7 @@
   __Number_toString__ value)
 
 ;; ── 関数 ──
-;; 関数は Dict で、"params"（params の節）、"body"（script の節）、
+;; 関数は Dict で、"params"（params の節）、"body"（script の節）、"names" と "restName"（変数リストの名前と rest の名前）、"lines"（本体の文）、
 ;; "scope"（定義した文脈）、"vars"（定義した時点の局所変数の写し）を持つ
 
 ;; 文「function 名前 変数リスト { スクリプト }」。このスコープの関数の Dict に置く
@@ -767,6 +771,14 @@
   __Dict_put__ fn "body" body ,()
   __Dict_put__ fn "scope" sh ,()
   __Dict_put__ fn "vars" vars ,()
+  ;; 最適化版：変数リストの名前と rest の名前、本体の文を、呼ぶたびでなく、ここで 1 回だけ取り出す（Func_call）
+  Node_split params ,(ptag ppos pchildren)
+  __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
+  List_first rest ,(restName)
+  __Dict_put__ fn "names" names ,()
+  __Dict_put__ fn "restName" restName ,()
+  Node_split body ,(btag bpos lines)
+  __Dict_put__ fn "lines" lines ,()
   Sjs_copy_into sh fn ,()
   __NULL__ fn)
 
@@ -831,16 +843,13 @@
 ;; 前置の変数定義の層は、sh の環境変数に積んである（Cmd_scope）
 (define Func_call ,(sh pos fn args in out err)
   __Cont_get__ ,(return)
-  __Dict_lookup_or__ fn "params" __print_exit_error__ ,(params)
-  __Dict_lookup_or__ fn "body" __print_exit_error__ ,(body)
+  __Dict_lookup_or__ fn "names" __print_exit_error__ ,(names)
+  __Dict_lookup_or__ fn "restName" __print_exit_error__ ,(restName)
+  __Dict_lookup_or__ fn "lines" __print_exit_error__ ,(lines)
   __Dict_lookup_or__ fn "scope" __print_exit_error__ ,(scope)
   __Dict_lookup_or__ fn "vars" __print_exit_error__ ,(vars)
   __Dict_copy__ vars ,(vars)
-  Node_split params ,(ptag ppos pchildren)
-  __LList_uncons__ __print_exit_error__ pchildren ,(names rest)
-  List_first rest ,(restName)
-  Arity_check sh pos names restName args ,()
-  Func_bind vars names restName args ,()
+  Func_bind_args sh pos vars names restName args names args ,()
   __Dict_lookup_or__ sh "env" __print_exit_error__ ,(env)
   __Dict_new__ ,(funcs)
   __Dict_copy__ sh ,(callee)
@@ -857,7 +866,6 @@
   __Dict_put__ callee "out" out ,()
   __Dict_put__ callee "err" err ,()
   Seg_register callee ,()
-  Node_split body ,(btag bpos lines)
   Sh_set_status sh "0" ,()
   Eval_lines callee lines)
 
@@ -886,6 +894,27 @@
   __String_equal__ s "1" ,(one)
   __if_then_else__ one (,() __NULL__ " argument") (,() __NULL__ " arguments") ,(word)
   __String_concat__ s word)
+
+;; 最適化版：引数を順に名前に渡し、残りは LazyList にして restName に渡す（restName が "" なら捨てる）。
+;; 数が合わないと分かったら、そこで Arity_check のエラーにする（Func_call は、Arity_check を先に呼ばない。
+;; 渡した先の vars は、エラーなら使われない写し）。allNames と allArgs は、エラーのメッセージ用の、はじめの LList
+(define Func_bind_args ,(sh pos vars names restName args allNames allArgs)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__
+    (,()
+      __String_equal__ restName "" ,(fixed)
+      __if__ fixed
+        (,()
+          __is_null__ args ,(test__) __unless__ test__ (,() Arity_check sh pos allNames restName allArgs) ,()
+          return) ,()
+      LazyList_fromList args ,(list)
+      __Dict_put__ vars restName list ,()
+      return) ,()
+  __is_null__ args ,(test__) __if__ test__ (,() Arity_check sh pos allNames restName allArgs) ,()
+  __LList_uncons__ __print_exit_error__ names ,(name others)
+  __LList_uncons__ __print_exit_error__ args ,(arg rest)
+  __Dict_put__ vars name arg ,()
+  Func_bind_args sh pos vars others restName rest allNames allArgs)
 
 ;; 引数を順に名前に渡し、残りは LazyList にして restName に渡す（restName が "" なら捨てる）。
 ;; 数は Arity_check で調べてある（足りなければ空文字列を渡す）
@@ -1821,6 +1850,7 @@
   __Dict_lookup_or__ global "substs" __print_exit_error__ ,(substs)
   __LList_cons__ record substs ,(substs)
   __Dict_put__ global "substs" substs ,()
+  __Dict_put__ global "substsParked" __FALSE__ ,()
   Chan_list chan)
 
 ;; $( ) の中が、外部コマンドを1つだけ起動する単純文1つだけか（Pipe_is_external）
@@ -1867,6 +1897,7 @@
   __Dict_lookup_or__ global "substs" __print_exit_error__ ,(substs)
   __LList_cons__ record substs ,(substs)
   __Dict_put__ global "substs" substs ,()
+  __Dict_put__ global "substsParked" __FALSE__ ,()
   __NULL__ value)
 
 ;; OS のパイプから読む $( ) の値。行から改行を除いた LazyList。終わりまで読んだら、パイプの読む側を閉じる。
@@ -1988,19 +2019,38 @@
   __Dict_lookup_or__ global "substs" __print_exit_error__ ,(substs)
   __is_null__ substs ,(condition)
   __if__ condition return ,()
-  Subst_settle_list substs ,(kept)
-  __Dict_put__ global "substs" kept)
+  ;; 最適化版：前に待った後に残ったものが、どれも値の先頭がそろった（"full"）OS のパイプの $( ) なら
+  ;; （"substsParked"）、Subst_settle_os は、終わった（"done"）ものがないかぎり "blocked" を返して残すので、
+  ;; 状態だけを見て、終わったものがなければ何もしない
+  __Dict_lookup_or__ global "substsParked" (,(key) __NULL__ __FALSE__) ,(parked)
+  __if__ parked (,() Substs_none_done substs ,(none) __if__ none return) ,()
+  Subst_settle_list substs ,(kept full)
+  __Dict_put__ global "substs" kept ,()
+  __Dict_put__ global "substsParked" full)
 
+;; 記録のどれも、状態が "done" でないか
+(define Substs_none_done ,(substs)
+  __is_null__ substs ,(end)
+  __if_then_else__ end (,() __NULL__ __TRUE__) (,()
+    __LList_uncons__ __print_exit_error__ substs ,(record rest)
+    __Dict_lookup_or__ record "state" __print_exit_error__ ,(stateRef)
+    __Ref_get__ stateRef ,(state)
+    __String_equal__ state "done" ,(done)
+    __if_then_else__ done (,() __NULL__ __FALSE__) (,() Substs_none_done rest)))
+
+;; 残す記録の LList と、そのどれも値の先頭がそろった（"full"）OS のパイプの $( ) か（最適化版）を返す
 (define Subst_settle_list ,(substs)
   __Cont_get__ ,(return)
   __is_null__ substs ,(condition)
-  __if__ condition (,() return __NULL__) ,()
+  __if__ condition (,() return __NULL__ __TRUE__) ,()
   __LList_uncons__ __print_exit_error__ substs ,(record rest)
   Subst_settle_one record ,(state)
-  Subst_settle_list rest ,(kept)
+  Subst_settle_list rest ,(kept full)
   __String_equal__ state "done" ,(condition)
-  __if__ condition (,() return kept) ,()
-  __LList_cons__ record kept)
+  __if__ condition (,() return kept full) ,()
+  __LList_cons__ record kept ,(kept)
+  __if__ full (,() __Dict_lookup_or__ record "full" (,(key) __NULL__ __FALSE__) ,(full) return kept full) ,()
+  __NULL__ kept __FALSE__)
 
 ;; 状態が "running" でなくなるまで待ち、その状態（"blocked" か "done"）を返す
 (define Subst_settle_one ,(record)
