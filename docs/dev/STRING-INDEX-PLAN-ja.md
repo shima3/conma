@@ -8,7 +8,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
     * `__String_length__` は、全体が ASCII か（`is_ascii`）を調べ、そうでなければ文字を数える（vm/src/prim/string.rs の `char_count`）。
     * `__String_substring__`、`__String_find__`、`__String_find_any__` は、位置の前のバイトが ASCII か（`char_to_byte`）を調べ、そうでなければ文字をたどる。`__String_find__` は、見つけた所の位置を、そこまでの文字を数えて求める（`chars_in`）。
     * どれも、呼ぶたびに文字列の長さ（か位置）に比例する手間がかかる。長い文字列を 1 文字ずつ読むと、全体で文字列の長さの 2 乗になる。
-* **測った例**（2026-11-16、Apple M1、user 秒。consh/sjs/README-ja.md の「文字列の添字」）：SJS の `for (let i = 0; i < s.length; i++) { if (s[i] === "a") n++; }` は、1 回に `s.length`（`__String_length__`）と `s[i]`（`__String_substring__`）を呼ぶ。
+* **測った例**（2026-11-16、Apple M4、user 秒。consh/sjs/README-ja.md の「文字列の添字」）：SJS の `for (let i = 0; i < s.length; i++) { if (s[i] === "a") n++; }` は、1 回に `s.length`（`__String_length__`）と `s[i]`（`__String_substring__`）を呼ぶ。
 
 | 文字数 | Rust 版の VM | wasm 版の VM | wasm 版の 1 回 |
 |---|---|---|---|
@@ -64,7 +64,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
 
 計画を書き、4 を決めた（2026-11-16）。
 
-* **S1（測った、2026-11-16、32c327f の後、Apple M1、user 秒、1 回）**：ConMa のプログラム（リポジトリには入れていない）で、`piece` を 2^k 回つないだ文字列を、1 回ごとに `__String_length__` で長さを求め、`__String_substring__` で 1 文字取って `"a"` と比べながら、頭から終わりまで読む（SJS の `i < s.length` と `s[i]` と同じ形）。`piece` は ASCII の `"abcde"` と、先頭が ASCII でない `"あbcde"`。
+* **S1（測った、2026-11-16、32c327f の後、Apple M4、user 秒、1 回）**：ConMa のプログラム（リポジトリには入れていない）で、`piece` を 2^k 回つないだ文字列を、1 回ごとに `__String_length__` で長さを求め、`__String_substring__` で 1 文字取って `"a"` と比べながら、頭から終わりまで読む（SJS の `i < s.length` と `s[i]` と同じ形）。`piece` は ASCII の `"abcde"` と、先頭が ASCII でない `"あbcde"`。
 
 | 文字列 | Rust 版の VM | wasm 版の VM |
 |---|---|---|
@@ -83,7 +83,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
     * test/（すべて）、consh/test（最適化版と参照版）、consh/sjs/test が、Rust 版の VM で違いなく通る。
     * S1 のプログラム（Rust 版の VM、user 秒）：ASCII の 163,840 文字が 0.55 秒から 0.13 秒、40,960 文字が 0.05 秒から 0.03 秒。ASCII でない文字列は変わらない（18.56 秒から 18.00 秒。位置は今までどおり文字をたどる）。
 * **S4（作った、2026-11-16）**：wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh、19 分）を作り直した。wasm 版の VM で test/step41、step45、step46、fast11 が通り、consh/test は既知の違い（step8、step17）だけ。変換した VM で test/（すべて）と consh/test が違いなく通る。
-* **S5（測った、2026-11-16、Apple M1、user 秒。機械が空いているとき）**：
+* **S5（測った、2026-11-16、Apple M4、user 秒。機械が空いているとき）**：
 
 | 測ったもの | Rust 版の VM（前 → 後） | wasm 版の VM（前 → 後） |
 |---|---|---|
