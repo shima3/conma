@@ -18,6 +18,7 @@ consh/
 │       ├── SAFEJS-PLAN-ja.md        JavaScript の安全なサブセット（SJS）を (( )) と $(( )) に書く計画と仕様（段階 A、B を作り、2026-11-12 に一区切り。残りは 8）
 │       ├── SAFEJS-REVIEW-ja.md      SJS のレビュー
 │       ├── SJS-WASM-PLAN-ja.md      SJS の数の関数を WebAssembly でも動かす計画
+│       ├── COMPILE-PLAN-ja.md       スクリプトを前もって変換して、ConMa 版の ConSh を速くする計画
 │       ├── SJS-WASM-ARRAY-PLAN-ja.md その、配列を使う関数の計画
 │       ├── JS-PLAN-ja.md            ブラウザと Node.js の ConSh（js/）と組み込みコマンド js の計画と設計
 │       ├── JS-REVIEW-ja.md          その、仕様と設計のレビュー
