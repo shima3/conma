@@ -54,28 +54,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### alpha（2026-11-16、f90117c から 7c9911a まで、M4 の Claude）
-
-SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列の位置の速い求め方（docs/dev/STRING-INDEX-PLAN-ja.md。Rust VM の文字列に「すべて ASCII か」と文字数を覚えさせる）を入れた。チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）までは、5d057a8 の全部の記録で確かめられている。
-
-* **見つけた VM の不具合（前から）**：`__VProc_wait__` を継続なしで（関数の最後に）書いた VProc は、待つ相手が終わって起きたとき、終わったと扱われずに 1 歩進められ、`Null Operator: CChain empty, no LCont` のエラーになる（Python VM と Rust VM の両方。docs/dev/CHAN-PLAN-ja.md の C2）。step45 と fast11 は、待つ所に継続を付けて避けている。このメッセージが待っていた VProc で出たら、この不具合を疑う。
-* 7c9911a より後の alpha のコミット（測った機械の名前の修正、ブランチの決まり、この申し送り）は、文書だけ。この後の作業は、作業のブランチを作って alpha にマージする（docs/dev/CONTRIBUTING.md）。
-
-### m4/sjs-charat（2026-11-16、M4 の Claude）
-
-SJS の `charAt` を JavaScript と同じにした（consh/include/sjs_rt.se）：添字を整数にし（undefined と NaN は 0、0 の方へ切り捨て）、負の数と長さ以上は `""`。前は `slice` と同じく負の数を後ろからの位置にしていた（`"héllo".charAt(-1)` が `"o"`）。
-
-* **作り直すもの**：ConSh のモジュール（sjs_rt.se）。変換版の VM は、先に Rust VM で consh/test を流してから `bench/build.sh`。VM のソースは変えていない。
-* **新しいテスト**：consh/sjs/test/step2 の case8（`charAt` と `s[i]` の境目。ログは Node.js と同じ）。
-* **変更した人が流したもの**：consh/sjs/test と consh/test（最適化版）を Rust VM で。
-* **流していないもの**：ほかのすべて。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-16 | 5d2c759 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。新しい consh/sjs/test の step2 の case8 も通った。申し送りの alpha（f90117c から 7c9911a まで）と m4/sjs-charat を確かめた |
 | 2026-11-16 | 30789d6 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。新しい test/step46 もどの VM でも通った。申し送り（2026-11-16）の作り直すものと流していないものを確かめた |
 | 2026-11-16 | 5d057a8 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM） | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ） |
 | 2026-11-16 | f512194 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM） | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ） |
