@@ -60,6 +60,12 @@ consh/sjs/test/run_all.sh
 * 流したもの：consh/test の最適化版と参照版（Rust 版の VM）。関数の引数の数のエラー、rest、関数の中の関数、`$( )` の入れ子とループを、最適化版と参照版で比べた。
 * 流していないもの：wasm 版と変換した VM の consh/test、consh/js/test、consh/sjs/test。変換した VM は、ConSh のモジュールが P1（0c9d687）から変わっているので、`bench/build.sh` で作り直してから流す。
 
+### m1/lazy-fast-path
+
+* ConSh の最適化版の consh/include/consh_expand.se だけを変えた（`Value_leaves_lazy` の、値ができている部分の近道 `Leaves_ready` と、`Arg_charge` を分けた `Arg_charge_bytes`）。参照版と VM は変えていない。
+* 流したもの：consh/test の最適化版（Rust 版の VM、`-j 8`）。consh/bench の `11`、`16` と、再帰する形の `15`（m1/bench-recursion のもの）の時間と出力（Rust 版と wasm 版の VM）。
+* 流していないもの：wasm 版と変換した VM の consh/test、consh/js/test、consh/sjs/test。変換した VM は、ConSh のモジュールが変わったので、`bench/build.sh` で作り直してから流す。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

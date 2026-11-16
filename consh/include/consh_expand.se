@@ -937,24 +937,65 @@
   __Dict_lookup_or__ limit "onFunc" __print_exit_error__ ,(onFunc)
   onFunc)
 
+;; 最適化版：値ができている部分の近道。先頭から、評価済みで String の要素が続く間は、待たずにたどり（Leaves_ready）、
+;; その文字数をまとめて上限から引く。評価していない要素か、String でない要素に来たら、その1つを __LazyList_uncons__ と
+;; Value_leaves_in で扱い（Value_leaves_lazy_step）、その先でまた近道を試す
 (define Value_leaves_lazy ,(list limit)
+  __Cont_get__ ,(return)
+  num "0" ,(zero)
+  num "1" ,(one)
+  Leaves_ready list zero one ,(front bytes rest)
+  __is_null__ front ,(none)
+  __unless__ none (,() Arg_charge_bytes limit bytes) ,()
+  __is_null__ rest ,(test__) __if__ test__ (,() return front) ,()
+  Value_leaves_lazy_step rest limit ,(back)
+  __LList_append__ front back)
+
+(define Value_leaves_lazy_step ,(list limit)
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return __NULL__) list ,(item rest)
   Value_leaves_in item limit ,(front)
   Value_leaves_lazy rest limit ,(back)
   __LList_append__ front back)
 
+;; LazyList list の先頭から、評価済みで String の要素が続く部分の、葉の LList、その文字数 + 1 の和、残りを返す。
+;; 残りは、終わりまでたどれたら null、そうでなければ、評価していないか String でない要素から先の LazyList。
+;; LazyList の Ref の値（include/util.se の LazyList：評価済みなら null か LList、そうでなければサンクか評価中の VProc）を
+;; __Ref_get__ で読むだけなので、評価も、待つことも、継続で戻ることもしない（cont_needs.py の E）
+(define Leaves_ready ,(list zero one)
+  __Cont_get__ ,(return)
+  __Ref_get__ list ,(cell)
+  __type_name__ cell ,(cellType)
+  __String_equal__ cellType "LList" ,(isCell)
+  __unless__ isCell
+    (,()
+      __is_null__ cell ,(test__) __if__ test__ (,() return __NULL__ zero __NULL__) ,()
+      return __NULL__ zero list) ,()
+  __LList_uncons__ __print_exit_error__ cell ,(item tail)
+  __type_name__ item ,(type)
+  __String_equal__ type "String" ,(isString)
+  __unless__ isString (,() return __NULL__ zero list) ,()
+  Leaves_ready tail zero one ,(leaves bytes rest)
+  __String_length__ item ,(n)
+  __Number_add__ bytes n ,(bytes)
+  __Number_add__ bytes one ,(bytes)
+  __LList_cons__ item leaves ,(leaves)
+  __NULL__ leaves bytes rest)
+
 ;; 葉 s の文字数 + 1（NUL）を、引数のバイト数の上限 limit の残りから引く。足りなければ limit の "onOver" を呼ぶ
 (define Arg_charge ,(limit s)
+  __String_length__ s ,(n)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  Arg_charge_bytes limit n)
+
+;; n バイトを、引数のバイト数の上限 limit の残りから引く。足りなければ limit の "onOver" を呼ぶ
+(define Arg_charge_bytes ,(limit n)
   __Cont_get__ ,(return)
   __is_null__ limit ,(condition)
   __if__ condition return ,()
   __Dict_lookup_or__ limit "left" __print_exit_error__ ,(left)
   __is_null__ left ,(test__) __if__ test__ return ,()
-  __String_length__ s ,(n)
-  __Number_fromString__ __print_exit_error__ "1" ,(one)
-  __Number_add__ n one ,(n)
-  __Dict_lookup_or__ limit "left" __print_exit_error__ ,(left)
   __Number_subtract__ left n ,(left)
   __Number_is_negative__ left ,(test__) __if__ test__
     (,()
