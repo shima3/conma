@@ -781,6 +781,36 @@ In a module with this feature, the Booleans the primitives return (`__is_null__`
 * **Description**: Passes `then` (`__TRUE__`) or `else` (`__FALSE__`) to the LCont, without applying it, in one step (the Closure takes two).
 * **Error**: Stops the VProc with `__TRUE__: missing argument(s)` with fewer than two operands, where the Closure would be applied partially. Operands after the second are dropped, as by other primitives.
 
+### Feature `"chan"`: channels
+
+A channel is written by several VProcs and read by one reader, which takes the items as they arrive. Each writer has a chain of its own, written by one VProc only (a `Sink` of `__LazyList_pipe__` can only be used by the VProc that made it). The items of a chain are taken in the order they were written; between chains, the reader takes from the first chain that has an item and moves that chain to the end (unless it is the only one left), and looks for chains added since only when the chains it knows have no item and after every 16 items it takes. The reader learns that the channel has ended (every chain closed) only after looking for new chains: a chain is added by a VProc that already has a writer of the channel, or by the VProc that made it before reading starts, so no chain is added once every chain is closed.
+
+The channel, its writers and its reader are Dicts whose entries are Refs, numbers and the other values described in `include/core/chan.se`; the primitives read and write the same Dicts and Refs as those definitions, so `__type_name__` gives `"Dict"` for them on every VM. A program uses them only through these primitives. A primitive that waits makes the VProc wait as `__Ref_wait_change__` does (it is not in the ready queue, and counts as blocked for deadlock detection) and is applied again when the VProc wakes up. A value that is not a channel, a writer or a reader (as made by these primitives) stops the VProc with an error (in the replacement definitions, the error of the primitive that fails inside them, or a message and exit). ConSh uses them for pipes and `$( )` between functions. Replacement definitions: `include/core/chan.se`. Background: docs/dev/CHAN-PLAN-ja.md.
+
+### **`__Chan_new__ cap state ,(chan)`**
+* **Description**: Makes a channel. `cap` is the number of items a writer may write that the reader has not taken yet; a writer with `cap` items not taken waits. `state` is null or a Ref: while a writer of the channel waits for room, the Ref is set to `"blocked"`, and when it wakes up, to `"running"` (ConSh waits on it at the end of a statement).
+
+### **`__Chan_writer__ chan ,(writer)`**
+* **Description**: Adds a chain to the channel and returns its writer. Only one VProc uses a writer, and it closes it with `__Chan_close__` when it has written everything.
+
+### **`__Chan_of__ writer ,(chan)`**
+* **Description**: The channel of a writer (to make another writer of the same channel for another VProc).
+
+### **`__Chan_put__ onCancelled writer item ,()`**
+* **Description**: Writes `item` to the chain of `writer`. If `cap` items of the chain have not been taken, waits until the reader takes one. If the reader has cancelled the channel (`__Chan_cancel__`), does not write, and applies `onCancelled` to no operands with the LCont of `__Chan_put__` (as a write to a closed pipe gets SIGPIPE); if `onCancelled` returns, it returns no values.
+
+### **`__Chan_close__ writer ,()`**
+* **Description**: Closes the chain of `writer`: after its items, the reader finds its end. Closing a closed writer does nothing.
+
+### **`__Chan_cancel__ chan ,()`**
+* **Description**: Tells the writers that the reader will not take more items: a later `__Chan_put__` applies its `onCancelled`, and the writers waiting for room wake up and do so.
+
+### **`__Chan_reader__ chan ,(reader)`**
+* **Description**: Makes the reader of the channel. A channel has one reader, and two VProcs do not use it at the same time (ConSh takes the items in the cells of a LazyList, evaluated one by one).
+
+### **`__Chan_take__ reader ,(item found)`**
+* **Description**: Takes the next item, by the order above, and returns it with `__TRUE__`. If no chain has an item, waits until one is written or every chain is closed. When every chain is closed (and has no item left), returns null and `__FALSE__`, again each time it is applied.
+
 ### Feature `"wasm"`: functions on numbers in WebAssembly
 
 A program can write functions on numbers in a subset of the WebAssembly text format (WAT), as a kind of inline assembler, and call them. Only the VM for wasm32 (`vm/wasm`) runs them, with the WebAssembly of its host (Node.js, JavaScriptCore or a browser); the native VMs (Rust, transpiled) assemble the text and then apply `onError` with `"__Wasm_compile__: WebAssembly is not available"`, or with the error of the assembler. The replacement definitions (`include/core/wasm.se`) apply `onError` with the same message without assembling. The VM for wasm32 does the same with `--trace` or `CONMA_PROFILE`, whose steps are those of ConMa, and when the environment variable `CONMA_NO_WASM` is not empty. Background: consh/docs/dev/SJS-WASM-PLAN-ja.md, and consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md for the memory and `__Dict_numbers__`.

@@ -869,6 +869,17 @@ No new primitive.
 * Stage A1 of consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in core ConMa (`include/core/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
 * For copying the arrays of SJS faster (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/core/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
 
+## Step 45: Channels in extended ConMa
+
+| Primitive | Status |
+|---|---|
+| `__Chan_new__`, `__Chan_writer__`, `__Chan_of__`, `__Chan_put__`, `__Chan_close__`, `__Chan_cancel__`, `__Chan_reader__`, `__Chan_take__` (feature `"chan"` of extended ConMa) | implemented |
+
+* Goal: the channels of ConSh (pipes and `$( )` between functions, written by several VProcs and read as one LazyList) took about 35% of the steps of the scripts that pipe items between functions (consh/bench `10` and `18`). Decided with the user on 2026-11-16 (docs/dev/CHAN-PLAN-ja.md): the functions of consh_chan.se as primitives of a feature of extended ConMa, the state of `$( )` given to `__Chan_new__` as a Ref, the names `__Chan_*__`.
+* The replacement definitions (`include/core/chan.se`) are the old channels of ConSh without what belongs to ConSh; the Python VM runs them through `bin/to-core`, and so does the reference version of ConSh, which reads them. `vm/src/prim/chan.rs` reads and writes the same Dicts and Refs in one step; a put to a full channel and a take with nothing to take wait as `__Ref_wait_change__` does and are applied again when the VProc wakes. The wasm VM shares it. The transpiled code does a put or a take in place when it would not wait, and leaves it to the VM otherwise. The frontends write `(Uses "chan")` (PRIMITIVES.md, section 16).
+* Effect (consh/bench/README-ja.md): `10` and `18` take 34 to 39% fewer steps and about 30% less time on the Rust and wasm VMs; the others are unchanged.
+* Tests: `test/step45` (the replacement definitions: one and three writers, a writer added later, cancel, the state Ref, empty channels), `test/fast11` (the same with the primitives, the `Uses` the frontends write and `bin/to-core`), `test/transpiled` case2, and consh/test with both versions of ConSh.
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/dev/SAFEJS-REVIEW-ja.md (3.1.4).
