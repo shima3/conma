@@ -24,9 +24,9 @@ ConSh のチャネル（consh/include/consh_chan.se。関数どうしのパイ�
 * **ConSh の参照版はコア ConMa のまま**：ConSh の参照版はコア ConMa で作る（include/core を使う）ので、代わりの定義で動く。最適化版はプリミティブで動く。consh/test を両方で流せば、プリミティブと代わりの定義を比べることになる。
 * **ConSh 専用の部分は ConSh に残す**：ConSh の書き手の行き先（`Target_make "chan"`）、`Pipe_cap`、`Sh_abort` は ConSh のまま。
 
-## 3. 形（案。4 で決める）
+## 3. 形
 
-今の consh_chan.se の関数を、そのままプリミティブにする形である。チャネル、書き手、読み位置は、拡張 ConMa では新しい値の型（`__type_name__` は `"Chan"` と `"ChanWriter"`）、代わりの定義では今と同じ Dict になる。
+今の consh_chan.se の関数を、そのままプリミティブにする形である（4 で決めた）。チャネル、書き手、読み位置は、今と同じ Dict と Ref で、プリミティブもそれを読み書きする（4 の 3）。
 
 | プリミティブ | 今の関数 | 待つか |
 |---|---|---|
@@ -36,20 +36,21 @@ ConSh のチャネル（consh/include/consh_chan.se。関数どうしのパイ�
 | `__Chan_put__ onCancelled writer item ,()` | `Chan_put`（`Chan_wait_room` を含む） | 一杯なら待つ |
 | `__Chan_close__ writer ,()` | `Chan_close` | 待たない |
 | `__Chan_cancel__ chan ,()` | `Chan_cancel` | 待たない |
-| `__Chan_take__ reader ,(item found)` | `Chan_next` の、取り出して待つところ（`Chan_take_from`、`Chan_register`、`Chan_take`） | 要素がなく、開いた鎖があれば待つ |
 | `__Chan_reader__ chan ,(reader)` | `Chan_list` の読み位置を作るところ | 待たない |
+| `__Chan_take__ reader ,(item found)` | `Chan_next` の、取り出して待つところ（`Chan_take_from`、`Chan_register`、`Chan_take`） | 要素がなく、開いた鎖があれば待つ |
 
-* `Chan_list` が返す LazyList は、`__LazyList_new__ (,() __Chan_take__ reader ,(item found) ...)` の形で、ConSh（または include の小さい関数）に残す。LazyList の節は 1 つずつ評価されるので、読み位置を同時に 2 つの VProc が変えることはない（今と同じ）。
+* `Chan_list` が返す LazyList は、`__LazyList_new__ (,() __Chan_take__ reader ,(item found) ...)` の形で、ConSh に残す。LazyList の節は 1 つずつ評価されるので、読み位置を同時に 2 つの VProc が変えることはない（今と同じ）。
 * **順番の規則は今と同じにする**：1 つの鎖の中は書いた順。鎖のあいだは、取り出した鎖を末尾に回し、新しい鎖は、知っている鎖に要素がないときと 16 個（`Chan_register_every`）ごとに探す。consumed を cancelled より先に読む（consh_chan.se の `Chan_wait_room` の注釈）。チャネルを閉じたと決めるのは、新しい鎖を探した後だけ。
-* **`$( )` の状態**：今は、チャネルに `"state"` の Ref があれば、書き手が待つ間は `"blocked"`、起きたら `"running"` にする（`Subst_settle` がそれを待つ）。案 A は、それを `__Chan_new__` の引数（null なら使わない）として、プリミティブが同じことをする形。
-* **エラー**：Chan でない値は VProc を止める（ほかのプリミティブと同じ）。読み手が cancel した後の `__Chan_put__` は、書かずに `onCancelled` を呼ぶ（今と同じ。SIGPIPE に当たる）。
+* **`$( )` の状態**：`__Chan_new__` の `state` が Ref なら、書き手が待つ間は `"blocked"`、起きたら `"running"` にする（`Subst_settle` がそれを待つ）。null なら使わない。
+* **待つ**：プリミティブは、待つとき Operator と OList を残して、Ref（`__Chan_put__` は鎖の consumed、`__Chan_take__` はチャネルの wake）が変わるまで VProc を待たせ、起きたらやり直す。`__Chan_put__` は、待った書き手の Dict に印を付けておき、やり直したときに `state` を `"running"` にする。
+* **エラー**：チャネル、書き手、読み位置でない値は、VProc を止める（代わりの定義では、中で使う `__Dict_lookup_or__` などのエラーになる。BITWISE-PLAN-ja.md の W1 と同じく、名前が違う）。読み手が cancel した後の `__Chan_put__` は、書かずに `onCancelled` を呼ぶ（今と同じ。SIGPIPE に当たる）。
 
-## 4. 決めること
+## 4. 決めたこと（2026-11-16、ユーザーと）
 
-1. **形**：3 の形（今の関数をそのままプリミティブにする）でよいか。もっと汎用の形（たとえば `__LazyList_pipe__` を複数の VProc から書けるようにする）にするか。3 の形なら、ConSh の書き換えが小さく、代わりの定義を今の consh/reference/consh_chan.se から作れる。
-2. **`$( )` の状態**：案 A（`__Chan_new__` に状態の Ref を渡し、プリミティブが `"blocked"` と `"running"` にする）か、案 B（`__Chan_put__` は一杯なら待たずに `"full"` を返し、待つのと状態は ConSh に残す）か。案 A は ConSh が今と同じに書けるが、プリミティブが ConSh の状態の名前を知る。案 B はプリミティブが汎用になるが、待つところが ConMa に残り、そのぶん遅い。
-3. **値の型**：拡張 ConMa では `"Chan"` などの新しい型、代わりの定義では Dict で、`__type_name__` が VM によって違ってよいか（ConSh はチャネルの型を調べない）。
-4. **名前**：`__Chan_*__` と機能の名前 `"chan"` でよいか。
+1. **形**：3 の形（今の関数をそのままプリミティブにする）。ConSh の書き換えが小さく、代わりの定義を今の consh/reference/consh_chan.se から作れる。
+2. **`$( )` の状態**：`__Chan_new__` に状態の Ref を渡し、プリミティブが `"blocked"` と `"running"` にする（もう 1 つの案は、`__Chan_put__` が一杯なら待たずに `"full"` を返し、待つのと状態は ConSh に残すものだった。プリミティブは汎用になるが、待つところが ConMa に残り、そのぶん遅い）。
+3. **値の型**：決めたときは、拡張 ConMa では `"Chan"` などの新しい型にする案だった。作るときに、プリミティブも代わりの定義と同じ Dict と Ref を読み書きすることにした（2026-11-16）。型は VM によらず `"Dict"` で、GC（vm/src/gc.rs）とトレースの表示に新しい型を足さずに済み、待つのも `__Ref_wait_change__` と同じ仕組みでできる。Dict を引く手間はあるが、Rust の中なので、ConMa のステップよりずっと小さい。
+4. **名前**：`__Chan_*__` と機能の名前 `"chan"`。
 
 ## 5. 作り方（段階）
 
@@ -66,4 +67,4 @@ ConSh のチャネル（consh/include/consh_chan.se。関数どうしのパイ�
 
 ## 6. 今の状態
 
-計画を書いた（2026-11-16）。4 を決めてから C1 を作る。
+計画を書き、4 を決めた（2026-11-16）。
