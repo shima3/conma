@@ -59,6 +59,10 @@ CHAIN = {
     "__Dict_keys__", "__Dict_copy__",
     "__MSeq_new__", "__MSeq_is_empty__", "__MSeq_uncons__", "__MSeq_set_head__", "__MSeq_append__",
     "__Ref_new__", "__Ref_get__", "__PDict_put__", "__PDict_lookup_or__",
+    # the channel primitives that set no Ref they did not make (docs/dev/CHAN-PLAN-ja.md); __Chan_put__
+    # and __Chan_take__ are done in place when they would not wait (Fuser), __Chan_close__ and
+    # __Chan_cancel__ are left to the VM
+    "__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_reader__",
 }
 # Not __Ref_set__: the VM wakes the VProcs waiting for a change of a Ref
 # (__Ref_wait_change__) after each step, so a change that is undone within a
@@ -172,12 +176,14 @@ def unquote(atom):
 # The features of extended ConMa (docs/dev/FAST-PLAN-ja.md 3.4) that the translator knows,
 # as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
 # (docs/dev/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
-# "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), and "control",
+# "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), "chan", the channel
+# primitives (docs/dev/CHAN-PLAN-ja.md; some of CHAIN, __Chan_put__ and __Chan_take__ in place
+# when they would not wait, the others left to the VM), and "control",
 # __if_then_else__, __if__, __unless__ and __Cont_get__ (inlined as before), and "wasm",
 # __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ and __Dict_put_numbers__,
 # which the code applies as other primitives (the native VM has them and fails as it has no WebAssembly;
 # ConSh uses them since 2026-11-14, and without "wasm" here bench/build.sh skipped its modules).
-EXT_FEATURES = ("bitwise32", "boolean", "control", "wasm")
+EXT_FEATURES = ("bitwise32", "boolean", "chan", "control", "wasm")
 
 
 def tag(x):
@@ -839,6 +845,23 @@ class Fuser:
             out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
             out.append(f"let a1: &Value = {self.rref(x, d, b.olist[1], 1, locals_)};")
             out.append(f"let o = match d_dict_get(a0, a1){err} {{ Some(v) => Out::R1(v), None => {{")
+            self.bail(x, d, locals_, out, J, retry=True)
+            out.append("} };")
+            return self.direct_result(x, d, locals_, lc, out, J)
+        if name in ("__Chan_put__", "__Chan_take__") and len(b.olist) == (3 if name == "__Chan_put__" else 1) \
+                and None not in args:
+            # a put or a take that would not wait is done in place; one that would (or a put
+            # after a wait, or to a cancelled channel) is left to the code of this Body, so the VM
+            # applies the primitive (which waits, and applies it again when the VProc wakes)
+            err = f".map_err(|e| {{ vp.sinfo = body_of(t, {x}).sinfo.clone(); e }})?"
+            if name == "__Chan_put__":
+                out.append(f"let a1: &Value = {self.rref(x, d, b.olist[1], 1, locals_)};")
+                out.append(f"let a2: &Value = {self.rref(x, d, b.olist[2], 2, locals_)};")
+                call = f"d_chan_put_now(m, a1, a2){err}"
+            else:
+                out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
+                call = f"d_chan_take_now(m, a0){err}"
+            out.append(f"let o = match {call} {{ Some(o) => o, None => {{")
             self.bail(x, d, locals_, out, J, retry=True)
             out.append("} };")
             return self.direct_result(x, d, locals_, lc, out, J)

@@ -1464,6 +1464,18 @@
           return x) ,()
       Sjs_index key ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_get o i ,(v) return v) ,()) ,()
+  ;; 文字列の整数の添字（s[i]）と length も、キーを文字列にせずに読む（2026-11-16。前は 1 文字に 800 ステップ
+  ;; ほどかかった）。整数でない数と負の数の添字は、下の道で今までどおり
+  __String_equal__ kind "string" ,(test__) __if__ test__
+    (,()
+      __type_name__ key ,(kt)
+      __String_equal__ kt "Number" ,(test__) __if__ test__
+        (,()
+          Sjs_index key ,(i)
+          __is_null__ i ,(test__) __unless__ test__ (,() Sjs_char_at o i ,(c) return c) ,()) ,()
+      __String_equal__ kt "String" ,(test__) __if__ test__
+        (,()
+          __String_equal__ key "length" ,(test__) __if__ test__ (,() __String_length__ o ,(len) return len) ,()) ,()) ,()
   Sjs_key_string key ,(ks)
   __String_equal__ kind "undefined" ,(u)
   __String_equal__ kind "null" ,(n)
@@ -1496,15 +1508,12 @@
   __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_members_find o ks ,(found v) return v) ,()
   __NULL__ __NULL__)
 
-;; i 番目の文字（なければ undefined）
+;; i 番目の文字（なければ undefined）。i は 0 以上の整数。範囲の外は __String_substring__ の onError で undefined にする
+;; （前は __String_length__ で先に確かめていた。文字数を数えるのは文字列の長さに比例する手間で、長い文字列を 1 文字ずつ
+;; 読むと、文字列の長さの 2 乗の手間になる。wasm 版の VM で目立った。2026-11-16）
 (define Sjs_char_at ,(s i)
-  __Cont_get__ ,(return)
-  __String_length__ s ,(len)
-  __Number_subtract__ i len ,(d)
-  __Number_is_negative__ d ,(inside)
-  __unless__ inside (,() return __NULL__) ,()
   Sjs_inc i ,(j)
-  __String_substring__ __print_exit_error__ s i j)
+  __String_substring__ (,(msg) __NULL__ __NULL__) s i j)
 
 ;; o[key] = v
 (define Sjs_set_member ,(G o key v)
@@ -2110,12 +2119,21 @@
     Sjs_arg args ,(n rest)
     Sjs_to_number n ,(n)
     Sjs_repeat s n "") ,()
+  ;; JavaScript と同じく、添字を整数にして（undefined と NaN は 0、0 の方へ切り捨て）、負の数と長さ以上は ""。
+  ;; 2026-11-16 までは slice と同じ Sjs_rel_index で、負の数を後ろからの位置にしていた（"héllo".charAt(-1) が "o"）
   method "charAt" (,(args)
     Sjs_arg args ,(i rest)
-    Sjs_rel_index i len zero ,(i)
-    Sjs_char_at s i ,(c)
-    __is_null__ c ,(none)
-    __if_then_else__ none (,() __NULL__ "") (,() __NULL__ c)) ,()
+    __is_null__ i ,(none)
+    __if_then_else__ none (,() Sjs_zero) (,() Sjs_to_number i) ,(n)
+    Sjs_is_nan n ,(nan)
+    __if_then_else__ nan (,() Sjs_zero) (,() Sjs_trunc n) ,(n)
+    __Number_is_negative__ n ,(neg)
+    __if_then_else__ neg
+      (,() __NULL__ "")
+      (,()
+        Sjs_char_at s n ,(c)
+        __is_null__ c ,(none)
+        __if_then_else__ none (,() __NULL__ "") (,() __NULL__ c))) ,()
   __NULL__ __NULL__)
 
 (define Sjs_substring ,(s from to)

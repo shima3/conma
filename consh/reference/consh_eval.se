@@ -3,7 +3,7 @@
 ;;   関数の定義と呼び出し、return、組み込みコマンド echo、cd、defined、builtin、command、if 文、
 ;;   for 文、break、continue
 ;;   関数と組み込みコマンドには、引数を値（String か LazyList）のまま渡す
-;;   コマンド置換 $( ) とパイプライン。どちらも別の VProc で動かし、出力はチャネル（consh_chan.se）で受け取る
+;;   コマンド置換 $( ) とパイプライン。どちらも別の VProc で動かし、出力はチャネル（consh_chan.se と、拡張 ConMa の機能 "chan"。docs/dev/CHAN-PLAN-ja.md）で受け取る
 ;;   変数リストへのリダイレクト（> (a b . rest)、2> (…)、< (…)）と組み込みコマンド stdin（段階 6）
 ;;   & で別の VProc に起動するパイプライン、$!、$$、組み込みコマンド wait、kill（段階 7）
 ;;
@@ -460,7 +460,7 @@
       __OS_write__ __print_exit_error__ value s) (,()
   __String_equal__ kind "chan" ,(condition)
   __if_then_else__ condition
-    (,() Chan_put value line (,() Sh_abort sh)) (,()
+    (,() __Chan_put__ (,() Sh_abort sh) value line) (,()
   __String_equal__ kind "capture" ,(condition)
   __if_then_else__ condition
     (,() Capture_put sh value line) (,()
@@ -486,7 +486,7 @@
   __Cont_get__ ,(return)
   Target_split target ,(kind id value)
   __String_equal__ kind "chan" ,(condition)
-  __if__ condition (,() Chan_close value ,() return) ,()
+  __if__ condition (,() __Chan_close__ value ,() return) ,()
   __String_equal__ kind "stream" ,(condition)
   __if__ condition (,() __OS_close__ (,(msg) __nop__) value ,() return) ,()
   __String_equal__ kind "file" ,(condition)
@@ -1343,8 +1343,8 @@
   __String_equal__ kind "chan" ,(condition)
   __if__ condition
     (,()
-      Chan_of value ,(chan)
-      Chan_writer chan ,(writer)
+      __Chan_of__ value ,(chan)
+      __Chan_writer__ chan ,(writer)
       Target_make "chan" id writer ,(t)
       return t) ,()
   __String_equal__ kind "stream" ,(condition)
@@ -1415,7 +1415,7 @@
   Target_close err ,()
   Sh_get child "cancelIn" ,(chan)
   __is_null__ chan ,(condition)
-  __unless__ condition (,() Chan_cancel chan) ,()
+  __unless__ condition (,() __Chan_cancel__ chan) ,()
   __Dict_lookup_or__ child "substState" (,(key) __NULL__ __NULL__) ,(state)
   __is_null__ state ,(condition)
   __unless__ condition (,() __Ref_set__ state "done"))
@@ -1748,10 +1748,9 @@
   Subst_is_external sh lines ,(external)
   __if__ external (,() Eval_subst_os sh lines ,(value) return value) ,()
   Pipe_cap ,(cap)
-  Chan_new cap ,(chan)
   __Ref_new__ "running" ,(state)
-  __Dict_put__ chan "state" state ,()
-  Chan_writer chan ,(writer)
+  __Chan_new__ cap state ,(chan)
+  __Chan_writer__ chan ,(writer)
   Sh_get sh "global" ,(global)
   Target_new_id global ,(id)
   Target_make "chan" id writer ,(out)
@@ -1840,7 +1839,7 @@
 ;; 子の VProc が ConMa の実行時エラーで止まると、Sh_finish を通らず、状態が "running" のまま、
 ;; チャネルも開いたまま残り、文の終わりや値を読む側が待ち続ける。そのため、別の VProc で子の終わりを待ち、
 ;; Sh_release で状態を "done" にし、出力の書き手を閉じる。正常に終わったときは、すでに Sh_finish が
-;; 同じことをしているので、何も変わらない（Chan_close は2回目は何もしない）
+;; 同じことをしているので、何も変わらない（__Chan_close__ は2回目は何もしない）
 (define Subst_watch ,(vproc child)
   __VProc_start__ (,()
     __VProc_wait__ __print_exit_error__ vproc ,()
@@ -1944,7 +1943,7 @@
   __Cont_get__ ,(return)
   __Dict_lookup_or__ record "chan" (,(key) __NULL__ __NULL__) ,(chan)
   __is_null__ chan ,(none)
-  __unless__ none (,() Chan_cancel chan ,() return) ,()
+  __unless__ none (,() __Chan_cancel__ chan ,() return) ,()
   Sh_get record "cancelled" ,(cancelled)
   __Ref_set__ cancelled __TRUE__ ,()
   Sh_get record "reader" ,(reader)
@@ -2012,8 +2011,8 @@
       Pipe_start sh rest next __NULL__ nextOwned vprocs members ,(vprocs last members)
       return vprocs last members) ,()
   Pipe_cap ,(cap)
-  Chan_new cap ,(chan)
-  Chan_writer chan ,(writer)
+  __Chan_new__ cap __NULL__ ,(chan)
+  __Chan_writer__ chan ,(writer)
   Sh_get sh "global" ,(global)
   Target_new_id global ,(id)
   Target_make "chan" id writer ,(out)

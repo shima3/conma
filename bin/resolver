@@ -10,6 +10,9 @@ EXT_PRIMITIVES = [
     # __TRUE__ and __FALSE__, built in in extended ConMa (include/ext/pure.se; core ConMa defines them
     # in include/core/pure.se)
     ("boolean", ("__TRUE__", "__FALSE__")),
+    # the channel primitives (docs/dev/CHAN-PLAN-ja.md; core ConMa defines them in include/core/chan.se)
+    ("chan", ("__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_put__", "__Chan_close__", "__Chan_cancel__",
+              "__Chan_reader__", "__Chan_take__")),
     # __if_then_else__, __if__, __unless__ and __Cont_get__, built in in extended ConMa, and the six conditionals
     # that test a value themselves (core ConMa defines them in include/core/control.se)
     ("control", ("__if_then_else__", "__if__", "__unless__", "__Cont_get__",
@@ -273,7 +276,8 @@ class Resolver:
         filenames = [root.value for root in roots if root.value]
         f_node = "(F " + " ".join(f'"{n}"' for n in filenames) + ")"
         # The features of extended ConMa the module uses (docs/dev/FAST-PLAN-ja.md 3.4): "bitwise32" when it uses a
-        # bitwise primitive (docs/dev/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "control"
+        # bitwise primitive (docs/dev/BITWISE-PLAN-ja.md), "boolean" when it uses __TRUE__ or __FALSE__, "chan" when it
+        # uses a channel primitive (__Chan_new__ ..., docs/dev/CHAN-PLAN-ja.md), "control"
         # when it uses __if_then_else__, __if__, __unless__, __Cont_get__ or one of the six conditionals that
         # test a value (__if_null_then_else__ ...), "wasm" when it uses __Wasm_compile__,
         # __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ or __Dict_put_numbers__, as a global of that name without

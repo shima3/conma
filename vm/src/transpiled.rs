@@ -159,6 +159,7 @@ const SAFE_PRIMS: &[&str] = &[
     "__MSeq_new__", "__MSeq_is_empty__", "__MSeq_uncons__", "__MSeq_set_head__", "__MSeq_append__",
     "__Ref_new__", "__Ref_get__", "__PDict_put__", "__PDict_lookup_or__",
     "__if_then_else__", "__if__", "__unless__", "__Cont_get__",
+    "__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_reader__",
 ];
 
 /// The transpiled code of one module file, as the generated code gives it.
@@ -1106,7 +1107,7 @@ pub fn finish(vp: &mut VProc, env: LVEnv, gv: &Rc<GVEnv>, t: &Table, lc: Option<
     pass_results(vp, env, gv, t, lc)
 }
 
-use crate::prim::{basic, collections, llist, number, string};
+use crate::prim::{basic, chan, collections, llist, number, string};
 
 pub fn d_is_null(m: &mut Machine, a: &Value) -> Result<Out, VmError> {
     Ok(Out::R1(basic::is_null_core(m, a)))
@@ -1160,6 +1161,22 @@ pub fn d_lazylist_claim_done(lazy: &Value) -> Option<Value> {
         },
         _ => None,
     }
+}
+
+/// `__Chan_put__ onCancelled writer item` that writes without waiting (docs/dev/CHAN-PLAN-ja.md): R0.
+/// None when the primitive is to be applied by the VM (the reader cancelled, the channel is full, or
+/// the writer waited before), which the generated code bails to the Body for. The Refs it sets only
+/// get new values (a new node, a new token), so no change is undone within transpiled code.
+#[inline]
+pub fn d_chan_put_now(m: &mut Machine, writer: &Value, item: &Value) -> Result<Option<Out>, VmError> {
+    Ok(if chan::put_now(m, writer, item)? { Some(Out::R0) } else { None })
+}
+
+/// `__Chan_take__ reader` that does not wait: the item and __TRUE__, or null and __FALSE__ at the
+/// end. None when it would wait (the generated code bails to the Body, and the VM waits).
+#[inline]
+pub fn d_chan_take_now(m: &mut Machine, reader: &Value) -> Result<Option<Out>, VmError> {
+    Ok(chan::take_now(m, reader)?.map(|(item, found)| Out::R2(item, found)))
 }
 
 /// The value of key in d, or None (__Dict_lookup_or__ without onMissing).

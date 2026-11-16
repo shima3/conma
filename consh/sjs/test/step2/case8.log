@@ -1,0 +1,17 @@
+[ 'h', 'é', 'o', '', '', '' ]
+[
+  'h', 'é', 'h', 'h',
+  'l', '',  '',  'h',
+  'é'
+]
+[ '', '', 'x' ]
+[
+  'h',       'é',
+  'o',       undefined,
+  undefined, undefined,
+  'é',       undefined,
+  5,         5,
+  undefined, 0
+]
+2
+exit: 0

@@ -1,0 +1,38 @@
+empty: length 0
+empty 0 0: []
+empty 0 1: [error: __String_substring__: index out of range: 0 1 (length 0)]
+empty find: 0
+ascii: length 11
+ascii 6 11: [world]
+ascii 11 11: []
+ascii 5 12: [error: __String_substring__: index out of range: 5 12 (length 11)]
+ascii 3 2: [error: __String_substring__: index out of range: 3 2 (length 11)]
+ascii -1 2: [error: __String_substring__: index out of range: -1 2 (length 11)]
+ascii find o 5: 7
+ascii find z 0: null
+ascii find 12: error: __String_find__: index out of range: 12 (length 11)
+ascii any wd 0: 6
+japanese: length 8
+japanese 2 5: [語のt]
+japanese 4 8: [text]
+japanese 4 9: [error: __String_substring__: index out of range: 4 9 (length 8)]
+japanese find t 0: 4
+japanese find x 5: 6
+japanese any 語x 0: 2
+japanese part: length 4
+japanese part 1 3: [ex]
+ascii+ascii: length 12
+ascii+ascii 10 12: [d!]
+ascii+japanese: length 19
+ascii+japanese 10 14: [d日本語]
+ascii+japanese find t 0: 15
+japanese+japanese: length 16
+japanese+japanese 7 10: [t日本]
+japanese+ascii: length 19
+japanese+ascii find world 0: 14
+strip ascii: length 6
+strip japanese: length 4
+strip japanese 1 3: [本語]
+fromCode A+あ: length 2
+fromCode A+あ 1 2: [あ]
+exit: 0

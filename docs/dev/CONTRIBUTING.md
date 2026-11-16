@@ -20,21 +20,31 @@ Make a move of files a commit of its own (`git mv` only), and change the referen
 
 Files and directories have been moved and renamed. A text that describes the present (a README, the specification, the design, the comments of the code) is changed to the new place. A text that records its own time (the reviews, the plans, the steps of the roadmap) keeps the old path and adds a note after it: "(moved to `NEW` on 2026-11-15)", or "(moved on DATE; now `NEW`)" for a file that moved more than once, and "(removed on DATE)" for one that was removed, with where its content went if it went somewhere; in Japanese, 「（2026-11-15 に NEW へ移動）」, 「（DATE に移動。今は NEW）」 and 「（DATE に削除）」. The date is that of the move. A reference to another document, which the reader follows to read it, is changed to the new place in every text, the reviews too, as the document is the same. Line numbers in such a text are those of its time, and are not changed. The records of docs/dev/TESTS-ja.md name the commit, and get no notes.
 
-## Git settings
+## Branches and Git settings
 
-Several people and sessions commit to `alpha`, whose history is kept linear. Nobody commits to `main` directly: `alpha` is merged into it with a merge commit, so the first-parent history of `main` (`git log --first-parent main`) lists the merges. No hook or check stops a direct commit to `main`; take care yourself. Run these once in each clone; they go to `.git/config`, which is not committed, so pulling does not set them:
+GitHub has two branches: `main`, which gets only states that passed every suite, and `alpha`, where the work of everybody comes together. Nobody commits to either directly: changes come in by merges, so the first-parent history of `main` (`git log --first-parent main`) lists the tested states. No hook or check stops a direct commit; take care yourself.
+
+1. **A piece of work** (a feature, a fix, a plan and its stages) has a short branch of its own, made from the latest `alpha` in the clone where it is done and named after the machine and the work: `m4/chan`, `m1/string-index` (the Apple M1, M2 and M4 machines are `m1`, `m2` and `m4`, so that the tables of times say where they were measured). The name `test` is kept for the tester's branch (3): a piece of work that adds tests is named otherwise, such as `m4/tests-step46`. Only one person or session writes to it. It stays in the clone; push it to GitHub only to keep a long piece of work safe or to go on with it on another machine, and delete it there when it is merged.
+2. **When the work is done**, its author runs the tests the change touches and the benchmarks it affects, and says in the commit messages what they ran (see Tests). They write their notes for the tester in docs/dev/TESTS-ja.md, section 申し送り, under a heading of the branch (what to rebuild and in which order, the new tests, what they ran and did not run, anything to watch for), and commit them on the branch. Then they merge it into `alpha` and push: `git checkout alpha`, `git pull`, `git merge m4/chan`, `git push`; if the push is refused because somebody pushed in the meantime, `git pull` and `git push` again. The branch is then deleted (`git branch -d m4/chan`). A piece of work that goes on after that gets a new branch from `alpha`.
+3. **The tester** keeps a branch of their own in their clone, named after the machine as the branches of work are: `m2/test`, for example. Unlike those, it is kept from one test to the next, and only the tester writes to it, also on a machine where they develop too (their development goes on branches of work). They merge `alpha` into it (`git pull` on `alpha`, then `git merge alpha` on `m2/test`) and run every suite of docs/dev/TESTS-ja.md there. If it passes, they add the line of the record (the commit of `alpha` they tested), remove the notes of the branches that commit contains, and commit on `m2/test`. Then they merge `m2/test` into `main` (`git checkout main`, `git pull`, `git merge m2/test`, `git push`), so that `main` gets exactly what was tested and not what reached `alpha` during the tests, and into `alpha` (`git checkout alpha`, `git pull`, `git merge m2/test`, `git push`), so that the record and the removed notes reach everybody. If something fails, they tell the author, who fixes it on a new branch.
+
+A commit that has been pushed is never rebased, so that the hashes written in documents and messages stay right: `alpha` is pulled with a merge (`branch.alpha.rebase false` below), and a branch takes in `alpha` with `git merge alpha`, not `git rebase`. From 2026-11-15 to 2026-11-16 everybody committed to `alpha` directly, kept linear by rebasing on pull; records that say "alpha の xxxxxxx" name those commits, which stay in `alpha` and `main`.
+
+Run these once in each clone; they go to `.git/config`, which is not committed, so pulling does not set them:
 
 ```
-git config pull.ff true
+git config merge.ff true
 git config pull.rebase true
+git config pull.ff true
 git config pull.autostash true
-git config merge.ff only
 git config branch.main.mergeoptions --no-ff
 git config branch.main.rebase merges
+git config branch.alpha.mergeoptions --no-ff
+git config branch.alpha.rebase false
 ```
 
-* `git pull` fast-forwards when it can, and otherwise puts your local commits on top of what was pulled (rebase) instead of making a merge commit; changes in the working tree are stashed and put back.
-* `git merge` only fast-forwards on other branches, and stops when the branches have diverged.
-* On `main`, `git merge alpha` always makes a merge commit (`branch.main.mergeoptions`), and `git pull` keeps merge commits when it rebases (`branch.main.rebase merges`; a plain rebase would flatten them). Pull `main` before merging into it.
-* A fix for `main` is committed to `alpha` (or to a branch made from `main` and merged with `--no-ff`) and then merged. If you commit to `main` by mistake and have not pushed it, move the commit to `alpha` (`git cherry-pick`) and take it off `main` with `git reset --keep HEAD~1`; if you have pushed it, tell the others before you change `main` again.
-* `pull.ff true` is there to override a global `pull.ff only` (`git config --global`), which would stop `git pull` before it could rebase; a setting of the clone comes before a global one (`git config --show-origin --get-regexp '^(merge|pull)\.'` shows which applies).
+* `git pull` fast-forwards when it can. Otherwise, on `alpha` it makes a merge commit (`branch.alpha.rebase false`), and on other branches it puts your local commits that are not pushed on top of what was pulled (rebase); changes in the working tree are stashed and put back.
+* `git merge` fast-forwards when it can and otherwise makes a merge commit; on `main` and `alpha` it always makes a merge commit (`branch.main.mergeoptions`, `branch.alpha.mergeoptions`), so that the first-parent history of `alpha` (`git log --first-parent alpha`) lists the pieces of work merged into it. `git pull` still fast-forwards on them when it can (`pull.ff true` comes before the merge options), so a pull with nothing of your own makes no empty merge commit. Until 2026-11-16 the clones set `merge.ff only`, which stops such a merge; `merge.ff true` replaces it, and also overrides a global `merge.ff false`, which would make a merge commit even where a fast-forward is possible.
+* On `main`, `git merge m2/test` always makes a merge commit (`branch.main.mergeoptions`), and `git pull` keeps merge commits when it rebases (`branch.main.rebase merges`; a plain rebase would flatten them). Pull `main` before merging into it.
+* If you commit to `main` or `alpha` by mistake and have not pushed it, move the commit to a branch of the work (`git branch m4/fix` there, then `git reset --keep HEAD~1` on `main` or `alpha`); if you have pushed it, tell the others before you change that branch again.
+* `pull.ff true` is there to override a global `pull.ff only` (`git config --global`), which would stop `git pull` before it could rebase or merge; a setting of the clone comes before a global one (`git config --show-origin --get-regexp '^(merge|pull|branch)\.'` shows which applies).

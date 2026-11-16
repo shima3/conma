@@ -15,8 +15,9 @@ pub type SInfo = Rc<Vec<Sexp>>;
 #[derive(Clone)]
 pub enum Value {
     Null,
-    /// A String made at run time: its text, not escaped.
-    Str(Rc<str>),
+    /// A String made at run time: its text, not escaped, and what is known of its characters
+    /// (StrObj; docs/dev/STRING-INDEX-PLAN-ja.md).
+    Str(Rc<StrObj>),
     /// A String literal of the program: its AST node `(String pos "text")`.
     StrNode(Sexp),
     /// Any other AST node that ended up as a value.
@@ -521,7 +522,7 @@ pub enum IndexKey<'a> {
 pub fn index_key(v: &Value) -> Result<IndexKey<'_>, String> {
     use std::borrow::Cow;
     match v {
-        Value::Str(s) => return Ok(IndexKey::Str(Cow::Borrowed(s))),
+        Value::Str(s) => return Ok(IndexKey::Str(Cow::Borrowed(&s.text))),
         Value::StrNode(n) => {
             let text = n.as_list().and_then(|l| l.get(2)).and_then(|x| x.as_atom()).map(unquote).unwrap_or("");
             return Ok(IndexKey::Str(if text.contains('\\') { Cow::Owned(unescape(text)?) } else { Cow::Borrowed(text) }));
@@ -938,10 +939,45 @@ pub fn quoted(s: &str) -> String {
     }
 }
 
+/// What is known of the characters of a String made at run time (docs/dev/STRING-INDEX-PLAN-ja.md):
+/// not looked at yet, all ASCII (so a position in characters is the same in bytes), or not all ASCII
+/// with this number of characters (code points). It is only a cache: a String behaves the same
+/// whatever is known of it.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum StrInfo {
+    Unknown,
+    Ascii,
+    Chars(usize),
+}
+
+/// The text of a String made at run time, with what is known of its characters.
+pub struct StrObj {
+    pub text: Box<str>,
+    pub info: Cell<StrInfo>,
+}
+
+impl StrObj {
+    pub fn new(text: &str, info: StrInfo) -> StrObj {
+        StrObj { text: Box::from(text), info: Cell::new(info) }
+    }
+}
+
+impl std::ops::Deref for StrObj {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.text
+    }
+}
+
 /// A String value of text made at run time. It keeps the text itself; the
 /// source form is made only for traces (string_source).
 pub fn string_value(text: &str) -> Value {
-    Value::Str(Rc::from(text))
+    Value::Str(Rc::new(StrObj::new(text, StrInfo::Unknown)))
+}
+
+/// A String value of text made at run time whose characters are known (StrInfo).
+pub fn string_value_info(text: &str, info: StrInfo) -> Value {
+    Value::Str(Rc::new(StrObj::new(text, info)))
 }
 
 /// The source form of a String made at run time: escaped and quoted.
