@@ -33,6 +33,7 @@ The documents here are for the users of ConMa, who run ConMa programs (and write
 - [Core ConMa and extended ConMa](dev/FAST-PLAN-ja.html): the plan of the two levels of ConMa
 - [Bitwise primitives](dev/BITWISE-PLAN-ja.html): the plan of the bitwise operations of extended ConMa
 - [Channel primitives](dev/CHAN-PLAN-ja.html): the plan of the channels of ConSh as primitives of extended ConMa
+- [Positions in Strings](dev/STRING-INDEX-PLAN-ja.html): the plan of finding positions in ASCII Strings without scanning them
 - [Speed-ups](dev/SPEED-ja.html): every speed-up tried, with its effect and whether it was kept
 - [Running the tests and their record](dev/TESTS-ja.html)
 - [Reviews of ConMa](dev/REVIEW-ja.html) (ConSh's are in consh/docs/dev)
