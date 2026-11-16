@@ -8,7 +8,7 @@ use crate::vproc::VProc;
 
 pub mod basic;
 mod cchain;
-mod chan;
+pub mod chan;
 pub mod collections;
 pub mod control;
 mod js;

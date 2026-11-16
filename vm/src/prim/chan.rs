@@ -178,50 +178,83 @@ pub fn chan_put(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
 }
 
-fn put_or_wait(m: &mut Machine, vp: &mut VProc, writer: &DictObj) -> PResult {
+/// What a put does now: write the item, or not as the reader has cancelled, or not as the channel is
+/// full (the Ref of consumed and the value it has, to wait for it to change).
+enum PutTry {
+    Written,
+    Cancelled,
+    Full(Rc<RefObj>, f64),
+}
+
+/// Write item if there is room (consumed is read before cancelled: see Chan_core_wait_room).
+fn try_put(m: &mut Machine, writer: &DictObj, item: &Value) -> Result<PutTry, VmError> {
     let name = "__Chan_put__";
     let what = "writer";
-    let state = get(name, what, writer, "state")?;
+    let consumed_ref = as_ref(name, "consumed", get(name, what, writer, "consumed")?)?;
+    let consumed = as_number(name, "consumed", &consumed_ref.value.borrow())?;
+    let cancelled_ref = as_ref(name, "cancelled", get(name, what, writer, "cancelled")?)?;
+    if boolean_choice(&cancelled_ref.value.borrow()) == Some(true) {
+        return Ok(PutTry::Cancelled);
+    }
+    let produced = as_number(name, "produced", &get(name, what, writer, "produced")?)?;
+    let cap = as_number(name, "cap", &get(name, what, writer, "cap")?)?;
+    if produced - consumed - cap >= 0.0 {
+        return Ok(PutTry::Full(consumed_ref, consumed));
+    }
+    let tail = as_ref(name, "tail", get(name, what, writer, "tail")?)?;
+    let next = new_ref(m, Value::Null);
+    set(m, &tail, Value::LList(Rc::new(LList { head: item.clone(), tail: next.clone() })));
+    put(writer, "tail", next)?;
+    put(writer, "produced", Value::Number(produced + 1.0))?;
+    let w = as_ref(name, "wake", get(name, what, writer, "wake")?)?;
+    wake(m, &w);
+    Ok(PutTry::Written)
+}
+
+/// Whether a writer waited and has not been applied again since (its "waiting" is not null).
+fn waited(writer: &DictObj) -> Result<bool, VmError> {
+    Ok(writer.find_str("waiting").is_some() && !get("__Chan_put__", "writer", writer, "waiting")?.is_null())
+}
+
+fn put_or_wait(m: &mut Machine, vp: &mut VProc, writer: &DictObj) -> PResult {
+    let name = "__Chan_put__";
+    let state = get(name, "writer", writer, "state")?;
     // Woken up after waiting: the definition sets the state to "running" before it looks again
-    if writer.find_str("waiting").is_some() && !get(name, what, writer, "waiting")?.is_null() {
+    if waited(writer)? {
         put(writer, "waiting", Value::Null)?;
         if let Value::Ref(s) = &state {
             set(m, s, string_value("running"));
         }
     }
-    let consumed_ref = as_ref(name, "consumed", get(name, what, writer, "consumed")?)?;
-    let consumed = as_number(name, "consumed", &consumed_ref.value.borrow())?;
-    let cancelled_ref = as_ref(name, "cancelled", get(name, what, writer, "cancelled")?)?;
-    let cancelled = boolean_choice(&cancelled_ref.value.borrow()) == Some(true);
-    if cancelled {
-        // onCancelled with the LCont of __Chan_put__, without writing
-        let on_cancelled = std::mem::replace(&mut vp.olist[0], Value::Null);
-        vp.olist.clear();
-        vp.operator = on_cancelled;
-        return Ok(());
+    match try_put(m, writer, &vp.olist[2])? {
+        PutTry::Written => vp.prim_return0(),
+        PutTry::Cancelled => {
+            // onCancelled with the LCont of __Chan_put__, without writing
+            let on_cancelled = std::mem::replace(&mut vp.olist[0], Value::Null);
+            vp.olist.clear();
+            vp.operator = on_cancelled;
+        }
+        PutTry::Full(consumed_ref, consumed) => {
+            // Wait until the reader takes an item (or cancels), and apply the primitive again
+            if let Value::Ref(s) = &state {
+                set(m, s, string_value("blocked"));
+            }
+            put(writer, "waiting", m.true_closure())?;
+            let cur = m.current.clone().expect("no current VProc");
+            m.wait_change(&cur, &consumed_ref, Value::Number(consumed));
+        }
     }
-    let produced = as_number(name, "produced", &get(name, what, writer, "produced")?)?;
-    let cap = as_number(name, "cap", &get(name, what, writer, "cap")?)?;
-    if produced - consumed - cap < 0.0 {
-        let item = std::mem::replace(&mut vp.olist[2], Value::Null);
-        let tail = as_ref(name, "tail", get(name, what, writer, "tail")?)?;
-        let next = new_ref(m, Value::Null);
-        set(m, &tail, Value::LList(Rc::new(LList { head: item, tail: next.clone() })));
-        put(writer, "tail", next)?;
-        put(writer, "produced", Value::Number(produced + 1.0))?;
-        let w = as_ref(name, "wake", get(name, what, writer, "wake")?)?;
-        wake(m, &w);
-        vp.prim_return0();
-        return Ok(());
-    }
-    // Full: wait until the reader takes an item (or cancels), and apply the primitive again
-    if let Value::Ref(s) = &state {
-        set(m, s, string_value("blocked"));
-    }
-    put(writer, "waiting", m.true_closure())?;
-    let cur = m.current.clone().expect("no current VProc");
-    m.wait_change(&cur, &consumed_ref, Value::Number(consumed));
     Ok(())
+}
+
+/// For transpiled code: write item now if the primitive would write it without waiting (and the writer
+/// has not waited); false if the primitive is to be applied by the VM (cancelled, full, or after a wait).
+pub fn put_now(m: &mut Machine, writer: &Value, item: &Value) -> Result<bool, VmError> {
+    let writer = as_dict("__Chan_put__", "writer", writer)?;
+    if waited(&writer)? {
+        return Ok(false);
+    }
+    Ok(matches!(try_put(m, &writer, item)?, PutTry::Written))
 }
 
 /// __Chan_close__ writer ,()
@@ -298,7 +331,15 @@ pub fn chan_take(m: &mut Machine, vp: &mut VProc) -> PResult {
     }
 }
 
-fn take_or_wait(m: &mut Machine, vp: &mut VProc, reader: &DictObj) -> PResult {
+/// What a take does now: an item, the end (every chain closed), or nothing yet (the Ref of "wake" and
+/// the token it had before the chains were looked at, to wait for it to change).
+enum TakeTry {
+    Item(Value),
+    End,
+    Wait(Rc<RefObj>, Value),
+}
+
+fn try_take(m: &mut Machine, reader: &DictObj) -> Result<TakeTry, VmError> {
     let name = "__Chan_take__";
     loop {
         let w = as_ref(name, "wake", get(name, "reader", reader, "wake")?)?;
@@ -309,13 +350,13 @@ fn take_or_wait(m: &mut Machine, vp: &mut VProc, reader: &DictObj) -> PResult {
             put(reader, "untilRegister", Value::Number(REGISTER_EVERY))?;
         }
         if let Some(item) = take_from(m, reader)? {
-            return found(m, vp, reader, item);
+            return found(reader, item);
         }
         // New chains may have items; if there are none, the known chains were just looked at, so wait
         // (if an item was written since, the token has changed and the VProc does not wait)
         if register(m, reader)? {
             if let Some(item) = take_from(m, reader)? {
-                return found(m, vp, reader, item);
+                return found(reader, item);
             }
         }
         if get(name, "reader", reader, "cursors")?.is_null() {
@@ -323,26 +364,49 @@ fn take_or_wait(m: &mut Machine, vp: &mut VProc, reader: &DictObj) -> PResult {
             // and end if there is still no open chain (none is added after that)
             register(m, reader)?;
             if get(name, "reader", reader, "cursors")?.is_null() {
-                vp.olist.clear();
-                let f = m.false_closure();
-                vp.prim_return(vec![Value::Null, f]);
-                return Ok(());
+                return Ok(TakeTry::End);
             }
             continue;
         }
-        let cur = m.current.clone().expect("no current VProc");
-        m.wait_change(&cur, &w, token);
-        return Ok(());
+        return Ok(TakeTry::Wait(w, token));
     }
 }
 
-fn found(m: &mut Machine, vp: &mut VProc, reader: &DictObj, item: Value) -> PResult {
+fn found(reader: &DictObj, item: Value) -> Result<TakeTry, VmError> {
     let until = as_number("__Chan_take__", "untilRegister", &get("__Chan_take__", "reader", reader, "untilRegister")?)?;
     put(reader, "untilRegister", Value::Number(until - 1.0))?;
-    vp.olist.clear();
-    let t = m.true_closure();
-    vp.prim_return(vec![item, t]);
+    Ok(TakeTry::Item(item))
+}
+
+fn take_or_wait(m: &mut Machine, vp: &mut VProc, reader: &DictObj) -> PResult {
+    match try_take(m, reader)? {
+        TakeTry::Item(item) => {
+            let t = m.true_closure();
+            vp.olist.clear();
+            vp.prim_return(vec![item, t]);
+        }
+        TakeTry::End => {
+            let f = m.false_closure();
+            vp.olist.clear();
+            vp.prim_return(vec![Value::Null, f]);
+        }
+        TakeTry::Wait(w, token) => {
+            let cur = m.current.clone().expect("no current VProc");
+            m.wait_change(&cur, &w, token);
+        }
+    }
     Ok(())
+}
+
+/// For transpiled code: the item and __TRUE__, or null and __FALSE__ at the end, if the primitive would
+/// not wait; None if it would (the VM applies it then).
+pub fn take_now(m: &mut Machine, reader: &Value) -> Result<Option<(Value, Value)>, VmError> {
+    let reader = as_dict("__Chan_take__", "reader", reader)?;
+    Ok(match try_take(m, &reader)? {
+        TakeTry::Item(item) => Some((item, m.true_closure())),
+        TakeTry::End => Some((Value::Null, m.false_closure())),
+        TakeTry::Wait(..) => None,
+    })
 }
 
 /// Add the cursors of the chains not seen yet at the end of "cursors". Whether any were added.
