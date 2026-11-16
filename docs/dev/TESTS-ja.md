@@ -52,7 +52,7 @@ consh/sjs/test/run_all.sh
 
 ## 申し送り
 
-次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
 ### alpha（2026-11-16、f90117c から 7c9911a まで、M4 の Claude）
 
