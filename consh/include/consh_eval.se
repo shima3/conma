@@ -945,28 +945,29 @@
 ;; 先頭の語がリテラルなら、コマンドの名前と残りの語（Cmd_head_code）。リダイレクトと前置の変数定義がなければ、
 ;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす
 (define Cmd_compile ,(pos defs words redirs)
-  Cmd_head_code words ,(headCode resolveCode)
+  Cmd_head_code words ,(headCode resolveCode fixed)
   __is_null__ redirs ,(noRedirs)
   __is_null__ defs ,(noDefs)
-  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs noRedirs noDefs headCode resolveCode))
+  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs noRedirs noDefs headCode resolveCode fixed))
 
 ;; 先頭の語を展開するコード（文脈 sh と上限 limit を受け取り、Cmd_head と同じく、名前、先頭の語から出た残りの値、
-;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）。
+;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）と、
+;; 先頭の語が決まっていて、そのコードが上限を使わないか（fixed）。
 ;; 先頭の語がリテラルで、glob の記号を含まず、空でなければ、展開した結果を作っておいて返し、コマンドは、
 ;; 関数だけを探す（関数は後から定義できるので。builtin、command と組み込みコマンドは、名前で決まる）
 (define Cmd_head_code ,(words)
   __Cont_get__ ,(return)
   __is_null__ words ,(none)
-  __if__ none (,() return (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve) ,()
+  __if__ none (,() return (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve __FALSE__) ,()
   __LList_uncons__ __print_exit_error__ words ,(word rest)
   Literal_fields word ,(fields done)
   __is_null__ fields ,(empty)
   __not__ empty ,(some)
   __and__ done some ,(fixed)
-  __unless__ fixed (,() return (,(sh limit) Cmd_head sh words limit) Cmd_resolve) ,()
+  __unless__ fixed (,() return (,(sh limit) Cmd_head sh words limit) Cmd_resolve __FALSE__) ,()
   __LList_uncons__ __print_exit_error__ fields ,(name more)
   Cmd_resolve_code name ,(resolveCode)
-  __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode)
+  __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode __TRUE__)
 
 ;; String の名前 name のコマンドを決めるコード（Cmd_resolve と同じ）
 (define Cmd_resolve_code ,(name)
@@ -987,14 +988,20 @@
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
 ;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する。
-;; noRedirs と noDefs は、リダイレクトと前置の変数定義がないか。headCode と resolveCode は Cmd_head_code
-(define Eval_cmd_parts ,(sh pos defs redirs noRedirs noDefs headCode resolveCode)
+;; noRedirs と noDefs は、リダイレクトと前置の変数定義がないか。headCode、resolveCode、fixed は Cmd_head_code。
+;; 引数のバイト数の上限（Arg_limit_new）は、先頭の語が決まっていれば（fixed）、外部コマンドのときだけ作る
+;; （関数と組み込みコマンドの引数には使わない。ARG_MAX の値の確かめ（Arg_max）は、今までどおりどのコマンドでもする）
+(define Eval_cmd_parts ,(sh pos defs redirs noRedirs noDefs headCode resolveCode fixed)
   __Cont_get__ ,(return)
   __if_then_else__ noRedirs (,() __NULL__ sh) (,() Cmd_redirected sh redirs) ,(sh)
   __if_then_else__ noDefs (,() __NULL__ sh) (,() Cmd_scope sh defs) ,(sh)
-  Arg_limit_new sh pos ,(limit)
+  __if_then_else__ fixed
+    (,() Arg_max sh pos ,(max) __NULL__ max __NULL__)
+    (,() Arg_limit_new sh pos ,(limit) __NULL__ __NULL__ limit) ,(max limit)
   headCode sh limit ,(name more rest)
   resolveCode sh name ,(fn builtin isExternal)
+  __and__ fixed isExternal ,(late)
+  __if_then_else__ late (,() Arg_limit_from sh pos max) (,() __NULL__ limit) ,(limit)
   Eval_args sh rest isExternal limit ,(args)
   __if_then_else__ isExternal
     (,() Values_leaves_in more limit)
@@ -3770,6 +3777,10 @@
 ;; "onOver" のメッセージは、超えたときに作る
 (define Arg_limit_new ,(sh pos)
   Arg_max sh pos ,(max)
+  Arg_limit_from sh pos max)
+
+;; ARG_MAX の値 max から、上限を作る
+(define Arg_limit_from ,(sh pos max)
   __NULL__ (,() Arg_over_message max ,(msg) Sh_error sh pos msg) ,(onOver)
   __NULL__ (,() Func_string_error sh pos) ,(onFunc)
   __Dict_new__ ,(limit)
