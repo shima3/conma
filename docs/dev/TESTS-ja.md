@@ -48,6 +48,7 @@ consh/sjs/test/run_all.sh
 | wasm 版 | consh/test の step8 | VProc を切り替える時の細かい所による（docs/dev/FAST-PLAN-ja.md の 3.3） |
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
+| ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
 
 ## 申し送り
 
@@ -57,10 +58,6 @@ consh/sjs/test/run_all.sh
 
 SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列の位置の速い求め方（docs/dev/STRING-INDEX-PLAN-ja.md。Rust VM の文字列に「すべて ASCII か」と文字数を覚えさせる）を入れた。チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）までは、5d057a8 の全部の記録で確かめられている。
 
-* **作り直すもの**：Rust VM（vm/src/value.rs、prim/string.rs）、wasm 版の VM と web のファイル（`consh/js/build.sh`）、変換版の VM。ConSh のソース（sjs_rt.se）が変わったので、変換版の VM は、先に Rust VM で consh/test を流して ConSh のモジュールを作り直してから `bench/build.sh` を動かす（約 19 分）。順が逆だと、古いモジュールのコードが入り、ConSh は変換したコードを使わずに動く。
-* **新しいテスト**：test/step46（文字列の位置と長さの境目。ログは Python VM のもので、変更前の Rust VM とも同じ）。run_all.sh が拾う。
-* **変更した人が流したもの**：Rust VM の test/ のすべて、consh/test（最適化版と参照版）、consh/sjs/test。変換版の VM の test/ のすべてと consh/test。wasm 版の VM の test/ の step41、step45、step46、fast11 と consh/test（既知の違いだけ）。Python VM の test/step46。
-* **流していないもの**：Python VM と wasm 版の VM の test/ の残り、consh/js/test、`CONMA_REFERENCE=1` の test/（step46 は util.se を読むが、ログにステップや util.se の行は出ないので、違いは出ない見込み）、`CONSH_IMPL=rust` の consh/test。
 * **見つけた VM の不具合（前から）**：`__VProc_wait__` を継続なしで（関数の最後に）書いた VProc は、待つ相手が終わって起きたとき、終わったと扱われずに 1 歩進められ、`Null Operator: CChain empty, no LCont` のエラーになる（Python VM と Rust VM の両方。docs/dev/CHAN-PLAN-ja.md の C2）。step45 と fast11 は、待つ所に継続を付けて避けている。このメッセージが待っていた VProc で出たら、この不具合を疑う。
 * **SJS の前からの違い**：`"héllo".charAt(-1)` が、JavaScript の `""` でなく `"o"` を返す（consh/sjs/README-ja.md）。テストのログには出ない。
 
@@ -70,6 +67,7 @@ SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列�
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-16 | 30789d6 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。新しい test/step46 もどの VM でも通った。申し送り（2026-11-16）の作り直すものと流していないものを確かめた |
 | 2026-11-16 | 5d057a8 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM） | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ） |
 | 2026-11-16 | f512194 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM） | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ） |
 | 2026-11-16 | 94da137 | Claude | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM） | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ） |
