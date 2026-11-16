@@ -51,9 +51,9 @@ consh/sjs/test/run_all.sh
 
 ## 申し送り
 
-次に全部流す人への申し送り。全部流して確かめたら、その項目を消す（記録の行に、確かめたことを書く）。
+次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### 2026-11-16（alpha の f90117c から 7c9911a まで。Claude）
+### alpha（2026-11-16、f90117c から 7c9911a まで、M4 の Claude）
 
 SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列の位置の速い求め方（docs/dev/STRING-INDEX-PLAN-ja.md。Rust VM の文字列に「すべて ASCII か」と文字数を覚えさせる）を入れた。チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）までは、5d057a8 の全部の記録で確かめられている。
 
@@ -63,6 +63,7 @@ SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列�
 * **流していないもの**：Python VM と wasm 版の VM の test/ の残り、consh/js/test、`CONMA_REFERENCE=1` の test/（step46 は util.se を読むが、ログにステップや util.se の行は出ないので、違いは出ない見込み）、`CONSH_IMPL=rust` の consh/test。
 * **見つけた VM の不具合（前から）**：`__VProc_wait__` を継続なしで（関数の最後に）書いた VProc は、待つ相手が終わって起きたとき、終わったと扱われずに 1 歩進められ、`Null Operator: CChain empty, no LCont` のエラーになる（Python VM と Rust VM の両方。docs/dev/CHAN-PLAN-ja.md の C2）。step45 と fast11 は、待つ所に継続を付けて避けている。このメッセージが待っていた VProc で出たら、この不具合を疑う。
 * **SJS の前からの違い**：`"héllo".charAt(-1)` が、JavaScript の `""` でなく `"o"` を返す（consh/sjs/README-ja.md）。テストのログには出ない。
+* 7c9911a より後の alpha のコミット（測った機械の名前の修正、ブランチの決まり、この申し送り）は、文書だけ。この後の作業は、作業のブランチを作って alpha にマージする（docs/dev/CONTRIBUTING.md）。
 
 ## 記録
 

@@ -23,7 +23,7 @@ The documents here are for the users of ConMa, who run ConMa programs (and write
 - [Resolver](RESOLVER.html)
 
 ## For developers (dev)
-- [Contributing](dev/CONTRIBUTING.html): the Git settings, how `alpha` and `main` are used, and the tests
+- [Contributing](dev/CONTRIBUTING.html): the branches (of the work, `alpha` and `main`), the Git settings, how a change goes into `main`, and the tests
 - [Design](dev/DESIGN.html)
 - [Primitive Implementation Roadmap](dev/ROADMAP.html)
 - [Self-hosted Front End](dev/SELFHOST.html)

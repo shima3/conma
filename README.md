@@ -29,7 +29,7 @@ CONMA_VM=rust test/run_all.sh -j 8
 
 ## For developers
 
-Those who change ConMa (its VMs, its front end and its standard library) or ConSh read [docs/dev/CONTRIBUTING.md](docs/dev/CONTRIBUTING.md): the Git settings of each clone, how `alpha` and `main` are used, how the tests are run and recorded, how commit messages are written, how English and Japanese documents are named and kept in step, and how a text refers to a file that has moved. Those who only run ConMa programs, ConSh among them, are its users, and need not read docs/dev.
+Those who change ConMa (its VMs, its front end and its standard library) or ConSh read [docs/dev/CONTRIBUTING.md](docs/dev/CONTRIBUTING.md): the branches of the work, `alpha` and `main`, the Git settings of each clone, how a change goes through the tester into `main`, how the tests are run and recorded, how commit messages are written, how English and Japanese documents are named and kept in step, and how a text refers to a file that has moved. Those who only run ConMa programs, ConSh among them, are its users, and need not read docs/dev.
 
 ## Where to start
 
