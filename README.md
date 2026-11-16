@@ -17,7 +17,7 @@ Build the Rust VM and run ConSh, the shell written in ConMa, on it (interactive 
 
 ```
 cd vm && cargo build --release && cd ..
-CONSH_IMPL=conma CONMA_VM=rust consh/bin/consh
+CONSH_IMPL=conma consh/bin/consh
 ```
 
 Run the tests with the Python VM (the default) or another VM (`bin/vm`); they pass when nothing but the `== name` line of each test is printed:
@@ -29,7 +29,7 @@ CONMA_VM=rust test/run_all.sh -j 8
 
 ## For developers
 
-Those who change ConMa (its VMs, its front end and its standard library) or ConSh read [docs/dev/CONTRIBUTING.md](docs/dev/CONTRIBUTING.md): the Git settings of each clone, how `alpha` and `main` are used, and how the tests are run and recorded. Those who only run ConMa programs, ConSh among them, are its users, and need not read docs/dev.
+Those who change ConMa (its VMs, its front end and its standard library) or ConSh read [docs/dev/CONTRIBUTING.md](docs/dev/CONTRIBUTING.md): the Git settings of each clone, how `alpha` and `main` are used, how the tests are run and recorded, how commit messages are written, how English and Japanese documents are named and kept in step, and how a text refers to a file that has moved. Those who only run ConMa programs, ConSh among them, are its users, and need not read docs/dev.
 
 ## Where to start
 

@@ -1,3 +1,4 @@
-# 関数 g $i（n=$x）を 5000 回
-function g (x) { n=$x; }
-for i in $(seq 1 5000); do g $i; done
+# 関数 g $i（n=$x して echo $n）を 5000 回。値は > (n) で受ける
+function g (x) { n=$x; echo $n; }
+for i in $(seq 1 5000); do g $i > (n); done
+echo $n
