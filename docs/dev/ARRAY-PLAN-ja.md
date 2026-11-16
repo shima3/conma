@@ -86,4 +86,15 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 * **A2（作った、2026-11-17）**：Rust 版の VM（value.rs の `Value::Array` と `ArrayObj`、`value_type_name` と `type_name` の `"Array"`、同一性、gc.rs の `Node::Array`、trace.rs の `(__Array__ "番号")`、prim/array.rs、prim/mod.rs の表、module.rs の `EXT_FEATURES`）。wasm 版の VM と consh/js/web を consh/js/build.sh で作り直した。自分と互いを含む配列を 40 万個作って捨てるプログラムが、最大 8.5 MB で終わる（`CONMA_GC_STATS` で、配列が集められている）。
 * **A3（作った、2026-11-17）**：bin/to-core が `"array"` を include/core/array.se の定義に直す（`"control"` と `"boolean"` も入れる）。フロントエンドの Python 版（bin/resolver の `EXT_PRIMITIVES`）と ConMa 版（include/resolver.se の `__Resolver_features__`）が `(Uses "array" ...)` を書く。vm/frontend.module.se を bin/update-frontend で作り直した。test/fast12 は、step47 と同じプログラムを、代わりの定義を入れずに、フロントエンドが書いた `(Uses "array" "boolean" "control")` で動かし、`conma build` が同じモジュールを作ること、bin/to-core で直したモジュールも同じログになること、`__type_name__` が VM ごとに決めたもの（Python 版は `"Dict"`、ほかは `"Array"`。bin/to-core で直したものはどれも `"Dict"`）になることを確かめる。Python 版、Rust 版、wasm 版の VM で通る。test/frontend、test/selfhost1〜7、test/module1〜2、fast10、fast11、step45 も通る。
 * **A4（作った、2026-11-17）**：変換した VM。6 つを conma2rust.py の `CHAIN` と transpiled.rs の `SAFE_PRIMS` に入れ、`__Array_length__`、`__Array_get__`、`__Array_set__`、`__Array_push__` は直接呼ぶ（`DIRECT`、transpiled.rs の `d_array_*`。prim/array.rs の `*_core` をプリミティブと共有する）。test/transpiled に case3（step47 の 5 つのケースを順に）を足した。
-* **A5 の途中で見つけた、VM の前からの不具合**：Rust 版の VM（wasm 版も同じ）の Dict は、数のキーを引くのに、キーの数に比例する時間がかかる。Dict の索引の `FxHasher` の `finish` が、掛け算の結果をそのまま返し、小さい整数の f64 のビットは下の桁が 0 なので、hashbrown が桶を選ぶ下の桁がどのキーでも同じになるため。数のキーの Dict に 2.5 万個と 5 万個を入れて 10 回ずつ読み書きすると、0.92 秒と 3.53 秒（3.8 倍）。この計画とは別に直してから（文字列のキーの `str_hash` と同じく、上の桁を下に混ぜる）、A5 で配列と比べる。
+* **A5 の途中で見つけた、VM の前からの不具合（直した、2026-11-17、ブランチ m4/dict-num-hash）**：Rust 版の VM（wasm 版も同じ）の Dict は、数のキーを引くのに、キーの数に比例する時間がかかっていた。Dict の索引の `FxHasher` の `finish` が、掛け算の結果をそのまま返し、小さい整数の f64 のビットは下の桁が 0 なので、hashbrown が桶を選ぶ下の桁がどのキーでも同じになるため。rustc-hash 2 と同じく、`finish` で 26 ビット回すようにした。数のキーの Dict に 2.5 万、5 万、10 万個を入れて 10 回ずつ読み書きすると、0.92 秒、3.53 秒、14.73 秒だったのが、0.21 秒、0.37 秒、0.77 秒になった（Rust 版の VM、user）。
+* **A5（測った、2026-11-17、Apple M4、user の 3 回の最小）**：n 個を足し、k 回、添字で全部を読んで足し合わせ、1 ずつ増やして書くプログラムを、配列のプリミティブで書いたものと、数のキーの Dict（`__Dict_put__`、`__Dict_lookup_or__`）で書いたもので比べた（ループと数の計算は同じ。モジュールは bench/module.sh で作った）。
+
+| VM | n、k | 配列 | 数のキーの Dict |
+|---|---|---|---|
+| Rust 版 | 10 万、10 | 0.77 秒 | 0.76 秒 |
+| wasm 版（Node.js） | 10 万、10 | 1.20 秒 | 1.19 秒 |
+| 変換版（この 2 つだけを vm/conma2rust/build.sh で組み込んだもの） | 10 万、10 | 0.13 秒 | 0.16 秒 |
+| Python 版（配列は bin/to-core の代わりの定義） | 1 万、1 | 9.36 秒 | 2.76 秒 |
+
+  * Rust 版と wasm 版の VM では、どちらも 1 回 1 ステップのプリミティブで、時間の大半はステップの手間なので、差がない（数のキーの Dict は、上の不具合を直した後）。変換版では、配列の読み書きを直接呼ぶので、約 2 割速い。Python 版では、配列は代わりの定義の関数を呼ぶので、Dict を直接使うより約 3.4 倍遅い。
+  * そのため、配列の利点は、Dict より速いことより、添字の範囲を確かめること、`push` と `pop`、長さを持つことと、SJS のように添字を文字列にしてキーにしていた所（1.2 の `Sjs_num_str` の 128 ステップ）をなくせることにある。A6（SJS で使う）は、これを踏まえて決める。
