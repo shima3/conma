@@ -2119,12 +2119,21 @@
     Sjs_arg args ,(n rest)
     Sjs_to_number n ,(n)
     Sjs_repeat s n "") ,()
+  ;; JavaScript と同じく、添字を整数にして（undefined と NaN は 0、0 の方へ切り捨て）、負の数と長さ以上は ""。
+  ;; 2026-11-16 までは slice と同じ Sjs_rel_index で、負の数を後ろからの位置にしていた（"héllo".charAt(-1) が "o"）
   method "charAt" (,(args)
     Sjs_arg args ,(i rest)
-    Sjs_rel_index i len zero ,(i)
-    Sjs_char_at s i ,(c)
-    __is_null__ c ,(none)
-    __if_then_else__ none (,() __NULL__ "") (,() __NULL__ c)) ,()
+    __is_null__ i ,(none)
+    __if_then_else__ none (,() Sjs_zero) (,() Sjs_to_number i) ,(n)
+    Sjs_is_nan n ,(nan)
+    __if_then_else__ nan (,() Sjs_zero) (,() Sjs_trunc n) ,(n)
+    __Number_is_negative__ n ,(neg)
+    __if_then_else__ neg
+      (,() __NULL__ "")
+      (,()
+        Sjs_char_at s n ,(c)
+        __is_null__ c ,(none)
+        __if_then_else__ none (,() __NULL__ "") (,() __NULL__ c))) ,()
   __NULL__ __NULL__)
 
 (define Sjs_substring ,(s from to)
