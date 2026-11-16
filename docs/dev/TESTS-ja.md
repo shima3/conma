@@ -59,8 +59,16 @@ consh/sjs/test/run_all.sh
 SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列の位置の速い求め方（docs/dev/STRING-INDEX-PLAN-ja.md。Rust VM の文字列に「すべて ASCII か」と文字数を覚えさせる）を入れた。チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）までは、5d057a8 の全部の記録で確かめられている。
 
 * **見つけた VM の不具合（前から）**：`__VProc_wait__` を継続なしで（関数の最後に）書いた VProc は、待つ相手が終わって起きたとき、終わったと扱われずに 1 歩進められ、`Null Operator: CChain empty, no LCont` のエラーになる（Python VM と Rust VM の両方。docs/dev/CHAN-PLAN-ja.md の C2）。step45 と fast11 は、待つ所に継続を付けて避けている。このメッセージが待っていた VProc で出たら、この不具合を疑う。
-* **SJS の前からの違い**：`"héllo".charAt(-1)` が、JavaScript の `""` でなく `"o"` を返す（consh/sjs/README-ja.md）。テストのログには出ない。
 * 7c9911a より後の alpha のコミット（測った機械の名前の修正、ブランチの決まり、この申し送り）は、文書だけ。この後の作業は、作業のブランチを作って alpha にマージする（docs/dev/CONTRIBUTING.md）。
+
+### m4/sjs-charat（2026-11-16、M4 の Claude）
+
+SJS の `charAt` を JavaScript と同じにした（consh/include/sjs_rt.se）：添字を整数にし（undefined と NaN は 0、0 の方へ切り捨て）、負の数と長さ以上は `""`。前は `slice` と同じく負の数を後ろからの位置にしていた（`"héllo".charAt(-1)` が `"o"`）。
+
+* **作り直すもの**：ConSh のモジュール（sjs_rt.se）。変換版の VM は、先に Rust VM で consh/test を流してから `bench/build.sh`。VM のソースは変えていない。
+* **新しいテスト**：consh/sjs/test/step2 の case8（`charAt` と `s[i]` の境目。ログは Node.js と同じ）。
+* **変更した人が流したもの**：consh/sjs/test と consh/test（最適化版）を Rust VM で。
+* **流していないもの**：ほかのすべて。
 
 ## 記録
 
