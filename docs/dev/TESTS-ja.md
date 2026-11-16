@@ -49,6 +49,21 @@ consh/sjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 
+## 申し送り
+
+次に全部流す人への申し送り。全部流して確かめたら、その項目を消す（記録の行に、確かめたことを書く）。
+
+### 2026-11-16（alpha の f90117c から 7c9911a まで。Claude）
+
+SJS の文字列の添字の近道（consh/include/sjs_rt.se）と、文字列の位置の速い求め方（docs/dev/STRING-INDEX-PLAN-ja.md。Rust VM の文字列に「すべて ASCII か」と文字数を覚えさせる）を入れた。チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）までは、5d057a8 の全部の記録で確かめられている。
+
+* **作り直すもの**：Rust VM（vm/src/value.rs、prim/string.rs）、wasm 版の VM と web のファイル（`consh/js/build.sh`）、変換版の VM。ConSh のソース（sjs_rt.se）が変わったので、変換版の VM は、先に Rust VM で consh/test を流して ConSh のモジュールを作り直してから `bench/build.sh` を動かす（約 19 分）。順が逆だと、古いモジュールのコードが入り、ConSh は変換したコードを使わずに動く。
+* **新しいテスト**：test/step46（文字列の位置と長さの境目。ログは Python VM のもので、変更前の Rust VM とも同じ）。run_all.sh が拾う。
+* **変更した人が流したもの**：Rust VM の test/ のすべて、consh/test（最適化版と参照版）、consh/sjs/test。変換版の VM の test/ のすべてと consh/test。wasm 版の VM の test/ の step41、step45、step46、fast11 と consh/test（既知の違いだけ）。Python VM の test/step46。
+* **流していないもの**：Python VM と wasm 版の VM の test/ の残り、consh/js/test、`CONMA_REFERENCE=1` の test/（step46 は util.se を読むが、ログにステップや util.se の行は出ないので、違いは出ない見込み）、`CONSH_IMPL=rust` の consh/test。
+* **見つけた VM の不具合（前から）**：`__VProc_wait__` を継続なしで（関数の最後に）書いた VProc は、待つ相手が終わって起きたとき、終わったと扱われずに 1 歩進められ、`Null Operator: CChain empty, no LCont` のエラーになる（Python VM と Rust VM の両方。docs/dev/CHAN-PLAN-ja.md の C2）。step45 と fast11 は、待つ所に継続を付けて避けている。このメッセージが待っていた VProc で出たら、この不具合を疑う。
+* **SJS の前からの違い**：`"héllo".charAt(-1)` が、JavaScript の `""` でなく `"o"` を返す（consh/sjs/README-ja.md）。テストのログには出ない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

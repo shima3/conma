@@ -64,7 +64,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
 
 計画を書き、4 を決めた（2026-11-16）。
 
-* **S1（測った、2026-11-16、bb28855 の後、Apple M1、user 秒、1 回）**：ConMa のプログラム（リポジトリには入れていない）で、`piece` を 2^k 回つないだ文字列を、1 回ごとに `__String_length__` で長さを求め、`__String_substring__` で 1 文字取って `"a"` と比べながら、頭から終わりまで読む（SJS の `i < s.length` と `s[i]` と同じ形）。`piece` は ASCII の `"abcde"` と、先頭が ASCII でない `"あbcde"`。
+* **S1（測った、2026-11-16、32c327f の後、Apple M1、user 秒、1 回）**：ConMa のプログラム（リポジトリには入れていない）で、`piece` を 2^k 回つないだ文字列を、1 回ごとに `__String_length__` で長さを求め、`__String_substring__` で 1 文字取って `"a"` と比べながら、頭から終わりまで読む（SJS の `i < s.length` と `s[i]` と同じ形）。`piece` は ASCII の `"abcde"` と、先頭が ASCII でない `"あbcde"`。
 
 | 文字列 | Rust 版の VM | wasm 版の VM |
 |---|---|---|
@@ -75,7 +75,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
 
     * wasm 版の VM では、ASCII の文字列が 4 倍になると時間が約 10 倍になる（ほぼ 2 乗）。ネイティブの VM は `is_ascii` が速いので、まだ目立たない。ASCII でない文字列は、どちらの VM でも 2 乗で遅い（文字をたどる）。この計画では、ASCII でない文字列は長さだけが速くなり、位置は残る（4 の 2）。
     * consh/bench（run.py、3 回の最小）：`02_for_seq_100000` が Rust 版の VM で 0.755 秒、wasm 版の VM で 0.959 秒、`12_for_seq_500000` が 4.001 秒と 4.279 秒、`10_pipe_for_stdin` が 1.161 秒と 1.737 秒、`11_seq_varlist` が 0.596 秒と 0.964 秒。ConSh は行を 1024 文字の断片で読むので、ここはあまり変わらない見込み。
-    * SJS の 1 文字ずつのループは、1 の表のとおり（3f7a06c の後）。
+    * SJS の 1 文字ずつのループは、1 の表のとおり（f90117c の後）。
 * **S2（作った、2026-11-16）**：`Value::Str(Rc<str>)` を `Value::Str(Rc<StrObj>)` にした（vm/src/value.rs）。`StrObj` は本文（`Box<str>`）と、分かっていること（`StrInfo`：まだ調べていない、ASCII、ASCII でなく文字数 n）を `Cell` で持ち、`Deref<Target = str>` で今までどおり文字列として読める。`string_value` は「まだ調べていない」で作り、`string_value_info` は分かっていることを付けて作る（S3 で使う）。直したのは、`index_key`、トレースの表示（trace.rs）だけ。プリミティブはまだ印を見ない。
     * 本文を同じ割り当てに置く形（3 の最後）は採らなかった：割り当てが 1 つ増えるが、前と後の VM を交互に 7 回ずつ測った最小で、consh/bench の `02`、`06`、`10`、`11`、`12` は 0.99〜1.007 倍（最初に 1 回ずつ測ったときの `11` の 1.04 倍は、ばらつきだった）。test/ は Rust 版の VM で違いなく通る。wasm 版の VM もビルドできる。
 * **S3（作った、2026-11-16）**：vm/src/prim/string.rs。`__String_length__`、`__String_substring__`、`__String_find__`、`__String_find_any__` は、文字列の印（`info`）を見て、分からなければ一度だけ調べて覚える。ASCII なら、位置はバイトの位置で、長さはバイトの数（`char_to_byte_info`、`count`）。`__String_find__` は、ASCII なら見つけた所のバイトの位置をそのまま返す。印を受け継ぐのは、`__String_concat__`（両方が分かっていれば：ASCII どうしは ASCII、ほかは文字数の和。プログラムに書いた文字列はその場で調べる。片方でも分からなければ「まだ調べていない」）、`__String_substring__` と `__String_strip_suffix__`（ASCII の一部は ASCII）、`__String_fromCode__`。範囲の外のエラーの長さも、覚えた文字数で書く（同じ値）。変換した VM の生成コードは `concat_core` を通るので、同じく受け継ぐ。
