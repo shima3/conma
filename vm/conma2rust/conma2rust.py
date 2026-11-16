@@ -63,6 +63,8 @@ CHAIN = {
     # and __Chan_take__ are done in place when they would not wait (Fuser), __Chan_close__ and
     # __Chan_cancel__ are left to the VM
     "__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_reader__",
+    # the array primitives (docs/dev/ARRAY-PLAN-ja.md): they only change the array they are given
+    "__Array_new__", "__Array_length__", "__Array_get__", "__Array_set__", "__Array_push__", "__Array_pop__",
 }
 # Not __Ref_set__: the VM wakes the VProcs waiting for a change of a Ref
 # (__Ref_wait_change__) after each step, so a change that is undone within a
@@ -124,6 +126,11 @@ DIRECT = {
     "__Dict_put__": ("d_dict_put", 3),
     "__Number_divide__": ("d_number_divide", 3),
     "__Number_sqrt__": ("d_number_sqrt", 2),
+    # the array primitives of the feature "array" (docs/dev/ARRAY-PLAN-ja.md)
+    "__Array_length__": ("d_array_length", 1),
+    "__Array_get__": ("d_array_get", 3),
+    "__Array_set__": ("d_array_set", 4),
+    "__Array_push__": ("d_array_push", 2),
 }
 
 
@@ -174,7 +181,8 @@ def unquote(atom):
 
 
 # The features of extended ConMa (docs/dev/FAST-PLAN-ja.md 3.4) that the translator knows,
-# as EXT_FEATURES of vm/src/module.rs: "bitwise32", the bitwise primitives
+# as EXT_FEATURES of vm/src/module.rs: "array", the array primitives (docs/dev/ARRAY-PLAN-ja.md; of CHAIN,
+# __Array_length__, __Array_get__, __Array_set__ and __Array_push__ called directly), "bitwise32", the bitwise primitives
 # (docs/dev/BITWISE-PLAN-ja.md), which the code applies as other primitives of CHAIN,
 # "boolean", the primitives __TRUE__ and __FALSE__ (chosen in place), "chan", the channel
 # primitives (docs/dev/CHAN-PLAN-ja.md; some of CHAIN, __Chan_put__ and __Chan_take__ in place
@@ -183,7 +191,7 @@ def unquote(atom):
 # __Wasm_compile__, __Wasm_call__, __Wasm_call_memory__, __Dict_numbers__ and __Dict_put_numbers__,
 # which the code applies as other primitives (the native VM has them and fails as it has no WebAssembly;
 # ConSh uses them since 2026-11-14, and without "wasm" here bench/build.sh skipped its modules).
-EXT_FEATURES = ("bitwise32", "boolean", "chan", "control", "wasm")
+EXT_FEATURES = ("array", "bitwise32", "boolean", "chan", "control", "wasm")
 
 
 def tag(x):

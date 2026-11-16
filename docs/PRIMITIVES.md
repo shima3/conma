@@ -754,6 +754,30 @@ These primitives are not part of core ConMa, the language defined above and in d
 
 This section is the whole specification of these primitives. The plans named at the end of each feature tell why and how they were made, for the developers (in Japanese): extended ConMa as a whole is docs/dev/FAST-PLAN-ja.md.
 
+### Feature `"array"`: arrays
+
+An array is a sequence of values read and written by index, from 0 to its length minus 1, which can be changed: every place that holds the same array sees a change. An index is a Number that is an integer from 0 to the length minus 1 (`-0` is 0). `__Array_get__` and `__Array_set__` apply `onError` with `"<name>: index is not a Number"`, `"<name>: index is not an integer"` (also for an infinity or NaN) or `"<name>: index out of range"` otherwise; `__Array_pop__` applies it with `"__Array_pop__: empty Array"` for an array of length 0; and the three of them apply it with `"<name>: not an Array"` for a value that is not an array. `onError` is applied with the LCont of the primitive, as for the other primitives. `__Array_length__` and `__Array_push__` stop the VProc when given a value that is not an array. None of them waits or switches VProcs.
+
+**The type differs between the VMs.** On the VMs of extended ConMa (Rust, wasm, transpiled), an array is a value of its own: `__type_name__` gives `"Array"`, the Dict primitives fail on it, and as a key of a Dict it is compared by identity. The replacement definitions keep an array in a Dict (the values under the Number keys 0 to n-1, the length under the String key `"length"`), so that on the Python VM `__type_name__` gives `"Dict"` and the Dict primitives work on it. A program uses arrays only through these primitives (and as values, keys and operands of `__type_name__`, `__is_null__` and the like, without depending on the type name); anything else gives results that depend on the VM. The errors of `__Array_length__` and `__Array_push__` given a value that is not an array also differ (in the replacement definitions, the error of the Dict primitive inside them, or a message and exit). Replacement definitions: `include/core/array.se`. Background: docs/dev/ARRAY-PLAN-ja.md.
+
+### **`__Array_new__ ,(array)`**
+* **Description**: Makes an array of length 0.
+
+### **`__Array_length__ array ,(n)`**
+* **Description**: The length of the array, a Number.
+
+### **`__Array_get__ onError array i ,(value)`**
+* **Description**: The value at index `i`.
+
+### **`__Array_set__ onError array i value ,()`**
+* **Description**: Replaces the value at index `i` with `value`. The length does not change: to add a value, use `__Array_push__`.
+
+### **`__Array_push__ array value ,()`**
+* **Description**: Adds `value` at the end, at index n for an array of length n.
+
+### **`__Array_pop__ onError array ,(value)`**
+* **Description**: Takes the last value away and returns it.
+
 ### Feature `"bitwise32"`: bitwise operations
 
 The 32-bit bitwise operations of JavaScript. Each operand is made a 32-bit integer with ToInt32: NaN and infinities become 0, other Numbers are truncated toward 0 and taken modulo 2^32, and the result is read as a signed integer. The results are signed 32-bit integers (`__Number_ushr32__` unsigned). A shift count is the low 5 bits of the ToUint32 of the right operand. There are no errors besides operands that are not Numbers, which stop the VProc. Replacement definitions: `include/core/bitwise32.se`. Background: docs/dev/BITWISE-PLAN-ja.md.

@@ -20,6 +20,7 @@ pub struct Serials {
     pub refs: usize,
     pub mseqs: usize,
     pub dicts: usize,
+    pub arrays: usize,
     pub conts: usize,
     pub streams: usize,
     pub osprocs: usize,

@@ -54,6 +54,12 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/array
+
+* 拡張 ConMa の機能 `"array"`（配列の 6 つのプリミティブ。docs/dev/ARRAY-PLAN-ja.md の A1〜A4）。vm/src と vm/frontend.module.se が変わったので、Rust 版の VM、wasm 版の VM と consh/js/web（`consh/js/build.sh`）、変換版の VM（`bench/build.sh`）を作り直してから流す。
+* 新しいテスト：test/step47、test/fast12、test/transpiled の case3。fast12 は、配列の `__type_name__` を VM ごとに確かめる（Python 版の VM は `"Dict"`、ほかは `"Array"`）。
+* 流したもの：step47、fast12、fast11、step45、frontend、transpiled（Python 版と Rust 版の VM）、step47 と fast12（wasm 版）、transpiled、step47、fast12、fast11、step45（作り直した変換版の VM）、selfhost1〜7 と module1〜2（Rust 版の VM）。流していないもの：test/ の残り、consh/test、consh/js/test、consh/sjs/test。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

@@ -57,13 +57,13 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 * **トレースの表示**：`--trace` は Python 版の VM と比べるためのもので、配列は Python 版にはないので、形は自由に決める（たとえば `(Array 番号 長さ)`）。
 * **足さないもの（案）**：長さを指定して作る、範囲を写す、LList との変換。必要になったら、ConMa の関数で書くか、後で足す。
 
-## 4. 決めること
+## 4. 決めたこと（2026-11-17、ユーザーと。どれも案のとおり）
 
-1. **プリミティブの組**：3 の 6 つでよいか（`__Array_pop__` を入れるか、長さを指定して作る `__Array_make__ n fill` を入れるか）。
-2. **範囲の外への書き込み**：`__Array_set__` は長さ未満だけ（案）か、長さちょうどなら足す（JavaScript の `a[a.length] = v`）か。
+1. **プリミティブの組**：3 の 6 つ（`__Array_pop__` を入れ、長さを指定して作るものは入れない）。
+2. **範囲の外への書き込み**：`__Array_set__` は長さ未満だけ。足すのは `__Array_push__`。
 3. **名前**：`__Array_*__` と機能の名前 `"array"`。
-4. **型の違いの扱い**：2 の「配列には配列のプリミティブだけを使う」を仕様として書く、でよいか。
-5. **SJS**：A6 として、A5 の後に別に決める、でよいか。
+4. **型の違いの扱い**：2 の「配列には配列のプリミティブだけを使う」を仕様として書く（docs/PRIMITIVES.md の 16）。
+5. **SJS**：A6 として、A5 の後に別に決める。
 
 ## 5. 作り方（段階）
 
@@ -80,4 +80,10 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 
 ## 6. 今の状態
 
-計画を書いた（2026-11-17）。4 を決めてから A1 を作る。
+計画を書き、4 を決めた（2026-11-17）。
+
+* **A1（作った、2026-11-17）**：include/core/array.se に、6 つを同じ名前のコア ConMa の関数として書いた（使う関数の名前は `Array_core_` で始める）。onError を取る 3 つは、配列（`"length"` のある Dict）でない値なら onError を `"名前: not an Array"` で呼ぶ（プリミティブと同じ）。test/step47 の 5 つのケース（作る、足す、読む、書く、取り除く、長さ。添字の誤り：-1、長さ、0.5、文字列、無限大、NaN、-0。配列でない値：文字列、Dict、null。同じ配列を 2 か所から持つ、配列の中の配列、自分を含む配列、null と関数の要素、Dict のキー。1 万個）が、Python 版、Rust 版、wasm 版の VM で同じログになる。無限大と NaN は「整数でない」になる。
+* **A2（作った、2026-11-17）**：Rust 版の VM（value.rs の `Value::Array` と `ArrayObj`、`value_type_name` と `type_name` の `"Array"`、同一性、gc.rs の `Node::Array`、trace.rs の `(__Array__ "番号")`、prim/array.rs、prim/mod.rs の表、module.rs の `EXT_FEATURES`）。wasm 版の VM と consh/js/web を consh/js/build.sh で作り直した。自分と互いを含む配列を 40 万個作って捨てるプログラムが、最大 8.5 MB で終わる（`CONMA_GC_STATS` で、配列が集められている）。
+* **A3（作った、2026-11-17）**：bin/to-core が `"array"` を include/core/array.se の定義に直す（`"control"` と `"boolean"` も入れる）。フロントエンドの Python 版（bin/resolver の `EXT_PRIMITIVES`）と ConMa 版（include/resolver.se の `__Resolver_features__`）が `(Uses "array" ...)` を書く。vm/frontend.module.se を bin/update-frontend で作り直した。test/fast12 は、step47 と同じプログラムを、代わりの定義を入れずに、フロントエンドが書いた `(Uses "array" "boolean" "control")` で動かし、`conma build` が同じモジュールを作ること、bin/to-core で直したモジュールも同じログになること、`__type_name__` が VM ごとに決めたもの（Python 版は `"Dict"`、ほかは `"Array"`。bin/to-core で直したものはどれも `"Dict"`）になることを確かめる。Python 版、Rust 版、wasm 版の VM で通る。test/frontend、test/selfhost1〜7、test/module1〜2、fast10、fast11、step45 も通る。
+* **A4（作った、2026-11-17）**：変換した VM。6 つを conma2rust.py の `CHAIN` と transpiled.rs の `SAFE_PRIMS` に入れ、`__Array_length__`、`__Array_get__`、`__Array_set__`、`__Array_push__` は直接呼ぶ（`DIRECT`、transpiled.rs の `d_array_*`。prim/array.rs の `*_core` をプリミティブと共有する）。test/transpiled に case3（step47 の 5 つのケースを順に）を足した。
+* **A5 の途中で見つけた、VM の前からの不具合**：Rust 版の VM（wasm 版も同じ）の Dict は、数のキーを引くのに、キーの数に比例する時間がかかる。Dict の索引の `FxHasher` の `finish` が、掛け算の結果をそのまま返し、小さい整数の f64 のビットは下の桁が 0 なので、hashbrown が桶を選ぶ下の桁がどのキーでも同じになるため。数のキーの Dict に 2.5 万個と 5 万個を入れて 10 回ずつ読み書きすると、0.92 秒と 3.53 秒（3.8 倍）。この計画とは別に直してから（文字列のキーの `str_hash` と同じく、上の桁を下に混ぜる）、A5 で配列と比べる。

@@ -46,6 +46,7 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::Ref(r) => l(vec![a("__Ref__"), a(&quoted(&r.serial.to_string()))]),
         Value::MSeq(r) => l(vec![a("__MSeq__"), a(&quoted(&r.serial.to_string()))]),
         Value::Dict(r) => l(vec![a("__Dict__"), a(&quoted(&r.serial.to_string()))]),
+        Value::Array(r) => l(vec![a("__Array__"), a(&quoted(&r.serial.to_string()))]),
         Value::Cont(r) => l(vec![a("__Cont__"), a(&quoted(&r.serial.to_string()))]),
         Value::VProc(r) => l(vec![a("__VProcRef__"), a(&quoted(&r.serial.to_string()))]),
         Value::Stream(s) => l(vec![a("__OSStream__"), a(&format!("\"{}:{}\"", s.mode, s.serial))]),

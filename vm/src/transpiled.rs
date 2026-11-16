@@ -157,6 +157,8 @@ const SAFE_PRIMS: &[&str] = &[
     "__Dict_new__", "__Dict_put__", "__Dict_lookup_or__", "__Dict_remove__",
     "__Dict_keys__", "__Dict_copy__",
     "__MSeq_new__", "__MSeq_is_empty__", "__MSeq_uncons__", "__MSeq_set_head__", "__MSeq_append__",
+    // the array primitives (docs/dev/ARRAY-PLAN-ja.md), which only change the array they are given
+    "__Array_new__", "__Array_length__", "__Array_get__", "__Array_set__", "__Array_push__", "__Array_pop__",
     "__Ref_new__", "__Ref_get__", "__PDict_put__", "__PDict_lookup_or__",
     "__if_then_else__", "__if__", "__unless__", "__Cont_get__",
     "__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_reader__",
@@ -1199,6 +1201,27 @@ pub fn d_dict_put(_m: &mut Machine, d: &Value, key: &Value, value: &Value) -> Re
 /// function, passed to the LCont written in place.
 pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> Result<Out, VmError> {
     Ok(Out::R1(make_cont(m, vp)))
+}
+
+/// The array primitives called directly (docs/dev/ARRAY-PLAN-ja.md, prim/array.rs).
+pub fn d_array_length(_m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(num(crate::prim::array::length_core(a)? as f64)))
+}
+pub fn d_array_get(_m: &mut Machine, on_error: &Value, a: &Value, i: &Value) -> Result<Out, VmError> {
+    Ok(match crate::prim::array::get_core(a, i) {
+        Ok(v) => Out::R1(v),
+        Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
+    })
+}
+pub fn d_array_set(_m: &mut Machine, on_error: &Value, a: &Value, i: &Value, v: &Value) -> Result<Out, VmError> {
+    Ok(match crate::prim::array::set_core(a, i, v.clone()) {
+        Ok(()) => Out::R0,
+        Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
+    })
+}
+pub fn d_array_push(_m: &mut Machine, a: &Value, v: &Value) -> Result<Out, VmError> {
+    crate::prim::array::push_core(a, v.clone())?;
+    Ok(Out::R0)
 }
 
 pub fn d_number_divide(_m: &mut Machine, on_error: &Value, a: &Value, b: &Value) -> Result<Out, VmError> {
