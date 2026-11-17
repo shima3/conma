@@ -1333,6 +1333,16 @@ pub fn cref(t: &Table, fid: usize, k: usize) -> &Value {
     }
 }
 
+/// The local variable i of the LVEnv the fused chain started with, borrowed
+/// (for an operand a primitive reads: lget made a copy only to drop it).
+#[inline]
+pub fn lref(env: &LVEnv, i: usize) -> Result<&Value, VmError> {
+    match lv_get(env, i) {
+        Some(v) => Ok(v),
+        None => crate::prim::err(format!("LVEnv[{}] out of range", i)),
+    }
+}
+
 /// The local variable i of the LVEnv the fused chain started with.
 pub fn lget(env: &LVEnv, i: usize) -> Result<Value, VmError> {
     match lv_get(env, i) {

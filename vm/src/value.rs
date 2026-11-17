@@ -704,7 +704,7 @@ pub fn values_equal(a: &Value, b: &Value) -> Result<bool, String> {
         return Ok(true);
     }
     if ta == "String" {
-        if let (Some(x), Some(y)) = (string_text(a), string_text(b)) {
+        if let (Some(x), Some(y)) = (string_cow(a), string_cow(b)) {
             return Ok(x? == y?);
         }
     }
@@ -1040,6 +1040,33 @@ pub fn unescape(s: &str) -> Result<String, String> {
 }
 
 /// The text of a String value (StrNode or Str), unescaped.
+/// The text of a String value, borrowed when it can be: a Str, or a StrNode (a
+/// String written in the source) whose text has no escape. Like string_text,
+/// but without making a String for each use (__String_equal__ compared the
+/// Strings written in ConSh this way, at every comparison). None for a value
+/// that is not a String.
+pub fn string_cow(v: &Value) -> Option<Result<std::borrow::Cow<'_, str>, String>> {
+    use std::borrow::Cow;
+    match v {
+        Value::Str(s) => Some(Ok(Cow::Borrowed(&**s))),
+        Value::StrNode(n) => {
+            let l = n.as_list()?;
+            Some(match l.get(2).and_then(|x| x.as_atom()) {
+                Some(a) => {
+                    let u = unquote(a);
+                    if u.contains('\\') {
+                        unescape(u).map(Cow::Owned)
+                    } else {
+                        Ok(Cow::Borrowed(u))
+                    }
+                }
+                None => Ok(Cow::Borrowed("")),
+            })
+        }
+        _ => None,
+    }
+}
+
 pub fn string_text(v: &Value) -> Option<Result<String, String>> {
     match v {
         Value::Str(s) => Some(Ok(s.to_string())),
