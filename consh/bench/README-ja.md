@@ -58,6 +58,15 @@ consh/bench/run.py -v conma:transpiled=/tmp/before/conma,conma:transpiled   # �
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`consh.module.se` と `consh.reference.module.se`。`CONSH_MODULE_DIR` か、なければ `bin/cache-dir` のディレクトリ）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
 
+### ステップを役割ごとに数える
+
+ConSh の最適化版のステップ（Rust 版の VM の `CONMA_PROFILE`）を、役割（`$( )` の値、変数、for 文、文の終わりの待ち、語の展開、出力の受け取り、関数の呼び出しなど）ごとに足す（2026-11-17。docs/consh/dev/COMPILE2-PLAN-ja.md の 1.1 の表）。N を付けると、1 回の繰り返しあたりも出す。プロファイルは、数える前にソースを変えていないものを使う（関数の名前は、ソースの行から決める）。
+
+```
+CONSH_IMPL=conma CONMA_PROFILE=/tmp/p.tsv consh/bin/consh 13_func_assign.sh
+consh/bench/roles.py /tmp/p.tsv 250000
+```
+
 ## 結果
 
 表のスクリプトの名前は、測ったときのもの（2026-11-17 に、`02_for_seq_100000` は `02_for_seq`、`13_func_assign_100000` は `13_func_assign`、`16_func_varlist_50000` は `16_func_varlist`、`17_subst_func_20000` は `17_subst_func` に名前を変え、`01_for_seq`、`05_func_assign`、`08_func_varlist`、`09_subst_func`、`12_for_seq_500000` は消した。上の「スクリプト」）。
