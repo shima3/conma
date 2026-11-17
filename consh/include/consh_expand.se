@@ -50,8 +50,111 @@
     __NULL__ code) ,(code)
   code sh limit)
 
+;; ── 引用符の語 ──
+;; 最適化版：要素がみな引用符の中（"..."、'...'、\x）か、glob の記号を含まないリテラルの語（"x$a"、a"$b"c など）は、
+;; 展開すると、いつも、要素をつないだ String 1 つになる（引用符の中は glob も分割もせず、空でも消えない。
+;; 引用符の外のリテラルは空でなく、記号がなければ glob しない。Parts_glob_fields と Expand_args_parts の simple の場合）。
+;; そのような語は、変換のときに、要素ごとの String を返すコードの LList にしておき、実行のときは順につなぐだけにする
+;; （Expand_part、Expand_dq_from、Parts_strings を通らない）。"..." の中の値は Expand_dq_from と同じく Value_toString で
+;; 文字列にし、左から順に求める
+
+;; 語が引用符の語なら、文脈 sh を受け取って、つないだ String を返すコード。そうでなければ null
+(define Quoted_word_code ,(word)
+  Node_split word ,(tag pos elems)
+  Quoted_pieces elems ,(ok pieces)
+  __if_then_else__ ok
+    (,() __NULL__ (,(sh) Quoted_run sh pieces ""))
+    (,() __NULL__ __NULL__))
+
+;; 語の要素の LList が引用符の語のものなら、真と、要素ごとの String を返すコード（文脈 sh を受け取る）の LList。
+;; そうでなければ偽
+(define Quoted_pieces ,(elems)
+  __is_null__ elems ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __TRUE__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ elems ,(elem rest)
+      Quoted_elem_pieces elem ,(ok mine)
+      __if_then_else__ ok
+        (,()
+          Quoted_pieces rest ,(ok more)
+          __if_then_else__ ok
+            (,() __LList_append__ mine more ,(all) __NULL__ __TRUE__ all)
+            (,() __NULL__ __FALSE__ __NULL__))
+        (,() __NULL__ __FALSE__ __NULL__)))
+
+;; 語の要素 1 つの、String を返すコードの LList（"..." なら中身の要素ごと）。引用符の語の要素でなければ偽
+(define Quoted_elem_pieces ,(elem)
+  Node_split elem ,(kind pos children)
+  __String_equal__ kind "dq" ,(isDq)
+  __if_then_else__ isDq
+    (,() Dq_pieces children ,(pieces) __NULL__ __TRUE__ pieces)
+    (,()
+      __String_equal__ kind "esc" ,(isEsc)
+      __String_equal__ kind "sq" ,(isSq)
+      isEsc __TRUE__ isSq ,(isQuoted)
+      __String_equal__ kind "lit" ,(isLit)
+      isQuoted __TRUE__ isLit ,(isText)
+      __if_then_else__ isText
+        (,()
+          List_first children ,(text)
+          ;; 引用符の外のリテラルは、glob の記号があれば、この形にしない
+          isLit (,() Glob_has_meta text) (,() __NULL__ __FALSE__) ,(magic)
+          __if_then_else__ magic
+            (,() __NULL__ __FALSE__ __NULL__)
+            (,() __LList_cons__ (,(sh) __NULL__ text) __NULL__ ,(pieces) __NULL__ __TRUE__ pieces))
+        (,() __NULL__ __FALSE__ __NULL__)))
+
+;; "..." の中身の要素ごとの、String を返すコードの LList（Expand_dq_from と同じ値）
+(define Dq_pieces ,(elems)
+  __is_null__ elems ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ elems ,(elem rest)
+      Dq_piece elem ,(piece)
+      Dq_pieces rest ,(more)
+      __LList_cons__ piece more))
+
+;; "..." の中の要素 1 つの、String を返すコード。$x と ${x}（既定値なし）は変数を引き、ほかは Expand_ref で求める
+(define Dq_piece ,(elem)
+  Node_split elem ,(kind pos children)
+  __String_equal__ kind "lit" ,(isLit)
+  __if_then_else__ isLit
+    (,() List_first children ,(text) __NULL__ (,(sh) __NULL__ text))
+    (,()
+      __String_equal__ kind "var" ,(isVar)
+      __String_equal__ kind "bvar" ,(isBvar)
+      isVar __TRUE__ isBvar ,(isRef)
+      __if_then_else__ isRef
+        (,()
+          __LList_uncons__ __print_exit_error__ children ,(name rest)
+          __is_null__ rest ,(noDefault)
+          __if_then_else__ noDefault
+            (,() __NULL__ (,(sh)
+              Sh_lookup sh pos name ,(value)
+              Value_toString sh pos value))
+            (,() __NULL__ (,(sh)
+              Expand_ref sh elem ,(value)
+              Value_toString sh pos value)))
+        (,() __NULL__ (,(sh)
+          Expand_ref sh elem ,(value)
+          Value_toString sh pos value))))
+
+;; コードの LList pieces を順に実行し、返した String を acc の後ろにつなぐ
+(define Quoted_run ,(sh pieces acc)
+  __is_null__ pieces ,(end)
+  __if_then_else__ end
+    (,() __NULL__ acc)
+    (,()
+      __LList_uncons__ __print_exit_error__ pieces ,(code rest)
+      code sh ,(s)
+      __String_concat__ acc s ,(acc)
+      Quoted_run sh rest acc))
+
 ;; 外部コマンドの語のコード。リテラルの語は語の LList を作っておいて返し、$x と ${x}（既定値なし）だけの語は、
-;; 変数を引いて語にする（Var_fields）。ほかの語は、部分の LList にしてから展開する
+;; 変数を引いて語にする（Var_fields）。引用符の語は、つないだ String 1 つ（Quoted_word_code）。
+;; ほかの語は、部分の LList にしてから展開する
 (define Fields_compile ,(word)
   Literal_fields word ,(fields done)
   __if_then_else__ done
@@ -70,11 +173,18 @@
                 Sh_lookup sh pos name ,(value)
                 Var_fields sh pos "braced" "list" value limit))
             (,()
-              Node_split word ,(wtag wpos welems)
-              __NULL__ (,(sh limit)
-                Expand_parts sh word ,(parts)
-                Limit_guard sh wpos limit ,(limit)
-                Parts_fields_in parts limit)))))
+              Quoted_word_code word ,(quoted)
+              __is_null__ quoted ,(notQuoted)
+              __if_then_else__ notQuoted
+                (,()
+                  Node_split word ,(wtag wpos welems)
+                  __NULL__ (,(sh limit)
+                    Expand_parts sh word ,(parts)
+                    Limit_guard sh wpos limit ,(limit)
+                    Parts_fields_in parts limit))
+                (,() __NULL__ (,(sh limit)
+                  quoted sh ,(s)
+                  __LList_cons__ s __NULL__))))))
 
 ;; 語が $x か ${x}（既定値なし）だけなら、要素の種類（"var" か "bvar"）、位置、変数の名前。そうでなければ null
 (define Word_ref ,(word)
@@ -361,6 +471,7 @@
 
 ;; 外部コマンド以外の語のコード。リテラルの語と $x だけの語は、外部コマンドの語と同じ（Fields_compile）。
 ;; ${x} だけの語は、空の String なら空文字列の引数、LazyList ならその値1つ、ほかは外部コマンドの語と同じ
+;; （引用符の語も、外部コマンドの語と同じく、つないだ String 1 つ）
 (define Args_compile ,(word)
   Literal_fields word ,(fields done)
   __if_then_else__ done
@@ -379,7 +490,13 @@
                 Sh_lookup sh pos name ,(value)
                 Bvar_args value))
             (,()
-              __NULL__ (,(sh) Expand_args_parts sh word)))))
+              Quoted_word_code word ,(quoted)
+              __is_null__ quoted ,(notQuoted)
+              __if_then_else__ notQuoted
+                (,() __NULL__ (,(sh) Expand_args_parts sh word))
+                (,() __NULL__ (,(sh)
+                  quoted sh ,(s)
+                  __LList_cons__ s __NULL__))))))
 
 ;; ${x} だけの語の、外部コマンド以外の語としての値の LList
 (define Bvar_args ,(value)
@@ -462,6 +579,32 @@
 ;; 変数定義の右辺 values を、文脈 sh を受け取ってその値（Expand_def_value）を返すクロージャ（値のコード）にする。
 ;; リテラルの語は String をそのまま返し、$x と ${x}（既定値なし）だけの語は、変数を引いて返す
 (define Def_value_code ,(values)
+  Def_value_quoted values ,(quoted)
+  __is_null__ quoted ,(notQuoted)
+  __if_then_else__ notQuoted
+    (,() Def_value_code_general values)
+    (,() __NULL__ quoted))
+
+;; 最適化版：右辺が引用符の語（Quoted_word_code）で、リテラルだけの語でなければ、そのコード（つないだ String が値。
+;; Expand_value と同じ）。そうでなければ null
+(define Def_value_quoted ,(values)
+  __is_null__ values ,(none)
+  __if_then_else__ none
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ values ,(v others)
+      __LList_uncons__ __print_exit_error__ v ,(tag vrest)
+      __String_equal__ tag "word" ,(isWord)
+      __if_then_else__ isWord
+        (,()
+          Word_literal v ,(text)
+          __is_null__ text ,(notLiteral)
+          __if_then_else__ notLiteral
+            (,() Quoted_word_code v)
+            (,() __NULL__ __NULL__))
+        (,() __NULL__ __NULL__)))
+
+(define Def_value_code_general ,(values)
   __is_null__ values ,(condition)
   __if_then_else__ condition
     (,() __NULL__ (,(sh) __NULL__ ""))

@@ -60,6 +60,12 @@ consh/sjs/test/run_all.sh
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。値が残らなくなったことは、確かめていない（GC がたどる値の数は数えていない）。
 
 
+### m1/compile2-dq
+
+* ConSh の最適化版で、要素がみな引用符の中か glob の記号のないリテラルの語（`"x$a"` など）を、変換のときに組むようにした（consh/include/consh_expand.se の `Quoted_word_code`。docs/consh/dev/COMPILE2-PLAN-ja.md の「S3 の続き」）。consh/test の step2 に case20 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
+* ベンチマーク：consh/bench の `06` を、最適化版の変換版の VM で（前は alpha の 0748a95）。ステップは 1 回 1,297 → 1,041（−19.7%、Rust 版の VM）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
