@@ -62,8 +62,8 @@ consh/sjs/test/run_all.sh
 
 ### m2/pages-liquid
 
-* GitHub Pages のワークフローが、Jekyll で止まっていた（docs/consh/PLAN-ja.md の `{{スペース}` などを Liquid のタグと読んだため）。ランナーの上でだけ、docs の Markdown の本文を `{% raw %}` と `{% endraw %}` で囲む手順を足した（.github/pages-raw.py）。リポジトリの文書は変えていない。テストのスクリプトとソースも変えていない。
-* 確かめたこと（Apple M2）：ワークフローと同じイメージ（ghcr.io/actions/jekyll-build-pages:v1.0.13）の github-pages で、main の 158682f の失敗を同じエラーで再現し、この手順を足すと最後まで通った。できた HTML では `{{` がそのまま出て、`{% raw %}` は出ず、題名（jekyll-titles-from-headings）も前と同じだった。
+* GitHub Pages のワークフローが、Jekyll で止まっていた（docs/consh/PLAN-ja.md の文法の、波かっこが 2 つ続く所を Liquid のタグと読んだため）。ランナーの上でだけ、docs の Markdown の本文を Liquid の raw タグで囲む手順を足した（.github/pages-raw.py）。リポジトリの文書は変えていない。テストのスクリプトとソースも変えていない。
+* 確かめたこと（Apple M2）：ワークフローと同じイメージ（ghcr.io/actions/jekyll-build-pages:v1.0.13）の github-pages で、main の 158682f の失敗を同じエラーで再現し、この手順を足すと最後まで通った。できた HTML では波かっこがそのまま出て、raw タグは出ず、題名（jekyll-titles-from-headings）も前と同じだった。
 
 ## 記録
 

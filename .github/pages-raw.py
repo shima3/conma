@@ -6,7 +6,8 @@ ConSh in docs/consh/PLAN-ja.md, is taken as a tag and stops the build. This puts
 file under the directory given (docs) between {% raw %} and {% endraw %}, on the runner only, so that the
 files in the repository read as they are on GitHub. The front matter, if any, and a first heading stay
 outside, so that jekyll-titles-from-headings still finds the title. A file that has its own
-{% raw %} or {% endraw %} is left as it is.
+{% raw %} or {% endraw %} is left as it is (and stops the build if it has a {{ or {% outside them):
+write about these tags in docs/ without the braces.
 """
 import os
 import sys
