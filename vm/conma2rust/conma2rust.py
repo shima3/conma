@@ -68,7 +68,8 @@ CHAIN = {
 }
 # Not __Ref_set__: the VM wakes the VProcs waiting for a change of a Ref
 # (__Ref_wait_change__) after each step, so a change that is undone within a
-# run of transpiled code would not wake them, as it does in the VM.
+# run of transpiled code would not wake them, as it does in the VM. It is called
+# directly instead (DIRECT, d_ref_set), which checks the waiters at once.
 
 # Primitives of CHAIN without side effects that return one value: a condition
 # thunk calling one of them is computed in place (and again by the VM if the
@@ -126,6 +127,8 @@ DIRECT = {
     "__Dict_put__": ("d_dict_put", 3),
     "__Number_divide__": ("d_number_divide", 3),
     "__Number_sqrt__": ("d_number_sqrt", 2),
+    # wakes the VProcs waiting for a change of the Ref at once (vm/src/transpiled.rs, d_ref_set)
+    "__Ref_set__": ("d_ref_set", 2),
     # the array primitives of the feature "array" (docs/dev/ARRAY-PLAN-ja.md)
     "__Array_length__": ("d_array_length", 1),
     "__Array_get__": ("d_array_get", 3),
@@ -870,6 +873,16 @@ class Fuser:
                 out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
                 call = f"d_chan_take_now(m, a0){err}"
             out.append(f"let o = match {call} {{ Some(o) => o, None => {{")
+            self.bail(x, d, locals_, out, J, retry=True)
+            out.append("} };")
+            return self.direct_result(x, d, locals_, lc, out, J)
+        if name == "__LazyList_publish__" and len(b.olist) == 2 and None not in args:
+            # publishing the cell of a LazyList the VProc evaluates is done in place; anything
+            # else (an error, a __VProc_kill__ waiting for the evaluation) is left to the code of
+            # this Body, so the VM applies the primitive
+            out.append(f"let a0: &Value = {self.rref(x, d, b.olist[0], 0, locals_)};")
+            out.append(f"let a1: &Value = {self.rref(x, d, b.olist[1], 1, locals_)};")
+            out.append("let o = match d_lazylist_publish_now(m, vp, a0, a1) { Some(o) => o, None => {")
             self.bail(x, d, locals_, out, J, retry=True)
             out.append("} };")
             return self.direct_result(x, d, locals_, lc, out, J)

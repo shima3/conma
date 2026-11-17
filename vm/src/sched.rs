@@ -505,6 +505,17 @@ impl Machine {
         }
     }
 
+    /// Wake the VProcs waiting for a change of a Ref that has changed, as the
+    /// scheduler does between two steps; transpiled code calls it after setting a
+    /// Ref in place (transpiled.rs, d_ref_set), so that a change undone later in the
+    /// same run still wakes them.
+    pub fn wake_changed(&mut self) {
+        if self.ref_changed && !self.changes.is_empty() {
+            self.ref_changed = false;
+            self.check_changes();
+        }
+    }
+
     fn check_changes(&mut self) {
         let list = std::mem::take(&mut self.changes);
         for (vp, r, value) in list {

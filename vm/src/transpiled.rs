@@ -1208,6 +1208,45 @@ pub fn d_chan_take_now(m: &mut Machine, reader: &Value) -> Result<Option<Out>, V
     Ok(chan::take_now(m, reader)?.map(|(item, found)| Out::R2(item, found)))
 }
 
+/// `__Ref_set__ ref value` in place. The VM wakes the VProcs waiting for a change of a Ref
+/// (__Ref_wait_change__) between two steps; a run of transpiled code is one step, so the
+/// waiters are checked at once (Machine::wake_changed), and a change undone later in the
+/// same run wakes them as it does in the VM.
+pub fn d_ref_set(m: &mut Machine, r: &Value, value: &Value) -> Result<Out, VmError> {
+    match r {
+        Value::Ref(r) => {
+            let old = std::mem::replace(&mut *r.value.borrow_mut(), value.clone());
+            m.ref_changed = true;
+            m.wake_changed();
+            drop(old);
+            Ok(Out::R0)
+        }
+        v => Err(VmError::Error(format!("__Ref_set__: expected Ref, got {}", value_type_name(v)))),
+    }
+}
+
+/// `__LazyList_publish__ lazyList cell` in place, as prim/lazy.rs does it: the current VProc
+/// evaluates the LazyList and the cell is null or an LList. None for anything else (an error,
+/// or a __VProc_kill__ that waits for the evaluation), which the VM does (the generated code
+/// bails to the Body).
+pub fn d_lazylist_publish_now(m: &mut Machine, vp: &mut VProc, lazy: &Value, cell: &Value) -> Option<Out> {
+    let Value::Ref(r) = lazy else { return None };
+    let cur = m.current.clone()?;
+    if cur.kill_pending.get() {
+        return None;
+    }
+    let mine = matches!(&*r.value.borrow(), Value::VProc(o) if Rc::ptr_eq(o, &cur));
+    if !mine || !(cell.is_null() || matches!(cell, Value::LList(_))) {
+        return None;
+    }
+    *r.value.borrow_mut() = cell.clone();
+    m.ref_changed = true;
+    *r.lazy.borrow_mut() = None;
+    vp.claims.retain(|c| !Rc::ptr_eq(c, r));
+    m.wake_changed();
+    Some(Out::R0)
+}
+
 /// The value of key in d, or None (__Dict_lookup_or__ without onMissing).
 #[inline]
 pub fn d_dict_get(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
