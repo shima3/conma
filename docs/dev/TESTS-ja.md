@@ -60,6 +60,12 @@ consh/sjs/test/run_all.sh
 * consh/test の step2 の case20（m1/compile2-dq）から、`"$(( 1 + 2 ))"` を除いた。Rust 版の ConSh は `(( ))` を読めないので、`CONSH_IMPL=rust` で 6 行目で止まっていた（2f1c8e1 と 1ec4c7b の記録）。`"..."` の中で Expand_ref を通る場合は、`"pre$(echo sub)post"` と `"${u-def}"` で試している。
 * 流したもの：step2 を、最適化版、参照版、Rust 版の ConSh（`CONSH_IMPL=rust`）で（Rust 版の VM）。どれも通った。ConSh のソースは変えていない。
 
+### m1/compile2-argmax
+
+* ConSh の最適化版で、`Arg_max`（ARG_MAX の確かめ）の結果を環境変数ごとに覚え、ARG_MAX を export したときだけ使わなくなるようにした（consh/include/consh_eval.se の `Arg_max`、`Env_make`、`Env_export`。docs/consh/dev/COMPILE2-PLAN-ja.md の「ARG_MAX の確かめを覚える」）。consh/test の step9 に case5〜case7 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step9。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
+* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の変換版の VM で（前は alpha の 7b72ed3）。ステップは 1 回あたり −3.4%、−2.4%、−2.4%、−1.9%（Rust 版の VM）。差が小さいので、前後を順に替えて測る。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

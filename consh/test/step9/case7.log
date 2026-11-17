@@ -1,0 +1,4 @@
+before
+again
+consh: case7.sh:5:1: ARG_MAX is not a non-negative integer: -1
+exit: 1
