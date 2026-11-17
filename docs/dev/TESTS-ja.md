@@ -74,7 +74,6 @@ consh/sjs/test/run_all.sh
 
 * ConSh の最適化版の `Eval_cmd_parts` と `Capture_new` を軽くした（consh/include/consh_eval.se だけ。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` を小さくしたものの出力が、変更の前と同じ。流していないもの：wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
-* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の Rust 版、wasm 版、変換版の VM で（このブランチの最後のコミット）。
 
 ## 記録
 
