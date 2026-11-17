@@ -2,7 +2,7 @@
 
 2026-11-11、main の 0b762b7 で行った。対象は次の 3 つのコミットである。指摘への対応は 5 と 6 にある。その後の状態（2026-11-12 に一区切り）と残っていることは、SAFEJS-PLAN-ja.md の冒頭と 8 にある。
 
-* 24ada60：js と JS の文を、既定で使えなくする（consh/docs/dev/JS-PLAN-ja.md の 3.22）
+* 24ada60：js と JS の文を、既定で使えなくする（docs/consh/dev/JS-PLAN-ja.md の 3.22）
 * 0a2d6fe と 0b762b7：SJS の計画（[SAFEJS-PLAN-ja.md](SAFEJS-PLAN-ja.md)）
 
 ## 1. テスト
@@ -88,7 +88,7 @@ wasm VM をビルドし直して流した。
 | 2 の 2（Node.js では意味が薄い） | README に、守れるのは主にブラウザ版で、Node.js 版では信用できないスクリプトを動かさないこと、と書いた |
 | 3.1 の 1（await の後の大域変数） | 段階 A では、`async`、`await`、`yield` を SJS の範囲の外にした（conma.js の `SJS_NAMES`。consh/js/test/step6 の case2）。段階 A の SJS は Promise を作らなくなる。`async` は段階 B5 で入れる（SAFEJS-PLAN-ja.md の 2.2 の 6、3.2） |
 | 3.1 の 2（写しの意味） | 浅い写しに決めた。段階 B でも Dict を書き込み時に写さず、共有する（SAFEJS-PLAN-ja.md の 2.2 の 4） |
-| 3.1 の 3（CONSH_ENABLE_JS） | A1 で、`(( ))` も `CONSH_ENABLE_JS` が `sjs` か `js` のときだけ使えるようにした（consh/docs/dev/JS-PLAN-ja.md の 3.22、3.23） |
+| 3.1 の 3（CONSH_ENABLE_JS） | A1 で、`(( ))` も `CONSH_ENABLE_JS` が `sjs` か `js` のときだけ使えるようにした（docs/consh/dev/JS-PLAN-ja.md の 3.22、3.23） |
 | 3.1 の 4（継続の最適化と shift） | 条件に「関数の実行中に CChain を取り出さない」を足し、最適化を、継続を取り出さないとわかっているコードに限ることにして、docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」に移した（SAFEJS-PLAN-ja.md の 4.3 は、そこを指す） |
 | 3.2 の 5（シェル変数が読めない） | レビューの側で、SAFEJS-PLAN-ja.md の 2.2 の 7（`$名前`）と 3.1 の演算の型を足した。作るときの注意を足した：演算子の書き換えには式の構文解析器が要ること（4.1）、SJS関数の中の `$名前` のために、スクリプト全体の `$名前` を集めて渡すこと（2.2 の 7、4.1）、`!$n` などの真偽は数にしないので `n=0` の `$n` は真であること（2.2 の 7） |
 | 3.2 の 6（戻り値を標準エラーに出す影響） | SAFEJS-PLAN-ja.md の 2.2 の 3 に書いた。値が要らなければ `(( f(1, 2) ))` で呼べばよい |

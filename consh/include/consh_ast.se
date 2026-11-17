@@ -1,4 +1,4 @@
-;; ConSh の構文木（consh/docs/AST.md）を読み書きする。
+;; ConSh の構文木（docs/consh/AST.md）を読み書きする。
 ;; consh_parse が1行に1つずつ出力する S 式を、次の ConMa の値にする。
 ;;   リスト → LList（空のリストは null）
 ;;   記号   → 数字で始まれば Number（(行 桁) の数）、それ以外は String（節の種類）

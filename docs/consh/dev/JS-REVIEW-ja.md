@@ -1,6 +1,6 @@
 # JavaScript 版 ConSh の仕様と設計のレビュー
 
-[JS-PLAN-ja.md](JS-PLAN-ja.md)、[consh/js/README-ja.md](../../js/README-ja.md)、`conma.js`（`evaluateStatement`、`keep`）、`consh/include/consh_jsstmt.se` を読んで行った（main の 34b8e84、2026-11-09）。動かして確かめたものではない。重い順に並べる。
+[JS-PLAN-ja.md](JS-PLAN-ja.md)、[consh/js/README-ja.md](../../../consh/js/README-ja.md)、`conma.js`（`evaluateStatement`、`keep`）、`consh/include/consh_jsstmt.se` を読んで行った（main の 34b8e84、2026-11-09）。動かして確かめたものではない。重い順に並べる。
 
 ## 1. 設計上のリスク（直したほうがよいもの）
 

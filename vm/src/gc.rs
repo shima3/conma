@@ -344,7 +344,10 @@ pub fn collect() -> usize {
             }
         });
     });
-    let mut index: HashMap<usize, usize> = HashMap::with_capacity(nodes.len() * 4);
+    // Fx rather than SipHash: the keys are addresses, and the index is made at
+    // every collection (SipHash took about a seventh of the time of collect).
+    let mut index: HashMap<usize, usize, crate::value::FxBuild> =
+        HashMap::with_capacity_and_hasher(nodes.len() * 4, Default::default());
     for (i, n) in nodes.iter().enumerate() {
         index.insert(n.addr(), i);
     }
@@ -355,14 +358,16 @@ pub fn collect() -> usize {
     let mut edge_start: Vec<usize> = Vec::with_capacity(nodes.len());
     let mut edges: Vec<usize> = Vec::new();
     let mut i = 0;
+    // One buffer for the children of every value (a Vec for each one made
+    // most of the allocations of collect).
+    let mut found: Vec<Node> = Vec::new();
     while i < nodes.len() {
         edge_start.push(edges.len());
-        let mut found: Vec<Node> = Vec::new();
         let seen = nodes[i].children(&mut |c| found.push(c));
         if !seen {
             opaque[i] = true;
         }
-        for c in found {
+        for c in found.drain(..) {
             let j = match index.get(&c.addr()) {
                 Some(&j) => j,
                 None => {
@@ -379,6 +384,7 @@ pub fn collect() -> usize {
         }
         i += 1;
     }
+    drop(found);
     edge_start.push(edges.len());
     // A value with more references than the graph and `nodes` hold is
     // reachable from outside, and so is everything it reaches.

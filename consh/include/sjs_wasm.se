@@ -1,4 +1,4 @@
-;; SJS の数の関数を WebAssembly のテキスト（WAT）にする（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 2）。
+;; SJS の数の関数を WebAssembly のテキスト（WAT）にする（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2）。
 ;; Wasm_prepare が、プログラムの一番外の function 宣言のうち、数だけを扱うもの（数の関数）を見つけて、
 ;; その fn の節に "wasm"（export の名前）を付け、それらをまとめた 1 つのモジュールの WAT を返す（なければ ""）。
 ;; 変換器（sjs_gen.se）は、印の付いた関数を Sjs_wasm_fn で包み、呼ばれたとき、実行時の支え（sjs_rt.se）が、引数が
@@ -1599,7 +1599,7 @@
   Wx_get cx oc kc ,(c)
   __NULL__ c ety)
 
-;; ── 配列の要素をその場で読み書きする（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、段階 F2。添字が変数のときは 22、段階 F4）──
+;; ── 配列の要素をその場で読み書きする（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.3、段階 F2。添字が変数のときは 22、段階 F4）──
 ;; 配列 o の語は、(o × 8) バイトから長さ、要素 k は ((o + 1 + k) × 8) バイト（$__len と $__check と同じ）。
 ;; 添字が定数なら、整数で 0 以上なのは変換のときに分かるので、長さと比べるだけをその場に書く。添字が変数なら、$__check と
 ;; 同じ確かめ（整数で、0 以上で、長さより小さい。NaN は通らない）をその場に書く。どちらも $__get と $__set を呼ばない

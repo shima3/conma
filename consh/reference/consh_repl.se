@@ -206,7 +206,7 @@
   __String_equal__ tail suffix)
 
 ;; 対話モードでは、コマンド行の文がそのまま (( )) なら、その値を表示する（Node.js の REPL のように。
-;; consh/docs/dev/SAFEJS-PLAN-ja.md の 2.4）。行 (line 位置 文 ...) の文の arith を arithshow にする。ループ、関数、if の条件の中の
+;; docs/consh/dev/SAFEJS-PLAN-ja.md の 2.4）。行 (line 位置 文 ...) の文の arith を arithshow にする。ループ、関数、if の条件の中の
 ;; (( )) は、行の文ではないので表示しない
 (define Repl_show_arith ,(lines)
   __Cont_get__ ,(return)

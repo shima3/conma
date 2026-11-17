@@ -1,10 +1,20 @@
 #!/bin/bash
-# bench/run.sh NAME ARG...: run benchmark NAME (NAME/NAME.py and NAME/NAME.se) with CPython and the transpiled
+# bench/run.sh NAME [ARG...]: run benchmark NAME (NAME/NAME.py and NAME/NAME.se) with CPython and the transpiled
 # VM (built by build.sh), check that they print the same, and print the best of 3 times (user + sys seconds)
-# of each. With CONMA_BENCH_RUST=1, the Rust VM too.
+# of each. With CONMA_BENCH_RUST=1, the Rust VM too. Without ARG, the size of NAME at which the faster of
+# CPython and the transpiled VM takes about one second (docs/dev/CONTRIBUTING.md, Benchmarks; README.md).
 bench="$(cd "$(dirname "$0")"; pwd)"
 root="${bench%/*}"
 name=$1; shift
+if [ $# -eq 0 ]; then
+  case "$name" in
+    fib) set -- 35 ;;
+    loop) set -- 100000000 ;;
+    nbody) set -- 300000 ;;
+    richards) set -- 35 ;;
+  esac
+  echo "$name $*"
+fi
 tmp="$(mktemp -d /tmp/conma-bench.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 "$bench/module.sh" "$bench/$name/$name.se" "$tmp/$name.module.se" || exit 1

@@ -157,7 +157,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 * **今**：ConSh の関数の約半分は、`__Cont_get__ ,(return)` で始まり、呼び出しのたびに脱出の継続（`return` の値）を作る。`__Cont_get__` は全ステップの 2.4% である。
 * **拡張 ConMa**：関数から戻る構文を持つ。継続の値を作らず、CChain の一番上の CFrame に戻る。
 * **コア ConMa への変換**：関数の始めの `__Cont_get__ ,(return)` と、`return` の適用にする。
-* **注意**：`return` の時の CChain が、関数に入った時と同じでなければ、意味が変わる。ConSh の `shift` のように、CChain のプリミティブで LCont を取り出して、別の CChain の上で呼ぶ場合がそうである（consh/docs/dev/SAFEJS-REVIEW-ja.md の 3.1 の 4、docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」）。次のどちらかにする。
+* **注意**：`return` の時の CChain が、関数に入った時と同じでなければ、意味が変わる。ConSh の `shift` のように、CChain のプリミティブで LCont を取り出して、別の CChain の上で呼ぶ場合がそうである（docs/consh/dev/SAFEJS-REVIEW-ja.md の 3.1 の 4、docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」）。次のどちらかにする。
     * 戻る構文は、CChain を取り出す処理の中では使えないと決め、構文解析かフロントエンドで確かめる。
     * 取り出された場合だけ、コア ConMa と同じ意味（入った時の CChain に戻す）になるように作る。
 * docs/dev/ROADMAP.md の「Planned: returning without making the escape continuation」は、仕様を変えずに同じ効果を得る案である。どちらで行うかを、ここで決める。
@@ -181,7 +181,7 @@ VM は、決まったステップ数ごとに VProc を切り替える。その�
 
 * **今**：ConSh は、文脈を Dict に置き、`__Dict_lookup_or__ sh "global"` のように文字列のキーで引く。`__Dict_lookup_or__` は全ステップの 4.2%、`__Dict_put__` は 1.0% である。
 * **これまでの決定**：docs/dev/REVIEW-ja.md の 6 への対応で、作者の方針として、レコードは言語に足さず、変換版の VM の側で、Dict に「形」を持たせてインラインキャッシュで読み書きするようにした（vm/README.md の「Shapes and inline caches」）。作る前の計測では、Dict の操作は ConSh の時間の約 1% で、ConSh は速くならなかった（richards は 11.5% 速くなった）。ステップでは 5% あるが、時間では小さい。
-* **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（consh/docs/dev/REVIEW-ja.md の 1）。
+* **拡張 ConMa**：フィールドの位置が、コンパイルの時に決まるレコードを持つ。キーの比較とハッシュが要らなくなり、キーの綴りの誤りも見つけられる（docs/consh/dev/REVIEW-ja.md の 1）。
 * **コア ConMa への変換**：Dict（または LList）と、それを読み書きする関数にする。
 * **優先度**：上の決定と計測から、速さのためには低い。拡張 ConMa を作るとしても、綴りの誤りを見つけることが主な理由になる。言語に足さないという方針を変えるかどうかも、ここで決める。
 * **レコードの前に試したこと（2026-11-11）**：レコードで減るのは、キーを探す時間である。その大きさを確かめるため、Rust VM の `__Dict_lookup_or__` と `__Dict_put__` に、定数の文字列のキーで呼ぶ場所ごとのキャッシュ（`DictSite`。変換版の `Ic` と同じもの）を入れた（6936e15）。

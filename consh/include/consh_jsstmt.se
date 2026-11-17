@@ -1,10 +1,10 @@
-;; ConSh の JavaScript：js の JS の値と、SJS の算術評価 (( )) と算術置換 $(( ))（consh/docs/dev/SAFEJS-PLAN-ja.md）。
+;; ConSh の JavaScript：js の JS の値と、SJS の算術評価 (( )) と算術置換 $(( ))（docs/consh/dev/SAFEJS-PLAN-ja.md）。
 ;; 文字列でない JavaScript の値は、シェルの変数（js 変数名=、v=$(( ... ))）と SJS変数に、その番号（オブジェクトと関数は
 ;; ホストの表の #n、プリミティブは number:3 のような値そのもの）だけを入れ、$ で読むたびにホストに直してもらう
-;; （Js_store、Js_force。consh/docs/dev/JS-PLAN-ja.md の 2.5 の 4）。
+;; （Js_store、Js_force。docs/consh/dev/JS-PLAN-ja.md の 2.5 の 4）。
 ;; JS の値の変数は、値を作った __JS_call__ の outputStream（toHost）も持つ。VM は、この Stream が捨てられたら閉じるので
 ;; （vm/src/value.rs の drop_close）、どの変数も使わなくなった値を、ホストは表から消す。
-;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（consh/docs/dev/JS-PLAN-ja.md の 3.26）。
+;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（docs/consh/dev/JS-PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
 ;; SJS の変換器と実行時の支え（段階 B。consh/sjs/README-ja.md）
@@ -14,7 +14,7 @@
 (include "sjs_gen.se")
 (include "sjs_wasm.se")
 
-;; JavaScript の状態（consh/docs/dev/JS-PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
+;; JavaScript の状態（docs/consh/dev/JS-PLAN-ja.md の 3.22）。CONSH_ENABLE_JS が
 ;;   js なら "js"（js と算術評価 (( )) を使える）、sjs なら "sjs"（算術評価だけ）、
 ;;   ないかほかの値なら "off"（どれも使えない）。JavaScript がない版は "none"。
 ;; 環境変数は、シェルの export でなく、VM のプロセスのものを見るので、起動した後には変わらない
@@ -142,7 +142,7 @@
 (define Js_hold ,(value)
   __nop__)
 
-;; ── SJS：算術評価 (( )) と算術置換 $(( ))（consh/docs/dev/SAFEJS-PLAN-ja.md の 2）──
+;; ── SJS：算術評価 (( )) と算術置換 $(( ))（docs/consh/dev/SAFEJS-PLAN-ja.md の 2）──
 ;; SJS式は、当面（段階 A）ホストの JavaScript で評価する。ホストは、コードが SJS の範囲（SAFEJS-PLAN-ja.md の 3）に
 ;; あるかを確かめてから、SJS変数だけを大域の名前として評価する（conma.js の evaluateSjs）。
 ;; SJS変数は、文脈の "sjsvars" の Dict に、局所変数（"vars"）と同じ形の値（String か、JS の値の Dict）で置き、
@@ -328,7 +328,7 @@
   Js_arg sh pos value ,(list)
   add "l" list)
 
-;; SJS関数 wrapped を、シェルのコマンドとして引数 args で呼ぶ（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 3）。
+;; SJS関数 wrapped を、シェルのコマンドとして引数 args で呼ぶ（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 3）。
 ;; 戻り値は標準エラー err に出し（undefined と null は何も出さない）、$? は、エラーなら 2、そうでなければ戻り値の真偽
 (define Sjsa_call ,(sh pos wrapped args in out err)
   __Cont_get__ ,(return)
@@ -347,7 +347,7 @@
   __if_then_else__ truth (,() __NULL__ "0") (,() __NULL__ "1") ,(status)
   Sh_set_status sh status)
 
-;; コマンドの先頭の語の要素 elems（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 3）。算術置換だけなら、評価して、関数ならその関数値
+;; コマンドの先頭の語の要素 elems（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 3）。算術置換だけなら、評価して、関数ならその関数値
 ;; （Sjsa_call で呼ぶ Closure）を返し、関数でなければエラーにする。SJS が作った JS の値を持つ変数（$f、${f}）だけなら、
 ;; 関数でなければエラーにし、関数なら null（ふつうに展開する）。そのほかは null
 (define Sjs_head ,(sh elems)
@@ -435,7 +435,7 @@
   is "bigint:0" ,()
   __NULL__ __FALSE__)
 
-;; ── 段階 B4：SJS を ConMa に変換して動かす（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.2、consh/sjs/README-ja.md）──
+;; ── 段階 B4：SJS を ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2、consh/sjs/README-ja.md）──
 ;; (( )) と $(( )) の SJS式を、sjs_gen.se の Sjs_translate_module でモジュールのソースにし、一時ファイルに書いて
 ;; （コードの文字列ごとに覚えておく）、__VProc_spawn__ で新しい VProc として動かし、終わるのを待つ。
 ;; モジュールは、実行時の支えの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、
@@ -556,7 +556,7 @@
     (,() __LList_uncons__ __print_exit_error__ rest ,(m more) List_first more ,(where) Sjsb_fail_text B where m ,(m) fail m) ,()
   Sjsb_to_raw x)
 
-;; ── エラーの位置（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.4）──
+;; ── エラーの位置（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.4）──
 ;; 変換したコードの SInfo のファイル名は sjs-ハッシュ（コードから決まる）。Sjsb_eval が、ファイル名ごとに、その (( )) の
 ;; コードの始まりの位置を "places" に覚える。受け手のない例外の位置（"sjs-ハッシュ:行:桁"）は、コードの中の行と桁なので、
 ;; それを足してスクリプトの位置にし、メッセージの先頭に "\t行\t桁\t" で付ける。エラーを出す所（Eval_arith_run、Sjs_abort、

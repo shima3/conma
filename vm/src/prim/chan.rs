@@ -427,6 +427,9 @@ fn register(m: &mut Machine, reader: &DictObj) -> Result<bool, VmError> {
         let cursor = new_dict(m);
         put(&cursor, "chain", chain.clone())?;
         put(&cursor, "node", get(name, "chain", &c, "head")?)?;
+        // The head is needed only here (there is one reader): kept, it would keep every item of the
+        // chain alive, as the writer, the channel and the cursor all hold the chain.
+        put(&c, "head", Value::Null)?;
         put(&cursor, "consumed", get(name, "chain", &c, "consumed")?)?;
         cursors.push(Value::Dict(cursor));
     }

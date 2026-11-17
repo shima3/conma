@@ -1,7 +1,7 @@
 //! The parser of ConSh: a port of the Parser of bin/consh_parse (and of
 //! consh_parser.se, which follows the same steps). It reads a script by
 //! recursive descent over its characters and makes the syntax tree that
-//! `consh_parse --pos` writes (consh/docs/AST.md), one node per command line.
+//! `consh_parse --pos` writes (docs/consh/AST.md), one node per command line.
 //!
 //! A line continuation (\ and a newline) is skipped before a character is
 //! read, except in '...', $'...' and comments. sep_end is the position just

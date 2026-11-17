@@ -37,4 +37,18 @@ The documents here are for the users of ConMa, who run ConMa programs (and write
 - [Types in transpiled code](dev/TYPES-PLAN-ja.html): the plan of inferring the types of values to make the transpiled VM faster
 - [Speed-ups](dev/SPEED-ja.html): every speed-up tried, with its effect and whether it was kept
 - [Running the tests and their record](dev/TESTS-ja.html)
-- [Reviews of ConMa](dev/REVIEW-ja.html) (ConSh's are in consh/docs/dev)
+- [Reviews of ConMa](dev/REVIEW-ja.html) (those of ConSh are in [ConSh](#consh))
+
+## ConSh
+
+ConSh is a shell written in ConMa (consh/ of the repository).
+
+- [ConSh for Bash users](consh/FOR-BASH-USERS.html)
+- [Specification and design](consh/PLAN-ja.html) (in Japanese)
+- [Abstract Syntax Tree of ConSh](consh/AST.html)
+- [Versions of ConSh and how to run them](consh/RUNNING-ja.html) (in Japanese)
+
+### For developers of ConSh (in Japanese)
+- [Developing ConSh](consh/dev/DEVELOPING-ja.html)
+- [Converting scripts beforehand](consh/dev/COMPILE-PLAN-ja.html), [JavaScript and wasm](consh/dev/JS-PLAN-ja.html), [SJS](consh/dev/SAFEJS-PLAN-ja.html), [SJS on wasm](consh/dev/SJS-WASM-PLAN-ja.html), [arrays of SJS on wasm](consh/dev/SJS-WASM-ARRAY-PLAN-ja.html): the plans
+- [Reviews of ConSh](consh/dev/REVIEW-ja.html), [of JS](consh/dev/JS-REVIEW-ja.html), [of SJS](consh/dev/SAFEJS-REVIEW-ja.html)
