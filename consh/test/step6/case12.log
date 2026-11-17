@@ -1,0 +1,7 @@
+o=out1 e=err1
+o=out1 p=out2 e=err1
+a=1 b=2 status=0
+first=out1 e=err1
+rest out2
+consh: case12.sh:16:14: duplicate redirection
+exit: 1

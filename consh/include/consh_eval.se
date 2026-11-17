@@ -15,8 +15,8 @@
 ;;     たどり直さないようにした。
 ;;   * Func_make で、変数リストの名前と本体の文を取り出して関数の Dict に置き（"names"、"restName"、"lines"）、
 ;;     Func_call は、引数の数を調べながら渡す（Func_bind_args）ようにした。
-;;   * Subst_settle で、残った $( ) がどれも "full" なら global の "substsParked" に覚え、次からは状態が
-;;     "done" になったものがないかだけを見るようにした。
+;;   * Subst_settle で、残った $( ) がどれも "full" なら global の "substsParked" に覚え、次からは、$( ) の子が
+;;     終わったときに立てる Ref（global の "substsDone"。Sh_release）だけを見るようにした。
 ;;
 ;; ConSh の実行（段階 3〜13）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
@@ -75,6 +75,8 @@
   __Dict_new__ ,(global)
   __Dict_put__ global "status" "0" ,()
   __Dict_put__ global "substs" __NULL__ ,()
+  __Ref_new__ __FALSE__ ,(substsDone)
+  __Dict_put__ global "substsDone" substsDone ,()
   __Dict_put__ global "jobs" __NULL__ ,()
   __Dict_put__ global "lastBg" "" ,()
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -232,7 +234,10 @@
   __Cont_get__ ,(return)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_lookup_or__ vars name (,(key) Sh_lookup_other sh pos name ,(value) return value) ,(value)
-  Value_force value)
+  ;; 最適化版：Value_force を呼ぶのは、値が Dict（SJS と JS の値）のときだけ
+  __type_name__ value ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __if_then_else__ isDict (,() Value_force value) (,() __NULL__ value))
 
 ;; 局所変数にない名前。特別な名前か、環境変数
 (define Sh_lookup_other ,(sh pos name)
@@ -652,11 +657,11 @@
         (,()
           __String_equal__ tag "if" ,(condition)
           __if_then_else__ condition
-            (,() __NULL__ (,(sh) Eval_if sh pos children))
+            (,() If_compile pos children)
             (,()
               __String_equal__ tag "for" ,(condition)
               __if_then_else__ condition
-                (,() __NULL__ (,(sh) Eval_for sh pos children))
+                (,() For_jumps children ,(jumps) __NULL__ (,(sh) Eval_for sh pos children jumps))
                 (,()
                   __String_equal__ tag "break" ,(isBreak)
                   __String_equal__ tag "continue" ,(isContinue)
@@ -1001,16 +1006,19 @@
 ;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす。どちらもなく、先頭の語が決まっていれば、
 ;; Eval_cmd_plain にする。変数リストへのリダイレクトの記録の、毎回同じ部分は作っておく（Redirs_templates）
 (define Cmd_compile ,(pos defs words redirs)
-  Cmd_head_code words ,(headCode resolveCode fixed)
+  Cmd_head_code words ,(headCode resolveCode fixed rest)
+  ;; 先頭の語が決まっていれば、残りの語 rest のコードも作っておく（Word_codes）
+  Word_codes rest ,(argsCodes fieldsCodes)
   __is_null__ redirs ,(noRedirs)
   __is_null__ defs ,(noDefs)
   __and__ noRedirs noDefs ,(plain)
   __and__ plain fixed ,(plain)
   __if_then_else__ plain
-    (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode))
+    (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode argsCodes fieldsCodes))
     (,()
       Redirs_templates redirs ,(templates)
-      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed)))
+      Redirs_captures redirs ,(captures onlyCaptures)
+      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)))
 
 ;; リダイレクトの LList のうち、変数リストへのリダイレクト（> (a b . rest) など）ごとの記録のひな形（Capture_template）の LList。
 ;; Eval_redirs_from は、変数リストへのリダイレクトに出会うたびに、先頭から1つずつ使う
@@ -1031,15 +1039,79 @@
   Capture_template targetChildren ,(template)
   __LList_cons__ template templates)
 
+;; 最適化版：リダイレクトがみな、標準出力か標準エラー出力の変数リストへのリダイレクト（> (a b)、2> (e)）で、同じ出力に
+;; 2 つ向けていなければ、(出力の番号 記録のひな形 変数リスト) の LList と真。そうでなければ null と偽。
+;; 実行のときは、Eval_redirs の代わりに Capture_redirs を使う（節を読まず、開く Stream もない）
+(define Redirs_captures ,(redirs)
+  Redirs_captures_from redirs __FALSE__ __FALSE__)
+
+(define Redirs_captures_from ,(redirs seenOut seenErr)
+  __Cont_get__ ,(return)
+  __is_null__ redirs ,(end)
+  __if__ end (,() return __NULL__ __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ redirs ,(redir rest)
+  Node_split redir ,(tag pos children)
+  __LList_uncons__ __print_exit_error__ children ,(op targets)
+  __is_null__ targets ,(noTarget)
+  __if__ noTarget (,() return __NULL__ __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ targets ,(target others)
+  Node_split target ,(targetTag targetPos params)
+  __String_equal__ targetTag "params" ,(isParams)
+  __unless__ isParams (,() return __NULL__ __FALSE__) ,()
+  Redir_fd op ,(fd)
+  __String_equal__ fd "1" ,(isOut)
+  __String_equal__ fd "2" ,(isErr)
+  __and__ isOut seenOut ,(dupOut)
+  __and__ isErr seenErr ,(dupErr)
+  __or__ dupOut dupErr ,(dup)
+  __or__ isOut isErr ,(isOutput)
+  __not__ isOutput ,(notOutput)
+  __or__ dup notOutput ,(other)
+  __if__ other (,() return __NULL__ __FALSE__) ,()
+  __or__ seenOut isOut ,(seenOut)
+  __or__ seenErr isErr ,(seenErr)
+  Redirs_captures_from rest seenOut seenErr ,(specs ok)
+  __unless__ ok (,() return __NULL__ __FALSE__) ,()
+  Capture_template params ,(template)
+  __LList_cons__ params __NULL__ ,(spec)
+  __LList_cons__ template spec ,(spec)
+  __LList_cons__ fd spec ,(spec)
+  __LList_cons__ spec specs ,(specs)
+  __NULL__ specs __TRUE__)
+
+;; Eval_redirs と同じ値（標準入力、標準出力、標準エラー出力、開いた Stream（null）、mark（null）、成功したか（真）、
+;; 変数リストへのリダイレクトの組）を、Redirs_captures の LList specs から作る。記録は、左から順に作る（Eval_redirs_from と同じ）
+(define Capture_redirs ,(sh specs)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  Capture_redirs_from sh specs out err __NULL__ ,(out err group)
+  __NULL__ in out err __NULL__ __NULL__ __TRUE__ group)
+
+(define Capture_redirs_from ,(sh specs out err group)
+  __is_null__ specs ,(end)
+  __if_then_else__ end
+    (,() __NULL__ out err group)
+    (,()
+      __LList_uncons__ __print_exit_error__ specs ,(spec rest)
+      __LList_uncons__ __print_exit_error__ spec ,(fd more)
+      __LList_uncons__ __print_exit_error__ more ,(template more)
+      __LList_uncons__ __print_exit_error__ more ,(params more)
+      Capture_new sh group template params ,(target group)
+      __String_equal__ fd "1" ,(isOut)
+      __if_then_else__ isOut (,() __NULL__ target err) (,() __NULL__ out target) ,(out err)
+      Capture_redirs_from sh rest out err group))
+
 ;; 先頭の語を展開するコード（文脈 sh と上限 limit を受け取り、Cmd_head と同じく、名前、先頭の語から出た残りの値、
 ;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）と、
 ;; 先頭の語が決まっていて、そのコードが上限を使わないか（fixed）。
 ;; 先頭の語がリテラルで、glob の記号を含まず、空でなければ、展開した結果を作っておいて返し、コマンドは、
-;; 関数だけを探す（関数は後から定義できるので。builtin、command と組み込みコマンドは、名前で決まる）
+;; 関数だけを探す（関数は後から定義できるので。builtin、command と組み込みコマンドは、名前で決まる）。
+;; 4 つ目は、先頭の語が決まっていれば残りの語（そうでなければ null）
 (define Cmd_head_code ,(words)
   __is_null__ words ,(none)
   __if_then_else__ none
-    (,() __NULL__ (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve __FALSE__)
+    (,() __NULL__ (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve __FALSE__ __NULL__)
     (,()
       __LList_uncons__ __print_exit_error__ words ,(word rest)
       Literal_fields word ,(fields done)
@@ -1050,8 +1122,35 @@
         (,()
           __LList_uncons__ __print_exit_error__ fields ,(name more)
           Cmd_resolve_code name ,(resolveCode)
-          __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode __TRUE__)
-        (,() __NULL__ (,(sh limit) Cmd_head sh words limit) Cmd_resolve __FALSE__)))
+          __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode __TRUE__ rest)
+        (,() __NULL__ (,(sh limit) Cmd_head sh words limit) Cmd_resolve __FALSE__ __NULL__)))
+
+;; 最適化版：語の LList の、外部コマンド以外の語のコード（Args_compile。Expand_args と同じ）と、外部コマンドの語の
+;; コード（Fields_compile。Expand_fields_in と同じ）の LList。先頭の語が決まっている単純文の残りの語に使い、
+;; 実行のたびに語でコードの表を引かない（Eval_arg_codes）
+(define Word_codes ,(words)
+  __is_null__ words ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ words ,(word rest)
+      Args_compile word ,(argsCode)
+      Fields_compile word ,(fieldsCode)
+      Word_codes rest ,(argsCodes fieldsCodes)
+      __LList_cons__ argsCode argsCodes ,(argsCodes)
+      __LList_cons__ fieldsCode fieldsCodes ,(fieldsCodes)
+      __NULL__ argsCodes fieldsCodes))
+
+;; Eval_args の、語のコードの LList codes を使う形（外部コマンドなら fieldsCodes、ほかは argsCodes を渡す）
+(define Eval_arg_codes ,(sh codes isExternal limit)
+  __is_null__ codes ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ codes ,(code rest)
+      __if_then_else__ isExternal (,() code sh limit) (,() code sh) ,(values)
+      Eval_arg_codes sh rest isExternal limit ,(more)
+      __LList_append__ values more))
 
 ;; String の名前 name のコマンドを決めるコード（Cmd_resolve と同じ）
 (define Cmd_resolve_code ,(name)
@@ -1077,7 +1176,7 @@
 ;; templates は Redirs_templates。
 ;; 引数のバイト数の上限（Arg_limit_new）は、先頭の語が決まっていれば（fixed）、外部コマンドのときだけ作る
 ;; （関数と組み込みコマンドの引数には使わない。ARG_MAX の値の確かめ（Arg_max）は、今までどおりどのコマンドでもする）
-(define Eval_cmd_parts ,(sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed)
+(define Eval_cmd_parts ,(sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)
   __Cont_get__ ,(return)
   __if_then_else__ noRedirs (,() __NULL__ sh) (,() Cmd_redirected sh redirs) ,(sh)
   __if_then_else__ noDefs (,() __NULL__ sh) (,() Cmd_scope sh defs) ,(sh)
@@ -1088,7 +1187,12 @@
   resolveCode sh name ,(fn builtin isExternal)
   __and__ fixed isExternal ,(late)
   __if_then_else__ late (,() Arg_limit_from sh pos max) (,() __NULL__ limit) ,(limit)
-  Eval_args sh rest isExternal limit ,(args)
+  __if_then_else__ fixed
+    (,()
+      __if_then_else__ isExternal
+        (,() Eval_arg_codes sh fieldsCodes __TRUE__ limit)
+        (,() Eval_arg_codes sh argsCodes __FALSE__ limit))
+    (,() Eval_args sh rest isExternal limit) ,(args)
   __if_then_else__ isExternal
     (,() Values_leaves_in more limit)
     (,() __NULL__ more) ,(more)
@@ -1099,7 +1203,10 @@
       __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
       __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
       __NULL__ in out err __NULL__ __NULL__ __TRUE__ __NULL__)
-    (,() Eval_redirs sh redirs templates) ,(in out err opened mark ok group)
+    (,()
+      __if_then_else__ onlyCaptures
+        (,() Capture_redirs sh captures)
+        (,() Eval_redirs sh redirs templates)) ,(in out err opened mark ok group)
   __unless__ ok
     (,()
       Redirs_close sh opened mark ,()
@@ -1123,18 +1230,18 @@
 
 ;; Eval_cmd_parts の、リダイレクトと前置の変数定義がなく、先頭の語が決まっている（fixed）とき。
 ;; 名前は null にならず、開いた Stream も変数リストへのリダイレクトの組もないので、その処理を飛ばす
-(define Eval_cmd_plain ,(sh pos headCode resolveCode)
+(define Eval_cmd_plain ,(sh pos headCode resolveCode argsCodes fieldsCodes)
   Arg_max sh pos ,(max)
   headCode sh __NULL__ ,(name more rest)
   resolveCode sh name ,(fn builtin isExternal)
   __if_then_else__ isExternal
     (,()
       Arg_limit_from sh pos max ,(limit)
-      Eval_args sh rest __TRUE__ limit ,(args)
+      Eval_arg_codes sh fieldsCodes __TRUE__ limit ,(args)
       Values_leaves_in more limit ,(more)
       __LList_append__ more args)
     (,()
-      Eval_args sh rest __FALSE__ __NULL__ ,(args)
+      Eval_arg_codes sh argsCodes __FALSE__ __NULL__ ,(args)
       __LList_append__ more args) ,(args)
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
@@ -1323,10 +1430,61 @@
 
 ;; ── if 文 ──
 
-;; if 文を実行する。中の変数定義と関数定義は外に反映するので、局所変数と関数の Dict は同じものを使う
-(define Eval_if ,(sh pos children)
+;; if 文。中の変数定義と関数定義は外に反映するので、局所変数と関数の Dict は同じものを使う。
+;; 最適化版：if 文を、変換のときに、(条件の文の並び 本体の文の並び) の LList と、else の文の並びに分けておき、
+;; 文脈を受け取って実行するクロージャにする（空のスクリプトと、else がないことは、文の並びが null）
+(define If_compile ,(pos children)
   If_parts children ,(clauses elseBody redirs)
-  Eval_redirected sh pos redirs (,(inner) If_clauses inner clauses elseBody))
+  If_pairs clauses ,(pairs)
+  If_lines_of elseBody ,(elseLines)
+  __NULL__ (,(sh) Eval_redirected sh pos redirs (,(inner) If_run inner pairs elseLines)))
+
+(define If_pairs ,(clauses)
+  __is_null__ clauses ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __NULL__)
+    (,()
+      __LList_uncons__ __print_exit_error__ clauses ,(clause rest)
+      Node_split clause ,(tag pos scripts)
+      __LList_uncons__ __print_exit_error__ scripts ,(cond others)
+      List_first others ,(body)
+      If_lines_of cond ,(condLines)
+      If_lines_of body ,(bodyLines)
+      __LList_cons__ bodyLines __NULL__ ,(pair)
+      __LList_cons__ condLines pair ,(pair)
+      If_pairs rest ,(pairs)
+      __LList_cons__ pair pairs))
+
+;; スクリプトの文の並び（スクリプトが null か空なら null）
+(define If_lines_of ,(script)
+  __is_null__ script ,(none)
+  __if_then_else__ none
+    (,() __NULL__ __NULL__)
+    (,() Node_split script ,(tag pos lines) __NULL__ lines))
+
+;; 条件を順に実行し、最初に $? が 0 になった組の本体を実行する。どれも 0 でなければ else を実行する。
+;; else がなく、どの条件も成り立たなければ $? は 0
+(define If_run ,(sh pairs elseLines)
+  __is_null__ pairs ,(end)
+  __if_then_else__ end
+    (,() If_lines sh elseLines)
+    (,()
+      __LList_uncons__ __print_exit_error__ pairs ,(pair rest)
+      __LList_uncons__ __print_exit_error__ pair ,(condLines more)
+      __LList_uncons__ __print_exit_error__ more ,(bodyLines more)
+      If_lines sh condLines ,()
+      Sh_status sh ,(status)
+      __String_equal__ status "0" ,(holds)
+      __if_then_else__ holds
+        (,() If_lines sh bodyLines)
+        (,() If_run sh rest elseLines)))
+
+;; 文の並びを実行する。null（空のスクリプト）なら $? は 0
+(define If_lines ,(sh lines)
+  __is_null__ lines ,(empty)
+  __if_then_else__ empty
+    (,() Sh_set_status sh "0")
+    (,() Eval_lines sh lines))
 
 ;; if 文と for 文で、リダイレクトを適用した文脈 inner で run を実行する。リダイレクトがなければ sh のまま。
 ;; 関数と同じく、中の外部コマンドの出力は行ごとの要素にしてから書く。
@@ -1393,33 +1551,6 @@
       __NULL__ clauses body redirs)
     (,() __NULL__ clauses elseBody items)))
 
-;; 条件を順に実行し、最初に $? が 0 になった clause の本体を実行する。どれも 0 でなければ else を実行する。
-;; else がなく、どの条件も成り立たなければ $? は 0
-(define If_clauses ,(sh clauses elseBody)
-  __Cont_get__ ,(return)
-  __is_null__ clauses ,(test__) __if__ test__
-    (,()
-      __is_null__ elseBody ,(test__) __if_then_else__ test__
-        (,() Sh_set_status sh "0")
-        (,() If_script sh elseBody) ,()
-      return) ,()
-  __LList_uncons__ __print_exit_error__ clauses ,(clause rest)
-  Node_split clause ,(tag pos scripts)
-  __LList_uncons__ __print_exit_error__ scripts ,(cond others)
-  List_first others ,(body)
-  If_script sh cond ,()
-  Sh_status sh ,(status)
-  __String_equal__ status "0" ,(test__) __if_then_else__ test__
-    (,() If_script sh body)
-    (,() If_clauses sh rest elseBody))
-
-;; if 文の中のスクリプトを実行する。空のスクリプトの $? は 0
-(define If_script ,(sh script)
-  __Cont_get__ ,(return)
-  Node_split script ,(tag pos lines)
-  __is_null__ lines ,(test__) __if__ test__ (,() Sh_set_status sh "0" ,() return) ,()
-  Eval_lines sh lines)
-
 ;; ── 別の VProc ──
 ;; コマンド置換とパイプラインの各要素は、別の VProc で動かす。
 ;; 中の変数定義、関数定義、export、cd、$? は外に影響しない。中から return や外のループへの break、continue はできない
@@ -1430,6 +1561,8 @@
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
   __Dict_copy__ global ,(global)
   __Dict_put__ global "substs" __NULL__ ,()
+  __Ref_new__ __FALSE__ ,(substsDone)
+  __Dict_put__ global "substsDone" substsDone ,()
   __Dict_put__ global "jobs" __NULL__ ,()
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_copy__ vars ,(vars)
@@ -1556,7 +1689,11 @@
   __unless__ condition (,() __Chan_cancel__ chan) ,()
   __Dict_lookup_or__ child "substState" (,(key) __NULL__ __NULL__) ,(state)
   __is_null__ state ,(condition)
-  __unless__ condition (,() __Ref_set__ state "done"))
+  __unless__ condition (,()
+    __Ref_set__ state "done" ,()
+    ;; 最適化版：起動した側の Subst_settle に知らせる（状態を変えた後で。Subst_done_ref）
+    __Dict_lookup_or__ child "substDone" __print_exit_error__ ,(doneRef)
+    __Ref_set__ doneRef __TRUE__))
 
 ;; この VProc を終える（Sh_start の body の残りを捨てる）
 (define Sh_abort ,(sh)
@@ -1925,6 +2062,8 @@
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   Sh_child sh in out err "return in a command substitution" ,(child)
   __Dict_put__ child "substState" state ,()
+  Subst_done_ref sh ,(doneRef)
+  __Dict_put__ child "substDone" doneRef ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
   Subst_watch vproc child ,()
   __Dict_new__ ,(record)
@@ -1940,6 +2079,11 @@
   __Dict_put__ global "substs" substs ,()
   __Dict_put__ global "substsParked" __FALSE__ ,()
   Chan_list chan)
+
+;; 最適化版：$( ) の子が終わったら立てる Ref（起動した VProc の global の "substsDone"。Subst_settle が見る）
+(define Subst_done_ref ,(sh)
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "substsDone" __print_exit_error__)
 
 ;; $( ) の中が、外部コマンドを1つだけ起動する単純文1つだけか（Pipe_is_external）
 (define Subst_is_external ,(sh lines)
@@ -1967,6 +2111,8 @@
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   Sh_child sh in out err "return in a command substitution" ,(child)
   __Dict_put__ child "substState" state ,()
+  Subst_done_ref sh ,(doneRef)
+  __Dict_put__ child "substDone" doneRef ,()
   __LList_cons__ writer __NULL__ ,(owned)
   __Dict_put__ child "owned" owned ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
@@ -2118,20 +2264,18 @@
   ;; （"substsParked"）、Subst_settle_os は、終わった（"done"）ものがないかぎり "blocked" を返して残すので、
   ;; 状態だけを見て、終わったものがなければ何もしない
   __Dict_lookup_or__ global "substsParked" (,(key) __NULL__ __FALSE__) ,(parked)
-  __if__ parked (,() Substs_none_done substs ,(none) __if__ none return) ,()
+  ;; 最適化版：終わったものは、"substsDone" の Ref が知らせる（Sh_release）ので、記録はたどらない。状態を
+  ;; "done" にしてから知らせるまでの間に見れば、次の文で気づく（子がもう 1 文遅れて終わったのと同じ）
+  ;; 知らせを消してから記録を見る（見ている間に終わったものは、次にもう一度見る）。parked でないときは、知らせは
+  ;; 見ずに記録を見る（残った知らせは、parked になった後で、余分に 1 回記録を見させるだけ）
+  __if__ parked (,()
+    __Dict_lookup_or__ global "substsDone" __print_exit_error__ ,(doneRef)
+    __Ref_get__ doneRef ,(anyDone)
+    __unless__ anyDone return ,()
+    __Ref_set__ doneRef __FALSE__) ,()
   Subst_settle_list substs ,(kept full)
   __Dict_put__ global "substs" kept ,()
   __Dict_put__ global "substsParked" full)
-
-;; 記録のどれも、状態が "done" でないか
-(define Substs_none_done ,(substs)
-  __is_null__ substs ,(end)
-  __if_then_else__ end (,() __NULL__ __TRUE__) (,()
-    __LList_uncons__ __print_exit_error__ substs ,(record rest)
-    __Dict_lookup_or__ record "state" __print_exit_error__ ,(stateRef)
-    __Ref_get__ stateRef ,(state)
-    __String_equal__ state "done" ,(done)
-    __if_then_else__ done (,() __NULL__ __FALSE__) (,() Substs_none_done rest)))
 
 ;; 残す記録の LList と、そのどれも値の先頭がそろった（"full"）OS のパイプの $( ) か（最適化版）を返す
 (define Subst_settle_list ,(substs)
@@ -2602,8 +2746,9 @@
 
 ;; for 文を実行する。(for "名前" (in 語 ...) script [redirs])。
 ;; 語をすべて関数の引数と同じ規則で展開してから、値ごとに本体を実行する。LazyList の値は1階層だけ開き、
-;; 要素を1つずつ取り出す。ループ変数は局所変数で、中の変数定義と関数定義は外に反映する。終わった後の $? は 0
-(define Eval_for ,(sh pos children)
+;; 要素を1つずつ取り出す。ループ変数は局所変数で、中の変数定義と関数定義は外に反映する。終わった後の $? は 0。
+;; jumps は、本体に break か continue があるか（For_jumps。変換のときに調べる）
+(define Eval_for ,(sh pos children jumps)
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __LList_uncons__ __print_exit_error__ rest ,(in rest)
   __LList_uncons__ __print_exit_error__ rest ,(body rest)
@@ -2617,14 +2762,50 @@
   Node_split in ,(itag ipos words)
   Node_split body ,(btag bpos lines)
   Eval_redirected sh pos redirs (,(inner)
-    For_start inner name words lines ,()
+    For_start inner name words lines jumps ,()
     Sh_set_status inner "0"))
+
+;; 最適化版：for 文の本体（(for 名前 (in ...) script ...) の script）のどこかに break か continue があるか。
+;; 内側のループと $( ) の中も見る（break 名前 は外側のループも指す）。関数の定義の中は見ない（関数の中から、
+;; 外のループは見えない）。なければ、ループの文脈と、繰り返しごとの continue の継続とループの記録を作らない
+(define For_jumps ,(children)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(in rest)
+  __LList_uncons__ __print_exit_error__ rest ,(body rest)
+  Ast_has_jump body)
+
+;; 節 node の中に break か continue の節があるか（関数の定義の中を除く）。節でない値（文字列、位置、空）は偽
+(define Ast_has_jump ,(node)
+  __Cont_get__ ,(return)
+  __type_name__ node ,(type)
+  __String_equal__ type "LList" ,(isList)
+  __unless__ isList (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ node ,(tag rest)
+  __type_name__ tag ,(tagType)
+  __String_equal__ tagType "String" ,(tagged)
+  __unless__ tagged (,() Ast_any_jump node ,(found) return found) ,()
+  __String_equal__ tag "break" ,(isBreak)
+  __String_equal__ tag "continue" ,(isContinue)
+  __or__ isBreak isContinue ,(isJump)
+  __if__ isJump (,() return __TRUE__) ,()
+  __String_equal__ tag "function" ,(isFunction)
+  __if__ isFunction (,() return __FALSE__) ,()
+  Ast_any_jump rest)
+
+(define Ast_any_jump ,(nodes)
+  __Cont_get__ ,(return)
+  __is_null__ nodes ,(end)
+  __if__ end (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ nodes ,(node rest)
+  Ast_has_jump node ,(found)
+  __if__ found (,() return __TRUE__) ,()
+  Ast_any_jump rest)
 
 ;; 語を展開して回す。展開した値は For_run に末尾で渡し、for 文の後の継続（Eval_for）には持たせない。
 ;; 持たせると、読み終えた LazyList の要素が、ループの終わりまで残る（GC が毎回たどる）
-(define For_start ,(sh name words lines)
+(define For_start ,(sh name words lines jumps)
   For_values sh words ,(values)
-  For_run sh name values lines)
+  For_run sh name values lines jumps)
 
 ;; for 文の語を展開した値の LList
 (define For_values ,(sh words)
@@ -2636,9 +2817,15 @@
   For_values sh rest ,(more)
   __LList_append__ values more)
 
+;; 最適化版：本体に break も continue もなければ（jumps が偽）、ループの文脈を作らず、sh のまま回す（break は null）
+(define For_run ,(sh name values lines jumps)
+  __if_then_else__ jumps
+    (,() For_run_jumps sh name values lines)
+    (,() For_each sh name values lines __NULL__))
+
 ;; break はこの関数から抜ける。本体は、ループの文脈の写し inner で実行する。写すのはループごとに1回で、
 ;; 繰り返しごとには、inner の "loops" をその回の continue の継続に置き換える（ループ変数と局所変数の Dict は sh と同じ）
-(define For_run ,(sh name values lines)
+(define For_run_jumps ,(sh name values lines)
   __Cont_get__ ,(break)
   __Dict_lookup_or__ sh "loops" __print_exit_error__ ,(outer)
   __Dict_copy__ sh ,(inner)
@@ -2666,12 +2853,19 @@
   For_item sh name item lines break ,()
   For_lazy sh name rest lines break more)
 
-;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける。
-;; sh は For_run が作ったループの文脈で、"outerLoops" は外側のループの LList
+;; 1回分。ループ変数に item を設定して本体を実行する。break が null（本体に break も continue もない）なら、
+;; そのまま実行する（最適化版）
 (define For_item ,(sh name item lines break)
-  __Cont_get__ ,(continue)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_put__ vars name item ,()
+  __is_null__ break ,(plain)
+  __if_then_else__ plain
+    (,() Eval_lines sh lines)
+    (,() For_item_jumps sh name lines break))
+
+;; continue はこの関数から抜ける。sh は For_run_jumps が作ったループの文脈で、"outerLoops" は外側のループの LList
+(define For_item_jumps ,(sh name lines break)
+  __Cont_get__ ,(continue)
   Loop_make name break continue ,(loop)
   __Dict_lookup_or__ sh "outerLoops" __print_exit_error__ ,(loops)
   __LList_cons__ loop loops ,(loops)

@@ -53,11 +53,11 @@ fn string_values(vp: &mut VProc, name: &str, count: usize) -> Result<Vec<Value>,
     Ok(args)
 }
 
-/// The text of a String, without copying a String made at run time.
+/// The text of a String, without copying it when it can be borrowed (crate::value::string_cow).
 fn text(v: &Value) -> Result<std::borrow::Cow<'_, str>, VmError> {
-    match v {
-        Value::Str(s) => Ok(std::borrow::Cow::Borrowed(&**s)),
-        _ => Ok(std::borrow::Cow::Owned(value_to_display(v).map_err(VmError::Error)?)),
+    match crate::value::string_cow(v) {
+        Some(r) => r.map_err(VmError::Error),
+        None => Ok(std::borrow::Cow::Owned(value_to_display(v).map_err(VmError::Error)?)),
     }
 }
 
@@ -176,18 +176,13 @@ pub fn equal(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// The text of each of two operands of name, which must be Strings (checked
 /// in order, as string_args does), without copying a String made at run time.
 fn two_texts<'a>(name: &str, a: &'a Value, b: &'a Value) -> Result<[std::borrow::Cow<'a, str>; 2], VmError> {
-    for v in [a, b] {
-        if value_type_name(v) != "String" {
-            return err(format!("{}: expected String, got {}", name, value_type_name(v)));
-        }
-    }
-    let text = |v: &'a Value| -> Result<std::borrow::Cow<'a, str>, VmError> {
-        match v {
-            Value::Str(s) => Ok(std::borrow::Cow::Borrowed(&**s)),
-            _ => Ok(std::borrow::Cow::Owned(value_to_display(v).map_err(VmError::Error)?)),
-        }
+    // Both are checked to be Strings before either text is made (the error names the first that is not).
+    let (ta, tb) = (crate::value::string_cow(a), crate::value::string_cow(b));
+    let (Some(ta), Some(tb)) = (ta, tb) else {
+        let v = if crate::value::string_cow(a).is_none() { a } else { b };
+        return err(format!("{}: expected String, got {}", name, value_type_name(v)));
     };
-    Ok([text(a)?, text(b)?])
+    Ok([ta.map_err(VmError::Error)?, tb.map_err(VmError::Error)?])
 }
 
 /// The result of __String_concat__ (also for vm/src/transpiled.rs).
