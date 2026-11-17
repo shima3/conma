@@ -52,7 +52,18 @@ consh/sjs/test/run_all.sh
 
 ## 申し送り
 
-次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+
+### m1/run-vm-path
+
+* consh/bench/run.py の `-v` に `版=パス` を足し（`conma:transpiled=/tmp/before/conma` など）、組み合わせを順に替えながら測るようにした。ベンチマークの測り方そのものは変わらないので、測り直しは要らない。
+* 確かめたこと（Apple M1）：Rust 版の VM、変換した VM、wasm 版の VM（Node.js と jsc）の写しと `bash=/bin/bash` を、元のものと並べて `05`、`06`、`11` で測り、出力が同じで時間がほぼ同じだった。変換した VM の写しも `CONMA_TRANSPILED_REPORT` の確かめを通った。存在しないパスと、wasm ファイルが配置どおりにない wasm の写しは、測る前にエラーで止まった（`conma.js` を写し忘れたときは、測ってから `outputs differ` になる）。
+* テストのスクリプトは変えていない。
+
+### m4/bench-names
+
+* consh/bench のスクリプトの名前から大きさを外した（`02_for_seq`、`13_func_assign`、`16_func_varlist`、`17_subst_func`）。大きさだけが違う `01`、`05`、`08`、`09`、`12` は、Bash 版とともに消した。テストは変わらない。ベンチマークを名前で指定するときは、新しい名前で。
+* 流したもの：run.py で 02、13、16、17（rust と conma:rust）、02、16、17（bash と rust）。
 
 ## 記録
 
