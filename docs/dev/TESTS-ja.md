@@ -55,12 +55,18 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/case20-rust
+
+* consh/test の step2 の case20（m1/compile2-dq）から、`"$(( 1 + 2 ))"` を除いた。Rust 版の ConSh は `(( ))` を読めないので、`CONSH_IMPL=rust` で 6 行目で止まっていた（2f1c8e1 と 1ec4c7b の記録）。`"..."` の中で Expand_ref を通る場合は、`"pre$(echo sub)post"` と `"${u-def}"` で試している。
+* 流したもの：step2 を、最適化版、参照版、Rust 版の ConSh（`CONSH_IMPL=rust`）で（Rust 版の VM）。どれも通った。ConSh のソースは変えていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | m1/pages-escape（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | GitHub Pages のワークフローで、Markdown を raw で囲む .github/pages-raw.py を、Liquid の 2 つの開き括弧を 1 つずつ Liquid の文字列の出力に置き換える .github/pages-escape.py に替えた（後ろに閉じ括弧のない開き括弧が、raw の終わりの閉じ括弧まで読まれ、raw が閉じずに失敗していた。このファイルの 1 つ上の行）。確かめたこと：docs/ の写しに流し、Liquid 4 の字句の区切りと同じ正規表現で、どの Markdown にも置き換えたもののほかのタグが残らず、置き換えたものを戻すと元と同じになること（難しい例も足した）。Jekyll は動かしていない |
 | 2026-11-18 | m4/docs-ebnf（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/consh/PLAN-ja.md の文法の `{{` を `{ {` にした（3 か所。EBNF の意味は同じ）。確かめたこと：docs/ の Markdown に `{{` と `{%` が残っていないこと（GitHub Pages の Jekyll が Liquid のタグと読まない）。リンクは変えていない。Jekyll は動かしていない |
 | 2026-11-18 | 1ec4c7b | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）と、前と同じ `CONSH_IMPL=rust` の consh/test の step2 の case20（`$(( ))` を Rust 版の ConSh が読めない）。申し送りの m1/compile2-capture と m1/pages-module-mode の、流していなかった組み合わせ（変換版の VM、wasm 版の VM の consh/test）も通った。変換版の VM は 1ec4c7b で作ったもの。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | 2f1c8e1 | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。ほかに、`CONSH_IMPL=rust` の consh/test の step2 が違う：m1/compile2-dq が足した case20 が `$(( 1 + 2 ))` を使い、Rust 版の ConSh は `(( ))` を読めないので 6 行目で止まる（examples と同じ理由。ConMa 版の誤りではない。作者に知らせる）。申し送りの m2/pages-liquid、m1/compile2-dq、m1/compile2-cmd の、流していなかった組み合わせ（変換版の VM（`bench/build.sh` で作り直した）、wasm 版の VM の consh/test）も通った。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |

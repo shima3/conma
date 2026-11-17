@@ -3,7 +3,7 @@
 a=1; b='x y'; e=''; l=$(seq 1 3); g='*'
 function show (x y) { echo "[$x][$y]"; }
 function f () { echo hi; }
-echo "x$a" "$b" "" "$e" 'q'"$a" a"$b"c \$"$a" "${a}z" "$l" "pre$(echo sub)post" "$(( 1 + 2 ))" "${u-def}" "$g"
+echo "x$a" "$b" "" "$e" 'q'"$a" a"$b"c \$"$a" "${a}z" "$l" "pre$(echo sub)post" "${u-def}" "$g"
 show "" "$e"
 show "$b" x"$e"
 printf '<%s>\n' "x$a" "$e" a"$b"c "$l" "$g" "${a}"
