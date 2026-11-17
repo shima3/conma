@@ -78,7 +78,6 @@ consh/sjs/test/run_all.sh
 
 * チャネルの鎖の `"head"` を、読み手が読み位置を作るときに null にした（vm/src/prim/chan.rs と include/core/chan.se。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
 * 流したもの：test/ の Rust 版の VM、test/step45 と fast11 の Python 版の VM、consh/test（最適化版と参照版）の Rust 版の VM、consh/sjs/test。流していないもの：test/ の Python 版の VM（step45、fast11 のほか）、wasm 版と変換版の VM、consh/js/test。
-* ベンチマーク：consh/bench の `10`、`18` を、最適化版の変換版の VM で（m4/transpiled-clone と、このブランチの分。前は alpha の 9a4f7a2）。
 
 ### m2/consh-docs-move
 
