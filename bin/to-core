@@ -35,7 +35,7 @@ The features it knows:
 * "array" (docs/dev/ARRAY-PLAN-ja.md): the array primitives __Array_new__,
   __Array_length__, __Array_get__, __Array_set__, __Array_push__ and __Array_pop__,
   with their definitions of include/core/array.se, which keep an array in a Dict.
-* "wasm" (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
+* "wasm" (docs/consh/dev/SJS-WASM-PLAN-ja.md 5.3): __Wasm_compile__ and __Wasm_call__,
   which the VMs of core ConMa cannot run; their definitions (include/core/wasm.se) go
   to onError with "WebAssembly is not available". __Dict_numbers__ and
   __Dict_put_numbers__ are defined there in ConMa, using "control" and

@@ -1,8 +1,8 @@
 # JavaScript 版 ConSh
 
-ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [consh/docs/dev/JS-PLAN-ja.md](../docs/dev/JS-PLAN-ja.md) にある。
+ConMa の VM を WebAssembly（wasm32）にビルドし、ブラウザか Node.js の上で ConMa 版の ConSh を動かす。算術評価 `(( ))` と算術置換 `$(( ))` に JavaScript のサブセット（SJS）を書け、組み込みコマンド `js` で JavaScript を呼べる。計画と設計は [docs/consh/dev/JS-PLAN-ja.md](../../docs/consh/dev/JS-PLAN-ja.md) にある。
 
-**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない。ブラウザ版も段階 B6 から）。変換したモジュールを作れないとき（`frontend.module.se` がないなど）だけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（consh/docs/dev/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
+**セキュリティの注意**：`js` は、ホストの JavaScript でコードをそのまま評価する（`Function` コンストラクタ。サンドボックスはない）。`(( ))` の SJS は、ConMa に変換して VM の中で動かす（段階 B。ホストの JavaScript に触れない。ブラウザ版も段階 B6 から）。変換したモジュールを作れないとき（`frontend.module.se` がないなど）だけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A）。SJS の範囲の外のコードはエラーにするが、段階 A に抜け道がないことは証明できない（docs/consh/dev/SAFEJS-PLAN-ja.md の 5）。ConSh のスクリプトや入力を書く人は、そのページ（DOM、Cookie、同じオリジンへのリクエスト）や Node.js のプロセス（ファイル、プロセス、ネットワーク）の権限で、何でもできる。当面は、自分の手元（ローカル）で、信用できるスクリプトだけに使うこと。信用できない入力をそのまま ConSh に渡したり、公開のサーバーで誰でも使えるようにしたりしない。
 
 そのため、`js` は、既定では使えない（`js: JavaScript is disabled ...` を出して `$?` を 2 にする）。使うときは、次のように有効にする（[「JavaScript を有効にする」](#javascript-を有効にする)）。`js` は `js` と、段階 A の `(( ))` を使えるようにし、`sjs` は段階 A の `(( ))` だけを使えるようにする。
 
@@ -31,7 +31,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 * VM、ファイル、`cat` などの組み込みコマンドは Worker（`web/consh-worker.js`、`web/consh-core.js`）で動き、ページは画面と JavaScript（`js` と `(( ))` の SJS）を受け持つ。そのため、ファイルを読む間や長い処理の間も画面は固まらず、JavaScript からは今までどおり `document` や `window` が使える。Worker に JS の値を同期して渡すために SharedArrayBuffer を使うので、ページが cross-origin isolated である必要がある。`serve.py` は、そのためのヘッダ（`Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp`）を送る。そのため、ページから別のオリジンのものを no-cors で読む（`<img>`、`<script>`、`fetch` の `mode: "no-cors"`）と、相手が `Cross-Origin-Resource-Policy` を付けて出していなければ止められる。CORS で読む `fetch`（既定）は、相手が CORS を許していれば動く。
 * このヘッダを送らないサーバーでは、ConSh はページの中で動く（Worker を使う前と同じ。ファイルを読む間は画面が止まる）。最初の案内に、どちらで動いているかが出る。
 
-* 外部コマンドはない。JavaScript で作った `cat`、`pwd`、`ls`（`web/consh-core.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、consh/docs/PLAN-ja.md の 1.2）。`cat` は、引数のファイルか標準入力を、標準出力に書く。`pwd` は、カレントディレクトリを出す（`-L` と `-P` は同じ）。`ls [-1AadF] [file ...]` は、名前を 1 行に 1 つ出す。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。
+* 外部コマンドはない。JavaScript で作った `cat`、`pwd`、`ls`（`web/consh-core.js` の `COMMANDS`）が、ConSh の組み込みコマンドになっている（環境変数 `CONSH_HOST_BUILTINS`、docs/consh/PLAN-ja.md の 1.2）。`cat` は、引数のファイルか標準入力を、標準出力に書く。`pwd` は、カレントディレクトリを出す（`-L` と `-P` は同じ）。`ls [-1AadF] [file ...]` は、名前を 1 行に 1 つ出す。`builtin cat` でも呼べ、`command cat` などの外部コマンドは `No such file or directory`（`$?` は 127）になる。関数、組み込みコマンド、パイプ、`$( )`、`&` の関数のジョブ、ファイルへのリダイレクトは使える。
 * `cat` などが端末から読んでいる間は、入力欄の行はそのコマンドに渡り、Ctrl+D はそのコマンドの入力だけを終える（`cat > hoge.txt` で書いて Ctrl+D、ConSh は続く）。Ctrl+C はそのコマンドを止める（`$?` は 130）。ConSh 自身が入力を読んでいるときの Ctrl+D は、ネイティブ版と同じく ConSh の標準入力を終えるので、ConSh も終わる。
 * ファイルはサーバーのもの（`web/serverfs.js`）。カレントディレクトリの `/home/user` がページのディレクトリ（`consh/js/web`）で、その下のファイルとディレクトリは、開くたび、一覧するたびにサーバーから読む（キャッシュはブラウザに任せる）。ディスクのファイルを書き換えれば、ページを読み直さなくても見える。
 * 書いたファイル（`> file`、`>> file`）と「ファイルを置く」で置いたファイルは、メモリに置き、同じ名前のサーバーのファイルより先に見える（サーバーには書かない。ページを閉じると消える）。`/home/user` の外は、`/dev/null` などのメモリのものだけがある。
@@ -63,7 +63,7 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 
   URL のパラメータで有効にしないのは、他人が作ったリンクを開くだけで有効になってしまうからである。ページの前にいる本人は、開発者ツールでいつでも JavaScript を動かせるので、この設定は本人ではなく、他人のリンクやスクリプトから守るためのものである。
 
-  `config.json` が `js` も `sjs` も使えるようにしていなければ、ページは `eval` と `Function` を使わないので、ブラウザに止めさせる（consh/docs/dev/SAFEJS-PLAN-ja.md の 5）：serve.py は、どの応答にも Content-Security-Policy `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け（Worker にも効く）、ページ（web/consh.js）も、`config.json` を読んだ後、ConSh を動かす前に、同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。WebAssembly は動く（`'wasm-unsafe-eval'`）。そのため、ページの中のスクリプトはファイル（web/boot.js）にした。`config.json` を変えたら、ページを読み直す（serve.py は、ページを 304 でなく、いつも 200 で送るので、新しい設定のポリシーになる）。ほかのサーバーで公開するときは、`js` を使わないなら、このヘッダーを付けるとよい。
+  `config.json` が `js` も `sjs` も使えるようにしていなければ、ページは `eval` と `Function` を使わないので、ブラウザに止めさせる（docs/consh/dev/SAFEJS-PLAN-ja.md の 5）：serve.py は、どの応答にも Content-Security-Policy `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'` を付け（Worker にも効く）、ページ（web/consh.js）も、`config.json` を読んだ後、ConSh を動かす前に、同じものを `<meta>` で入れる（ほかのサーバーでも、ページの中では効く）。WebAssembly は動く（`'wasm-unsafe-eval'`）。そのため、ページの中のスクリプトはファイル（web/boot.js）にした。`config.json` を変えたら、ページを読み直す（serve.py は、ページを 304 でなく、いつも 200 で送るので、新しい設定のポリシーになる）。ほかのサーバーで公開するときは、`js` を使わないなら、このヘッダーを付けるとよい。
 * JavaScript のない版（ネイティブの VM と Rust 版の ConSh）では、今までどおり `js: JavaScript is not available`（`$?` は 127）になる。`(( ))` は、ネイティブの VM の ConMa 版では段階 B で動き、Rust 版の ConSh にはない。
 * この設定で守れるのは、主にブラウザ版である。Node.js 版の ConSh は、もともと外部コマンドを起動でき、ファイルも読み書きできるので、`js` を止めても、スクリプトにできることはほとんど減らない。Node.js 版では、信用できないスクリプトを ConSh で動かさないこと。
 
@@ -77,11 +77,11 @@ CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh
 
 引数なしで起動すると対話モードになる。`(( ))` は段階 B で動くので、そのまま使える。`js` を使うときは `CONSH_ENABLE_JS=js` を付ける（上の「JavaScript を有効にする」）。
 
-VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（consh/docs/dev/JS-PLAN-ja.md の 3.8）。
+VM は、ネイティブ版と同じく、実際のファイルを読み書きし、外部コマンドを起動する。子の標準入出力のパイプは、Node.js が UNIX ドメインソケットでつなぐので、`test -p` などではパイプに見えない（docs/consh/dev/JS-PLAN-ja.md の 3.8）。
 
 ## (( )) と $(( ))：SJS
 
-算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（consh/docs/dev/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
+算術評価 `(( SJS式 ))` と算術置換 `$(( SJS式 ))` に、JavaScript のサブセット（SJS）の式を書ける（docs/consh/dev/SAFEJS-PLAN-ja.md の 2）。Node.js 版（とネイティブの VM の ConMa 版）では、式を ConMa に変換して VM の中で動かす（段階 B4。consh/sjs/README-ja.md）。ブラウザ版も、段階 B6 から同じく段階 B で動かす（ページの Worker の中で、もう 1 つの VM に ConMa のフロントエンド `frontend.module.se` を動かして、モジュールを作る。`web/consh-core.js` の `buildModule`）。モジュールを作れないときだけ、`CONSH_ENABLE_JS` が `sjs` か `js` なら、ホストの JavaScript で評価する（段階 A。SAFEJS-PLAN-ja.md の 4.1）。どちらも同じ結果になるようにしてある（段階 B で違うところは consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）。下の組み込みの説明は段階 A のもので、段階 B の組み込みは consh/sjs/README-ja.md にある。
 
 ```
 (( n = 1 + 2 ))                # SJS変数 n に 3。何も出さない。$? は値の真偽（真なら 0、偽なら 1、エラーなら 2）
@@ -138,7 +138,7 @@ js [変数名=] コード {引数}
 
 * コードを JavaScript の式として評価する。値が関数なら引数を渡して呼び、Promise なら解決するまで待つ（その間、ほかの VProc は動く）。
 * 式として読めないコード（`let x = 1; return x + 1` など）は、async 関数の本体として動かし、`return` の値を結果にする。`await` を書け、引数は配列 `args` で見える。
-* 最初の語が「識別子 `=`」だけ（スペースの前に `=`）なら、結果をその局所変数に入れる。そうでなければ、結果を標準出力に出す。変数には、文字列とイテレータのほかは JavaScript の値のまま入り（consh/docs/dev/JS-PLAN-ja.md の 2.5 の 4）、`$` で読むたびに下の規則で文字列やリストにする。
+* 最初の語が「識別子 `=`」だけ（スペースの前に `=`）なら、結果をその局所変数に入れる。そうでなければ、結果を標準出力に出す。変数には、文字列とイテレータのほかは JavaScript の値のまま入り（docs/consh/dev/JS-PLAN-ja.md の 2.5 の 4）、`$` で読むたびに下の規則で文字列やリストにする。
 * 引数の String は文字列、LazyList（`${list}`）は配列として渡す。
 * 結果の文字列は値 1 つ、配列は要素ごとの値（変数には LazyList）、`undefined` と `null` は何も出さない（変数には空文字列）。そのほかの値は `String()` か `JSON.stringify` で文字列にする。
 * 結果がイテレータ（ジェネレータ、Set、Map など、配列と文字列以外の反復可能なもの）なら、要素ごとの値にする。要素は読まれる分だけ作るので、終わらないジェネレータも `| 関数` や `> (a b)` で使える。変数に入れると、読んだときに要素を作る遅延の LazyList になる（`${nat}` で 1 つずつたどる）。
@@ -159,7 +159,7 @@ js nat= '(function* () { let i = 0; while (true) yield i++ })()'     # 遅延の
 
 ## JS の文（消した）
 
-先頭の語がコマンドでない文を JavaScript とする「JS の文」（consh/docs/dev/JS-PLAN-ja.md の 2.5）は、段階 A3 で消した（consh/docs/dev/JS-PLAN-ja.md の 3.26）。代わりに、計算は `(( ))` と `$(( ))` の SJS で、ページの `document` などを使うときは `js '...'` で書く。
+先頭の語がコマンドでない文を JavaScript とする「JS の文」（docs/consh/dev/JS-PLAN-ja.md の 2.5）は、段階 A3 で消した（docs/consh/dev/JS-PLAN-ja.md の 3.26）。代わりに、計算は `(( ))` と `$(( ))` の SJS で、ページの `document` などを使うときは `js '...'` で書く。
 
 ```
 n = 1 + 2                      # 前は JS の文。今はコマンド n を探す（見つからない）
@@ -175,4 +175,4 @@ CONMA_VM=wasm test/run_all.sh              # ConMa のテストを wasm 版で
 CONMA_VM=wasm CONSH_IMPL=conma consh/test/run_all.sh
 ```
 
-wasm 版で ConMa と ConSh のテストを流すと、外部コマンド、プロセス、`__VProc_spawn__`、シンボリックリンクを使うケースだけがネイティブ版と違う（consh/docs/dev/JS-PLAN-ja.md の 3.1〜3.4）。
+wasm 版で ConMa と ConSh のテストを流すと、外部コマンド、プロセス、`__VProc_spawn__`、シンボリックリンクを使うケースだけがネイティブ版と違う（docs/consh/dev/JS-PLAN-ja.md の 3.1〜3.4）。

@@ -1,21 +1,34 @@
 #!/bin/bash
-# consh/sjs/bench/run.sh NAME N：SJS の段階 B7 の測定（consh/docs/dev/SAFEJS-PLAN-ja.md の 6）。
+# consh/sjs/bench/run.sh NAME [N [M]]：SJS の段階 B7 の測定（docs/consh/dev/SAFEJS-PLAN-ja.md の 6）。
 # NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
 # 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
 # wasm 版の VM（vm/wasm/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
-# consh/docs/dev/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
+# docs/consh/dev/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
+# 大きさは 2 つ（2026-11-17。docs/dev/CONTRIBUTING.md の Benchmarks）：N で Node.js、CPython、wasm 版の VM の SJS
+# （数の関数は WebAssembly）を、M（なければ N）で残りの遅い列（Rust 版の VM の 2 つ、wasm 版の VM の CONMA_NO_WASM=1
+# と手で書いた ConMa）を測る。N と M を指定しなければ、NAME ごとの既定（N は Node.js で約 1 秒、M は遅い列の最も
+# 遅いもので約 1 分、Apple M1）。出力は、それぞれの大きさの Node.js の出力と比べる
 sjsbench="$(cd "$(dirname "$0")"; pwd)"
 sjs="${sjsbench%/*}"
 consh="${sjs%/*}"
 root="${consh%/*}"
 conma="$root/vm/target/release/conma"
-name=$1 n=$2
+name=$1 n=$2 m=${3:-$2}
+if [ -z "$n" ]; then
+  case "$name" in
+    loop) n=1000000000 m=25000000 ;;  # 2^30 以上では、wasm 版の VM で数の関数が WebAssembly にならない
+    fib) n=40 m=32 ;;
+    nbody) n=10000000 m=80000 ;;
+    *) echo "usage: consh/sjs/bench/run.sh NAME [N [M]] (NAME: loop, fib, nbody)" >&2; exit 2 ;;
+  esac
+fi
 # SJS_INCLUDE で、変換器と実行時の支えのディレクトリを替えられる（前の版と比べるとき）
 inc="${SJS_INCLUDE:-$consh/include}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs-bench.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 sed "s/N_ARG/$n/" "$sjsbench/$name.safe.js" > "$tmp/$name.safe.js"
+sed "s/N_ARG/$m/" "$sjsbench/$name.safe.js" > "$tmp/slow.safe.js"
 best() {  # command...：3 回の最良の user + sys 秒
   local b= t
   for i in 1 2 3; do
@@ -31,22 +44,23 @@ lines() { grep -cv '^\s*\(//.*\)\?$' "$1"; }
 "$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.safe.js" > "$tmp/$name.se" || exit 1
 translate=$(best "$conma" --main "$tmp/sjsc.module.se" "$tmp/$name.safe.js")
 "$conma" build --include "$inc" --include "$root/include" "$tmp/$name.se" > "$tmp/$name.module.se" || exit 1
+"$conma" --main "$tmp/sjsc.module.se" "$tmp/slow.safe.js" > "$tmp/slow.se" || exit 1
+"$conma" build --include "$inc" --include "$root/include" "$tmp/slow.se" > "$tmp/slow.module.se" || exit 1
 "$root/bench/module.sh" "$root/bench/$name/$name.se" "$tmp/hand.module.se" > /dev/null || exit 1
 # 出力
 node "$tmp/$name.safe.js" > "$tmp/node.out"
-"$conma" --main "$tmp/$name.module.se" > "$tmp/sjs.out" 2>&1
-python3 "$root/bench/$name/$name.py" "$n" > "$tmp/py.out"
-"$conma" --main "$tmp/hand.module.se" "$n" > "$tmp/hand.out" 2>&1
-cmp -s "$tmp/node.out" "$tmp/sjs.out" || { echo "SJS prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/sjs.out"; }
-echo "== $name $n"
+node "$tmp/slow.safe.js" > "$tmp/node-slow.out"
+"$conma" --main "$tmp/slow.module.se" > "$tmp/sjs.out" 2>&1
+cmp -s "$tmp/node-slow.out" "$tmp/sjs.out" || { echo "SJS prints otherwise than Node.js:"; diff "$tmp/node-slow.out" "$tmp/sjs.out"; }
+if [ "$m" = "$n" ]; then echo "== $name $n"; else echo "== $name $n (the slow columns, marked *: $m)"; fi
 printf 'size: SJS %s lines %s bytes; translated ConMa %s bytes (%s lines); module %s bytes (with sjs_rt.se); hand-written ConMa module %s bytes\n' \
   "$(lines "$sjsbench/$name.safe.js")" "$(size "$sjsbench/$name.safe.js")" "$(size "$tmp/$name.se")" "$(wc -l < "$tmp/$name.se" | tr -d ' ')" \
   "$(size "$tmp/$name.module.se")" "$(size "$tmp/hand.module.se")"
 printf 'translate (sjsc on the Rust VM): %s s\n' "$translate"
 printf '%-24s %s s\n' "Node.js" "$(best node "$tmp/$name.safe.js")"
 printf '%-24s %s s\n' "CPython" "$(best python3 "$root/bench/$name/$name.py" "$n")"
-printf '%-24s %s s\n' "Rust VM, hand ConMa" "$(best "$conma" --main "$tmp/hand.module.se" "$n")"
-printf '%-24s %s s\n' "Rust VM, SJS" "$(best "$conma" --main "$tmp/$name.module.se")"
+printf '%-24s %s s\n' "Rust VM, hand ConMa *" "$(best "$conma" --main "$tmp/hand.module.se" "$m")"
+printf '%-24s %s s\n' "Rust VM, SJS *" "$(best "$conma" --main "$tmp/slow.module.se")"
 vmw="$root/vm/wasm/vm-wasm.sh"
 if [ -f "$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ]; then
   "$vmw" --main "$tmp/$name.module.se" > "$tmp/wasm.out" 2>&1
@@ -57,8 +71,10 @@ if [ -f "$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ];
   wat=${wat:-0}
   printf 'numeric functions: %s (WAT %s bytes)\n' "$nfun" "$wat"
   printf '%-24s %s s\n' "wasm VM, SJS" "$(best "$vmw" --main "$tmp/$name.module.se")"
-  printf '%-24s %s s\n' "wasm VM, SJS, no wasm" "$(best env CONMA_NO_WASM=1 "$vmw" --main "$tmp/$name.module.se")"
-  printf '%-24s %s s\n' "wasm VM, hand ConMa" "$(best "$vmw" --main "$tmp/hand.module.se" "$n")"
+  CONMA_NO_WASM=1 "$vmw" --main "$tmp/slow.module.se" > "$tmp/nowasm.out" 2>&1
+  cmp -s "$tmp/node-slow.out" "$tmp/nowasm.out" || { echo "SJS on the wasm VM without wasm prints otherwise than Node.js:"; diff "$tmp/node-slow.out" "$tmp/nowasm.out"; }
+  printf '%-24s %s s\n' "wasm VM, SJS, no wasm *" "$(best env CONMA_NO_WASM=1 "$vmw" --main "$tmp/slow.module.se")"
+  printf '%-24s %s s\n' "wasm VM, hand ConMa *" "$(best "$vmw" --main "$tmp/hand.module.se" "$m")"
 fi
 # 起動の時間（N が SMALL のとき）と、VM のステップの数（CONMA_PROFILE。N が SMALL と SMALL + 10 のときの差を 10 で割る）
 small=${SMALL:-1}

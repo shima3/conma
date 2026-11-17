@@ -1,4 +1,4 @@
-// -0：JavaScript と同じ（consh/docs/dev/SJS-WASM-PLAN-ja.md の 11）。1 を -0 で割ると -Infinity になることで見る。Math.round(0.49999999999999994) と 5 % Infinity、(-0) ** 0.5 と (-Infinity) ** 0.5 も
+// -0：JavaScript と同じ（docs/consh/dev/SJS-WASM-PLAN-ja.md の 11）。1 を -0 で割ると -Infinity になることで見る。Math.round(0.49999999999999994) と 5 % Infinity、(-0) ** 0.5 と (-Infinity) ** 0.5 も
 const inv = (x) => 1 / x
 const z = 0
 const nz = -z

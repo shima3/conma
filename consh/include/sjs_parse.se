@@ -1,4 +1,4 @@
-;; SJS の構文解析（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の sjsParse と同じ形の再帰下降。
+;; SJS の構文解析（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。conma.js の sjsParse と同じ形の再帰下降。
 ;; 節は Dict で、"t" に種類を持つ。式：
 ;;   num（"text"）、str（"value"）、lit（"text" が true、false、null）、id（"name"）、paren（"expr"）、
 ;;   binary（"op" "left" "right"。&&、||、?? も）、unary（"op" "arg"）、update（"op" "prefix" "target"）、

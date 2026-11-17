@@ -1,6 +1,6 @@
 # ConSh examples
 
-Short scripts that show what ConSh does better than Bash. Each `NAME.sh` is a ConSh script and `NAME.bash` does the same in Bash, with the extra code or the pitfall that Bash needs. See [docs/FOR-BASH-USERS.md](../docs/FOR-BASH-USERS.md) for the language.
+Short scripts that show what ConSh does better than Bash. Each `NAME.sh` is a ConSh script and `NAME.bash` does the same in Bash, with the extra code or the pitfall that Bash needs. See [docs/consh/FOR-BASH-USERS.md](../../docs/consh/FOR-BASH-USERS.md) for the language.
 
 Run them from this directory:
 
