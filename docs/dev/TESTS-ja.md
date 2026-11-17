@@ -54,45 +54,11 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m4/transpiled-clone2
-
-* 書いた文字列を、複製せずに読むようにした（vm/src/value.rs の `string_cow`、prim/string.rs、prim/number.rs）。変換したコードが、プリミティブに渡すだけの局所変数を複製しないようにした（vm/conma2rust/conma2rust.py、vm/src/transpiled.rs の `lref`）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
-* 流したもの：Rust 版の VM の test/、consh/test（最適化版）、consh/sjs/test。変換版の VM（`bench/build.sh` で作り直した）の test/ と consh/test（最適化版）。流していないもの：Python 版と wasm 版の VM、consh/js/test、参照版。
-
-### m4/compile2-s1
-
-* ConSh の最適化版の for 文で、本体に break も continue もなければ、ループの文脈と、繰り返しごとの継続を作らないようにした（consh/include/consh_eval.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S1）。consh/test の step3 に case29 を足した。consh/bench/roles.py を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
-
-### m4/compile2-s2
-
-* ConSh の最適化版の `Subst_settle` が、parked の間は、`$( )` の子が終わったときに立てる Ref だけを見るようにした（consh/include/consh_eval.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S2）。consh/test の step4 に case9 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。step4 は 5 回。流していないもの：wasm 版と変換版の VM、consh/js/test。
-
-### m4/compile2-s3
-
-* ConSh の最適化版で、if 文と、先頭の語が決まっている単純文の残りの語を、変換のときに分けておくようにし、変数定義の右辺の String をつなぐ道を足した（consh/include/consh_eval.se、consh_expand.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S3）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
-
-### m4/compile2-s4
-
-* ConSh の最適化版で、変数リストへのリダイレクトだけの単純文は、リダイレクトを変換のときに分けておくようにした（consh/include/consh_eval.se の `Redirs_captures`、`Capture_redirs`。docs/consh/dev/COMPILE2-PLAN-ja.md の S4）。consh/test の step6 に case12 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
-
-### m2/pages-actions
-
-* GitHub Pages を、ブランチの docs/ からでなく、GitHub Actions（.github/workflows/pages.yml）で配置するようにした。main に push すると、`consh/js/build.sh` で作ったウェブ版の ConSh を docs/consh/web に写し、docs/ を Jekyll で HTML にして配置する。リポジトリの Settings → Pages → Source を「GitHub Actions」に切り替える必要がある（main に入ってから）。テストのスクリプトとソースは変えていない。
-* 確かめたこと（Apple M2）：このブランチのまっさらな clone で `consh/js/build.sh` と写す手順が通り、ヘッダを付けない静的なサーバー（`python3 -m http.server`）で docs/ を出すと、consh/web/ のページがページの中で ConSh を動かし、`echo` と `cat names.txt` が動いた（`ls` は空。Pages でも同じ）。Jekyll の手順とワークフローそのものは、GitHub でしか試せないので、まだ試していない。
-
-### m4/compile2-s5
-
-* ConSh の最適化版で、変数を読む道（`Sh_lookup`、`Var_fields`、`Var_def_value`、`Glob_has_meta`）を軽くした（consh/include/consh_eval.se、consh_expand.se、consh_glob.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM、consh/js/test（wasm 版の VM）。流していないもの：変換版の VM、wasm 版の VM の consh/test。
-
 ### m1/jsstmt-cont
 
 * consh/include/consh_jsstmt.se の `Js_force` と `Sjsb_to_shell` を、`__Cont_get__` の `return` で抜けず、`__if_then_else__` を入れ子にする形にした（1e8c4d4 で文のコードを作る 11 個の関数にしたのと同じ）。どちらも、呼ぶと JS や SJS の関数を呼ぶ関数値を返すので、その関数値が、作った所の継続と、そこから届く値（for 文が読んでいる `$( )` の値など）を持たないようにするため。ConSh のモジュール（最適化版と参照版）が変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。値が残らなくなったことは、確かめていない（GC がたどる値の数は数えていない）。
+
 
 ## 記録
 
@@ -100,6 +66,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-17 | 79006fa | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-clone2、m4/compile2-s1〜s5 の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/compile2-plan と m2/pages-actions（ワークフローは GitHub でしか試せない）も含む。m4/chan-head のベンチマークの依頼は残した |
 | 2026-11-17 | ceef8ab | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/consh-heavy2、m4/sjs-array-msg、m4/transpiled-clone、m4/chan-head、m2/consh-docs-move の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/js-step5 で直した consh/js/test の step5 も通った。m1/bench-sizes2、m1/sjs-bench-sizes、m4/types-t1、m4/types-hold、m4/array-a6 と、m2/bench-944c5df（m4/consh-heavy2 のベンチマーク）も含む。m4/chan-head のベンチマークの依頼は残した |
 | 2026-11-17 | 3507874 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/vproc-wait の、流していなかった変換版の VM（`bench/build.sh` で作り直した）と wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版も通った。新しい test/step48 は 4 つの VM で通った。m1/bench-sizes、m4/bench-who、m1/bench-cd7d3a4 を含む |
 | 2026-11-17 | b00beda | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。m1/run-vm-path と m4/bench-names（どちらもテストは変わらない）を含む |
