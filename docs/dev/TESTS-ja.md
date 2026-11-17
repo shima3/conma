@@ -78,6 +78,11 @@ consh/sjs/test/run_all.sh
 * ConSh の最適化版で、if 文と、先頭の語が決まっている単純文の残りの語を、変換のときに分けておくようにし、変数定義の右辺の String をつなぐ道を足した（consh/include/consh_eval.se、consh_expand.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S3）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
 
+### m4/compile2-s4
+
+* ConSh の最適化版で、変数リストへのリダイレクトだけの単純文は、リダイレクトを変換のときに分けておくようにした（consh/include/consh_eval.se の `Redirs_captures`、`Capture_redirs`。docs/consh/dev/COMPILE2-PLAN-ja.md の S4）。consh/test の step6 に case12 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
