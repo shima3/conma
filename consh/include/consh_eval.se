@@ -340,9 +340,17 @@
 ;; 参照は内側の層から順に探し、なければ base を探す
 
 (define Env_new ,(base layers)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(version)
+  Env_make base layers version)
+
+;; 最適化版：環境変数の Dict。version は、同じ base を持つ環境変数で共有する、ARG_MAX を export した回数の Ref
+;; （Arg_max が覚えた結果を使えるかを見る）。Env_push は共有し、Env_new と Env_copy は新しく作る
+(define Env_make ,(base layers version)
   __Dict_new__ ,(env)
   __Dict_put__ env "base" base ,()
   __Dict_put__ env "layers" layers ,()
+  __Dict_put__ env "version" version ,()
   __NULL__ env)
 
 ;; layer を一番内側に加えた環境変数
@@ -350,7 +358,8 @@
   __Dict_lookup_or__ env "base" __print_exit_error__ ,(base)
   __Dict_lookup_or__ env "layers" __print_exit_error__ ,(layers)
   __LList_cons__ layer layers ,(layers)
-  Env_new base layers)
+  __Dict_lookup_or__ env "version" __print_exit_error__ ,(version)
+  Env_make base layers version)
 
 (define Env_lookup ,(env name onMissing)
   __Dict_lookup_or__ env "base" __print_exit_error__ ,(base)
@@ -370,6 +379,15 @@
   __Dict_lookup_or__ env "base" __print_exit_error__ ,(base)
   __Dict_lookup_or__ env "layers" __print_exit_error__ ,(layers)
   __Dict_put__ base name value ,()
+  ;; 最適化版：ARG_MAX なら、同じ base を持つ環境変数で Arg_max が覚えた結果を使わないように、版を上げる
+  __String_equal__ name "ARG_MAX" ,(isArgMax)
+  __if__ isArgMax
+    (,()
+      __Dict_lookup_or__ env "version" __print_exit_error__ ,(version)
+      __Ref_get__ version ,(n)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __Number_add__ n one ,(n)
+      __Ref_set__ version n) ,()
   Env_export_layers layers name value)
 
 (define Env_export_layers ,(layers name value)
@@ -4215,8 +4233,25 @@
 
 ;; 上限（Number）
 (define Arg_max ,(sh pos)
-  __Cont_get__ ,(return)
   __Dict_lookup_or__ sh "env" __print_exit_error__ ,(env)
+  __Dict_lookup_or__ env "version" __print_exit_error__ ,(versionRef)
+  __Ref_get__ versionRef ,(version)
+  __Dict_lookup_or__ env "argMaxAt" (,(key) __NULL__ __NULL__) ,(at)
+  __is_null__ at ,(none)
+  __if_then_else__ none
+    (,() __NULL__ __FALSE__)
+    (,() __Number_subtract__ version at ,(d) __Number_is_zero__ d) ,(fresh)
+  __if_then_else__ fresh
+    (,() __Dict_lookup_or__ env "argMax" __print_exit_error__)
+    (,()
+      Arg_max_check sh pos env ,(n)
+      __Dict_put__ env "argMax" n ,()
+      __Dict_put__ env "argMaxAt" version ,()
+      __NULL__ n))
+
+;; 環境変数 env の ARG_MAX の値（なければ OS の上限）。負でない整数でなければエラー
+(define Arg_max_check ,(sh pos env)
+  __Cont_get__ ,(return)
   Env_lookup env "ARG_MAX" (,(key) __NULL__ __NULL__) ,(value)
   __is_null__ value ,(condition)
   __if__ condition (,() Arg_max_os sh pos ,(n) return n) ,()

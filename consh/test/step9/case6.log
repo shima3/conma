@@ -1,0 +1,6 @@
+try1-1
+try1-2
+try2-1
+try2-2
+consh: case6.sh:2:37: the arguments of an external command exceed ARG_MAX (18 bytes)
+exit: 1
