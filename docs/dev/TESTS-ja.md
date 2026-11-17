@@ -54,40 +54,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m4/transpiled-inplace
-
-* 変換した VM：`__Ref_set__` を直接呼び（待つ VProc をその場で起こす）、評価中の LazyList の `__LazyList_publish__` を融合した鎖の中で行うようにした（vm/src/transpiled.rs、vm/src/sched.rs の `wake_changed`、vm/conma2rust/conma2rust.py）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/transpiled の case5（m1/static-cont の case3、m4/array の case4 の次）。
-* 流したもの：test/ と consh/test（最適化版）の変換版の VM（bench/build.sh で作り直した）、test/transpiled の Python 版と Rust 版の VM。流していないもの：Rust 版と wasm 版の VM の test/ と consh/test（Rust 版の VM は `wake_changed` を足しただけで、使うのは変換したコードだけ）、consh/js/test、consh/sjs/test。
-
-### m4/switch-counts
-
-* `CONMA_TRANSPILED_COUNTS` に、VProc が待った回数（`wait`）と、ほかの VProc に替わった回数（`switch`）を足した（vm/src/sched.rs、vm/src/transpiled.rs、vm/tools/transpiled_counts.py）。変数がなければ数えない。vm/src が変わったので、VM を作り直してから流す。
-* 流したもの：test/ の Rust 版の VM、test/transpiled の変換版の VM（bench/build.sh で作り直した）。流していないもの：ほかの組み合わせ。
-
-### m4/dict-num-hash
-
-* Rust 版の VM の Dict の索引で、数のキーのハッシュが同じ桶に集まっていたのを直した（vm/src/value.rs の `FxHasher::finish`）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
-* 流したもの：test/ と consh/test（最適化版）の Rust 版の VM、step47、fast12、step20、step21 の wasm 版の VM。流していないもの：変換版の VM、ほかの組み合わせ。
-
-### m4/array
-
-* 拡張 ConMa の機能 `"array"`（配列の 6 つのプリミティブ。docs/dev/ARRAY-PLAN-ja.md の A1〜A4）。vm/src と vm/frontend.module.se が変わったので、Rust 版の VM、wasm 版の VM と consh/js/web（`consh/js/build.sh`）、変換版の VM（`bench/build.sh`）を作り直してから流す。
-* 新しいテスト：test/step47、test/fast12、test/transpiled の case4（m1/static-cont が先に case3 を足したので、4 にした）。fast12 は、配列の `__type_name__` を VM ごとに確かめる（Python 版の VM は `"Dict"`、ほかは `"Array"`）。
-* 流したもの：step47、fast12、fast11、step45、frontend、transpiled（Python 版と Rust 版の VM）、step47 と fast12（wasm 版）、transpiled、step47、fast12、fast11、step45（作り直した変換版の VM）、selfhost1〜7 と module1〜2（Rust 版の VM）。流していないもの：test/ の残り、consh/test、consh/js/test、consh/sjs/test。
-
-### m1/static-cont
-
-* vm/conma2rust/conma2rust.py と vm/src/transpiled.rs を変えた：変換したコードの `__Cont_get__ ,(return)` の継続を作らず、`return v` を `fused_return` にする（`STATIC_CONT`。値として使う所でだけ `make_cont_on` で作る。CFrame を作る関数が Machine を受け取るようにした）。test/transpiled に case3 を足した。
-* 流したもの：`bench/build.sh` で作り直した変換した VM で、test/ の全部（`CONMA_VM=transpiled test/run_all.sh -j 8`）、consh/test の最適化版（`CONMA_VM=transpiled`）、test/transpiled（Rust VM と変換した VM）。case3.log は Rust VM と Python VM で同じ出力だった。
-* wasm 版の VM も vm/src/transpiled.rs を含むので、`vm/wasm/build.sh` で作れることと、test/transpiled が wasm 版の VM で通ることを確かめた。
-* 流していないもの：wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版。変換した VM は `bench/build.sh` で作り直してから流す。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-17 | a8c7ab1 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-inplace、m4/switch-counts、m4/dict-num-hash、m4/array、m1/static-cont の、流していなかった組み合わせ（Rust 版、wasm 版、作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/array-measure、m4/array-plan も含む |
 | 2026-11-17 | 361a1bd | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/lazy-fast-path の、流していなかった wasm 版と変換した VM（`bench/build.sh` で作り直した）の consh/test、consh/js/test、consh/sjs/test も通った。m1/bench-recursion も含む |
 | 2026-11-17 | 6066d8b | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/consh-heavy の、流していなかった wasm 版と変換した VM（`bench/build.sh` で作り直した）の consh/test、consh/js/test、consh/sjs/test も通った。P1（0c9d687）も含む |
 | 2026-11-16 | 5d2c759 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。新しい consh/sjs/test の step2 の case8 も通った。申し送りの alpha（f90117c から 7c9911a まで）と m4/sjs-charat を確かめた |
