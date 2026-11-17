@@ -1,0 +1,9 @@
+a=e1 b=p1
+my echo: a=my echo: e2 b=my printf: p2
+one=1 more=2 3
+x=1 y=2 status=0
+o=out hi e=err hi
+status=3 le=to-err
+r=1 2
+consh: case13.sh:26:1: expected 2 arguments, got 1
+exit: 1
