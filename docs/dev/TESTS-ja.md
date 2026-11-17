@@ -89,6 +89,11 @@ consh/sjs/test/run_all.sh
 * ConSh の最適化版で、変数を読む道（`Sh_lookup`、`Var_fields`、`Var_def_value`、`Glob_has_meta`）を軽くした（consh/include/consh_eval.se、consh_expand.se、consh_glob.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM、consh/js/test（wasm 版の VM）。流していないもの：変換版の VM、wasm 版の VM の consh/test。
 
+### m1/jsstmt-cont
+
+* consh/include/consh_jsstmt.se の `Js_force` と `Sjsb_to_shell` を、`__Cont_get__` の `return` で抜けず、`__if_then_else__` を入れ子にする形にした（1e8c4d4 で文のコードを作る 11 個の関数にしたのと同じ）。どちらも、呼ぶと JS や SJS の関数を呼ぶ関数値を返すので、その関数値が、作った所の継続と、そこから届く値（for 文が読んでいる `$( )` の値など）を持たないようにするため。ConSh のモジュール（最適化版と参照版）が変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。値が残らなくなったことは、確かめていない（GC がたどる値の数は数えていない）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
