@@ -656,7 +656,7 @@
             (,()
               __String_equal__ tag "for" ,(condition)
               __if_then_else__ condition
-                (,() __NULL__ (,(sh) Eval_for sh pos children))
+                (,() For_jumps children ,(jumps) __NULL__ (,(sh) Eval_for sh pos children jumps))
                 (,()
                   __String_equal__ tag "break" ,(isBreak)
                   __String_equal__ tag "continue" ,(isContinue)
@@ -2602,8 +2602,9 @@
 
 ;; for 文を実行する。(for "名前" (in 語 ...) script [redirs])。
 ;; 語をすべて関数の引数と同じ規則で展開してから、値ごとに本体を実行する。LazyList の値は1階層だけ開き、
-;; 要素を1つずつ取り出す。ループ変数は局所変数で、中の変数定義と関数定義は外に反映する。終わった後の $? は 0
-(define Eval_for ,(sh pos children)
+;; 要素を1つずつ取り出す。ループ変数は局所変数で、中の変数定義と関数定義は外に反映する。終わった後の $? は 0。
+;; jumps は、本体に break か continue があるか（For_jumps。変換のときに調べる）
+(define Eval_for ,(sh pos children jumps)
   __LList_uncons__ __print_exit_error__ children ,(name rest)
   __LList_uncons__ __print_exit_error__ rest ,(in rest)
   __LList_uncons__ __print_exit_error__ rest ,(body rest)
@@ -2617,14 +2618,50 @@
   Node_split in ,(itag ipos words)
   Node_split body ,(btag bpos lines)
   Eval_redirected sh pos redirs (,(inner)
-    For_start inner name words lines ,()
+    For_start inner name words lines jumps ,()
     Sh_set_status inner "0"))
+
+;; 最適化版：for 文の本体（(for 名前 (in ...) script ...) の script）のどこかに break か continue があるか。
+;; 内側のループと $( ) の中も見る（break 名前 は外側のループも指す）。関数の定義の中は見ない（関数の中から、
+;; 外のループは見えない）。なければ、ループの文脈と、繰り返しごとの continue の継続とループの記録を作らない
+(define For_jumps ,(children)
+  __LList_uncons__ __print_exit_error__ children ,(name rest)
+  __LList_uncons__ __print_exit_error__ rest ,(in rest)
+  __LList_uncons__ __print_exit_error__ rest ,(body rest)
+  Ast_has_jump body)
+
+;; 節 node の中に break か continue の節があるか（関数の定義の中を除く）。節でない値（文字列、位置、空）は偽
+(define Ast_has_jump ,(node)
+  __Cont_get__ ,(return)
+  __type_name__ node ,(type)
+  __String_equal__ type "LList" ,(isList)
+  __unless__ isList (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ node ,(tag rest)
+  __type_name__ tag ,(tagType)
+  __String_equal__ tagType "String" ,(tagged)
+  __unless__ tagged (,() Ast_any_jump node ,(found) return found) ,()
+  __String_equal__ tag "break" ,(isBreak)
+  __String_equal__ tag "continue" ,(isContinue)
+  __or__ isBreak isContinue ,(isJump)
+  __if__ isJump (,() return __TRUE__) ,()
+  __String_equal__ tag "function" ,(isFunction)
+  __if__ isFunction (,() return __FALSE__) ,()
+  Ast_any_jump rest)
+
+(define Ast_any_jump ,(nodes)
+  __Cont_get__ ,(return)
+  __is_null__ nodes ,(end)
+  __if__ end (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ nodes ,(node rest)
+  Ast_has_jump node ,(found)
+  __if__ found (,() return __TRUE__) ,()
+  Ast_any_jump rest)
 
 ;; 語を展開して回す。展開した値は For_run に末尾で渡し、for 文の後の継続（Eval_for）には持たせない。
 ;; 持たせると、読み終えた LazyList の要素が、ループの終わりまで残る（GC が毎回たどる）
-(define For_start ,(sh name words lines)
+(define For_start ,(sh name words lines jumps)
   For_values sh words ,(values)
-  For_run sh name values lines)
+  For_run sh name values lines jumps)
 
 ;; for 文の語を展開した値の LList
 (define For_values ,(sh words)
@@ -2636,9 +2673,15 @@
   For_values sh rest ,(more)
   __LList_append__ values more)
 
+;; 最適化版：本体に break も continue もなければ（jumps が偽）、ループの文脈を作らず、sh のまま回す（break は null）
+(define For_run ,(sh name values lines jumps)
+  __if_then_else__ jumps
+    (,() For_run_jumps sh name values lines)
+    (,() For_each sh name values lines __NULL__))
+
 ;; break はこの関数から抜ける。本体は、ループの文脈の写し inner で実行する。写すのはループごとに1回で、
 ;; 繰り返しごとには、inner の "loops" をその回の continue の継続に置き換える（ループ変数と局所変数の Dict は sh と同じ）
-(define For_run ,(sh name values lines)
+(define For_run_jumps ,(sh name values lines)
   __Cont_get__ ,(break)
   __Dict_lookup_or__ sh "loops" __print_exit_error__ ,(outer)
   __Dict_copy__ sh ,(inner)
@@ -2666,12 +2709,19 @@
   For_item sh name item lines break ,()
   For_lazy sh name rest lines break more)
 
-;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける。
-;; sh は For_run が作ったループの文脈で、"outerLoops" は外側のループの LList
+;; 1回分。ループ変数に item を設定して本体を実行する。break が null（本体に break も continue もない）なら、
+;; そのまま実行する（最適化版）
 (define For_item ,(sh name item lines break)
-  __Cont_get__ ,(continue)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_put__ vars name item ,()
+  __is_null__ break ,(plain)
+  __if_then_else__ plain
+    (,() Eval_lines sh lines)
+    (,() For_item_jumps sh name lines break))
+
+;; continue はこの関数から抜ける。sh は For_run_jumps が作ったループの文脈で、"outerLoops" は外側のループの LList
+(define For_item_jumps ,(sh name lines break)
+  __Cont_get__ ,(continue)
   Loop_make name break continue ,(loop)
   __Dict_lookup_or__ sh "outerLoops" __print_exit_error__ ,(loops)
   __LList_cons__ loop loops ,(loops)
