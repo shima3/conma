@@ -535,8 +535,9 @@
 ;; 改行はそこで除くので、Line_chomp は呼ばない。Stream は呼び出し側が閉じるので、ここでは閉じない（close が偽）
 (define Target_pump ,(sh target stream)
   __Ref_new__ __FALSE__ ,(never)
+  __Ref_new__ __NULL__ ,(front)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  Subst_lines_from stream never __FALSE__ "" zero "" ,(lines)
+  Subst_lines_from stream never front __FALSE__ "" zero "" ,(lines)
   Target_pump_lines sh target lines)
 
 (define Target_pump_lines ,(sh target lines)
@@ -602,17 +603,20 @@
 
 ;; 文のコードを順に実行し、それぞれの後で $( ) を待つ（Subst_settle）クロージャ
 (define Code_chain ,(codes)
-  __Cont_get__ ,(return)
   __is_null__ codes ,(condition)
-  __if__ condition (,() return (,(sh) __nop__)) ,()
-  __LList_uncons__ __print_exit_error__ codes ,(code rest)
-  __is_null__ rest ,(last)
-  __if__ last (,() return (,(sh) code sh ,() Subst_settle sh)) ,()
-  Code_chain rest ,(next)
-  __NULL__ (,(sh)
-    code sh ,()
-    Subst_settle sh ,()
-    next sh))
+  __if_then_else__ condition
+    (,() __NULL__ (,(sh) __nop__))
+    (,()
+      __LList_uncons__ __print_exit_error__ codes ,(code rest)
+      __is_null__ rest ,(last)
+      __if_then_else__ last
+        (,() __NULL__ (,(sh) code sh ,() Subst_settle sh))
+        (,()
+          Code_chain rest ,(next)
+          __NULL__ (,(sh)
+            code sh ,()
+            Subst_settle sh ,()
+            next sh))))
 
 (define Eval_stmt ,(sh stmt)
   Eval_stmt_run sh stmt ,()
@@ -632,68 +636,90 @@
 
 ;; 文の節を、文脈を受け取って実行するクロージャにする
 (define Stmt_compile ,(stmt)
-  __Cont_get__ ,(return)
   Node_split stmt ,(tag pos children)
   __String_equal__ tag "cmd" ,(condition)
-  __if__ condition
+  __if_then_else__ condition
     (,()
-      Cmd_parts children ,(defs words redirs)
-      Cmd_compile pos defs words redirs ,(code)
-      return code) ,()
-  __String_equal__ tag "assign" ,(condition)
-  __if__ condition
+        Cmd_parts children ,(defs words redirs)
+        Cmd_compile pos defs words redirs ,(code)
+        __NULL__ code)
     (,()
-      Assign_compile children ,(code)
-      return code) ,()
-  __String_equal__ tag "if" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_if sh pos children)) ,()
-  __String_equal__ tag "for" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_for sh pos children)) ,()
-  __String_equal__ tag "break" ,(isBreak)
-  __String_equal__ tag "continue" ,(isContinue)
-  __or__ isBreak isContinue ,(isJump)
-  __if__ isJump (,() return (,(sh) Eval_jump sh pos tag children)) ,()
-  __String_equal__ tag "export" ,(condition)
-  __if__ condition
-    (,() return (,(sh)
-      Eval_export sh children ,()
-      Sh_set_status sh "0")) ,()
-  __String_equal__ tag "function" ,(condition)
-  __if__ condition
-    (,() return (,(sh)
-      Func_define sh children ,()
-      Sh_set_status sh "0")) ,()
-  __String_equal__ tag "return" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_return sh pos children)) ,()
-  __String_equal__ tag "pipe" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_pipe sh pos children)) ,()
-  __String_equal__ tag "reset" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_reset sh pos children)) ,()
-  __String_equal__ tag "shift" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_shift sh pos children)) ,()
-  __String_equal__ tag "arith" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_arith sh pos children __FALSE__)) ,()
-  ;; 対話モードのコマンド行の (( ))：値も表示する（consh_repl.se の Repl_show_arith）
-  __String_equal__ tag "arithshow" ,(condition)
-  __if__ condition (,() return (,(sh) Eval_arith sh pos children __TRUE__)) ,()
-  __NULL__ (,(sh) Eval_list sh children))
+      __String_equal__ tag "assign" ,(condition)
+      __if_then_else__ condition
+        (,()
+            Assign_compile children ,(code)
+            __NULL__ code)
+        (,()
+          __String_equal__ tag "if" ,(condition)
+          __if_then_else__ condition
+            (,() __NULL__ (,(sh) Eval_if sh pos children))
+            (,()
+              __String_equal__ tag "for" ,(condition)
+              __if_then_else__ condition
+                (,() __NULL__ (,(sh) Eval_for sh pos children))
+                (,()
+                  __String_equal__ tag "break" ,(isBreak)
+                  __String_equal__ tag "continue" ,(isContinue)
+                  __or__ isBreak isContinue ,(isJump)
+                  __if_then_else__ isJump
+                    (,() __NULL__ (,(sh) Eval_jump sh pos tag children))
+                    (,()
+                      __String_equal__ tag "export" ,(condition)
+                      __if_then_else__ condition
+                        (,() __NULL__ (,(sh)
+                            Eval_export sh children ,()
+                            Sh_set_status sh "0"))
+                        (,()
+                          __String_equal__ tag "function" ,(condition)
+                          __if_then_else__ condition
+                            (,() __NULL__ (,(sh)
+                                Func_define sh children ,()
+                                Sh_set_status sh "0"))
+                            (,()
+                              __String_equal__ tag "return" ,(condition)
+                              __if_then_else__ condition
+                                (,() __NULL__ (,(sh) Eval_return sh pos children))
+                                (,()
+                                  __String_equal__ tag "pipe" ,(condition)
+                                  __if_then_else__ condition
+                                    (,() __NULL__ (,(sh) Eval_pipe sh pos children))
+                                    (,()
+                                      __String_equal__ tag "reset" ,(condition)
+                                      __if_then_else__ condition
+                                        (,() __NULL__ (,(sh) Eval_reset sh pos children))
+                                        (,()
+                                          __String_equal__ tag "shift" ,(condition)
+                                          __if_then_else__ condition
+                                            (,() __NULL__ (,(sh) Eval_shift sh pos children))
+                                            (,()
+                                              __String_equal__ tag "arith" ,(condition)
+                                              __if_then_else__ condition
+                                                (,() __NULL__ (,(sh) Eval_arith sh pos children __FALSE__))
+                                                (,()
+                                                  ;; 対話モードのコマンド行の (( ))：値も表示する（consh_repl.se の Repl_show_arith）
+                                                  __String_equal__ tag "arithshow" ,(condition)
+                                                  __if_then_else__ condition
+                                                    (,() __NULL__ (,(sh) Eval_arith sh pos children __TRUE__))
+                                                    (,()
+                                                      __NULL__ (,(sh) Eval_list sh children)))))))))))))))
 
 ;; 文「変数定義 {スペース+ 変数定義}」。左から順に局所変数に設定する。右辺がなければ空文字列。
 ;; 右辺は変換のときに値のコード（Def_value_code）にし、文のコードは、それを順に実行して設定するクロージャにする
 (define Assign_compile ,(defs)
-  __Cont_get__ ,(return)
   __is_null__ defs ,(condition)
-  __if__ condition (,() return (,(sh) Sh_set_status sh "0")) ,()
-  __LList_uncons__ __print_exit_error__ defs ,(def rest)
-  Node_split def ,(tag pos children)
-  __LList_uncons__ __print_exit_error__ children ,(name values)
-  Def_value_code values ,(valueCode)
-  Assign_compile rest ,(next)
-  __NULL__ (,(sh)
-    valueCode sh ,(value)
-    __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
-    __Dict_put__ vars name value ,()
-    next sh))
+  __if_then_else__ condition
+    (,() __NULL__ (,(sh) Sh_set_status sh "0"))
+    (,()
+      __LList_uncons__ __print_exit_error__ defs ,(def rest)
+      Node_split def ,(tag pos children)
+      __LList_uncons__ __print_exit_error__ children ,(name values)
+      Def_value_code values ,(valueCode)
+      Assign_compile rest ,(next)
+      __NULL__ (,(sh)
+        valueCode sh ,(value)
+        __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
+        __Dict_put__ vars name value ,()
+        next sh)))
 
 ;; 文「export 項目 ...」。環境変数に設定し、局所変数は変えない
 (define Eval_export ,(sh items)
@@ -975,15 +1001,16 @@
 ;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす。どちらもなく、先頭の語が決まっていれば、
 ;; Eval_cmd_plain にする。変数リストへのリダイレクトの記録の、毎回同じ部分は作っておく（Redirs_templates）
 (define Cmd_compile ,(pos defs words redirs)
-  __Cont_get__ ,(return)
   Cmd_head_code words ,(headCode resolveCode fixed)
   __is_null__ redirs ,(noRedirs)
   __is_null__ defs ,(noDefs)
   __and__ noRedirs noDefs ,(plain)
   __and__ plain fixed ,(plain)
-  __if__ plain (,() return (,(sh) Eval_cmd_plain sh pos headCode resolveCode)) ,()
-  Redirs_templates redirs ,(templates)
-  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed))
+  __if_then_else__ plain
+    (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode))
+    (,()
+      Redirs_templates redirs ,(templates)
+      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed)))
 
 ;; リダイレクトの LList のうち、変数リストへのリダイレクト（> (a b . rest) など）ごとの記録のひな形（Capture_template）の LList。
 ;; Eval_redirs_from は、変数リストへのリダイレクトに出会うたびに、先頭から1つずつ使う
@@ -1010,34 +1037,38 @@
 ;; 先頭の語がリテラルで、glob の記号を含まず、空でなければ、展開した結果を作っておいて返し、コマンドは、
 ;; 関数だけを探す（関数は後から定義できるので。builtin、command と組み込みコマンドは、名前で決まる）
 (define Cmd_head_code ,(words)
-  __Cont_get__ ,(return)
   __is_null__ words ,(none)
-  __if__ none (,() return (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve __FALSE__) ,()
-  __LList_uncons__ __print_exit_error__ words ,(word rest)
-  Literal_fields word ,(fields done)
-  __is_null__ fields ,(empty)
-  __not__ empty ,(some)
-  __and__ done some ,(fixed)
-  __unless__ fixed (,() return (,(sh limit) Cmd_head sh words limit) Cmd_resolve __FALSE__) ,()
-  __LList_uncons__ __print_exit_error__ fields ,(name more)
-  Cmd_resolve_code name ,(resolveCode)
-  __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode __TRUE__)
+  __if_then_else__ none
+    (,() __NULL__ (,(sh limit) __NULL__ __NULL__ __NULL__ __NULL__) Cmd_resolve __FALSE__)
+    (,()
+      __LList_uncons__ __print_exit_error__ words ,(word rest)
+      Literal_fields word ,(fields done)
+      __is_null__ fields ,(empty)
+      __not__ empty ,(some)
+      __and__ done some ,(fixed)
+      __if_then_else__ fixed
+        (,()
+          __LList_uncons__ __print_exit_error__ fields ,(name more)
+          Cmd_resolve_code name ,(resolveCode)
+          __NULL__ (,(sh limit) __NULL__ name more rest) resolveCode __TRUE__)
+        (,() __NULL__ (,(sh limit) Cmd_head sh words limit) Cmd_resolve __FALSE__)))
 
 ;; String の名前 name のコマンドを決めるコード（Cmd_resolve と同じ）
 (define Cmd_resolve_code ,(name)
-  __Cont_get__ ,(return)
   __String_equal__ name "builtin" ,(isBuiltin)
   __String_equal__ name "command" ,(isCommand)
   __or__ isBuiltin isCommand ,(special)
-  __if__ special (,() return (,(sh name) __NULL__ __NULL__ __NULL__ __FALSE__)) ,()
-  Builtin_lookup name ,(builtin)
-  __is_null__ builtin ,(external)
-  __NULL__ (,(sh name)
-    Func_lookup sh name ,(fn)
-    __is_null__ fn ,(noFunc)
-    __if_then_else__ noFunc
-      (,() __NULL__ __NULL__ builtin external)
-      (,() __NULL__ fn __NULL__ __FALSE__)))
+  __if_then_else__ special
+    (,() __NULL__ (,(sh name) __NULL__ __NULL__ __NULL__ __FALSE__))
+    (,()
+      Builtin_lookup name ,(builtin)
+      __is_null__ builtin ,(external)
+      __NULL__ (,(sh name)
+        Func_lookup sh name ,(fn)
+        __is_null__ fn ,(noFunc)
+        __if_then_else__ noFunc
+          (,() __NULL__ __NULL__ builtin external)
+          (,() __NULL__ fn __NULL__ __FALSE__))))
 
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
@@ -1560,8 +1591,9 @@
 ;; 読む。Stream は、それを開いた側が閉じるので、ここでは閉じない（close が偽）。cancelled は真にならない Ref
 (define Input_stream ,(sh stream)
   __Ref_new__ __FALSE__ ,(never)
+  __Ref_new__ __NULL__ ,(front)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  Subst_lines_from stream never __FALSE__ "" zero "" ,(list)
+  Subst_lines_from stream never front __FALSE__ "" zero "" ,(list)
   Input_new sh list ,(input)
   __Dict_put__ input "stream" stream ,()
   __Ref_new__ __FALSE__ ,(touched)
@@ -1923,7 +1955,8 @@
 
 ;; 外部コマンド1つだけの $( )。チャネルを通さず、外部コマンドの標準出力を OS のパイプにし、
 ;; 値は、その読む側から作った行（改行を除く）の LazyList にする（パイプの外部コマンドとつなぐのと同じ）。
-;; 記録には、チャネルの代わりに "value"（値）、"reader"（読む側）、"cancelled"（Subst_finish が読むのをやめたか）を持つ
+;; 記録には、チャネルの代わりに "value"（値。先頭がそろった（"full"）後は除く）、"front"（まだ読んでいない所の Ref。
+;; Subst_lines_from）、"reader"（読む側）、"cancelled"（Subst_finish が読むのをやめたか）を持つ
 (define Eval_subst_os ,(sh lines)
   __OS_pipe__ ,(reader writer)
   __Ref_new__ "running" ,(state)
@@ -1939,8 +1972,10 @@
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
   Subst_watch vproc child ,()
   __Ref_new__ __FALSE__ ,(cancelled)
+  __Ref_new__ __NULL__ ,(front)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  Subst_lines_from reader cancelled __TRUE__ "" zero "" ,(value)
+  Subst_lines_from reader cancelled front __TRUE__ "" zero "" ,(value)
+  __Ref_set__ front value ,()
   __Dict_new__ ,(record)
   __Dict_put__ record "vproc" vproc ,()
   __Dict_put__ record "child" child ,()
@@ -1948,6 +1983,7 @@
   __Dict_put__ record "cmdNo" cmdNo ,()
   __Dict_put__ record "state" state ,()
   __Dict_put__ record "value" value ,()
+  __Dict_put__ record "front" front ,()
   __Dict_put__ record "reader" reader ,()
   __Dict_put__ record "cancelled" cancelled ,()
   __Dict_lookup_or__ global "substs" __print_exit_error__ ,(substs)
@@ -1979,15 +2015,16 @@
 ;; __String_find__ と __String_substring__ は、呼ぶたびに文字列全体の文字数を数える（位置は文字で数える）ので、
 ;; 読んだ塊は、まず Subst_lines_chunk 文字ずつの断片に切り（more は、まだ切っていない残り）、断片の中で行を探す。
 ;; 要素ごとに、参照版の Subst_lines と同じく、まず cancelled を見て、真ならそれ以上読まずに終える。
-;; 終わりまで読んだら、参照版と同じく、最後の要素の次をたどったときにパイプの読む側を閉じる
-(define Subst_lines_from ,(reader cancelled close buf start more)
-  __LazyList_new__ (,() Subst_lines_next reader cancelled close buf start more __NULL__))
+;; 終わりまで読んだら、参照版と同じく、最後の要素の次をたどったときにパイプの読む側を閉じる。
+;; front は Ref で、行を 1 つ作るたびに、その次（まだ読んでいない所）の LazyList を置く
+(define Subst_lines_from ,(reader cancelled front close buf start more)
+  __LazyList_new__ (,() Subst_lines_next reader cancelled front close buf start more __NULL__))
 
 ;; 断片の長さ（文字数）
 (define Subst_lines_chunk ,() __Number_fromString__ __print_exit_error__ "1024")
 
 ;; buf の start から改行を探す。pieces は、前の断片から続く行の途中（逆順の LList。util.se の __Lines_join__）
-(define Subst_lines_next ,(reader cancelled close buf start more pieces)
+(define Subst_lines_next ,(reader cancelled front close buf start more pieces)
   __Ref_get__ cancelled ,(stop)
   __if_then_else__ stop
     (,() __LazyList_empty__)
@@ -1999,22 +2036,24 @@
           __String_length__ buf ,(len)
           __String_substring__ __print_exit_error__ buf start len ,(piece)
           __Lines_add_piece__ pieces piece ,(pieces)
-          Subst_lines_cut reader cancelled close more pieces)
+          Subst_lines_cut reader cancelled front close more pieces)
         (,()
           __String_substring__ __print_exit_error__ buf start pos ,(head)
           __Lines_join__ pieces head ,(line)
           __String_strip_suffix__ line "\r" ,(line)
           __Number_fromString__ __print_exit_error__ "1" ,(one)
           __Number_add__ pos one ,(next)
-          Subst_lines_from reader cancelled close buf next more ,(tail)
+          Subst_lines_from reader cancelled front close buf next more ,(tail)
+          ;; 最適化版：作った最後の所を front に置く（Subst_settle_os が、値の先頭の代わりに使う）
+          __Ref_set__ front tail ,()
           __LazyList_cons__ line tail)))
 
 ;; 次の断片を more から切り出して探す。more がなければ塊を読み足す
-(define Subst_lines_cut ,(reader cancelled close more pieces)
+(define Subst_lines_cut ,(reader cancelled front close more pieces)
   __String_length__ more ,(len)
   __Number_is_zero__ len ,(empty)
   __if_then_else__ empty
-    (,() Subst_lines_read reader cancelled close pieces)
+    (,() Subst_lines_read reader cancelled front close pieces)
     (,()
       Subst_lines_chunk ,(chunk)
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -2024,11 +2063,11 @@
         (,()
           __String_substring__ __print_exit_error__ more zero chunk ,(buf)
           __String_substring__ __print_exit_error__ more chunk len ,(rest)
-          Subst_lines_next reader cancelled close buf zero rest pieces)
-        (,() Subst_lines_next reader cancelled close more zero "" pieces)))
+          Subst_lines_next reader cancelled front close buf zero rest pieces)
+        (,() Subst_lines_next reader cancelled front close more zero "" pieces)))
 
 ;; 塊を読み足して続きを探す。EOF なら、行の途中があれば最後の要素にし、その次で読む側を閉じる
-(define Subst_lines_read ,(reader cancelled close pieces)
+(define Subst_lines_read ,(reader cancelled front close pieces)
   __OS_read__ __print_exit_error__ reader ,(data)
   __is_null__ data ,(eof)
   __if_then_else__ eof
@@ -2049,8 +2088,8 @@
       __if_then_else__ nothing
         (,()
           __OS_wait_readable__ __print_exit_error__ reader ,()
-          Subst_lines_read reader cancelled close pieces)
-        (,() Subst_lines_cut reader cancelled close data pieces)))
+          Subst_lines_read reader cancelled front close pieces)
+        (,() Subst_lines_cut reader cancelled front close data pieces)))
 
 ;; 終わりまで読んだ：close なら読む側を閉じ（参照版の Subst_lines と同じ）、空の LazyList を返す
 (define Subst_lines_end ,(reader close)
@@ -2111,9 +2150,9 @@
 ;; 状態が "running" でなくなるまで待ち、その状態（"blocked" か "done"）を返す
 (define Subst_settle_one ,(record)
   __Cont_get__ ,(return)
-  __Dict_lookup_or__ record "value" (,(key) __NULL__ __NULL__) ,(value)
-  __is_null__ value ,(viaChan)
-  __unless__ viaChan (,() Subst_settle_os record value ,(state) return state) ,()
+  __Dict_lookup_or__ record "front" (,(key) __NULL__ __NULL__) ,(front)
+  __is_null__ front ,(viaChan)
+  __unless__ viaChan (,() Subst_settle_os record front ,(state) return state) ,()
   __Dict_lookup_or__ record "state" __print_exit_error__ ,(stateRef)
   __Ref_get__ stateRef ,(state)
   __String_equal__ state "running" ,(condition)
@@ -2125,19 +2164,23 @@
 ;; 残りの出力（OS のパイプに入る分だけ）を読み終えて "done" を返す。そうでなければ、値の先頭から
 ;; Pipe_cap 個の要素を読む。その前に出力が終われば、外部コマンドが終わるのを待って "done"、
 ;; そうでなければ、書き手が待つとみなして "blocked" を返す。読んだ要素は値の LazyList に残る
-(define Subst_settle_os ,(record value)
+(define Subst_settle_os ,(record front)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ record "state" __print_exit_error__ ,(stateRef)
   __Ref_get__ stateRef ,(state)
   __String_equal__ state "done" ,(done)
-  __if__ done (,() Lazy_drain value ,() return "done") ,()
+  ;; 最適化版：残りは、値の先頭からでなく、まだ読んでいない所（front）から読み終える
+  __if__ done (,() __Ref_get__ front ,(rest) Lazy_drain rest ,() return "done") ,()
   ;; 最適化版：値の先頭に Pipe_cap 個そろったことが一度分かれば（"full"）、たどり直さない。値の LazyList の
   ;; 先頭は変わらず、評価した要素は残るので、Lazy_ahead は何度呼んでも同じ偽になる
   __Dict_lookup_or__ record "full" (,(key) __NULL__ __FALSE__) ,(full)
   __if__ full (,() return "blocked") ,()
   Pipe_cap ,(cap)
+  __Dict_lookup_or__ record "value" __print_exit_error__ ,(value)
   Lazy_ahead value cap ,(ended)
-  __unless__ ended (,() __Dict_put__ record "full" __TRUE__ ,() return "blocked") ,()
+  ;; 最適化版：先頭がそろったら、記録から値の先頭を除く。持ち続けると、読み終えた要素が、$( ) が終わるまで
+  ;; 残り、GC が毎回たどる
+  __unless__ ended (,() __Dict_put__ record "full" __TRUE__ ,() __Dict_remove__ record "value" ,() return "blocked") ,()
   Subst_wait_done stateRef)
 
 (define Subst_wait_done ,(stateRef)
@@ -2574,9 +2617,14 @@
   Node_split in ,(itag ipos words)
   Node_split body ,(btag bpos lines)
   Eval_redirected sh pos redirs (,(inner)
-    For_values inner words ,(values)
-    For_run inner name values lines ,()
+    For_start inner name words lines ,()
     Sh_set_status inner "0"))
+
+;; 語を展開して回す。展開した値は For_run に末尾で渡し、for 文の後の継続（Eval_for）には持たせない。
+;; 持たせると、読み終えた LazyList の要素が、ループの終わりまで残る（GC が毎回たどる）
+(define For_start ,(sh name words lines)
+  For_values sh words ,(values)
+  For_run sh name values lines)
 
 ;; for 文の語を展開した値の LList
 (define For_values ,(sh words)
@@ -2605,17 +2653,18 @@
   __LList_uncons__ __print_exit_error__ values ,(value rest)
   __type_name__ value ,(type)
   __String_equal__ type "String" ,(condition)
+  ;; LazyList は For_lazy に末尾で渡し、残りの値 rest も渡す。ここで戻りを待つと、その継続が
+  ;; LazyList の先頭を持ち、読み終えた要素がループの終わりまで残る
   __if_then_else__ condition
-    (,() For_item sh name value lines break)
-    (,() For_lazy sh name value lines break) ,()
-  For_each sh name rest lines break)
+    (,() For_item sh name value lines break ,() For_each sh name rest lines break)
+    (,() For_lazy sh name value lines break rest))
 
-;; LazyList の要素を1つずつ取り出して回す
-(define For_lazy ,(sh name list lines break)
+;; LazyList の要素を1つずつ取り出して回し、終われば残りの値 more を回す（For_each）
+(define For_lazy ,(sh name list lines break more)
   __Cont_get__ ,(return)
-  __LazyList_uncons__ (,() return) list ,(item rest)
+  __LazyList_uncons__ (,() For_each sh name more lines break ,() return) list ,(item rest)
   For_item sh name item lines break ,()
-  For_lazy sh name rest lines break)
+  For_lazy sh name rest lines break more)
 
 ;; 1回分。ループ変数に item を設定して本体を実行する。continue はこの関数から抜ける。
 ;; sh は For_run が作ったループの文脈で、"outerLoops" は外側のループの LList
