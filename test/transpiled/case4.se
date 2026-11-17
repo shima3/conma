@@ -1,0 +1,32 @@
+;; case4：変換したコードがその場で行う __Ref_set__（vm/src/transpiled.rs の d_ref_set）。Ref を変えて、同じ実行の中で
+;; 元に戻しても、その Ref の変化を待つ VProc が起きる（VM は 1 ステップごとに待つ VProc を調べるので、VM でも起きる）。
+;; 待つ VProc が待ち始めるまで、2 万ステップ回ってから、変えて戻す
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define spin ,(n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end)
+  __if__ end return ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  spin n)
+
+;; r を変えて、すぐ元に戻す（融合した鎖の中で、続けてその場で行う）
+(define flip ,(r)
+  __Ref_set__ r "changed" ,()
+  __Ref_set__ r __NULL__)
+
+(define main ,(args)
+  __Ref_new__ __NULL__ ,(r)
+  __VProc_start__ (,()
+    __Ref_wait_change__ r __NULL__ ,()
+    println "woken") ,(waiter)
+  __Number_fromString__ __print_exit_error__ "20000" ,(n)
+  spin n ,()
+  flip r ,()
+  __VProc_wait__ __print_exit_error__ waiter ,()
+  println "end")

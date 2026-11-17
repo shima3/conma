@@ -54,6 +54,11 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/transpiled-inplace
+
+* 変換した VM：`__Ref_set__` を直接呼び（待つ VProc をその場で起こす）、評価中の LazyList の `__LazyList_publish__` を融合した鎖の中で行うようにした（vm/src/transpiled.rs、vm/src/sched.rs の `wake_changed`、vm/conma2rust/conma2rust.py）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/transpiled の case4。
+* 流したもの：test/ と consh/test（最適化版）の変換版の VM（bench/build.sh で作り直した）、test/transpiled の Python 版と Rust 版の VM。流していないもの：Rust 版と wasm 版の VM の test/ と consh/test（Rust 版の VM は `wake_changed` を足しただけで、使うのは変換したコードだけ）、consh/js/test、consh/sjs/test。
+
 ### m4/switch-counts
 
 * `CONMA_TRANSPILED_COUNTS` に、VProc が待った回数（`wait`）と、ほかの VProc に替わった回数（`switch`）を足した（vm/src/sched.rs、vm/src/transpiled.rs、vm/tools/transpiled_counts.py）。変数がなければ数えない。vm/src が変わったので、VM を作り直してから流す。
