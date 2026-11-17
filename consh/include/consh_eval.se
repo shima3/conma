@@ -15,8 +15,8 @@
 ;;     たどり直さないようにした。
 ;;   * Func_make で、変数リストの名前と本体の文を取り出して関数の Dict に置き（"names"、"restName"、"lines"）、
 ;;     Func_call は、引数の数を調べながら渡す（Func_bind_args）ようにした。
-;;   * Subst_settle で、残った $( ) がどれも "full" なら global の "substsParked" に覚え、次からは状態が
-;;     "done" になったものがないかだけを見るようにした。
+;;   * Subst_settle で、残った $( ) がどれも "full" なら global の "substsParked" に覚え、次からは、$( ) の子が
+;;     終わったときに立てる Ref（global の "substsDone"。Sh_release）だけを見るようにした。
 ;;
 ;; ConSh の実行（段階 3〜13）。
 ;;   変数定義、export、外部コマンドの起動、ファイルへのリダイレクト、$?
@@ -75,6 +75,8 @@
   __Dict_new__ ,(global)
   __Dict_put__ global "status" "0" ,()
   __Dict_put__ global "substs" __NULL__ ,()
+  __Ref_new__ __FALSE__ ,(substsDone)
+  __Dict_put__ global "substsDone" substsDone ,()
   __Dict_put__ global "jobs" __NULL__ ,()
   __Dict_put__ global "lastBg" "" ,()
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -1430,6 +1432,8 @@
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
   __Dict_copy__ global ,(global)
   __Dict_put__ global "substs" __NULL__ ,()
+  __Ref_new__ __FALSE__ ,(substsDone)
+  __Dict_put__ global "substsDone" substsDone ,()
   __Dict_put__ global "jobs" __NULL__ ,()
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_copy__ vars ,(vars)
@@ -1556,7 +1560,11 @@
   __unless__ condition (,() __Chan_cancel__ chan) ,()
   __Dict_lookup_or__ child "substState" (,(key) __NULL__ __NULL__) ,(state)
   __is_null__ state ,(condition)
-  __unless__ condition (,() __Ref_set__ state "done"))
+  __unless__ condition (,()
+    __Ref_set__ state "done" ,()
+    ;; 最適化版：起動した側の Subst_settle に知らせる（状態を変えた後で。Subst_done_ref）
+    __Dict_lookup_or__ child "substDone" __print_exit_error__ ,(doneRef)
+    __Ref_set__ doneRef __TRUE__))
 
 ;; この VProc を終える（Sh_start の body の残りを捨てる）
 (define Sh_abort ,(sh)
@@ -1925,6 +1933,8 @@
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   Sh_child sh in out err "return in a command substitution" ,(child)
   __Dict_put__ child "substState" state ,()
+  Subst_done_ref sh ,(doneRef)
+  __Dict_put__ child "substDone" doneRef ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
   Subst_watch vproc child ,()
   __Dict_new__ ,(record)
@@ -1940,6 +1950,11 @@
   __Dict_put__ global "substs" substs ,()
   __Dict_put__ global "substsParked" __FALSE__ ,()
   Chan_list chan)
+
+;; 最適化版：$( ) の子が終わったら立てる Ref（起動した VProc の global の "substsDone"。Subst_settle が見る）
+(define Subst_done_ref ,(sh)
+  __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
+  __Dict_lookup_or__ global "substsDone" __print_exit_error__)
 
 ;; $( ) の中が、外部コマンドを1つだけ起動する単純文1つだけか（Pipe_is_external）
 (define Subst_is_external ,(sh lines)
@@ -1967,6 +1982,8 @@
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   Sh_child sh in out err "return in a command substitution" ,(child)
   __Dict_put__ child "substState" state ,()
+  Subst_done_ref sh ,(doneRef)
+  __Dict_put__ child "substDone" doneRef ,()
   __LList_cons__ writer __NULL__ ,(owned)
   __Dict_put__ child "owned" owned ,()
   Sh_start child (,(c) Eval_lines c lines) ,(vproc)
@@ -2118,20 +2135,18 @@
   ;; （"substsParked"）、Subst_settle_os は、終わった（"done"）ものがないかぎり "blocked" を返して残すので、
   ;; 状態だけを見て、終わったものがなければ何もしない
   __Dict_lookup_or__ global "substsParked" (,(key) __NULL__ __FALSE__) ,(parked)
-  __if__ parked (,() Substs_none_done substs ,(none) __if__ none return) ,()
+  ;; 最適化版：終わったものは、"substsDone" の Ref が知らせる（Sh_release）ので、記録はたどらない。状態を
+  ;; "done" にしてから知らせるまでの間に見れば、次の文で気づく（子がもう 1 文遅れて終わったのと同じ）
+  ;; 知らせを消してから記録を見る（見ている間に終わったものは、次にもう一度見る）。parked でないときは、知らせは
+  ;; 見ずに記録を見る（残った知らせは、parked になった後で、余分に 1 回記録を見させるだけ）
+  __if__ parked (,()
+    __Dict_lookup_or__ global "substsDone" __print_exit_error__ ,(doneRef)
+    __Ref_get__ doneRef ,(anyDone)
+    __unless__ anyDone return ,()
+    __Ref_set__ doneRef __FALSE__) ,()
   Subst_settle_list substs ,(kept full)
   __Dict_put__ global "substs" kept ,()
   __Dict_put__ global "substsParked" full)
-
-;; 記録のどれも、状態が "done" でないか
-(define Substs_none_done ,(substs)
-  __is_null__ substs ,(end)
-  __if_then_else__ end (,() __NULL__ __TRUE__) (,()
-    __LList_uncons__ __print_exit_error__ substs ,(record rest)
-    __Dict_lookup_or__ record "state" __print_exit_error__ ,(stateRef)
-    __Ref_get__ stateRef ,(state)
-    __String_equal__ state "done" ,(done)
-    __if_then_else__ done (,() __NULL__ __FALSE__) (,() Substs_none_done rest)))
 
 ;; 残す記録の LList と、そのどれも値の先頭がそろった（"full"）OS のパイプの $( ) か（最適化版）を返す
 (define Subst_settle_list ,(substs)
