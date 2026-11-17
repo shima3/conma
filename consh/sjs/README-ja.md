@@ -11,7 +11,7 @@ consh/sjs/sjs file.safe.js        # 変換して動かす（Rust 版の VM。vm 
 consh/sjs/sjs --emit file.safe.js # 変換した ConMa のソースを出す
 consh/sjs/test/run_all.sh         # テスト
 consh/sjs/test/compare.sh f.safe.js # 段階 A（ConSh の (( )) でホストの JavaScript）と出力を比べる（Node.js と wasm 版の VM が要る）
-consh/sjs/bench/run.sh nbody 2000 # 測る（Node.js、CPython、手で書いた ConMa と比べる）
+consh/sjs/bench/run.sh nbody      # 測る（Node.js、CPython、手で書いた ConMa と比べる。大きさは「速さ」の初めの表）
 CONMA_VM=wasm consh/sjs/sjs file.safe.js  # wasm 版の VM（Node.js）で動かす。数の関数は WebAssembly で動く（経緯の「数の関数の wasm 版」）
 ```
 
@@ -48,6 +48,23 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 仕組み：字句解析が行と桁を数え、変換器が、実行時の支えを呼ぶ Body に `(__SInfo__ ファイル 行 桁 "sjs")` を付ける。投げるとき、CChain の CFrame から、その印のいちばん上の位置を取る（SAFEJS-PLAN-ja.md の 4.4）。
 
 ## 速さ
+
+`consh/sjs/bench/run.sh NAME [N [M]]` で測る。大きさを指定しなければ、下の表の大きさで流す。大きさは 2 つあり、N で Node.js、CPython、wasm 版の VM の SJS（数の関数は WebAssembly）を、M（なければ N）で残りの遅い列（`*` を付けた列）を測る。N は、Node.js と wasm 版の VM の SJS の速いほうが約 1 秒、M は、遅い列のいちばん遅いものが約 1 分になる大きさ（docs/dev/CONTRIBUTING.md の Benchmarks）。
+
+**約 1 秒の大きさ**（2026-11-17、e3644a5 の後の run.sh、Apple M1、macOS 26.5.2、rustc 1.100.0、Node.js v26.13.1、CPython 3.12.3。user + sys 秒の 3 回の最良、起動を含む）。出力は、どれも Node.js と同じだった。
+
+| | N | Node.js | CPython | wasm 版の VM、SJS | M | Rust 版の VM、手で書いた ConMa `*` | Rust 版の VM、SJS `*` | wasm 版の VM、SJS（`CONMA_NO_WASM=1`）`*` | wasm 版の VM、手で書いた ConMa `*` |
+|---|---|---|---|---|---|---|---|---|---|
+| loop | 1000000000 | 0.578 秒 | 32.765 秒 | 1.661 秒 | 25000000 | 6.754 秒 | 40.264 秒 | 54.494 秒 | 9.468 秒 |
+| fib | 40 | 1.051 秒 | 10.838 秒 | 0.992 秒 | 32 | 2.816 秒 | 39.177 秒 | 50.988 秒 | 3.966 秒 |
+| nbody | 10000000 | 1.112 秒 | 33.983 秒 | 2.288 秒 | 80000 | 3.512 秒 | 43.755 秒 | 57.890 秒 | 5.033 秒 |
+
+* `*` の列は M で測ったので、ほかの列とは時間を比べられない（`*` の列どうしは比べられる）。
+* loop の N は、wasm 版の VM で数の関数が WebAssembly になる上限の 2^30（1073741824）より小さくした。N = 1073741823 では 1.7 秒だが、2^30 では数の関数が WebAssembly にならず、60 秒を超える。そのため Node.js は約 0.6 秒で、1 秒に届かない。
+* CPython は、N では 1 分を超えないが、10〜34 秒かかる（M では測らない）。
+* 起動（Rust 版の VM、N = 1）は SJS が 0.007〜0.014 秒、手で書いた ConMa が 0.003〜0.004 秒。ステップは、N を 1 増やすごとに、SJS と手で書いた ConMa で loop 63 と 13、fib 4,755 と 528、nbody 16,170 と 1,766。変換は loop と fib が 0.024 秒、nbody が 0.155 秒。
+
+以下は、前の大きさで測った結果。
 
 `consh/sjs/bench/run.sh`（2026-11-12、9b3b5dd の後の Rust 版の VM、Apple M4、user + sys 秒の 3 回の最良）。Node.js と CPython は同じ計算の JavaScript と Python、手で書いた ConMa は bench/ の `.se`。
 
