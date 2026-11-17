@@ -60,6 +60,11 @@ consh/sjs/test/run_all.sh
 * 確かめたこと（Apple M1、1 回ずつ）：`02`〜`18` を `run.py -n 1 -v rust,bash,conma:rust,conma:wasm` で流し、どれも出力が同じだった。`19`（5 億）と `20`（`fib(39)` = 63245986）は、最適化版＋wasm 版の VM で正しい値を出した。変換した VM は、alpha の今のモジュールで作り直していないので流していない。
 * ベンチマーク：consh/bench の `00`〜`18` を `run.py -v bash,rust,conma:rust,conma:wasm,conma:transpiled` で（3 回の最小。1 回が 60 秒を超える Bash 版の `13`、`14`、`16` は 1 回）、`19`〜`21` を `-v conma:wasm` で測り、consh/bench/README-ja.md の「結果」に新しい大きさの表として書く。変換した VM は `bench/build.sh` で作り直してから。参照版は当面測らない。
 
+### m4/vproc-wait
+
+* 最後の適用が `__VProc_wait__` か `__Ref_wait_change__` の VProc が、起きたときに `Null Operator` のエラーになる不具合を直した（vm/python/vproc_step.py と vm/src/sched.rs のスケジューラ）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/step48。
+* 流したもの：test/ の Python 版と Rust 版の VM、consh/test（最適化版）の Rust 版の VM、step48、step17、step10、step45、fast11 の wasm 版の VM。流していないもの：変換版の VM（作り直していない）、ほかの組み合わせ。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
