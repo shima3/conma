@@ -76,7 +76,7 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 | A3 | bin/to-core が `"array"` を代わりの定義に直す。フロントエンド（bin/resolver の `EXT_PRIMITIVES` と include/resolver.se の `__Resolver_features__`）が `(Uses "array")` を書く。vm/frontend.module.se を bin/update-frontend で作り直す | test/fast12（test/fast11 と同じ形：フロントエンドが書いた `(Uses ...)`、`conma build` が同じモジュールを作る、bin/to-core で直したモジュールも同じログ） |
 | A4 | 変換した VM：6 つを conma2rust.py の `CHAIN` と transpiled.rs の `SAFE_PRIMS` に入れる。融合した鎖では、添字が `f64` の `__Array_get__` と `__Array_set__` をその場で書く（範囲の外は、その Body に戻して VM に任せる） | test/transpiled に case3（A1 のテストを順に）。bench/build.sh で作り直した VM で |
 | A5 | 測って書く：配列と、数のキーの Dict で同じ計算をする小さいプログラム（添字の読み書き、push）を、Rust 版、変換した、wasm 版、Python 版の VM で。docs/PRIMITIVES.md の 16 に機能 `"array"`（型の違いを含む）、docs/dev/ROADMAP.md に Step 47、vm/README.md | 表にする |
-| A6 | （A5 の後に決める）SJS の配列を配列の値で表す。数の添字の読み書き、`push`、`pop`、`length` を配列で行い、穴や数でない添字などは今の Dict に戻す。consh/sjs/test、consh/sjs/bench | 1.2 のプログラムと consh/sjs/bench の nbody で測る |
+| A6 | （2026-11-17 に見送った。6）SJS の配列を配列の値で表す。数の添字の読み書き、`push`、`pop`、`length` を配列で行い、穴や数でない添字などは今の Dict に戻す。consh/sjs/test、consh/sjs/bench | 1.2 のプログラムと consh/sjs/bench の nbody で測る |
 
 ## 6. 今の状態
 
@@ -101,3 +101,4 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 * **A6 の検討（2026-11-17、ブランチ m4/sjs-array-msg）**：ユーザーと、配列の値は使わず、SJS の配列の `"items"` のキーを数にする形で進めると決めた（Rust 版と wasm 版の VM では配列と数のキーの Dict が同じ速さで、Python 版では配列が遅いため）。ところが調べると、1.2 の `a.push(v)` の `Sjs_num_str`（128 ステップ）は、添字のキーを作るためではなかった：`Sjs_array_method` の `push` と `pop` が、凍らせた配列（タグ付きテンプレート）のときだけ使うエラーメッセージを、毎回先に作っていた。添字のキーは `__Number_toString__`（プリミティブ 1 回）で作っているので、キーを数にしても、1 回の読み書きで 1 ステップほどしか減らない。
   * そこで、`push` と `pop` のメッセージを、凍らせた配列のときだけ作るようにした。1 万個を `push` し、添字で 10 万回読み書きし、1 万回 `pop` するプログラムが、36,907,899 から 28,195,510 ステップ（−23.6%。Rust 版の VM の `CONMA_PROFILE`）になった。出力は同じ。`Sjs_array_method` は 1 回 63.7 から 46.3 ステップ。
   * キーを数にするかは、これを踏まえて改めて決める（Object.keys、for-in などで文字列に戻す所が増え、減るのは 1 回 1 ステップほど）。
+* **A6 は見送った（2026-11-17、ユーザーと決めた）**：SJS の配列は、配列の値でも数のキーでもなく、今の形（添字の文字列をキーにした Dict）のままにする。キーを数にしても減るのは 1 回の読み書きで 1 ステップほどで、Object.keys、for-in などで文字列に戻す所が増えるため。配列の計画は、A5 と、A6 の検討で直した `push` と `pop` のメッセージで終わる。
