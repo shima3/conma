@@ -83,6 +83,11 @@ consh/sjs/test/run_all.sh
 * ConSh の最適化版で、変数リストへのリダイレクトだけの単純文は、リダイレクトを変換のときに分けておくようにした（consh/include/consh_eval.se の `Redirs_captures`、`Capture_redirs`。docs/consh/dev/COMPILE2-PLAN-ja.md の S4）。consh/test の step6 に case12 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
 
+### m2/pages-actions
+
+* GitHub Pages を、ブランチの docs/ からでなく、GitHub Actions（.github/workflows/pages.yml）で配置するようにした。main に push すると、`consh/js/build.sh` で作ったウェブ版の ConSh を docs/consh/web に写し、docs/ を Jekyll で HTML にして配置する。リポジトリの Settings → Pages → Source を「GitHub Actions」に切り替える必要がある（main に入ってから）。テストのスクリプトとソースは変えていない。
+* 確かめたこと（Apple M2）：このブランチのまっさらな clone で `consh/js/build.sh` と写す手順が通り、ヘッダを付けない静的なサーバー（`python3 -m http.server`）で docs/ を出すと、consh/web/ のページがページの中で ConSh を動かし、`echo` と `cat names.txt` が動いた（`ls` は空。Pages でも同じ）。Jekyll の手順とワークフローそのものは、GitHub でしか試せないので、まだ試していない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

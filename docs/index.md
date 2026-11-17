@@ -47,6 +47,7 @@ ConSh is a shell written in ConMa (consh/ of the repository).
 - [Specification and design](consh/PLAN-ja.html) (in Japanese)
 - [Abstract Syntax Tree of ConSh](consh/AST.html)
 - [Versions of ConSh and how to run them](consh/RUNNING-ja.html) (in Japanese)
+- [ConSh in your browser](consh/web/): the ConMa version of ConSh on the wasm VM (see consh/js/README-ja.md for what it cannot do here)
 
 ### For developers of ConSh (in Japanese)
 - [Developing ConSh](consh/dev/DEVELOPING-ja.html)
