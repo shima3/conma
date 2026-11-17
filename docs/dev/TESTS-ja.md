@@ -64,6 +64,12 @@ consh/sjs/test/run_all.sh
 * 最後の適用が `__VProc_wait__` か `__Ref_wait_change__` の VProc が、起きたときに `Null Operator` のエラーになる不具合を直した（vm/python/vproc_step.py と vm/src/sched.rs のスケジューラ）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/step48。
 * 流したもの：test/ の Python 版と Rust 版の VM、consh/test（最適化版）の Rust 版の VM、step48、step17、step10、step45、fast11 の wasm 版の VM。流していないもの：変換版の VM（作り直していない）、ほかの組み合わせ。
 
+### m1/bench-sizes2
+
+* bench/ の大きさを、CPython と変換した VM の速いほうで約 1 秒（Apple M1）にした：fib 35、richards 35、nbody 300000、loop 100000000。`bench/run.sh NAME` は、大きさを指定しなければこの大きさで流す（指定すれば今までどおり）。bench/README.md に、大きさとそのときの時間を書いた。
+* 確かめたこと（Apple M1）：4 つとも `CONMA_BENCH_RUST=1 bench/run.sh NAME` で、CPython、Rust 版の VM、変換した VM の出力が同じだった。変換した VM は cd7d3a4 で作ったもの（bench/ のモジュールは変わっていない）。
+* テストのスクリプトは変えていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
