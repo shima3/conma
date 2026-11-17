@@ -20,6 +20,7 @@ pub struct Serials {
     pub refs: usize,
     pub mseqs: usize,
     pub dicts: usize,
+    pub arrays: usize,
     pub conts: usize,
     pub streams: usize,
     pub osprocs: usize,
@@ -504,6 +505,17 @@ impl Machine {
         }
     }
 
+    /// Wake the VProcs waiting for a change of a Ref that has changed, as the
+    /// scheduler does between two steps; transpiled code calls it after setting a
+    /// Ref in place (transpiled.rs, d_ref_set), so that a change undone later in the
+    /// same run still wakes them.
+    pub fn wake_changed(&mut self) {
+        if self.ref_changed && !self.changes.is_empty() {
+            self.ref_changed = false;
+            self.check_changes();
+        }
+    }
+
     fn check_changes(&mut self) {
         let list = std::mem::take(&mut self.changes);
         for (vp, r, value) in list {
@@ -731,6 +743,9 @@ impl Machine {
                 if cell.kill_pending.get() && cell.state.get() != State::Finished && !evaluating_lazy(&cell, &mut vp) {
                     self.kill_now(&cell);
                 }
+                if crate::transpiled::counting() && matches!(cell.state.get(), State::Waiting | State::Blocked) {
+                    crate::transpiled::count_vm("wait", crate::transpiled::operator_name(&vp.operator));
+                }
                 if cell.state.get() != State::Running {
                     break;
                 }
@@ -741,6 +756,10 @@ impl Machine {
                 }
                 // end_slice: a wasm call ran out of fuel (the top of the loop ends the slice).
                 if !self.runs_alone(&cell) || self.steps >= limit || self.end_slice {
+                    if crate::transpiled::counting() {
+                        let why = if !self.runs_alone(&cell) { "another VProc is ready or waits" } else { "the end of a slice" };
+                        crate::transpiled::count_vm("switch", why.to_string());
+                    }
                     requeue = true;
                     break;
                 }

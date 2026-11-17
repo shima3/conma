@@ -12,6 +12,9 @@ Kinds (vm/src/transpiled.rs, "Counts"):
   deopt  the Body was loaded for the VM (its code could not run it)
   run    the VM entered transpiled code at the Body
   leave  a step was left to the VM, by what it applied
+  wait   a step after which the VProc waited, by what it applied (the
+         scheduler; with the Rust VM too)
+  switch a step after which the VProc went back to the ready queue, by why
 Each Body is shown with the top-level (define NAME ...) that contains it and
 the text of its line.
 """
@@ -47,13 +50,13 @@ def main():
     args = ap.parse_args()
     bodies = defaultdict(lambda: defaultdict(int))   # kind -> (file, line, col) -> n
     funcs = defaultdict(lambda: defaultdict(int))    # kind -> (function, file) -> n
-    leaves = defaultdict(int)
+    others = defaultdict(lambda: defaultdict(int))   # leave, wait, switch -> what -> n
     with open(args.counts, encoding="utf-8") as f:
         for text in f:
             r = text.rstrip("\n").split("\t")
             n, kind = int(r[0]), r[1]
-            if kind == "leave":
-                leaves["\t".join(r[2:])] += n
+            if kind in ("leave", "wait", "switch"):
+                others[kind]["\t".join(r[2:])] += n
             elif len(r) >= 5:
                 name, line, col = r[2], int(r[3]), int(r[4])
                 bodies[kind][(name, line, col)] += n
@@ -73,11 +76,13 @@ def main():
             where = f"{os.path.basename(name)}:{line}:{col}"
             print(f"  {n:>10,} {n / total:6.1%}  {where:<26} {line_text(name, line)[:70]}")
         print()
-    total = sum(leaves.values())
-    if total:
-        print(f"== leave: {total:,}")
-        for what, n in sorted(leaves.items(), key=lambda x: -x[1])[:args.top]:
-            print(f"  {n:>10,} {n / total:6.1%}  {what}")
+    for kind in ("leave", "wait", "switch"):
+        total = sum(others[kind].values())
+        if total:
+            print(f"== {kind}: {total:,}")
+            for what, n in sorted(others[kind].items(), key=lambda x: -x[1])[:args.top]:
+                print(f"  {n:>10,} {n / total:6.1%}  {what}")
+            print()
 
 
 if __name__ == "__main__":

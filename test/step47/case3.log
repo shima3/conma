@@ -1,0 +1,7 @@
+onError: __Array_get__: not an Array
+error
+onError: __Array_set__: not an Array
+set: returned
+onError: __Array_pop__: not an Array
+error
+exit: 0

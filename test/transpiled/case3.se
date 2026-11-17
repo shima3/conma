@@ -1,0 +1,123 @@
+;; Transpiled code (vm/conma2rust): the escape continuation of __Cont_get__ that a fused chain does not
+;; make (STATIC_CONT). `return v` at the top of the chain, in a clause with an LCont and in one without,
+;; as a clause, with several values, in a loop of a Function calling itself, after a Rust call; and the
+;; continuation used as a value, which makes it: passed to a function that calls it (an escape out of
+;; the Rust call), kept in a Ref and called again after the Function has returned, and in the LVEnv of a
+;; Body left to the VM. Run on the transpiled VM after bench/build.sh (which builds this file in), it
+;; tests that code; on the other VMs, the results to match.
+(include "util.se")
+
+(define num ,(s) __Number_fromString__ __print_exit_error__ s)
+
+(define line ,(s)
+  __OS_print__ s ,()
+  __OS_print__ "\n")
+
+;; at the top of the chain, and in a clause without an LCont
+(define top ,(s)
+  __Cont_get__ ,(return)
+  __String_equal__ s "a" ,(isa)
+  __if__ isa (,() return "top: a") ,()
+  __String_equal__ s "b" ,(isb)
+  __if_then_else__ isb (,() return "top: b") (,() __NULL__ "top: other"))
+
+;; in a clause with an LCont (the clause's block is left), and as a clause
+(define inblock ,(s)
+  __Cont_get__ ,(return)
+  __String_equal__ s "" ,(empty)
+  __if_then_else__ empty (,() return "block: empty") (,() __String_concat__ s "!") ,(t)
+  __String_equal__ s "z" ,(isz)
+  __if__ isz return ,()
+  __NULL__ t)
+
+;; several values
+(define two ,(s)
+  __Cont_get__ ,(return)
+  __String_equal__ s "" ,(empty)
+  __if__ empty (,() return "none" "0") ,()
+  __String_length__ s ,(n)
+  __Number_toString__ n ,(ns)
+  __NULL__ s ns)
+
+;; a Function calling itself without an LCont (a loop): return from the loop
+(define find_x ,(s i)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(n)
+  __Number_subtract__ n i ,(left)
+  __Number_is_positive__ left ,(more)
+  __unless__ more (,() return "-1") ,()
+  num "1" ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ s i j ,(c)
+  __String_equal__ c "x" ,(isx)
+  __if__ isx (,() __Number_toString__ i ,(is) return is) ,()
+  find_x s j)
+
+;; after a Rust call (the continuation still to be used)
+(define after_call ,(s)
+  __Cont_get__ ,(return)
+  top s ,(t)
+  __String_equal__ t "top: a" ,(isa)
+  __if__ isa (,() return "after: a") ,()
+  __String_concat__ "after: " t)
+
+;; passed to a function that calls it: an escape out of the Rust call
+(define call_it ,(f v) f v)
+(define call_later ,(f v)
+  call_it f v ,()
+  __NULL__ "not reached")
+(define escape ,(s)
+  __Cont_get__ ,(return)
+  call_later return s ,(r)
+  __NULL__ r)
+
+;; kept in a Ref and called again after the Function has returned
+(define keep ,(ref)
+  __Cont_get__ ,(return)
+  __Ref_set__ ref return ,()
+  __NULL__ "kept")
+
+(define again ,(count)
+  __Ref_new__ __NULL__ ,(ref)
+  keep ref ,(v)
+  line v ,()
+  __Ref_get__ count ,(n)
+  num "1" ,(one)
+  __Number_add__ n one ,(n2)
+  __Ref_set__ count n2 ,()
+  num "3" ,(three)
+  __Number_subtract__ three n2 ,(left)
+  __Number_is_positive__ left ,(more)
+  __if_then_else__ more
+    (,() __Ref_get__ ref ,(k) k "again")
+    (,() __Number_toString__ n2))
+
+;; in the LVEnv of a Body left to the VM (a clause that is a Closure in a variable)
+(define left ,(s f)
+  __Cont_get__ ,(return)
+  __String_equal__ s "" ,(empty)
+  __if__ empty f ,()
+  __String_equal__ s "r" ,(isr)
+  __if__ isr (,() return "left: r") ,()
+  __NULL__ "left: other")
+
+(define main ,(args)
+  top "a" ,(a) line a ,()
+  top "b" ,(b) line b ,()
+  top "c" ,(c) line c ,()
+  inblock "" ,(d) line d ,()
+  inblock "q" ,(e) line e ,()
+  inblock "z" ,() line "block: z" ,()
+  two "" ,(t1 t2) line t1 ,() line t2 ,()
+  two "abc" ,(t3 t4) line t3 ,() line t4 ,()
+  num "0" ,(zero)
+  find_x "abxd" zero ,(i) line i ,()
+  find_x "abc" zero ,(i2) line i2 ,()
+  after_call "a" ,(f1) line f1 ,()
+  after_call "c" ,(f2) line f2 ,()
+  escape "escaped" ,(g) line g ,()
+  __Ref_new__ zero ,(count)
+  again count ,(n) line n ,()
+  left "r" (,() __NULL__ "never") ,(h1) line h1 ,()
+  left "" (,() line "left: closure") ,(h2) line h2 ,()
+  left "s" (,() __NULL__ "never") ,(h3) line h3)

@@ -1,0 +1,24 @@
+top: a
+top: b
+top: other
+block: empty
+q!
+block: z
+none
+0
+abc
+3
+2
+-1
+after: a
+after: top: other
+escaped
+kept
+again
+again
+3
+left: r
+left: closure
+left: other
+left: other
+exit: 0

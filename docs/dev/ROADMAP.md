@@ -880,6 +880,16 @@ No new primitive.
 * Effect (consh/bench/README-ja.md): `10` and `18` take 34 to 39% fewer steps and about 30% less time on the Rust and wasm VMs; the others are unchanged.
 * Tests: `test/step45` (the replacement definitions: one and three writers, a writer added later, cancel, the state Ref, empty channels), `test/fast11` (the same with the primitives, the `Uses` the frontends write and `bin/to-core`), `test/transpiled` case2, and consh/test with both versions of ConSh.
 
+## Step 47: Arrays in extended ConMa
+
+| Primitive | Status |
+|---|---|
+| `__Array_new__`, `__Array_length__`, `__Array_get__`, `__Array_set__`, `__Array_push__`, `__Array_pop__` (feature `"array"` of extended ConMa) | implemented |
+
+* Goal: values read and written by index in constant time. ConMa had LLists, MSeqs (taken apart from the front), Dicts and LazyLists; the arrays of SJS are Dicts keyed by Strings, so that reading `a[i]` takes about 37 steps and a push about 400. Decided with the user on 2026-11-17 (docs/dev/ARRAY-PLAN-ja.md): a feature of extended ConMa with a new value in the Rust VM, replacement definitions in core ConMa that keep an array in a Dict, the six primitives above, `__Array_set__` only below the length, and the type name that differs between the VMs written into the specification (PRIMITIVES.md, section 16). Whether SJS uses them is decided later.
+* `vm/src/prim/array.rs` keeps an array as a `Vec` (`Value::Array`, collected by `gc.rs` when in a cycle); the wasm VM shares it. The transpiled code calls `__Array_length__`, `__Array_get__`, `__Array_set__` and `__Array_push__` directly and the others through the OList. The frontends write `(Uses "array")`, and `bin/to-core` puts in `include/core/array.se` for the Python VM.
+* Tests: `test/step47` (the replacement definitions: push, get, set, pop, length, the errors of indices, values that are not arrays, sharing, arrays in arrays and in themselves, arrays as keys of a Dict, 10,000 values), `test/fast12` (the same with the primitives, the `Uses` the frontends write, `bin/to-core`, and the type name on each VM), `test/transpiled` case4.
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/dev/SAFEJS-REVIEW-ja.md (3.1.4).
