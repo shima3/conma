@@ -54,10 +54,12 @@ consh/bench/run.py -v rust,conma:rust,reference:rust
 consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
 consh/bench/run.py -v conma:wasm,conma:transpiled 19_loop.sh 20_fib.sh 21_nbody.sh
 consh/bench/run.py -v bash,rust,conma:wasm 01_for_seq.sh 13_func_assign_100000.sh
+consh/bench/run.py -v conma:transpiled=/tmp/before/conma,conma:transpiled   # 作り直す前に写した VM と並べる
 ```
 
 * `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）、`conma:wasm` と `reference:wasm`（wasm 版の VM、`vm/wasm/vm-wasm.sh` で。`vm/wasm/build.sh` で作っておく）、`bash`（PATH の `bash` で、`bash/` の Bash 版を）。既定は `rust,conma:transpiled`。
-* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。`bash` は、エラーメッセージが ConSh と違うので、終了コードと標準出力だけを比べる。`-v` に `bash` が入っていてスクリプトを指定しないときは、Bash 版のないスクリプト（`19`〜`21`）を除く。
+* `版=パス` で、実行ファイルを、`consh-rs`、`bash`、VM（`vm/target/release/conma`、`vm/target-transpiled/release/conma`）、`vm/wasm/vm-wasm.sh` の代わりに、パスのものにする（2026-11-17）。作り直す前に写しておいた実行ファイルで、変更の前の版を後の版と並べて測るためのもの（docs/dev/CONTRIBUTING.md の Benchmarks）。表の列の名前は、`-v` に書いたとおり。変換した VM の写しも、今のモジュールの変換したコードを持っているかを先に確かめる。wasm 版の VM を写すときは、リポジトリと同じ配置にする：`vm/wasm` の `vm-wasm.sh`、`vm-node.js`、`vm-jsc.js`、`conma.js`、`target/wasm32-unknown-unknown/release/conma_wasm.wasm` を `写し先/vm/wasm` に、`vm/frontend.module.se` を `写し先/vm` に（`vm-node.js` は、2 つ上のディレクトリから読む）。
+* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）、組み合わせを順に替えながら（どれも 1 回目、次にどれも 2 回目、…。2026-11-17 までは、組み合わせごとに続けて）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。`bash` は、エラーメッセージが ConSh と違うので、終了コードと標準出力だけを比べる。`-v` に `bash` が入っていてスクリプトを指定しないときは、Bash 版のないスクリプト（`19`〜`21`）を除く。
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`consh.module.se` と `consh.reference.module.se`。`CONSH_MODULE_DIR` か、なければ `bin/cache-dir` のディレクトリ）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
 
