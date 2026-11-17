@@ -80,6 +80,11 @@ consh/sjs/test/run_all.sh
 * 流したもの：test/ の Rust 版の VM、test/step45 と fast11 の Python 版の VM、consh/test（最適化版と参照版）の Rust 版の VM、consh/sjs/test。流していないもの：test/ の Python 版の VM（step45、fast11 のほか）、wasm 版と変換版の VM、consh/js/test。
 * ベンチマーク：consh/bench の `10`、`18` を、最適化版の変換版の VM で（m4/transpiled-clone と、このブランチの分。前は alpha の 9a4f7a2）。
 
+### m4/js-step5
+
+* consh/js/test の step5 の case2 の期待ログを直した（7 行目と 10 行目を 1 から 0 に）。1e8c4d4（m4/transpiled-clone）から、関数の局所変数の JS の値が、関数から戻れば消えるようになったため（前は、関数の文脈が循環して、VM の循環の回収まで残った）。テストの担当者の報告による。
+* 流したもの：consh/js/test（wasm 版の VM、Node.js）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
