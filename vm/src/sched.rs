@@ -706,6 +706,14 @@ impl Machine {
                 }
             }
             let cell = self.ready.pop_front().unwrap();
+            if cell.vp.borrow().is_terminal() {
+                // A VProc woken after the check at the top of the loop (its last
+                // application was __VProc_wait__ or __Ref_wait_change__, which
+                // return before waiting) has nothing left to do: it has finished.
+                cell.state.set(State::Finished);
+                self.finished_any = true;
+                continue;
+            }
             cell.state.set(State::Running);
             self.current = Some(cell.clone());
             let mut vp = cell.vp.borrow_mut();
