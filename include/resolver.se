@@ -42,6 +42,7 @@
 ;; 拡張 ConMa の機能（docs/dev/FAST-PLAN-ja.md の 3.4）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (F ...) の後に (Uses ...) を置く（bin/resolver と同じ）。entries の前に足す。
 ;; "bitwise32" はビット演算のプリミティブ（docs/dev/BITWISE-PLAN-ja.md）、"boolean" は __TRUE__ と __FALSE__、
+;; "array" は配列のプリミティブ（__Array_new__ など。docs/dev/ARRAY-PLAN-ja.md）、
 ;; "chan" はチャネルのプリミティブ（__Chan_new__ など。docs/dev/CHAN-PLAN-ja.md）、
 ;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__ と、値を自分で確かめる 6 つの条件分岐
 ;; （__if_null_then_else__ など）、"wasm" は __Wasm_compile__、__Wasm_call__、__Wasm_call_memory__、__Dict_numbers__、__Dict_put_numbers__
@@ -107,6 +108,16 @@
   __Resolver_uses_prim__ globals values prims ,(usesBitwise)
   __if_then_else__ usesBitwise
     (,() __LList_cons__ "bitwise32" features)
+    (,() __NULL__ features) ,(features)
+  __LList_cons__ "__Array_pop__" __NULL__ ,(arrays)
+  __LList_cons__ "__Array_push__" arrays ,(arrays)
+  __LList_cons__ "__Array_set__" arrays ,(arrays)
+  __LList_cons__ "__Array_get__" arrays ,(arrays)
+  __LList_cons__ "__Array_length__" arrays ,(arrays)
+  __LList_cons__ "__Array_new__" arrays ,(arrays)
+  __Resolver_uses_prim__ globals values arrays ,(usesArray)
+  __if_then_else__ usesArray
+    (,() __LList_cons__ "array" features)
     (,() __NULL__ features))
 
 ;; prims のどれかが、定義のない大域の名前か

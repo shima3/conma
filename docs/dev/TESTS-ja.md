@@ -60,6 +60,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-17 | a8c7ab1 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-inplace、m4/switch-counts、m4/dict-num-hash、m4/array、m1/static-cont の、流していなかった組み合わせ（Rust 版、wasm 版、作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/array-measure、m4/array-plan も含む |
 | 2026-11-17 | 361a1bd | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/lazy-fast-path の、流していなかった wasm 版と変換した VM（`bench/build.sh` で作り直した）の consh/test、consh/js/test、consh/sjs/test も通った。m1/bench-recursion も含む |
 | 2026-11-17 | 6066d8b | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/consh-heavy の、流していなかった wasm 版と変換した VM（`bench/build.sh` で作り直した）の consh/test、consh/js/test、consh/sjs/test も通った。P1（0c9d687）も含む |
 | 2026-11-16 | 5d2c759 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。新しい consh/sjs/test の step2 の case8 も通った。申し送りの alpha（f90117c から 7c9911a まで）と m4/sjs-charat を確かめた |

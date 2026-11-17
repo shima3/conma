@@ -5,6 +5,9 @@ import re
 # The features of extended ConMa and the primitives of each (docs/dev/FAST-PLAN-ja.md 3.4): a module that uses one of
 # them as a global without a definition gets (Uses "feature") after its (F ...) (include/resolver.se does the same)
 EXT_PRIMITIVES = [
+    # the array primitives (docs/dev/ARRAY-PLAN-ja.md; core ConMa defines them in include/core/array.se)
+    ("array", ("__Array_new__", "__Array_length__", "__Array_get__", "__Array_set__", "__Array_push__",
+               "__Array_pop__")),
     ("bitwise32", ("__Number_and32__", "__Number_or32__", "__Number_xor32__", "__Number_not32__",
                    "__Number_shl32__", "__Number_shr32__", "__Number_ushr32__")),
     # __TRUE__ and __FALSE__, built in in extended ConMa (include/ext/pure.se; core ConMa defines them

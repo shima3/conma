@@ -25,6 +25,7 @@ enum Weakly {
     Ref(Weak<RefObj>),
     MSeq(Weak<MSeqObj>),
     Dict(Weak<DictObj>),
+    Array(Weak<ArrayObj>),
     VProc(Weak<VProcCell>),
     GV(Weak<GVEnv>),
 }
@@ -76,6 +77,12 @@ pub fn new_mseq(m: MSeqObj) -> Rc<MSeqObj> {
     rc
 }
 
+pub fn new_array(a: ArrayObj) -> Rc<ArrayObj> {
+    let rc = Rc::new(a);
+    register(Weakly::Array(Rc::downgrade(&rc)));
+    rc
+}
+
 pub fn new_dict(d: DictObj) -> Rc<DictObj> {
     let rc = Rc::new(d);
     register(Weakly::Dict(Rc::downgrade(&rc)));
@@ -110,6 +117,7 @@ enum Node {
     Ref(Rc<RefObj>),
     MSeq(Rc<MSeqObj>),
     Dict(Rc<DictObj>),
+    Array(Rc<ArrayObj>),
     VProc(Rc<VProcCell>),
     GV(Rc<GVEnv>),
     /// The items of MSeqs, which the rests of __MSeq_uncons__ share.
@@ -130,6 +138,7 @@ impl Node {
             Node::Ref(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::MSeq(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::Dict(r) => Rc::as_ptr(r) as *const u8 as usize,
+            Node::Array(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::VProc(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::GV(r) => Rc::as_ptr(r) as *const u8 as usize,
             Node::Items(r) => Rc::as_ptr(r) as *const u8 as usize,
@@ -148,6 +157,7 @@ impl Node {
             Node::Ref(r) => Rc::strong_count(r),
             Node::MSeq(r) => Rc::strong_count(r),
             Node::Dict(r) => Rc::strong_count(r),
+            Node::Array(r) => Rc::strong_count(r),
             Node::VProc(r) => Rc::strong_count(r),
             Node::GV(r) => Rc::strong_count(r),
             Node::Items(r) => Rc::strong_count(r),
@@ -201,6 +211,10 @@ impl Node {
                 let Ok(entries) = d.entries.try_borrow() else { return false };
                 f(Node::Entries(entries.clone()));
             }
+            Node::Array(a) => {
+                let Ok(items) = a.items.try_borrow() else { return false };
+                items.iter().for_each(|v| value_child(v, f));
+            }
             Node::Entries(e) => {
                 for (k, v) in e.iter() {
                     value_child(k, f);
@@ -234,7 +248,7 @@ impl Node {
     }
 
     fn is_container(&self) -> bool {
-        matches!(self, Node::Ref(_) | Node::MSeq(_) | Node::Dict(_) | Node::VProc(_) | Node::GV(_))
+        matches!(self, Node::Ref(_) | Node::MSeq(_) | Node::Dict(_) | Node::Array(_) | Node::VProc(_) | Node::GV(_))
     }
 
     /// Take the contents out of a container that is garbage.
@@ -256,6 +270,7 @@ impl Node {
                 entries_trash.push(std::mem::take(&mut *d.entries.borrow_mut()));
                 *d.index.borrow_mut() = Rc::default();
             }
+            Node::Array(a) => trash.append(&mut a.items.borrow_mut()),
             Node::VProc(cell) => {
                 let mut vp = cell.vp.borrow_mut();
                 trash.push(std::mem::replace(&mut vp.operator, Value::Null));
@@ -285,6 +300,7 @@ fn value_child(v: &Value, f: &mut dyn FnMut(Node)) {
         Value::Ref(r) => f(Node::Ref(r.clone())),
         Value::MSeq(r) => f(Node::MSeq(r.clone())),
         Value::Dict(r) => f(Node::Dict(r.clone())),
+        Value::Array(r) => f(Node::Array(r.clone())),
         Value::VProc(r) => f(Node::VProc(r.clone())),
         // The values of a frame are those of the LVEnv node that holds it.
         Value::Frame(fr) => {
@@ -315,6 +331,7 @@ pub fn collect() -> usize {
                 Weakly::Ref(w) => w.upgrade().map(Node::Ref),
                 Weakly::MSeq(w) => w.upgrade().map(Node::MSeq),
                 Weakly::Dict(w) => w.upgrade().map(Node::Dict),
+                Weakly::Array(w) => w.upgrade().map(Node::Array),
                 Weakly::VProc(w) => w.upgrade().map(Node::VProc),
                 Weakly::GV(w) => w.upgrade().map(Node::GV),
             };
@@ -402,7 +419,7 @@ pub fn collect() -> usize {
         let mut kinds: HashMap<&str, usize> = HashMap::new();
         for (n, &l) in nodes.iter().zip(&live) {
             if l {
-                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::VProc(_) => "VProc", Node::GV(_) => "GV", Node::Items(_) => "Items", Node::Entries(_) => "Entries" };
+                let k = match n { Node::Closure(_) => "Closure", Node::Seq(_) => "Seq", Node::CFrame(_) => "CFrame", Node::LList(_) => "LList", Node::Cont(_) => "Cont", Node::LV(_) => "LV", Node::Ref(_) => "Ref", Node::MSeq(_) => "MSeq", Node::Dict(_) => "Dict", Node::Array(_) => "Array", Node::VProc(_) => "VProc", Node::GV(_) => "GV", Node::Items(_) => "Items", Node::Entries(_) => "Entries" };
                 *kinds.entry(k).or_default() += 1;
             }
         }

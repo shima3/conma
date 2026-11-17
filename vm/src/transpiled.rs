@@ -157,6 +157,8 @@ const SAFE_PRIMS: &[&str] = &[
     "__Dict_new__", "__Dict_put__", "__Dict_lookup_or__", "__Dict_remove__",
     "__Dict_keys__", "__Dict_copy__",
     "__MSeq_new__", "__MSeq_is_empty__", "__MSeq_uncons__", "__MSeq_set_head__", "__MSeq_append__",
+    // the array primitives (docs/dev/ARRAY-PLAN-ja.md), which only change the array they are given
+    "__Array_new__", "__Array_length__", "__Array_get__", "__Array_set__", "__Array_push__", "__Array_pop__",
     "__Ref_new__", "__Ref_get__", "__PDict_put__", "__PDict_lookup_or__",
     "__if_then_else__", "__if__", "__unless__", "__Cont_get__",
     "__Chan_new__", "__Chan_writer__", "__Chan_of__", "__Chan_reader__",
@@ -283,7 +285,11 @@ pub fn stale_for(hash: u64, files: &str) -> bool {
 // step is left to the VM, by what it applies. Written to the file as
 // `count<TAB>kind<TAB>file<TAB>line<TAB>column` (by Body) and
 // `count<TAB>leave<TAB>what` when the VM ends; vm/tools/transpiled_counts.py sums
-// them by function. Counting does not change what the program does.
+// them by function. The scheduler also counts (sched.rs, count_vm) each step after
+// which the VProc waits ("wait", by what the VProc applies: the primitive that made
+// it wait), and each step after which it goes back to the ready queue for another
+// VProc ("switch", by why), so that the leaves can be told from the switches of
+// VProcs. Counting does not change what the program does.
 
 static COUNTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -292,6 +298,8 @@ struct Counts {
     /// By kind and Body (the address of its SInfo).
     bodies: std::collections::HashMap<(&'static str, usize), (Option<SInfo>, u64)>,
     leaves: std::collections::HashMap<String, u64>,
+    /// "wait" and "switch" (count_vm), by what.
+    vm: std::collections::HashMap<(&'static str, String), u64>,
 }
 
 thread_local! {
@@ -301,13 +309,13 @@ thread_local! {
 /// Start counting if CONMA_TRANSPILED_COUNTS names a file.
 pub fn counts_from_env() {
     if let Some(path) = std::env::var("CONMA_TRANSPILED_COUNTS").ok().filter(|p| !p.is_empty()) {
-        COUNTS.with(|c| *c.borrow_mut() = Some(Counts { path, bodies: Default::default(), leaves: Default::default() }));
+        COUNTS.with(|c| *c.borrow_mut() = Some(Counts { path, bodies: Default::default(), leaves: Default::default(), vm: Default::default() }));
         COUNTING.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
 #[inline(always)]
-fn counting() -> bool {
+pub fn counting() -> bool {
     COUNTING.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -360,6 +368,24 @@ fn where_of(t: &Table, fid: usize) -> String {
     }
 }
 
+/// A wait or a switch of VProcs that the scheduler saw (sched.rs).
+#[cold]
+pub fn count_vm(kind: &'static str, what: String) {
+    COUNTS.with(|c| {
+        if let Some(c) = c.borrow_mut().as_mut() {
+            *c.vm.entry((kind, what)).or_insert(0) += 1;
+        }
+    });
+}
+
+/// What a VProc applies, for count_vm.
+pub fn operator_name(v: &Value) -> String {
+    match v {
+        Value::Prim(p) => p.name.to_string(),
+        v => format!("a {}", value_type_name(v)),
+    }
+}
+
 #[cold]
 fn count_budget() {
     COUNTS.with(|c| {
@@ -387,6 +413,9 @@ pub fn write_counts() {
         }
         for (what, n) in &c.leaves {
             out.push_str(&format!("{}\tleave\t{}\n", n, what));
+        }
+        for ((kind, what), n) in &c.vm {
+            out.push_str(&format!("{}\t{}\t{}\n", n, kind, what));
         }
         if let Err(e) = std::fs::write(&c.path, out) {
             eprintln!("CONMA_TRANSPILED_COUNTS: {}: {}", c.path, e);
@@ -629,6 +658,21 @@ pub fn make_cont(m: &mut Machine, vp: &mut VProc) -> Value {
     Value::Cont(k)
 }
 
+/// The escape continuation of `__Cont_get__` that a fused chain did not make
+/// (STATIC_CONT of conma2rust.py), made when it is used as a value: cchain is
+/// the CChain the chain had at the `__Cont_get__`, which is the one make_cont
+/// would have taken; it is recorded in the innermost Rust call, as make_cont
+/// records it (the chain runs in that call until it hands the VProc back).
+pub fn make_cont_on(m: &mut Machine, cchain: &Value) -> Value {
+    m.serials.conts += 1;
+    let k = Rc::new(ContObj::new(m.serials.conts, cchain.clone()));
+    if let Some(f) = m.nctx.frames.last_mut() {
+        k.owner.set(f.id);
+        f.conts.push(k.clone());
+    }
+    Value::Cont(k)
+}
+
 /// A Rust call: run Function fid in env as a call with the LCont Function lc
 /// (in lenv, with sinfo for its CFrame), then bind the values it returns to
 /// lc.
@@ -641,7 +685,7 @@ fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     }
     let mut env = Some(env);
     let first = &mut |_: &mut Machine, _: &mut VProc| Ok(Next::Enter(fid, env.take().expect("entered once")));
-    match frame_run(m, vp, fid, first, gv, t, &|b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
+    match frame_run(m, vp, fid, first, gv, t, &|_: &mut Machine, b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
         Ret::Values => {
             vp.lcont = None;
             pass_results(vp, lenv, gv, t, Some(lc))
@@ -666,7 +710,7 @@ pub fn cframe_on(t: &Table, gv: &Rc<GVEnv>, lc: usize, lenv: LVEnv, sinfo: &Opti
 /// values are in the OList and the SInfo is sinfo (of the calling Body), as
 /// after the VM pops the CFrame.
 #[allow(clippy::too_many_arguments)]
-fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(&mut Machine, &mut VProc) -> NResult, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
+fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(&mut Machine, &mut VProc) -> NResult, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&mut Machine, &Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
     m.nctx.ids += 1;
     let id = m.nctx.ids;
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
@@ -689,7 +733,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     // The CFrame the VM would have pushed, made only when it is needed.
     let mut made: Option<Value> = None;
     let base = f.base.clone();
-    let node_of = |n: &mut Option<Value>| -> Value { n.get_or_insert_with(|| node(&base)).clone() };
+    let node_of = |m: &mut Machine, n: &mut Option<Value>| -> Value { n.get_or_insert_with(|| node(m, &base)).clone() };
     if matches!(r, Ok(Ret::Values)) {
         // Drop what still holds the continuations made in the call.
         vp.lvenv = None;
@@ -698,7 +742,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     // Left: the VM goes on with the CChain the VM would have. (Escape: the
     // continuation will replace the CChain.)
     if matches!(r, Ok(Ret::Leave)) {
-        let n = node_of(&mut made);
+        let n = node_of(m, &mut made);
         vp.cchain = splice(&vp.cchain, &f.base, &n);
     }
     // Continuations still in use get the CFrame, and belong to the Rust call
@@ -706,7 +750,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     let parent = m.nctx.current();
     for k in f.conts {
         if Rc::strong_count(&k) > 1 {
-            let n = node_of(&mut made);
+            let n = node_of(m, &mut made);
             let c = splice(&k.cchain.borrow(), &f.base, &n);
             *k.cchain.borrow_mut() = c;
             k.owner.set(parent);
@@ -737,7 +781,7 @@ pub enum Called {
 /// call; the chain gets the values it returns. Anything else is applied as the
 /// VM would, with the LCont Closure (lc in the LVEnv that lenv makes).
 #[allow(clippy::too_many_arguments)]
-pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
+pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&mut Machine, &Value) -> Value, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
     vp.sinfo = sinfo.clone();
     let target = match &f {
         Value::Closure(c) if !c.variadic && c.params().len() == N => {
@@ -756,7 +800,8 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
     let Some((c, cf)) = target.filter(|_| rust) else {
         // As the VM applies f with the LCont: its CFrame (and those of the
         // clauses around the call) on the CChain.
-        vp.cchain = node(&vp.cchain);
+        let c = node(m, &vp.cchain);
+        vp.cchain = c;
         vp.operator = f;
         vp.olist.clear();
         vp.olist.extend(args);
@@ -1179,6 +1224,45 @@ pub fn d_chan_take_now(m: &mut Machine, reader: &Value) -> Result<Option<Out>, V
     Ok(chan::take_now(m, reader)?.map(|(item, found)| Out::R2(item, found)))
 }
 
+/// `__Ref_set__ ref value` in place. The VM wakes the VProcs waiting for a change of a Ref
+/// (__Ref_wait_change__) between two steps; a run of transpiled code is one step, so the
+/// waiters are checked at once (Machine::wake_changed), and a change undone later in the
+/// same run wakes them as it does in the VM.
+pub fn d_ref_set(m: &mut Machine, r: &Value, value: &Value) -> Result<Out, VmError> {
+    match r {
+        Value::Ref(r) => {
+            let old = std::mem::replace(&mut *r.value.borrow_mut(), value.clone());
+            m.ref_changed = true;
+            m.wake_changed();
+            drop(old);
+            Ok(Out::R0)
+        }
+        v => Err(VmError::Error(format!("__Ref_set__: expected Ref, got {}", value_type_name(v)))),
+    }
+}
+
+/// `__LazyList_publish__ lazyList cell` in place, as prim/lazy.rs does it: the current VProc
+/// evaluates the LazyList and the cell is null or an LList. None for anything else (an error,
+/// or a __VProc_kill__ that waits for the evaluation), which the VM does (the generated code
+/// bails to the Body).
+pub fn d_lazylist_publish_now(m: &mut Machine, vp: &mut VProc, lazy: &Value, cell: &Value) -> Option<Out> {
+    let Value::Ref(r) = lazy else { return None };
+    let cur = m.current.clone()?;
+    if cur.kill_pending.get() {
+        return None;
+    }
+    let mine = matches!(&*r.value.borrow(), Value::VProc(o) if Rc::ptr_eq(o, &cur));
+    if !mine || !(cell.is_null() || matches!(cell, Value::LList(_))) {
+        return None;
+    }
+    *r.value.borrow_mut() = cell.clone();
+    m.ref_changed = true;
+    *r.lazy.borrow_mut() = None;
+    vp.claims.retain(|c| !Rc::ptr_eq(c, r));
+    m.wake_changed();
+    Some(Out::R0)
+}
+
 /// The value of key in d, or None (__Dict_lookup_or__ without onMissing).
 #[inline]
 pub fn d_dict_get(d: &Value, key: &Value) -> Result<Option<Value>, VmError> {
@@ -1199,6 +1283,27 @@ pub fn d_dict_put(_m: &mut Machine, d: &Value, key: &Value, value: &Value) -> Re
 /// function, passed to the LCont written in place.
 pub fn cont_get(m: &mut Machine, vp: &mut VProc) -> Result<Out, VmError> {
     Ok(Out::R1(make_cont(m, vp)))
+}
+
+/// The array primitives called directly (docs/dev/ARRAY-PLAN-ja.md, prim/array.rs).
+pub fn d_array_length(_m: &mut Machine, a: &Value) -> Result<Out, VmError> {
+    Ok(Out::R1(num(crate::prim::array::length_core(a)? as f64)))
+}
+pub fn d_array_get(_m: &mut Machine, on_error: &Value, a: &Value, i: &Value) -> Result<Out, VmError> {
+    Ok(match crate::prim::array::get_core(a, i) {
+        Ok(v) => Out::R1(v),
+        Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
+    })
+}
+pub fn d_array_set(_m: &mut Machine, on_error: &Value, a: &Value, i: &Value, v: &Value) -> Result<Out, VmError> {
+    Ok(match crate::prim::array::set_core(a, i, v.clone()) {
+        Ok(()) => Out::R0,
+        Err(msg) => Out::Call(on_error.clone(), string_value(&msg)),
+    })
+}
+pub fn d_array_push(_m: &mut Machine, a: &Value, v: &Value) -> Result<Out, VmError> {
+    crate::prim::array::push_core(a, v.clone())?;
+    Ok(Out::R0)
 }
 
 pub fn d_number_divide(_m: &mut Machine, on_error: &Value, a: &Value, b: &Value) -> Result<Out, VmError> {
