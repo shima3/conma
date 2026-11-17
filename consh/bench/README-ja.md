@@ -4,28 +4,23 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 
 ## スクリプト
 
-`NN_名前.sh` の 1 行目のコメントが、何を測るかである。`consh/include/README-ja.md` の速さの表の行を、その説明から書いたもの（表を作ったときのスクリプトそのものではない）に、起動の時間を測る `00_start.sh` を足した。`12`〜`18` は、起動の時間が全体の数 % 以下になるように、Rust 版でも 0.1〜1.5 秒ほどかかる大きさにしたもの（2026-11-15）。出力を比べられるように、多くは最後に変数の値を出す。
+`NN_名前.sh` の 1 行目のコメントが、何を測るかである。`consh/include/README-ja.md` の速さの表の行を、その説明から書いたもの（表を作ったときのスクリプトそのものではない）に、起動の時間を測る `00_start.sh` を足した。`13`〜`18` は、起動の時間が全体の数 % 以下になるように、Rust 版でも 0.1〜1.5 秒ほどかかる大きさにしたもの（2026-11-15）。大きさは名前に入れず、1 行目のコメントと結果の表に書く（docs/dev/CONTRIBUTING.md の Benchmarks）。2026-11-17 に、名前から大きさを外し（`02_for_seq_100000` → `02_for_seq`、`13_func_assign_100000` → `13_func_assign`、`16_func_varlist_50000` → `16_func_varlist`、`17_subst_func_20000` → `17_subst_func`）、大きさだけが違うものを 1 本にまとめた（`01_for_seq` と `12_for_seq_500000` を `02` に、`05_func_assign` を `13` に、`08_func_varlist` を `16` に、`09_subst_func` を `17` にまとめ、Bash 版とともに消した。番号は詰めていない）。出力を比べられるように、多くは最後に変数の値を出す。
 
 | スクリプト | 測るもの |
 |---|---|
 | `00_start.sh` | 何もしない（起動の時間） |
-| `01_for_seq.sh` | `for i in $(seq 1 10000); do n=$i; done` |
-| `02_for_seq_100000.sh` | `n=0; for i in $(seq 1 100000); do n=$i; done; echo $n` |
+| `02_for_seq.sh` | `n=0; for i in $(seq 1 100000); do n=$i; done; echo $n` |
 | `03_nested_for.sh` | `xs=$(seq 1 100)` の入れ子の for 文で `n=1` を 1 万回 |
 | `04_if_defined.sh` | `if defined i; then n=1; else n=2; fi` を 5000 回 |
-| `05_func_assign.sh` | 関数 `g $i`（`n=$x; echo $n`）を 5000 回、値を `> (n)` で受ける |
 | `06_func_echo.sh` | 関数 `f $i`（`echo "x$a"`）を 3000 回（`/dev/null` へ） |
 | `07_echo.sh` | `echo $i` を 1 万回（`/dev/null` へ） |
-| `08_func_varlist.sh` | `add $i x > (r)` を 3000 回 |
-| `09_subst_func.sh` | `y=$(f $i)` を 1000 回 |
 | `10_pipe_for_stdin.sh` | `seq 1 100000 \| cnt`（`cnt` は `for x in $(stdin)` で数える関数） |
 | `11_seq_varlist.sh` | `seq 1 100000 > (first . rest)` |
-| `12_for_seq_500000.sh` | `n=0; for i in $(seq 1 500000); do n=$i; done; echo $n`（`02` の 5 倍） |
-| `13_func_assign_100000.sh` | 関数 `g $i`（`n=$x; echo $n`）を 10 万回、値を `> (n)` で受ける（`05` の 20 倍） |
+| `13_func_assign.sh` | 関数 `g $i`（`n=$x; echo $n`）を 10 万回、値を `> (n)` で受ける（`05` の 20 倍） |
 | `14_nested_for_if.sh` | `xs=$(seq 1 300)` の入れ子の for 文で、`if defined` と関数 `h $i $j`（`m=$a$b; echo $m`）を 9 万回、値を `> (m)` で受ける |
 | `15_recursion.sh` | リストの先頭を除いて自分を呼ぶ関数 `down (x . rest)`（深さ 500）を 5 回。残りは `down $rest` で 1 つずつの引数として渡す |
-| `16_func_varlist_50000.sh` | `add $i x > (r)` を 5 万回（`08` の約 17 倍） |
-| `17_subst_func_20000.sh` | `y=$(f $i)` を 2 万回（`09` の 20 倍） |
+| `16_func_varlist.sh` | `add $i x > (r)` を 5 万回 |
+| `17_subst_func.sh` | `y=$(f $i)` を 2 万回 |
 | `18_pipe_funcs.sh` | 関数どうしのパイプ `gen \| inc \| cnt` で 5 万要素を渡す |
 | `19_loop.sh` | `(( ))` の SJS の関数 `loop` で、3000 万回数える |
 | `20_fib.sh` | `(( ))` の SJS の関数 `fib` で、素朴な再帰の `fib(35)` |
@@ -51,17 +46,21 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 ```
 consh/bench/run.py                         # Rust 版と、最適化版＋変換した VM
 consh/bench/run.py -v rust,conma:rust,reference:rust
-consh/bench/run.py -n 5 02_for_seq_100000.sh 11_seq_varlist.sh
+consh/bench/run.py -n 5 02_for_seq.sh 11_seq_varlist.sh
 consh/bench/run.py -v conma:wasm,conma:transpiled 19_loop.sh 20_fib.sh 21_nbody.sh
-consh/bench/run.py -v bash,rust,conma:wasm 01_for_seq.sh 13_func_assign_100000.sh
+consh/bench/run.py -v bash,rust,conma:wasm 02_for_seq.sh 13_func_assign.sh
+consh/bench/run.py -v conma:transpiled=/tmp/before/conma,conma:transpiled   # 作り直す前に写した VM と並べる
 ```
 
 * `-v` で、版と VM の組み合わせをコンマで区切って選ぶ：`rust`（Rust 版、`consh/rust/target/release/consh-rs`）、`conma:rust` と `reference:rust`（最適化版と参照版を Rust 版の VM で）、`conma:transpiled` と `reference:transpiled`（変換した VM で）、`conma:wasm` と `reference:wasm`（wasm 版の VM、`vm/wasm/vm-wasm.sh` で。`vm/wasm/build.sh` で作っておく）、`bash`（PATH の `bash` で、`bash/` の Bash 版を）。既定は `rust,conma:transpiled`。
-* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。`bash` は、エラーメッセージが ConSh と違うので、終了コードと標準出力だけを比べる。`-v` に `bash` が入っていてスクリプトを指定しないときは、Bash 版のないスクリプト（`19`〜`21`）を除く。
+* `版=パス` で、実行ファイルを、`consh-rs`、`bash`、VM（`vm/target/release/conma`、`vm/target-transpiled/release/conma`）、`vm/wasm/vm-wasm.sh` の代わりに、パスのものにする（2026-11-17）。作り直す前に写しておいた実行ファイルで、変更の前の版を後の版と並べて測るためのもの（docs/dev/CONTRIBUTING.md の Benchmarks）。表の列の名前は、`-v` に書いたとおり。変換した VM の写しも、今のモジュールの変換したコードを持っているかを先に確かめる。wasm 版の VM を写すときは、リポジトリと同じ配置にする：`vm/wasm` の `vm-wasm.sh`、`vm-node.js`、`vm-jsc.js`、`conma.js`、`target/wasm32-unknown-unknown/release/conma_wasm.wasm` を `写し先/vm/wasm` に、`vm/frontend.module.se` を `写し先/vm` に（`vm-node.js` は、2 つ上のディレクトリから読む）。
+* 各スクリプトを、組み合わせごとに `-n` 回（既定は 3）、組み合わせを順に替えながら（どれも 1 回目、次にどれも 2 回目、…。2026-11-17 までは、組み合わせごとに続けて）実行し、プロセスの user + sys の最小を、起動を含めて、Markdown の表に出す。2 つ目からの列には、最初の列に対する倍率を付ける。組み合わせの出力（終了コード、標準出力、標準エラー出力）が違えば、その行に `outputs differ` と付け、終了コードを 1 にする。`bash` は、エラーメッセージが ConSh と違うので、終了コードと標準出力だけを比べる。`-v` に `bash` が入っていてスクリプトを指定しないときは、Bash 版のないスクリプト（`19`〜`21`）を除く。
 * 実行ファイルは、`bin/consh` と同じ引数で、`bin/consh` を通さずに起動する（`consh-rs run スクリプト`、`conma --main モジュール run-src スクリプト スクリプト`）。その前に、`bin/consh` でモジュール（`consh.module.se` と `consh.reference.module.se`。`CONSH_MODULE_DIR` か、なければ `bin/cache-dir` のディレクトリ）を作る。`consh-rs` がソースより古ければ、そのとき `bin/consh` が警告する。
 * 変換した VM は、モジュールとまったく同じ中身のモジュールの変換したコードしか使わない。モジュールを作り直したら、`bench/build.sh`（参照版も測るなら `CONMA_BENCH_REFERENCE=1 bench/build.sh`）で変換した VM を作り直す。`run.py` は、変換したコードが使われるかを先に確かめ（`CONMA_TRANSPILED_REPORT`）、使われなければ、そう言って止まる。
 
 ## 結果
+
+表のスクリプトの名前は、測ったときのもの（2026-11-17 に、`02_for_seq_100000` は `02_for_seq`、`13_func_assign_100000` は `13_func_assign`、`16_func_varlist_50000` は `16_func_varlist`、`17_subst_func_20000` は `17_subst_func` に名前を変え、`01_for_seq`、`05_func_assign`、`08_func_varlist`、`09_subst_func`、`12_for_seq_500000` は消した。上の「スクリプト」）。
 
 ### 2026-11-16：チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）
 
