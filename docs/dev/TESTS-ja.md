@@ -70,6 +70,12 @@ consh/sjs/test/run_all.sh
 * 確かめたこと（Apple M1）：4 つとも `CONMA_BENCH_RUST=1 bench/run.sh NAME` で、CPython、Rust 版の VM、変換した VM の出力が同じだった。変換した VM は cd7d3a4 で作ったもの（bench/ のモジュールは変わっていない）。
 * テストのスクリプトは変えていない。
 
+### m4/consh-heavy2
+
+* ConSh の最適化版の `Eval_cmd_parts` と `Capture_new` を軽くした（consh/include/consh_eval.se だけ。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` を小さくしたものの出力が、変更の前と同じ。流していないもの：wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
+* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の Rust 版、wasm 版、変換版の VM で（このブランチの最後のコミット）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

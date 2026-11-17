@@ -972,12 +972,37 @@
 
 ;; 単純文を、文脈を受け取って実行するクロージャ（文のコード）にする。文ごとに同じになることは、変換のときに決めておく。
 ;; 先頭の語がリテラルなら、コマンドの名前と残りの語（Cmd_head_code）。リダイレクトと前置の変数定義がなければ、
-;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす
+;; その処理（Cmd_redirected、Eval_redirs、Cmd_scope）を飛ばす。どちらもなく、先頭の語が決まっていれば、
+;; Eval_cmd_plain にする。変数リストへのリダイレクトの記録の、毎回同じ部分は作っておく（Redirs_templates）
 (define Cmd_compile ,(pos defs words redirs)
+  __Cont_get__ ,(return)
   Cmd_head_code words ,(headCode resolveCode fixed)
   __is_null__ redirs ,(noRedirs)
   __is_null__ defs ,(noDefs)
-  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs noRedirs noDefs headCode resolveCode fixed))
+  __and__ noRedirs noDefs ,(plain)
+  __and__ plain fixed ,(plain)
+  __if__ plain (,() return (,(sh) Eval_cmd_plain sh pos headCode resolveCode)) ,()
+  Redirs_templates redirs ,(templates)
+  __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed))
+
+;; リダイレクトの LList のうち、変数リストへのリダイレクト（> (a b . rest) など）ごとの記録のひな形（Capture_template）の LList。
+;; Eval_redirs_from は、変数リストへのリダイレクトに出会うたびに、先頭から1つずつ使う
+(define Redirs_templates ,(redirs)
+  __Cont_get__ ,(return)
+  __is_null__ redirs ,(none)
+  __if__ none (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ redirs ,(redir rest)
+  Redirs_templates rest ,(templates)
+  Node_split redir ,(tag pos children)
+  __LList_uncons__ __print_exit_error__ children ,(op targets)
+  __is_null__ targets ,(noTarget)
+  __if__ noTarget (,() return templates) ,()
+  __LList_uncons__ __print_exit_error__ targets ,(target others)
+  Node_split target ,(targetTag targetPos targetChildren)
+  __String_equal__ targetTag "params" ,(isParams)
+  __unless__ isParams (,() return templates) ,()
+  Capture_template targetChildren ,(template)
+  __LList_cons__ template templates)
 
 ;; 先頭の語を展開するコード（文脈 sh と上限 limit を受け取り、Cmd_head と同じく、名前、先頭の語から出た残りの値、
 ;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）と、
@@ -1018,9 +1043,10 @@
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
 ;; 関数と組み込みコマンドなら外部コマンド以外の語の規則で、値（String か LazyList）に展開する。
 ;; noRedirs と noDefs は、リダイレクトと前置の変数定義がないか。headCode、resolveCode、fixed は Cmd_head_code。
+;; templates は Redirs_templates。
 ;; 引数のバイト数の上限（Arg_limit_new）は、先頭の語が決まっていれば（fixed）、外部コマンドのときだけ作る
 ;; （関数と組み込みコマンドの引数には使わない。ARG_MAX の値の確かめ（Arg_max）は、今までどおりどのコマンドでもする）
-(define Eval_cmd_parts ,(sh pos defs redirs noRedirs noDefs headCode resolveCode fixed)
+(define Eval_cmd_parts ,(sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed)
   __Cont_get__ ,(return)
   __if_then_else__ noRedirs (,() __NULL__ sh) (,() Cmd_redirected sh redirs) ,(sh)
   __if_then_else__ noDefs (,() __NULL__ sh) (,() Cmd_scope sh defs) ,(sh)
@@ -1042,7 +1068,7 @@
       __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
       __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
       __NULL__ in out err __NULL__ __NULL__ __TRUE__ __NULL__)
-    (,() Eval_redirs sh redirs) ,(in out err opened mark ok group)
+    (,() Eval_redirs sh redirs templates) ,(in out err opened mark ok group)
   __unless__ ok
     (,()
       Redirs_close sh opened mark ,()
@@ -1063,6 +1089,26 @@
       return) ,()
   Capture_run sh group (,(s) Cmd_run_resolved s pos name args in out err fn builtin) ,()
   Open_release sh mark)
+
+;; Eval_cmd_parts の、リダイレクトと前置の変数定義がなく、先頭の語が決まっている（fixed）とき。
+;; 名前は null にならず、開いた Stream も変数リストへのリダイレクトの組もないので、その処理を飛ばす
+(define Eval_cmd_plain ,(sh pos headCode resolveCode)
+  Arg_max sh pos ,(max)
+  headCode sh __NULL__ ,(name more rest)
+  resolveCode sh name ,(fn builtin isExternal)
+  __if_then_else__ isExternal
+    (,()
+      Arg_limit_from sh pos max ,(limit)
+      Eval_args sh rest __TRUE__ limit ,(args)
+      Values_leaves_in more limit ,(more)
+      __LList_append__ more args)
+    (,()
+      Eval_args sh rest __FALSE__ __NULL__ ,(args)
+      __LList_append__ more args) ,(args)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  Cmd_run_resolved sh pos name args in out err fn builtin)
 
 ;; リダイレクトがあれば、その印（"redirected"）を付けた文脈を返す（Eval_shift）
 (define Cmd_redirected ,(sh redirs)
@@ -1261,7 +1307,7 @@
     (,()
       run sh ,()
       return) ,()
-  Eval_redirs sh redirs ,(in out err opened mark ok group)
+  Eval_redirs sh redirs __NULL__ ,(in out err opened mark ok group)
   __unless__ ok
     (,()
       Redirs_close sh opened mark ,()
@@ -1573,18 +1619,9 @@
 ;; 標準出力と標準エラー出力の記録は別々の VProc が書くので、組で共有する数は持たず、
 ;; 止めるかどうかは、書くたびに組のすべての記録の "count" を見て決める（Capture_satisfied）
 
-;; 新しい記録を組に加え（組が null なら作る）、その capture ターゲットと組を返す
-(define Capture_new ,(sh group params)
-  __is_null__ group ,(noGroup)
-  __if_then_else__ noGroup
-    (,()
-      __Dict_new__ ,(g)
-      __Dict_put__ g "records" __NULL__ ,()
-      __Dict_put__ g "hasRest" __FALSE__ ,()
-      __Ref_new__ __FALSE__ ,(stopped)
-      __Dict_put__ g "stopped" stopped ,()
-      __NULL__ g)
-    (,() __NULL__ group) ,(group)
+;; 記録のひな形：変数リスト params から決まる "names"、"need"、"restName"、"hasRest" を置いた Dict。
+;; 単純文を変換するときに作っておき（Redirs_templates）、Capture_new が写して使う
+(define Capture_template ,(params)
   __LList_uncons__ __print_exit_error__ params ,(names restList)
   List_first restList ,(restName)
   __LList_length__ names ,(need)
@@ -1595,6 +1632,25 @@
   __Dict_put__ record "need" need ,()
   __Dict_put__ record "restName" restName ,()
   __Dict_put__ record "hasRest" hasRest ,()
+  __NULL__ record)
+
+;; 新しい記録を組に加え（組が null なら作る）、その capture ターゲットと組を返す。
+;; template は Capture_template（null なら、params から作る）
+(define Capture_new ,(sh group template params)
+  __is_null__ group ,(noGroup)
+  __if_then_else__ noGroup
+    (,()
+      __Dict_new__ ,(g)
+      __Dict_put__ g "records" __NULL__ ,()
+      __Dict_put__ g "hasRest" __FALSE__ ,()
+      __Ref_new__ __FALSE__ ,(stopped)
+      __Dict_put__ g "stopped" stopped ,()
+      __NULL__ g)
+    (,() __NULL__ group) ,(group)
+  __is_null__ template ,(noTemplate)
+  __if_then_else__ noTemplate (,() Capture_template params) (,() __NULL__ template) ,(template)
+  __Dict_copy__ template ,(record)
+  __Dict_lookup_or__ record "hasRest" __print_exit_error__ ,(hasRest)
   __MSeq_new__ ,(items)
   __Dict_put__ record "items" items ,()
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
@@ -3988,14 +4044,15 @@
 ;; 開く前の開いた Stream の表の長さ（mark）、成功したか、変数リストへのリダイレクトの組（Capture_group、なければ null）を返す。
 ;; ファイルを開けなければ、メッセージを出して失敗とする。
 ;; 開いた Stream は、開くのと同じステップで表に加える（__OS_open_tracked__）。開いてから表に加えるまでの間に
-;; VProc が kill されると、閉じる人がいなくなるので。閉じるときは、表を mark まで閉じる（Redirs_close）
-(define Eval_redirs ,(sh redirs)
+;; VProc が kill されると、閉じる人がいなくなるので。閉じるときは、表を mark まで閉じる（Redirs_close）。
+;; templates は、変数リストへのリダイレクトの記録のひな形（Redirs_templates）。null なら、そのたびに作る
+(define Eval_redirs ,(sh redirs templates)
   __Dict_new__ ,(used)
   __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
   __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
   __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
   Open_mark sh ,(mark)
-  Eval_redirs_from sh redirs used in out err __NULL__ __NULL__ ,(in out err opened ok group)
+  Eval_redirs_from sh redirs templates used in out err __NULL__ __NULL__ ,(in out err opened ok group)
   __NULL__ in out err opened mark ok group)
 
 ;; Eval_redirs が開いた Stream（opened。表には mark より上にある）を閉じる
@@ -4004,7 +4061,7 @@
   __is_null__ opened ,(test__) __if__ test__ return ,()
   Open_release sh mark)
 
-(define Eval_redirs_from ,(sh redirs used in out err opened group)
+(define Eval_redirs_from ,(sh redirs templates used in out err opened group)
   __Cont_get__ ,(return)
   __is_null__ redirs ,(condition)
   __if__ condition (,() return in out err opened __TRUE__ group) ,()
@@ -4018,29 +4075,33 @@
   __String_equal__ op "1>&2" ,(condition)
   __if__ condition
     (,()
-      Eval_redirs_from sh rest used in err err opened group ,(in out err opened ok group)
+      Eval_redirs_from sh rest templates used in err err opened group ,(in out err opened ok group)
       return in out err opened ok group) ,()
   __String_equal__ op "2>&1" ,(condition)
   __if__ condition
     (,()
-      Eval_redirs_from sh rest used in out out opened group ,(in out err opened ok group)
+      Eval_redirs_from sh rest templates used in out out opened group ,(in out err opened ok group)
       return in out err opened ok group) ,()
   __LList_uncons__ __print_exit_error__ targets ,(target others)
   Node_split target ,(targetTag targetPos targetChildren)
   __String_equal__ targetTag "params" ,(condition)
   __if__ condition
     (,()
+      __is_null__ templates ,(noTemplates)
+      __if_then_else__ noTemplates
+        (,() __NULL__ __NULL__ __NULL__)
+        (,() __LList_uncons__ __print_exit_error__ templates) ,(template templates)
       __String_equal__ fd "0" ,(isIn)
       __if__ isIn
         (,()
           Input_vars sh pos targetChildren ,(input)
-          Eval_redirs_from sh rest used input out err opened group ,(in out err opened ok group)
+          Eval_redirs_from sh rest templates used input out err opened group ,(in out err opened ok group)
           return in out err opened ok group) ,()
-      Capture_new sh group targetChildren ,(target group)
+      Capture_new sh group template targetChildren ,(target group)
       __String_equal__ fd "1" ,(isOut)
       __if_then_else__ isOut
-        (,() Eval_redirs_from sh rest used in target err opened group)
-        (,() Eval_redirs_from sh rest used in out target opened group) ,(in out err opened ok group)
+        (,() Eval_redirs_from sh rest templates used in target err opened group)
+        (,() Eval_redirs_from sh rest templates used in out target opened group) ,(in out err opened ok group)
       return in out err opened ok group) ,()
   Expand_fields sh target ,(fields)
   __LList_length__ fields ,(n)
@@ -4064,13 +4125,13 @@
   __if_then_else__ condition
     (,()
       Input_stream sh stream ,(input)
-      Eval_redirs_from sh rest used input out err opened group) (,()
+      Eval_redirs_from sh rest templates used input out err opened group) (,()
   __Dict_lookup_or__ sh "global" __print_exit_error__ ,(global)
   Target_stream global stream ,(target)
   __String_equal__ fd "1" ,(condition)
   __if_then_else__ condition
-    (,() Eval_redirs_from sh rest used in target err opened group)
-    (,() Eval_redirs_from sh rest used in out target opened group)))
+    (,() Eval_redirs_from sh rest templates used in target err opened group)
+    (,() Eval_redirs_from sh rest templates used in out target opened group)))
 
 ;; リダイレクトが変える入出力の番号
 (define Redir_fd ,(op)
