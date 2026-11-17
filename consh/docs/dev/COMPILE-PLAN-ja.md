@@ -94,3 +94,21 @@ ConMa 版の ConSh（最適化版）が文を実行する手間を、スクリ�
   * `Capture_new`：変数リストへのリダイレクトの記録のうち、変数リストから決まる部分（`"names"`、`"need"`、`"restName"`、`"hasRest"`）を、`Cmd_compile` が記録のひな形として作っておき（`Redirs_templates`、`Capture_template`）、`Capture_new` は写して使う。`Eval_redirs_from` は、変数リストへのリダイレクトに出会うたびに、ひな形を先頭から 1 つずつ使う。ひな形のない呼び出し（`Eval_redirected`。複合文のリダイレクト）は、今までどおり、そのたびに作る。
   * ステップ（Rust 版の VM の `CONMA_PROFILE`。小さくした大きさで、alpha の e3644a5 と比べた）：`02`（2 万）5,648,889 → 5,648,839（0%）、`06`（1 万回）14,852,280 → 13,572,273（−8.6%）、`13`（1 万回）17,259,197 → 16,519,249（−4.3%）、`14`（`seq 1 100`）29,383,891 → 28,004,034（−4.7%）、`18`（5000 要素）10,330,459 → 9,690,173（−6.2%）。出力はどれも同じ。`13` の 1 回の手間は、`Capture_new` が 102 から 89 ステップ、`echo $n` の `Eval_cmd_parts`（80）と `Capture_run`（16.5）が `Eval_cmd_plain` になった。
   * 時間は測っていない（docs/dev/TESTS-ja.md の申し送りで頼んだ）。
+* **GC が、読み終えた $( ) の値をたどっていた（2026-11-17、ブランチ m4/transpiled-clone）**：変換した VM で値の複製と破棄を減らすつもりで、`13` を macOS の `sample` で測ると、複製より GC（`gc::collect`）が重く、作業の約 3 割だった。`for i in $(seq ...)` の値のうち、for 文が読み終えた要素が、ループの終わりまで残り、GC が毎回それをたどっていた（`CONMA_GC_STATS` で、残る値が読んだ数だけ増える）。値の先頭を持っていたのは 2 つ：
+  * 覚えておく文のコード（`"stmtCode"`、`"linesCode"`）のクロージャ。作る関数が、早く抜けるためだけに `__Cont_get__ ,(return)` を取っていたので、クロージャがその継続を持ち、初めて実行したときの呼び出しの鎖（for 文の 1 回目の繰り返し）を持ち続けた。`Code_chain`、`Stmt_compile`、`Assign_compile`、`Cmd_compile`、`Cmd_head_code`、`Cmd_resolve_code`、`Fields_compile`、`Args_compile`、`Def_value_code`、`Parts_compile_from`、`Part_code` を、`__if_then_else__` の入れ子にした（継続を取らない）。
+  * OS のパイプから読む `$( )` の記録の `"value"`。コマンドが終わったときに残りを読み終えるのに使っていた。読む側が、まだ読んでいない所を Ref（`"front"`。`Subst_lines_from`）に置くようにし、読み終えるのはそこからにした。値の先頭は、先頭の `Pipe_cap` 個がそろった（`"full"`）ときに記録から除く。
+  * あわせて、`gc::collect` の索引の HashMap を SipHash から Fx にし、子を集める Vec を使い回すようにした（vm/src/gc.rs）。
+  * `for i in $(seq 1 50000)` で GC の後に残る値は、読んだ数（最大 5 万）から 57 になった（`seq` が終わった後に残りを読み終えた分を除く）。関数の出力の `$( )`（チャネル）は、まだ残る：チャネルの鎖が最初の節（`"head"`）を持ち続ける（include/core/chan.se と vm/src/prim/chan.rs）。
+  * 時間（Apple M4、rustc 1.99.1、user + sys、前と後を交互に 3 回の最小。前は alpha の 9a4f7a2）：
+
+| スクリプト | 変換した VM 前 | 後 | Rust 版の VM 前 | 後 |
+|---|---|---|---|---|
+| `02_for_seq` | 3.52 秒 | 2.60 秒（−26%） | 7.27 秒 | 6.38 秒（−12%） |
+| `06_func_echo` | 4.38 秒 | 3.98 秒（−9%） | — | — |
+| `13_func_assign` | 6.50 秒 | 4.80 秒（−26%） | 14.38 秒 | 12.63 秒（−12%） |
+| `14_nested_for_if` | 6.25 秒 | 6.27 秒（0%） | 16.92 秒 | 17.10 秒（0%） |
+| `18_pipe_funcs` | 2.51 秒 | 2.37 秒（−6%） | — | — |
+
+  * `14` は、値を変数（`xs=$(seq 1 480)`）に入れるので、残るのが正しく、変わらない。出力はどれも同じ。Rust 版の VM は consh/bench/run.py を使わずに `consh/bin/consh` で測った（起動を含む）。
+  * 次：チャネルの鎖が持つ先頭と、値の複製と破棄（`Value` の `clone` と `drop`。`sample` で GC の次に大きい）。
+

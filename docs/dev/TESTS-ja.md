@@ -69,6 +69,11 @@ consh/sjs/test/run_all.sh
 * SJS の配列の `push` と `pop` が、凍らせた配列のときだけエラーメッセージを作るようにした（consh/include/sjs_rt.se。docs/dev/ARRAY-PLAN-ja.md の 6 の A6）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/sjs/test、consh/test（最適化版）の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test、参照版（sjs_rt.se は最適化版と共通か確かめていない）。
 
+### m4/transpiled-clone
+
+* for 文が読み終えた `$( )` の値を残さないようにした（consh/include/consh_eval.se、consh_expand.se。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。vm/src/gc.rs も変えた（索引のハッシュと、子を集めるバッファ）ので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
+* 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` の出力が、変換した VM で変更の前と同じ。流していないもの：test/、wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
