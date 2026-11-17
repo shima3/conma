@@ -54,19 +54,10 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/compile2-dq
-
-* ベンチマーク：consh/bench の `06` を、最適化版の変換版の VM で（前は alpha の 0748a95）。ステップは 1 回 1,297 → 1,041（−19.7%、Rust 版の VM）。
-
-### m1/compile2-cmd
-
-* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の変換版の VM で（前は alpha の e687929）。ステップは 1 回あたり −9.3%、−3.4%、−4.6%、−5.6%（Rust 版の VM）。m1/compile2-dq の `06` の依頼と、まとめて測ってよい。
-
 ### m1/compile2-capture
 
 * ConSh の最適化版で、変数リストへの受け取りだけの、先頭の語が決まっている単純文（`g $i > (n)` など）も、変換のときに組み込みコマンドか外部コマンドかに分けて組むようにした（consh/include/consh_eval.se の `Cmd_capture_code`。docs/consh/dev/COMPILE2-PLAN-ja.md の「受け取りのある単純文の近道」）。consh/test の step6 に case13 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
-* ベンチマーク：consh/bench の `13`、`14` を、最適化版の変換版の VM で（前は alpha の 2f1c8e1）。ステップは 1 回あたり −5.9%、−4.1%（Rust 版の VM）。m1/compile2-dq と m1/compile2-cmd の依頼と、まとめて測ってよい。
 
 ## 記録
 
