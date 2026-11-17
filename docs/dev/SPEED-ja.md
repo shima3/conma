@@ -30,6 +30,8 @@
 | 文字列が書いてある `__Number_fromString__` を、変数の代わりに数を置いた Body にして読み込む（`load_const`。ステップの数は同じ） | 2026-11-13 | richards 20 で、使う所で数を作る `richards_const.se` が 4.196 s → 3.754 s（`richards_tuned.se` の 1.13 倍 → 1.01 倍）。`richards_tuned.se` は変わらない | 入れた（`CONMA_NO_FOLD=1` で止める） | bench/README.md「Numbers written where they are used」 |
 | 実行時に作った String に「すべて ASCII か」と文字数を覚えさせ、ASCII なら位置と長さを文字列を調べずに求める（`StrObj`） | 2026-11-16 | 16 万文字の ASCII の文字列を 1 文字ずつ読むループ（毎回長さも求める）が、Rust 版で 0.55 s → 0.13 s、wasm 版で 3.91 s → 0.28 s。SJS の `s[i]` のループ（20 万文字）が wasm 版で 8.78 s → 3.15 s。ConSh（行を 1024 文字の断片で読む）は変わらない | 入れた | docs/dev/STRING-INDEX-PLAN-ja.md |
 
+表の名前は測ったときのもの：`02_for_seq_100000`（2026-11-17 に 02_for_seq へ名前を変更）。
+
 ## 2. 変換版の VM（vm/conma2rust）
 
 | 手法 | 日付 | 効果 | 採否 | 詳細 |
