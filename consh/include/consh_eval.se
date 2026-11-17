@@ -1014,7 +1014,7 @@
   __and__ noRedirs noDefs ,(plain)
   __and__ plain fixed ,(plain)
   __if_then_else__ plain
-    (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode argsCodes fieldsCodes))
+    (,() Cmd_plain_code pos words headCode resolveCode argsCodes fieldsCodes)
     (,()
       Redirs_templates redirs ,(templates)
       Redirs_captures redirs ,(captures onlyCaptures)
@@ -1168,6 +1168,66 @@
         __if_then_else__ noFunc
           (,() __NULL__ __NULL__ builtin external)
           (,() __NULL__ fn __NULL__ __FALSE__))))
+
+;; 最適化版：Cmd_compile の、リダイレクトと前置の変数定義がなく、先頭の語が決まっている（fixed）単純文のコード。
+;; 名前が builtin でも command でもなく、先頭の語が 1 つの語になるなら、名前が関数値でないことも、組み込みコマンドか
+;; どうかも変換のときに決まるので、Eval_cmd_plain の先頭の語と名前のコードを呼ばず、Cmd_run_resolved の振り分けも
+;; 通らない形（Cmd_fast_builtin、Cmd_fast_external）にする。関数は後から定義できるので、毎回探す（Func_lookup）。
+;; ARG_MAX の確かめ（Arg_max）、関数を探す、引数を展開する、関数の出力の先を作る、の順は Eval_cmd_plain と同じ
+(define Cmd_plain_code ,(pos words headCode resolveCode argsCodes fieldsCodes)
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Literal_fields word ,(fields done)
+  __LList_uncons__ __print_exit_error__ fields ,(name more)
+  __String_equal__ name "builtin" ,(isBuiltin)
+  __String_equal__ name "command" ,(isCommand)
+  __is_null__ more ,(single)
+  __not__ single ,(hasMore)
+  isBuiltin __TRUE__ isCommand ,(special)
+  special __TRUE__ hasMore ,(general)
+  __if_then_else__ general
+    (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode argsCodes fieldsCodes))
+    (,()
+      Builtin_lookup name ,(builtin)
+      __is_null__ builtin ,(external)
+      __if_then_else__ external
+        (,() __NULL__ (,(sh) Cmd_fast_external sh pos name argsCodes fieldsCodes))
+        (,() __NULL__ (,(sh) Cmd_fast_builtin sh pos name argsCodes builtin))))
+
+;; 名前 name が組み込みコマンド builtin の名前である単純文。同じ名前の関数があれば、それを呼ぶ
+(define Cmd_fast_builtin ,(sh pos name argsCodes builtin)
+  Arg_max sh pos ,(max)
+  Func_lookup sh name ,(fn)
+  Eval_arg_codes sh argsCodes __FALSE__ __NULL__ ,(args)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  __is_null__ fn ,(noFunc)
+  __if_then_else__ noFunc
+    (,() builtin sh pos args in out err)
+    (,()
+      Func_targets sh pos out err ,(out err)
+      Func_call sh pos fn args in out err))
+
+;; 名前 name が組み込みコマンドの名前でない単純文。関数があれば呼び、なければ外部コマンドとして起動する
+(define Cmd_fast_external ,(sh pos name argsCodes fieldsCodes)
+  Arg_max sh pos ,(max)
+  Func_lookup sh name ,(fn)
+  __is_null__ fn ,(noFunc)
+  __if_then_else__ noFunc
+    (,()
+      Arg_limit_from sh pos max ,(limit)
+      Eval_arg_codes sh fieldsCodes __TRUE__ limit ,(args)
+      __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+      __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+      __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+      External_run sh pos name args in out err)
+    (,()
+      Eval_arg_codes sh argsCodes __FALSE__ __NULL__ ,(args)
+      __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+      __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+      __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+      Func_targets sh pos out err ,(out err)
+      Func_call sh pos fn args in out err))
 
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、

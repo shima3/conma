@@ -1,0 +1,13 @@
+e1
+p1
+my echo: e2
+my printf: p2
+
+after
+my cat
+x
+b
+c
+1 2
+consh: case30.sh:18:1: expected 2 arguments, got 1
+exit: 1

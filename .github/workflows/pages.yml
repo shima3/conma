@@ -37,6 +37,11 @@ jobs:
       - name: Put the browser version under docs/consh/web
         run: cp -R consh/js/web docs/consh/web
 
+      # Jekyll reads every page as Liquid first, and the text of ConSh has {{ and {% in it
+      # (docs/consh/PLAN-ja.md), so the Markdown is put in {% raw %}, here only (.github/pages-raw.py)
+      - name: Keep Liquid out of the Markdown
+        run: python3 .github/pages-raw.py docs
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/jekyll-build-pages@v1
