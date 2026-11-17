@@ -1,0 +1,17 @@
+x1 x y   q1 ax yc $1 1z 1 2 3 presubpost 3 def *
+[][]
+[x y][x]
+<x1>
+<>
+<ax yc>
+<1 2 3>
+<*>
+<1>
+x1|1 2 3||ax yc|df|s1
+w=[1 2 3]
+w=[x1]
+w=[]
+in 1 f: hi
+1zz*nomatch
+consh: case20.sh:19:8: a function value cannot be made into a string
+exit: 1
