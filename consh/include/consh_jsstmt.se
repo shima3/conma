@@ -101,42 +101,53 @@
 
 ;; JS の値の変数 wrapped を、シェルの値にする。プリミティブ（number:3、boolean:true、bigint:5、undefined、null）は
 ;; ここで直し、オブジェクトと関数（#n）は、その時点の値をホストに直してもらう（__JS_value__）。
-;; s は String、l は LazyList、n は空文字列、f は、呼ぶと js でその関数を呼ぶ関数値
+;; s は String、l は LazyList、n は空文字列、f は、呼ぶと js でその関数を呼ぶ関数値。
+;; 関数値がこの関数の継続を持たないように、__Cont_get__ の return で抜けず、__if_then_else__ を入れ子にする
+;; （持つと、シェルの変数に入った関数値が、それを作った所の継続と、そこから届く値を残す）
 (define Js_force ,(wrapped)
-  __Cont_get__ ,(return)
   __Dict_lookup_or__ wrapped "js" __print_exit_error__ ,(id)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __String_substring__ __print_exit_error__ id zero one ,(first)
-  __String_equal__ first "#" ,(test__) __unless__ test__
+  __String_equal__ first "#" ,(isRef)
+  __if_then_else__ isRef
+    (,()
+      __JS_value__ __print_exit_error__ id ,(text)
+      __Sexp_read__ __print_exit_error__ text ,(sexp)
+      __LList_uncons__ __print_exit_error__ sexp ,(kind fields)
+      __String_equal__ kind "f" ,(isFn)
+      __if_then_else__ isFn
+        (,()
+          ;; SJS が作った関数は、SJS の規則で呼ぶ（Sjsa_call。戻り値は標準エラー）
+          __Dict_lookup_or__ wrapped "sjs" (,(key) __NULL__ __FALSE__) ,(isSjs)
+          __if_then_else__ isSjs
+            (,() __NULL__ (,(caller pos args in out err)
+              Js_hold wrapped ,()
+              Sjsa_call caller pos wrapped args in out err))
+            (,()
+              __String_concat__ "__consh_value(\"" id ,(code)
+              __String_concat__ code "\")" ,(code)
+              ;; 関数値は wrapped を持つ（その間、ホストは値を消さない）
+              __NULL__ (,(caller pos args in out err)
+                Js_hold wrapped ,()
+                __LList_cons__ code args ,(args)
+                Builtin_js caller pos args in out err)))
+        (,()
+          __is_null__ fields ,(none)
+          __if_then_else__ none
+            (,() __NULL__ "")
+            (,()
+              List_first fields ,(value)
+              Js_value kind value)))
     (,()
       __String_find__ __print_exit_error__ id ":" zero ,(colon)
-      __is_null__ colon ,(test__) __if__ test__ (,() return "") ,()
-      __Number_add__ colon one ,(start)
-      __String_length__ id ,(len)
-      __String_substring__ __print_exit_error__ id start len ,(text)
-      return text) ,()
-  __JS_value__ __print_exit_error__ id ,(text)
-  __Sexp_read__ __print_exit_error__ text ,(sexp)
-  __LList_uncons__ __print_exit_error__ sexp ,(kind fields)
-  __String_equal__ kind "f" ,(test__) __if__ test__
-    (,()
-      ;; SJS が作った関数は、SJS の規則で呼ぶ（Sjsa_call。戻り値は標準エラー）
-      __Dict_lookup_or__ wrapped "sjs" (,(key) __NULL__ __FALSE__) ,(isSjs)
-      __if__ isSjs
-        (,() return (,(caller pos args in out err)
-          Js_hold wrapped ,()
-          Sjsa_call caller pos wrapped args in out err)) ,()
-      __String_concat__ "__consh_value(\"" id ,(code)
-      __String_concat__ code "\")" ,(code)
-      ;; 関数値は wrapped を持つ（その間、ホストは値を消さない）
-      return (,(caller pos args in out err)
-        Js_hold wrapped ,()
-        __LList_cons__ code args ,(args)
-        Builtin_js caller pos args in out err)) ,()
-  __is_null__ fields ,(test__) __if__ test__ (,() return "") ,()
-  List_first fields ,(value)
-  Js_value kind value)
+      __is_null__ colon ,(noColon)
+      __if_then_else__ noColon
+        (,() __NULL__ "")
+        (,()
+          __Number_add__ colon one ,(start)
+          __String_length__ id ,(len)
+          __String_substring__ __print_exit_error__ id start len)))
 
 ;; 値を持っておくための、何もしない関数
 (define Js_hold ,(value)
@@ -835,32 +846,46 @@
   Sjsb_json_props G o rest)
 
 ;; {"sjsv": v} を、シェルの値にする（Value_force）。文字列、数、真偽値は String、undefined と null は ""、
-;; 配列は LazyList（要素も同じ規則。オブジェクトは JSON）、オブジェクトは JSON、関数は、コマンドとして呼ぶ関数値
+;; 配列は LazyList（要素も同じ規則。オブジェクトは JSON）、オブジェクトは JSON、関数は、コマンドとして呼ぶ関数値。
+;; 関数値がこの関数の継続を持たないように、__if_then_else__ を入れ子にする（Js_force と同じ）
 (define Sjsb_to_shell ,(v)
-  __Cont_get__ ,(return)
   Sjs_kind v ,(kind)
-  __String_equal__ kind "function" ,(test__) __if__ test__
-    (,() return (,(caller pos args in out err) Sjsb_call caller pos v args in out err)) ,()
-  __String_equal__ kind "array" ,(test__) __if__ test__
+  __String_equal__ kind "function" ,(isFn)
+  __if_then_else__ isFn
+    (,() __NULL__ (,(caller pos args in out err) Sjsb_call caller pos v args in out err))
     (,()
-      Sjs_array_list v ,(items)
-      Sjsb_to_shell_list items __NULL__ ,(rev)
-      List_reverse rev ,(list)
-      LazyList_fromList list ,(l)
-      return l) ,()
-  __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_json v ,(j) return j) ,()
-  __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjsb_gen_lazy v ,(l) return l) ,()
-  ;; Promise：評価のたびにマイクロタスクの列を最後まで動かすので、決着している。成功ならその値、ほかは ""
-  __String_equal__ kind "promise" ,(test__) __if__ test__
-    (,()
-      Sjs_promise_ref v "state" ,(state)
-      __String_equal__ state "fulfilled" ,(ok)
-      __unless__ ok (,() return "") ,()
-      Sjs_promise_ref v "value" ,(x)
-      Sjsb_to_shell x ,(sv)
-      return sv) ,()
-  Sjs_is_nullish v ,(test__) __if__ test__ (,() return "") ,()
-  Sjs_to_string v)
+      __String_equal__ kind "array" ,(isArray)
+      __if_then_else__ isArray
+        (,()
+          Sjs_array_list v ,(items)
+          Sjsb_to_shell_list items __NULL__ ,(rev)
+          List_reverse rev ,(list)
+          LazyList_fromList list)
+        (,()
+          __String_equal__ kind "object" ,(isObject)
+          __if_then_else__ isObject
+            (,() Sjs_json v)
+            (,()
+              __String_equal__ kind "generator" ,(isGen)
+              __if_then_else__ isGen
+                (,() Sjsb_gen_lazy v)
+                (,()
+                  ;; Promise：評価のたびにマイクロタスクの列を最後まで動かすので、決着している。成功ならその値、ほかは ""
+                  __String_equal__ kind "promise" ,(isPromise)
+                  __if_then_else__ isPromise
+                    (,()
+                      Sjs_promise_ref v "state" ,(state)
+                      __String_equal__ state "fulfilled" ,(ok)
+                      __if_then_else__ ok
+                        (,()
+                          Sjs_promise_ref v "value" ,(x)
+                          Sjsb_to_shell x)
+                        (,() __NULL__ ""))
+                    (,()
+                      Sjs_is_nullish v ,(nullish)
+                      __if_then_else__ nullish
+                        (,() __NULL__ "")
+                        (,() Sjs_to_string v)))))))
 
 (define Sjsb_to_shell_list ,(items acc)
   __Cont_get__ ,(return)
