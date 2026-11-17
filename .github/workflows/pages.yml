@@ -38,9 +38,9 @@ jobs:
         run: cp -R consh/js/web docs/consh/web
 
       # Jekyll reads every page as Liquid first, and the text of ConSh has {{ and {% in it
-      # (docs/consh/PLAN-ja.md), so the Markdown is put in {% raw %}, here only (.github/pages-raw.py)
+      # (docs/consh/PLAN-ja.md, docs/dev/TESTS-ja.md), so each of them is escaped, here only (.github/pages-escape.py)
       - name: Keep Liquid out of the Markdown
-        run: python3 .github/pages-raw.py docs
+        run: python3 .github/pages-escape.py docs
 
       - uses: actions/configure-pages@v5
 
