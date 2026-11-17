@@ -86,6 +86,12 @@ consh/sjs/test/run_all.sh
 * 流したもの：Rust 版の VM の consh/test（最適化版）、consh/sjs/test、consh/js/test、変わったファイルのある test/fast7（Rust 版の VM）。どの Markdown の相対リンクも、前からの `.html` へのリンクと SAFEJS-PLAN-ja.md のリンクに見える文のほかは、切れていない。
 * consh/js/test の step5 の case2 が違う（7 行目と 10 行目が 1 でなく 0）。参照を書き換える前（ファイルを移しただけの e36212b）でも同じなので、この変更によるものではない。1e8c4d4（for 文が読んだ `$( )` の値を持ち続けない）で、関数の文脈の循環がなくなり、関数の局所変数の JS の値がすぐに表から消えるようになったためと思われる。1e8c4d4 の作者が確かめて、期待ログとコメントを直す。
 
+### m1/sjs-bench-sizes
+
+* `consh/sjs/bench/run.sh NAME [N [M]]` に大きさを 2 つにした。N で Node.js、CPython、wasm 版の VM の SJS を、M で遅い列（Rust 版の VM の 2 つ、wasm 版の VM の `CONMA_NO_WASM=1` と手で書いた ConMa。出力で `*` を付ける）を測る。指定しなければ loop 1000000000／25000000、fib 40／32、nbody 10000000／80000（N は Node.js か wasm 版の VM の SJS で約 1 秒、M は遅い列のいちばん遅いもので約 1 分。Apple M1）。結果は consh/sjs/README-ja.md の「速さ」。
+* loop の N は、2^30 より小さくした。2^30 以上では、wasm 版の VM で数の関数が WebAssembly にならず、60 秒を超える。
+* 確かめたこと（Apple M1）：3 つとも、指定しない大きさで run.sh を流し、どの列も出力が Node.js と同じだった（`CONMA_NO_WASM=1` の列の出力も、新しく M で比べる）。テストのスクリプトは変えていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
