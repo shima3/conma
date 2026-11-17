@@ -56,7 +56,7 @@ consh/sjs/test/run_all.sh
 
 ### m4/transpiled-inplace
 
-* 変換した VM：`__Ref_set__` を直接呼び（待つ VProc をその場で起こす）、評価中の LazyList の `__LazyList_publish__` を融合した鎖の中で行うようにした（vm/src/transpiled.rs、vm/src/sched.rs の `wake_changed`、vm/conma2rust/conma2rust.py）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/transpiled の case4。
+* 変換した VM：`__Ref_set__` を直接呼び（待つ VProc をその場で起こす）、評価中の LazyList の `__LazyList_publish__` を融合した鎖の中で行うようにした（vm/src/transpiled.rs、vm/src/sched.rs の `wake_changed`、vm/conma2rust/conma2rust.py）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/transpiled の case5（m1/static-cont の case3、m4/array の case4 の次）。
 * 流したもの：test/ と consh/test（最適化版）の変換版の VM（bench/build.sh で作り直した）、test/transpiled の Python 版と Rust 版の VM。流していないもの：Rust 版と wasm 版の VM の test/ と consh/test（Rust 版の VM は `wake_changed` を足しただけで、使うのは変換したコードだけ）、consh/js/test、consh/sjs/test。
 
 ### m4/switch-counts
@@ -72,8 +72,15 @@ consh/sjs/test/run_all.sh
 ### m4/array
 
 * 拡張 ConMa の機能 `"array"`（配列の 6 つのプリミティブ。docs/dev/ARRAY-PLAN-ja.md の A1〜A4）。vm/src と vm/frontend.module.se が変わったので、Rust 版の VM、wasm 版の VM と consh/js/web（`consh/js/build.sh`）、変換版の VM（`bench/build.sh`）を作り直してから流す。
-* 新しいテスト：test/step47、test/fast12、test/transpiled の case3。fast12 は、配列の `__type_name__` を VM ごとに確かめる（Python 版の VM は `"Dict"`、ほかは `"Array"`）。
+* 新しいテスト：test/step47、test/fast12、test/transpiled の case4（m1/static-cont が先に case3 を足したので、4 にした）。fast12 は、配列の `__type_name__` を VM ごとに確かめる（Python 版の VM は `"Dict"`、ほかは `"Array"`）。
 * 流したもの：step47、fast12、fast11、step45、frontend、transpiled（Python 版と Rust 版の VM）、step47 と fast12（wasm 版）、transpiled、step47、fast12、fast11、step45（作り直した変換版の VM）、selfhost1〜7 と module1〜2（Rust 版の VM）。流していないもの：test/ の残り、consh/test、consh/js/test、consh/sjs/test。
+
+### m1/static-cont
+
+* vm/conma2rust/conma2rust.py と vm/src/transpiled.rs を変えた：変換したコードの `__Cont_get__ ,(return)` の継続を作らず、`return v` を `fused_return` にする（`STATIC_CONT`。値として使う所でだけ `make_cont_on` で作る。CFrame を作る関数が Machine を受け取るようにした）。test/transpiled に case3 を足した。
+* 流したもの：`bench/build.sh` で作り直した変換した VM で、test/ の全部（`CONMA_VM=transpiled test/run_all.sh -j 8`）、consh/test の最適化版（`CONMA_VM=transpiled`）、test/transpiled（Rust VM と変換した VM）。case3.log は Rust VM と Python VM で同じ出力だった。
+* wasm 版の VM も vm/src/transpiled.rs を含むので、`vm/wasm/build.sh` で作れることと、test/transpiled が wasm 版の VM で通ることを確かめた。
+* 流していないもの：wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版。変換した VM は `bench/build.sh` で作り直してから流す。
 
 ## 記録
 

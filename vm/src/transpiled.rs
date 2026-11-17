@@ -658,6 +658,21 @@ pub fn make_cont(m: &mut Machine, vp: &mut VProc) -> Value {
     Value::Cont(k)
 }
 
+/// The escape continuation of `__Cont_get__` that a fused chain did not make
+/// (STATIC_CONT of conma2rust.py), made when it is used as a value: cchain is
+/// the CChain the chain had at the `__Cont_get__`, which is the one make_cont
+/// would have taken; it is recorded in the innermost Rust call, as make_cont
+/// records it (the chain runs in that call until it hands the VProc back).
+pub fn make_cont_on(m: &mut Machine, cchain: &Value) -> Value {
+    m.serials.conts += 1;
+    let k = Rc::new(ContObj::new(m.serials.conts, cchain.clone()));
+    if let Some(f) = m.nctx.frames.last_mut() {
+        k.owner.set(f.id);
+        f.conts.push(k.clone());
+    }
+    Value::Cont(k)
+}
+
 /// A Rust call: run Function fid in env as a call with the LCont Function lc
 /// (in lenv, with sinfo for its CFrame), then bind the values it returns to
 /// lc.
@@ -670,7 +685,7 @@ fn rust_call(m: &mut Machine, vp: &mut VProc, fid: usize, env: LVEnv, gv: &Rc<GV
     }
     let mut env = Some(env);
     let first = &mut |_: &mut Machine, _: &mut VProc| Ok(Next::Enter(fid, env.take().expect("entered once")));
-    match frame_run(m, vp, fid, first, gv, t, &|b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
+    match frame_run(m, vp, fid, first, gv, t, &|_: &mut Machine, b: &Value| cframe_on(t, gv, lc, lenv.clone(), &sinfo, b.clone()), &sinfo)? {
         Ret::Values => {
             vp.lcont = None;
             pass_results(vp, lenv, gv, t, Some(lc))
@@ -695,7 +710,7 @@ pub fn cframe_on(t: &Table, gv: &Rc<GVEnv>, lc: usize, lenv: LVEnv, sinfo: &Opti
 /// values are in the OList and the SInfo is sinfo (of the calling Body), as
 /// after the VM pops the CFrame.
 #[allow(clippy::too_many_arguments)]
-fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(&mut Machine, &mut VProc) -> NResult, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
+fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(&mut Machine, &mut VProc) -> NResult, gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&mut Machine, &Value) -> Value, sinfo: &Option<SInfo>) -> Result<Ret, VmError> {
     m.nctx.ids += 1;
     let id = m.nctx.ids;
     m.nctx.frames.push(Frame { id, base: vp.cchain.clone(), conts: Vec::new() });
@@ -718,7 +733,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     // The CFrame the VM would have pushed, made only when it is needed.
     let mut made: Option<Value> = None;
     let base = f.base.clone();
-    let node_of = |n: &mut Option<Value>| -> Value { n.get_or_insert_with(|| node(&base)).clone() };
+    let node_of = |m: &mut Machine, n: &mut Option<Value>| -> Value { n.get_or_insert_with(|| node(m, &base)).clone() };
     if matches!(r, Ok(Ret::Values)) {
         // Drop what still holds the continuations made in the call.
         vp.lvenv = None;
@@ -727,7 +742,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     // Left: the VM goes on with the CChain the VM would have. (Escape: the
     // continuation will replace the CChain.)
     if matches!(r, Ok(Ret::Leave)) {
-        let n = node_of(&mut made);
+        let n = node_of(m, &mut made);
         vp.cchain = splice(&vp.cchain, &f.base, &n);
     }
     // Continuations still in use get the CFrame, and belong to the Rust call
@@ -735,7 +750,7 @@ fn frame_run(m: &mut Machine, vp: &mut VProc, fid: usize, first: &mut dyn FnMut(
     let parent = m.nctx.current();
     for k in f.conts {
         if Rc::strong_count(&k) > 1 {
-            let n = node_of(&mut made);
+            let n = node_of(m, &mut made);
             let c = splice(&k.cchain.borrow(), &f.base, &n);
             *k.cchain.borrow_mut() = c;
             k.owner.set(parent);
@@ -766,7 +781,7 @@ pub enum Called {
 /// call; the chain gets the values it returns. Anything else is applied as the
 /// VM would, with the LCont Closure (lc in the LVEnv that lenv makes).
 #[allow(clippy::too_many_arguments)]
-pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&Value) -> Value, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
+pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, args: [Value; N], gv: &Rc<GVEnv>, t: &Table, node: &dyn Fn(&mut Machine, &Value) -> Value, sinfo: &Option<SInfo>) -> Result<Called, VmError> {
     vp.sinfo = sinfo.clone();
     let target = match &f {
         Value::Closure(c) if !c.variadic && c.params().len() == N => {
@@ -785,7 +800,8 @@ pub fn fused_call<const N: usize>(m: &mut Machine, vp: &mut VProc, f: Value, arg
     let Some((c, cf)) = target.filter(|_| rust) else {
         // As the VM applies f with the LCont: its CFrame (and those of the
         // clauses around the call) on the CChain.
-        vp.cchain = node(&vp.cchain);
+        let c = node(m, &vp.cchain);
+        vp.cchain = c;
         vp.operator = f;
         vp.olist.clear();
         vp.olist.extend(args);

@@ -1,3 +1,54 @@
-woken
-end
+[0]
+[3] x y 3
+[3] x Y 3
+Y
+popped 3
+[2] x Y
+Y
+x
+[0]
+onError: __Array_pop__: empty Array
+error
+[1] again
+onError: __Array_get__: index out of range
+error
+onError: __Array_get__: index out of range
+error
+onError: __Array_get__: index is not an integer
+error
+onError: __Array_get__: index is not a Number
+error
+onError: __Array_get__: index is not an integer
+error
+onError: __Array_get__: index is not an integer
+error
+onError: __Array_get__: index is not an integer
+error
+onError: __Array_set__: index out of range
+[2] p q
+onError: __Array_set__: index is not an integer
+[2] p q
+onError: __Array_set__: index is not a Number
+[2] p q
+p
+[2] P q
+P
+onError: __Array_get__: not an Array
+error
+onError: __Array_set__: not an Array
+set: returned
+onError: __Array_pop__: not an Array
+error
+[1] shared
+[2] in more
+self length 3
+null element
+called from the array
+a
+c
+missing
+10000
+49995000
+10000
+[0]
 exit: 0
