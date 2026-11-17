@@ -6,6 +6,8 @@ This is for the developers of ConMa and of ConSh. A developer of ConMa changes i
 
 [docs/dev/TESTS-ja.md](TESTS-ja.md) (in Japanese) lists every test suite with what to build first, the known differences, and a record of who ran every suite on which commit. Say in the commit message what you ran to check a change; when you run every suite, also add a line there.
 
+A run of every suite there is called a **Full Test** (2026-11-18). It is a name, not that of a command or a file, and is written so everywhere, in English and in Japanese, at the beginning of a sentence and in a heading too: 「1ec4c7b の Full Test」, "the Full Test of 1ec4c7b". Older commit messages say "full run" or "full test run" for the same thing.
+
 ## Languages of the documents
 
 A document in English is named `NAME.md`, and one in Japanese `NAME-ja.md`. When a document is in both, the English one is the original: the Japanese one begins with 「原文は英語。古くなっていることがある」 and a link to `NAME.md`, and a change is made to the English one first.
@@ -53,6 +55,8 @@ git config branch.alpha.rebase false
 ## Benchmarks
 
 The benchmarks are in bench/ (ConMa programs against CPython), consh/bench (ConSh scripts against Bash and the Rust version of ConSh) and consh/sjs/bench (SJS programs against Node.js and CPython). The tables of their results are in bench/README.md, consh/bench/README-ja.md and consh/sjs/README-ja.md, called the READMEs of the benchmarks below. They are measured as follows.
+
+A measurement of every benchmark in the three directories, with every version that their tables compare, at the sizes the tables give, on one machine, is called a **Full Bench** (2026-11-18), written as Full Test is (see Tests). It is done only when the user asks for one; otherwise only what a change needs is measured again (2).
 
 1. **Sizes.** Measure with a size (the parameter of a program or of a script) at which the fastest version in the table (of those it compares) takes about one second, so that the start and the noise of the machine are a small part of each time.
     * Not when the start itself is measured, or when a time must be compared with one measured before at the same size.
