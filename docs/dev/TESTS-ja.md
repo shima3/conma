@@ -67,6 +67,11 @@ consh/sjs/test/run_all.sh
 
 * ベンチマーク：consh/bench の `13`、`14` を、最適化版の変換版の VM で（前は alpha の 2f1c8e1）。ステップは 1 回あたり −5.9%、−4.1%（Rust 版の VM）。m1/compile2-dq と m1/compile2-cmd の依頼と、まとめて測ってよい。
 
+### m1/case20-rust
+
+* consh/test の step2 の case20（m1/compile2-dq）から、`"$(( 1 + 2 ))"` を除いた。Rust 版の ConSh は `(( ))` を読めないので、`CONSH_IMPL=rust` で 6 行目で止まっていた（2f1c8e1 と 1ec4c7b の記録）。`"..."` の中で Expand_ref を通る場合は、`"pre$(echo sub)post"` と `"${u-def}"` で試している。
+* 流したもの：step2 を、最適化版、参照版、Rust 版の ConSh（`CONSH_IMPL=rust`）で（Rust 版の VM）。どれも通った。ConSh のソースは変えていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
