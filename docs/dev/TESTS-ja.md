@@ -70,6 +70,11 @@ consh/sjs/test/run_all.sh
 * 確かめたこと（Apple M1）：4 つとも `CONMA_BENCH_RUST=1 bench/run.sh NAME` で、CPython、Rust 版の VM、変換した VM の出力が同じだった。変換した VM は cd7d3a4 で作ったもの（bench/ のモジュールは変わっていない）。
 * テストのスクリプトは変えていない。
 
+### m4/sjs-array-msg
+
+* SJS の配列の `push` と `pop` が、凍らせた配列のときだけエラーメッセージを作るようにした（consh/include/sjs_rt.se。docs/dev/ARRAY-PLAN-ja.md の 6 の A6）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：consh/sjs/test、consh/test（最適化版）の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test、参照版（sjs_rt.se は最適化版と共通か確かめていない）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
