@@ -65,6 +65,10 @@ consh/sjs/test/run_all.sh
 * GitHub Pages のワークフローが、Jekyll で止まっていた（docs/consh/PLAN-ja.md の文法の、波かっこが 2 つ続く所を Liquid のタグと読んだため）。ランナーの上でだけ、docs の Markdown の本文を Liquid の raw タグで囲む手順を足した（.github/pages-raw.py）。リポジトリの文書は変えていない。テストのスクリプトとソースも変えていない。
 * 確かめたこと（Apple M2）：ワークフローと同じイメージ（ghcr.io/actions/jekyll-build-pages:v1.0.13）の github-pages で、main の 158682f の失敗を同じエラーで再現し、この手順を足すと最後まで通った。できた HTML では波かっこがそのまま出て、raw タグは出ず、題名（jekyll-titles-from-headings）も前と同じだった。
 
+### m4/compile2-bench
+
+* ベンチマーク：consh/bench の `02`、`06`、`13`、`14`、`18` を、最適化版の変換版の VM で。ConSh の段階 2（docs/consh/dev/COMPILE2-PLAN-ja.md の S1〜S5）の前の alpha の fe20439 と、S5 までを含む alpha の 79006fa。ステップ（Rust 版の VM）は計画の 5 にある。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
