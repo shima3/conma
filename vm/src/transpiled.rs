@@ -285,7 +285,11 @@ pub fn stale_for(hash: u64, files: &str) -> bool {
 // step is left to the VM, by what it applies. Written to the file as
 // `count<TAB>kind<TAB>file<TAB>line<TAB>column` (by Body) and
 // `count<TAB>leave<TAB>what` when the VM ends; vm/tools/transpiled_counts.py sums
-// them by function. Counting does not change what the program does.
+// them by function. The scheduler also counts (sched.rs, count_vm) each step after
+// which the VProc waits ("wait", by what the VProc applies: the primitive that made
+// it wait), and each step after which it goes back to the ready queue for another
+// VProc ("switch", by why), so that the leaves can be told from the switches of
+// VProcs. Counting does not change what the program does.
 
 static COUNTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -294,6 +298,8 @@ struct Counts {
     /// By kind and Body (the address of its SInfo).
     bodies: std::collections::HashMap<(&'static str, usize), (Option<SInfo>, u64)>,
     leaves: std::collections::HashMap<String, u64>,
+    /// "wait" and "switch" (count_vm), by what.
+    vm: std::collections::HashMap<(&'static str, String), u64>,
 }
 
 thread_local! {
@@ -303,13 +309,13 @@ thread_local! {
 /// Start counting if CONMA_TRANSPILED_COUNTS names a file.
 pub fn counts_from_env() {
     if let Some(path) = std::env::var("CONMA_TRANSPILED_COUNTS").ok().filter(|p| !p.is_empty()) {
-        COUNTS.with(|c| *c.borrow_mut() = Some(Counts { path, bodies: Default::default(), leaves: Default::default() }));
+        COUNTS.with(|c| *c.borrow_mut() = Some(Counts { path, bodies: Default::default(), leaves: Default::default(), vm: Default::default() }));
         COUNTING.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
 #[inline(always)]
-fn counting() -> bool {
+pub fn counting() -> bool {
     COUNTING.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -362,6 +368,24 @@ fn where_of(t: &Table, fid: usize) -> String {
     }
 }
 
+/// A wait or a switch of VProcs that the scheduler saw (sched.rs).
+#[cold]
+pub fn count_vm(kind: &'static str, what: String) {
+    COUNTS.with(|c| {
+        if let Some(c) = c.borrow_mut().as_mut() {
+            *c.vm.entry((kind, what)).or_insert(0) += 1;
+        }
+    });
+}
+
+/// What a VProc applies, for count_vm.
+pub fn operator_name(v: &Value) -> String {
+    match v {
+        Value::Prim(p) => p.name.to_string(),
+        v => format!("a {}", value_type_name(v)),
+    }
+}
+
 #[cold]
 fn count_budget() {
     COUNTS.with(|c| {
@@ -389,6 +413,9 @@ pub fn write_counts() {
         }
         for (what, n) in &c.leaves {
             out.push_str(&format!("{}\tleave\t{}\n", n, what));
+        }
+        for ((kind, what), n) in &c.vm {
+            out.push_str(&format!("{}\t{}\t{}\n", n, kind, what));
         }
         if let Err(e) = std::fs::write(&c.path, out) {
             eprintln!("CONMA_TRANSPILED_COUNTS: {}: {}", c.path, e);
