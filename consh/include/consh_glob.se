@@ -1,4 +1,4 @@
-;; ConSh の glob（consh/docs/PLAN-ja.md 1.2 の「glob の適用は Bash と同様とする」）。consh_parse の glob.glob と同じ結果にする。
+;; ConSh の glob（docs/consh/PLAN-ja.md 1.2 の「glob の適用は Bash と同様とする」）。consh_parse の glob.glob と同じ結果にする。
 ;;
 ;; パターンは String で、\c は文字 c そのものを表す。引用符の中の文字と ${-語} の葉は、*、?、[、]、-、!、\ に \ を付けて入れ
 ;; （Glob_escape）、引用符の外の文字は \ だけに \ を付けて入れる（Glob_escape_active）。それ以外の *、?、[...] が記号である。

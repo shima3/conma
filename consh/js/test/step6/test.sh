@@ -1,5 +1,5 @@
 #!/bin/bash
-# SJS：算術評価 (( )) と算術置換 $(( ))（consh/docs/dev/SAFEJS-PLAN-ja.md の 2）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
+# SJS：算術評価 (( )) と算術置換 $(( ))（docs/consh/dev/SAFEJS-PLAN-ja.md の 2）。wasm 版の VM（Node.js）で ConMa 版の ConSh を動かす
 cd ${0%/*}
 export CONMA_VM=wasm
 export CONSH_IMPL=conma

@@ -1,4 +1,4 @@
-;; SJS の実行時の支え（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
+;; SJS の実行時の支え（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
 ;;
 ;; SJS の値の表し方：
 ;;   数        Number（IEEE 754 の倍精度。ConMa の Number と同じ）
@@ -71,7 +71,7 @@
   __PDict_put__ "sjs_vars" d ,()
   __NULL__ d)
 
-;; $名前 の値（ConSh のシェル変数。consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 7）。PDict の "sjs_shell" の関数が引く
+;; $名前 の値（ConSh のシェル変数。docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 7）。PDict の "sjs_shell" の関数が引く
 (define Sjs_shell_get ,(name)
   __PDict_lookup_or__ "sjs_shell" (,(k) __NULL__ __NULL__) ,(get)
   __is_null__ get ,(test__) __if__ test__ (,() __String_concat__ "undefined variable: " name ,(msg) Sjs_throw "ReferenceError" msg) ,()
@@ -3555,7 +3555,7 @@
   Sjs_gen_resume gen "return" __NULL__ ,(r)
   __nop__)
 
-;; ── 数の関数の wasm 版（consh/docs/dev/SJS-WASM-PLAN-ja.md の 5.2、5.5。段階 2、3）──
+;; ── 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の 5.2、5.5。段階 2、3）──
 ;; 変換器（sjs_gen.se、sjs_wasm.se）が、数の関数をまとめた WAT のモジュールを作り、数の関数を Sjs_wasm_fn で包む。
 ;; 呼ばれたとき、モジュールがあり、引数が足りて、どれも数なら wasm 版を、そうでなければ ConMa 版（f）を動かす。
 ;; 燃料（段階 3）：wasm 版を燃料 2^16 で呼び、使い切れば、燃料を 2 倍にして始めから呼び直す（数の関数は引数だけで結果が
@@ -3583,7 +3583,7 @@
   __String_concat__ line "\n" ,(line)
   __OS_print_error__ line)
 
-;; 最初の燃料（2^20）、燃料を増やす倍率（8）、燃料の上限（2^30）。consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18 と 19（段階 F1）：
+;; 最初の燃料（2^20）、燃料を増やす倍率（8）、燃料の上限（2^30）。docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18 と 19（段階 F1）：
 ;; 2^20 は、最適化された後のコードで約 1 ms（燃料 1 あたり約 1 ns）。2^16 から 2 倍ずつだと、1 回の呼び出しに 2^16 より多く
 ;; 要る関数は、毎回切れてからやり直していた。8 倍にすると、1 回だけ呼ぶ長い関数で捨てる仕事が、平均で要る仕事の約 1.44 倍
 ;; から約 0.48 倍になる（その代わり、Ctrl-C が効くまでが、それまでの時間の約 7 倍までのびる）

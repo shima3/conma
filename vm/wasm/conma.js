@@ -58,7 +58,7 @@
 // run as the body of an async function, whose result is the value of its
 // return (it sees stdin and args); the result (awaited if it is a
 // Promise) is written to the pipe of __JS_call__ as a line, an S-expression
-// that __Sexp_read__ reads (see 2.1 and 2.2 of consh/docs/dev/JS-PLAN-ja.md); lines
+// that __Sexp_read__ reads (see 2.1 and 2.2 of docs/consh/dev/JS-PLAN-ja.md); lines
 // before it say what else the call needs:
 //   (o "text")         console.log (and info, debug): an element of standard output
 //   (x "text")         console.error (and warn): an element of standard error
@@ -156,7 +156,7 @@ var ConMaVM = (function () {
     return value;
   }
 
-  // ── JS values of shell variables (2.5.4 of consh/docs/dev/JS-PLAN-ja.md) ──
+  // ── JS values of shell variables (2.5.4 of docs/consh/dev/JS-PLAN-ja.md) ──
   // A shell variable (js name=, v=$(( ... ))) or an SJS variable holds a JS value that is not a
   // string only as an id: #n for an object or a function, kept in the table below, or the value
   // itself for a primitive (number:3, boolean:true, bigint:5, undefined, null), so that primitives
@@ -166,7 +166,7 @@ var ConMaVM = (function () {
   // The JS statements of ConSh, which this served first, were removed in stage A3 of SJS (3.26).
 
   // js name= code: the result is given as a JS value, (r j "id"), unless it is a string or an
-  // iterator (2.5 of consh/docs/dev/JS-PLAN-ja.md)
+  // iterator (2.5 of docs/consh/dev/JS-PLAN-ja.md)
   const KEEP = "//@consh-keep\n";
   const values = new Map(); // objects and functions of shell variables, by number
   let nextValue = 0;
@@ -331,7 +331,7 @@ var ConMaVM = (function () {
     }
   }
 
-  // ── SJS: (( )) and $(( )) of ConSh (consh/docs/dev/SAFEJS-PLAN-ja.md) ──
+  // ── SJS: (( )) and $(( )) of ConSh (docs/consh/dev/SAFEJS-PLAN-ja.md) ──
   // ConSh calls __JS_call__ with SJS and the code of an SJS expression, and as args the SJS variables
   // that the code names, [names, kinds, values] (kinds s and j). The code is
   // first checked to be in SJS and rewritten (sjsCheck), then evaluated with only the SJS variables
@@ -1887,7 +1887,7 @@ var ConMaVM = (function () {
         },
         host_js_input: (id, ptr, len) => js.input(id, str(ptr, len)),
         host_js_input_end: (id) => js.inputEnd(id),
-        // __Wasm_compile__ and __Wasm_call__ (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.4): modules of functions on
+        // __Wasm_compile__ and __Wasm_call__ (docs/consh/dev/SJS-WASM-PLAN-ja.md 5.4): modules of functions on
         // numbers, without imports, made by the assembler of the VM (vm/src/prim/wasm_asm.rs), which
         // exports the fuel as the mutable i64 global __fuel
         host_wasm_compile: (ptr, len) => {
@@ -1914,12 +1914,12 @@ var ConMaVM = (function () {
             return 2;
           }
           const args = Array.from(new Float64Array(x.memory.buffer, argsPtr >>> 0, n));
-          // The memory of the module (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
+          // The memory of the module (docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1): zeros, then the words
           // of __Wasm_call_memory__ from address 0 (growing it if they do not fit). Its size is that of
           // the module or what the words need, whatever the calls before did (memory.grow, more words):
           // a memory larger than that, which cannot shrink, is made again with the instance, so that a
           // call gives the same result for the same arguments and words (made again after running out
-          // of fuel, consh/docs/dev/SJS-WASM-PLAN-ja.md 5.5; docs/dev/REVIEW-ja.md 2026-11-14 (2), 5)
+          // of fuel, docs/consh/dev/SJS-WASM-PLAN-ja.md 5.5; docs/dev/REVIEW-ja.md 2026-11-14 (2), 5)
           let mem = instance.exports.__memory;
           if (mem) {
             const want = Math.max(entry.minPages, Math.ceil((words * 8) / 65536));

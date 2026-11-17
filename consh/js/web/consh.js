@@ -29,7 +29,7 @@ const CSP_NO_EVAL = "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; ba
 
   // When the server does not turn on js or the SJS of the host (config.json, as consh-core.js reads it),
   // nothing in the page needs to evaluate a String as code: forbid it, so that eval and Function fail even
-  // if some code reached them (consh/docs/dev/SAFEJS-PLAN-ja.md 5). WebAssembly still compiles ('wasm-unsafe-eval').
+  // if some code reached them (docs/consh/dev/SAFEJS-PLAN-ja.md 5). WebAssembly still compiles ('wasm-unsafe-eval').
   // serve.py sends the same policy as a header (which also covers the Worker); this <meta> covers the
   // page on other servers. A policy only adds restrictions, so it is set before ConSh starts
   await (async function lockEval() {

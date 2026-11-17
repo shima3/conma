@@ -1,4 +1,4 @@
-# 配列を使う数の関数（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）：(( )) の「名前 = 関数式」で配列を読み書きする関数も、wasm 版の
+# 配列を使う数の関数（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A4）：(( )) の「名前 = 関数式」で配列を読み書きする関数も、wasm 版の
 # VM では WebAssembly で動き、引数の配列（SJS変数のものも）を写して、書き換えた数を書き戻す。ほかの VM では ConMa 版で動き、同じログになる
 (( sum = (a) => { let s = 0; for (const v of a) s += v; return s } ))
 (( xs = [1, 2, 3] ))

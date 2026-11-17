@@ -1,4 +1,4 @@
-;; 拡張 ConMa の機能 "wasm"（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
+;; 拡張 ConMa の機能 "wasm"（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 1、docs/PRIMITIVES.md の 16）：
 ;; __Wasm_compile__ onError wat ,(module) と __Wasm_call__ onError module name args fuel ,(status value)。
 ;; wasm 版の VM（consh/js。Node.js）はホストの WebAssembly で動かす。ネイティブの VM は WAT を組み立ててから onError に
 ;; 進み（組み立ての誤りはそのメッセージ）、Python の VM は代わりの定義（include/core/wasm.se）で onError に進む。
@@ -80,7 +80,7 @@
     try_call "big" w "big" __NULL__ fuel ,()
     try_call "tenth" w "tenth" __NULL__ fuel))
 
-;; 燃料が足りるまで、2 倍にしてやり直す（consh/docs/dev/SJS-WASM-PLAN-ja.md の 5.5）。やり直した回数と結果を出す
+;; 燃料が足りるまで、2 倍にしてやり直す（docs/consh/dev/SJS-WASM-PLAN-ja.md の 5.5）。やり直した回数と結果を出す
 (define retry ,(w name args fuel count)
   __Wasm_call__ __print_exit_error__ w name args fuel ,(status value)
   __String_equal__ status "fuel" ,(again)
@@ -164,7 +164,7 @@
   try_compile "stack" "(module (func (export \"f\") (result f64) f64.add))")
 
 ;; case7：燃料を使い切ると時間の区切りが終わるので、終わらない関数を呼び続けても、ホストが SIGINT を受け取る
-;; （__OS_trap_interrupt__ の Ref が変わる。consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 3）。呼んだ回数は時間で変わるので出さない
+;; （__OS_trap_interrupt__ の Ref が変わる。docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 3）。呼んだ回数は時間で変わるので出さない
 (define spin_until ,(w ref fuel)
   __Ref_get__ ref ,(r)
   __Number_is_zero__ r ,(go)
@@ -186,7 +186,7 @@
     __OS_spawn__ __print_exit_error__ cmd __NULL__ __NULL__ __NULL__ env ,(proc)
     spin_until w ref fuel))
 
-;; case8：モジュールのメモリと __Wasm_call_memory__（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。メモリは呼ぶたびに 0 で埋め、
+;; case8：モジュールのメモリと __Wasm_call_memory__（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。メモリは呼ぶたびに 0 で埋め、
 ;; __Wasm_call_memory__ の語を先頭から書き、"ok" なら同じ数の語を返す
 
 ;; 数の LList を "a b c" の形にする
@@ -362,7 +362,7 @@
     num "8193" ,(n8193) count_list n8193 __NULL__ ,(more)
     try_fit "no max, 8193 words" w more fuel))
 
-;; case12：__Dict_numbers__ と __Dict_put_numbers__（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
+;; case12：__Dict_numbers__ と __Dict_put_numbers__（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の 17。機能 "wasm" だが WebAssembly は使わないので、
 ;; どの VM でも同じ。Python の VM は include/core/wasm.se の代わりの定義）
 (define case12 ,()
   __Dict_new__ ,(d)
@@ -425,7 +425,7 @@
     spin_until w ref fuel))
 
 ;; case15：燃料を減らすのは、ループの始めと、呼び出しのグラフの輪に入る関数（自分を呼ぶもの、ほかを通って呼び戻すもの）の入口だけ
-;; （consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、段階 F3）。輪に入らない関数を何度呼んでも燃料を使わないので、燃料 1 で終わる。
+;; （docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の 18.2、段階 F3）。輪に入らない関数を何度呼んでも燃料を使わないので、燃料 1 で終わる。
 ;; 輪に入る関数（$even と $odd、名前でも番号でも呼ぶ）は、呼ぶたびに減らすので、足りなければ "fuel" になり、やり直すと終わる
 (define case15 ,()
   Cat5 "(module (func $h (param $x f64) (result f64) (f64.add (local.get $x) (f64.const 1))) "

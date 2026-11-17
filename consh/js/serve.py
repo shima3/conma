@@ -9,7 +9,7 @@
   and can run the VM in a Worker (web/consh.js).
 * Content-Security-Policy without 'unsafe-eval' (CSP_NO_EVAL), unless web/config.json turns on js or the SJS of
   the host ({"CONSH_ENABLE_JS": "js"} or "sjs"): then the browser stops eval and Function in the page and in the
-  Worker, which nothing needs when they are off (consh/docs/dev/SAFEJS-PLAN-ja.md 5). The page sets the same policy
+  Worker, which nothing needs when they are off (docs/consh/dev/SAFEJS-PLAN-ja.md 5). The page sets the same policy
   itself (web/consh.js), for other servers.
 
 It does not start, but says to run consh/js/build.sh, when a file of web/ that build.sh makes is

@@ -509,7 +509,7 @@ No new primitive.
 
 No new primitive.
 
-* Goal: Let each VProc have its own current directory, so that a VProc that changes its directory does not move the others. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc, and `cd` there must not change the directory of the shell (see `consh/docs/PLAN-ja.md`).
+* Goal: Let each VProc have its own current directory, so that a VProc that changes its directory does not move the others. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc, and `cd` there must not change the directory of the shell (see `docs/consh/PLAN-ja.md`).
 * Each VProc keeps its current directory as an absolute path. The first VProc starts in the directory where the interpreter was started, and a VProc made by `__VProc_spawn__` starts in the current directory of the VProc that made it. `__OS_chdir__` changes only the current VProc's, to the real path of the directory (symbolic links resolved), as the OS gives after `chdir`. The interpreter itself never changes its own directory.
 * The current directory of the current VProc is used for relative paths in `__OS_open__`, `__OS_chdir__`, `__OS_realpath__` and the `sourceFileName` of `__VProc_spawn__`, and as the working directory of `__OS_spawn__`; `__OS_getcwd__` returns it. The empty path is not joined to it, so that it stays an error.
 * `vm/python/vproc_step.py` keeps the directory outside the S-expression of a VProc, so a VProc read from an S-expression (`vproc_step.sh`) starts in the interpreter's directory.
@@ -528,7 +528,7 @@ No new primitive.
 |---|---|
 | `__VProc_start__` | implemented |
 
-* Goal: Let a program run a closure of its own in a new VProc. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc (see `consh/docs/PLAN-ja.md`); `__VProc_spawn__` runs `bin/includer` and `bin/resolver` on a file each time, which takes about 0.3 seconds even for a small program.
+* Goal: Let a program run a closure of its own in a new VProc. ConSh runs each element of a pipeline, `&` and `$( )` in a VProc (see `docs/consh/PLAN-ja.md`); `__VProc_spawn__` runs `bin/includer` and `bin/resolver` on a file each time, which takes about 0.3 seconds even for a small program.
 * `__VProc_start__ Closure ,(VProc)` makes a VProc that applies `Closure` to no arguments, in the current directory of the current VProc, and adds it at the end of the ready queue. The closure keeps the GVEnv of its program, and the values it refers to are shared.
 * Tests (`test/step24`): `test.sh` gives every case a new `work/` directory with a subdirectory `a`. The current directory is printed as `<dir>`.
 
@@ -546,7 +546,7 @@ No new primitive.
 |---|---|
 | `__OS_wait_writable__` | implemented |
 
-* Goal: Let a VProc write to a pipe without blocking the interpreter. ConSh writes the elements of a LazyList to the standard input of an external command in one VProc, while another VProc reads the output of that command (see `consh/docs/PLAN-ja.md`). `__OS_write__` blocks the whole interpreter when the pipe is full, so the command can stop on its full output pipe while nobody reads it.
+* Goal: Let a VProc write to a pipe without blocking the interpreter. ConSh writes the elements of a LazyList to the standard input of an external command in one VProc, while another VProc reads the output of that command (see `docs/consh/PLAN-ja.md`). `__OS_write__` blocks the whole interpreter when the pipe is full, so the command can stop on its full output pipe while nobody reads it.
 * `__OS_wait_writable__ onError outputStream ,()` waits, like `__OS_wait_readable__`, until `select()` reports the Stream writable: for a pipe, until it has room for `PIPE_BUF` bytes, or its reader has closed it. A write of at most 512 bytes after it does not block.
 * The scheduler (`check_waiting`) gives `select()` the input Streams that VProcs wait for as the read list and the output Streams as the write list.
 * Tests (`test/step25`):
@@ -566,7 +566,7 @@ No new primitive.
 | `__OS_getpid__` | implemented |
 | `__OS_kill__` | implemented |
 
-* Goal: Let ConSh give `$!` (the number of the VProc that `&` started), `wait` and `kill` for such VProcs, and `$$` (the process ID of the shell); see `consh/docs/PLAN-ja.md`.
+* Goal: Let ConSh give `$!` (the number of the VProc that `&` started), `wait` and `kill` for such VProcs, and `$$` (the process ID of the shell); see `docs/consh/PLAN-ja.md`.
 * `__VProc_kill__ VProc ,()` finishes the VProc at once (`Scheduler.kill` removes it from the ready queue and from every list of waiting VProcs). The VProcs waiting for it wake up as if it had finished by itself; a LazyList that it holds gives `onError` to the VProc that claims it. OS processes it started are not stopped; `__OS_kill__ onError OSProc signal ,()` sends them a signal.
 * `__VProc_id__ VProc ,(Number)` gives the serial number of the VProc, and `__OS_getpid__ ,(Number)` the process ID of the interpreter.
 * Tests (`test/step26`):
@@ -585,7 +585,7 @@ No new primitive.
 |---|---|
 | `__OS_sysconf__` | implemented |
 
-* Goal: Let ConSh limit the bytes of the arguments of an external command by the OS value of `ARG_MAX` when the environment variable `ARG_MAX` is not set, so that expanding an infinite LazyList into arguments stops with an error; see `consh/docs/PLAN-ja.md`.
+* Goal: Let ConSh limit the bytes of the arguments of an external command by the OS value of `ARG_MAX` when the environment variable `ARG_MAX` is not set, so that expanding an infinite LazyList into arguments stops with an error; see `docs/consh/PLAN-ja.md`.
 * `__OS_sysconf__ onError name ,(Number)` gives the value of the system configuration variable `name` (a String with one of the names of `sysconf(3)`, such as `"SC_ARG_MAX"`), from Python's `os.sysconf`.
 * Tests (`test/step27`):
 
@@ -617,7 +617,7 @@ No new primitive.
 |---|---|
 | `__OS_listdir__` | implemented |
 
-* Goal: Let ConSh expand glob patterns such as `*.txt` (see `consh/docs/PLAN-ja.md`).
+* Goal: Let ConSh expand glob patterns such as `*.txt` (see `docs/consh/PLAN-ja.md`).
 * `__OS_listdir__ onError path ,(names)` gives the names in a directory, without `"."` and `".."`, sorted by code point, relative to the current directory of the VProc.
 * Tests (`test/step29`, with the directory `test/step29/dir`):
 
@@ -680,7 +680,7 @@ No new primitive.
 | `__OS_kill__` | fixed: an infinite number or NaN goes to `onError` |
 | `__Sexp_read__` | fixed: no recursion limit; a string ending in `\` is reported at the end of the input |
 
-* Goal: Fix what the review of ConSh (`consh/docs/dev/REVIEW-ja.md`, 2026-11-05) found in ConMa.
+* Goal: Fix what the review of ConSh (`docs/consh/dev/REVIEW-ja.md`, 2026-11-05) found in ConMa.
   * Stopping a VProc while it evaluated a LazyList (a channel element, a line of standard input) left the LazyList without a cell, so every later reader got an error; in the interactive mode of ConSh, Ctrl-C during `stdin` broke the shell's standard input. `__VProc_kill__` now marks such a VProc (`kill_pending`) and stops it when it has evaluated all the LazyLists it claimed with `__LazyList_claim__` (`evaluating_lazy`). LazyLists made by `__LazyList_hold__` do not delay it.
   * ConSh closes the file of a redirection at the end of the statement, but `&` jobs and `$( )` started in it may still write to it. `__OS_dup__ onError Stream ,(Stream)` duplicates the file descriptor, so that each child VProc gets its own Stream and closes it when it ends.
   * `__OS_kill__` with an infinite signal number and `__Sexp_read__` with about 1000 levels of nesting raised Python exceptions and ended the interpreter.
@@ -754,7 +754,7 @@ No new primitive.
 * Goal: Make the data operations that ConSh repeats for every statement cheap. Counting the steps of ConSh by function (`CONMA_PROFILE`, `test/vm_profile.py` (moved to `vm/tools/vm_profile.py` on 2026-11-15)) showed that copying its context Dict took 27% of the steps of a script that calls a function in a loop, and that checking words for glob characters, appending lists and removing newlines took 10 to 15% of a loop of `echo`.
 * They work only on data and never apply a Closure, so each is one step (see the LList, Dict and String Primitives in PRIMITIVES.md). The ConMa versions are in `include/data.se`, like `include/control.se` (moved on 2026-11-13; now `include/core/control.se`) for Step 35: a program that includes it uses them instead of the primitives. With a wrong type of argument, the ConMa versions stop with the error of the primitive they use, not with the same error.
 * ConSh uses them in place of its own `Dict_copy`, `List_append` and `List_length`, and in `Glob_has_meta`, `Glob_has_any`, `Ast_chomp` and `Line_chomp`. With `CONSH_CONMA_DATA=1`, `consh/bin/consh` builds a module that includes `include/data.se` (`/tmp/consh.data.module.se`), and every ConSh test gives the same output with it.
-* ConSh (Rust VM, steps of the benchmarks of `consh/docs/PLAN-ja.md`, stage 18): `y=$(f $i)` 3000 times takes 11,988,797 steps instead of 17,550,750 (0.63 s instead of 0.96 s), `echo $i` 5000 times 4,933,016 instead of 5,565,174, and `for i in 1 2 ... 20000; do n=1; done` 4,898,524 instead of 5,798,940.
+* ConSh (Rust VM, steps of the benchmarks of `docs/consh/PLAN-ja.md`, stage 18): `y=$(f $i)` 3000 times takes 11,988,797 steps instead of 17,550,750 (0.63 s instead of 0.96 s), `echo $i` 5000 times 4,933,016 instead of 5,565,174, and `for i in 1 2 ... 20000; do n=1; done` 4,898,524 instead of 5,798,940.
 * Tests (`test/step36`): each case runs both with the primitives (`test.se`) and with the ConMa versions (`conma.se`, which includes `data.se` and `test.se`), and both must give `caseN.log`. The traces of the Python VM and the Rust VM are the same.
 
 | Case | What it checks |
@@ -813,7 +813,7 @@ No new primitive.
 |---|---|
 | `__JS_call__` | implemented (JavaScript only in the VM for wasm32; the native VMs go to `onError`) |
 
-* Goal: The builtin `js` of ConSh evaluates JavaScript in the browser (or Node.js) that runs the ConMa VM built for wasm32 (stages 4 to 6 of consh/docs/dev/JS-PLAN-ja.md).
+* Goal: The builtin `js` of ConSh evaluates JavaScript in the browser (or Node.js) that runs the ConMa VM built for wasm32 (stages 4 to 6 of docs/consh/dev/JS-PLAN-ja.md).
 * `__JS_call__ onError code args ,(inputStream outputStream)` hands `code` and `args` to the host, which writes the result to a pipe as a line of an S-expression, after the lines of `console.log` and `console.error` and the requests for standard input, which the program answers through `outputStream` (see PRIMITIVES.md). In the VM for wasm32, `outputStream` is an fd whose writes and close go to the host (`host_js_input`, `host_js_input_end`). An iterator gives its elements one at a time, when the program asks for each with a line `n`, so that an endless generator gives only as many as are read. Waiting for the result is waiting for a Stream, so the scheduler is unchanged, and a Promise that takes time does not stop the other VProcs. In the VM for wasm32, `sys::js_call` (vm/wasm/src/sys.rs) calls the host's `host_js_call`, and the host gives the result with `conma_write` and `conma_close` after `conma_run` returns (vm/wasm/conma.js); in the native VMs, `sys::js_call` fails, and `__JS_call__` goes to `onError` after checking its arguments.
 * Tests (`test/step40`; the logs are those of the native VMs: on the VM for wasm32, the calls of case1 get a Stream):
 
@@ -839,7 +839,7 @@ No new primitive.
 |---|---|
 | `__Number_is_negative_zero__` | implemented |
 
-* Goal: a Number is an IEEE 754 double and can be `-0`, but no primitive told `-0` from `0` (`__Number_toString__` writes `"0"`, `__Number_is_negative__` is false, dividing by either is an error), so SJS (consh/sjs) could not give `-Infinity` for `1 / -0` as JavaScript does. Decided with the user on 2026-11-14 (consh/docs/dev/SJS-WASM-PLAN-ja.md 11): a primitive of core ConMa, since a replacement definition cannot be written in ConMa.
+* Goal: a Number is an IEEE 754 double and can be `-0`, but no primitive told `-0` from `0` (`__Number_toString__` writes `"0"`, `__Number_is_negative__` is false, dividing by either is an error), so SJS (consh/sjs) could not give `-Infinity` for `1 / -0` as JavaScript does. Decided with the user on 2026-11-14 (docs/consh/dev/SJS-WASM-PLAN-ja.md 11): a primitive of core ConMa, since a replacement definition cannot be written in ConMa.
 * `__Number_is_negative_zero__ Number ,(Boolean)` is true for `-0` only (false for NaN whatever its sign bit); a non-Number stops the VProc (PRIMITIVES.md). The transpiled code calls it as the other predicates of `CHAIN` (`vm/conma2rust/conma2rust.py`, `SAFE_PRIMS` of `vm/src/transpiled.rs`).
 * `__Number_floor__` of the Python VM now returns a float, keeping `-0` as the Rust VM does (`math.floor` gave an int, which lost the sign).
 * Tests: `test/step42` (written and computed `-0`, `+0`, NaN, infinities, subnormals, and that the other primitives treat `-0` as `0`).
@@ -860,14 +860,14 @@ No new primitive.
 | Primitive | Status |
 |---|---|
 | `__Wasm_compile__`, `__Wasm_call__` (feature `"wasm"` of extended ConMa) | implemented |
-| `__Wasm_call_memory__` and the memory of a module (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1) | implemented |
+| `__Wasm_call_memory__` and the memory of a module (docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1) | implemented |
 
-* Goal: stage 1 of consh/docs/dev/SJS-WASM-PLAN-ja.md, the base for running the numeric functions of SJS as WebAssembly, and, decided with the user on 2026-11-14, a way for any ConMa program to write functions on numbers in WebAssembly (PRIMITIVES.md, section 16).
+* Goal: stage 1 of docs/consh/dev/SJS-WASM-PLAN-ja.md, the base for running the numeric functions of SJS as WebAssembly, and, decided with the user on 2026-11-14, a way for any ConMa program to write functions on numbers in WebAssembly (PRIMITIVES.md, section 16).
 * `vm/src/prim/wasm_asm.rs` assembles a subset of WAT (functions on f64, i32 and i64; no imports, memory, tables or globals) into binary and adds the fuel; `vm/src/prim/wasm.rs` has the primitives and `Value::Wasm`; the VM for wasm32 gives the module to its host (`host_wasm_compile`, `host_wasm_call`, `host_wasm_error`, `host_wasm_free` in `vm/wasm/conma.js`, for Node.js, JavaScriptCore and the browser), and the native VMs go to `onError` after assembling. A call out of fuel ends the time slice (`Machine::end_slice`).
 * The frontends write `(Uses "wasm")`, and `bin/to-core` puts in `include/core/wasm.se`.
 * Tests: `test/fast7` (calls, fuel and starting again with more fuel, traps, wrong arguments, the forms the assembler refuses, the checks of the host; logs for the wasm VM, the native VMs and the Python VM, and `CONMA_NO_WASM=1`).
-* Stage A1 of consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in core ConMa (`include/core/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
-* For copying the arrays of SJS faster (consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/core/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
+* Stage A1 of docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md (2026-11-14): a module may have one memory of its own, exported as `__memory` and filled with zeros by the host before each call, with `f64.load`, `f64.store`, `memory.size` and `memory.grow`; `__Wasm_call_memory__` writes an LList of Numbers into it as f64 words before the call and returns them after an "ok" call, for copying the arrays of SJS. Not in core ConMa (`include/core/wasm.se` goes to `onError`). Test: case8 of `test/fast7`.
+* For copying the arrays of SJS faster (docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md, section 17), the feature `"wasm"` also has `__Dict_numbers__` and `__Dict_put_numbers__`, which put the Number values of the keys `"0"` to `"n-1"` of a Dict onto an LList and back; their replacement definitions in `include/core/wasm.se` do the same in ConMa. Test: case12 of `test/fast7`.
 
 ## Step 45: Channels in extended ConMa
 
@@ -898,7 +898,7 @@ No new primitive.
 
 ## Planned: returning without making the escape continuation
 
-Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/dev/SAFEJS-REVIEW-ja.md (3.1.4).
+Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from docs/consh/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in docs/consh/dev/SAFEJS-REVIEW-ja.md (3.1.4).
 
 * Goal: when a function takes its escape continuation with `__Cont_get__ ,(return)` at its start and uses `return` only to return from itself, return through the CChain as a normal return does, without making the value of `return` (a Closure that keeps the CChain). Most functions of ConSh have this form, and so would the functions that SJS is translated into.
 * Now (see `__Cont_get__` in PRIMITIVES.md): `__Cont_get__` makes `return`, which keeps the CChain at that time; applying it sets the CChain back to the kept one, then pops its top CFrame and applies its Closure. `return` is a value: it can be passed to other functions, put in a Ref, or called after the function has returned.

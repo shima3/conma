@@ -8,7 +8,7 @@
 ;;   * LazyList の部分（$x）1つだけの語を、候補（Alt_make）を作らずに、葉ごとに語にするようにした
 ;;     （Single_list_fields。参照版は Expand_fields_from で葉ごとに候補を作り、分けてはつなぎ直す）。
 ;;
-;; ConSh の語の展開（consh/docs/PLAN-ja.md の 1.2 と 1.3）。consh_parse --expand と同じ規則に従う。
+;; ConSh の語の展開（docs/consh/PLAN-ja.md の 1.2 と 1.3）。consh_parse --expand と同じ規則に従う。
 ;;
 ;; 語は、語要素ごとの部分（Part）の LList に分けてから展開する。部分は (種類 値) の LList で、種類は次のどれか。
 ;;   "plain"  引用符のない String
@@ -480,7 +480,7 @@
               __if_then_else__ single
                 (,()
                   Node_split elem ,(kind epos children)
-                  ;; 算術置換だけの語は、JS の値のまま変数に入れる（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 2）
+                  ;; 算術置換だけの語は、JS の値のまま変数に入れる（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 2）
                   __String_equal__ kind "arithsubst" ,(isArith)
                   __if_then_else__ isArith
                     (,() __NULL__ (,(sh) Sjs_subst sh epos children))
