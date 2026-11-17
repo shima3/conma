@@ -39,6 +39,14 @@ http://localhost:8765/ を開くと、ConSh の対話モードが動く（`.clau
 * 「スクリプトを実行」は、スクリプトの各行を入力として渡す（ConMa 版には `source` がない）。
 * Ctrl-C か「中断」で、動いているコマンドを止める。
 
+### GitHub Pages
+
+main に push すると、GitHub Actions（.github/workflows/pages.yml）が `build.sh` で `web/` のファイルを作り、docs/ とともに GitHub Pages に置く（2026-11-17）。ページは docs/consh/web/ の場所、https://shima3.github.io/conma/consh/web/ で開ける。テストを通った main の状態だけが出る。Pages はほかの Web サーバーと同じで、次のようになる。
+
+* ヘッダを付けられないので、ページは cross-origin isolated にならず、ConSh を Worker でなくページの中で動かす（ファイルを読む間などに画面が止まることがある）。
+* ディレクトリの一覧が取れないので、`ls` や `*` にページのディレクトリのファイルが出ない（`cat names.txt` のように名前で開くことはできる）。
+* `config.json` を置かないので、`js` と `(( ))` の SJS のホストの機能は使えず、ページが `<meta>` で入れる Content-Security-Policy が効く。
+
 ## JavaScript を有効にする
 
 `js` と、段階 A で動かす `(( ))`（モジュールを作れないとき）は、ホストの JavaScript を使うので、既定では使えない（上のセキュリティの注意）。段階 B で動かす `(( ))`（Node.js 版、ブラウザ版、ネイティブの VM の ConMa 版）は、ホストの JavaScript に触れないので、`CONSH_ENABLE_JS` によらず使える。ConSh は起動したときに一度だけ、何を使ってよいかを、`CONSH_ENABLE_JS` の値で決める（consh/include/consh_jsstmt.se の `Js_state`）。

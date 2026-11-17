@@ -1,0 +1,59 @@
+# GitHub Pages: publish docs/ (made into HTML by Jekyll, as before) and the browser version of ConSh
+# (consh/js/web, with the files that consh/js/build.sh makes) at consh/web/.
+# Only main is published, which gets only states that passed every suite (docs/dev/CONTRIBUTING.md).
+# The repository's Settings -> Pages -> Source must be "GitHub Actions".
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push of main replaces one that is waiting
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The wasm32 VM (vm/wasm), its host conma.js and the module of ConSh, into consh/js/web
+      # (bin/includer and bin/resolver need Python 3 only, which the runner has)
+      - name: Build the browser version of ConSh
+        run: |
+          rustup target add wasm32-unknown-unknown
+          consh/js/build.sh
+
+      # Jekyll copies the files of the page as they are (index.html has no front matter).
+      # config.json is not put there, so js and the SJS of the host stay off (consh/js/README-ja.md).
+      - name: Put the browser version under docs/consh/web
+        run: cp -R consh/js/web docs/consh/web
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: docs
+          destination: _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
