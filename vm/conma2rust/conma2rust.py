@@ -647,7 +647,7 @@ class Fuser:
                 if vk == "k":
                     return self.kval(v)
                 return {"f": f"&num({v})", "b": f"&bool_value({v})"}.get(vk, f"&{v}")
-            return f"&lget(&{E}, {i - d})?"
+            return f"lref(&{E}, {i - d})?"
         if kind == "Null":
             return "&Value::Null"
         if kind == "C":

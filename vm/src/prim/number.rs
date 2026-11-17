@@ -70,7 +70,10 @@ pub fn from_string(_m: &mut Machine, vp: &mut VProc) -> PResult {
         vp.prim_error(on_error, &msg);
         return Ok(());
     }
-    let s = value_to_display(&val).map_err(VmError::Error)?;
+    let s = match crate::value::string_cow(&val) {
+        Some(r) => r.map_err(VmError::Error)?,
+        None => std::borrow::Cow::Owned(value_to_display(&val).map_err(VmError::Error)?),
+    };
     if !is_number_syntax(&s) {
         vp.prim_error(on_error, &format!("__Number_fromString__: invalid number: \"{}\"", s));
         return Ok(());

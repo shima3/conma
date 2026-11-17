@@ -97,6 +97,11 @@ consh/sjs/test/run_all.sh
 * consh/js/test の step5 の case2 の期待ログを直した（7 行目と 10 行目を 1 から 0 に）。1e8c4d4（m4/transpiled-clone）から、関数の局所変数の JS の値が、関数から戻れば消えるようになったため（前は、関数の文脈が循環して、VM の循環の回収まで残った）。テストの担当者の報告による。
 * 流したもの：consh/js/test（wasm 版の VM、Node.js）。
 
+### m4/transpiled-clone2
+
+* 書いた文字列を、複製せずに読むようにした（vm/src/value.rs の `string_cow`、prim/string.rs、prim/number.rs）。変換したコードが、プリミティブに渡すだけの局所変数を複製しないようにした（vm/conma2rust/conma2rust.py、vm/src/transpiled.rs の `lref`）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
+* 流したもの：Rust 版の VM の test/、consh/test（最適化版）、consh/sjs/test。変換版の VM（`bench/build.sh` で作り直した）の test/ と consh/test（最適化版）。流していないもの：Python 版と wasm 版の VM、consh/js/test、参照版。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
