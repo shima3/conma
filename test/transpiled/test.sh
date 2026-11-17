@@ -7,7 +7,7 @@
 # on the other VMs, it checks the results the transpiled code must give. The module is made as
 # bench/module.sh makes it, so that it has the text whose transpiled code was built.
 . "$(dirname "$0")/../common.sh"
-for c in case1 case2
+for c in case1 case2 case3
 do
   "$root/bench/module.sh" "$PWD/$c.se" $tmp/$c.module.se || exit 1
   { "$root/bin/vm" --main $tmp/$c.module.se; echo "exit: $?"; } > $tmp/$c.log 2>&1

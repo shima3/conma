@@ -82,6 +82,11 @@ IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
 # __Number_fromString__ of a String written in place whose text is a Number: an f64
 # constant in fused chains (an experiment); off with CONMA2RUST_NO_FOLD=1.
 FOLD_NUMBERS = not os.environ.get("CONMA2RUST_NO_FOLD")
+# The escape continuation of `__Cont_get__ ,(return)` (outside clauses) is not made: the chain keeps the
+# CChain it would have (a Rust variable), `return v ...` returns the values as `__NULL__ v ...` at the top of
+# the chain would, and the continuation is made (once) only where it is used as a value (an operand, an
+# LVEnv for the VM, a CFrame). CONMA2RUST_NO_STATIC_CONT turns it off (to compare).
+STATIC_CONT = not os.environ.get("CONMA2RUST_NO_STATIC_CONT")
 
 
 def number_literal(atom):
@@ -558,13 +563,23 @@ class Fuser:
     def local(self, d, locals_, i):
         """The Rust variable of the variable with de Bruijn index i (< d), and
         its kind: "v" a Value, "f" an f64, "b" a bool, "c" a String written in
-        place (no Rust variable: cref of its Body and operand, constant)."""
+        place (no Rust variable: cref of its Body and operand, constant), "k"
+        an escape continuation not made yet (STATIC_CONT: xNc its CChain,
+        xNk a OnceCell with the continuation once it is made, kval)."""
         idx = d - 1 - i
         return self.xn(idx), locals_[idx][2]
 
     def xn(self, idx):
         """The Rust variable of the chain variable idx of the code being written."""
         return f"x{self.ctx['off'] + idx}"
+
+    @staticmethod
+    def kval(x):
+        """Rust code for a &Value of the escape continuation of the chain
+        variable x of kind "k": made the first time it is needed, with the
+        CChain the chain had at the __Cont_get__ (m is the Machine there, or
+        the parameter of a CFrame builder)."""
+        return f"{x}k.get_or_init(|| make_cont_on(m, &{x}c))"
 
     def constant(self, x, d, e, k, locals_):
         """For a String written in place (operand k of Function x's Body, or a
@@ -595,6 +610,8 @@ class Fuser:
                 if kind == "c":
                     cx, ck, _ = locals_[d - 1 - i][3]
                     return f"cref(t, {cx}, {ck}).clone()"
+                if kind == "k":
+                    return f"{self.kval(v)}.clone()"
                 return v if move else f"{v}.clone()"
             return f"lget(&{E}, {i - d})?"
         if k == "Null":
@@ -616,6 +633,8 @@ class Fuser:
                 if vk == "c":
                     cx, ck, _ = locals_[d - 1 - i][3]
                     return f"cref(t, {cx}, {ck})"
+                if vk == "k":
+                    return self.kval(v)
                 return {"f": f"&num({v})", "b": f"&bool_value({v})"}.get(vk, f"&{v}")
             return f"&lget(&{E}, {i - d})?"
         if kind == "Null":
@@ -650,6 +669,8 @@ class Fuser:
             if kind == "c":
                 return f"cref(t, {l[3][0]}, {l[3][1]}).clone()"
             x = f"x{off + i}"
+            if kind == "k":
+                return f"{Fuser.kval(x)}.clone()"
             return {"f": f"num({x})", "b": f"bool_value({x})", "d": "Value::Null"}.get(kind, f"{x}.clone()")
 
         def pushes(items):
@@ -693,8 +714,8 @@ class Fuser:
         """The CFrame builder of a call with the LCont Function lc."""
         inner = self.wrap(J, "b.clone()")
         if lc is None:
-            return f"&|b: &Value| {inner}"
-        return f"&|b: &Value| cframe_on(t, gv, {lc}, {self.mat(d, locals_)}, &body_of(t, {x}).sinfo, {inner})"
+            return f"&|m: &mut Machine, b: &Value| {{ let _ = &m; {inner} }}"
+        return f"&|m: &mut Machine, b: &Value| cframe_on(t, gv, {lc}, {self.mat(d, locals_)}, &body_of(t, {x}).sinfo, {inner})"
 
     def to_join(self, J, vals, x, out):
         """Give the values (Rust code of Values) to the LCont of the innermost
@@ -745,6 +766,10 @@ class Fuser:
         if name == "__Cont_get__" and one and not b.olist and not J:
             # the escape continuation, in a Rust variable (made in a clause, it
             # would lack the CFrames of the clauses: left to the VM)
+            if STATIC_CONT:
+                k = self.xn(d)
+                out.append(f"let {k}c = vp.cchain.clone(); let {k}k: std::cell::OnceCell<Value> = std::cell::OnceCell::new();")
+                return self.emit(lc, d + 1, locals_ + [(lc, 0, "k")], out, J)
             out.append(f"let {self.xn(d)} = make_cont(m, vp);")
             return self.emit(lc, d + 1, locals_ + [(lc, 0, "v")], out, J)
         if one and name in ("__TRUE__", "__FALSE__") and len(b.olist) == 2 and None not in args:
@@ -971,12 +996,22 @@ class Fuser:
             return clause(1), "nop"
         return "nop", clause(1)
 
-    def value_clause(self, x, d, locals_, vref, out, J):
+    def static_k(self, d, locals_, b, k):
+        """Whether operand k of an __if__ (a clause) is the escape
+        continuation of the chain, not made (kind "k")."""
+        e = b.olist[k] if k is not None else None
+        return e is not None and e[0] == "L" and e[1] < d and self.local(d, locals_, e[1])[1] == "k"
+
+    def value_clause(self, x, d, locals_, vref, out, J, static=False):
         """The chosen clause of an __if__ (Function x's Body) is the value of
         a variable or a global (vref): a continuation is applied to no
         values, as the VM applies it (the LCont and the CFrames of the clauses
         are dropped with the CChain); anything else (__nop__, a Closure) is
         left to the VM, which runs the Body."""
+        if static:
+            # the escape continuation of the chain, not made: applied to no values (as below)
+            out.append(f"let v: [Value; 0] = []; return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, v);")
+            return
         out.append(f"let f = {vref};")
         out.append(f"if matches!(f, Value::Cont(_)) {{ let v: [Value; 0] = []; "
                    f"return fused_tail_call(vp, {self.ctx['env']}, {self.sinfo(x)}, f, v); }}")
@@ -1039,7 +1074,7 @@ class Fuser:
                         else:
                             out.append(f"return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, []);")
                     elif cl == "value":
-                        self.value_clause(x, d, locals_, vr, out, J)
+                        self.value_clause(x, d, locals_, vr, out, J, self.static_k(d, locals_, b, cidx[0 if label == "Some(true)" else 1]))
                     else:
                         self.emit(cl, d, locals_, out, J)
                     out.append("}")
@@ -1065,7 +1100,7 @@ class Fuser:
                 if cl == "nop":
                     self.to_join(jn, [], x, out)
                 elif cl == "value":
-                    self.value_clause(x, d, locals_, vr, out, J)
+                    self.value_clause(x, d, locals_, vr, out, J, self.static_k(d, locals_, b, cidx[0 if arm == "Some(true)" else 1]))
                 else:
                     self.emit(cl, d, locals_, out, jn)
                 out.append("}")
@@ -1075,6 +1110,13 @@ class Fuser:
             out.append("}")
             out.append("};")
             return self.emit(lc, d + g.params, locals_ + [(lc, k, "v") for k in range(g.params)], out, J)
+        if (op[0] == "L" and op[1] < d and self.local(d, locals_, op[1])[1] == "k" and lc is None
+                and None not in args):
+            # `return v ...` with the escape continuation of this chain (not made): the values go to the
+            # CChain it would have, which is the one the chain has (a clause has not put its CFrame there)
+            args = self.margs(x, d, locals_, b, self.after(None, d, J))
+            out.append(f"let v = [{', '.join(args)}]; return fused_return(m, vp, {self.ctx['env']}, {self.sinfo(x)}, v);")
+            return
         callable_op = op[0] == "L" or (op[0] == "G" and op[1] not in self.prims)
         f_ref = self.ref(x, d, op, "operator", locals_) if callable_op else None
         if callable_op and isinstance(lc, int) and None not in args and f_ref is not None:

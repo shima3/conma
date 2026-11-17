@@ -65,6 +65,13 @@ consh/sjs/test/run_all.sh
 * 流したもの：consh/test の最適化版（Rust 版の VM、`-j 8`）。consh/bench の `11`、`16` と、再帰する形の `15`（m1/bench-recursion のもの）の時間と出力（Rust 版と wasm 版の VM）。
 * 流していないもの：wasm 版と変換した VM の consh/test、consh/js/test、consh/sjs/test。変換した VM は、ConSh のモジュールが変わったので、`bench/build.sh` で作り直してから流す。
 
+### m1/static-cont
+
+* vm/conma2rust/conma2rust.py と vm/src/transpiled.rs を変えた：変換したコードの `__Cont_get__ ,(return)` の継続を作らず、`return v` を `fused_return` にする（`STATIC_CONT`。値として使う所でだけ `make_cont_on` で作る。CFrame を作る関数が Machine を受け取るようにした）。test/transpiled に case3 を足した。
+* 流したもの：`bench/build.sh` で作り直した変換した VM で、test/ の全部（`CONMA_VM=transpiled test/run_all.sh -j 8`）、consh/test の最適化版（`CONMA_VM=transpiled`）、test/transpiled（Rust VM と変換した VM）。case3.log は Rust VM と Python VM で同じ出力だった。
+* wasm 版の VM も vm/src/transpiled.rs を含むので、`vm/wasm/build.sh` で作れることと、test/transpiled が wasm 版の VM で通ることを確かめた。
+* 流していないもの：wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版。変換した VM は `bench/build.sh` で作り直してから流す。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
