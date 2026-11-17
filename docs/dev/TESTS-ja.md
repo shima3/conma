@@ -60,6 +60,11 @@ consh/sjs/test/run_all.sh
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。値が残らなくなったことは、確かめていない（GC がたどる値の数は数えていない）。
 
 
+### m2/pages-liquid
+
+* GitHub Pages のワークフローが、Jekyll で止まっていた（docs/consh/PLAN-ja.md の `{{スペース}` などを Liquid のタグと読んだため）。ランナーの上でだけ、docs の Markdown の本文を `{% raw %}` と `{% endraw %}` で囲む手順を足した（.github/pages-raw.py）。リポジトリの文書は変えていない。テストのスクリプトとソースも変えていない。
+* 確かめたこと（Apple M2）：ワークフローと同じイメージ（ghcr.io/actions/jekyll-build-pages:v1.0.13）の github-pages で、main の 158682f の失敗を同じエラーで再現し、この手順を足すと最後まで通った。できた HTML では `{{` がそのまま出て、`{% raw %}` は出ず、題名（jekyll-titles-from-headings）も前と同じだった。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
