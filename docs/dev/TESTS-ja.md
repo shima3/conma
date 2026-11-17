@@ -69,7 +69,6 @@ consh/sjs/test/run_all.sh
 
 * consh/bench の `02`〜`20`（`21` を除く）と、その Bash 版の大きさを、最も速い組み合わせで約 1 秒（Apple M1）かかる大きさにした（docs/dev/CONTRIBUTING.md の Benchmarks の 1）。`02`〜`18` は Bash 版と Rust 版の速いほう、`19` と `20` は最適化版＋wasm 版の VM が基準。大きさは各スクリプトの 1 行目と consh/bench/README-ja.md の表に書いた。
 * 確かめたこと（Apple M1、1 回ずつ）：`02`〜`18` を `run.py -n 1 -v rust,bash,conma:rust,conma:wasm` で流し、どれも出力が同じだった。`19`（5 億）と `20`（`fib(39)` = 63245986）は、最適化版＋wasm 版の VM で正しい値を出した。変換した VM は、alpha の今のモジュールで作り直していないので流していない。
-* ベンチマーク：consh/bench の `00`〜`18` を `run.py -v bash,rust,conma:rust,conma:wasm,conma:transpiled` で（3 回の最小。1 回が 60 秒を超える Bash 版の `13`、`14`、`16` は 1 回）、`19`〜`21` を `-v conma:wasm` で測り、consh/bench/README-ja.md の「結果」に新しい大きさの表として書く。変換した VM は `bench/build.sh` で作り直してから。参照版は当面測らない。
 
 ## 記録
 
