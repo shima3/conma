@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
-for c in case1 case2 case3 case4 case7 case8 case9 case10 case11 case12
+for c in case1 case2 case3 case4 case7 case8 case9 case10 case11 case12 case13
 do
   run $c $c.sh < /dev/null
 done
