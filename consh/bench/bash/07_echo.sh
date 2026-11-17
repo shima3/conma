@@ -1,3 +1,3 @@
-# echo $i を 1 万回（/dev/null へ）
+# echo $i を 50 万回（/dev/null へ）
 set -u
-for i in $(seq 1 10000); do echo $i; done > /dev/null
+for i in $(seq 1 500000); do echo $i; done > /dev/null
