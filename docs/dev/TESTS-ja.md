@@ -54,6 +54,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/static-cont
+
+* vm/conma2rust/conma2rust.py と vm/src/transpiled.rs を変えた：変換したコードの `__Cont_get__ ,(return)` の継続を作らず、`return v` を `fused_return` にする（`STATIC_CONT`。値として使う所でだけ `make_cont_on` で作る。CFrame を作る関数が Machine を受け取るようにした）。test/transpiled に case3 を足した。
+* 流したもの：`bench/build.sh` で作り直した変換した VM で、test/ の全部（`CONMA_VM=transpiled test/run_all.sh -j 8`）、consh/test の最適化版（`CONMA_VM=transpiled`）、test/transpiled（Rust VM と変換した VM）。case3.log は Rust VM と Python VM で同じ出力だった。
+* wasm 版の VM も vm/src/transpiled.rs を含むので、`vm/wasm/build.sh` で作れることと、test/transpiled が wasm 版の VM で通ることを確かめた。
+* 流していないもの：wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版。変換した VM は `bench/build.sh` で作り直してから流す。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
