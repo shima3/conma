@@ -543,6 +543,9 @@
   Parts_single parts ,(kind value)
   __is_null__ kind ,(condition)
   __unless__ condition (,() return value) ,()
+  ;; 最適化版：部分がみな String（$a$b、a$x など）なら、つないだものが値（下の Parts_concat と同じ）。1 回たどるだけで決める
+  Parts_text parts ,(strings text)
+  __if__ strings (,() return text) ,()
   Limit_guard sh pos __NULL__ ,(guard)
   Parts_count parts "leaves" ,(nLeaves)
   Parts_count parts "list" ,(nList)
@@ -897,6 +900,28 @@
               __String_concat__ text value ,(text)
               Parts_strings_from rest text __TRUE__ braced magic)
             (,() __NULL__ __FALSE__ text quoted braced magic))))
+
+;; 最適化版：部分がみな String（"plain"、"quoted"、"braced"）なら、真と、つないだ String。そうでなければ偽
+;; （Parts_strings から、glob の記号と種類を調べる分を除いたもの。変数定義の右辺の値に使う）
+(define Parts_text ,(parts)
+  Parts_text_from parts "")
+
+(define Parts_text_from ,(parts text)
+  __is_null__ parts ,(end)
+  __if_then_else__ end
+    (,() __NULL__ __TRUE__ text)
+    (,()
+      __LList_uncons__ __print_exit_error__ parts ,(part rest)
+      __LList_uncons__ __print_exit_error__ part ,(kind prest)
+      __LList_uncons__ __print_exit_error__ prest ,(value prest)
+      __String_equal__ kind "plain" ,(isPlain)
+      __String_equal__ kind "quoted" ,(isQuoted)
+      __String_equal__ kind "braced" ,(isBraced)
+      isPlain __TRUE__ isQuoted ,(isString)
+      isString __TRUE__ isBraced ,(isString)
+      __if_then_else__ isString
+        (,() __String_concat__ text value ,(text) Parts_text_from rest text)
+        (,() __NULL__ __FALSE__ text)))
 
 ;; LazyList の部分が1つだけのとき、その前後の String を、入れ子の形を保ったまま葉に付けた値
 (define Parts_affix ,(parts left limit)
