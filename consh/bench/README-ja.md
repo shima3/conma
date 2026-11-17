@@ -4,33 +4,33 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 
 ## スクリプト
 
-`NN_名前.sh` の 1 行目のコメントが、何を測るかである。`consh/include/README-ja.md` の速さの表の行を、その説明から書いたもの（表を作ったときのスクリプトそのものではない）に、起動の時間を測る `00_start.sh` を足した。`13`〜`18` は、起動の時間が全体の数 % 以下になるように、Rust 版でも 0.1〜1.5 秒ほどかかる大きさにしたもの（2026-11-15）。大きさは名前に入れず、1 行目のコメントと結果の表に書く（docs/dev/CONTRIBUTING.md の Benchmarks）。2026-11-17 に、名前から大きさを外し（`02_for_seq_100000` → `02_for_seq`、`13_func_assign_100000` → `13_func_assign`、`16_func_varlist_50000` → `16_func_varlist`、`17_subst_func_20000` → `17_subst_func`）、大きさだけが違うものを 1 本にまとめた（`01_for_seq` と `12_for_seq_500000` を `02` に、`05_func_assign` を `13` に、`08_func_varlist` を `16` に、`09_subst_func` を `17` にまとめ、Bash 版とともに消した。番号は詰めていない）。出力を比べられるように、多くは最後に変数の値を出す。
+`NN_名前.sh` の 1 行目のコメントが、何を測るかである。`consh/include/README-ja.md` の速さの表の行を、その説明から書いたもの（表を作ったときのスクリプトそのものではない）に、起動の時間を測る `00_start.sh` を足した。`13`〜`18` は、起動の時間が全体の数 % 以下になるように、Rust 版でも 0.1〜1.5 秒ほどかかる大きさにしたもの（2026-11-15）。2026-11-17 に、`19`〜`21` を除いて、Bash 版と Rust 版の速いほうで約 1 秒（Apple M1）かかる大きさにした（docs/dev/CONTRIBUTING.md の Benchmarks。前の大きさは下の「結果」の初め）。大きさは名前に入れず、1 行目のコメントと結果の表に書く（docs/dev/CONTRIBUTING.md の Benchmarks）。2026-11-17 に、名前から大きさを外し（`02_for_seq_100000` → `02_for_seq`、`13_func_assign_100000` → `13_func_assign`、`16_func_varlist_50000` → `16_func_varlist`、`17_subst_func_20000` → `17_subst_func`）、大きさだけが違うものを 1 本にまとめた（`01_for_seq` と `12_for_seq_500000` を `02` に、`05_func_assign` を `13` に、`08_func_varlist` を `16` に、`09_subst_func` を `17` にまとめ、Bash 版とともに消した。番号は詰めていない）。出力を比べられるように、多くは最後に変数の値を出す。
 
 | スクリプト | 測るもの |
 |---|---|
 | `00_start.sh` | 何もしない（起動の時間） |
-| `02_for_seq.sh` | `n=0; for i in $(seq 1 100000); do n=$i; done; echo $n` |
-| `03_nested_for.sh` | `xs=$(seq 1 100)` の入れ子の for 文で `n=1` を 1 万回 |
-| `04_if_defined.sh` | `if defined i; then n=1; else n=2; fi` を 5000 回 |
-| `06_func_echo.sh` | 関数 `f $i`（`echo "x$a"`）を 3000 回（`/dev/null` へ） |
-| `07_echo.sh` | `echo $i` を 1 万回（`/dev/null` へ） |
-| `10_pipe_for_stdin.sh` | `seq 1 100000 \| cnt`（`cnt` は `for x in $(stdin)` で数える関数） |
-| `11_seq_varlist.sh` | `seq 1 100000 > (first . rest)` |
-| `13_func_assign.sh` | 関数 `g $i`（`n=$x; echo $n`）を 10 万回、値を `> (n)` で受ける（`05` の 20 倍） |
-| `14_nested_for_if.sh` | `xs=$(seq 1 300)` の入れ子の for 文で、`if defined` と関数 `h $i $j`（`m=$a$b; echo $m`）を 9 万回、値を `> (m)` で受ける |
-| `15_recursion.sh` | リストの先頭を除いて自分を呼ぶ関数 `down (x . rest)`（深さ 500）を 5 回。残りは `down $rest` で 1 つずつの引数として渡す |
-| `16_func_varlist.sh` | `add $i x > (r)` を 5 万回 |
-| `17_subst_func.sh` | `y=$(f $i)` を 2 万回 |
-| `18_pipe_funcs.sh` | 関数どうしのパイプ `gen \| inc \| cnt` で 5 万要素を渡す |
-| `19_loop.sh` | `(( ))` の SJS の関数 `loop` で、3000 万回数える |
-| `20_fib.sh` | `(( ))` の SJS の関数 `fib` で、素朴な再帰の `fib(35)` |
+| `02_for_seq.sh` | `n=0; for i in $(seq 1 1000000); do n=$i; done; echo $n` |
+| `03_nested_for.sh` | `xs=$(seq 1 2000)` の入れ子の for 文で `n=1` を 400 万回 |
+| `04_if_defined.sh` | `if defined i; then n=1; else n=2; fi` を 40 万回 |
+| `06_func_echo.sh` | 関数 `f $i`（`echo "x$a"`）を 25 万回（`/dev/null` へ） |
+| `07_echo.sh` | `echo $i` を 50 万回（`/dev/null` へ） |
+| `10_pipe_for_stdin.sh` | `seq 1 600000 \| cnt`（`cnt` は `for x in $(stdin)` で数える関数） |
+| `11_seq_varlist.sh` | `seq 1 4000000 > (first . rest)` |
+| `13_func_assign.sh` | 関数 `g $i`（`n=$x; echo $n`）を 25 万回、値を `> (n)` で受ける |
+| `14_nested_for_if.sh` | `xs=$(seq 1 480)` の入れ子の for 文で、`if defined` と関数 `h $i $j`（`m=$a$b; echo $m`）を 23 万 400 回、値を `> (m)` で受ける |
+| `15_recursion.sh` | リストの先頭を除いて自分を呼ぶ関数 `down (x . rest)`（深さ 500）を 25 回。残りは `down $rest` で 1 つずつの引数として渡す |
+| `16_func_varlist.sh` | `add $i x > (r)` を 25 万回 |
+| `17_subst_func.sh` | `y=$(f $i)` を 3 万回 |
+| `18_pipe_funcs.sh` | 関数どうしのパイプ `gen \| inc \| cnt` で 7 万 5000 要素を渡す |
+| `19_loop.sh` | `(( ))` の SJS の関数 `loop` で、5 億回数える |
+| `20_fib.sh` | `(( ))` の SJS の関数 `fib` で、素朴な再帰の `fib(39)` |
 | `21_nbody.sh` | `(( ))` の SJS で、木星型惑星の軌道を 30 万ステップ（`consh/examples/nbody.sh` の N を 300000 にしたもの） |
 
 `05`、`13`、`14` は、2026-11-16 に、関数が代入した値を `echo` で出し、呼ぶ側が `> (n)` で受ける形にした。それまでは関数の中で代入するだけで、その代入はローカルなので外の値は変わらなかった（`13` は最後の `echo $n` が未定義でエラー、`14` の `m` は 0 のまま）。下の 2026-11-15 と 2026-11-12 の表のこの 3 行は、前の形で測ったもの。
 
-`15` は、2026-11-17 に、本当に再帰する形にした。それまでは `down ${xs}` と `down ${rest}` で呼んでいたが、`${list}` はリスト全体を 1 つの引数として渡すので（consh/docs/FOR-BASH-USERS.md の Variables）、`x` にリスト全体が入り、`rest` は空で、`down` は再帰しなかった（測っていたのは、1000 要素のリストを `echo` するのを 1000 回）。Bash 版は再帰していたが、最後の出力が同じだったので、run.py では分からなかった。`$xs`、`$rest` で 1 つずつの引数として渡すと、深さ 1000 を 1000 回は最適化版＋Rust 版の VM で 40 分ほど（1 回 2.2 秒）かかるので、深さ 500 を 5 回にした。下の 2026-11-16 以前の表の `15` の行は、前の形で測ったもの（2026-11-16 の Bash 版の表では、Bash だけが再帰していた）。
+`15` は、2026-11-17 に、本当に再帰する形にした。それまでは `down ${xs}` と `down ${rest}` で呼んでいたが、`${list}` はリスト全体を 1 つの引数として渡すので（consh/docs/FOR-BASH-USERS.md の Variables）、`x` にリスト全体が入り、`rest` は空で、`down` は再帰しなかった（測っていたのは、1000 要素のリストを `echo` するのを 1000 回）。Bash 版は再帰していたが、最後の出力が同じだったので、run.py では分からなかった。`$xs`、`$rest` で 1 つずつの引数として渡すと、深さ 1000 を 1000 回は最適化版＋Rust 版の VM で 40 分ほど（1 回 2.2 秒）かかるので、深さ 500 を 5 回にした（2026-11-17 に、約 1 秒になるように 25 回にした）。下の 2026-11-16 以前の表の `15` の行は、前の形で測ったもの（2026-11-16 の Bash 版の表では、Bash だけが再帰していた）。
 
-`19`〜`21` は、計算のすべてを `(( ))` の SJS の関数に書いたもので、`bench/loop`、`bench/fib`、`bench/nbody` の Python と `consh/sjs/bench` の SJS と同じ計算を、CPython で約 1 秒かかる大きさで行う（2026-11-16）。Rust 版には `(( ))` がないので、`-v` に `rust` が入っていてスクリプトを指定しないときは、`(( ))` を含むスクリプトを除く（そう標準エラー出力に出す）。
+`19`〜`21` は、計算のすべてを `(( ))` の SJS の関数に書いたもので、`bench/loop`、`bench/fib`、`bench/nbody` の Python と `consh/sjs/bench` の SJS と同じ計算を、CPython で約 1 秒かかる大きさで行っていた（2026-11-16）。2026-11-17 に、`19` と `20` を、最も速い組み合わせ（最適化版＋wasm 版の VM）で約 1 秒かかる大きさ（3000 万を 5 億、`fib(35)` を `fib(39)`）にした（CPython では約 17 秒と約 7 秒と見積もられる。最適化版と参照版の Rust 版の VM と変換した VM は、1 回が 60 秒を大きく超えるので、この大きさでは測らない）。`21` は、wasm 版の VM で 1.6 秒かかり、その大半が毎回かかる時間（起動と `(( ))` の翻訳、約 1.57 秒）で、大きさを小さくしても 1 秒に届かないので、30 万ステップのままにした。Rust 版には `(( ))` がないので、`-v` に `rust` が入っていてスクリプトを指定しないときは、`(( ))` を含むスクリプトを除く（そう標準エラー出力に出す）。
 
 ### Bash 版
 
@@ -47,7 +47,7 @@ ConSh の版（Rust 版、ConMa 版の最適化版と参照版）と VM（Rust �
 consh/bench/run.py                         # Rust 版と、最適化版＋変換した VM
 consh/bench/run.py -v rust,conma:rust,reference:rust
 consh/bench/run.py -n 5 02_for_seq.sh 11_seq_varlist.sh
-consh/bench/run.py -v conma:wasm,conma:transpiled 19_loop.sh 20_fib.sh 21_nbody.sh
+consh/bench/run.py -v conma:wasm 19_loop.sh 20_fib.sh 21_nbody.sh
 consh/bench/run.py -v bash,rust,conma:wasm 02_for_seq.sh 13_func_assign.sh
 consh/bench/run.py -v conma:transpiled=/tmp/before/conma,conma:transpiled   # 作り直す前に写した VM と並べる
 ```
@@ -61,6 +61,8 @@ consh/bench/run.py -v conma:transpiled=/tmp/before/conma,conma:transpiled   # �
 ## 結果
 
 表のスクリプトの名前は、測ったときのもの（2026-11-17 に、`02_for_seq_100000` は `02_for_seq`、`13_func_assign_100000` は `13_func_assign`、`16_func_varlist_50000` は `16_func_varlist`、`17_subst_func_20000` は `17_subst_func` に名前を変え、`01_for_seq`、`05_func_assign`、`08_func_varlist`、`09_subst_func`、`12_for_seq_500000` は消した。上の「スクリプト」）。
+
+2026-11-17 に大きさを変える前の表は、前の大きさで測ったもの：`02` は 10 万、`03` は `seq 1 100`（1 万回）、`04` は 5000 回、`06` は 3000 回、`07` は 1 万回、`10` と `11` は 10 万、`13` は 10 万回、`14` は `seq 1 300`（9 万回）、`15` は深さ 500 を 5 回、`16` は 5 万回、`17` は 2 万回、`18` は 5 万要素、`19` は 3000 万、`20` は `fib(35)`（名前に大きさのあるスクリプトは、その名前の大きさ）。
 
 ### 2026-11-16：チャネルのプリミティブ（docs/dev/CHAN-PLAN-ja.md）
 
