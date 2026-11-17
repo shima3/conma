@@ -2402,6 +2402,13 @@ class Scheduler:
                 if is_terminal(self.ready[0]):
                     continue        # the top of the loop finishes it
             vp = self.ready.popleft()
+            if is_terminal(vp):
+                # A VProc woken after the check at the top of the loop (its last
+                # application was __VProc_wait__ or __Ref_wait_change__, which
+                # return before waiting) has nothing left to do: it has finished.
+                vp.state = "finished"
+                self.finished_any = True
+                continue
             vp.state = "running"
             self.current = vp
             try:

@@ -1,0 +1,45 @@
+;; Step48：最後の適用が __VProc_wait__ か __Ref_wait_change__ の VProc（どちらも、待つ前に戻るので、継続がない）が、
+;; 待つ相手が終わって、または Ref が変わって起きたとき、終わった VProc になる（前は、スケジューラが起きた VProc を
+;; 終わったかどうか見ずに 1 歩進め、"Null Operator: CChain empty, no LCont" のエラーになった。Python 版と Rust 版の VM）。
+;; 相手が先に終わらないように、相手は 2000 回回ってから終わる
+(include "util.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define spin ,(n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end)
+  __if__ end return ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  spin n)
+
+(define count ,()
+  __Number_fromString__ __print_exit_error__ "2000")
+
+;; case1：VProc の最後が __VProc_wait__
+(define case1 ,()
+  count ,(n)
+  __VProc_start__ (,() spin n ,() println "target ends") ,(target)
+  __VProc_start__ (,() __VProc_wait__ __print_exit_error__ target) ,(waiter)
+  __VProc_wait__ __print_exit_error__ waiter ,()
+  println "the waiter has finished")
+
+;; case2：VProc の最後が __Ref_wait_change__
+(define case2 ,()
+  count ,(n)
+  __Ref_new__ "before" ,(r)
+  __VProc_start__ (,() __Ref_wait_change__ r "before") ,(waiter)
+  spin n ,()
+  __Ref_set__ r "after" ,()
+  __VProc_wait__ __print_exit_error__ waiter ,()
+  println "the waiter has finished")
+
+;; case3：最初の VProc の最後が __VProc_wait__
+(define case3 ,()
+  count ,(n)
+  __VProc_start__ (,() spin n ,() println "target ends") ,(target)
+  println "waiting" ,()
+  __VProc_wait__ __print_exit_error__ target)

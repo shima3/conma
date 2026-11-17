@@ -52,7 +52,17 @@ consh/sjs/test/run_all.sh
 
 ## 申し送り
 
-次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+
+### m1/bench-sizes
+
+* consh/bench の `02`〜`20`（`21` を除く）と、その Bash 版の大きさを、最も速い組み合わせで約 1 秒（Apple M1）かかる大きさにした（docs/dev/CONTRIBUTING.md の Benchmarks の 1）。`02`〜`18` は Bash 版と Rust 版の速いほう、`19` と `20` は最適化版＋wasm 版の VM が基準。大きさは各スクリプトの 1 行目と consh/bench/README-ja.md の表に書いた。
+* 確かめたこと（Apple M1、1 回ずつ）：`02`〜`18` を `run.py -n 1 -v rust,bash,conma:rust,conma:wasm` で流し、どれも出力が同じだった。`19`（5 億）と `20`（`fib(39)` = 63245986）は、最適化版＋wasm 版の VM で正しい値を出した。変換した VM は、alpha の今のモジュールで作り直していないので流していない。
+
+### m4/vproc-wait
+
+* 最後の適用が `__VProc_wait__` か `__Ref_wait_change__` の VProc が、起きたときに `Null Operator` のエラーになる不具合を直した（vm/python/vproc_step.py と vm/src/sched.rs のスケジューラ）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。新しいテスト：test/step48。
+* 流したもの：test/ の Python 版と Rust 版の VM、consh/test（最適化版）の Rust 版の VM、step48、step17、step10、step45、fast11 の wasm 版の VM。流していないもの：変換版の VM（作り直していない）、ほかの組み合わせ。
 
 ## 記録
 
