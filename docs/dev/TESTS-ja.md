@@ -54,48 +54,9 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/bench-sizes2
-
-* bench/ の大きさを、CPython と変換した VM の速いほうで約 1 秒（Apple M1）にした：fib 35、richards 35、nbody 300000、loop 100000000。`bench/run.sh NAME` は、大きさを指定しなければこの大きさで流す（指定すれば今までどおり）。bench/README.md に、大きさとそのときの時間を書いた。
-* 確かめたこと（Apple M1）：4 つとも `CONMA_BENCH_RUST=1 bench/run.sh NAME` で、CPython、Rust 版の VM、変換した VM の出力が同じだった。変換した VM は cd7d3a4 で作ったもの（bench/ のモジュールは変わっていない）。
-* テストのスクリプトは変えていない。
-
-### m4/consh-heavy2
-
-* ConSh の最適化版の `Eval_cmd_parts` と `Capture_new` を軽くした（consh/include/consh_eval.se だけ。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` を小さくしたものの出力が、変更の前と同じ。流していないもの：wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
-### m4/sjs-array-msg
-
-* SJS の配列の `push` と `pop` が、凍らせた配列のときだけエラーメッセージを作るようにした（consh/include/sjs_rt.se。docs/dev/ARRAY-PLAN-ja.md の 6 の A6）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：consh/sjs/test、consh/test（最適化版）の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test、参照版（sjs_rt.se は最適化版と共通か確かめていない）。
-
-### m4/transpiled-clone
-
-* for 文が読み終えた `$( )` の値を残さないようにした（consh/include/consh_eval.se、consh_expand.se。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。vm/src/gc.rs も変えた（索引のハッシュと、子を集めるバッファ）ので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
-* 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` の出力が、変換した VM で変更の前と同じ。流していないもの：test/、wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
-
 ### m4/chan-head
 
-* チャネルの鎖の `"head"` を、読み手が読み位置を作るときに null にした（vm/src/prim/chan.rs と include/core/chan.se。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
-* 流したもの：test/ の Rust 版の VM、test/step45 と fast11 の Python 版の VM、consh/test（最適化版と参照版）の Rust 版の VM、consh/sjs/test。流していないもの：test/ の Python 版の VM（step45、fast11 のほか）、wasm 版と変換版の VM、consh/js/test。
 * ベンチマーク：consh/bench の `10`、`18` を、最適化版の変換版の VM で（m4/transpiled-clone と、このブランチの分。前は alpha の 9a4f7a2）。
-
-### m2/consh-docs-move
-
-* consh/docs を docs/consh に移した（GitHub Pages で公開するため）。`consh/docs` を `docs/consh` に書き換え（92 個のファイル。どれも読むための文書への参照なので、記録の文書も含めて書き換えた）、相対リンクを直し、docs/index.md に ConSh の文書を足した。vm/src、consh/include、テストのスクリプトと入力は、コメントだけが変わった。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版）、consh/sjs/test、consh/js/test、変わったファイルのある test/fast7（Rust 版の VM）。どの Markdown の相対リンクも、前からの `.html` へのリンクと SAFEJS-PLAN-ja.md のリンクに見える文のほかは、切れていない。
-* consh/js/test の step5 の case2 が違う（7 行目と 10 行目が 1 でなく 0）。参照を書き換える前（ファイルを移しただけの e36212b）でも同じなので、この変更によるものではない。1e8c4d4（for 文が読んだ `$( )` の値を持ち続けない）で、関数の文脈の循環がなくなり、関数の局所変数の JS の値がすぐに表から消えるようになったためと思われる。1e8c4d4 の作者が確かめて、期待ログとコメントを直す。
-
-### m1/sjs-bench-sizes
-
-* `consh/sjs/bench/run.sh NAME [N [M]]` に大きさを 2 つにした。N で Node.js、CPython、wasm 版の VM の SJS を、M で遅い列（Rust 版の VM の 2 つ、wasm 版の VM の `CONMA_NO_WASM=1` と手で書いた ConMa。出力で `*` を付ける）を測る。指定しなければ loop 1000000000／25000000、fib 40／32、nbody 10000000／80000（N は Node.js か wasm 版の VM の SJS で約 1 秒、M は遅い列のいちばん遅いもので約 1 分。Apple M1）。結果は consh/sjs/README-ja.md の「速さ」。
-* loop の N は、2^30 より小さくした。2^30 以上では、wasm 版の VM で数の関数が WebAssembly にならず、60 秒を超える。
-* 確かめたこと（Apple M1）：3 つとも、指定しない大きさで run.sh を流し、どの列も出力が Node.js と同じだった（`CONMA_NO_WASM=1` の列の出力も、新しく M で比べる）。テストのスクリプトは変えていない。
-
-### m4/js-step5
-
-* consh/js/test の step5 の case2 の期待ログを直した（7 行目と 10 行目を 1 から 0 に）。1e8c4d4（m4/transpiled-clone）から、関数の局所変数の JS の値が、関数から戻れば消えるようになったため（前は、関数の文脈が循環して、VM の循環の回収まで残った）。テストの担当者の報告による。
-* 流したもの：consh/js/test（wasm 版の VM、Node.js）。
 
 ### m4/transpiled-clone2
 
@@ -113,6 +74,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-17 | ceef8ab | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/consh-heavy2、m4/sjs-array-msg、m4/transpiled-clone、m4/chan-head、m2/consh-docs-move の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/js-step5 で直した consh/js/test の step5 も通った。m1/bench-sizes2、m1/sjs-bench-sizes、m4/types-t1、m4/types-hold、m4/array-a6 と、m2/bench-944c5df（m4/consh-heavy2 のベンチマーク）も含む。m4/chan-head のベンチマークの依頼は残した |
 | 2026-11-17 | 3507874 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/vproc-wait の、流していなかった変換版の VM（`bench/build.sh` で作り直した）と wasm 版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版も通った。新しい test/step48 は 4 つの VM で通った。m1/bench-sizes、m4/bench-who、m1/bench-cd7d3a4 を含む |
 | 2026-11-17 | b00beda | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。m1/run-vm-path と m4/bench-names（どちらもテストは変わらない）を含む |
 | 2026-11-17 | a8c7ab1 | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-inplace、m4/switch-counts、m4/dict-num-hash、m4/array、m1/static-cont の、流していなかった組み合わせ（Rust 版、wasm 版、作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/array-measure、m4/array-plan も含む |
