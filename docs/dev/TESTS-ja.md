@@ -68,6 +68,11 @@ consh/sjs/test/run_all.sh
 * ConSh の最適化版の for 文で、本体に break も continue もなければ、ループの文脈と、繰り返しごとの継続を作らないようにした（consh/include/consh_eval.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S1）。consh/test の step3 に case29 を足した。consh/bench/roles.py を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。流していないもの：wasm 版と変換版の VM、consh/js/test。
 
+### m4/compile2-s2
+
+* ConSh の最適化版の `Subst_settle` が、parked の間は、`$( )` の子が終わったときに立てる Ref だけを見るようにした（consh/include/consh_eval.se。docs/consh/dev/COMPILE2-PLAN-ja.md の S2）。consh/test の step4 に case9 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：consh/test（最適化版と参照版）と consh/sjs/test の Rust 版の VM。step4 は 5 回。流していないもの：wasm 版と変換版の VM、consh/js/test。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
