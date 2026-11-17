@@ -890,6 +890,12 @@ No new primitive.
 * `vm/src/prim/array.rs` keeps an array as a `Vec` (`Value::Array`, collected by `gc.rs` when in a cycle); the wasm VM shares it. The transpiled code calls `__Array_length__`, `__Array_get__`, `__Array_set__` and `__Array_push__` directly and the others through the OList. The frontends write `(Uses "array")`, and `bin/to-core` puts in `include/core/array.se` for the Python VM.
 * Tests: `test/step47` (the replacement definitions: push, get, set, pop, length, the errors of indices, values that are not arrays, sharing, arrays in arrays and in themselves, arrays as keys of a Dict, 10,000 values), `test/fast12` (the same with the primitives, the `Uses` the frontends write, `bin/to-core`, and the type name on each VM), `test/transpiled` case4.
 
+## Step 48: A VProc that ends waiting
+
+* Bug (found on 2026-11-16 in stage C2 of docs/dev/CHAN-PLAN-ja.md, fixed on 2026-11-17): a VProc whose last application is `__VProc_wait__` or `__Ref_wait_change__` without an LCont, such as `__VProc_start__ (,() __VProc_wait__ onError target)`, stopped with `Null Operator: CChain empty, no LCont` when it woke up, on the Python and Rust VMs. Both primitives return before the VProc waits, so the VProc has nothing left to do when it wakes; the scheduler finished such VProcs only at the front of the ready queue at the top of its loop, before it woke the waiting ones, and then stepped the one it had just woken.
+* Fix: the scheduler (`Scheduler.run` of vm/python/vproc_step.py, `Machine::run_slice` of vm/src/sched.rs, which the wasm VM shares) also finishes a VProc taken from the ready queue that has nothing left to do, instead of stepping it. No step is counted, so the step numbers and traces of other programs are the same.
+* Tests: `test/step48` (a VProc ending with `__VProc_wait__`, one ending with `__Ref_wait_change__`, and the first VProc ending with `__VProc_wait__`), which failed before on the Python VM.
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from consh/docs/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in consh/docs/dev/SAFEJS-REVIEW-ja.md (3.1.4).
