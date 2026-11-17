@@ -234,7 +234,10 @@
   __Cont_get__ ,(return)
   __Dict_lookup_or__ sh "vars" __print_exit_error__ ,(vars)
   __Dict_lookup_or__ vars name (,(key) Sh_lookup_other sh pos name ,(value) return value) ,(value)
-  Value_force value)
+  ;; 最適化版：Value_force を呼ぶのは、値が Dict（SJS と JS の値）のときだけ
+  __type_name__ value ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __if_then_else__ isDict (,() Value_force value) (,() __NULL__ value))
 
 ;; 局所変数にない名前。特別な名前か、環境変数
 (define Sh_lookup_other ,(sh pos name)

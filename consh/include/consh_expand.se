@@ -104,27 +104,30 @@
 ;; String なら stringKind、LazyList なら listKind。記号を含まない String は、そのまま1つの語にする。
 ;; 関数値は、そのまま1つの語にする（外部コマンドの引数なら、起動の前にエラーにする）
 (define Var_fields ,(sh pos stringKind listKind value limit)
-  __Cont_get__ ,(return)
   __type_name__ value ,(type)
   __String_equal__ type "String" ,(isString)
-  __unless__ isString
+  __if_then_else__ isString
     (,()
-      __String_equal__ type "Closure" ,(test__) __if__ test__ (,() __LList_cons__ value __NULL__ ,(fields) return fields) ,()
-      Limit_guard sh pos limit ,(limit)
-      Part_make listKind value ,(part)
-      __LList_cons__ part __NULL__ ,(parts)
-      Parts_fields_in parts limit ,(fields)
-      return fields) ,()
-  __String_equal__ value "" ,(empty)
-  __if__ empty (,() return __NULL__) ,()
-  Glob_has_meta value ,(magic)
-  __if__ magic
+      __String_equal__ value "" ,(empty)
+      __if_then_else__ empty
+        (,() __NULL__ __NULL__)
+        (,()
+          Glob_has_meta value ,(magic)
+          __if_then_else__ magic
+            (,()
+              Part_make stringKind value ,(part)
+              __LList_cons__ part __NULL__ ,(parts)
+              Parts_fields_in parts limit)
+            (,() __LList_cons__ value __NULL__)))
     (,()
-      Part_make stringKind value ,(part)
-      __LList_cons__ part __NULL__ ,(parts)
-      Parts_fields_in parts limit ,(fields)
-      return fields) ,()
-  __LList_cons__ value __NULL__)
+      __String_equal__ type "Closure" ,(isFunc)
+      __if_then_else__ isFunc
+        (,() __LList_cons__ value __NULL__)
+        (,()
+          Limit_guard sh pos limit ,(limit)
+          Part_make listKind value ,(part)
+          __LList_cons__ part __NULL__ ,(parts)
+          Parts_fields_in parts limit)))
 
 ;; ── リテラルの語 ──
 ;; 引用符も展開もない語（lit の要素が1つだけ）は、部分の LList を作らずに展開する（よくある語なので速くする）。
@@ -507,14 +510,18 @@
 
 ;; $x だけの語（位置 pos）の、変数定義の右辺としての値。String と関数値ならそのまま、LazyList なら葉の語が1つだけのはず
 (define Var_def_value ,(sh pos value)
-  __Cont_get__ ,(return)
   __type_name__ value ,(type)
   __String_equal__ type "String" ,(isString)
-  __if__ isString (,() return value) ,()
-  __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return value) ,()
-  Part_make "leaves" value ,(part)
-  __LList_cons__ part __NULL__ ,(parts)
-  Expand_value_parts sh pos parts)
+  __if_then_else__ isString
+    (,() __NULL__ value)
+    (,()
+      __String_equal__ type "Closure" ,(isFunc)
+      __if_then_else__ isFunc
+        (,() __NULL__ value)
+        (,()
+          Part_make "leaves" value ,(part)
+          __LList_cons__ part __NULL__ ,(parts)
+          Expand_value_parts sh pos parts)))
 
 ;; (語 ...) の各語を外部コマンドの語として展開した String の LList
 (define Expand_array ,(sh words)
