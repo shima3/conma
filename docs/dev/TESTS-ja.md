@@ -74,6 +74,12 @@ consh/sjs/test/run_all.sh
 * for 文が読み終えた `$( )` の値を残さないようにした（consh/include/consh_eval.se、consh_expand.se。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。vm/src/gc.rs も変えた（索引のハッシュと、子を集めるバッファ）ので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
 * 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` の出力が、変換した VM で変更の前と同じ。流していないもの：test/、wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
 
+### m4/chan-head
+
+* チャネルの鎖の `"head"` を、読み手が読み位置を作るときに null にした（vm/src/prim/chan.rs と include/core/chan.se。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
+* 流したもの：test/ の Rust 版の VM、test/step45 と fast11 の Python 版の VM、consh/test（最適化版と参照版）の Rust 版の VM、consh/sjs/test。流していないもの：test/ の Python 版の VM（step45、fast11 のほか）、wasm 版と変換版の VM、consh/js/test。
+* ベンチマーク：consh/bench の `10`、`18` を、最適化版の変換版の VM で（m4/transpiled-clone と、このブランチの分。前は alpha の 9a4f7a2）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

@@ -111,4 +111,6 @@ ConMa 版の ConSh（最適化版）が文を実行する手間を、スクリ�
 
   * `14` は、値を変数（`xs=$(seq 1 480)`）に入れるので、残るのが正しく、変わらない。出力はどれも同じ。Rust 版の VM は consh/bench/run.py を使わずに `consh/bin/consh` で測った（起動を含む）。
   * 次：チャネルの鎖が持つ先頭と、値の複製と破棄（`Value` の `clone` と `drop`。`sample` で GC の次に大きい）。
+* **チャネルの鎖の先頭（2026-11-17、ブランチ m4/chan-head）**：関数の出力の `$( )` とパイプの値は、チャネルの鎖の Dict が最初の節（`"head"`）を持ち続けるので、読み終えた要素が、書き手が閉じて鎖が捨てられるまで残っていた（鎖は、書き手、チャネルの `"chains"`、読み手の読み位置のどれからもつながる）。`"head"` を使うのは、読み手がその鎖の読み位置を作るときだけ（読み手は 1 つ）なので、そのときに null にした（vm/src/prim/chan.rs の `register`、include/core/chan.se の `Chan_core_cursors`）。`for i in $(f)`（`f` が 5 万行を echo する）で GC の後に残る値は、読んだ数（最大 11 万）から 110 前後になった。
+  * 時間（Rust 版の VM、Apple M4、consh/bench/run.py、交互に 3 回の最小。前は alpha の 6dfaee5 の VM）：`10_pipe_for_stdin` 7.482 → 6.613 秒（−12%）、`17_subst_func` 3.046 → 3.060 秒（変わらず。`$( )` の値が 1 つずつ小さい）、`18_pipe_funcs` 4.318 → 4.025 秒（−7%）。変換した VM と wasm 版の VM は作り直していないので測っていない。
 
