@@ -54,6 +54,11 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、見出しを消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/switch-counts
+
+* `CONMA_TRANSPILED_COUNTS` に、VProc が待った回数（`wait`）と、ほかの VProc に替わった回数（`switch`）を足した（vm/src/sched.rs、vm/src/transpiled.rs、vm/tools/transpiled_counts.py）。変数がなければ数えない。vm/src が変わったので、VM を作り直してから流す。
+* 流したもの：test/ の Rust 版の VM、test/transpiled の変換版の VM（bench/build.sh で作り直した）。流していないもの：ほかの組み合わせ。
+
 ### m4/dict-num-hash
 
 * Rust 版の VM の Dict の索引で、数のキーのハッシュが同じ桶に集まっていたのを直した（vm/src/value.rs の `FxHasher::finish`）。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
