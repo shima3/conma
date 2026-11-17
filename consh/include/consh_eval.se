@@ -1014,7 +1014,8 @@
     (,() __NULL__ (,(sh) Eval_cmd_plain sh pos headCode resolveCode argsCodes fieldsCodes))
     (,()
       Redirs_templates redirs ,(templates)
-      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)))
+      Redirs_captures redirs ,(captures onlyCaptures)
+      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)))
 
 ;; リダイレクトの LList のうち、変数リストへのリダイレクト（> (a b . rest) など）ごとの記録のひな形（Capture_template）の LList。
 ;; Eval_redirs_from は、変数リストへのリダイレクトに出会うたびに、先頭から1つずつ使う
@@ -1034,6 +1035,69 @@
   __unless__ isParams (,() return templates) ,()
   Capture_template targetChildren ,(template)
   __LList_cons__ template templates)
+
+;; 最適化版：リダイレクトがみな、標準出力か標準エラー出力の変数リストへのリダイレクト（> (a b)、2> (e)）で、同じ出力に
+;; 2 つ向けていなければ、(出力の番号 記録のひな形 変数リスト) の LList と真。そうでなければ null と偽。
+;; 実行のときは、Eval_redirs の代わりに Capture_redirs を使う（節を読まず、開く Stream もない）
+(define Redirs_captures ,(redirs)
+  Redirs_captures_from redirs __FALSE__ __FALSE__)
+
+(define Redirs_captures_from ,(redirs seenOut seenErr)
+  __Cont_get__ ,(return)
+  __is_null__ redirs ,(end)
+  __if__ end (,() return __NULL__ __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ redirs ,(redir rest)
+  Node_split redir ,(tag pos children)
+  __LList_uncons__ __print_exit_error__ children ,(op targets)
+  __is_null__ targets ,(noTarget)
+  __if__ noTarget (,() return __NULL__ __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ targets ,(target others)
+  Node_split target ,(targetTag targetPos params)
+  __String_equal__ targetTag "params" ,(isParams)
+  __unless__ isParams (,() return __NULL__ __FALSE__) ,()
+  Redir_fd op ,(fd)
+  __String_equal__ fd "1" ,(isOut)
+  __String_equal__ fd "2" ,(isErr)
+  __and__ isOut seenOut ,(dupOut)
+  __and__ isErr seenErr ,(dupErr)
+  __or__ dupOut dupErr ,(dup)
+  __or__ isOut isErr ,(isOutput)
+  __not__ isOutput ,(notOutput)
+  __or__ dup notOutput ,(other)
+  __if__ other (,() return __NULL__ __FALSE__) ,()
+  __or__ seenOut isOut ,(seenOut)
+  __or__ seenErr isErr ,(seenErr)
+  Redirs_captures_from rest seenOut seenErr ,(specs ok)
+  __unless__ ok (,() return __NULL__ __FALSE__) ,()
+  Capture_template params ,(template)
+  __LList_cons__ params __NULL__ ,(spec)
+  __LList_cons__ template spec ,(spec)
+  __LList_cons__ fd spec ,(spec)
+  __LList_cons__ spec specs ,(specs)
+  __NULL__ specs __TRUE__)
+
+;; Eval_redirs と同じ値（標準入力、標準出力、標準エラー出力、開いた Stream（null）、mark（null）、成功したか（真）、
+;; 変数リストへのリダイレクトの組）を、Redirs_captures の LList specs から作る。記録は、左から順に作る（Eval_redirs_from と同じ）
+(define Capture_redirs ,(sh specs)
+  __Dict_lookup_or__ sh "in" __print_exit_error__ ,(in)
+  __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
+  __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
+  Capture_redirs_from sh specs out err __NULL__ ,(out err group)
+  __NULL__ in out err __NULL__ __NULL__ __TRUE__ group)
+
+(define Capture_redirs_from ,(sh specs out err group)
+  __is_null__ specs ,(end)
+  __if_then_else__ end
+    (,() __NULL__ out err group)
+    (,()
+      __LList_uncons__ __print_exit_error__ specs ,(spec rest)
+      __LList_uncons__ __print_exit_error__ spec ,(fd more)
+      __LList_uncons__ __print_exit_error__ more ,(template more)
+      __LList_uncons__ __print_exit_error__ more ,(params more)
+      Capture_new sh group template params ,(target group)
+      __String_equal__ fd "1" ,(isOut)
+      __if_then_else__ isOut (,() __NULL__ target err) (,() __NULL__ out target) ,(out err)
+      Capture_redirs_from sh rest out err group))
 
 ;; 先頭の語を展開するコード（文脈 sh と上限 limit を受け取り、Cmd_head と同じく、名前、先頭の語から出た残りの値、
 ;; 残りの語を返す）と、名前からコマンドを決めるコード（文脈 sh と名前を受け取り、Cmd_resolve と同じものを返す）と、
@@ -1109,7 +1173,7 @@
 ;; templates は Redirs_templates。
 ;; 引数のバイト数の上限（Arg_limit_new）は、先頭の語が決まっていれば（fixed）、外部コマンドのときだけ作る
 ;; （関数と組み込みコマンドの引数には使わない。ARG_MAX の値の確かめ（Arg_max）は、今までどおりどのコマンドでもする）
-(define Eval_cmd_parts ,(sh pos defs redirs templates noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)
+(define Eval_cmd_parts ,(sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)
   __Cont_get__ ,(return)
   __if_then_else__ noRedirs (,() __NULL__ sh) (,() Cmd_redirected sh redirs) ,(sh)
   __if_then_else__ noDefs (,() __NULL__ sh) (,() Cmd_scope sh defs) ,(sh)
@@ -1136,7 +1200,10 @@
       __Dict_lookup_or__ sh "out" __print_exit_error__ ,(out)
       __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
       __NULL__ in out err __NULL__ __NULL__ __TRUE__ __NULL__)
-    (,() Eval_redirs sh redirs templates) ,(in out err opened mark ok group)
+    (,()
+      __if_then_else__ onlyCaptures
+        (,() Capture_redirs sh captures)
+        (,() Eval_redirs sh redirs templates)) ,(in out err opened mark ok group)
   __unless__ ok
     (,()
       Redirs_close sh opened mark ,()
