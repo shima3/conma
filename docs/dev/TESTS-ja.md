@@ -64,14 +64,7 @@ consh/sjs/test/run_all.sh
 
 ### m1/compile2-capture
 
-* ConSh の最適化版で、変数リストへの受け取りだけの、先頭の語が決まっている単純文（`g $i > (n)` など）も、変換のときに組み込みコマンドか外部コマンドかに分けて組むようにした（consh/include/consh_eval.se の `Cmd_capture_code`。docs/consh/dev/COMPILE2-PLAN-ja.md の「受け取りのある単純文の近道」）。consh/test の step6 に case13 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
 * ベンチマーク：consh/bench の `13`、`14` を、最適化版の変換版の VM で（前は alpha の 2f1c8e1）。ステップは 1 回あたり −5.9%、−4.1%（Rust 版の VM）。m1/compile2-dq と m1/compile2-cmd の依頼と、まとめて測ってよい。
-
-### m1/pages-module-mode
-
-* consh/js/build.sh が作る consh/js/web/consh.module.se を、ほかのファイルと同じく 644 にした（前は `mktemp` のまま 600）。GitHub Pages のワークフローで、root で動く Jekyll が `_site` に写したこのファイルを、`actions/upload-pages-artifact` の tar が読めず（`Permission denied`）、失敗していた（2026-11-17、alpha の 654cd76 で動かしたもの）。
-* 確かめたこと（Apple M1）：モジュールを消して `consh/js/build.sh` で作り直すと 644 になり、consh/js/test が通る。ワークフローそのものは、GitHub でしか試せないので、まだ試していない。テストのスクリプトは変えていない。
 
 ## 記録
 
@@ -79,6 +72,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | 1ec4c7b | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）と、前と同じ `CONSH_IMPL=rust` の consh/test の step2 の case20（`$(( ))` を Rust 版の ConSh が読めない）。申し送りの m1/compile2-capture と m1/pages-module-mode の、流していなかった組み合わせ（変換版の VM、wasm 版の VM の consh/test）も通った。変換版の VM は 1ec4c7b で作ったもの。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | 2f1c8e1 | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。ほかに、`CONSH_IMPL=rust` の consh/test の step2 が違う：m1/compile2-dq が足した case20 が `$(( 1 + 2 ))` を使い、Rust 版の ConSh は `(( ))` を読めないので 6 行目で止まる（examples と同じ理由。ConMa 版の誤りではない。作者に知らせる）。申し送りの m2/pages-liquid、m1/compile2-dq、m1/compile2-cmd の、流していなかった組み合わせ（変換版の VM（`bench/build.sh` で作り直した）、wasm 版の VM の consh/test）も通った。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | 0748a95 | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/jsstmt-cont の、流していなかった変換版の VM（`bench/build.sh` で作り直した）と wasm 版の VM の consh/test も通った。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-17 | 79006fa | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-clone2、m4/compile2-s1〜s5 の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/compile2-plan と m2/pages-actions（ワークフローは GitHub でしか試せない）も含む。m4/chan-head のベンチマークの依頼は残した |
