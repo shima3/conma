@@ -60,6 +60,10 @@ consh/sjs/test/run_all.sh
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。値が残らなくなったことは、確かめていない（GC がたどる値の数は数えていない）。
 
 
+### m4/compile2-bench
+
+* ベンチマーク：consh/bench の `02`、`06`、`13`、`14`、`18` を、最適化版の変換版の VM で。ConSh の段階 2（docs/consh/dev/COMPILE2-PLAN-ja.md の S1〜S5）の前の alpha の fe20439 と、S5 までを含む alpha の 79006fa。ステップ（Rust 版の VM）は計画の 5 にある。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
