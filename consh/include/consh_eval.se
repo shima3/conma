@@ -3233,7 +3233,7 @@
   __String_concat__ "builtin:" name ,(hostName)
   External_run sh pos hostName args in out err)
 
-;; js [変数名=] コード {引数}：JavaScript のコードを式として評価する（consh/docs/dev/JS-PLAN-ja.md の 2.1）。
+;; js [変数名=] コード {引数}：JavaScript のコードを式として評価する（docs/consh/dev/JS-PLAN-ja.md の 2.1）。
 ;; 値が関数なら引数を渡して呼ぶ。Promise なら解決するまで待つ（ほかの VProc は動き続ける）。
 ;; 最初の語が「識別子 =」だけなら、結果をその局所変数に入れ、そうでなければ標準出力に出す。
 ;; 引数は String と LazyList（JavaScript の配列にする）。結果は、__JS_call__ の Stream から1行の S 式で受け取る：
@@ -3265,7 +3265,7 @@
       __LList_uncons__ __print_exit_error__ rest ,(code more)
       Arg_string sh pos "js" code ,(code)
       __NULL__ code more) ,(code jsArgs)
-  ;; 変数に入れるときは、結果を JS の値のまま受け取る（consh/docs/dev/JS-PLAN-ja.md の 2.5 の 4。ホストは (r j 番号) を書く）
+  ;; 変数に入れるときは、結果を JS の値のまま受け取る（docs/consh/dev/JS-PLAN-ja.md の 2.5 の 4。ホストは (r j 番号) を書く）
   Js_keep_code name code ,(code)
   Js_args sh pos jsArgs ,(list)
   ;; JavaScript があっても、CONSH_ENABLE_JS が js でなければ使わない（ない版は、__JS_call__ の onError で 127）

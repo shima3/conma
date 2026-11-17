@@ -18,7 +18,7 @@ The full specification is in [PLAN-ja.md](PLAN-ja.md) (Japanese), section 1; sec
 * **Functions and external commands mix freely in pipes.** Between functions, whole values, lists included, flow through the pipe; when one side is an external command, ConSh connects them with an OS pipe, so bytes flow at full speed.
 * **A small, specified language.** The grammar fits on one page ([PLAN-ja.md](PLAN-ja.md), 1.1), `bin/consh --dump` shows the syntax tree, and the whole shell runs on the ConMa VM, whose `--trace` option (`bin/vm --trace`) shows every step.
 
-The scripts in [examples](../examples/README.md) show several of these next to the Bash code they replace.
+The scripts in [examples](../../consh/examples/README.md) show several of these next to the Bash code they replace.
 
 These come at a cost: ConSh is much slower for loops (see below), has no `while`, `case`, `&&`, `||`, arithmetic, here-documents or job control (`fg`, `bg`, `jobs`, Ctrl-Z; `&`, `wait` and `kill` work), may change the bytes of output that passes through functions (a final newline is added, `\r\n` becomes `\n`), and does not run Bash scripts unchanged. It suits scripts that handle lists of items and pass data between functions; Bash remains the better choice for speed, compatibility and interactive work.
 
@@ -336,7 +336,7 @@ There is no `fg`, `bg` or `jobs`. A background job shares standard input with th
 
 ## Arithmetic: `(( ))` and `$(( ))`
 
-The ConMa version of ConSh (`CONSH_IMPL=conma`; the default Rust version does not have them) evaluates `(( … ))` and `$(( … ))` as **SJS**, a safe subset of JavaScript that is translated to ConMa and run in the VM, not as Bash arithmetic ([js/README-ja.md](../js/README-ja.md), [sjs/README-ja.md](../sjs/README-ja.md)). The exit status follows Bash: 0 when the value is true, 1 when it is false, and 2 on an error. The differences:
+The ConMa version of ConSh (`CONSH_IMPL=conma`; the default Rust version does not have them) evaluates `(( … ))` and `$(( … ))` as **SJS**, a safe subset of JavaScript that is translated to ConMa and run in the VM, not as Bash arithmetic ([js/README-ja.md](../../consh/js/README-ja.md), [sjs/README-ja.md](../../consh/sjs/README-ja.md)). The exit status follows Bash: 0 when the value is true, 1 when it is false, and 2 on an error. The differences:
 
 ```sh
 echo $(( 7 / 2 ))          # -> 3.5: numbers are JavaScript numbers, not integers

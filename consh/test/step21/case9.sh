@@ -1,4 +1,4 @@
-# 数の関数の wasm 版（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 4）：(( )) の「名前 = 関数式」で、数だけを扱う関数は、wasm 版の VM では
+# 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 4）：(( )) の「名前 = 関数式」で、数だけを扱う関数は、wasm 版の VM では
 # WebAssembly で動く。ほかの VM では ConMa 版で動き、結果は同じ。後の (( )) が名前や Math のメンバーを書き換えると、呼ぶときに
 # 確かめて ConMa 版で動かす
 (( fib = (n) => n < 2 ? n : fib(n - 1) + fib(n - 2) ))

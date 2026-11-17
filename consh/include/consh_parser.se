@@ -1,4 +1,4 @@
-;; ConSh の構文解析。consh/docs/PLAN-ja.md の 1.1 文法定義を、文字単位の再帰下降で解析する。
+;; ConSh の構文解析。docs/consh/PLAN-ja.md の 1.1 文法定義を、文字単位の再帰下降で解析する。
 ;; Python の参照実装 consh_parse の Parser と同じ手順で、consh_parse --pos を consh_ast.se で読んだものと同じ構文木を作る。
 ;;
 ;; ConMa の String は、文字を取り出すたびに長さに比例する時間がかかるので、先にスクリプトを文字のセルの LList にする。
@@ -1634,7 +1634,7 @@
   __Cont_get__ ,(return)
   Ps_pos p ,(pos)
   Ps_peek p "1" ,(c)
-  ;; $(( は算術置換（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.1）
+  ;; $(( は算術置換（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.1）
   Ps_peek p "2" ,(c2)
   __String_equal__ c "(" ,(open1)
   __String_equal__ c2 "(" ,(open2)
@@ -1916,7 +1916,7 @@
   Utf8_continue rest need value)
 
 
-;; ── JavaScript の字句（算術評価 (( )) と算術置換 $(( )) の SJS式の範囲。consh/docs/dev/SAFEJS-PLAN-ja.md の 2.1）──
+;; ── JavaScript の字句（算術評価 (( )) と算術置換 $(( )) の SJS式の範囲。docs/consh/dev/SAFEJS-PLAN-ja.md の 2.1）──
 ;; Js_scan は、今の位置から、括弧、文字列、テンプレート、コメント、正規表現の外にある term（算術評価の )）の手前までを
 ;; コードとして読み、コードに現れる名前（. の後ろでないもの）を集める（Ps_arith）。
 ;; st は、"code"（読んだコード）、"stack"（開いている括弧）、"re"（次に正規表現を置けるか）、"dot"（. の後か）、
@@ -2206,7 +2206,7 @@
   __and__ slash outside ,(test__) __if__ test__ (,() Js_word p st "" ,(flags) return) ,()
   Js_regex p st inClass)
 
-;; ── 算術評価 (( SJS式 )) と算術置換 $(( SJS式 ))（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.1）──
+;; ── 算術評価 (( SJS式 )) と算術置換 $(( SJS式 ))（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.1）──
 
 ;; 今の位置が (( か
 (define Ps_at_arith ,(p)

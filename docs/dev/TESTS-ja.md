@@ -62,7 +62,7 @@ consh/sjs/test/run_all.sh
 
 ### m4/consh-heavy2
 
-* ConSh の最適化版の `Eval_cmd_parts` と `Capture_new` を軽くした（consh/include/consh_eval.se だけ。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
+* ConSh の最適化版の `Eval_cmd_parts` と `Capture_new` を軽くした（consh/include/consh_eval.se だけ。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` を小さくしたものの出力が、変更の前と同じ。流していないもの：wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
 ### m4/sjs-array-msg
 
@@ -71,8 +71,14 @@ consh/sjs/test/run_all.sh
 
 ### m4/transpiled-clone
 
-* for 文が読み終えた `$( )` の値を残さないようにした（consh/include/consh_eval.se、consh_expand.se。consh/docs/dev/COMPILE-PLAN-ja.md の 5）。vm/src/gc.rs も変えた（索引のハッシュと、子を集めるバッファ）ので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
+* for 文が読み終えた `$( )` の値を残さないようにした（consh/include/consh_eval.se、consh_expand.se。docs/consh/dev/COMPILE-PLAN-ja.md の 5）。vm/src/gc.rs も変えた（索引のハッシュと、子を集めるバッファ）ので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
 * 流したもの：consh/test（最適化版）の Rust 版の VM、consh/sjs/test。consh/bench の `02`、`06`、`13`、`14`、`18` の出力が、変換した VM で変更の前と同じ。流していないもの：test/、wasm 版と変換版の VM の consh/test、consh/js/test、参照版（変えていない）。
+
+### m2/consh-docs-move
+
+* consh/docs を docs/consh に移した（GitHub Pages で公開するため）。`consh/docs` を `docs/consh` に書き換え（92 個のファイル。どれも読むための文書への参照なので、記録の文書も含めて書き換えた）、相対リンクを直し、docs/index.md に ConSh の文書を足した。vm/src、consh/include、テストのスクリプトと入力は、コメントだけが変わった。vm/src が変わったので、Rust 版、wasm 版（`consh/js/build.sh`）、変換版（`bench/build.sh`）の VM を作り直してから流す。
+* 流したもの：Rust 版の VM の consh/test（最適化版）、consh/sjs/test、consh/js/test、変わったファイルのある test/fast7（Rust 版の VM）。どの Markdown の相対リンクも、前からの `.html` へのリンクと SAFEJS-PLAN-ja.md のリンクに見える文のほかは、切れていない。
+* consh/js/test の step5 の case2 が違う（7 行目と 10 行目が 1 でなく 0）。参照を書き換える前（ファイルを移しただけの e36212b）でも同じなので、この変更によるものではない。1e8c4d4（for 文が読んだ `$( )` の値を持ち続けない）で、関数の文脈の循環がなくなり、関数の局所変数の JS の値がすぐに表から消えるようになったためと思われる。1e8c4d4 の作者が確かめて、期待ログとコメントを直す。
 
 ## 記録
 

@@ -1,4 +1,4 @@
-;; SJS を ConMa のソースに変換する（consh/docs/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1〜B4）。
+;; SJS を ConMa のソースに変換する（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1〜B4）。
 ;; 構文木（sjs_parse.se）から、main を定義する ConMa のソースの String を作る。実行には sjs_rt.se を使う。
 ;;
 ;; 変換の形：
@@ -22,7 +22,7 @@
 ;; file は、SInfo のファイル名（エラーの位置に出る）
 (define Sjs_translate_file ,(text file)
   Sjs_parse text ,(program)
-  ;; 数の関数の wasm 版（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 2。sjs_wasm.se）：モジュールの WAT と、数の関数の fn の印
+  ;; 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2。sjs_wasm.se）：モジュールの WAT と、数の関数の fn の印
   Wasm_prepare program ,(wat)
   Gen_state program ,(g)
   Gen_quote file ,(fq)
@@ -100,7 +100,7 @@
 ;; モジュールは何も include しないので、作るのは速い（実行時の支えは ConSh のモジュールにある）
 (define Sjs_translate_module ,(text file)
   Sjs_parse_expression text ,(e)
-  ;; 数の関数の wasm 版（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 4。sjs_wasm.se の Wasm_prepare_expr）
+  ;; 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 4。sjs_wasm.se の Wasm_prepare_expr）
   Wasm_prepare_expr e ,(wat)
   Gen_state e ,(g)
   Gen_quote file ,(fq)
@@ -1381,7 +1381,7 @@
   __String_concat__ c ") " ,(c)
   __NULL__ c v)
 
-;; 数を要る演算子の被演算子：$名前（括弧を透過）なら、値を数にする手順を足す（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 7）
+;; 数を要る演算子の被演算子：$名前（括弧を透過）なら、値を数にする手順を足す（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 7）
 (define Gen_operand ,(g scope e)
   __Cont_get__ ,(return)
   Gen_expr g scope e ,(c v)

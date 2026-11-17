@@ -3,7 +3,7 @@ name = "conma-wasm"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-description = "The ConMa VM of vm/ built for wasm32-unknown-unknown, with a virtual OS (see consh/docs/dev/JS-PLAN-ja.md)"
+description = "The ConMa VM of vm/ built for wasm32-unknown-unknown, with a virtual OS (see docs/consh/dev/JS-PLAN-ja.md)"
 
 [lib]
 crate-type = ["cdylib"]
