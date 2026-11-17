@@ -54,25 +54,16 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。ベンチマークの測り直しも、ここで「ベンチマーク：」で始まる行で頼む。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m2/pages-liquid
-
-* GitHub Pages のワークフローが、Jekyll で止まっていた（docs/consh/PLAN-ja.md の文法の、波かっこが 2 つ続く所を Liquid のタグと読んだため）。ランナーの上でだけ、docs の Markdown の本文を Liquid の raw タグで囲む手順を足した（.github/pages-raw.py）。リポジトリの文書は変えていない。テストのスクリプトとソースも変えていない。
-* 確かめたこと（Apple M2）：ワークフローと同じイメージ（ghcr.io/actions/jekyll-build-pages:v1.0.13）の github-pages で、main の 158682f の失敗を同じエラーで再現し、この手順を足すと最後まで通った。できた HTML では波かっこがそのまま出て、raw タグは出ず、題名（jekyll-titles-from-headings）も前と同じだった。
-
 ### m4/compile2-bench
 
 * ベンチマーク：consh/bench の `02`、`06`、`13`、`14`、`18` を、最適化版の変換版の VM で。ConSh の段階 2（docs/consh/dev/COMPILE2-PLAN-ja.md の S1〜S5）の前の alpha の fe20439 と、S5 までを含む alpha の 79006fa。ステップ（Rust 版の VM）は計画の 5 にある。
 
 ### m1/compile2-dq
 
-* ConSh の最適化版で、要素がみな引用符の中か glob の記号のないリテラルの語（`"x$a"` など）を、変換のときに組むようにした（consh/include/consh_expand.se の `Quoted_word_code`。docs/consh/dev/COMPILE2-PLAN-ja.md の「S3 の続き」）。consh/test の step2 に case20 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
 * ベンチマーク：consh/bench の `06` を、最適化版の変換版の VM で（前は alpha の 0748a95）。ステップは 1 回 1,297 → 1,041（−19.7%、Rust 版の VM）。
 
 ### m1/compile2-cmd
 
-* ConSh の最適化版で、先頭の語が決まっている単純文（名前が `builtin`、`command` でないもの）を、変換のときに組み込みコマンドか外部コマンドかに分けて組むようにした（consh/include/consh_eval.se の `Cmd_plain_code`。docs/consh/dev/COMPILE2-PLAN-ja.md の「単純文の近道」）。consh/test の step3 に case30 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
 * ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の変換版の VM で（前は alpha の e687929）。ステップは 1 回あたり −9.3%、−3.4%、−4.6%、−5.6%（Rust 版の VM）。m1/compile2-dq の `06` の依頼と、まとめて測ってよい。
 
 ### m1/compile2-capture
@@ -87,6 +78,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | 2f1c8e1 | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。ほかに、`CONSH_IMPL=rust` の consh/test の step2 が違う：m1/compile2-dq が足した case20 が `$(( 1 + 2 ))` を使い、Rust 版の ConSh は `(( ))` を読めないので 6 行目で止まる（examples と同じ理由。ConMa 版の誤りではない。作者に知らせる）。申し送りの m2/pages-liquid、m1/compile2-dq、m1/compile2-cmd の、流していなかった組み合わせ（変換版の VM（`bench/build.sh` で作り直した）、wasm 版の VM の consh/test）も通った。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | 0748a95 | Claude（M4、m4/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/jsstmt-cont の、流していなかった変換版の VM（`bench/build.sh` で作り直した）と wasm 版の VM の consh/test も通った。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-17 | 79006fa | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/transpiled-clone2、m4/compile2-s1〜s5 の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/compile2-plan と m2/pages-actions（ワークフローは GitHub でしか試せない）も含む。m4/chan-head のベンチマークの依頼は残した |
 | 2026-11-17 | ceef8ab | Claude（M2、m2/test） | 全部と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m4/consh-heavy2、m4/sjs-array-msg、m4/transpiled-clone、m4/chan-head、m2/consh-docs-move の、流していなかった組み合わせ（wasm 版と作り直した変換版の VM の test/ と consh/test、consh/js/test、consh/sjs/test、参照版）も通った。m4/js-step5 で直した consh/js/test の step5 も通った。m1/bench-sizes2、m1/sjs-bench-sizes、m4/types-t1、m4/types-hold、m4/array-a6 と、m2/bench-944c5df（m4/consh-heavy2 のベンチマーク）も含む。m4/chan-head のベンチマークの依頼は残した |
