@@ -1,4 +1,4 @@
-// 配列の計画（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A0：一番外の数の定数の式と、値を返さない関数も、数の関数になる
+// 配列の計画（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md）の段階 A0：一番外の数の定数の式と、値を返さない関数も、数の関数になる
 const PI = 3.14159265358979323
 const SOLAR_MASS = 4 * PI * PI
 const DAYS = 365.24

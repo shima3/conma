@@ -1,12 +1,12 @@
 #!/bin/bash
-# 拡張 ConMa の機能 "wasm"（consh/docs/dev/SJS-WASM-PLAN-ja.md の段階 1）：__Wasm_compile__ と __Wasm_call__。
+# 拡張 ConMa の機能 "wasm"（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 1）：__Wasm_compile__ と __Wasm_call__。
 # ログは VM ごとに違う：caseN.wasm.log は wasm 版の VM（Node.js。ホストの WebAssembly で動かす）、caseN.python.log は
 # Python の VM（代わりの定義 include/core/wasm.se で onError）、caseN.log はそれ以外（ネイティブの VM は WAT を組み立ててから
 # onError。組み立ての誤りはそのメッセージ）。ないものは caseN.log を使う。
 # wasm 版の VM で CONMA_NO_WASM=1 なら、ネイティブの VM と同じ（WebAssembly を使わない）。
-# case15 は、燃料を減らすのがループの始めと呼び出しのグラフの輪に入る関数の入口だけであること（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 F3）。
+# case15 は、燃料を減らすのがループの始めと呼び出しのグラフの輪に入る関数の入口だけであること（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 F3）。
 # case7 は、燃料を使い切るたびに時間の区切りが終わり、SIGINT が届くこと（段階 3。case14 は、外で動くものがないときも）。case8 は、モジュールのメモリと
-# __Wasm_call_memory__（consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。case12 は __Dict_numbers__ と __Dict_put_numbers__（同じ計画の 17。
+# __Wasm_call_memory__（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 A1）。case12 は __Dict_numbers__ と __Dict_put_numbers__（同じ計画の 17。
 # どの VM でも同じログ）。
 # フロントエンド（bin/resolver と conma build）が (Uses "boolean" "control" "wasm") を付け、bin/to-core が代わりの定義を入れる
 . "$(dirname "$0")/../common.sh"

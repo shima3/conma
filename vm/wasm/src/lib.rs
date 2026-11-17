@@ -1,5 +1,5 @@
 //! The ConMa VM of vm/ for wasm32-unknown-unknown (see 2.2 of
-//! consh/docs/dev/JS-PLAN-ja.md). The modules of vm/src are used as they are, except
+//! docs/consh/dev/JS-PLAN-ja.md). The modules of vm/src are used as they are, except
 //! sys, which is the virtual OS of src/sys.rs.
 //!
 //! The host (vm/wasm/conma.js) gives strings as UTF-8 bytes in the memory

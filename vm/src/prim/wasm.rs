@@ -1,5 +1,5 @@
 //! __Wasm_compile__ and __Wasm_call__, the primitives of the feature "wasm"
-//! of extended ConMa (consh/docs/dev/SJS-WASM-PLAN-ja.md 5.3, docs/PRIMITIVES.md 16): a
+//! of extended ConMa (docs/consh/dev/SJS-WASM-PLAN-ja.md 5.3, docs/PRIMITIVES.md 16): a
 //! module of functions on numbers, written in a subset of the WebAssembly
 //! text format (wasm_asm.rs), run by the host of the VM for wasm32 (vm/wasm).
 //! The native VM assembles the text and then goes to onError, as it has no
@@ -77,7 +77,7 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// __Wasm_call_memory__ onError module name args memory fuel ,(status value memory): as __Wasm_call__,
 /// the memory of the module (which must have one) filled with zeros and then with the Numbers of
 /// the LList memory as f64 words from address 0, and, on "ok", the same number of words of the memory
-/// after the call as an LList (null otherwise). consh/docs/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1.
+/// after the call as an LList (null otherwise). docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md, stage A1.
 pub fn call_memory(m: &mut Machine, vp: &mut VProc) -> PResult {
     let pname = "__Wasm_call_memory__";
     let mut a = take_n(vp, pname, 6)?;

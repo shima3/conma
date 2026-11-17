@@ -30,7 +30,9 @@
 ;;   "cap"       上の cap
 ;;   "state"     上の state
 ;;
-;; 鎖は Dict で、"head"（最初の節の Ref）と "consumed"（読み手が取り出した数の Ref）を持つ。
+;; 鎖は Dict で、"head"（最初の節の Ref）と "consumed"（読み手が取り出した数の Ref）を持つ。"head" は、読み手が
+;; その鎖の読み位置を作るときに null にする（持ち続けると、書き手とチャネルと読み位置が鎖を持つので、鎖のすべての
+;; 要素が残る）。
 ;; 節は Ref で、値は null（まだ書いていない）、(要素 . 次の節) の LList、"end"（書き手が閉じた）のどれか。
 ;; 1 つの鎖に書くのは 1 つの VProc だけで、節を書くのは書き手、consumed を変えるのは読み手だけなので、競合しない。
 ;;
@@ -263,6 +265,7 @@
   __Dict_put__ cursor "chain" chain ,()
   __Dict_lookup_or__ chain "head" Chan_core_error ,(head)
   __Dict_put__ cursor "node" head ,()
+  __Dict_put__ chain "head" __NULL__ ,()
   __Dict_lookup_or__ chain "consumed" Chan_core_error ,(consumedRef)
   __Dict_put__ cursor "consumed" consumedRef ,()
   Chan_core_cursors rest ,(more)

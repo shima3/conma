@@ -6,7 +6,8 @@ js '__consh_value.count()'
 o=plain
 echo "o=$o"
 js '__consh_value.count()'
-# 関数の局所変数の値は、関数の文脈が循環して残るので、VM の循環の回収が走るまで残る（ここでは 1 のまま）
+# 関数の局所変数の値も、関数から戻れば消える（2026-11-17 から。前は、覚えておく文のコードが初めて実行したときの
+# 継続を持ち、関数の文脈が循環して、VM の循環の回収が走るまで残った。docs/consh/dev/COMPILE-PLAN-ja.md の 5）
 function make () {
   js t= '({b: 2})'
   echo "in make: $t"

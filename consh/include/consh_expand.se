@@ -8,7 +8,7 @@
 ;;   * LazyList の部分（$x）1つだけの語を、候補（Alt_make）を作らずに、葉ごとに語にするようにした
 ;;     （Single_list_fields。参照版は Expand_fields_from で葉ごとに候補を作り、分けてはつなぎ直す）。
 ;;
-;; ConSh の語の展開（consh/docs/PLAN-ja.md の 1.2 と 1.3）。consh_parse --expand と同じ規則に従う。
+;; ConSh の語の展開（docs/consh/PLAN-ja.md の 1.2 と 1.3）。consh_parse --expand と同じ規則に従う。
 ;;
 ;; 語は、語要素ごとの部分（Part）の LList に分けてから展開する。部分は (種類 値) の LList で、種類は次のどれか。
 ;;   "plain"  引用符のない String
@@ -53,25 +53,28 @@
 ;; 外部コマンドの語のコード。リテラルの語は語の LList を作っておいて返し、$x と ${x}（既定値なし）だけの語は、
 ;; 変数を引いて語にする（Var_fields）。ほかの語は、部分の LList にしてから展開する
 (define Fields_compile ,(word)
-  __Cont_get__ ,(return)
   Literal_fields word ,(fields done)
-  __if__ done (,() return (,(sh limit) __NULL__ fields)) ,()
-  Word_ref word ,(kind pos name)
-  Ref_kind_is kind "var" ,(isVar)
-  __if__ isVar
-    (,() return (,(sh limit)
-      Sh_lookup sh pos name ,(value)
-      Var_fields sh pos "plain" "leaves" value limit)) ,()
-  Ref_kind_is kind "bvar" ,(isBvar)
-  __if__ isBvar
-    (,() return (,(sh limit)
-      Sh_lookup sh pos name ,(value)
-      Var_fields sh pos "braced" "list" value limit)) ,()
-  Node_split word ,(wtag wpos welems)
-  __NULL__ (,(sh limit)
-    Expand_parts sh word ,(parts)
-    Limit_guard sh wpos limit ,(limit)
-    Parts_fields_in parts limit))
+  __if_then_else__ done
+    (,() __NULL__ (,(sh limit) __NULL__ fields))
+    (,()
+      Word_ref word ,(kind pos name)
+      Ref_kind_is kind "var" ,(isVar)
+      __if_then_else__ isVar
+        (,() __NULL__ (,(sh limit)
+            Sh_lookup sh pos name ,(value)
+            Var_fields sh pos "plain" "leaves" value limit))
+        (,()
+          Ref_kind_is kind "bvar" ,(isBvar)
+          __if_then_else__ isBvar
+            (,() __NULL__ (,(sh limit)
+                Sh_lookup sh pos name ,(value)
+                Var_fields sh pos "braced" "list" value limit))
+            (,()
+              Node_split word ,(wtag wpos welems)
+              __NULL__ (,(sh limit)
+                Expand_parts sh word ,(parts)
+                Limit_guard sh wpos limit ,(limit)
+                Parts_fields_in parts limit)))))
 
 ;; 語が $x か ${x}（既定値なし）だけなら、要素の種類（"var" か "bvar"）、位置、変数の名前。そうでなければ null
 (define Word_ref ,(word)
@@ -356,21 +359,24 @@
 ;; 外部コマンド以外の語のコード。リテラルの語と $x だけの語は、外部コマンドの語と同じ（Fields_compile）。
 ;; ${x} だけの語は、空の String なら空文字列の引数、LazyList ならその値1つ、ほかは外部コマンドの語と同じ
 (define Args_compile ,(word)
-  __Cont_get__ ,(return)
   Literal_fields word ,(fields done)
-  __if__ done (,() return (,(sh) __NULL__ fields)) ,()
-  Word_ref word ,(kind pos name)
-  Ref_kind_is kind "var" ,(isVar)
-  __if__ isVar
-    (,() return (,(sh)
-      Sh_lookup sh pos name ,(value)
-      Var_fields sh pos "plain" "leaves" value __NULL__)) ,()
-  Ref_kind_is kind "bvar" ,(isBvar)
-  __if__ isBvar
-    (,() return (,(sh)
-      Sh_lookup sh pos name ,(value)
-      Bvar_args value)) ,()
-  __NULL__ (,(sh) Expand_args_parts sh word))
+  __if_then_else__ done
+    (,() __NULL__ (,(sh) __NULL__ fields))
+    (,()
+      Word_ref word ,(kind pos name)
+      Ref_kind_is kind "var" ,(isVar)
+      __if_then_else__ isVar
+        (,() __NULL__ (,(sh)
+            Sh_lookup sh pos name ,(value)
+            Var_fields sh pos "plain" "leaves" value __NULL__))
+        (,()
+          Ref_kind_is kind "bvar" ,(isBvar)
+          __if_then_else__ isBvar
+            (,() __NULL__ (,(sh)
+                Sh_lookup sh pos name ,(value)
+                Bvar_args value))
+            (,()
+              __NULL__ (,(sh) Expand_args_parts sh word)))))
 
 ;; ${x} だけの語の、外部コマンド以外の語としての値の LList
 (define Bvar_args ,(value)
@@ -453,36 +459,51 @@
 ;; 変数定義の右辺 values を、文脈 sh を受け取ってその値（Expand_def_value）を返すクロージャ（値のコード）にする。
 ;; リテラルの語は String をそのまま返し、$x と ${x}（既定値なし）だけの語は、変数を引いて返す
 (define Def_value_code ,(values)
-  __Cont_get__ ,(return)
   __is_null__ values ,(condition)
-  __if__ condition (,() return (,(sh) __NULL__ "")) ,()
-  __LList_uncons__ __print_exit_error__ values ,(v others)
-  Node_split v ,(tag pos elems)
-  __String_equal__ tag "array" ,(isArray)
-  __String_equal__ tag "fun" ,(isFun)
-  __or__ isArray isFun ,(condition)
-  __if__ condition (,() return (,(sh) Expand_def_value sh values)) ,()
-  Word_literal v ,(text)
-  __is_null__ text ,(none)
-  __unless__ none (,() return (,(sh) __NULL__ text)) ,()
-  __LList_uncons__ __print_exit_error__ elems ,(elem more)
-  __is_null__ more ,(single)
-  __unless__ single (,() return (,(sh) Expand_value sh v)) ,()
-  Node_split elem ,(kind epos children)
-  ;; 算術置換だけの語は、JS の値のまま変数に入れる（consh/docs/dev/SAFEJS-PLAN-ja.md の 2.2 の 2）
-  __String_equal__ kind "arithsubst" ,(isArith)
-  __if__ isArith (,() return (,(sh) Sjs_subst sh epos children)) ,()
-  __String_equal__ kind "var" ,(isVar)
-  __String_equal__ kind "bvar" ,(isBvar)
-  __or__ isVar isBvar ,(isRef)
-  __unless__ isRef (,() return (,(sh) Expand_value sh v)) ,()
-  __LList_uncons__ __print_exit_error__ children ,(name rest)
-  __is_null__ rest ,(noDefault)
-  __unless__ noDefault (,() return (,(sh) Expand_value sh v)) ,()
-  __if__ isBvar (,() return (,(sh) Sh_lookup sh epos name)) ,()
-  __NULL__ (,(sh)
-    Sh_lookup sh epos name ,(value)
-    Var_def_value sh pos value))
+  __if_then_else__ condition
+    (,() __NULL__ (,(sh) __NULL__ ""))
+    (,()
+      __LList_uncons__ __print_exit_error__ values ,(v others)
+      Node_split v ,(tag pos elems)
+      __String_equal__ tag "array" ,(isArray)
+      __String_equal__ tag "fun" ,(isFun)
+      __or__ isArray isFun ,(condition)
+      __if_then_else__ condition
+        (,() __NULL__ (,(sh) Expand_def_value sh values))
+        (,()
+          Word_literal v ,(text)
+          __is_null__ text ,(none)
+          __if_then_else__ none
+            (,()
+              __LList_uncons__ __print_exit_error__ elems ,(elem more)
+              __is_null__ more ,(single)
+              __if_then_else__ single
+                (,()
+                  Node_split elem ,(kind epos children)
+                  ;; 算術置換だけの語は、JS の値のまま変数に入れる（docs/consh/dev/SAFEJS-PLAN-ja.md の 2.2 の 2）
+                  __String_equal__ kind "arithsubst" ,(isArith)
+                  __if_then_else__ isArith
+                    (,() __NULL__ (,(sh) Sjs_subst sh epos children))
+                    (,()
+                      __String_equal__ kind "var" ,(isVar)
+                      __String_equal__ kind "bvar" ,(isBvar)
+                      __or__ isVar isBvar ,(isRef)
+                      __if_then_else__ isRef
+                        (,()
+                          __LList_uncons__ __print_exit_error__ children ,(name rest)
+                          __is_null__ rest ,(noDefault)
+                          __if_then_else__ noDefault
+                            (,()
+                              __if_then_else__ isBvar
+                                (,() __NULL__ (,(sh) Sh_lookup sh epos name))
+                                (,()
+                                  __NULL__ (,(sh)
+                                    Sh_lookup sh epos name ,(value)
+                                    Var_def_value sh pos value)))
+                            (,() __NULL__ (,(sh) Expand_value sh v)))
+                        (,() __NULL__ (,(sh) Expand_value sh v))))
+                (,() __NULL__ (,(sh) Expand_value sh v)))
+            (,() __NULL__ (,(sh) __NULL__ text)))))
 
 ;; $x だけの語（位置 pos）の、変数定義の右辺としての値。String と関数値ならそのまま、LazyList なら葉の語が1つだけのはず
 (define Var_def_value ,(sh pos value)
@@ -624,64 +645,72 @@
   Parts_compile_from elems multi)
 
 (define Parts_compile_from ,(elems multi)
-  __Cont_get__ ,(return)
   __is_null__ elems ,(condition)
-  __if__ condition (,() return (,(sh) __NULL__ __NULL__)) ,()
-  __LList_uncons__ __print_exit_error__ elems ,(elem rest)
-  Part_code elem ,(partCode)
-  __if_then_else__ multi
+  __if_then_else__ condition
+    (,() __NULL__ (,(sh) __NULL__ __NULL__))
     (,()
-      Node_split elem ,(ekind epos echildren)
-      __NULL__ (,(sh)
-        partCode sh ,(part)
-        Part_split part ,(k v)
-        __String_equal__ k "func" ,(test__) __if__ test__ (,() Func_string_error sh epos) ,()
-        __NULL__ part))
-    (,() __NULL__ partCode) ,(partCode)
-  __is_null__ rest ,(last)
-  __if__ last
-    (,() return (,(sh)
-      partCode sh ,(part)
-      __LList_cons__ part __NULL__)) ,()
-  Parts_compile_from rest multi ,(restCode)
-  __NULL__ (,(sh)
-    partCode sh ,(part)
-    restCode sh ,(parts)
-    __LList_cons__ part parts))
+      __LList_uncons__ __print_exit_error__ elems ,(elem rest)
+      Part_code elem ,(partCode)
+      __if_then_else__ multi
+        (,()
+          Node_split elem ,(ekind epos echildren)
+          __NULL__ (,(sh)
+            partCode sh ,(part)
+            Part_split part ,(k v)
+            __String_equal__ k "func" ,(test__) __if__ test__ (,() Func_string_error sh epos) ,()
+            __NULL__ part))
+        (,() __NULL__ partCode) ,(partCode)
+      __is_null__ rest ,(last)
+      __if_then_else__ last
+        (,() __NULL__ (,(sh)
+            partCode sh ,(part)
+            __LList_cons__ part __NULL__))
+        (,()
+          Parts_compile_from rest multi ,(restCode)
+          __NULL__ (,(sh)
+            partCode sh ,(part)
+            restCode sh ,(parts)
+            __LList_cons__ part parts))))
 
 ;; 語の要素を、文脈 sh を受け取って部分（Expand_part）を返すクロージャにする。
 ;; 引用符のない文字と引用符の中の文字は、部分を作っておいて返す。$x と ${x}（既定値なし）は変数を引く
 (define Part_code ,(elem)
-  __Cont_get__ ,(return)
   Node_split elem ,(kind pos children)
   __String_equal__ kind "lit" ,(isLit)
-  __if__ isLit
+  __if_then_else__ isLit
     (,()
-      List_first children ,(text)
-      Part_make "plain" text ,(part)
-      return (,(sh) __NULL__ part)) ,()
-  __String_equal__ kind "esc" ,(isEsc)
-  __String_equal__ kind "sq" ,(isSq)
-  __or__ isEsc isSq ,(isQuoted)
-  __if__ isQuoted
+        List_first children ,(text)
+        Part_make "plain" text ,(part)
+        __NULL__ (,(sh) __NULL__ part))
     (,()
-      List_first children ,(text)
-      Part_make "quoted" text ,(part)
-      return (,(sh) __NULL__ part)) ,()
-  __String_equal__ kind "var" ,(isVar)
-  __String_equal__ kind "bvar" ,(isBvar)
-  __or__ isVar isBvar ,(isRef)
-  __unless__ isRef (,() return (,(sh) Expand_part sh elem)) ,()
-  __LList_uncons__ __print_exit_error__ children ,(name rest)
-  __is_null__ rest ,(noDefault)
-  __unless__ noDefault (,() return (,(sh) Expand_part sh elem)) ,()
-  __if__ isVar
-    (,() return (,(sh)
-      Sh_lookup sh pos name ,(value)
-      Ref_part "plain" "leaves" value)) ,()
-  __NULL__ (,(sh)
-    Sh_lookup sh pos name ,(value)
-    Ref_part "braced" "list" value))
+      __String_equal__ kind "esc" ,(isEsc)
+      __String_equal__ kind "sq" ,(isSq)
+      __or__ isEsc isSq ,(isQuoted)
+      __if_then_else__ isQuoted
+        (,()
+            List_first children ,(text)
+            Part_make "quoted" text ,(part)
+            __NULL__ (,(sh) __NULL__ part))
+        (,()
+          __String_equal__ kind "var" ,(isVar)
+          __String_equal__ kind "bvar" ,(isBvar)
+          __or__ isVar isBvar ,(isRef)
+          __if_then_else__ isRef
+            (,()
+              __LList_uncons__ __print_exit_error__ children ,(name rest)
+              __is_null__ rest ,(noDefault)
+              __if_then_else__ noDefault
+                (,()
+                  __if_then_else__ isVar
+                    (,() __NULL__ (,(sh)
+                        Sh_lookup sh pos name ,(value)
+                        Ref_part "plain" "leaves" value))
+                    (,()
+                      __NULL__ (,(sh)
+                        Sh_lookup sh pos name ,(value)
+                        Ref_part "braced" "list" value)))
+                (,() __NULL__ (,(sh) Expand_part sh elem)))
+            (,() __NULL__ (,(sh) Expand_part sh elem)))))
 
 ;; 変数の値 value の部分。String なら種類 stringKind、LazyList なら listKind、関数値なら "func"
 (define Ref_part ,(stringKind listKind value)

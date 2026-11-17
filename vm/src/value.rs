@@ -63,7 +63,7 @@ pub struct StreamObj {
     pub pending: RefCell<Vec<u8>>,
     /// Close the fd when the last reference to the Stream is dropped (the
     /// outputStream of __JS_call__: the host then knows that the program no
-    /// longer holds the values of that call; see 2.5 of consh/docs/dev/JS-PLAN-ja.md).
+    /// longer holds the values of that call; see 2.5 of docs/consh/dev/JS-PLAN-ja.md).
     pub drop_close: std::cell::Cell<bool>,
 }
 

@@ -9,8 +9,20 @@ Each benchmark is a small, known Python program and the same computation in ConM
 
 ```
 bench/build.sh            # build the transpiled VM with the transpiled code of the benchmarks (and of ConSh)
-bench/run.sh nbody 100000 # CPython, the Rust VM and the transpiled VM: best of 3, and a check of the output
+bench/run.sh nbody        # CPython and the transpiled VM at the size below: best of 3, and a check of the output
+bench/run.sh nbody 100000 # at another size
 ```
+
+Without a size, `bench/run.sh` runs each benchmark at the size at which the faster of CPython and the transpiled VM takes about one second (docs/dev/CONTRIBUTING.md, Benchmarks), chosen on 2026-11-17 on an Apple M1 (CPython 3.12.3, the transpiled VM built at cd7d3a4; user + sys, best of 3, all printing the same):
+
+| Benchmark | Size | CPython 3.12.3 | Rust VM | Transpiled VM |
+|---|---|---|---|---|
+| fib | 35 | 0.99 s | 11.89 s | 1.72 s |
+| richards | 35 | 1.02 s | 9.18 s | 1.17 s |
+| nbody | 300000 | 1.04 s | 13.15 s | 1.05 s |
+| loop | 100000000 | 3.33 s | 27.25 s | 1.13 s |
+
+The tables below were measured at the sizes they name, before these were chosen (fib 32, richards 20, nbody 100000, loop 10000000).
 
 * The Python versions are pure Python (no C extension but `math.sqrt`).
 * CPython is an interpreter of bytecode, like the Rust VM. The transpiled VM runs code made from the ConMa program by the ConMa-to-Rust transpiler (`vm/conma2rust`) ahead of time, as Cython or Nuitka do for Python. The goal for now is a transpiled VM about as fast as CPython.

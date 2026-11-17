@@ -3,14 +3,14 @@
 consh_parse -- ConSh の構文解析と語の展開の参照実装
 
 ConMa 版の結果と比べるために、構文木と展開の結果をテキストで出力する。
-文法は consh/docs/PLAN-ja.md の 1.1、展開は 1.2 と 1.3 のうち語の展開に関わる項目に従う。
+文法は docs/consh/PLAN-ja.md の 1.1、展開は 1.2 と 1.3 のうち語の展開に関わる項目に従う。
 
 Usage:
     consh_parse [--pos] <script_file>
     consh_parse --expand <script_file> [<arg> ...]
 
 構文解析（第1の形式）
-    コマンド行ごとに、1行の S 式で構文木を出力する。形式は consh/docs/AST.md に書いてある。
+    コマンド行ごとに、1行の S 式で構文木を出力する。形式は docs/consh/AST.md に書いてある。
     --pos を付けると、各節の種類の後に (行 桁) を入れる。
 
 展開（第2の形式、--expand）
