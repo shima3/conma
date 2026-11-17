@@ -1018,7 +1018,15 @@
     (,()
       Redirs_templates redirs ,(templates)
       Redirs_captures redirs ,(captures onlyCaptures)
-      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes)))
+      __NULL__ (,(sh) Eval_cmd_parts sh pos defs redirs templates captures onlyCaptures noRedirs noDefs headCode resolveCode fixed argsCodes fieldsCodes) ,(general)
+      ;; 最適化版：前置の変数定義がなく、リダイレクトがみな変数リストへの受け取りなら、Cmd_capture_code
+      __not__ noRedirs ,(hasRedirs)
+      __and__ noDefs hasRedirs ,(fast)
+      __and__ fast onlyCaptures ,(fast)
+      __and__ fast fixed ,(fast)
+      __if_then_else__ fast
+        (,() Cmd_capture_code pos words redirs captures general argsCodes fieldsCodes)
+        (,() __NULL__ general)))
 
 ;; リダイレクトの LList のうち、変数リストへのリダイレクト（> (a b . rest) など）ごとの記録のひな形（Capture_template）の LList。
 ;; Eval_redirs_from は、変数リストへのリダイレクトに出会うたびに、先頭から1つずつ使う
@@ -1228,6 +1236,53 @@
       __Dict_lookup_or__ sh "err" __print_exit_error__ ,(err)
       Func_targets sh pos out err ,(out err)
       Func_call sh pos fn args in out err))
+
+;; 最適化版：Cmd_compile の、前置の変数定義がなく、リダイレクトがみな標準出力か標準エラー出力の変数リストへの
+;; 受け取り（Redirs_captures の onlyCaptures）で、先頭の語が決まっている単純文（g $i > (n) など）のコード。
+;; 名前が builtin でも command でもなく、先頭の語が 1 つの語になるなら（Cmd_plain_code と同じ）、Eval_cmd_parts の
+;; 先頭の語と名前のコードを呼ばず、Cmd_run_resolved の振り分けも通らない形（Cmd_capture_run）にする。
+;; そうでなければ general（Eval_cmd_parts のコード）
+(define Cmd_capture_code ,(pos words redirs captures general argsCodes fieldsCodes)
+  __LList_uncons__ __print_exit_error__ words ,(word rest)
+  Literal_fields word ,(fields done)
+  __LList_uncons__ __print_exit_error__ fields ,(name more)
+  __String_equal__ name "builtin" ,(isBuiltin)
+  __String_equal__ name "command" ,(isCommand)
+  __is_null__ more ,(single)
+  __not__ single ,(hasMore)
+  isBuiltin __TRUE__ isCommand ,(special)
+  special __TRUE__ hasMore ,(useGeneral)
+  __if_then_else__ useGeneral
+    (,() __NULL__ general)
+    (,()
+      Builtin_lookup name ,(builtin)
+      __NULL__ (,(sh) Cmd_capture_run sh pos name redirs captures argsCodes fieldsCodes builtin)))
+
+;; Cmd_capture_code の単純文を実行する。手順と順は Eval_cmd_parts と同じ：リダイレクトのある文の文脈を作り
+;; （Cmd_redirected）、ARG_MAX を確かめ、関数を探し、引数を展開し、出力の先を受け取りの記録にして（Capture_redirs）、
+;; 実行して変数に入れる（Capture_run）。builtin は名前の組み込みコマンド（なければ null）
+(define Cmd_capture_run ,(sh pos name redirs captures argsCodes fieldsCodes builtin)
+  Cmd_redirected sh redirs ,(sh)
+  Arg_max sh pos ,(max)
+  Func_lookup sh name ,(fn)
+  __is_null__ fn ,(noFunc)
+  __is_null__ builtin ,(noBuiltin)
+  __and__ noFunc noBuiltin ,(isExternal)
+  __if_then_else__ isExternal
+    (,()
+      Arg_limit_from sh pos max ,(limit)
+      Eval_arg_codes sh fieldsCodes __TRUE__ limit)
+    (,() Eval_arg_codes sh argsCodes __FALSE__ __NULL__) ,(args)
+  Capture_redirs sh captures ,(in out err opened mark ok group)
+  Capture_run sh group (,(s)
+    __if_then_else__ noFunc
+      (,()
+        __if_then_else__ noBuiltin
+          (,() External_run s pos name args in out err)
+          (,() builtin s pos args in out err))
+      (,()
+        Func_targets s pos out err ,(out err)
+        Func_call s pos fn args in out err)))
 
 ;; 単純文を実行する。前置の変数定義は、同じ文の語の展開に反映する。
 ;; 先頭の語を先に展開してコマンドを決め、残りの語は、外部コマンドなら葉ごとの String に、
