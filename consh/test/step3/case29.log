@@ -1,0 +1,11 @@
+a1
+a2
+b1
+b2
+p1
+q1
+12
+123
+before g
+consh: case29.sh:20:19: break outside a loop
+exit: 1

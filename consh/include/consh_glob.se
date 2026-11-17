@@ -49,7 +49,7 @@
 
 ;; 引用符の外の文字列 s が glob の記号を含むか。語の展開のたびに呼ぶので、組み込みの __String_find_any__ で探す
 (define Glob_has_meta ,(s)
-  num "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
   __String_find_any__ __print_exit_error__ s "*?[" zero ,(pos)
   __is_null__ pos ,(none)
   __not__ none)
