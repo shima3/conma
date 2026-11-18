@@ -1,0 +1,15 @@
+x=[a] rest=[ b c]
+x=[] rest=[]
+x=[only] y=[] rest=[]
+long=2000
+rest=tail
+a=1 b=2
+a=1 b=2 rest=3 4 5 e=[]
+a=1 rest=2 3 four 5 6
+p=1 r=2 3 4
+i=1
+i=2
+i=3
+1
+2
+exit: 0

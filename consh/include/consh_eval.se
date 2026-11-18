@@ -8,8 +8,9 @@
 ;;   * Func_lookup を __Cont_get__ を使わない形にし、Sh_defined で普通の変数を先に調べるようにした。
 ;;   * 外部コマンド 1 つだけの $( ) の値を、1 段の LazyList で作るようにした（Subst_lines_from。参照版の
 ;;     Eval_subst_os は、util.se の __LazyList_lines__ を Subst_lines で包む）。Stream から作る標準入力
-;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）と、外部コマンドの出力を行ごとに
-;;     ターゲットに書く Target_pump も、同じ読み方にした（Stream は閉じない）。
+;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）も、同じ読み方にした。外部コマンドの
+;;     出力を行ごとにターゲットに書く Target_pump は、同じ探し方で、LazyList を作らずに行ごとに書く（Pump_lines。
+;;     Stream は閉じない）。rest のある変数リストの受け取りには、記録の MSeq に直接加える（Target_line_writer）。
 ;;   * 受け取った要素を rest の LazyList にするとき（Capture_assign_rest）、参照版の List_fromMSeq と
 ;;     LazyList_prepend のように要素の数だけ深く再帰せず、残りの MSeq を前から裏返しの LList に集め、その前から順に
 ;;     LazyList の前に付けるようにした。
@@ -556,21 +557,73 @@
     (,() Value_toString sh pos line))
 
 ;; input Stream を EOF まで読み、行ごとにターゲットに書く
-;; 最適化版：行は、参照版の __LazyList_lines__ の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で読む。
-;; 改行はそこで除くので、Line_chomp は呼ばない。Stream は呼び出し側が閉じるので、ここでは閉じない（close が偽）
+;; 最適化版：行は、参照版の __LazyList_lines__ の代わりに、$( ) の値（Subst_lines_from）と同じく、読んだ塊を
+;; Subst_lines_chunk 文字ずつの断片に切って探すが、LazyList は作らず、行ごとにすぐ書く（Pump_lines。EOF まで
+;; 読み切るので、遅らせることはない）。改行はそこで除くので、Line_chomp は呼ばない。
+;; Stream は呼び出し側が閉じるので、ここでは閉じない
 (define Target_pump ,(sh target stream)
-  __Ref_new__ __FALSE__ ,(never)
-  __Ref_new__ __NULL__ ,(front)
-  __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  Subst_lines_from stream never front __FALSE__ "" zero "" ,(lines)
   Target_line_writer sh target ,(emit)
-  Target_pump_lines emit lines)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  Pump_lines stream emit one "" zero "" __NULL__)
 
-(define Target_pump_lines ,(emit lines)
-  __Cont_get__ ,(return)
-  __LazyList_uncons__ (,() return) lines ,(line rest)
-  emit line ,()
-  Target_pump_lines emit rest)
+;; buf の start から改行を探し、行ごとに emit を呼ぶ。more は、まだ断片に切っていない残り、pieces は、
+;; 前の断片から続く行の途中（逆順の LList。util.se の __Lines_join__）。Subst_lines_next と同じ探し方
+(define Pump_lines ,(reader emit one buf start more pieces)
+  __String_find__ __print_exit_error__ buf "\n" start ,(pos)
+  __is_null__ pos ,(none)
+  __if_then_else__ none
+    (,()
+      __String_length__ buf ,(len)
+      __String_substring__ __print_exit_error__ buf start len ,(piece)
+      __Lines_add_piece__ pieces piece ,(pieces)
+      Pump_cut reader emit one more pieces)
+    (,()
+      __String_substring__ __print_exit_error__ buf start pos ,(head)
+      __Lines_join__ pieces head ,(line)
+      __String_strip_suffix__ line "\r" ,(line)
+      emit line ,()
+      __Number_add__ pos one ,(next)
+      Pump_lines reader emit one buf next more __NULL__))
+
+;; 次の断片を more から切り出して探す。more がなければ塊を読み足す（Subst_lines_cut と同じ）
+(define Pump_cut ,(reader emit one more pieces)
+  __String_length__ more ,(len)
+  __Number_is_zero__ len ,(empty)
+  __if_then_else__ empty
+    (,() Pump_read reader emit one pieces)
+    (,()
+      Subst_lines_chunk ,(chunk)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_subtract__ len chunk ,(over)
+      __Number_is_positive__ over ,(long)
+      __if_then_else__ long
+        (,()
+          __String_substring__ __print_exit_error__ more zero chunk ,(buf)
+          __String_substring__ __print_exit_error__ more chunk len ,(rest)
+          Pump_lines reader emit one buf zero rest pieces)
+        (,() Pump_lines reader emit one more zero "" pieces)))
+
+;; 塊を読み足して続きを探す。EOF なら、行の途中があれば、それを最後の行として書く（Subst_lines_read と同じ）
+(define Pump_read ,(reader emit one pieces)
+  __OS_read__ __print_exit_error__ reader ,(data)
+  __is_null__ data ,(eof)
+  __if_then_else__ eof
+    (,()
+      __is_null__ pieces ,(none)
+      __unless__ none
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          __String_strip_suffix__ line "\r" ,(line)
+          emit line))
+    (,()
+      __String_length__ data ,(dataLen)
+      __Number_is_zero__ dataLen ,(nothing)
+      __if_then_else__ nothing
+        (,()
+          __OS_wait_readable__ __print_exit_error__ reader ,()
+          Pump_read reader emit one pieces)
+        (,() Pump_cut reader emit one data pieces)))
 
 ;; 外部コマンドの出力の行を target に書く関数（Target_write sh __NULL__ target line と同じことをする）
 ;; 最適化版：target が rest のある変数リストの受け取りで、& の遅延がないとき（Capture_put は、どの要素も Capture_add で
