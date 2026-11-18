@@ -64,13 +64,11 @@ consh/sjs/test/run_all.sh
 
 * ConSh の最適化版で、`Arg_max`（ARG_MAX の確かめ）の結果を環境変数ごとに覚え、ARG_MAX を export したときだけ使わなくなるようにした（consh/include/consh_eval.se の `Arg_max`、`Env_make`、`Env_export`。docs/consh/dev/COMPILE2-PLAN-ja.md の「ARG_MAX の確かめを覚える」）。consh/test の step9 に case5〜case7 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step9。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
-* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の変換版の VM で（前は alpha の 7b72ed3）。ステップは 1 回あたり −3.4%、−2.4%、−2.4%、−1.9%（Rust 版の VM）。差が小さいので、前後を順に替えて測る。
 
 ### m1/compile2-pump
 
 * ConSh の最適化版で、外部コマンドの出力を行ごとにターゲットに書く `Target_pump` を軽くした（consh/include/consh_eval.se の `Capture_assign_rest`、`Target_line_writer`、`Pump_lines`。docs/consh/dev/COMPILE2-PLAN-ja.md の「外部コマンドの出力の受け取りを軽くする」）。consh/test の step6 に case14 を足した。ConSh のモジュールが変わったので、transpiled VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step6。どれも違いはなかった。流していないもの：transpiled VM、wasm 版の VM の consh/test。
-* ベンチマーク：consh/bench の `11` を、最適化版の transpiled VM で（前は alpha の 66c36af）。ステップは 1 行あたり −71%（Rust 版の VM）。
 
 ## 記録
 
