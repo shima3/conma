@@ -1,6 +1,6 @@
 # Primitive Implementation Roadmap
 
-This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](../PRIMITIVES.html).
+This document gives an order for implementing (or re-implementing) the built-in primitives defined in [PRIMITIVES.md](../PRIMITIVES.md).
 Each step depends only on the steps before it, so the primitives in a step can be tested with what is already available.
 The test directory for a step is `test/stepN`. Existing step directories are `step1` to `step34`.
 
@@ -35,7 +35,7 @@ CONMA_VM=rust test/run_all.sh
 | `__is_null__` | implemented |
 | `__OS_print__` | implemented |
 
-* Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.html)).
+* Goal: Check operator application, surplus arguments, partial application and LCont handling (see [DESIGN.md](DESIGN.md)).
 * `__OS_print__` is needed first because every later test reports its result through standard output.
 * Booleans and control flow (`__TRUE__`, `__FALSE__`, `__if_then_else__`, ...) are defined in `include/pure.se` on top of `__is_null__`, so they need no primitives (since Step 35, `__if_then_else__`, `__if__` and `__unless__` are primitives, with the ConMa versions in `include/control.se` (moved on 2026-11-13; now `include/core/control.se`); since 2026-11-13, `__TRUE__` and `__FALSE__` are defined in `include/core/pure.se` for core ConMa, and are primitives of extended ConMa, the feature `"boolean"`, and so are the control functions and `__Cont_get__`, defined in `include/core/control.se` for core ConMa, the feature `"control"`, docs/dev/FAST-PLAN-ja.md 4.6).
 
@@ -136,7 +136,7 @@ CONMA_VM=rust test/run_all.sh
 * Dict primitives take no `onError`, so a non-Dict argument stops the VProc with an error.
 * `__Dict_keys__` returns the keys in insertion order. This is a detail of this implementation: PRIMITIVES.md leaves the order implementation-defined, and only the tests (`test/step8` case5) rely on it. Replacing a value keeps the key's position; removing and re-adding a key moves it to the end.
 * In traces an MSeq or Dict is shown as `(__MSeq__ "N")` or `(__Dict__ "N")`, like a Ref.
-* `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](../SPEC.html)).
+* `__Dict_keys__` returns a `Seq` (see "Sequence" in [SPEC.md](../SPEC.md)).
 * Both are needed by Step 11 (`commandMSeq`, `envDict`).
 
 ## Step 9: OS I/O streams
@@ -329,7 +329,7 @@ CONMA_VM=rust test/run_all.sh
 | `__type_name__` | implemented |
 | `__OS_realpath__` | implemented |
 
-* Goal: Provide what the ConMa versions of the front end tools need (see [SELFHOST.md](SELFHOST.html)). `__AST_toSexp__` uses `__type_name__` to tell Strings, Numbers and AST nodes apart, and `includer` uses `__OS_realpath__` to check that a file exists and to find duplicate files.
+* Goal: Provide what the ConMa versions of the front end tools need (see [SELFHOST.md](SELFHOST.md)). `__AST_toSexp__` uses `__type_name__` to tell Strings, Numbers and AST nodes apart, and `includer` uses `__OS_realpath__` to check that a file exists and to find duplicate files.
 * `__type_name__ Value ,(String)` returns `"null"` (also for `__NULL__`, an empty LList and an empty CChain), `"String"` (a literal or one made at run time), `"Number"`, `"Closure"` (also for a primitive function), `"Ref"`, `"CFrame"`, `"LList"`, `"MSeq"`, `"Dict"`, `"VProc"`, `"OSProc"` or `"Stream"` (the same for input and output Streams). A Boolean, a Seq and a Sink are Closures, and a CChain is an LList. It takes no `onError`, because every value has a type.
 * `__OS_realpath__ onError path ,(String)` returns the absolute path with `..`, `.` and symbolic links resolved. A relative path is relative to the current directory (Step 14). A path that does not exist, or a non-String argument, goes to `onError`. Python 3.9 has no `strict` mode for `os.path.realpath`, so the path is checked with `os.stat` first; a path through a missing directory (`none/..`) is therefore an error, as in the OS.
 * `value_type_name` in `vm/python/vproc_step.py` gives type names for error messages, but it returns `"input Stream"` / `"output Stream"` and Python class names for other values, so `__type_name__` needs its own fixed list of names.
@@ -407,7 +407,7 @@ No new primitive; the language and `__Cont_get__` (then in `include/util.se`, si
 | `__String_toCode__` | implemented |
 | `__String_fromCode__` | implemented |
 
-* Goal: Let a program look at the code point of a character, so that it can classify characters by range and write characters that a String literal cannot (a String literal has only the escapes `\"`, `\\`, `\n`, `\t`, `\r`). The first use is `__String_repr__` in `include/util.se`, which the ConMa front end uses to write values in error messages as Python's `repr` does (see [SELFHOST.md](SELFHOST.html)). A lexer for a shell can also use it.
+* Goal: Let a program look at the code point of a character, so that it can classify characters by range and write characters that a String literal cannot (a String literal has only the escapes `\"`, `\\`, `\n`, `\t`, `\r`). The first use is `__String_repr__` in `include/util.se`, which the ConMa front end uses to write values in error messages as Python's `repr` does (see [SELFHOST.md](SELFHOST.md)). A lexer for a shell can also use it.
 * `__String_toCode__ onError String ,(Number)` returns the code point of a String of one character; a String of another length goes to `onError`. `__String_fromCode__ onError Number ,(String)` returns the String of one character; a Number that is not an integer from 0 to 0x10FFFF, or is a surrogate (0xD800 to 0xDFFF), goes to `onError`. As for the other String primitives, a non-String or non-Number argument stops the VProc with an error.
 * `__String_repr__ String ,(String)` quotes the String as Python's `repr` does: in single quotes, or in double quotes if it has `'` and no `"`; `\`, the quote, newline, tab and carriage return are escaped, and characters that Python does not print are written as `\xNN`, `\uNNNN` or `\UNNNNNNNN`. A character is not printed if it is in the categories Cc, Cf, Zs, Zl, Zp or Co (except the space), as `str.isprintable` of Python decides; the ranges of these characters are written in `util.se` for Unicode 15.1 (Python 3.13). Unassigned characters (category Cn, such as U+FFFF) are written as they are, whereas Python escapes them. ASCII characters from 32 to 126 are printed without looking at the table of ranges, because most characters are of this kind and the lookup takes many steps.
 * Tests (`test/step19`):
