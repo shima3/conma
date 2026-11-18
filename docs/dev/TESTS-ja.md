@@ -55,23 +55,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/bash-19-20
-
-* consh/bench の Bash 版に `19` と `20` を足した（`bash/19_loop.sh`、`bash/20_fib.sh`）。Bash では同じ大きさで約 22 分と約 32 分かかるので、約 1 秒の小さい大きさにし、2 行目の `# smaller size: A/B` で、ConSh 版の仕事がその何倍かを run.py に伝える。run.py は、Bash の時間を A/B 倍したものに対してほかの版の倍率を出し、出力は終了コードだけを比べる。倍率が 0.1 より小さいときは、有効数字 2 桁で出す（前は小数 1 桁で、`0.0×` になっていた）。consh/bench/README-ja.md の「Bash 版」に書いた。
-* 流したもの：`run.py -v bash,conma:wasm 19_loop.sh 20_fib.sh`（終了コード 0）と `run.py -n 1 -v bash,rust 02_for_seq.sh`（前と同じ表）。テストの suite が読むファイルは変えていない。
-
-### m1/consh-start
-
-* `consh/bin/consh` は、Rust 版（consh-rs）がなくて ConMa 版で実行するとき、どの VM で動かすか（`CONMA_VM`、既定は rust）と、ずっと遅いことも出すようにした。`CONMA_VM` がなく、Rust 版の VM もなければ、前は「consh-rs がない」と「Rust 版の VM がない（`CONMA_VM=python` にせよ）」の 2 つを出して止まっていたが、Rust 版を作るように 1 つだけ出して止める（終了コード 2）。
-* README.md の「Try it」に、ConMa 版がループなどで Bash より遅いこと（consh/bench の多くで 3〜10 倍）、transpiled VM で約 2 倍速くなること、シェルとして使うなら Rust 版を作って `CONSH_IMPL` なしで `consh/bin/consh` を動かすことを足した。consh/README-ja.md、docs/consh/RUNNING-ja.md、docs/consh/FOR-BASH-USERS.md も合わせた。FOR-BASH-USERS.md の、ConMa 版の VM の既定が Python 版の VM だという古い記述も直した。
-* 流したもの：consh-rs と Rust 版の VM を一時的に退けて、4 つの場合（consh-rs だけない、`CONMA_VM=transpiled`、両方ない、両方なくて `CONMA_VM=python`）の出力と終了コード。`CONSH_IMPL=rust consh/test/run_all.sh -j 6` と `CONMA_VM=rust consh/test/run_all.sh -j 6`（Rust 版の ConSh の examples の既知の違いだけ）。Apple M1。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | deeff23 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/bash-19-20 と m1/consh-start（`consh/bin/consh` が変わった）を含む。transpiled VM は ad3044d で作ったものを使い直した（ad3044d からの差分に vm、include、bin、consh/include、bench、test/transpiled の変更がない）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | m1/docs-index（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/index.md に、どこからもリンクされていなかった docs/dev/ARRAY-PLAN-ja.md と docs/dev/LAZYLIST-PLAN-ja.md へのリンクを足し、ConSh の文書の一覧を新しい docs/consh/index.md に移した（同じくリンクされていなかった docs/consh/dev/COMPILE2-PLAN-ja.md も足した）（docs/index.md の「ConSh」の節は、それへのリンクと ConSh for Bash users へのリンクだけにし、一覧を 1 か所にした）。確かめたこと：2 つのファイルのリンクの先がすべてあること（`consh/web/` は pages.yml が作る）、docs/ の Markdown がすべて 2 つのどちらかからリンクされていること、Liquid の開き括弧がないこと。Jekyll は動かしていない |
 | 2026-11-18 | ad3044d | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。前の 2 回にあった `CONSH_IMPL=rust` の consh/test の step2 の case20 の違いは、m1/case20-rust で消えた。申し送りの m1/compile2-argmax と m1/compile2-pump の、流していなかった組み合わせ（transpiled VM）も通った。transpiled VM は ad3044d で作り直したもの（23 分）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | m1/docs-bench-rule（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks の 3（Who measures）を、Full Bench でない測り直しは変更した開発者がユーザーの指示を待たずに自分で測り、Full ConMa Bench、Full ConSh Bench、Full SJS Bench だけを申し送りで頼む（3 つのどれか、測るコミットと前のコミット、版を書き、測る人は書かない）ように書き換えた。Branches の 2 と 4、Benchmarks の 2（作ってある transpiled VM を使える条件、作る時間を約 40 分に）と 4、このファイルの申し送りの説明も合わせた。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
