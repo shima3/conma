@@ -61,6 +61,12 @@ consh/sjs/test/run_all.sh
 * consh/test の step6 の case15 に、rest を読まずに置き換える、2 回読む、`${rest}` で写す、関数に渡す場合を足した。
 * 流したもの：consh/test（Rust VM の最適化版、`CONMA_GC_THRESHOLD=1000` でも、参照版、`CONSH_IMPL=rust`、transpiled VM、`CONMA_GC_THRESHOLD=1000` でも、wasm 版）、consh/js/test。既知の違いだけ。test/ と consh/sjs/test は流していない（VM と consh/sjs は変えていない）。
 
+### m1/seq-varlist-gc
+
+* VM の GC だけを変えた（vm/src の gc.rs と value.rs）。Ref に GC の中での番号（`gc_slot`）を持たせ、Ref の serial を u32 にした。Rust 版の VM、wasm 版の VM、transpiled VM を作り直す。ConSh のモジュールは変わらない。
+* 流したもの：test/ と consh/test（Rust VM、`CONMA_GC_THRESHOLD=100`（test/）と `1000`（consh/test）でも）、wasm 版の test/ と consh/test（既知の違いだけ）、consh/js/test、consh/sjs/test（ここまで alpha を merge する前の fb62d36）。merge した後の 0df6e4d で、transpiled VM の test/ と consh/test、Rust VM の consh/test の最適化版と参照版。Python 版の VM と `CONSH_IMPL=rust` は流していない（Python 版の VM と ConSh の Rust 版は変えていない）。
+* 測ったもの：consh/bench の `02`〜`18` と `22` を、3 つの VM で前後に（consh/bench/README-ja.md、ブランチ m1/bench-0df6e4d）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
