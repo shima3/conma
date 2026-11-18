@@ -55,27 +55,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/case20-rust
-
-* consh/test の step2 の case20（m1/compile2-dq）から、`"$(( 1 + 2 ))"` を除いた。Rust 版の ConSh は `(( ))` を読めないので、`CONSH_IMPL=rust` で 6 行目で止まっていた（2f1c8e1 と 1ec4c7b の記録）。`"..."` の中で Expand_ref を通る場合は、`"pre$(echo sub)post"` と `"${u-def}"` で試している。
-* 流したもの：step2 を、最適化版、参照版、Rust 版の ConSh（`CONSH_IMPL=rust`）で（Rust 版の VM）。どれも通った。ConSh のソースは変えていない。
-
-### m1/compile2-argmax
-
-* ConSh の最適化版で、`Arg_max`（ARG_MAX の確かめ）の結果を環境変数ごとに覚え、ARG_MAX を export したときだけ使わなくなるようにした（consh/include/consh_eval.se の `Arg_max`、`Env_make`、`Env_export`。docs/consh/dev/COMPILE2-PLAN-ja.md の「ARG_MAX の確かめを覚える」）。consh/test の step9 に case5〜case7 を足した。ConSh のモジュールが変わったので、変換版の VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step9。どれも違いはなかった。流していないもの：変換版の VM、wasm 版の VM の consh/test。
-
-### m1/compile2-pump
-
-* ConSh の最適化版で、外部コマンドの出力を行ごとにターゲットに書く `Target_pump` を軽くした（consh/include/consh_eval.se の `Capture_assign_rest`、`Target_line_writer`、`Pump_lines`。docs/consh/dev/COMPILE2-PLAN-ja.md の「外部コマンドの出力の受け取りを軽くする」）。consh/test の step6 に case14 を足した。ConSh のモジュールが変わったので、transpiled VM は `bench/build.sh` で作り直してから流す。
-* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step6。どれも違いはなかった。流していないもの：transpiled VM、wasm 版の VM の consh/test。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | ad3044d | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。前の 2 回にあった `CONSH_IMPL=rust` の consh/test の step2 の case20 の違いは、m1/case20-rust で消えた。申し送りの m1/compile2-argmax と m1/compile2-pump の、流していなかった組み合わせ（transpiled VM）も通った。transpiled VM は ad3044d で作り直したもの（23 分）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | m1/docs-bench-rule（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks の 3（Who measures）を、Full Bench でない測り直しは変更した開発者がユーザーの指示を待たずに自分で測り、Full ConMa Bench、Full ConSh Bench、Full SJS Bench だけを申し送りで頼む（3 つのどれか、測るコミットと前のコミット、版を書き、測る人は書かない）ように書き換えた。Branches の 2 と 4、Benchmarks の 2（作ってある transpiled VM を使える条件、作る時間を約 40 分に）と 4、このファイルの申し送りの説明も合わせた。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
 | 2026-11-18 | m4/docs-contributing-page（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の頭に `title: Contributing` だけの front matter を足した。GitHub Pages の Jekyll は、front matter のない CONTRIBUTING.md をページにせず（jekyll-optional-front-matter が README、LICENSE、CONTRIBUTING などの名前を外す）、目次からの dev/CONTRIBUTING.html が 404 だった。確かめたこと：front matter のある Markdown はほかにないこと、リンクは変えていないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない（push 後に公開されたページを見る） |
 | 2026-11-18 | m4/docs-terms2（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks に、ディレクトリごとの呼び名 Full ConMa Bench（bench/）、Full ConSh Bench（consh/bench）、Full SJS Bench（consh/sjs/bench）を書き、Full Bench をその 3 つを合わせたものにした。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
