@@ -8,9 +8,12 @@
 ;;   * Func_lookup を __Cont_get__ を使わない形にし、Sh_defined で普通の変数を先に調べるようにした。
 ;;   * 外部コマンド 1 つだけの $( ) の値を、1 段の LazyList で作るようにした（Subst_lines_from。参照版の
 ;;     Eval_subst_os は、util.se の __LazyList_lines__ を Subst_lines で包む）。Stream から作る標準入力
-;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）と、外部コマンドの出力を行ごとに
-;;     ターゲットに書く Target_pump も、同じ読み方にした（Stream は閉じない）。
-;;   * List_fromMSeq と LazyList_prepend を、要素の数だけ深く再帰しない形（前から裏返しに集めて裏返す）にした。
+;;     （Input_stream。参照版は __LazyList_lines__ を Lines_chomped で包む）も、同じ読み方にした。外部コマンドの
+;;     出力を行ごとにターゲットに書く Target_pump は、同じ探し方で、LazyList を作らずに行ごとに書く（Pump_lines。
+;;     Stream は閉じない）。rest のある変数リストの受け取りには、記録の MSeq に直接加える（Target_line_writer）。
+;;   * 受け取った要素を rest の LazyList にするとき（Capture_assign_rest）、参照版の List_fromMSeq と
+;;     LazyList_prepend のように要素の数だけ深く再帰せず、残りの MSeq を前から裏返しの LList に集め、その前から順に
+;;     LazyList の前に付けるようにした。
 ;;   * Subst_settle_os で、値の先頭に Pipe_cap 個そろったことを記録（"full"）に覚え、コマンドのたびに
 ;;     たどり直さないようにした。
 ;;   * Func_make で、変数リストの名前と本体の文を取り出して関数の Dict に置き（"names"、"restName"、"lines"）、
@@ -554,20 +557,99 @@
     (,() Value_toString sh pos line))
 
 ;; input Stream を EOF まで読み、行ごとにターゲットに書く
-;; 最適化版：行は、参照版の __LazyList_lines__ の代わりに、$( ) と同じ 1 段の LazyList（Subst_lines_from）で読む。
-;; 改行はそこで除くので、Line_chomp は呼ばない。Stream は呼び出し側が閉じるので、ここでは閉じない（close が偽）
+;; 最適化版：行は、参照版の __LazyList_lines__ の代わりに、$( ) の値（Subst_lines_from）と同じく、読んだ塊を
+;; Subst_lines_chunk 文字ずつの断片に切って探すが、LazyList は作らず、行ごとにすぐ書く（Pump_lines。EOF まで
+;; 読み切るので、遅らせることはない）。改行はそこで除くので、Line_chomp は呼ばない。
+;; Stream は呼び出し側が閉じるので、ここでは閉じない
 (define Target_pump ,(sh target stream)
-  __Ref_new__ __FALSE__ ,(never)
-  __Ref_new__ __NULL__ ,(front)
+  Target_line_writer sh target ,(emit)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
-  Subst_lines_from stream never front __FALSE__ "" zero "" ,(lines)
-  Target_pump_lines sh target lines)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  Pump_lines stream emit one "" zero "" __NULL__)
 
-(define Target_pump_lines ,(sh target lines)
-  __Cont_get__ ,(return)
-  __LazyList_uncons__ (,() return) lines ,(line rest)
-  Target_write sh __NULL__ target line ,()
-  Target_pump_lines sh target rest)
+;; buf の start から改行を探し、行ごとに emit を呼ぶ。more は、まだ断片に切っていない残り、pieces は、
+;; 前の断片から続く行の途中（逆順の LList。util.se の __Lines_join__）。Subst_lines_next と同じ探し方
+(define Pump_lines ,(reader emit one buf start more pieces)
+  __String_find__ __print_exit_error__ buf "\n" start ,(pos)
+  __is_null__ pos ,(none)
+  __if_then_else__ none
+    (,()
+      __String_length__ buf ,(len)
+      __String_substring__ __print_exit_error__ buf start len ,(piece)
+      __Lines_add_piece__ pieces piece ,(pieces)
+      Pump_cut reader emit one more pieces)
+    (,()
+      __String_substring__ __print_exit_error__ buf start pos ,(head)
+      __Lines_join__ pieces head ,(line)
+      __String_strip_suffix__ line "\r" ,(line)
+      emit line ,()
+      __Number_add__ pos one ,(next)
+      Pump_lines reader emit one buf next more __NULL__))
+
+;; 次の断片を more から切り出して探す。more がなければ塊を読み足す（Subst_lines_cut と同じ）
+(define Pump_cut ,(reader emit one more pieces)
+  __String_length__ more ,(len)
+  __Number_is_zero__ len ,(empty)
+  __if_then_else__ empty
+    (,() Pump_read reader emit one pieces)
+    (,()
+      Subst_lines_chunk ,(chunk)
+      __Number_fromString__ __print_exit_error__ "0" ,(zero)
+      __Number_subtract__ len chunk ,(over)
+      __Number_is_positive__ over ,(long)
+      __if_then_else__ long
+        (,()
+          __String_substring__ __print_exit_error__ more zero chunk ,(buf)
+          __String_substring__ __print_exit_error__ more chunk len ,(rest)
+          Pump_lines reader emit one buf zero rest pieces)
+        (,() Pump_lines reader emit one more zero "" pieces)))
+
+;; 塊を読み足して続きを探す。EOF なら、行の途中があれば、それを最後の行として書く（Subst_lines_read と同じ）
+(define Pump_read ,(reader emit one pieces)
+  __OS_read__ __print_exit_error__ reader ,(data)
+  __is_null__ data ,(eof)
+  __if_then_else__ eof
+    (,()
+      __is_null__ pieces ,(none)
+      __unless__ none
+        (,()
+          __Lines_join__ pieces "" ,(line)
+          __String_strip_suffix__ line "\r" ,(line)
+          emit line))
+    (,()
+      __String_length__ data ,(dataLen)
+      __Number_is_zero__ dataLen ,(nothing)
+      __if_then_else__ nothing
+        (,()
+          __OS_wait_readable__ __print_exit_error__ reader ,()
+          Pump_read reader emit one pieces)
+        (,() Pump_cut reader emit one data pieces)))
+
+;; 外部コマンドの出力の行を target に書く関数（Target_write sh __NULL__ target line と同じことをする）
+;; 最適化版：target が rest のある変数リストの受け取りで、& の遅延がないとき（Capture_put は、どの要素も Capture_add で
+;; 加え、Bg_spec_add は何もしない）は、記録の MSeq に直接加えて数を増やす関数にする。ターゲットの種類と記録は、
+;; 行ごとではなく、ここで 1 回だけ調べる
+(define Target_line_writer ,(sh target)
+  Target_split target ,(kind id value)
+  __String_equal__ kind "capture" ,(isCapture)
+  __if_then_else__ isCapture
+    (,()
+      __Dict_lookup_or__ value "hasRest" __print_exit_error__ ,(hasRest)
+      __Dict_lookup_or__ value "spec" __print_exit_error__ ,(spec)
+      __is_null__ spec ,(noSpec)
+      __if_then_else__ hasRest (,() __NULL__ noSpec) (,() __NULL__ __FALSE__))
+    (,() __NULL__ __FALSE__) ,(direct)
+  __if_then_else__ direct
+    (,()
+      __Dict_lookup_or__ value "items" __print_exit_error__ ,(items)
+      __Dict_lookup_or__ value "count" __print_exit_error__ ,(countRef)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __NULL__ (,(line)
+        __MSeq_append__ __print_exit_error__ items line ,()
+        __Ref_get__ countRef ,(count)
+        __Number_add__ count one ,(count)
+        __Ref_set__ countRef count))
+    (,() __NULL__ (,(line) Target_write sh __NULL__ target line)))
 
 ;; 行末の改行（\n または \r\n）を除く
 (define Line_chomp ,(line)
@@ -2117,37 +2199,35 @@
       Capture_assign_mseq vars rest more))
 
 ;; rest のある記録：names に順に割り当て、rest には、残りの要素の後に stdin が渡した残り（"direct"）を続けた LazyList
+;; 最適化版：names には MSeq から直接割り当て（Capture_assign_take）、残りの MSeq を前から順に裏返しの LList に集め、
+;; その LList の要素（後ろの要素から）を順に tail の前に付ける。前は、MSeq を LList にしてから（裏返して集め、
+;; 裏返す）、割り当てた残りをもう一度裏返して付けたので、要素ごとに LList を 4 回たどった（今は 2 回）
 (define Capture_assign_rest ,(vars record names items)
-  List_fromMSeq items ,(items)
-  Capture_assign_names vars names items ,(items)
+  Capture_assign_take vars names items ,(items)
+  List_fromMSeq_onto items __NULL__ ,(reversed)
   __Dict_lookup_or__ record "restName" __print_exit_error__ ,(restName)
   __Dict_lookup_or__ record "direct" __print_exit_error__ ,(directRef)
   __Ref_get__ directRef ,(direct)
   __is_null__ direct ,(noDirect)
   __if_then_else__ noDirect (,() __LazyList_empty__) (,() __NULL__ direct) ,(tail)
-  LazyList_prepend items tail ,(list)
+  LazyList_prepend_reversed reversed tail ,(list)
   __Dict_put__ vars restName list)
 
-;; names に items を順に割り当て、残りの items を返す
-(define Capture_assign_names ,(vars names items)
-  __Cont_get__ ,(return)
+;; names に MSeq items の要素を順に割り当て（足りなければ空文字列）、残りの MSeq を返す
+(define Capture_assign_take ,(vars names items)
   __is_null__ names ,(done)
-  __if__ done (,() return items) ,()
-  __LList_uncons__ __print_exit_error__ names ,(name rest)
-  __is_null__ items ,(empty)
-  __if_then_else__ empty
-    (,() __NULL__ "" __NULL__)
-    (,() __LList_uncons__ __print_exit_error__ items ,(item more) __NULL__ item more) ,(value more)
-  __Dict_put__ vars name value ,()
-  Capture_assign_names vars rest more)
+  __if_then_else__ done
+    (,() __NULL__ items)
+    (,()
+      __LList_uncons__ __print_exit_error__ names ,(name rest)
+      __MSeq_is_empty__ __print_exit_error__ items ,(empty)
+      __if_then_else__ empty
+        (,() __NULL__ "" items)
+        (,() __MSeq_uncons__ __print_exit_error__ items) ,(value more)
+      __Dict_put__ vars name value ,()
+      Capture_assign_take vars rest more))
 
-;; LList items の後に LazyList tail を続けた LazyList
-;; 最適化版：再帰ではなく、items を裏返してから、後ろの要素から順に tail の前に付ける（参照版は、要素の数だけ深く
-;; 再帰し、その間 CChain が要素の数だけ伸びる）
-(define LazyList_prepend ,(items tail)
-  List_reverse items ,(reversed)
-  LazyList_prepend_reversed reversed tail)
-
+;; 裏返しの LList reversed の要素を、後ろの要素から順に（reversed の前から順に）tail の前に付けた LazyList
 (define LazyList_prepend_reversed ,(reversed tail)
   __is_null__ reversed ,(done)
   __if_then_else__ done
@@ -2157,12 +2237,7 @@
       __LazyList_cons__ item tail ,(tail)
       LazyList_prepend_reversed rest tail))
 
-;; MSeq の要素の LList
-;; 最適化版：再帰ではなく、前から順に裏返しの LList に集めてから裏返す（参照版は、要素の数だけ深く再帰する）
-(define List_fromMSeq ,(mseq)
-  List_fromMSeq_onto mseq __NULL__ ,(reversed)
-  List_reverse reversed)
-
+;; MSeq の要素を、前から順に acc の前に付けた（裏返しの）LList
 (define List_fromMSeq_onto ,(mseq acc)
   __MSeq_is_empty__ __print_exit_error__ mseq ,(empty)
   __if_then_else__ empty
