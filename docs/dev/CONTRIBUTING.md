@@ -3,7 +3,7 @@ title: Contributing
 ---
 # Contributing
 
-This is for the developers of ConMa and of ConSh. A developer of ConMa changes its VMs, its front end or its standard library; one who only runs ConMa programs is a user of ConMa. A developer of ConSh changes ConSh, and is a user of ConMa unless they also change the VM. The documents for the users are in [docs](../index.md) (and docs/consh for ConSh), and those for the developers in docs/dev (and docs/consh/dev); a document for both is in docs. The rules only for ConSh (where its files go, and changing both its optimized and reference versions) are in [docs/consh/dev/DEVELOPING-ja.md](../../docs/consh/dev/DEVELOPING-ja.md) (in Japanese).
+This is for the developers of ConMa and of ConSh. A developer of ConMa changes its VMs, its front end or its standard library; one who only runs ConMa programs is a user of ConMa. A developer of ConSh changes ConSh, and is a user of ConMa unless they also change the VM. The documents for the users are in [docs](../index.md) (and docs/consh for ConSh), and those for the developers in docs/dev (and docs/consh/dev); a document for both is in docs. GitHub Pages publishes docs without docs/dev and docs/consh/dev (`exclude` in docs/_config.yml, 2026-11-19): the documents for the developers are read on GitHub, in `alpha`, and are listed in [docs/dev/README.md](README.md) and [docs/consh/dev/README.md](../consh/dev/README.md), where a new one is added; their links to other documents name the `.md` files. The rules only for ConSh (where its files go, and changing both its optimized and reference versions) are in [docs/consh/dev/DEVELOPING-ja.md](../../docs/consh/dev/DEVELOPING-ja.md) (in Japanese).
 
 ## Tests
 

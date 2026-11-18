@@ -40,7 +40,7 @@ Those who change ConMa (its VMs, its front end and its standard library) or ConS
 
 ## Where to start
 
-- [docs/index.md](docs/index.md): the specification, the primitives and the tools, and, for the developers, the design, the plans and the records (docs/dev).
+- [docs/index.md](docs/index.md): the specification, the primitives and the tools; [docs/dev/README.md](docs/dev/README.md): for the developers, the design, the plans and the records (on GitHub only, not on GitHub Pages).
 - [vm/README.md](vm/README.md): the Rust VM — how to build it (Rust 1.75 or later) and run modules, its speed, and the transpiled code.
 - [bench/README.md](bench/README.md): benchmarks of the VMs against CPython.
 - [consh/README-ja.md](consh/README-ja.md): ConSh, a shell written in ConMa, and its Rust version (in Japanese; [docs/consh/FOR-BASH-USERS.md](docs/consh/FOR-BASH-USERS.md) is in English).
