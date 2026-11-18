@@ -211,15 +211,20 @@ impl Value {
 
 /// A mutable cell. Traces show it by its serial number, because it may contain itself.
 pub struct RefObj {
-    pub serial: usize,
+    /// The serial number, modulo 2^32 so that it shares 8 bytes with gc_slot:
+    /// a RefObj in an Rc then takes 112 bytes, not 120 (which malloc rounds up to 128).
+    pub serial: u32,
     pub value: RefCell<Value>,
     /// For a LazyList that a VProc evaluates: lazy_chain and lazy_thunk.
     pub lazy: RefCell<Option<LazyInfo>>,
+    /// Its place among the values of the last collection that went through it
+    /// (gc::collect), so that a collection finds it without hashing its address.
+    pub gc_slot: std::cell::Cell<u32>,
 }
 
 impl RefObj {
     pub fn new(serial: usize, value: Value) -> RefObj {
-        RefObj { serial, value: RefCell::new(value), lazy: RefCell::new(None) }
+        RefObj { serial: serial as u32, value: RefCell::new(value), lazy: RefCell::new(None), gc_slot: std::cell::Cell::new(u32::MAX) }
     }
 }
 
