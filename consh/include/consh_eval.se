@@ -2223,7 +2223,12 @@
   __Ref_get__ directRef ,(direct)
   __is_null__ direct ,(noDirect)
   __if_then_else__ noDirect (,() __LazyList_empty__) (,() __NULL__ direct) ,(tail)
-  LazyList_from_mseq items tail ,(list)
+  ;; 最適化版：rest は、読まれたときに 1 回で作るサンク 1 つにする。読まれなければ、要素ごとの Ref を作らない
+  ;; （GC がたどるものも増えない）。読まれれば LazyList_from_mseq が前と同じく前から 1 回で作る
+  __MSeq_is_empty__ __print_exit_error__ items ,(empty)
+  __if_then_else__ empty
+    (,() __NULL__ tail)
+    (,() __LazyList_new__ (,() LazyList_from_mseq items tail)) ,(list)
   __Dict_put__ vars restName list)
 
 ;; names に MSeq items の要素を順に割り当て（足りなければ空文字列）、残りの MSeq を返す
