@@ -20,6 +20,13 @@ cd vm && cargo build --release && cd ..
 CONSH_IMPL=conma consh/bin/consh
 ```
 
+The Rust VM interprets ConMa, and a simple statement takes thousands of ConMa steps, so loops of statements in this ConSh are slower than in Bash: 3 to 10 times on most benchmarks of [consh/bench](consh/bench/README-ja.md), and over 40 times on one (it is faster than Bash where Bash forks for `$( )`; external commands connected by pipes run at full speed). The transpiled VM runs it about twice as fast (`bench/build.sh`, which takes 25 to 40 minutes to build; [docs/consh/RUNNING-ja.md](docs/consh/RUNNING-ja.md)). To use ConSh as a shell rather than to try ConMa, build its Rust version (Rust 1.87 or later), which runs about as fast as Bash, and run `consh/bin/consh` without `CONSH_IMPL`:
+
+```
+cd consh/rust && cargo build --release && cd ../..
+consh/bin/consh
+```
+
 Run the tests with the Python VM (the default) or another VM (`bin/vm`); they pass when nothing but the `== name` line of each test is printed:
 
 ```

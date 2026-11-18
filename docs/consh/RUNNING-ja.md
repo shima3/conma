@@ -10,7 +10,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 
 | 軸 | 指定のしかた | 選択肢 | 内容 |
 |---|---|---|---|
-| 実装 | 環境変数 `CONSH_IMPL` | `rust` ★ | Rust 版（`consh/rust` の `consh-rs`）。構文解析も Rust 版。`consh/rust` で `cargo build --release` して作っておく。作っていなければ、そう出して ConMa 版（最適化版）で動かす |
+| 実装 | 環境変数 `CONSH_IMPL` | `rust` ★ | Rust 版（`consh/rust` の `consh-rs`）。構文解析も Rust 版。`consh/rust` で `cargo build --release` して作っておく。作っていなければ、そう出して（ループなどがずっと遅いことも）ConMa 版（最適化版）で動かす。ConMa 版の VM（`CONMA_VM` がなければ Rust 版の VM）もなければ、Rust 版を作るように出して止める |
 | | | `conma` | ConMa 版の最適化版（`consh/include`） |
 | | | `reference` | ConMa 版の参照版。`consh/reference` と標準ライブラリの `reference`（最適化する前の版）、`consh/include/core` と標準ライブラリの `include/core`（コア ConMa 用）のファイルを、最適化版の同じ名前のファイルの代わりに使う |
 | VM（ConMa 版を動かすもの） | 環境変数 `CONMA_VM`（`bin/vm`） | なし ★ | Rust 版の VM。作っていなければエラーにする（気付かずに遅い Python 版で動かさないため。2026-11-15 までは Python 版だった） |
