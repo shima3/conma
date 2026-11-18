@@ -17,6 +17,7 @@
 
 * ブランチを切り替えたり pull したりすると、ソースの時刻が変わる。VM がソースより古いと `consh/bin/consh` が警告を出すので、作り直してから流す。
 * wasm 版は、`vm/src` か `vm/wasm` を変えたら `consh/js/build.sh` で作り直す。古いまま流すと、VM の出すメッセージが古く、ログと違う（2026-11-15 に、名前を変える前の wasm 版で test/fast1 が違った）。
+* 変換版の VM は、前に作ったときから、モジュールと VM に関わるファイルが変わっていなければ、作り直さずに使ってよい（2026-11-18。作り直しに、Apple M4 で約 28 分かかる）。前に作ったときのコミットを覚えておき（記録の行に「変換版の VM は 1a2b3c4 で作ったもの」と書く）、次が何も出さないことで見る：`git diff --stat 1a2b3c4 HEAD -- vm include bin consh/include bench test/transpiled`（VM と変換器、標準ライブラリ、フロントエンド、ConSh の最適化版、bench/ と test/transpiled のモジュール）。そのうえで、ConSh のモジュールに変換したコードが使われることを、`CONMA_VM=transpiled CONMA_TRANSPILED_REPORT=1 consh/bin/consh` で（`transpiled code: used`）確かめる。rustc を新しくしたときと、`CONMA_BENCH_REFERENCE=1` で参照版も入れて流すときは、作り直す。
 * 変換版の VM には、`bench/build.sh` を動かしたときにキャッシュのディレクトリ（`bin/cache-dir`）にある ConSh のモジュールが組み込まれる。ConSh のテストを変換版の VM で流すときは、先に Rust VM で consh/test を流してモジュールを作っておき、それから `bench/build.sh` を動かす。
 
 ### 全部流す
@@ -54,24 +55,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/compile2-dq
-
-* ベンチマーク：consh/bench の `06` を、最適化版の変換版の VM で（前は alpha の 0748a95）。ステップは 1 回 1,297 → 1,041（−19.7%、Rust 版の VM）。
-
-### m1/compile2-cmd
-
-* ベンチマーク：consh/bench の `06`、`13`、`14`、`18` を、最適化版の変換版の VM で（前は alpha の e687929）。ステップは 1 回あたり −9.3%、−3.4%、−4.6%、−5.6%（Rust 版の VM）。m1/compile2-dq の `06` の依頼と、まとめて測ってよい。
-
-### m1/compile2-capture
-
-* ベンチマーク：consh/bench の `13`、`14` を、最適化版の変換版の VM で（前は alpha の 2f1c8e1）。ステップは 1 回あたり −5.9%、−4.1%（Rust 版の VM）。m1/compile2-dq と m1/compile2-cmd の依頼と、まとめて測ってよい。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | ad3044d | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。前の 2 回にあった `CONSH_IMPL=rust` の consh/test の step2 の case20 の違いは、m1/case20-rust で消えた。申し送りの m1/compile2-argmax と m1/compile2-pump の、流していなかった組み合わせ（transpiled VM）も通った。transpiled VM は ad3044d で作り直したもの（23 分）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | m1/docs-bench-rule（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks の 3（Who measures）を、Full Bench でない測り直しは変更した開発者がユーザーの指示を待たずに自分で測り、Full ConMa Bench、Full ConSh Bench、Full SJS Bench だけを申し送りで頼む（3 つのどれか、測るコミットと前のコミット、版を書き、測る人は書かない）ように書き換えた。Branches の 2 と 4、Benchmarks の 2（作ってある transpiled VM を使える条件、作る時間を約 40 分に）と 4、このファイルの申し送りの説明も合わせた。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
 | 2026-11-18 | m4/docs-contributing-page（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の頭に `title: Contributing` だけの front matter を足した。GitHub Pages の Jekyll は、front matter のない CONTRIBUTING.md をページにせず（jekyll-optional-front-matter が README、LICENSE、CONTRIBUTING などの名前を外す）、目次からの dev/CONTRIBUTING.html が 404 だった。確かめたこと：front matter のある Markdown はほかにないこと、リンクは変えていないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない（push 後に公開されたページを見る） |
 | 2026-11-18 | m4/docs-terms2（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks に、ディレクトリごとの呼び名 Full ConMa Bench（bench/）、Full ConSh Bench（consh/bench）、Full SJS Bench（consh/sjs/bench）を書き、Full Bench をその 3 つを合わせたものにした。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
