@@ -61,6 +61,12 @@ consh/sjs/test/run_all.sh
 * 流したもの：`run.py -v bash,conma:wasm 19_loop.sh 20_fib.sh`（終了コード 0）と `run.py -n 1 -v bash,rust 02_for_seq.sh`（前と同じ表）。テストの suite が読むファイルは変えていない。
 * ベンチマーク：Full ConSh Bench。測るコミットは eb1ff60（m1/bash-19-20 の、Bash 版の `19` と `20` を足したコミット。ConSh と VM は alpha の ad3044d と同じで、m1/compile2-pump と、その transpiled VM での測り直しの後）。版は、consh/bench/README-ja.md の「2026-11-17：約 1 秒の大きさ」の表と同じ Bash、Rust 版、最適化版＋Rust 版の VM、最適化版＋wasm 版の VM、最適化版＋transpiled VM（参照版は測らない）。スクリプトは `00`〜`21`。Bash の `19` と `20` は小さい大きさで測る（README-ja.md の「Bash 版」。run.py が大きさの比を掛けた時間を出す）。`21` は Bash 版がない。前後の比べはしない。
 
+### m1/consh-start
+
+* `consh/bin/consh` は、Rust 版（consh-rs）がなくて ConMa 版で実行するとき、どの VM で動かすか（`CONMA_VM`、既定は rust）と、ずっと遅いことも出すようにした。`CONMA_VM` がなく、Rust 版の VM もなければ、前は「consh-rs がない」と「Rust 版の VM がない（`CONMA_VM=python` にせよ）」の 2 つを出して止まっていたが、Rust 版を作るように 1 つだけ出して止める（終了コード 2）。
+* README.md の「Try it」に、ConMa 版がループなどで Bash より遅いこと（consh/bench の多くで 3〜10 倍）、transpiled VM で約 2 倍速くなること、シェルとして使うなら Rust 版を作って `CONSH_IMPL` なしで `consh/bin/consh` を動かすことを足した。consh/README-ja.md、docs/consh/RUNNING-ja.md、docs/consh/FOR-BASH-USERS.md も合わせた。FOR-BASH-USERS.md の、ConMa 版の VM の既定が Python 版の VM だという古い記述も直した。
+* 流したもの：consh-rs と Rust 版の VM を一時的に退けて、4 つの場合（consh-rs だけない、`CONMA_VM=transpiled`、両方ない、両方なくて `CONMA_VM=python`）の出力と終了コード。`CONSH_IMPL=rust consh/test/run_all.sh -j 6` と `CONMA_VM=rust consh/test/run_all.sh -j 6`（Rust 版の ConSh の examples の既知の違いだけ）。Apple M1。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

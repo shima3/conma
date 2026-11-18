@@ -5,7 +5,7 @@
 # 環境変数 CONSH_IMPL で版を選ぶ。
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
-#                 作っていなければ、そう出して ConMa 版で実行する。ソースより古ければ、警告を出してから、それで実行する
+#                 作っていなければ、そう出して（ずっと遅いことも）ConMa 版で実行する。ConMa 版の VM もなければ、Rust 版を作るように出して止める。ソースより古ければ、警告を出してから、それで実行する
 #   conma         ConMa 版の最適化版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ（bin/vm。python なら Python 版、rust なら Rust 版、
 #                 transpiled なら変換したコードを組み込んだ Rust 版、wasm なら wasm 版）。CONMA_VM がなければ Rust 版の VM
@@ -61,8 +61,14 @@ rust="$consh/rust/target/release/consh-rs"
 if [ $impl = rust ] && { [ -n "$parser" ] || [ -n "$CONSH_CONMA_DATA" ]; }; then
   impl=conma
 fi
+# Rust 版を作っていなければ、ConMa 版で実行する。ConMa 版はループなどが Rust 版よりずっと遅いので、そう出す。
+# ConMa 版の VM（CONMA_VM がなければ Rust 版の VM）もなければ、ConMa 版の VM ではなく、Rust 版を作るように出して止める
 if [ $impl = rust ] && [ ! -x "$rust" ]; then
-  echo "consh: $rust is not built (cargo build --release in consh/rust, Rust 1.87 or later); running the ConMa version" >&2
+  if [ -z "$CONMA_VM" ] && [ ! -x "$root/vm/target/release/conma" ]; then
+    echo "consh: $rust is not built; build it with cargo build --release in consh/rust (Rust 1.87 or later)" >&2
+    exit 2
+  fi
+  echo "consh: $rust is not built (cargo build --release in consh/rust, Rust 1.87 or later); running the ConMa version on the ${CONMA_VM:-rust} VM, which is much slower" >&2
   impl=conma
 fi
 # 実行ファイルがソースより古ければ（git pull の後など）、警告してから、それを使う
