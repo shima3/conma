@@ -329,9 +329,61 @@
   Part_is_list kind ,(isList)
   __unless__ isList (,() return __NULL__ __FALSE__) ,()
   Part_active part ,(active)
-  Value_leaves_in value limit ,(leaves)
-  Leaves_fields leaves active nullGlob ,(fields)
+  Limit_counts limit ,(counts)
+  __type_name__ value ,(type)
+  __String_equal__ type "Ref" ,(isList)
+  __not__ counts ,(free)
+  __and__ isList free ,(ready)
+  __unless__ ready
+    (,()
+      Value_leaves_in value limit ,(leaves)
+      Leaves_fields leaves active nullGlob ,(fields)
+      return fields __TRUE__) ,()
+  num "0" ,(zero)
+  Ready_fields value active nullGlob zero ,(front rest)
+  __is_null__ rest ,(done)
+  __if__ done (,() return front __TRUE__) ,()
+  Value_leaves_lazy rest limit ,(leaves)
+  Leaves_fields leaves active nullGlob ,(back)
+  __LList_append__ front back ,(fields)
   __NULL__ fields __TRUE__)
+
+;; limit が引数のバイト数を数えるか（Arg_limit_new。Limit_guard と null は数えない）
+(define Limit_counts ,(limit)
+  __Cont_get__ ,(return)
+  __is_null__ limit ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __Dict_lookup_or__ limit "left" __print_exit_error__ ,(left)
+  __is_null__ left ,(none)
+  __not__ none)
+
+;; 最適化版：バイト数を数えないときの、LazyList list の近道。Leaves_ready と Leaves_fields を 1 回にまとめたもの：
+;; 先頭から、評価済みで String の要素が続く間、葉を語にした LList（Leaves_fields と同じ）と、残りを返す。
+;; 残りは、終わりまでたどれたら null、そうでなければ、評価していないか String でない要素から先の LazyList
+;; （Leaves_ready と同じく、評価も、待つことも、継続で戻ることもしない）
+(define Ready_fields ,(list active nullGlob zero)
+  __Ref_get__ list ,(cell)
+  __type_name__ cell ,(cellType)
+  __String_equal__ cellType "LList" ,(isCell)
+  __if_then_else__ isCell
+    (,()
+      __LList_uncons__ __print_exit_error__ cell ,(item tail)
+      __type_name__ item ,(type)
+      __String_equal__ type "String" ,(isString)
+      __if_then_else__ isString
+        (,()
+          Ready_fields tail active nullGlob zero ,(more rest)
+          __if_then_else__ active
+            (,() __String_find_any__ __print_exit_error__ item "*?[" zero)
+            (,() __NULL__ __NULL__) ,(pos)
+          __is_null__ pos ,(plain)
+          __if_then_else__ plain
+            (,() __LList_cons__ item more)
+            (,() Leaf_glob item nullGlob more) ,(fields)
+          __NULL__ fields rest)
+        (,() __NULL__ __NULL__ list))
+    (,()
+      __is_null__ cell ,(end)
+      __if_then_else__ end (,() __NULL__ __NULL__ __NULL__) (,() __NULL__ __NULL__ list)))
 
 (define Leaves_fields ,(leaves active nullGlob)
   __is_null__ leaves ,(done)
@@ -342,16 +394,19 @@
       Leaves_fields rest active nullGlob ,(more)
       __if_then_else__ active (,() Glob_has_meta leaf) (,() __NULL__ __FALSE__) ,(magic)
       __if_then_else__ magic
-        (,()
-          Glob_escape_active leaf ,(pattern)
-          Glob_expand pattern ,(matches)
-          __is_null__ matches ,(none)
-          __not__ nullGlob ,(keepWord)
-          __and__ none keepWord ,(useWord)
-          __if_then_else__ useWord
-            (,() __LList_cons__ leaf more)
-            (,() __LList_append__ matches more))
+        (,() Leaf_glob leaf nullGlob more)
         (,() __LList_cons__ leaf more)))
+
+;; glob の記号を含む葉 leaf を、一致したパスにして more の前に付ける。一致しなければ、nullGlob が偽なら leaf のまま
+(define Leaf_glob ,(leaf nullGlob more)
+  Glob_escape_active leaf ,(pattern)
+  Glob_expand pattern ,(matches)
+  __is_null__ matches ,(none)
+  __not__ nullGlob ,(keepWord)
+  __and__ none keepWord ,(useWord)
+  __if_then_else__ useWord
+    (,() __LList_cons__ leaf more)
+    (,() __LList_append__ matches more))
 
 ;; alts は候補の LList。候補は、語の String、glob のパターン（引用符の中の文字には \ を付ける）、
 ;; パターンが記号を含むかの組
