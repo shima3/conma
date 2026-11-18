@@ -61,7 +61,7 @@ git config branch.alpha.rebase false
 
 The benchmarks are in bench/ (ConMa programs against CPython), consh/bench (ConSh scripts against Bash and the Rust version of ConSh) and consh/sjs/bench (SJS programs against Node.js and CPython). The tables of their results are in bench/README.md, consh/bench/README-ja.md and consh/sjs/README-ja.md, called the READMEs of the benchmarks below. They are measured as follows.
 
-A measurement of every benchmark in the three directories, with every version that their tables compare, at the sizes the tables give, on one machine, is called a **Full Bench** (2026-11-18), written as Full Test is (see Tests). It is done only when the user asks for one; otherwise only what a change needs is measured again (2).
+A measurement of every benchmark in one of the three directories, with every version that its tables compare, at the sizes the tables give, on one machine, is called a **Full ConMa Bench** (bench/), a **Full ConSh Bench** (consh/bench) or a **Full SJS Bench** (consh/sjs/bench), and the three together a **Full Bench** (2026-11-18). They are written as Full Test is (see Tests). One is done only when the user asks for it; otherwise only what a change needs is measured again (2).
 
 1. **Sizes.** Measure with a size (the parameter of a program or of a script) at which the fastest version in the table (of those it compares) takes about one second, so that the start and the noise of the machine are a small part of each time.
     * Not when the start itself is measured, or when a time must be compared with one measured before at the same size.

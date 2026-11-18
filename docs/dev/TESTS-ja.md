@@ -72,6 +72,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | m4/docs-terms2（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md の Benchmarks に、ディレクトリごとの呼び名 Full ConMa Bench（bench/）、Full ConSh Bench（consh/bench）、Full SJS Bench（consh/sjs/bench）を書き、Full Bench をその 3 つを合わせたものにした。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
 | 2026-11-18 | m4/docs-terms（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/CONTRIBUTING.md に、全部の suite を流すことの呼び名 Full Test（Tests）と、3 つのディレクトリの全部のベンチマークを全部の版で測ることの呼び名 Full Bench（Benchmarks）を書いた。確かめたこと：リンクは足していないこと、docs/ の Markdown に Liquid の開き括弧が増えていないこと。Jekyll は動かしていない |
 | 2026-11-18 | m1/pages-escape（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | GitHub Pages のワークフローで、Markdown を raw で囲む .github/pages-raw.py を、Liquid の 2 つの開き括弧を 1 つずつ Liquid の文字列の出力に置き換える .github/pages-escape.py に替えた（後ろに閉じ括弧のない開き括弧が、raw の終わりの閉じ括弧まで読まれ、raw が閉じずに失敗していた。このファイルの 1 つ上の行）。確かめたこと：docs/ の写しに流し、Liquid 4 の字句の区切りと同じ正規表現で、どの Markdown にも置き換えたもののほかのタグが残らず、置き換えたものを戻すと元と同じになること（難しい例も足した）。Jekyll は動かしていない |
 | 2026-11-18 | m4/docs-ebnf（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/consh/PLAN-ja.md の文法の `{{` を `{ {` にした（3 か所。EBNF の意味は同じ）。確かめたこと：docs/ の Markdown に `{{` と `{%` が残っていないこと（GitHub Pages の Jekyll が Liquid のタグと読まない）。リンクは変えていない。Jekyll は動かしていない |
