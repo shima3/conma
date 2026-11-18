@@ -25,7 +25,10 @@ machine falls on all of them, and the least user + sys time of the process is pr
 start, as a Markdown table with the ratio of each version to the first one; the outputs of the versions
 must be the same (for bash, only the status and the standard output, as its error messages are not those of
 ConSh). The scripts that use (( )) (19 to 21), which the Rust version does not have, are left out of the
-default list when rust is among the versions, and the scripts that have no Bash version (19 to 21) when bash is.
+default list when rust is among the versions, and the scripts that have no Bash version (21) when bash is.
+A Bash version smaller than its script (19 and 20) says in a line "# smaller size: A/B" that the script does
+A/B times its work: its time is printed with that times A/B, which the ratios use, and only its status is
+compared.
 
 The executables are started as bin/consh starts them, without bin/consh: consh-rs run <script>, and
 conma --main <module> run-src <script> <script>. The modules (consh.module.se and consh.reference.module.se
@@ -113,6 +116,18 @@ def bash_script(script):
     return os.path.join(BASH_DIR, os.path.basename(script))
 
 
+def bash_scale(script):
+    """How many times the work of the Bash version of a script that is smaller than the script (19 and 20,
+    which would take half an hour in Bash) the script does, from its line "# smaller size: A/B"; 1 for a Bash
+    version of the same size."""
+    with open(bash_script(script), encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("# smaller size:"):
+                a, _, b = line.split(":", 1)[1].strip().partition("/")
+                return int(a) / int(b or 1)
+    return 1
+
+
 def prepare(versions):
     """Make the modules (and let bin/consh warn about an old consh-rs), and check that the transpiled VM
     uses the transpiled code of the modules."""
@@ -186,13 +201,24 @@ def main():
                 t, out = run(c(s))
                 times[i] = t if times[i] is None else min(times[i], t)
                 outs[i] = out
-        cells = [f"{times[0]:.3f} s"]
-        for t in times[1:]:
-            cells.append(f"{t:.3f} s ({t / times[0]:.1f}×)" if times[0] > 0 else f"{t:.3f} s")
-        # Bash is compared only by its status and standard output
+        # A Bash version of a smaller size: its time times the scale is compared with the others,
+        # and its standard output (the result of another size) is not compared
+        scale = bash_scale(s) if "bash" in names else 1
+        scaled = [t * scale if v == "bash" else t for v, t in zip(names, times)]
+        cells = []
+        for i, (v, t) in enumerate(zip(names, times)):
+            cell = f"{t:.3f} s"
+            if v == "bash" and scale != 1:
+                cell += f" (smaller size; ×{scale:.0f} = {scaled[i]:.0f} s)"
+            if i > 0 and scaled[0] > 0:
+                r = scaled[i] / scaled[0]
+                cell += f" ({r:.1f}×)" if r >= 0.1 else f" ({r:.2g}×)"
+            cells.append(cell)
+        # Bash is compared only by its status and standard output (only by its status when smaller)
         full = [o for v, o in zip(names, outs) if v != "bash"]
+        width = 1 if scale != 1 else 2
         same = all(o == full[0] for o in full) and all(
-            o[:2] == outs[0][:2] for o in outs)
+            o[:width] == outs[0][:width] for o in outs) if full else True
         differ = differ or not same
         print(f"| {os.path.basename(s)} | " + " | ".join(cells) + " |" + ("" if same else " outputs differ"),
               flush=True)

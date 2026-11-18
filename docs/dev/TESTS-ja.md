@@ -70,6 +70,11 @@ consh/sjs/test/run_all.sh
 * ConSh の最適化版で、外部コマンドの出力を行ごとにターゲットに書く `Target_pump` を軽くした（consh/include/consh_eval.se の `Capture_assign_rest`、`Target_line_writer`、`Pump_lines`。docs/consh/dev/COMPILE2-PLAN-ja.md の「外部コマンドの出力の受け取りを軽くする」）。consh/test の step6 に case14 を足した。ConSh のモジュールが変わったので、transpiled VM は `bench/build.sh` で作り直してから流す。
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）、`CONSH_IMPL=rust` の step6。どれも違いはなかった。流していないもの：transpiled VM、wasm 版の VM の consh/test。
 
+### m1/bash-19-20
+
+* consh/bench の Bash 版に `19` と `20` を足した（`bash/19_loop.sh`、`bash/20_fib.sh`）。Bash では同じ大きさで約 22 分と約 32 分かかるので、約 1 秒の小さい大きさにし、2 行目の `# smaller size: A/B` で、ConSh 版の仕事がその何倍かを run.py に伝える。run.py は、Bash の時間を A/B 倍したものに対してほかの版の倍率を出し、出力は終了コードだけを比べる。倍率が 0.1 より小さいときは、有効数字 2 桁で出す（前は小数 1 桁で、`0.0×` になっていた）。consh/bench/README-ja.md の「Bash 版」に書いた。
+* 流したもの：`run.py -v bash,conma:wasm 19_loop.sh 20_fib.sh`（終了コード 0）と `run.py -n 1 -v bash,rust 02_for_seq.sh`（前と同じ表）。テストの suite が読むファイルは変えていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
