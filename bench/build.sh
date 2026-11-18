@@ -4,7 +4,9 @@
 # optimized version, in the directory where consh/bin/consh makes it, CONSH_MODULE_DIR or bin/cache-dir, if it is
 # there, so that ConSh keeps its transpiled code). With CONMA_BENCH_REFERENCE set to a non-empty value, also of
 # the reference version of ConSh (consh.reference.module.se), to compare the two versions on the transpiled VM;
-# the build then takes about twice as long.
+# the build then takes about twice as long. With CONMA2RUST_COMPACT=1 the transpiled code is shorter and the build
+# takes about a sixth less time, but ConSh may run up to 2% slower: for a VM that only runs the tests, not for
+# one that is timed (vm/README.md).
 set -e
 bench="$(cd "$(dirname "$0")"; pwd)"
 tmp="$(mktemp -d /tmp/conma-bench.XXXXXX)"

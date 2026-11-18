@@ -363,11 +363,19 @@ pub fn collect() -> usize {
     let mut found: Vec<Node> = Vec::new();
     while i < nodes.len() {
         edge_start.push(edges.len());
-        let seen = nodes[i].children(&mut |c| found.push(c));
-        if !seen {
-            opaque[i] = true;
-        }
-        for c in found.drain(..) {
+        let mut seen = nodes[i].children(&mut |c| found.push(c));
+        while let Some(c) = found.pop() {
+            // A value that is not a container and that only this value holds
+            // (once, so that with `found` it has two references) is not made a
+            // node: its children are taken as children of this value. Nothing
+            // else reaches it, so it is live if and only if this value is, and
+            // an edge through it is an edge from this value. A long LList that
+            // a Ref holds (the cells of a LazyList) is then one node per Ref,
+            // not two. Only containers are freed, so it needs no node of its own.
+            if !c.is_container() && c.strong_count() == 2 {
+                seen &= c.children(&mut |g| found.push(g));
+                continue;
+            }
             let j = match index.get(&c.addr()) {
                 Some(&j) => j,
                 None => {
@@ -381,6 +389,9 @@ pub fn collect() -> usize {
             };
             internal[j] += 1;
             edges.push(j);
+        }
+        if !seen {
+            opaque[i] = true;
         }
         i += 1;
     }

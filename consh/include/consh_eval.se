@@ -584,7 +584,21 @@
       __String_strip_suffix__ line "\r" ,(line)
       emit line ,()
       __Number_add__ pos one ,(next)
-      Pump_lines reader emit one buf next more __NULL__))
+      Pump_whole_lines reader emit one buf next more))
+
+;; Pump_lines の、前の断片から続く行の途中がないとき（buf の中で 2 つ目からの行）。__Lines_join__ を通らない。
+;; 改行がなければ、残りを行の途中にして Pump_lines と同じく続ける
+(define Pump_whole_lines ,(reader emit one buf start more)
+  __String_find__ __print_exit_error__ buf "\n" start ,(pos)
+  __is_null__ pos ,(none)
+  __if_then_else__ none
+    (,() Pump_lines reader emit one buf start more __NULL__)
+    (,()
+      __String_substring__ __print_exit_error__ buf start pos ,(line)
+      __String_strip_suffix__ line "\r" ,(line)
+      emit line ,()
+      __Number_add__ pos one ,(next)
+      Pump_whole_lines reader emit one buf next more))
 
 ;; 次の断片を more から切り出して探す。more がなければ塊を読み足す（Subst_lines_cut と同じ）
 (define Pump_cut ,(reader emit one more pieces)
@@ -2199,18 +2213,17 @@
       Capture_assign_mseq vars rest more))
 
 ;; rest のある記録：names に順に割り当て、rest には、残りの要素の後に stdin が渡した残り（"direct"）を続けた LazyList
-;; 最適化版：names には MSeq から直接割り当て（Capture_assign_take）、残りの MSeq を前から順に裏返しの LList に集め、
-;; その LList の要素（後ろの要素から）を順に tail の前に付ける。前は、MSeq を LList にしてから（裏返して集め、
-;; 裏返す）、割り当てた残りをもう一度裏返して付けたので、要素ごとに LList を 4 回たどった（今は 2 回）
+;; 最適化版：names には MSeq から直接割り当て（Capture_assign_take）、残りの MSeq を前から 1 回たどって、
+;; 評価済みのセルの LazyList を作る（LazyList_from_mseq）。前は、残りを裏返しの LList に集めてから、
+;; その要素を後ろから tail の前に付けたので、要素ごとに 2 回たどった（2026-11-18 までは 4 回）
 (define Capture_assign_rest ,(vars record names items)
   Capture_assign_take vars names items ,(items)
-  List_fromMSeq_onto items __NULL__ ,(reversed)
   __Dict_lookup_or__ record "restName" __print_exit_error__ ,(restName)
   __Dict_lookup_or__ record "direct" __print_exit_error__ ,(directRef)
   __Ref_get__ directRef ,(direct)
   __is_null__ direct ,(noDirect)
   __if_then_else__ noDirect (,() __LazyList_empty__) (,() __NULL__ direct) ,(tail)
-  LazyList_prepend_reversed reversed tail ,(list)
+  LazyList_from_mseq items tail ,(list)
   __Dict_put__ vars restName list)
 
 ;; names に MSeq items の要素を順に割り当て（足りなければ空文字列）、残りの MSeq を返す
@@ -2227,25 +2240,31 @@
       __Dict_put__ vars name value ,()
       Capture_assign_take vars rest more))
 
-;; 裏返しの LList reversed の要素を、後ろの要素から順に（reversed の前から順に）tail の前に付けた LazyList
-(define LazyList_prepend_reversed ,(reversed tail)
-  __is_null__ reversed ,(done)
-  __if_then_else__ done
-    (,() __NULL__ tail)
-    (,()
-      __LList_uncons__ __print_exit_error__ reversed ,(item rest)
-      __LazyList_cons__ item tail ,(tail)
-      LazyList_prepend_reversed rest tail))
-
-;; MSeq の要素を、前から順に acc の前に付けた（裏返しの）LList
-(define List_fromMSeq_onto ,(mseq acc)
+;; MSeq mseq の要素を前から順に並べ、その後に LazyList tail を続けた LazyList。セルはどれも評価済みで、
+;; include/util.se の __LazyList_cons__ と同じ形（LList のセルを値に持つ Ref）。前から作るので、各セルの Ref を
+;; null で作っておき、次の要素のセルができたら値を置く。できあがるまでは誰も見ないので、__LazyList_publish__ は使わない
+(define LazyList_from_mseq ,(mseq tail)
   __MSeq_is_empty__ __print_exit_error__ mseq ,(empty)
   __if_then_else__ empty
-    (,() __NULL__ acc)
+    (,() __NULL__ tail)
     (,()
-      __MSeq_uncons__ __print_exit_error__ mseq ,(item rest)
-      __LList_cons__ item acc ,(acc)
-      List_fromMSeq_onto rest acc))
+      __Ref_new__ __NULL__ ,(list)
+      LazyList_from_mseq_into list mseq tail ,()
+      __NULL__ list))
+
+;; mseq（空でない）の要素のセルを、Ref ref から順に置き、最後のセルの残りを tail にする
+(define LazyList_from_mseq_into ,(ref mseq tail)
+  __MSeq_uncons__ __print_exit_error__ mseq ,(item rest)
+  __MSeq_is_empty__ __print_exit_error__ rest ,(last)
+  __if_then_else__ last
+    (,()
+      __LList_cons__ item tail ,(cell)
+      __Ref_set__ ref cell)
+    (,()
+      __Ref_new__ __NULL__ ,(next)
+      __LList_cons__ item next ,(cell)
+      __Ref_set__ ref cell ,()
+      LazyList_from_mseq_into next rest tail))
 
 ;; ── コマンド置換 ──
 
