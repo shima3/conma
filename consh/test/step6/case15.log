@@ -1,0 +1,22 @@
+a=1 n=5
+x=2
+x=3
+x=4
+x=5
+a=one rest=[]
+a=1 b=[] rest=[]
+d=1
+d=2
+d=p
+d=q
+g=/dev/null
+g=no*such*file
+g=plain
+b=no*such*file
+b=plain
+v=1
+v=2
+v=3
+v=4
+[2][3]
+exit: 0

@@ -61,6 +61,12 @@ consh/sjs/test/run_all.sh
 * 流したもの：作り直した transpiled VM（このブランチのコミットの内容で `bench/build.sh` で作ったもの）で `CONMA_VM=transpiled test/run_all.sh -j 6` と `CONSH_IMPL=conma CONMA_VM=transpiled consh/test/run_all.sh -j 6`（どれも違いなし）。`CONMA_TRANSPILED_REPORT` で `transpiled code: used` を確かめた。Apple M1、rustc 1.100.0。
 * 次に全部流す人は、transpiled VM を作り直す（vm/conma2rust が変わったので、前の VM は使えない）。
 
+### m2/rest-read
+
+* ConSh の最適化版で、rest のある変数リストの受け取りの rest を、記録の MSeq から 1 回で作るようにした（`LazyList_from_mseq`）。外部コマンドの出力の行を、塊の 2 つ目からは `__Lines_join__` を通らずに切る（`Pump_whole_lines`）。LazyList 1 つだけの語を、引数のバイト数を数えないときは、評価済みの要素を 1 回でたどって語にする（`Ready_fields`）。consh/include/consh_eval.se と consh_expand.se。consh/test の step6 に case15 を、consh/bench に `22_seq_varlist_read.sh` とその Bash 版を足した。ConSh のモジュールが変わったので、transpiled VM は `bench/build.sh` で作り直してから流す。
+* 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：transpiled VM と wasm 版の VM の consh/test、`CONSH_IMPL=rust`。
+* ベンチマークは自分で測った（consh/bench/README-ja.md の 2026-11-18 の `11`、`22` の節）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
