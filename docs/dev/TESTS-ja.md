@@ -67,6 +67,13 @@ consh/sjs/test/run_all.sh
 * 流したもの：Rust 版の VM の consh/test（最適化版と参照版）、consh/sjs/test、consh/js/test（wasm 版の VM、`consh/js/build.sh` で作り直した）。どれも違いはなかった。流していないもの：transpiled VM と wasm 版の VM の consh/test、`CONSH_IMPL=rust`。
 * ベンチマークは自分で測った（consh/bench/README-ja.md の 2026-11-18 の `11`、`22` の節）。
 
+### m2/gc-single
+
+* VM の GC（vm/src/gc.rs）で、コンテナでなく、たどっている値からしか持たれていない値は、ノードにせず、その子を持ち手の子としてたどるようにした。見える動きは変えない。Rust 版、wasm 版、transpiled VM が使う。transpiled VM は `bench/build.sh` で作り直してから流す。m2/rest-read の consh/test の step6 の case15 で、stdin の前の `seq 1 2` を `echo` にした（wasm 版の VM では、外部コマンドの後の `stdin` が何も読まないため。下）。
+* 流したもの：Rust 版の VM の test/ と consh/test（最適化版）、どちらも `CONMA_GC_THRESHOLD` なしと、test/ は 100、consh/test は 1000 で。consh/sjs/test、consh/js/test、wasm 版の VM の consh/test（最適化版。既知の step8 と step17 のほかは違わない）。流していないもの：Python 版の VM（GC は Python のもの）、transpiled VM の test/ と consh/test、参照版。
+* wasm 版の VM で、関数の中で外部コマンドの後に `stdin` を呼ぶと、パイプの入力を何も読まない（`function m () { seq 1 2; stdin; }; printf 'p\nq\n' | m` が `1 2` だけを出す。Rust 版の VM は `p q` も出す）。最適化版でも参照版でも同じで、この変更の前からある。直していない。
+* ベンチマークは自分で測った（consh/bench/README-ja.md の 2026-11-18 の GC の節）。ConMa の bench/ と consh/sjs/bench は測っていない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

@@ -9,8 +9,9 @@ for x in $rest; do echo "never $x"; done
 # 名前の数より少ない要素
 seq 1 1 > (a b . rest)
 echo "a=$a b=[$b] rest=[$rest]"
-# 外部コマンドの出力の後に、stdin が渡した残り（"direct"）が続く
-function g () { seq 1 2; stdin; }
+# 記録の要素の後に、stdin が渡した残り（"direct"）が続く（wasm 版の VM では、外部コマンドの後の stdin が
+# 何も読まないので、要素は echo で書く）
+function g () { echo 1; echo 2; stdin; }
 function h () { g > (a . rest); for x in $a $rest; do echo "d=$x"; done; }
 printf 'p\nq\n' | h
 # glob の記号を含む要素（一致すればパス、しなければそのまま）
