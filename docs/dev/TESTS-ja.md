@@ -55,12 +55,6 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/transpiled-build
-
-* `vm/conma2rust/conma2rust.py` は、変換したコードの関数を約 1 MB ずつの Rust のモジュール（`c0`、`c1`、…）に入れて、`pub use` で取り込むようにした。rustc はモジュールごとに codegen unit を作るので、前は全部が 1 つの unit になり、LLVM がほぼ 1 コアで最適化していた。同じコード（bench、test/transpiled、ConSh の最適化版）のビルドが Apple M1 で 43 分から 18 分になり、`bench/build.sh` は 17 分 43 秒だった。速さは変わらない（consh/bench の 8 本で 0.999〜1.022 倍、出力も同じ）。詳しくは vm/README.md の「Modules of the generated code」。
-* 流したもの：作り直した transpiled VM（このブランチのコミットの内容で `bench/build.sh` で作ったもの）で `CONMA_VM=transpiled test/run_all.sh -j 6` と `CONSH_IMPL=conma CONMA_VM=transpiled consh/test/run_all.sh -j 6`（どれも違いなし）。`CONMA_TRANSPILED_REPORT` で `transpiled code: used` を確かめた。Apple M1、rustc 1.100.0。
-* 次に全部流す人は、transpiled VM を作り直す（vm/conma2rust が変わったので、前の VM は使えない）。
-
 ### m2/rest-read
 
 * ConSh の最適化版で、rest のある変数リストの受け取りの rest を、記録の MSeq から 1 回で作るようにした（`LazyList_from_mseq`）。外部コマンドの出力の行を、塊の 2 つ目からは `__Lines_join__` を通らずに切る（`Pump_whole_lines`）。LazyList 1 つだけの語を、引数のバイト数を数えないときは、評価済みの要素を 1 回でたどって語にする（`Ready_fields`）。consh/include/consh_eval.se と consh_expand.se。consh/test の step6 に case15 を、consh/bench に `22_seq_varlist_read.sh` とその Bash 版を足した。ConSh のモジュールが変わったので、transpiled VM は `bench/build.sh` で作り直してから流す。
@@ -80,6 +74,7 @@ consh/sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-18 | 4d396cb | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/transpiled-build のとおり、transpiled VM を 4d396cb で作り直した（`bench/build.sh` が 11 分 51 秒。ad3044d では 23 分）。`CONMA_TRANSPILED_REPORT` で `transpiled code: used` を確かめた。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | deeff23 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m1/bash-19-20 と m1/consh-start（`consh/bin/consh` が変わった）を含む。transpiled VM は ad3044d で作ったものを使い直した（ad3044d からの差分に vm、include、bin、consh/include、bench、test/transpiled の変更がない）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-18 | m1/docs-index（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/index.md に、どこからもリンクされていなかった docs/dev/ARRAY-PLAN-ja.md と docs/dev/LAZYLIST-PLAN-ja.md へのリンクを足し、ConSh の文書の一覧を新しい docs/consh/index.md に移した（同じくリンクされていなかった docs/consh/dev/COMPILE2-PLAN-ja.md も足した）（docs/index.md の「ConSh」の節は、それへのリンクと ConSh for Bash users へのリンクだけにし、一覧を 1 か所にした）。確かめたこと：2 つのファイルのリンクの先がすべてあること（`consh/web/` は pages.yml が作る）、docs/ の Markdown がすべて 2 つのどちらかからリンクされていること、Liquid の開き括弧がないこと。Jekyll は動かしていない |
 | 2026-11-18 | ad3044d | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。前の 2 回にあった `CONSH_IMPL=rust` の consh/test の step2 の case20 の違いは、m1/case20-rust で消えた。申し送りの m1/compile2-argmax と m1/compile2-pump の、流していなかった組み合わせ（transpiled VM）も通った。transpiled VM は ad3044d で作り直したもの（23 分）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
