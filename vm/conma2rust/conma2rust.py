@@ -1362,7 +1362,37 @@ def main():
         except (IndexError, ValueError, UnicodeDecodeError) as e:
             print(f"conma2rust.py: {path}: not a module ({e!r}); skipped", file=sys.stderr)
     out.append("pub static MODULES: &[Module] = &[" + ", ".join(modules) + "];")
-    Path(sys.argv[1]).write_text("\n".join(out) + "\n")
+    Path(sys.argv[1]).write_text("\n".join(chunked(out)) + "\n")
+
+
+# rustc puts the code of a Rust module into one codegen unit, which LLVM optimizes on one thread: the
+# functions go into modules of about CHUNK bytes each (c0, c1, ...), whose names the module of the
+# generated code takes in with `pub use`, so that LLVM optimizes them in parallel.
+CHUNK = 1_000_000
+
+
+def chunked(out):
+    res, chunk, size = [], [], 0
+
+    def flush():
+        nonlocal chunk, size
+        if chunk:
+            k = sum(1 for line in res if line.startswith("pub mod c"))
+            res.append(f"pub mod c{k} {{ use super::*;")
+            res.extend(chunk)
+            res.append(f"}} pub use c{k}::*;")
+        chunk, size = [], 0
+    for line in out:
+        if line.startswith("fn "):
+            chunk.append("pub " + line)
+            size += len(line)
+            if size >= CHUNK:
+                flush()
+        else:
+            flush()
+            res.append(line)
+    flush()
+    return res
 
 
 if __name__ == "__main__":

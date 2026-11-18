@@ -17,7 +17,7 @@
 
 * ブランチを切り替えたり pull したりすると、ソースの時刻が変わる。VM がソースより古いと `consh/bin/consh` が警告を出すので、作り直してから流す。
 * wasm 版は、`vm/src` か `vm/wasm` を変えたら `consh/js/build.sh` で作り直す。古いまま流すと、VM の出すメッセージが古く、ログと違う（2026-11-15 に、名前を変える前の wasm 版で test/fast1 が違った）。
-* 変換版の VM は、前に作ったときから、モジュールと VM に関わるファイルが変わっていなければ、作り直さずに使ってよい（2026-11-18。作り直しに、Apple M4 で約 28 分かかる）。前に作ったときのコミットを覚えておき（記録の行に「変換版の VM は 1a2b3c4 で作ったもの」と書く）、次が何も出さないことで見る：`git diff --stat 1a2b3c4 HEAD -- vm include bin consh/include bench test/transpiled`（VM と変換器、標準ライブラリ、フロントエンド、ConSh の最適化版、bench/ と test/transpiled のモジュール）。そのうえで、ConSh のモジュールに変換したコードが使われることを、`CONMA_VM=transpiled CONMA_TRANSPILED_REPORT=1 consh/bin/consh` で（`transpiled code: used`）確かめる。rustc を新しくしたときと、`CONMA_BENCH_REFERENCE=1` で参照版も入れて流すときは、作り直す。
+* 変換版の VM は、前に作ったときから、モジュールと VM に関わるファイルが変わっていなければ、作り直さずに使ってよい（2026-11-18。作り直しに、Apple M1 で約 18 分かかる。m1/transpiled-build で、変換したコードを Rust のモジュールに分けて LLVM が並べて最適化できるようにするまでは、M4 で約 28 分、M1 で約 40 分かかっていた）。前に作ったときのコミットを覚えておき（記録の行に「変換版の VM は 1a2b3c4 で作ったもの」と書く）、次が何も出さないことで見る：`git diff --stat 1a2b3c4 HEAD -- vm include bin consh/include bench test/transpiled`（VM と変換器、標準ライブラリ、フロントエンド、ConSh の最適化版、bench/ と test/transpiled のモジュール）。そのうえで、ConSh のモジュールに変換したコードが使われることを、`CONMA_VM=transpiled CONMA_TRANSPILED_REPORT=1 consh/bin/consh` で（`transpiled code: used`）確かめる。rustc を新しくしたときと、`CONMA_BENCH_REFERENCE=1` で参照版も入れて流すときは、作り直す。
 * 変換版の VM には、`bench/build.sh` を動かしたときにキャッシュのディレクトリ（`bin/cache-dir`）にある ConSh のモジュールが組み込まれる。ConSh のテストを変換版の VM で流すときは、先に Rust VM で consh/test を流してモジュールを作っておき、それから `bench/build.sh` を動かす。
 
 ### 全部流す
@@ -65,6 +65,12 @@ consh/sjs/test/run_all.sh
 * `consh/bin/consh` は、Rust 版（consh-rs）がなくて ConMa 版で実行するとき、どの VM で動かすか（`CONMA_VM`、既定は rust）と、ずっと遅いことも出すようにした。`CONMA_VM` がなく、Rust 版の VM もなければ、前は「consh-rs がない」と「Rust 版の VM がない（`CONMA_VM=python` にせよ）」の 2 つを出して止まっていたが、Rust 版を作るように 1 つだけ出して止める（終了コード 2）。
 * README.md の「Try it」に、ConMa 版がループなどで Bash より遅いこと（consh/bench の多くで 3〜10 倍）、transpiled VM で約 2 倍速くなること、シェルとして使うなら Rust 版を作って `CONSH_IMPL` なしで `consh/bin/consh` を動かすことを足した。consh/README-ja.md、docs/consh/RUNNING-ja.md、docs/consh/FOR-BASH-USERS.md も合わせた。FOR-BASH-USERS.md の、ConMa 版の VM の既定が Python 版の VM だという古い記述も直した。
 * 流したもの：consh-rs と Rust 版の VM を一時的に退けて、4 つの場合（consh-rs だけない、`CONMA_VM=transpiled`、両方ない、両方なくて `CONMA_VM=python`）の出力と終了コード。`CONSH_IMPL=rust consh/test/run_all.sh -j 6` と `CONMA_VM=rust consh/test/run_all.sh -j 6`（Rust 版の ConSh の examples の既知の違いだけ）。Apple M1。
+
+### m1/transpiled-build
+
+* `vm/conma2rust/conma2rust.py` は、変換したコードの関数を約 1 MB ずつの Rust のモジュール（`c0`、`c1`、…）に入れて、`pub use` で取り込むようにした。rustc はモジュールごとに codegen unit を作るので、前は全部が 1 つの unit になり、LLVM がほぼ 1 コアで最適化していた。同じコード（bench、test/transpiled、ConSh の最適化版）のビルドが Apple M1 で 43 分から 18 分になり、`bench/build.sh` は 17 分 43 秒だった。速さは変わらない（consh/bench の 8 本で 0.999〜1.022 倍、出力も同じ）。詳しくは vm/README.md の「Modules of the generated code」。
+* 流したもの：作り直した transpiled VM（このブランチのコミットの内容で `bench/build.sh` で作ったもの）で `CONMA_VM=transpiled test/run_all.sh -j 6` と `CONSH_IMPL=conma CONMA_VM=transpiled consh/test/run_all.sh -j 6`（どれも違いなし）。`CONMA_TRANSPILED_REPORT` で `transpiled code: used` を確かめた。Apple M1、rustc 1.100.0。
+* 次に全部流す人は、transpiled VM を作り直す（vm/conma2rust が変わったので、前の VM は使えない）。
 
 ## 記録
 
