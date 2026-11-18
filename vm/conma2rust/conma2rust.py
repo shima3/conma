@@ -85,6 +85,13 @@ IFS = {"__if_then_else__": 3, "__if__": 2, "__unless__": 2}
 # __Number_fromString__ of a String written in place whose text is a Number: an f64
 # constant in fused chains (an experiment); off with CONMA2RUST_NO_FOLD=1.
 FOLD_NUMBERS = not os.environ.get("CONMA2RUST_NO_FOLD")
+
+# With CONMA2RUST_COMPACT set to a non-empty value, the LVEnv made where a fused chain hands the VProc
+# back is written in a shorter form (lv_build_c, without the names of the variables, which lv_build
+# does not use), which does the same: the code is about a fifth smaller and the transpiled VM builds
+# about a sixth faster, but its code is laid out otherwise, and ConSh ran up to 2% slower (the
+# benchmarks of bench/ 1 to 4% faster; vm/README.md). For a build that is not timed (tests).
+COMPACT = bool(os.environ.get("CONMA2RUST_COMPACT"))
 # The escape continuation of `__Cont_get__ ,(return)` (outside clauses) is not made: the chain keeps the
 # CChain it would have (a Rust variable), `return v ...` returns the values as `__NULL__ v ...` at the top of
 # the chain would, and the continuation is made (once) only where it is used as a value (an operand, an
@@ -692,8 +699,19 @@ class Fuser:
             names = ", ".join(f"({l[0]}, {l[1]})" for i, l in items)
             vals = ", ".join(val(i, l) for i, l in items)
             return f"let e = lv_build(t, e, &[{names}], [{vals}]); "
+
+        def compact(base, items):
+            # the same, shorter (COMPACT): lv_build_c(base, [values]), or the LVEnv base if none
+            if not items:
+                return base
+            return f"lv_build_c({base}, [{', '.join(val(i, l) for i, l in items)}])"
         hp = ctx["hp"]
         items = list(enumerate(locals_))
+        if COMPACT:
+            if hp == 0:
+                return compact(f"{E}.clone()", items)
+            head = f"match &full {{ Some(f) => f.clone(), None => {compact(f'{E}.clone()', items[:hp])} }}"
+            return compact(head, items[hp:])
         if hp == 0:
             return f"{{ let e = {E}.clone(); {pushes(items)}e }}"
         return (f"{{ let e = match &full {{ Some(f) => f.clone(), None => {{ let e = {E}.clone(); {pushes(items[:hp])}e }} }}; "

@@ -1366,6 +1366,16 @@ pub fn lv_build<const N: usize>(t: &Table, mut e: LVEnv, names: &[(usize, usize)
     e
 }
 
+/// lv_build without the names, which it does not use: the shorter code of
+/// CONMA2RUST_COMPACT (vm/conma2rust/conma2rust.py).
+#[inline(never)]
+pub fn lv_build_c<const N: usize>(mut e: LVEnv, vals: [Value; N]) -> LVEnv {
+    for v in vals {
+        e = lv_push(&e, v);
+    }
+    e
+}
+
 pub fn lv_skip(env: &LVEnv, n: usize) -> LVEnv {
     let mut e = env;
     for _ in 0..n {
