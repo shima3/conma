@@ -563,13 +563,40 @@
   __Ref_new__ __NULL__ ,(front)
   __Number_fromString__ __print_exit_error__ "0" ,(zero)
   Subst_lines_from stream never front __FALSE__ "" zero "" ,(lines)
-  Target_pump_lines sh target lines)
+  Target_line_writer sh target ,(emit)
+  Target_pump_lines emit lines)
 
-(define Target_pump_lines ,(sh target lines)
+(define Target_pump_lines ,(emit lines)
   __Cont_get__ ,(return)
   __LazyList_uncons__ (,() return) lines ,(line rest)
-  Target_write sh __NULL__ target line ,()
-  Target_pump_lines sh target rest)
+  emit line ,()
+  Target_pump_lines emit rest)
+
+;; 外部コマンドの出力の行を target に書く関数（Target_write sh __NULL__ target line と同じことをする）
+;; 最適化版：target が rest のある変数リストの受け取りで、& の遅延がないとき（Capture_put は、どの要素も Capture_add で
+;; 加え、Bg_spec_add は何もしない）は、記録の MSeq に直接加えて数を増やす関数にする。ターゲットの種類と記録は、
+;; 行ごとではなく、ここで 1 回だけ調べる
+(define Target_line_writer ,(sh target)
+  Target_split target ,(kind id value)
+  __String_equal__ kind "capture" ,(isCapture)
+  __if_then_else__ isCapture
+    (,()
+      __Dict_lookup_or__ value "hasRest" __print_exit_error__ ,(hasRest)
+      __Dict_lookup_or__ value "spec" __print_exit_error__ ,(spec)
+      __is_null__ spec ,(noSpec)
+      __if_then_else__ hasRest (,() __NULL__ noSpec) (,() __NULL__ __FALSE__))
+    (,() __NULL__ __FALSE__) ,(direct)
+  __if_then_else__ direct
+    (,()
+      __Dict_lookup_or__ value "items" __print_exit_error__ ,(items)
+      __Dict_lookup_or__ value "count" __print_exit_error__ ,(countRef)
+      __Number_fromString__ __print_exit_error__ "1" ,(one)
+      __NULL__ (,(line)
+        __MSeq_append__ __print_exit_error__ items line ,()
+        __Ref_get__ countRef ,(count)
+        __Number_add__ count one ,(count)
+        __Ref_set__ countRef count))
+    (,() __NULL__ (,(line) Target_write sh __NULL__ target line)))
 
 ;; 行末の改行（\n または \r\n）を除く
 (define Line_chomp ,(line)
