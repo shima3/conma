@@ -343,10 +343,35 @@
   Ready_fields value active nullGlob zero ,(front rest)
   __is_null__ rest ,(done)
   __if__ done (,() return front __TRUE__) ,()
-  Value_leaves_lazy rest limit ,(leaves)
-  Leaves_fields leaves active nullGlob ,(back)
+  Rest_fields rest limit active nullGlob zero ,(back)
   __LList_append__ front back ,(fields)
   __NULL__ fields __TRUE__)
+
+;; Ready_fields で残った LazyList rest の語の LList。先頭を評価し（ここで評価しなくても Value_leaves_lazy が評価する）、
+;; その要素が String なら、評価済みの続きを Ready_fields で 1 回でたどる。サンク 1 つで残り全体を作る LazyList
+;; （Capture_assign_rest の rest）も、評価した後は近道を通る。そうでなければ Value_leaves_lazy と Leaves_fields
+(define Rest_fields ,(rest limit active nullGlob zero)
+  __LazyList_force__ rest ,(cell)
+  __type_name__ cell ,(cellType)
+  __String_equal__ cellType "LList" ,(isCell)
+  __if_then_else__ isCell
+    (,()
+      __LList_uncons__ __print_exit_error__ cell ,(item tail)
+      __type_name__ item ,(type)
+      __String_equal__ type "String")
+    (,() __NULL__ __FALSE__) ,(ready)
+  __if_then_else__ ready
+    (,()
+      Ready_fields rest active nullGlob zero ,(front more)
+      __is_null__ more ,(done)
+      __if_then_else__ done
+        (,() __NULL__ front)
+        (,()
+          Rest_fields more limit active nullGlob zero ,(back)
+          __LList_append__ front back))
+    (,()
+      Value_leaves_lazy rest limit ,(leaves)
+      Leaves_fields leaves active nullGlob))
 
 ;; limit が引数のバイト数を数えるか（Arg_limit_new。Limit_guard と null は数えない）
 (define Limit_counts ,(limit)

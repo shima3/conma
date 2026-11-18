@@ -19,4 +19,11 @@ v=2
 v=3
 v=4
 [2][3]
+rest=gone
+c=5
+c=6
+r=5
+r=6
+f x=5 y=6
+q=5 6
 exit: 0
