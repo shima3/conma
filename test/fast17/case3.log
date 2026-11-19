@@ -1,0 +1,4 @@
+translate exit: 0
+1
+case3.calc:4:9: division by zero
+exit: 2

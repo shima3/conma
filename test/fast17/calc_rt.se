@@ -1,0 +1,21 @@
+;; 電卓の言語 calc（test/fast17/calc.se）の実行時の支え。言語キットのエラーの部品（include/lang/error.se）を使う
+(include "util.se")
+(include "lang/error.se")
+
+;; 数か文字列を 1 行に出す
+(define Calc_print ,(v)
+  __type_name__ v ,(t)
+  __String_equal__ t "Number" ,(isNum)
+  __if_then_else__ isNum (,() __Number_toString__ v) (,() __NULL__ v) ,(s)
+  __String_concat__ s "\n" ,(line)
+  __OS_print__ line)
+
+(define Calc_neg ,(v)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_subtract__ zero v)
+
+;; a / b。b が 0 なら、その / の位置（SInfo の ":calc"）を付けて「division by zero」で終える
+(define Calc_div ,(a b)
+  __Number_is_zero__ b ,(zero)
+  __if__ zero (,() Kit_err_pos ":calc" ,(pos) Kit_err_report pos "calc: " "division by zero") ,()
+  __Number_divide__ __print_exit_error__ a b)
