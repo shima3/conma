@@ -1,0 +1,53 @@
+#!/bin/bash
+# bin/lang: ConMa に変換する言語のプログラムを、変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4。言語キット）。
+#   bin/lang [--emit] 言語のディレクトリ ファイル
+# 言語のディレクトリ（sjs、conjs など）の lang.conf に、言語の名前（name）、変換器（translator。ディレクトリからの相対パス）、
+# include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）を「名前=値」の行で書く（# で始まる行は飛ばす。
+# シェルとしては読まない）。変換器のモジュールは、ソースか VM（フロントエンドを持つ）が新しくなったときだけ作り直し、
+# bin/cache-dir の場所に「name」c.module.se として置く（作るのに数秒かかる）。一時ファイルに作ってから mv で置き換えるので、
+# 同時に動く bin/lang が作りかけのモジュールを読むことはない。変換は Rust 版の VM（vm/target/release/conma）で行う。
+# --emit なら、変換した ConMa のソースを出して終える。そうでなければ、CONMA_VM の VM で動かす：なし（Rust 版）、
+# wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。transpiled は Rust 版で動かす（変換器のモジュールのため）
+root="$(cd "$(dirname "$0")/.."; pwd)"
+conma="$root/vm/target/release/conma"
+emit=
+if [ "$1" = --emit ]; then emit=yes; shift; fi
+if [ $# -ne 2 ]; then echo "usage: lang [--emit] language-directory file" >&2; exit 2; fi
+dir="$(cd "$1" && pwd)" || exit 2
+file="$2"
+name= translator= include=
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    ''|'#'*) ;;
+    name=*) name="${line#name=}" ;;
+    translator=*) translator="${line#translator=}" ;;
+    include=*) include="${line#include=}" ;;
+    ext=*) ;;   # ファイルの拡張子（bin/lang-test が読む）
+    *) echo "lang: $dir/lang.conf: unknown line: $line" >&2; exit 2 ;;
+  esac
+done < "$dir/lang.conf" || exit 2
+if [ -z "$name" ] || [ -z "$translator" ]; then echo "lang: $dir/lang.conf needs name and translator" >&2; exit 2; fi
+inc=() dirs=()
+for d in $include; do inc+=(--include "$root/$d"); dirs+=("$root/$d"); done
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+module="$("$root/bin/cache-dir")/${name}c.module.se" || exit 1
+if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" "$dir/$translator" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+   [ "$conma" -nt "$module" ]; then
+  module_tmp=$(mktemp "$module.XXXXXX") || exit 1
+  if ! "$conma" build "${inc[@]}" "$dir/$translator" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
+  mv -f "$module_tmp" "$module" || { rm -f "$module_tmp"; exit 1; }
+fi
+"$conma" --main "$module" "$file" > "$tmp/prog.se" || exit $?
+if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
+case "$CONMA_VM" in
+  wasm)
+    "$conma" build "${inc[@]}" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
+    exec "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se" ;;
+  python)
+    "$conma" build "${inc[@]}" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
+    exec "$root/bin/vm" --main "$tmp/prog.module.se" ;;
+  ''|rust|transpiled)
+    exec "$conma" run "${inc[@]}" "$tmp/prog.se" ;;
+  *) echo "lang: CONMA_VM must be empty, rust, wasm or python, not \"$CONMA_VM\"" >&2; exit 2 ;;
+esac

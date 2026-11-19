@@ -1,0 +1,32 @@
+#!/bin/bash
+# bin/lang-test: ConMa に変換する言語のテストの 1 つのステップを流す（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4。言語キット）。
+#   bin/lang-test 言語のディレクトリ ステップのディレクトリ
+# ステップのディレクトリの case*「ext」（言語のディレクトリの lang.conf の ext。.con.js など）を bin/lang で変換して動かし、
+# 出力と終了ステータスを case*.log と比べる（diff の出力がなければ成功）。VM は CONMA_VM（なし：Rust 版、wasm、python）。
+# VM ごとに違うログは case*.$CONMA_VM.log に置く。case*.host.js があれば、wasm 版の VM のホストの関数（CONMA_HOST）にする。
+# 標準エラーは、標準出力の後に続ける（Python 版の VM は、ファイルへの標準出力をためてから出すので、混ぜると順が VM で違う）
+root="$(cd "$(dirname "$0")/.."; pwd)"
+if [ $# -ne 2 ]; then echo "usage: lang-test language-directory step-directory" >&2; exit 2; fi
+lang="$(cd "$1" && pwd)" || exit 2
+ext="$(sed -n 's/^ext=//p' "$lang/lang.conf")"
+if [ -z "$ext" ]; then echo "lang-test: $lang/lang.conf has no ext" >&2; exit 2; fi
+step="$2"
+cd "$step" || exit 1
+out=${TMPDIR:-/tmp}/lang-test-$$.log
+err=${TMPDIR:-/tmp}/lang-test-$$.err
+for f in case*"$ext"
+do
+  c=${f%"$ext"}
+  expected=$c.log
+  [ -n "$CONMA_VM" ] && [ -f $c.$CONMA_VM.log ] && expected=$c.$CONMA_VM.log
+  if [ -f $c.host.js ]; then
+    CONMA_HOST=$PWD/$c.host.js "$root/bin/lang" "$lang" $f > $out 2> $err < /dev/null
+  else
+    "$root/bin/lang" "$lang" $f > $out 2> $err < /dev/null
+  fi
+  status=$?
+  cat $err >> $out
+  echo "exit: $status" >> $out
+  diff $expected $out || echo "^ $step/$c (${CONMA_VM:-rust})"
+done
+rm -f $out $err
