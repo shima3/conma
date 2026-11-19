@@ -1,7 +1,7 @@
 ;; SJS のビット演算（& | ^ ~ << >> >>>）：拡張 ConMa のプリミティブ（機能 "bitwise32"。docs/dev/BITWISE-PLAN-ja.md）。
 ;; 意味は JavaScript と同じ 32 ビット（ToInt32、シフトの量は下 5 ビット）で、プリミティブがそのまま求める。被演算子が
 ;; 数でなければ、段階 A と同じ TypeError（Sjs_need2、Sjs_need。sjs_rt.se）。
-;; コア ConMa で作るとき（ConSh の参照版）は、consh/include/core/sjs_bits.se が、include/core/bitwise32.se（7 つをコア ConMa の
+;; コア ConMa で作るとき（ConSh の参照版）は、sjs/include/core/sjs_bits.se が、include/core/bitwise32.se（7 つをコア ConMa の
 ;; 関数として定義する）を読んでから、このファイルを読む。sjs_rt.se が include する
 
 (define Sjs_band ,(a b) Sjs_need2 "&" a b ,() __Number_and32__ a b)

@@ -1,5 +1,5 @@
 ;; SJS のビット演算（& | ^ ~ << >> >>>）の、コア ConMa の版。最適化版（../sjs_bits.se）は、拡張 ConMa のプリミティブ
-;; __Number_and32__ などを呼ぶ。コア ConMa で作るとき（ConSh の参照版。consh/bin/consh は、consh/include/core を
+;; __Number_and32__ などを呼ぶ。コア ConMa で作るとき（ConSh の参照版。consh/bin/consh は、sjs/include/core を
 ;; consh/include より先に探す）は、このファイルが代わりに使われ、標準ライブラリの bitwise32.se（include/core。7 つを
 ;; 同じ名前のコア ConMa の関数として定義する。JavaScript と同じ 32 ビット）を読んでから、../sjs_bits.se をそのまま読む。
 ;; 名前に定義があるので、プリミティブは使われず、モジュールはコア ConMa のまま（Uses なし）になる

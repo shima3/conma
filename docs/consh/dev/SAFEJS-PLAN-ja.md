@@ -2,7 +2,7 @@
 
 JavaScript の安全なサブセット（以下 SJS。SafeJS）を、ConSh の算術評価 `(( ))` と算術置換 `$(( ))` の中に書けるようにする計画である。2026/11/9 に書き、2026/11/11 に、ユーザーと決めた `(( ))` の仕様（2）に合わせて書き直した。
 
-**状態（2026-11-12 に一区切り）**：段階 A（ホストの JavaScript で動かす）と、段階 B（ConMa に変換して VM の中で動かす。今の既定）の B1〜B7 と B9 を作り、B8 は作らないと決めた（6）。ブラウザ版では、`js` を使わないとき、Content-Security-Policy で `eval` と `Function` を止める（5）。今の SJS の説明（書けるもの、JavaScript との違い、エラーの位置、速さ）は consh/sjs/README-ja.md、ConSh での使い方は consh/js/README-ja.md、Bash との違いは docs/consh/FOR-BASH-USERS.md。残っていることは 8 にまとめた。段階ごとの経緯は 6 の表と、consh/sjs/README-ja.md の「経緯」、docs/consh/dev/JS-PLAN-ja.md の 3.23〜3.30。
+**状態（2026-11-12 に一区切り）**：段階 A（ホストの JavaScript で動かす）と、段階 B（ConMa に変換して VM の中で動かす。今の既定）の B1〜B7 と B9 を作り、B8 は作らないと決めた（6）。ブラウザ版では、`js` を使わないとき、Content-Security-Policy で `eval` と `Function` を止める（5）。今の SJS の説明（書けるもの、JavaScript との違い、エラーの位置、速さ）は sjs/README-ja.md、ConSh での使い方は consh/js/README-ja.md、Bash との違いは docs/consh/FOR-BASH-USERS.md。残っていることは 8 にまとめた。段階ごとの経緯は 6 の表と、sjs/README-ja.md の「経緯」、docs/consh/dev/JS-PLAN-ja.md の 3.23〜3.30。
 
 ## 1. 目的
 
@@ -192,7 +192,7 @@ SJS は `(( ))` の中にだけ書くので、JavaScript の文法をそのま�
 | `console.log` | ConSh が渡す出力の関数を呼ぶ |
 
 - 名前：SJS の識別子は、ConMa の名前と重ならないように、前に印を付ける（`js_x` など）。利用者は `__OS_open__` のようなプリミティブの名前を書けない。
-- 実行時の支え：値の型を確かめる関数、演算、組み込みのメソッドは、ConMa で書いたライブラリ（たとえば `consh/include/sjs_rt.se`）にまとめる。
+- 実行時の支え：値の型を確かめる関数、演算、組み込みのメソッドは、ConMa で書いたライブラリ（たとえば `consh/include/sjs_rt.se`（2026-11-19 に sjs/include/sjs_rt.se へ移動））にまとめる。
 - エラーの位置：生成する ConMa のソースは、SJS の 1 つの文を 1 か所にまとめ、SJS の行と桁を、実行時のエラーに出せるようにする。どこまでできるかを測る（REVIEW の 1）。
 - 動かし方：変換したソースをモジュールにする。ネイティブ版は `conma build`（VM に埋め込んだ ConMa の front end）、Node.js の wasm 版は `host_build_module`（docs/consh/dev/JS-PLAN-ja.md の 3.10）を使う。ブラウザ版は、ページか Worker で、もう 1 つの VM のインスタンスに `vm/frontend.module.se` を動かす（段階 B6 で作った。consh/js/web/consh-core.js の `buildModule`）。同じコードを何度も動かすときのために、変換とモジュールを、コードの文字列で覚えておく。
 
@@ -209,7 +209,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 * 変換したコードの SInfo は、変換した ConMa のソース（1 つの関数が 1 行の長いソース）の位置で、SJS を書いた人には使えない。
 * そのため、変換器が文ごとに `Sjs_line "4" ,()` を出し、PDict の `"sjs_line"` に文の行を書く。呼び出しの後にも書き直す（`Gen_line_again`）。受け手のない例外は、この行を `sjs: line 4: TypeError: ...` の形で出す（`Sjs_uncaught`）。
 * 限界：桁がない。複数の行にまたがる文は、文の始めの行になる。ConSh の `(( ))` では、`(( ))` の位置だけを出し、中の行は出さない。
-* 費用：`Sjs_line` の関数だけで、consh/sjs/bench の loop（20000）の 4.6%、fib（15）の 4.0%、nbody（200）の 1.3% のステップになる（CONMA_PROFILE）。呼ぶ側のステップは別にかかる。
+* 費用：`Sjs_line` の関数だけで、consh/sjs/bench（2026-11-19 に sjs/bench へ移動） の loop（20000）の 4.6%、fib（15）の 4.0%、nbody（200）の 1.3% のステップになる（CONMA_PROFILE）。呼ぶ側のステップは別にかかる。
 
 **ConMa にあるもの**（確かめた）
 
@@ -233,18 +233,18 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 
 * **ConSh の `(( ))` の位置**（ユーザーと決めた）：`(( ))` のモジュールは、コードの文字列ごとに覚えて使い回す（4.2）。同じコードが別の場所にあっても使い回せるように、SInfo には、コードの中の行と桁と、SJS であることを示す決まったファイル名を書く。ConSh は、受け手のない例外を受け取るとき（`"sjs_fail"`）に、`(( ))` の位置を足して、スクリプトのファイル、行、桁にする。
 * **大きさ**：Body ごとに SInfo を付けると、変換したソースとモジュールが大きくなる（B7 では、SJS の 1 行が ConMa の約 200 バイト）。増え方を測る。大きすぎれば、失敗しうる Body にだけ付けるかを考える。ただし、SInfo のない Body には、フロントエンドが変換した ConMa の位置を入れるので、その Body で起きた VM のエラーは、変換した ConMa の位置で出る。
-* **段階 A と比べるテスト**：consh/sjs/test/compare.sh は、エラーの行の前置きを除いて段階 A（ホストの JavaScript）と比べている。前置きの形が変わるので、合わせて直す。
+* **段階 A と比べるテスト**：consh/sjs/test/compare.sh（2026-11-19 に sjs/test/compare.sh へ移動） は、エラーの行の前置きを除いて段階 A（ホストの JavaScript）と比べている。前置きの形が変わるので、合わせて直す。
 
 **確かめ方**
 
-* consh/sjs/test の step3 のログを、行と桁の入った形に直す。次の場合を足す。
+* consh/sjs/test（2026-11-19 に sjs/test へ移動） の step3 のログを、行と桁の入った形に直す。次の場合を足す。
     * 複数の行にまたがる式の中のエラー
     * 呼び出しから戻った後の式のエラー
     * 入れ子の関数の中のエラー
     * 末尾の `throw`
     * ジェネレータと `async` の中の受け手のない例外
 * consh/test の step21 に、ConSh の `(( ))` の中のエラーの位置（スクリプトの行と桁）を足す。ネイティブ版と、Node.js の wasm 版で確かめる。
-* consh/sjs/bench で、ステップの数、時間、変換したソースとモジュールの大きさを、変える前と比べる。
+* consh/sjs/bench（2026-11-19 に sjs/bench へ移動） で、ステップの数、時間、変換したソースとモジュールの大きさを、変える前と比べる。
 
 **作ったもの**（2026-11-12）
 
@@ -252,7 +252,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 * **変換器**：実行時の支えを呼ぶ Body の前に、印としてタブを置いて出す（`Gen_quote` はタブを `\t` にするので、変換したコードに素のタブは出ない）。`Gen_expr` と `Gen_stmt` は、自分の手順に残った印を `(__SInfo__ ファイル 行 桁 "sjs")` にする（`Gen_sinfo_fill`）。子の式が先に入れるので、呼び出しは、それを作ったいちばん内側の式の位置になる。最後に残った印は消す。`Sjs_line` と `Gen_line_again` はなくした。実行時の支えを呼ばない Body（プリミティブだけ）には付けない（フロントエンドが、変換した ConMa の位置を入れる）。
 * **受け手のない例外**：`Sjs_raise` は、投げるときに CChain の CFrame を上から調べ、SInfo が `"sjs"` で終わるいちばん上のものの位置を PDict の `"sjs_pos"` に置く（`Sjs_raise_pos`。CFrame を取り出して調べ、`__CChain_set__` で元に戻す）。finally の後とジェネレータの境で投げ直すときと、内部の印は `Sjs_reraise` で、位置を変えない。catch が受けると位置を消す。`Sjs_uncaught` は `ファイル:行:桁: メッセージ` の形で出す。こうしたので、末尾の `throw`（4）も、`Sjs_raise` を LCont 付きで呼ぶので位置が残り、引数で渡す必要はなかった。
 * **ConSh**：`(( ))` のモジュールの SInfo のファイル名は `sjs-コードのハッシュ`。`Sjsb_eval` が、ファイル名ごとに、そのコードの始まりの位置（`((` の 2 文字後）を覚え（"places"）、受け手のない例外の位置（コードの中の行と桁）を足してスクリプトの行と桁にする（`Sjsb_map_pos`。1 行目は桁も足す）。エラーを出す所（`Eval_arith_run`、`Sjs_abort`、`Sjsb_call`）は、`Sjs_fail_pos` でその位置を使う。SJS関数をコマンドとして呼んだときも、関数を作った `(( ))` の中の位置になる。同じコードが別の場所にもあれば、最後に動かした場所になる。
-* **エラーのオブジェクトと Promise の拒否**（同じ日に足した）：実行時のエラーのオブジェクトは、作った所の位置を隠して持つ（`Sjs_throw`）。受け手のない Promise の拒否は、Node.js と同じく、エラーのオブジェクトなら作った所の位置を出し、ほかの値なら、拒否のもとになった `throw` の位置（async 関数の本体など）を出す（`Sjs_promise_reject` が Promise に覚える。`"sjs_pos"` は使ったら消すので、`Promise.reject(値)` のように投げずに拒否したものは、前の例外の位置を出さずに `sjs: ` になる）。catch したエラーを後で投げたときは、Node.js と同じく投げた所。consh/sjs/test の step3 の case10 と step5 の case4、case5 で確かめる。
+* **エラーのオブジェクトと Promise の拒否**（同じ日に足した）：実行時のエラーのオブジェクトは、作った所の位置を隠して持つ（`Sjs_throw`）。受け手のない Promise の拒否は、Node.js と同じく、エラーのオブジェクトなら作った所の位置を出し、ほかの値なら、拒否のもとになった `throw` の位置（async 関数の本体など）を出す（`Sjs_promise_reject` が Promise に覚える。`"sjs_pos"` は使ったら消すので、`Promise.reject(値)` のように投げずに拒否したものは、前の例外の位置を出さずに `sjs: ` になる）。catch したエラーを後で投げたときは、Node.js と同じく投げた所。consh/sjs/test（2026-11-19 に sjs/test へ移動） の step3 の case10 と step5 の case4、case5 で確かめる。
 * **VM**：`CONMA_PROFILE` の出力は、SInfo の先頭の 3 つだけを書くようにした（vm/src/profile.rs。4 番目の `"sjs"` で test/vm_profile.py（2026-11-15 に vm/tools/vm_profile.py へ移動） が読めなくなったため）。
 * **結果**（Rust 版の VM、66e40e4 と比べた。5 回の最良）：
 
@@ -263,7 +263,7 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 | nbody 2000 | 1.398 秒（1 回の刻みに 16,933） | 1.225 秒（16,188） |
 
   変換したソースは 8〜30% 大きくなった（nbody 23,655 バイトから 30,853 バイト）が、モジュールの大きさはほぼ同じ（nbody 1,551,310 バイトから 1,513,498 バイト、loop と fib は 0.2% 以内。フロントエンドは、明示の SInfo のない Body にも位置を入れるので）。変換の時間は nbody で 0.214 秒から 0.238 秒。
-* **確かめたこと**：consh/sjs/test の step3 に case5〜case9（複数の行にまたがる式、呼び出しから戻った後の式、入れ子の関数、finally を通った例外、ジェネレータと await の後）を足し、位置が Node.js と同じ行と桁であることを確かめた。ほかの step のログの位置も、Node.js が位置を出すものは同じ。consh/test の step21 に case8（(( )) の中、複数の行の (( )) で作った関数をコマンドとして呼んだとき、同じコードの別の場所、語の中の `$(( ))`）を足した。ネイティブ版と、Node.js の wasm 版で同じ。consh/test の step21 と consh/js/test の step6 のログは、位置だけが変わった。compare.sh は新しい前置きを除くようにした。
+* **確かめたこと**：consh/sjs/test（2026-11-19 に sjs/test へ移動） の step3 に case5〜case9（複数の行にまたがる式、呼び出しから戻った後の式、入れ子の関数、finally を通った例外、ジェネレータと await の後）を足し、位置が Node.js と同じ行と桁であることを確かめた。ほかの step のログの位置も、Node.js が位置を出すものは同じ。consh/test の step21 に case8（(( )) の中、複数の行の (( )) で作った関数をコマンドとして呼んだとき、同じコードの別の場所、語の中の `$(( ))`）を足した。ネイティブ版と、Node.js の wasm 版で同じ。consh/test の step21 と consh/js/test の step6 のログは、位置だけが変わった。compare.sh は新しい前置きを除くようにした。
 
 ## 5. 安全性
 
@@ -281,23 +281,23 @@ ConMa の SInfo は、もともと、ConMa に変換する前の言語の位置�
 | A1（作った） | `(( ))` と `$(( ))` の構文解析と、ホストの JavaScript での評価。SJS変数とその写し、`$?` の規則、語の中の値と文字列の連結、範囲の確認（3.2）。docs/consh/dev/JS-PLAN-ja.md の 3.23 | consh/js/test に `(( ))` のテスト（Node.js の wasm 版）。範囲の外のコードがエラーになること |
 | A2（作った） | SJS関数の呼び出し（先頭の語）。引数、戻り値を標準エラーに出すこと、呼び出したときの SJS変数。`$名前` でシェル変数を読むこと（2.2 の 7）と演算の型の確認（3.1。A1 の後に決めた。式の構文解析器が要る）。docs/consh/dev/JS-PLAN-ja.md の 3.24、3.25 | 同上。`2> (c)`、`2>&1 \| g`、`$f` の呼び出し |
 | A3（作った。docs/consh/dev/JS-PLAN-ja.md の 3.26） | 今の JS の文を消し、consh/js/test、consh/js/README-ja.md、docs/consh/dev/JS-PLAN-ja.md の 2.5 を直す。ブラウザ版で確かめる | consh/js/test が通ること。ブラウザで `(( ))` が動くこと |
-| B1（作った。consh/sjs/README-ja.md） | 変換器の土台：数、文字列、真偽値、`let`/`const`、関数とクロージャ、`if`、`while`、`return`、`console.log`。ConMa で書き、ネイティブ版で `conma build` して動かす | 同じコードを段階 A（ホストの JavaScript）で動かした結果と比べるテスト |
-| B2（作った。consh/sjs/README-ja.md） | 配列とオブジェクト（Dict）、`for`、`for...of`、`break`、`continue`、組み込みのメソッドの一部、テンプレート文字列 | 同上。配列の操作の速さを測る（4.2 の 3 の判断） |
-| B3（作った。位置は文の行だけで、桁は B9 で足した。consh/sjs/README-ja.md） | `throw`、`try`/`catch`/`finally`、実行時のエラーと位置 | 例外のテスト。エラーに SJS の行と桁が出ること |
+| B1（作った。sjs/README-ja.md） | 変換器の土台：数、文字列、真偽値、`let`/`const`、関数とクロージャ、`if`、`while`、`return`、`console.log`。ConMa で書き、ネイティブ版で `conma build` して動かす | 同じコードを段階 A（ホストの JavaScript）で動かした結果と比べるテスト |
+| B2（作った。sjs/README-ja.md） | 配列とオブジェクト（Dict）、`for`、`for...of`、`break`、`continue`、組み込みのメソッドの一部、テンプレート文字列 | 同上。配列の操作の速さを測る（4.2 の 3 の判断） |
+| B3（作った。位置は文の行だけで、桁は B9 で足した。sjs/README-ja.md） | `throw`、`try`/`catch`/`finally`、実行時のエラーと位置 | 例外のテスト。エラーに SJS の行と桁が出ること |
 | B4（作った。consh/test/step21） | ConSh の `(( ))` を、変換したコードで動かす（ネイティブ版と Node.js の wasm 版）。SJS変数を ConMa の値にする | consh/test に `(( ))` のテスト（ネイティブ版と wasm 版で同じログ） |
-| B5a（作った。consh/sjs/test/step4、consh/test/step21 の case4） | ジェネレータ（`function*`、`yield`、`yield*`）。シェルの値は LazyList | 段階 A にないので、Node.js の結果と比べる |
-| B5b（作った。consh/sjs/test/step5、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
+| B5a（作った。consh/sjs/test/step4（2026-11-19 に sjs/test/step4 へ移動）、consh/test/step21 の case4） | ジェネレータ（`function*`、`yield`、`yield*`）。シェルの値は LazyList | 段階 A にないので、Node.js の結果と比べる |
+| B5b（作った。consh/sjs/test/step5（2026-11-19 に sjs/test/step5 へ移動）、consh/test/step21 の case5） | `async`/`await`、Promise。マイクロタスクの列を、評価ごとに最後まで動かす（2.2 の 6） | Node.js の結果と比べる（順序も） |
 | B6（作った。docs/consh/dev/JS-PLAN-ja.md の 3.29） | ブラウザ版（ページか Worker で front end を動かす） | ブラウザで `(( ))` が動くこと（`config.json` なしで確かめた） |
-| B7（作った。consh/sjs/bench） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を docs/dev/REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
+| B7（作った。consh/sjs/bench（2026-11-19 に sjs/bench へ移動）） | 測る：生成したコードの大きさ、性能（ホストの JavaScript、手で書いた ConMa と比べて）、エラーの位置の対応。結果を docs/dev/REVIEW-ja.md の 5 への答えとしてまとめる | 表にする |
 | B8（効果が小さいので、作らないと決めた。docs/dev/ROADMAP.md に測った結果、docs/dev/FAST-PLAN-ja.md の 4.4 に決定） | 4.3 の最適化を front end に入れる | test/ と ConSh のテストが通ること。ConSh と SJS の速さを、入れる前と比べる |
-| B9（作った。2026-11-12） | 4.4：変換器が SInfo で SJS の行と桁を示し、`Sjs_line` をなくす。受け手のない例外の位置は CChain から取る | consh/sjs/test の step3 に行と桁。consh/test の step21 に `(( ))` の中の位置。consh/sjs/bench の速さと大きさを、前と比べる |
+| B9（作った。2026-11-12） | 4.4：変換器が SInfo で SJS の行と桁を示し、`Sjs_line` をなくす。受け手のない例外の位置は CChain から取る | consh/sjs/test（2026-11-19 に sjs/test へ移動） の step3 に行と桁。consh/test の step21 に `(( ))` の中の位置。consh/sjs/bench（2026-11-19 に sjs/bench へ移動） の速さと大きさを、前と比べる |
 
 ## 7. 未解決の点とリスク
 
 - **JS の値の寿命（段階 A）**：SJS変数の写しが持つ JS の値を、いつホストの表から消すか（4.1）。今の JS の値と同じく、関数の局所の値は循環の回収まで残る（docs/consh/dev/JS-PLAN-ja.md の 4）。
 - **範囲の確認の抜け道（段階 A）**：5 のとおり、確認は証明にならない。見つかった抜け道は、確認か書き換えに足す。
 - **確認が拒否リストに近い（段階 A）**（SAFEJS-REVIEW-ja.md の 3.3 の 8）：今の確認は、拒否するプロパティ名と、許可する大域の名前を組み合わせている。メソッドの名前も、許可するものだけにすれば（`.call`、`.apply`、`.bind` を含めて決める）、抜け道は減るが、使える書き方も減る。式の構文解析器（4.1）を作るときに、許可リストにするかを決める。
-- **性能**：ConMa の VM はホストの JavaScript よりずっと遅い（変換した VM でも CPython と同じくらい。bench/）。段階 B の SJS は、速さより安全さと検証のためのものとする。2026-11-12 の段階 B は、手で書いた ConMa の 4.8〜9.2 倍のステップ、5.7〜11 倍の時間（nbody 2000 が 1.10 秒。consh/sjs/README-ja.md の「速さ」）。
+- **性能**：ConMa の VM はホストの JavaScript よりずっと遅い（変換した VM でも CPython と同じくらい。bench/）。段階 B の SJS は、速さより安全さと検証のためのものとする。2026-11-12 の段階 B は、手で書いた ConMa の 4.8〜9.2 倍のステップ、5.7〜11 倍の時間（nbody 2000 が 1.10 秒。sjs/README-ja.md の「速さ」）。
 - **数の意味**：ConMa の Number と JavaScript の数（IEEE 754 の倍精度）の違い（整数の扱い、`NaN`、`-0`、文字列への変換）を、どこまで合わせるか。段階 A と段階 B で結果が変わらないようにする必要がある。
 - **文字列**：JavaScript の文字列は UTF-16 の列で、ConMa の String とは長さと添字の意味が違うことがある（サロゲートペア）。
 - **資源の上限**：無限の再帰やメモリの使い過ぎを止める仕組みがない。VProc ごとのステップ数やメモリの上限を、VM に足すかどうか。
@@ -313,7 +313,7 @@ SJS の作業は、ここで一区切りにした。次に手を付けるとき�
 - 戻り値が `undefined` のとき、標準エラーに何か出すか（今は出さない）。
 - 語の中の `$(( ))` のエラーで、スクリプト全体でなく文だけを止めるか（文ごとに止める先を持つ仕組みが要る）。
 
-**言語**（consh/sjs/README-ja.md の「書けないもの、JavaScript との違い」）
+**言語**（sjs/README-ja.md の「書けないもの、JavaScript との違い」）
 
 - 整数でも 0.5 でもない指数の `**` と、`Math` の `exp`、`log`、`sin` など：すべての VM（Python 版、Rust 版、wasm 版）に数のプリミティブが要る（2026-11-11 に「今はしない」と決めた）。
 - 論理の代入（`&&=`、`||=`、`??=`）。字句と構文は読むが、変換しない。

@@ -1,4 +1,4 @@
-// 配列の計画の段階 A3：consh/sjs/bench/nbody.safe.js（N を 100 にしたもの）。offsetMomentum、energy、advance が数の関数になる
+// 配列の計画の段階 A3：sjs/bench/nbody.safe.js（N を 100 にしたもの）。offsetMomentum、energy、advance が数の関数になる
 // nbody: the orbits of the Jovian planets (bench/nbody/nbody.py), each body an array [x, y, z, vx, vy, vz, mass]
 const PI = 3.14159265358979323
 const SOLAR_MASS = 4 * PI * PI

@@ -1,5 +1,5 @@
 #!/bin/bash
-# consh/sjs/bench/run.sh NAME [N [M]]：SJS の段階 B7 の測定（docs/consh/dev/SAFEJS-PLAN-ja.md の 6）。
+# sjs/bench/run.sh NAME [N [M]]：SJS の段階 B7 の測定（docs/consh/dev/SAFEJS-PLAN-ja.md の 6）。
 # NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
 # 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
@@ -11,8 +11,7 @@
 # 遅いもので約 1 分、Apple M1）。出力は、それぞれの大きさの Node.js の出力と比べる
 sjsbench="$(cd "$(dirname "$0")"; pwd)"
 sjs="${sjsbench%/*}"
-consh="${sjs%/*}"
-root="${consh%/*}"
+root="${sjs%/*}"
 conma="$root/vm/target/release/conma"
 name=$1 n=$2 m=${3:-$2}
 if [ -z "$n" ]; then
@@ -20,11 +19,11 @@ if [ -z "$n" ]; then
     loop) n=1000000000 m=25000000 ;;  # 2^30 以上では、wasm 版の VM で数の関数が WebAssembly にならない
     fib) n=40 m=32 ;;
     nbody) n=10000000 m=80000 ;;
-    *) echo "usage: consh/sjs/bench/run.sh NAME [N [M]] (NAME: loop, fib, nbody)" >&2; exit 2 ;;
+    *) echo "usage: sjs/bench/run.sh NAME [N [M]] (NAME: loop, fib, nbody)" >&2; exit 2 ;;
   esac
 fi
 # SJS_INCLUDE で、変換器と実行時の支えのディレクトリを替えられる（前の版と比べるとき）
-inc="${SJS_INCLUDE:-$consh/include}"
+inc="${SJS_INCLUDE:-$sjs/include}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs-bench.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 sed "s/N_ARG/$n/" "$sjsbench/$name.safe.js" > "$tmp/$name.safe.js"

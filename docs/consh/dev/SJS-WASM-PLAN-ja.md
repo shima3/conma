@@ -1,13 +1,13 @@
 # SJS の数の関数を WebAssembly にする計画
 
-SJS（docs/consh/dev/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（vm/wasm）のホストで動かす計画である。2026-11-14 に書いた。
+SJS（docs/consh/dev/SAFEJS-PLAN-ja.md、sjs/README-ja.md）のうち、数だけを扱う関数を WebAssembly（以下 wasm）にして、wasm 版の VM（vm/wasm）のホストで動かす計画である。2026-11-14 に書いた。
 
-**状態**：段階 1〜4 を作った（2026-11-14。段階 1 は docs/dev/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9、段階 3 は 14 と consh/sjs/test/step10、段階 4 は 15 と consh/test/step21 の case9、段階 5 は 16）。計画した段階は、すべて作った。次は配列（9。docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md）。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
+**状態**：段階 1〜4 を作った（2026-11-14。段階 1 は docs/dev/ROADMAP.md の Step 43 と test/fast7、段階 2 は 13 と consh/sjs/test/step9（2026-11-19 に sjs/test/step9 へ移動）、段階 3 は 14 と consh/sjs/test/step10（2026-11-19 に sjs/test/step10 へ移動）、段階 4 は 15 と consh/test/step21 の case9、段階 5 は 16）。計画した段階は、すべて作った。次は配列（9。docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md）。2026-11-14 に、ユーザーと 6 つのことを決めた（10）：最初は数の関数だけを対象にし、後で配列も対象にする（9）。wasm 版を選ぶのは、どのモードでも呼ぶとき（5.2）。SJS の `-0` を JavaScript に合わせる（11。同じ日に作った）。燃料とやり直しの方式（5.5）。`Value::Wasm` を足すこと（5.3）。`__Wasm_compile__` と `__Wasm_call__` を ConMa のプログラムから使えるようにすること（5.3）。決めることは残っていないので、段階 1（8）から作れる。
 
 ## 1. 目的
 
 1. **数の計算を速くする**
-    - 段階 B の SJS は、手で書いた ConMa の 4.8〜9.2 倍のステップがかかる。nbody 2000 は 1.10 秒で、手で書いた ConMa は 0.10 秒、CPython は 0.024 秒である（consh/sjs/README-ja.md の「速さ」、Rust 版の VM）。
+    - 段階 B の SJS は、手で書いた ConMa の 4.8〜9.2 倍のステップがかかる。nbody 2000 は 1.10 秒で、手で書いた ConMa は 0.10 秒、CPython は 0.024 秒である（sjs/README-ja.md の「速さ」、Rust 版の VM）。
     - wasm にした部分は、ホストの JIT（V8、JavaScriptCore）で機械語になる。内側のループと再帰は、ネイティブに近い速さになる見込みである。
 2. **安全なまま速くする**
     - 段階 A（ホストの JavaScript で評価する）なら速いが、安全の境界にならない（SAFEJS-PLAN-ja.md の 5）。
@@ -49,7 +49,7 @@ SJS（docs/consh/dev/SAFEJS-PLAN-ja.md、consh/sjs/README-ja.md）のうち、�
 
 ### 3.3. 例
 
-* consh/sjs/bench/loop.safe.js の `loop`、fib.safe.js の `fib` は、数の関数になる。
+* consh/sjs/bench/loop.safe.js（2026-11-19 に sjs/bench/loop.safe.js へ移動） の `loop`、fib.safe.js の `fib` は、数の関数になる。
 * nbody.safe.js の `advance` と `energy` は、配列（`b[X]`）と `for...of` の分割代入を使うので、数の関数にならない。配列を入れるかどうかは 9 で扱う。
 
 ## 4. ConMa 版と同じ意味にする
@@ -60,7 +60,7 @@ ConMa 版は、11 で JavaScript に合わせた後のものとする。
 |---|---|---|
 | `+ - *` | `__Number_add__` など | `f64.add` など |
 | `/` | `Sjs_div`：JavaScript と同じ（`1 / -0` は `-Infinity`） | `f64.div` |
-| `%` | `Sjs_mod`：割る数が 0 なら `NaN`。割られる数が 0 か、割る数が無限大なら、割られる数。ほかは `a - b * Sjs_trunc(a / b)` で、結果が 0 なら割られる数の符号を付ける（2026-11-14 から、正確な剰余のプリミティブ `__Number_remainder__`。docs/dev/ROADMAP.md の Step 44） | 同じ手順（`f64.div`、`f64.trunc`、`f64.mul`、`f64.sub`、`f64.copysign`）。wasm には f64 の剰余がない。大きな数で下の桁が JavaScript と違うことは、今の ConMa 版と同じ（consh/sjs/README-ja.md）。2026-11-14 から、`$__mod` は、割る数を倍にして引き、半分にすることを繰り返して、正確な剰余を求める |
+| `%` | `Sjs_mod`：割る数が 0 なら `NaN`。割られる数が 0 か、割る数が無限大なら、割られる数。ほかは `a - b * Sjs_trunc(a / b)` で、結果が 0 なら割られる数の符号を付ける（2026-11-14 から、正確な剰余のプリミティブ `__Number_remainder__`。docs/dev/ROADMAP.md の Step 44） | 同じ手順（`f64.div`、`f64.trunc`、`f64.mul`、`f64.sub`、`f64.copysign`）。wasm には f64 の剰余がない。大きな数で下の桁が JavaScript と違うことは、今の ConMa 版と同じ（sjs/README-ja.md）。2026-11-14 から、`$__mod` は、割る数を倍にして引き、半分にすることを繰り返して、正確な剰余を求める |
 | `< >` | 差が負か（`__Number_subtract__`、`__Number_is_negative__`。`Gen_arith`、`Sjs_less`） | `f64.lt`、`f64.gt`。違う 2 つの有限の数の差は 0 にならず、無限大どうしと NaN の差は NaN（負でない）なので、同じ結果になる |
 | `<= >=` | 今の変換器の手順 | 今の手順と同じ結果になる wasm の命令を、作るときに決める |
 | `=== !==`（数どうし） | | `f64.eq`、`f64.ne`（`NaN !== NaN`、`0 === -0`） |
@@ -76,7 +76,7 @@ ConMa 版は、11 で JavaScript に合わせた後のものとする。
 
 ## 5. 仕組み
 
-### 5.1. 変換器（consh/include/sjs_gen.se）
+### 5.1. 変換器（consh/include/sjs_gen.se（2026-11-19 に sjs/include/sjs_gen.se へ移動））
 
 1. 構文木を見て、数の関数を見つける（`Gen_wasm_scan`。今の `Gen_num_names` と同じく、全体を 1 回なめる）。最初に条件を満たす関数を候補にし、数の関数でない関数を呼ぶ候補を外すことを、変わらなくなるまで繰り返す。
 2. 呼び出す名前は、宣言のあと書き換えられない束縛（`function` の宣言か、関数で初期化した `const`）であること。
@@ -87,7 +87,7 @@ ConMa 版は、11 で JavaScript に合わせた後のものとする。
 5. 数の関数は、今の ConMa 版の Closure を、wasm 版を選ぶ Closure で包んで `Sjs_function` に渡す：`Sjs_wasm_fn W "名前" 引数の数 確かめる大域の名前 (ConMa 版) ,(f)`。
 6. `--emit` の出力には WAT も入るので、変換の結果を読んで確かめられる。
 
-### 5.2. 実行時の支え（consh/include/sjs_rt.se）
+### 5.2. 実行時の支え（consh/include/sjs_rt.se（2026-11-19 に sjs/include/sjs_rt.se へ移動））
 
 * `Sjs_wasm_module G wat ,(W)`：`__Wasm_compile__` でモジュールを作る。作れなければ（wasm のない VM、ブラウザのページの中で動いていてモジュールが大きすぎる、など）、`W` は null で、黙って ConMa 版だけを使う。
 * 確かめるのは、ConMa の側から wasm 版に入るときだけで、wasm 版の中の呼び出し（再帰など）では確かめない。単独の SJS のファイルでも、ConSh のスクリプトでも、対話モードでも、同じにする（2026-11-14 に決めた）。単独のファイルなら一部を変換のときに決められるが、確かめは境界を越えるときの数回だけなので、分けない。
@@ -164,8 +164,8 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 
 ## 7. テスト
 
-* **2 つの版を比べる**：consh/sjs/test を、Node.js の wasm 版の VM で、wasm 版を使う場合と `CONMA_NO_WASM=1` の場合に動かし、どちらも今のログと同じになることを確かめる。ネイティブの VM では、今までどおり通る（ConMa 版だけで動く）。
-* **新しいテスト**（consh/sjs/test/step9）：
+* **2 つの版を比べる**：consh/sjs/test（2026-11-19 に sjs/test へ移動） を、Node.js の wasm 版の VM で、wasm 版を使う場合と `CONMA_NO_WASM=1` の場合に動かし、どちらも今のログと同じになることを確かめる。ネイティブの VM では、今までどおり通る（ConMa 版だけで動く）。
+* **新しいテスト**（consh/sjs/test/step9（2026-11-19 に sjs/test/step9 へ移動））：
     * 4 の表の境の値：`NaN`、`-0`、無限大、2^31、2^32、2^53 の前後、1e300、負の数の `%`、0 と `-0` で割ること（`1 / -0`）、ビット演算の右の被演算子が負や 32 以上のもの、`Math.max(-0, 0)`、`Math.round(-0.5)`。
     * 引数が数でない、足りない呼び出し（ConMa 版で動くこと）。
     * 深い再帰（trap から ConMa 版に替わること）、長いループ（燃料のやり直し）、Ctrl-C で止まること。
@@ -176,7 +176,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 
 ## 8. 段階
 
-各段階は、そこまでのテストと、consh/sjs/test、consh/test、consh/js/test が通ることで終わりとする。
+各段階は、そこまでのテストと、consh/sjs/test（2026-11-19 に sjs/test へ移動）、consh/test、consh/js/test が通ることで終わりとする。
 
 | 段階 | 内容 | 確かめ方 |
 |---|---|---|
@@ -184,7 +184,7 @@ wasm の呼び出しは同期なので、終わるまで VM のスケジュー�
 | 2（作った、2026-11-14。13） | 変換器：数の関数を見つけて WAT を出す（燃料なし）。実行時の支え：`Sjs_wasm_module`、`Sjs_wasm_fn`、呼ぶ前の確かめ | loop.safe.js と fib.safe.js が wasm 版で動き、出力が同じこと。7 の境の値のテスト |
 | 3（作った、2026-11-14。14） | やり直し、区切り、上限、trap から ConMa 版に替えること（燃料そのものは段階 1） | 長いループと深い再帰のテスト。Node.js で Ctrl-C が効くこと |
 | 4（作った、2026-11-14。15） | ConSh の `(( ))`、ブラウザ版（Worker とページの中）、jsc | consh/js/test。ブラウザで `(( ))` の数の関数が wasm 版で動くこと |
-| 5（作った、2026-11-14。16） | 測る：consh/sjs/bench の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。consh/sjs/README-ja.md と docs/dev/SPEED-ja.md に書く | 表にする |
+| 5（作った、2026-11-14。16） | 測る：consh/sjs/bench（2026-11-19 に sjs/bench へ移動） の loop と fib を、wasm 版と ConMa 版で。変換の時間とモジュールの大きさ。sjs/README-ja.md と docs/dev/SPEED-ja.md に書く | 表にする |
 
 ## 9. 数の関数の後で作るもの：数の配列
 
@@ -211,7 +211,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 **今の違い**：ConMa の Number は IEEE 754 の倍精度なので `-0` を持てるが、プリミティブでは見えない（`__Number_is_negative__` は `x < 0`、`__Number_toString__` は整数を符号なしで書き、`__Number_divide__` は 0 で割るとエラー）。そのため、SJS は `-0` を作らず、見分けもしない。
 
-**`-0` が見える所**：SJS では、`console.log`、`String`、テンプレート文字列、`JSON.stringify` は、どれも `-0` を `0` と書く（JavaScript の `String(-0)` と同じ。今のままでよい。その後、2026-11-14 に `console.log` を Node.js の `util.inspect` と同じ形にしたので、`console.log` だけは Node.js と同じく `-0` と書く。consh/sjs/README-ja.md）。`===` も `0 === -0` は真で、`Object.is` はない。`-0` が見えるのは、0 で割ったときの無限大の符号だけである。そのため、合わせるのは次の 2 つになる。
+**`-0` が見える所**：SJS では、`console.log`、`String`、テンプレート文字列、`JSON.stringify` は、どれも `-0` を `0` と書く（JavaScript の `String(-0)` と同じ。今のままでよい。その後、2026-11-14 に `console.log` を Node.js の `util.inspect` と同じ形にしたので、`console.log` だけは Node.js と同じく `-0` と書く。sjs/README-ja.md）。`===` も `0 === -0` は真で、`Object.is` はない。`-0` が見えるのは、0 で割ったときの無限大の符号だけである。そのため、合わせるのは次の 2 つになる。
 
 1. **`-0` を作る**：JavaScript が `-0` を返す所で、`-0` を返す。単項の `-`（`Sjs_neg`。今は `0 - v` なので `-0` にならない。`-1` を掛ければ `-0` になる）、`Math.trunc`、`ceil`、`round`（`-0.5` から `-0` の間で `-0`）、`%`（結果が 0 なら割られる数の符号）、`Math.min(-0, 0)`、`Math.max(-0, -0)`。逆に、`Math.abs(-0)` は `0`。どれも、今のプリミティブ（`-1` を掛ける、0 どうしの和など）で求められ、新しいプリミティブは要らない。
 2. **0 で割ったときに、割る数の符号を見る**：`Sjs_div` だけは、割る数が `+0` か `-0` かを知る必要があり、今のプリミティブではできない。そこで、0 の符号を調べるプリミティブを足す。
@@ -222,7 +222,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 **コア ConMa にも足す**（2026-11-14 に決めた）：コア ConMa では、このプリミティブの代わりの定義を書けない（ConMa のプログラムからは `-0` が見えないので）。ビット演算（docs/dev/BITWISE-PLAN-ja.md）は、拡張 ConMa のプリミティブに、コア ConMa の代わりの定義（include/core/bitwise32.se）を付けたが、同じ形にはできない。そこで、拡張 ConMa だけでなく、コア ConMa のプリミティブ（docs/PRIMITIVES.md、Python の VM を含むすべての VM）として足した。
 
-**作った**（2026-11-14）：docs/dev/ROADMAP.md の Step 42（プリミティブと test/step42）と、consh/sjs/README-ja.md の経緯の「-0」（SJS の変更と consh/sjs/test/step8 の case10）。
+**作った**（2026-11-14）：docs/dev/ROADMAP.md の Step 42（プリミティブと test/step42）と、sjs/README-ja.md の経緯の「-0」（SJS の変更と consh/sjs/test/step8（2026-11-19 に sjs/test/step8 へ移動） の case10）。
 
 ## 12. 段階 1 の結果（2026-11-14）
 
@@ -235,7 +235,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 ## 13. 段階 2 の結果（2026-11-14）
 
-* **作ったもの**：consh/include/sjs_wasm.se（`Wasm_prepare`：数の関数を見つけ、fn の節に印を付け、モジュールの WAT を作る）、sjs_gen.se（`Sjs_translate_file` が `main` の始めでモジュールを作り（`Sjs_wasm_module`、変数 `Wsjs`）、印の付いた関数を `Sjs_wasm_fn` で包む）、sjs_rt.se（`Sjs_wasm_module`、`Sjs_wasm_fn`、`Sjs_wasm_args`）、consh/sjs/sjs の `CONMA_VM=wasm`（変換したプログラムを wasm 版の VM で動かす）。
+* **作ったもの**：consh/include/sjs_wasm.se（2026-11-19 に sjs/include/sjs_wasm.se へ移動）（`Wasm_prepare`：数の関数を見つけ、fn の節に印を付け、モジュールの WAT を作る）、sjs_gen.se（`Sjs_translate_file` が `main` の始めでモジュールを作り（`Sjs_wasm_module`、変数 `Wsjs`）、印の付いた関数を `Sjs_wasm_fn` で包む）、sjs_rt.se（`Sjs_wasm_module`、`Sjs_wasm_fn`、`Sjs_wasm_args`）、consh/sjs/sjs（2026-11-19 に sjs/sjs へ移動） の `CONMA_VM=wasm`（変換したプログラムを wasm 版の VM で動かす）。
 * **数の関数**は、3 の条件を、段階 2 では次のように狭めた（sjs_wasm.se の始めに書いた）：
     * 単独の SJS のファイルだけ（ConSh の `(( ))` は段階 4）。プログラムの一番外の function 宣言だけ（関数式とアロー関数は数の関数にしない）。
     * 名前は一番外で 1 回だけ宣言され、どこでも代入されない。Math は `Math.名前` の形でしか使われず、書き換えられない。どちらも単独のファイルなら変換のときに分かるので、5.2 の呼ぶときの確かめ（大域の名前と `Math` の書き換え）は、段階 4 まで要らない。呼ぶときは、モジュールがあるか、引数が足りて数か、だけを確かめる。
@@ -243,15 +243,15 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
     * 代入は文としてだけ（式の中の代入は数の関数にしない）。真偽値は条件の中だけ。
 * **燃料**：段階 2 は 1 回の呼び出しに 10^8 の燃料を与え、使い切るか trap になれば、ConMa 版を始めから動かす（数の関数は引数だけで結果が決まるので、やり直してよい）。燃料を増やしてのやり直しと時間の区切りは段階 3。
 * **補助の関数**：`%`、ToUint32、`Math.round`、`Math.sign` は、WAT の補助の関数（`$__mod`、`$__u32`、`$__round`、`$__sign`）にした。11 で ConMa 版を JavaScript に合わせたので、`/` は `f64.div`、`Math.max` と `min` は `f64.max` と `f64.min` をそのまま使える。
-* **確かめたこと**：consh/sjs/test/step9 の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test、consh/test（最適化版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
-* **速さ**（変換したモジュールを動かす時間だけ。1 回ずつ測った）：fib(25) は、wasm 版の VM で wasm 版が 0.28 秒、ConMa 版（`CONMA_NO_WASM=1`）が 1.91 秒、Rust 版の VM が 1.33 秒。loop の 100 万回は、0.19 秒、2.38 秒、1.58 秒。wasm 版の時間は、ほとんどが VM と実行時の支え（約 1.2 MB）を読む時間である。`consh/sjs/sjs` 全体では、変換器のモジュールを作るのに毎回 2〜3 秒かかるので、差は小さく見える。nbody は配列を使うので、数の関数がない（9）。
+* **確かめたこと**：consh/sjs/test/step9（2026-11-19 に sjs/test/step9 へ移動） の case1（数の関数 38 個：算術、`%`、ビット演算、比較、真偽、Math、ループ、再帰、複合の代入、NaN と Infinity、数でない引数と足りない引数）と case2（数の関数にならない 11 個）を、Node.js の結果と、Rust 版の VM（ConMa 版）と wasm 版の VM（wasm 版）の両方で比べた。どの関数が数の関数になったかも、`--emit` で確かめる。consh/sjs/test（2026-11-19 に sjs/test へ移動）、consh/test（最適化版と参照版）、consh/js/test、test/（Python、Rust、wasm 版の VM。wasm 版の VM の step40 と step31 は前からのもの）も通る。
+* **速さ**（変換したモジュールを動かす時間だけ。1 回ずつ測った）：fib(25) は、wasm 版の VM で wasm 版が 0.28 秒、ConMa 版（`CONMA_NO_WASM=1`）が 1.91 秒、Rust 版の VM が 1.33 秒。loop の 100 万回は、0.19 秒、2.38 秒、1.58 秒。wasm 版の時間は、ほとんどが VM と実行時の支え（約 1.2 MB）を読む時間である。`consh/sjs/sjs`（2026-11-19 に sjs/sjs へ移動） 全体では、変換器のモジュールを作るのに毎回 2〜3 秒かかるので、差は小さく見える。nbody は配列を使うので、数の関数がない（9）。
 
 ## 14. 段階 3 の結果（2026-11-14）
 
 * **作ったもの**：sjs_rt.se の `Sjs_wasm_run`。wasm 版を燃料 2^16 で呼び、`"fuel"` なら燃料を 2 倍にして始めから呼び直す（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の 19 で、2^20 から 8 倍ずつにし、関数ごとに燃料を覚えるようにした）。燃料が上限の 2^30 を超えるか、`"trap"` なら、ConMa 版を始めから動かす。時間の区切りは、段階 1 の `__Wasm_call__` が `"fuel"` のときに終える（`Machine::end_slice`）。
 * **計画と変えたこと**：ConMa 版に替えて動かしている間は、その中から同じ関数を呼んでも wasm 版を試さない（`Sjs_wasm_fn` の `busy`）。深さ 100 万の再帰で見つけた。wasm の最初の実行は最適化の前のコード（V8 の Liftoff）でスタックの枠が大きく、深さ 100 万で trap になる（何度か動かした後なら通る）。trap のあと ConMa 版で動かすと、ConMa 版の再帰の各段が包んだ関数を通って、wasm 版を燃料のやり直し付きで試し直すので、仕事が深さの 2 乗になり、10 分たっても終わらなかった。直した後は 16.8 秒（ConMa 版だけなら 13.7 秒）。
 * **確かめたこと**：
-    * consh/sjs/test/step10（wasm 版の VM だけ）：case1 は燃料のやり直し（`countdown(30000000)` は 2^25 の燃料が要り、10 回やり直す。ConMa 版では遅すぎる）と、繰り返しの呼び出し。ログは Node.js の結果。case2 は深さ 100 万の再帰（trap から ConMa 版）。Node.js では RangeError になるので、ログは手で書いた。
+    * consh/sjs/test/step10（2026-11-19 に sjs/test/step10 へ移動）（wasm 版の VM だけ）：case1 は燃料のやり直し（`countdown(30000000)` は 2^25 の燃料が要り、10 回やり直す。ConMa 版では遅すぎる）と、繰り返しの呼び出し。ログは Node.js の結果。case2 は深さ 100 万の再帰（trap から ConMa 版）。Node.js では RangeError になるので、ログは手で書いた。
     * test/fast7 の case7：終わらない関数を燃料 10^7 で呼び続ける間に、子のプロセスが送った SIGINT が `__OS_trap_interrupt__` の Ref を変える（wasm 版の VM で約 1 秒。1 回の呼び出しは約 70 ミリ秒）。
     * 燃料が上限を超えて ConMa 版に替わる場合は、ConMa 版で 2^30 回ほど回るものになり時間がかかるので、テストしていない。
 * **単独の SJS の Ctrl-C**：Node.js のホストは、`__OS_trap_interrupt__` を使うまで SIGINT でそのまま終わるので、単独の SJS のプログラムは、wasm 版の中でも Ctrl-C で止まる。区切りが効くのは、ConSh のように SIGINT を受け取るプログラム（段階 4）である。
@@ -270,10 +270,10 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 ## 16. 段階 5 の結果（2026-11-14）
 
-`consh/sjs/bench/run.sh` に、wasm 版の VM の 3 つの列（数の関数を wasm 版で、`CONMA_NO_WASM=1` で ConMa 版だけで、手で書いた ConMa）を足して測った（fe4d82e、Apple M1、user + sys 秒の 3 回の最良。表は consh/sjs/README-ja.md の「速さ」）。
+`consh/sjs/bench/run.sh`（2026-11-19 に sjs/bench/run.sh へ移動） に、wasm 版の VM の 3 つの列（数の関数を wasm 版で、`CONMA_NO_WASM=1` で ConMa 版だけで、手で書いた ConMa）を足して測った（fe4d82e、Apple M1、user + sys 秒の 3 回の最良。表は sjs/README-ja.md の「速さ」）。
 
 * **loop と fib**：関数が 1 つずつ数の関数になり（WAT は fib が 2,038 バイト、loop が 2,039 バイト。前に 1,700 バイトと書いたのは、run.sh が WAT の文字列の最初の `\"` までしか数えていなかったため。docs/dev/REVIEW-ja.md の 2026-11-14 (2) の 8。配列の計画の段階 A5 で直した）、wasm 版の VM での時間は、ほとんどが起動（約 0.13 秒）になった。loop 10000000 は ConMa 版だけの 22.14 秒が 0.172 秒（1/129）、fib 27 は 4.729 秒が 0.149 秒（1/32）。Rust 版の VM の SJS（15.77 秒、3.511 秒）と、手で書いた ConMa（2.738 秒、0.258 秒）より速い。CPython（0.347 秒、0.040 秒）とは、loop 10000000 では速く、fib 27 では起動の分だけ遅い。小さい N（loop 100000、fib 20）では、起動の分だけ、Rust 版の VM の SJS と同じくらいになる。
 * **nbody**：配列を使うので数の関数がなく、変わらない（1.66 秒）。9 の配列を作らないと、速くならない。
-* **変換**：数の関数を探すようになって、変換の時間は 0.006〜0.007 秒増えた（nbody 0.216 秒 → 0.223 秒）。consh/include/sjs_wasm.se は 1,125 行。
+* **変換**：数の関数を探すようになって、変換の時間は 0.006〜0.007 秒増えた（nbody 0.216 秒 → 0.223 秒）。consh/include/sjs_wasm.se（2026-11-19 に sjs/include/sjs_wasm.se へ移動） は 1,125 行。
 * **wasm 版の VM と Rust 版の VM**：数の関数がないとき、wasm 版の VM の ConMa 版は、Rust 版の VM の 1.4〜1.5 倍の時間（loop 10000000 が 15.77 秒と 22.14 秒、nbody 2000 が 1.08 秒と 1.665 秒）。
 

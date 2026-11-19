@@ -1388,7 +1388,7 @@ var ConMaVM = (function () {
 
   // console.log of a value: a string as it is, an error as String() makes it (Node.js also writes
   // its stack), anything else as util.inspect of Node.js makes it with its defaults (depth 2,
-  // breakLength 80, compact 3, maxArrayLength 100, maxStringLength 10000), the same steps as consh/include/sjs_inspect.se
+  // breakLength 80, compact 3, maxArrayLength 100, maxStringLength 10000), the same steps as sjs/include/sjs_inspect.se
   // for SJS. A Promise is "Promise {}": its state cannot be seen from JavaScript.
   function inspect(v) {
     if (typeof v === "string") return v;

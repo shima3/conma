@@ -6,14 +6,14 @@
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
 #                 作っていなければ、そう出して（ずっと遅いことも）ConMa 版で実行する。ConMa 版の VM もなければ、Rust 版を作るように出して止める。ソースより古ければ、警告を出してから、それで実行する
-#   conma         ConMa 版の最適化版（consh/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
+#   conma         ConMa 版の最適化版（consh/include、SJS の sjs/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ（bin/vm。python なら Python 版、rust なら Rust 版、
 #                 transpiled なら変換したコードを組み込んだ Rust 版、wasm なら wasm 版）。CONMA_VM がなければ Rust 版の VM
 #                 （vm/target/release/conma）を使い、作っていなければエラーにする（気付かずに遅い Python 版で動かさない）。
 #                 モジュールは、Rust 版の VM（vm/target/release/conma）があれば、その conma build（ConMa 版のフロントエンド）で作る。
 #                 そのため、CONMA_VM がない（か rust、transpiled）なら Python を使わない
 #   reference     ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（consh/reference と、標準ライブラリの
-#                 reference）と、コア ConMa 用のファイル（consh/include/core と、標準ライブラリの include/core）を、最適化版の
+#                 reference）と、コア ConMa 用のファイル（sjs/include/core と、標準ライブラリの include/core）を、最適化版の
 #                 同じ名前のファイルの代わりに使う（consh/reference/README-ja.md）。ほかは conma と同じ
 # --conma-parser、--python-parser と CONSH_CONMA_DATA は ConMa 版にしかないので、付ければ CONSH_IMPL が rust でも ConMa 版（最適化版）で実行する
 # 対話モードで、標準入力が端末で rlwrap があれば、rlwrap を通して起動する（行の編集と履歴。履歴は ~/.consh_history）。
@@ -102,15 +102,15 @@ fi
 # bin/cache-dir の場所。持ち主だけが読み書きできる）。
 # 一時ファイルに作ってから mv で置き換えるので、同時に起動した consh が作りかけのモジュールを読むことはない
 # include ディレクトリ：最適化版は consh/include と標準ライブラリの include/ext と include。参照版は、consh/reference、
-# consh/include/core、標準ライブラリの include/core（コア ConMa 用）と reference を先に探す（そこにあるファイルが、同じ名前のファイルの
+# sjs/include/core、標準ライブラリの include/core（コア ConMa 用）と reference を先に探す（そこにあるファイルが、同じ名前のファイルの
 # 代わりになる）。
 # 最初のファイル consh_main.se も、参照版は consh/reference にあればそれを使う
 if [ -n "$CONSH_MODULE_DIR" ]; then dir="$CONSH_MODULE_DIR"; else dir="$("$root/bin/cache-dir")" || exit 1; fi
 if [ $impl = reference ]; then
-  dirs=("$consh/reference" "$consh/include/core" "$consh/include" "$root/include/core" "$root/reference" "$root/include")
+  dirs=("$consh/reference" "$root/sjs/include/core" "$consh/include" "$root/sjs/include" "$root/include/core" "$root/reference" "$root/include")
   name=consh.reference
 else
-  dirs=("$consh/include" "$root/include/ext" "$root/include")
+  dirs=("$consh/include" "$root/sjs/include" "$root/include/ext" "$root/include")
   name=consh
 fi
 module="$dir/$name.module.se"

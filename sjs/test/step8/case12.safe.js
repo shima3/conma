@@ -1,4 +1,4 @@
-// console.log は Node.js の util.inspect と同じ形（consh/include/sjs_inspect.se。2026-11-14 から）：引用符、-0、名前、深さ、関数、配列の穴、
+// console.log は Node.js の util.inspect と同じ形（sjs/include/sjs_inspect.se。2026-11-14 から）：引用符、-0、名前、深さ、関数、配列の穴、
 // 100 個を超える要素、80 文字での折り返し、7 個以上の配列の列、Promise、長い文字列の分け方、循環
 const f = function named() {}
 const g = () => 1

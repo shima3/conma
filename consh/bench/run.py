@@ -26,11 +26,11 @@ machine falls on all of them, and the least user + sys time of the process is pr
 start, as a Markdown table with the ratio of each version to the first one; the outputs of the versions
 must be the same (for bash, only the status and the standard output, as its error messages are not those of
 ConSh). The scripts that have no Bash version are left out of the default list when bash is among the
-versions. A Bash version smaller than its script (consh/sjs/bench/consh/bash/loop.sh and fib.sh) says in a
+versions. A Bash version smaller than its script (sjs/bench/consh/bash/loop.sh and fib.sh) says in a
 line "# smaller size: A/B" that the script does A/B times its work: its time is printed with that times A/B,
 which the ratios use, and only its status is compared. The scripts whose work is all in (( )), which only the
-wasm VM runs in about a second, are in consh/sjs/bench/consh (until 2026-11-19, here as 19 to 21): give their
-paths, as in consh/bench/run.py -v conma:wasm consh/sjs/bench/consh/*.sh; the Rust version has no (( )).
+wasm VM runs in about a second, are in sjs/bench/consh (until 2026-11-19, here as 19 to 21): give their
+paths, as in consh/bench/run.py -v conma:wasm sjs/bench/consh/*.sh; the Rust version has no (( )).
 
 The executables are started as bin/consh starts them, without bin/consh: consh-rs run <script>, and
 conma --main <module> run-src <script> <script>. The modules (consh.module.se and consh.reference.module.se
@@ -119,7 +119,7 @@ def bash_script(script):
 
 def bash_scale(script):
     """How many times the work of the Bash version of a script that is smaller than the script (loop.sh and
-    fib.sh of consh/sjs/bench/consh, which would take half an hour in Bash) the script does, from its line "# smaller size: A/B"; 1 for a Bash
+    fib.sh of sjs/bench/consh, which would take half an hour in Bash) the script does, from its line "# smaller size: A/B"; 1 for a Bash
     version of the same size."""
     with open(bash_script(script), encoding="utf-8") as f:
         for line in f:

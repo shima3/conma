@@ -15,7 +15,7 @@
 
 ### 1.2 SJS の配列（2026-11-17、Rust 版の VM の `CONMA_PROFILE`、Apple M4）
 
-SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict、`"length"` に長さの Ref を持つ（consh/include/sjs_rt.se の「配列」）。1 万要素の配列を `push` で作り、10 万回読み書きするプログラムを、読み書きしないものと比べた（consh/sjs/sjsc.se で変換したモジュール）：
+SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict、`"length"` に長さの Ref を持つ（consh/include/sjs_rt.se（2026-11-19 に sjs/include/sjs_rt.se へ移動） の「配列」）。1 万要素の配列を `push` で作り、10 万回読み書きするプログラムを、読み書きしないものと比べた（consh/sjs/sjsc.se（2026-11-19 に sjs/sjsc.se へ移動） で変換したモジュール）：
 
 | 操作 | 1 回のステップ | 中身 |
 |---|---|---|
@@ -76,7 +76,7 @@ SJS の配列は Dict で、`"items"` に添字の文字列から値への Dict�
 | A3 | bin/to-core が `"array"` を代わりの定義に直す。フロントエンド（bin/resolver の `EXT_PRIMITIVES` と include/resolver.se の `__Resolver_features__`）が `(Uses "array")` を書く。vm/frontend.module.se を bin/update-frontend で作り直す | test/fast12（test/fast11 と同じ形：フロントエンドが書いた `(Uses ...)`、`conma build` が同じモジュールを作る、bin/to-core で直したモジュールも同じログ） |
 | A4 | 変換した VM：6 つを conma2rust.py の `CHAIN` と transpiled.rs の `SAFE_PRIMS` に入れる。融合した鎖では、添字が `f64` の `__Array_get__` と `__Array_set__` をその場で書く（範囲の外は、その Body に戻して VM に任せる） | test/transpiled に case3（A1 のテストを順に）。bench/build.sh で作り直した VM で |
 | A5 | 測って書く：配列と、数のキーの Dict で同じ計算をする小さいプログラム（添字の読み書き、push）を、Rust 版、変換した、wasm 版、Python 版の VM で。docs/PRIMITIVES.md の 16 に機能 `"array"`（型の違いを含む）、docs/dev/ROADMAP.md に Step 47、vm/README.md | 表にする |
-| A6 | （2026-11-17 に見送った。6）SJS の配列を配列の値で表す。数の添字の読み書き、`push`、`pop`、`length` を配列で行い、穴や数でない添字などは今の Dict に戻す。consh/sjs/test、consh/sjs/bench | 1.2 のプログラムと consh/sjs/bench の nbody で測る |
+| A6 | （2026-11-17 に見送った。6）SJS の配列を配列の値で表す。数の添字の読み書き、`push`、`pop`、`length` を配列で行い、穴や数でない添字などは今の Dict に戻す。consh/sjs/test（2026-11-19 に sjs/test へ移動）、consh/sjs/bench（2026-11-19 に sjs/bench へ移動） | 1.2 のプログラムと consh/sjs/bench（2026-11-19 に sjs/bench へ移動） の nbody で測る |
 
 ## 6. 今の状態
 

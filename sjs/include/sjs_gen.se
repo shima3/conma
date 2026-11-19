@@ -40,7 +40,7 @@
   ;; 位置の入らなかった印を消す
   Gen_replace_marks code "" ,(code)
   __String_join_lines__
-    ";; SJS を変換したもの（consh/include/sjs_gen.se）"
+    ";; SJS を変換したもの（sjs/include/sjs_gen.se）"
     "(include \"util.se\")"
     "(include \"sjs_rt.se\")"
     "(define main ,(args)"
@@ -118,7 +118,7 @@
   Sjs_rt_names ,(names)
   Gen_binds names "" ,(binds)
   __String_join_lines__
-    ";; SJS の (( )) を変換したもの（consh/include/sjs_gen.se の Sjs_translate_module）"
+    ";; SJS の (( )) を変換したもの（sjs/include/sjs_gen.se の Sjs_translate_module）"
     "(define Sjs_entry ,(err ctx in out)"
     "  __Dict_lookup_or__ ctx \"rt\" (,(k) __NULL__ __NULL__) ,(rt)" ,(head)
   __String_join_lines__
@@ -2166,7 +2166,7 @@
   __String_concat__ c ") " ,(c)
   __NULL__ c v)
 
-;; ── 型の分かる被演算子（速くするため。consh/sjs/README-ja.md の「速くしたもの」）──
+;; ── 型の分かる被演算子（速くするため。sjs/README-ja.md の「速くしたもの」）──
 ;; 変換の状態 g は、"types"（被演算子 → "number" か "boolean"）、"consts"（数のリテラルの文字列 → 定数の変数名）と
 ;; "constCode"（定数を作る手順。プログラムの始めに置く）、"finite"（有限の数の定数の変数名。Sjs_eq_lit で比べる）、"numNames"（数だけを入れる名前。Gen_num_names）を持つ。
 ;; 型が分かれば、算術と比較は、型の確認を省いてプリミティブにし、条件は Sjs_truthy を省く
