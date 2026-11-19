@@ -336,7 +336,7 @@ There is no `fg`, `bg` or `jobs`. A background job shares standard input with th
 
 ## Arithmetic: `(( ))` and `$(( ))`
 
-The ConMa version of ConSh (`CONSH_IMPL=conma`; the default Rust version does not have them) evaluates `(( … ))` and `$(( … ))` as **SJS**, a safe subset of JavaScript that is translated to ConMa and run in the VM, not as Bash arithmetic ([js/README-ja.md](../../consh/js/README-ja.md), [sjs/README-ja.md](../../consh/sjs/README-ja.md)). The exit status follows Bash: 0 when the value is true, 1 when it is false, and 2 on an error. The differences:
+The ConMa version of ConSh (`CONSH_IMPL=conma`; the default Rust version does not have them) evaluates `(( … ))` and `$(( … ))` as **SJS**, a safe subset of JavaScript that is translated to ConMa and run in the VM, not as Bash arithmetic ([js/README-ja.md](../../consh/js/README-ja.md), [sjs/README-ja.md](../../sjs/README-ja.md)). The exit status follows Bash: 0 when the value is true, 1 when it is false, and 2 on an error. The differences:
 
 ```sh
 echo $(( 7 / 2 ))          # -> 3.5: numbers are JavaScript numbers, not integers

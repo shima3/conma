@@ -16,12 +16,12 @@ module="$js/web/consh.module.se"
 # ConSh は最適化版（consh/include と標準ライブラリの include/ext と include。consh/include/README-ja.md）
 main="$consh/include/consh_main.se"
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" "$root/sjs/include" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    [ -n "$(find "$root/bin" -type f -newer "$module")" ]; then
   ast_tmp=$(mktemp "$js/web/consh.ast.XXXXXX")
   module_tmp=$(mktemp "$module.XXXXXX")
   trap 'rm -f "$ast_tmp" "$module_tmp"' EXIT
-  "$root/bin/includer" --include "$consh/include" --include "$root/include/ext" --include "$root/include" "$main" \
+  "$root/bin/includer" --include "$consh/include" --include "$root/sjs/include" --include "$root/include/ext" --include "$root/include" "$main" \
     | sed -e 's/"\/.*\/conma/"conma/' > "$ast_tmp"
   "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   # mktemp は持ち主だけが読める（600）ファイルを作る。ウェブのサーバーや、GitHub Pages のワークフロー

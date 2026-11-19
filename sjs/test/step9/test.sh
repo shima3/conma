@@ -5,7 +5,7 @@
 cd ${0%/*}
 out=${TMPDIR:-/tmp}/sjs-test-$$.log
 vms=(rust)
-if [ -f ../../../../vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null; then vms+=(wasm); fi
+if [ -f ../../../vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm ] && command -v node > /dev/null; then vms+=(wasm); fi
 for f in case*.safe.js
 do
   c=${f%.safe.js}

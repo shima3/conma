@@ -8,7 +8,6 @@ Bash を使う人向けの使い方の説明は [FOR-BASH-USERS.md](../docs/cons
 ```
 consh/
 ├── README-ja.md         この文書
-├── sjs/                 SJS を ConMa に変換して動かす変換器（段階 B。README-ja.md）
 ├── examples/            Bash と比べた ConSh のデモ（NAME.sh と、同じことをする NAME.bash。英語の README.md）
 ├── bench/               処理時間を測るスクリプトと、版と VM を比べて測る run.py（README-ja.md）
 ├── bin/
@@ -16,7 +15,6 @@ consh/
 │   └── consh_parse      Python の参照実装：構文解析と語の展開の結果をテキストで出す
 ├── reference/           ConMa 版の参照版のうち、最適化版で速くするために書き直したファイルの、書き直す前のもの（README-ja.md）
 ├── include/             ConMa 版（最適化版）。参照版は、reference/ のファイルをここの同じ名前のファイルの代わりに使う（README-ja.md）
-│   ├── core/            コア ConMa 用の版（sjs_bits.se。参照版は、ここを include/ より先に探す）
 │   ├── consh_main.se    main：ConSh の入口
 │   ├── consh_ast.se     consh_parse の構文木の読み込み（__Sexp_read__ と、ConMa で読む Sexp_read）と書き戻し
 │   ├── consh_parser.se  構文解析（ConMa 版の既定。consh_parse と同じ構文木を作る）
@@ -25,8 +23,7 @@ consh/
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
 │   ├── consh_eval.se    文の実行
-│   ├── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/consh/dev/SAFEJS-PLAN-ja.md）
-│   └── sjs_*.se         SJS の変換器（sjs_lex、sjs_parse、sjs_gen）と実行時の支え（sjs_rt、ビット演算の sjs_bits）。sjs/README-ja.md
+│   └── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/consh/dev/SAFEJS-PLAN-ja.md）。SJS の変換器と実行時の支えは、リポジトリのルートの sjs/include にある（2026-11-19 に consh/sjs と consh/include から sjs/ に移した。sjs/README-ja.md）
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数
@@ -73,7 +70,7 @@ ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適�
 |---|---|
 | `rust`（既定） | Rust 版（`consh/rust` の `consh-rs`、docs/consh/PLAN-ja.md の段階 19）。構文解析も Rust 版で行う。`consh/rust` で `cargo build --release` して作っておく（Rust 1.87 以降）。作っていなければ、そう出して（ループなどがずっと遅いことも）ConMa 版（最適化版）で実行する。ConMa 版の VM（`CONMA_VM` がなければ Rust 版の VM）もなければ、Rust 版を作るように出して止める。ソース（`src`、`Cargo.toml`、`Cargo.lock`）より古ければ（`git pull` の後など）、警告を出してから、それで実行する |
 | `conma` | ConMa 版の最適化版（`consh/include`）。ConMa の VM は環境変数 `CONMA_VM` で選ぶ（`bin/vm`。`python` なら Python 版、`rust` なら Rust 版、`transpiled` なら ConMa から Rust への変換器で変換したコードを組み込んだ Rust 版、`wasm` なら wasm 版）。`CONMA_VM` がなければ Rust 版の VM（`vm/target/release/conma`）を使い、作っていなければエラーにする（テストやベンチマークを、気付かずに遅い Python 版で動かさないため） |
-| `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`consh/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
+| `reference` | ConMa 版の参照版（仕様の参照実装）。速くするために書き直す前のファイル（`consh/reference` と、標準ライブラリの `reference`）と、コア ConMa 用のファイル（`sjs/include/core` と、標準ライブラリの `include/core`）を、最適化版の同じ名前のファイルの代わりに使う（`consh/include/README-ja.md`）。ほかは `conma` と同じ |
 
 `--conma-parser`、`--python-parser` と `CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust` でも ConMa 版（最適化版）で実行する。
 

@@ -12,6 +12,6 @@ do
   (cd "$examples" && /bin/bash $c.bash < /dev/null > $tmp/$c.bash.log 2>&1; echo "exit: $?" >> $tmp/$c.bash.log)
   diff $c.bash.log $tmp/$c.bash.log
 done
-# nbody は Bash 版がない（Bash に小数はない）。100 段で、Node.js で consh/sjs/bench/nbody.safe.js を動かした出力と同じ
+# nbody は Bash 版がない（Bash に小数はない）。100 段で、Node.js で sjs/bench/nbody.safe.js を動かした出力と同じ
 (cd "$examples" && "$consh/bin/consh" nbody.sh 100 < /dev/null > $tmp/nbody.log 2>&1; echo "exit: $?" >> $tmp/nbody.log)
 diff nbody.log $tmp/nbody.log

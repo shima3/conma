@@ -1,5 +1,5 @@
 # (( )) の SJS で、木星型惑星の軌道を 30 万ステップ（CPython で約 1 秒）。consh/examples/nbody.sh の N を 300000 にしたもの
-# bench/nbody/nbody.py と同じ計算（演算の順は consh/sjs/bench/nbody.safe.js）。数と数の配列だけを扱うので、wasm 版の VM では WebAssembly で動く
+# bench/nbody/nbody.py と同じ計算（演算の順は sjs/bench/nbody.safe.js）。数と数の配列だけを扱うので、wasm 版の VM では WebAssembly で動く
 n=300000
 (( PI = 3.14159265358979323, SOLAR_MASS = 4 * PI * PI, DAYS_PER_YEAR = 365.24 ))
 (( bodies = [
