@@ -276,11 +276,12 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 
 4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った。使い方と言語の説明は conjs/README-ja.md。
 
-* **conjs/**：conjs/conjs（変換して動かす道具。`--emit`、`CONMA_VM` に wasm と python）、conjs/conjsc.se（変換器の入口）、conjs/include/conjs_sched.se（スケジューラ）、conjs/include/conjs_rt.se（SJS の実行時の支えとのつなぎ、`spawn`、`join`、`host.call`、`host.wait`、`host.available`）、conjs/test（6 つのステップ、21 の場合）、conjs/README-ja.md。
+* **conjs/**：conjs/conjs（変換して動かす道具。`--emit`、`CONMA_VM` に wasm と python）、conjs/conjsc.se（変換器の入口）、conjs/include/conjs_sched.se（スケジューラ）、conjs/include/conjs_rt.se（SJS の実行時の支えとのつなぎ、`spawn`、`join`、`host.call`、`host.wait`、`host.available`）、conjs/test（6 つのステップ、24 の場合）、conjs/README-ja.md。
 * **SJS の変換器と実行時の支えに足したもの**：sjs_parse.se の名前の検査（印が ConJS なら `async`、`await`、`Promise` を除き、「not in SJS」を「not in ConJS」と書く）、sjs_gen.se の `Gen_conjs_program`（文の並びを `Conjs_run` の中に置く）、sjs_rt.se の `Sjs_is_conjs`（受け手のない例外の前置きを `conjs:` にする）と、値の種類 `"task"`（`typeof`、`String`、`JSON.stringify`、`in`、エラーの説明）、sjs_inspect.se の `[Task]`。どれも、SJS のプログラムが通る所では、今までと同じコードを作り、同じ道を通る（`"task"` の検査は、ほかの種類の検査の後に置いた）。
 * **見本**：vm/wasm/web/canvas_demo.con.js（canvas_demo.se と同じ跳ねる玉。もう 1 つの処理が、30 コマごとに見出しを変える）。vm/wasm/web/build.sh が変換してモジュールにし（canvas_demo_conjs.module.se。git には入れない）、`canvas.html?conjs` で見る。アプリの中のブラウザで、毎秒約 60 コマで動き、見出しが変わり、コンソールにエラーがないことを確かめた。モジュールは SJS の実行時の支えを含むので、約 8 MB ある（ConMa 版は約 0.2 MB）。
-* **テスト**：conjs/test の 21 の場合が、Rust 版、wasm 版（Node.js）、Python 版の VM で同じログになる（wasm 版の VM だけにある Promise を返すホストの関数の場合は、case4.wasm.log）。
+* **テスト**：conjs/test の 24 の場合が、Rust 版、wasm 版（Node.js）、Python 版の VM で同じログになる（wasm 版の VM だけにある Promise を返すホストの関数の場合は、case4.wasm.log）。
 * **設計と変えたところ**：
     * チャネルは、読み手の VProc（ConJS の VProc）が、書かない書き手を 1 つ閉じずに持つ。チャネルの書き手を足せるのは、書き手を持つ VProc か、読み始める前に作った VProc だけなので（docs/PRIMITIVES.md の Channels）、こうして、読み始めた後でも、待つための VProc ごとに書き手を作れるようにした。チャネルが終わる（すべての書き手が閉じる）こともない。
     * 待つための VProc は `Host_wait_tracked` を使わず、ConJS の VProc が `__Host_start__` で呼び始めてから、その Stream を待つ VProc に渡す。呼び始めるときのエラー（ない関数など）が、待たずにその場で投げられ、`test.later` の締め切りも、呼んだ処理の順で決まる。プログラムが途中で終わるのは `__OS_exit__` のときだけで、そのとき待つための VProc も一緒に終わるので、Stream を記録して閉じることはしなかった。
+    * 4.2 節は「除くもの」を名前としか書いていなかったが、オブジェクトのキーとメンバーの名前には、3 つの名前を使えるようにした（M2 の PR shima3/conma#4 のレビューの 1。`then` を除かないのと同じく、JSON のようなデータを書けるように）。字句の検査で、`{` か `,` の後で `:` の前にある名前を、キーと見る。
     * 行き詰まりのメッセージは `conjs: Deadlock: tasks waiting in join: N` にした（4.2 節の案は `Deadlock: N tasks are waiting in join`。数で始めず、1 つのときも文が崩れないように）。

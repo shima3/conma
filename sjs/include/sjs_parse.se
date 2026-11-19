@@ -52,7 +52,14 @@
   __is_null__ prev ,(first)
   __if_then_else__ first (,() __NULL__ __FALSE__) (,() Tok_is prev "." ,(a) Tok_is prev "?." ,(b) __or__ a b) ,(afterDot)
   __String_equal__ kind "id" ,(test__) __if__ test__
-    (,() __if_then_else__ afterDot (,() P_check_property text) (,() P_check_name text)) ,()
+    (,()
+      __if__ afterDot (,() P_check_property text ,() Sjs_check_tokens rest tok ,() return) ,()
+      ;; オブジェクトのキー（{ か , の後で、: の前）は、ConJS で足した名前を確かめない（{ async: 1 } は書ける。
+      ;; M2 の PR shima3/conma#4 のレビューの 1）。SJS の範囲の名前は、今までどおり確かめる
+      Sjs_tokens_key prev rest ,(isKey)
+      __if_then_else__ isKey (,() P_check_name_sjs text) (,() P_check_name text) ,()
+      Sjs_check_tokens rest tok ,()
+      return) ,()
   __String_equal__ kind "punct" ,(punct)
   Sjs_in_words text "== !=" ,(loose)
   __and__ punct loose ,(test__) __if__ test__
@@ -74,6 +81,16 @@
   Sjs_uncaught msg)
 
 ;; SJS の範囲の外の名前（段階 A の SJS_NAMES と、__ で始まる名前）なら、「not in SJS」のエラー
+;; 名前の字句が、オブジェクトのキーの位置にあるか：前の字句が { か , で、次の字句が :
+(define Sjs_tokens_key ,(prev rest)
+  __Cont_get__ ,(return)
+  __is_null__ prev ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __is_null__ rest ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  Tok_is prev "{" ,(a) Tok_is prev "," ,(b) __or__ a b ,(open)
+  __unless__ open (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(next more)
+  Tok_is next ":")
+
 (define P_check_name ,(name)
   __Cont_get__ ,(return)
   ;; ConJS（言語の印 "sjs_lang" が "conjs"。conjs/conjsc.se）は、async、await、Promise も受け付けない
@@ -83,6 +100,11 @@
     (,()
       Sjs_in_words name "async await Promise" ,(test__)
       __if__ test__ (,() __String_concat__ "not in ConJS: " name ,(msg) Sjs_not_in msg) ,()) ,()
+  P_check_name_sjs name)
+
+;; SJS の範囲の外の名前だけを確かめる（ConJS で足した名前は確かめない）
+(define P_check_name_sjs ,(name)
+  __Cont_get__ ,(return)
   Sjs_in_words name "this new class super import export with eval arguments debugger globalThis window self document Function" ,(bad)
   Sjs_starts name "__" ,(under)
   __or__ bad under ,(test__) __unless__ test__ return ,()

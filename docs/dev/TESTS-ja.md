@@ -105,7 +105,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * 段階 P3b（docs/dev/PLATFORM-PLAN-ja.md の 8.4 節）：ConJS（conjs/。conjs/README-ja.md）。SJS の変換器と実行時の支え（sjs/include の sjs_parse.se、sjs_gen.se、sjs_rt.se、sjs_inspect.se）にも足した。
 * 新しいテスト：conjs/test（`conjs/test/run_all.sh`。`CONMA_VM` なし、wasm、python）。「全部流す」に足した。
 * sjs/include を変えたので、sjs/test と、SJS を使う consh/test（`(( ))`）と consh/js/test も流す。VM は変えていない。
-* M1 が流したもの（Apple M1）：conjs/test を Rust 版（30 秒）、wasm 版（29 秒）、Python 版（1 分 30 秒）の VM で。sjs/test（2 分 32 秒）。consh/test を Rust 版（39 秒）と wasm 版（56 秒）の VM で（`-j 6`、`-j 3`）。consh/js/test（17 秒）。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。流していないもの：test/（VM を変えていない）、ConSh の参照版と transpiled VM と Python 版の VM の consh/test。sjs/bench は測っていない（ベンチマークが動かすコードは変わらない。変えたのは、処理の値の種類の検査と、変換するときの名前の検査だけ）。
+* M1 が流したもの（Apple M1）：conjs/test を Rust 版（30 秒）、wasm 版（29 秒）、Python 版（1 分 30 秒）の VM で。sjs/test（2 分 32 秒）。consh/test を Rust 版（39 秒）と wasm 版（56 秒）の VM で（`-j 6`、`-j 3`）。consh/js/test（17 秒）。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。PR shima3/conma#4 のレビューで sjs_parse.se を直した後に、conjs/test（3 つの VM）、sjs/test、Rust 版の consh/test を流し直し、すべて通った。流していないもの：test/（VM を変えていない）、ConSh の参照版と transpiled VM と Python 版の VM の consh/test。sjs/bench は測っていない（ベンチマークが動かすコードは変わらない。変えたのは、処理の値の種類の検査と、変換するときの名前の検査だけ）。
 
 ## 記録
 

@@ -24,7 +24,7 @@ conjs/test/run_all.sh             # テスト（CONMA_VM で VM を選ぶ）
 
 SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、下を除き、下を足したもの。
 
-* **除くもの**（変換するときに `conjs: not in ConJS: async` のようなエラー、終了ステータス 2）：`async`、`await`（`for await` も）、名前 `Promise`。SJS の範囲の外のもの（`this`、`class` など）も、「not in ConJS」と書く。`then` は、ふつうの名前として使える。
+* **除くもの**（変換するときに `conjs: not in ConJS: async` のようなエラー、終了ステータス 2）：`async`、`await`（`for await` も）、名前 `Promise`。SJS の範囲の外のもの（`this`、`class` など）も、「not in ConJS」と書く。`then` は、ふつうの名前として使える。3 つの名前も、オブジェクトのキー（`{ async: 1 }`）とメンバーの名前（`o.await`）には使える（省略形の `{ async }` は変数なので、エラー）。
 * **`spawn(f)`**：引数のない関数 f を新しい処理として列の最後に入れ、処理（task）を返す。呼んだ側は、次に待つまで動き続ける。task は `console.log` で `[Task]`、`typeof` は `"object"`。
 * **`join(t)`**：処理 t が終わるまで待ち、f の戻り値を返す。t が例外で終わっていれば、その例外を、t の中で投げた所の位置のまま投げ直す。何度でも、いくつの処理からでも join できる。自分自身の join は TypeError。
 * **`host.call(name, ...args)`**：すぐ返るホストの関数（`__Host_call__`）。**`host.wait(name, ...args)`**：待つホストの関数（`__Host_start__`）。**`host.available(feature)`**：`__Feature_available__`。渡せるのは、数、文字列、それらの配列で、ホストが返した LList は配列、null は `undefined` になる（空の配列も `undefined` になる）。ホストにない関数と、関数の失敗は、ホストのメッセージを持つ `Error` を投げる。テストの関数（`test.add`、`test.echo`、`test.fail`、`test.later`）は、どの VM にもある（docs/PRIMITIVES.md の `__Host_call__` と `__Host_start__`）。
@@ -53,4 +53,4 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step3 | 例外：join が位置ごと投げ直す、join されない例外の報告、main の例外ですぐ終わる、try の受け手と投げた位置が処理ごとに分かれる |
 | step4 | 待つ所：map のコールバック、ジェネレータの本体、try と finally。待っている途中のジェネレータの next() |
 | step5 | エラー：行き詰まり、自分自身の join、使い方の誤り、ホストの値とエラー、wasm 版の VM で Promise を返すホストの関数 |
-| step6 | 受け付けない構文と、`then` をふつうの名前に使えること |
+| step6 | 受け付けない構文と、`then` をふつうの名前に、3 つの名前をキーとメンバーの名前に使えること |
