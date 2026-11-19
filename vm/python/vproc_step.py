@@ -1095,8 +1095,9 @@ def prim_JS_value(vp, gvenv):
 
 # The features that __Feature_available__ answers true for on this VM: the features of extended ConMa, which work on
 # every VM (on this one through the replacement definitions of bin/to-core), but not "wasm", whose primitives go to
-# onError here as on the native VMs. This VM has no platform feature ("js" and the others; docs/dev/PLATFORM-PLAN-ja.md)
-FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control")
+# onError here as on the native VMs, and "test", the test functions of __Host_call__ that every VM has. This VM
+# has no other platform feature ("js" and the others; docs/dev/PLATFORM-PLAN-ja.md)
+FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control", "test")
 
 def prim_Feature_available(vp, gvenv):
     """__Feature_available__ name ,(Boolean)
@@ -1105,6 +1106,88 @@ def prim_Feature_available(vp, gvenv):
     have. This VM has no WebAssembly and no platform feature."""
     (name,) = _string_args(vp, "__Feature_available__", 1)
     _prim_return(vp, [TRUE_CLOSURE if name in FEATURES_AVAILABLE else FALSE_CLOSURE])
+
+# The functions of the host for __Host_call__ that every VM has (vm/src/prim/host.rs, BUILTIN): those
+# of the platform feature "test", for the tests. This VM has no other host. A value for the host is a
+# float, a str or a list of them (the empty LList, null, is []).
+def _host_test_add(args):
+    total = 0.0
+    for a in args:
+        if not isinstance(a, float):
+            raise _HostError("test.add: expected Numbers")
+        total += a
+    return total
+
+def _host_test_fail(args):
+    raise _HostError("test.fail: failed")
+
+class _HostError(Exception):
+    pass
+
+HOST_FUNCTIONS = {"test.add": _host_test_add, "test.echo": lambda args: list(args), "test.fail": _host_test_fail}
+
+def _to_host(v):
+    """A value for the host, or raise _HostError with the type name of the first value that is not a
+    Number, a String or an LList of them."""
+    if is_null_value(v):
+        return []
+    t = value_type_name(v)
+    if t == "Number":
+        return v.value
+    if t == "String":
+        return _value_to_display(v)
+    if isinstance(v, LList):
+        items = []
+        while not is_null_value(v):
+            if not isinstance(v, LList):
+                raise _HostError(value_type_name(v))
+            items.append(_to_host(v.head))
+            v = v.tail
+        return items
+    raise _HostError(t)
+
+def _from_host(h):
+    if isinstance(h, float):
+        return Number(h)
+    if isinstance(h, str):
+        return string_value(h)
+    result = NULL
+    for item in reversed(h):
+        result = LList(_from_host(item), result)
+    return result
+
+def prim_Host_call(vp, gvenv):
+    """__Host_call__ onError name args ,(result)
+    Call the function of the host named name with args (an LList of Numbers,
+    Strings and LLists of them). This VM has only the functions every VM has
+    (HOST_FUNCTIONS); another name goes to onError."""
+    prim  = "__Host_call__"
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError(f"{prim}: missing argument(s)")
+    on_error = olist.pop(0)
+    name     = olist.pop(0)
+    args     = olist.pop(0)
+    if value_type_name(name) != "String":
+        _prim_error(vp, on_error, f"{prim}: expected String name, got {value_type_name(name)}")
+        return
+    fname = _value_to_display(name)
+    try:
+        hargs = _to_host(args)
+        if not isinstance(hargs, list):
+            raise _HostError(value_type_name(args))
+    except _HostError as e:
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        return
+    f = HOST_FUNCTIONS.get(fname)
+    if f is None:
+        _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
+        return
+    try:
+        result = f(hargs)
+    except _HostError as e:
+        _prim_error(vp, on_error, str(e))
+        return
+    _prim_return(vp, [_from_host(result)])
 
 def prim_OS_sysconf(vp, gvenv):
     """__OS_sysconf__ onError name ,(Number)
@@ -2906,6 +2989,7 @@ PRIMITIVES = {
     "__JS_call__":             prim_JS_call,
     "__JS_value__":            prim_JS_value,
     "__Feature_available__":   prim_Feature_available,
+    "__Host_call__":           prim_Host_call,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

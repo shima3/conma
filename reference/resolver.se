@@ -58,14 +58,20 @@
 
 ;; プラットフォームの機能（docs/dev/PLATFORM-PLAN-ja.md の 3.1）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (Uses ...) の後（なければ (F ...) の後）に (Platform ...) を置く（bin/resolver と同じ）。言語の層（コア ConMa と拡張 ConMa）とは
-;; 別の軸で、どの VM もその組み込みを持ち、ないプラットフォームでは onError に行く。"js" は __JS_call__ と __JS_value__
+;; 別の軸で、どの VM もその組み込みを持ち、ないプラットフォームでは onError に行く。"js" は __JS_call__ と __JS_value__、
+;; "host" は __Host_call__（ホストの関数を名前で呼ぶ。docs/dev/PLATFORM-PLAN-ja.md の 3.2）
 (define __Resolver_platform__ ,(globals values)
+  __LList_cons__ "__Host_call__" __NULL__ ,(hosts)
+  __Resolver_uses_prim__ globals values hosts ,(usesHost)
+  __if_then_else__ usesHost
+    (,() __LList_cons__ "host" __NULL__)
+    (,() __NULL__ __NULL__) ,(features)
   __LList_cons__ "__JS_value__" __NULL__ ,(js)
   __LList_cons__ "__JS_call__" js ,(js)
   __Resolver_uses_prim__ globals values js ,(usesJs)
   __if_then_else__ usesJs
-    (,() __LList_cons__ "js" __NULL__)
-    (,() __NULL__ __NULL__))
+    (,() __LList_cons__ "js" features)
+    (,() __NULL__ features))
 
 ;; 使う機能の名前の列（bin/resolver の EXT_PRIMITIVES の順）
 (define __Resolver_features__ ,(globals values)

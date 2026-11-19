@@ -907,6 +907,17 @@ No new primitive.
 * `__JS_call__` and `__JS_value__` are the platform feature `"js"`: both frontends (`bin/resolver`, `include/resolver.se` and `reference/resolver.se`; `vm/frontend.module.se` made again) write `(Platform "js")` after `(Uses ...)`. Not an item of `Uses`, which `bin/to-core` replaces for the Python VM: platform features are another axis than core and extended ConMa, every VM has their primitives, and the reference version of ConSh, which is core ConMa, keeps JavaScript on the wasm VM.
 * Tests: `test/fast13` (the answers on each VM, also with `CONMA_NO_WASM`, the error of a name that is not a String, using `"js"` after asking, the item the frontends write and that `bin/to-core` keeps).
 
+## Step 50: Calling the functions of the host
+
+| Primitive | Status |
+|---|---|
+| `__Host_call__ onError name args ,(result)` (core ConMa; platform feature `"host"`) | implemented |
+
+* Goal: stage P2 of docs/dev/PLATFORM-PLAN-ja.md (2026-11-19): one primitive through which a program calls what its platform has, by the name of a function of the host, instead of a primitive for each (the canvas of a browser comes next, in P3).
+* The values are Numbers, Strings and LLists of them, null being the empty LList; Dicts and Booleans are not passed, and a call returns at once. Every VM has the functions of the platform feature `"test"` (`test.add`, `test.echo`, `test.fail`; `BUILTIN` of `vm/src/prim/host.rs` and `HOST_FUNCTIONS` of `vm/python/vproc_step.py`), so that a test runs the same on every VM. The VM for wasm32 also calls the functions its host gives (`hostFunctions` and `hostFeatures` of `vm/wasm/conma.js`; `CONMA_HOST` of `vm/wasm/vm-node.js`): the values go as JSON, -0, NaN and the infinities as `{"n":"-0"}` and the like, through the imports `host_fn_call` and `host_fn_result` (the function is called once, then its result copied), and `host_fn_feature` for `__Feature_available__`. The native VMs have no other host. The transpiled VM leaves `__Host_call__` to the VM.
+* The frontends write `(Platform "host")` for a module that uses `__Host_call__`.
+* Tests: `test/fast14` (the test functions and the errors on every VM; on the wasm VM, functions of JavaScript with -0, NaN, the infinities, a String with escapes, an exception, and results that cannot go back).
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from docs/consh/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in docs/consh/dev/SAFEJS-REVIEW-ja.md (3.1.4).

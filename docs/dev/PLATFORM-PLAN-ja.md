@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、実験的な言語を ConMa に変換すれば、その言語を、ConMa が動くどのプラットフォームでも試せるようにする（2026-11-19）。
 
-**状態**：段階 P1 を作った（2026-11-19。8 節）。プラットフォームの順は、ブラウザの canvas から始めると決めた（6 節の 1）。6 節のほかのことは、まだ決めていない。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。プラットフォームの順は、ブラウザの canvas から始めると決めた（6 節の 1）。6 節のほかのことは、まだ決めていない。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -96,7 +96,7 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 |---|---|---|
 | P0 | この計画書。6 節を決める | 決めたことを、この文書に書く |
 | P1（作った、2026-11-19。8 節） | プラットフォームの機能の層：`(Platform "機能")` の付け方、`__Feature_available__`。`__JS_call__` と `__JS_value__` を機能 `"js"` にする | test/ と consh/test がすべての VM で通る。機能の有無で振る舞いを変えるテスト |
-| P2 | `__Host_call__`：wasm 版（JavaScript）、Rust 版と transpiled VM（Rust の表）、Python 版（Python の表）。テストのためのホストの関数 | 同じテストのトレースが Python 版と Rust 版で同じ。wasm 版の Node.js で同じ出力 |
+| P2（作った、2026-11-19。8.2 節） | `__Host_call__`：wasm 版（JavaScript）、Rust 版と transpiled VM（Rust の表）、Python 版（Python の表）。テストのためのホストの関数 | 同じテストのトレースが Python 版と Rust 版で同じ。wasm 版の Node.js で同じ出力 |
 | P3 | 最初のプラットフォームの機能（6 節で選ぶ。ブラウザの canvas なら、描く見本のページ） | 見本が動く。1 回の呼び出しの時間を、今の `js` コマンドと比べて測る。足した機能の名前を docs/PRIMITIVES.md の `__Feature_available__` の一覧に書き、テストで、見本が使う名前が一覧にあることを確かめる（知らない名前は黙って偽になり、書き間違いと区別できないため） |
 | P4 | 言語キット：SJS から部品を取り出し、SJS をキットの上に書き直す | sjs/test、consh/test、sjs/bench（遅くならないこと） |
 | P5 | 見本の言語を、キットで作る | その言語のテストが、すべての VM で通る。P3 の機能を使う見本 |
@@ -147,4 +147,14 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 * **`(Uses ...)` に入れなかった理由**：`(Uses ...)` は「コア ConMa の VM（Python）では、bin/to-core が代わりの定義に置き換える」印である。`"js"` をそこに入れると、Python 版の VM では JavaScript の呼び出しが代わりの定義になり、コア ConMa で作る ConSh の参照版（`__JS_call__` を使う）は、拡張の機能を使わないために代わりの定義を include することになって、wasm 版の VM でも JavaScript を使えなくなる。プラットフォームの機能は、言語の層とは別の軸なので、別の印にし、どの VM もそのプリミティブを持つ（今までどおり、ないプラットフォームでは onError に行く）。bin/to-core は `(Platform ...)` を残し、VM は読み飛ばす。
 * **今の `"wasm"`**：WebAssembly も、本来はプラットフォームの機能である。ただ、今は拡張の機能として `(Uses "wasm")` で、Python 版の VM では代わりの定義が onError に行く。P1 では変えず、P2 か P3 で `(Platform ...)` に移すかを決める。
 * **テスト**：test/fast13（VM ごとの答え、wasm 版の `CONMA_NO_WASM=1`、String でない名前のエラー、確かめてから `"js"` を使う、フロントエンドの印と bin/to-core が残すこと）。Python 版と Rust 版はエラーのステップの数まで同じログ、wasm 版は `caseN.wasm.log`。
+
+### 8.2. 段階 P2（2026-11-19）
+
+* **`__Host_call__ onError name args ,(result)`**（コア ConMa のプリミティブ。プラットフォームの機能 `"host"`。docs/PRIMITIVES.md、docs/dev/ROADMAP.md の Step 50）：ホストの関数を名前で呼ぶ。渡す値と返る値は、数、文字列、それらの LList で、null は空の LList。Dict と真偽値は、まだ渡さない（M2 のレビュー（docs/dev/REVIEW-ja.md の 2026-11-19）の 3 のとおり。真偽値は、ConMa の真偽値が関数なので、渡し方を決めてから足す）。呼び出しは、すぐに返るものだけで、待つ呼び出し（Stream で結果を返す形）は、要る機能が出てから足す。
+* **どの VM にもあるホストの関数**：機能 `"test"` の `test.add`、`test.echo`、`test.fail`（vm/src/prim/host.rs の `BUILTIN`、vm/python/vproc_step.py の `HOST_FUNCTIONS`）。テストのためのもので、どの VM でも同じに動くので、トレースを比べるテストにも使える（レビューの 2 の「どの VM にも同じホスト」）。`__Feature_available__ "test"` は、どの VM でも真。
+* **wasm 版の VM のホスト**：`BUILTIN` にない名前は、ホストの JavaScript の関数（vm/wasm/conma.js の `create` のフック `hostFunctions`。名前から関数へのオブジェクト）を呼ぶ。`hostFeatures`（名前の配列）にある機能は、`__Feature_available__` で真になる。値は JSON で渡す（-0、NaN、無限大は `{"n":"-0"}` などの形）。import は `host_fn_call`（呼ぶ。結果の長さを返す）、`host_fn_result`（結果を写す）、`host_fn_feature`。関数を 1 回だけ呼んでから結果を写すので、大きな結果でも、関数を 2 回呼ばない（今の `host_text` は、バッファが足りないとホストをもう一度呼ぶ）。JavaScript の関数の例外のメッセージは onError に行き、渡せない値（真偽値、オブジェクト）や Promise を返せばエラーになる。Node.js では、vm/wasm/vm-node.js が、環境変数 `CONMA_HOST` のファイル（CommonJS のモジュール）から、この 2 つを読む。
+* **ネイティブの VM と Python 版の VM**：`BUILTIN` の関数だけを持つ。ほかの名前は「no host function」で onError に行く。Rust 版の VM に、組み込む人が Rust の関数を足す口は、要る機能が出てから作る。
+* **印**：`__Host_call__` を使うモジュールに、フロントエンドが `(Platform "host")` を付ける。どの機能の関数を呼ぶか（`"canvas"` など）は、名前の文字列の中にあるので、フロントエンドには分からない（レビューの 1）。それを包むライブラリが示す形は、P3 で canvas のライブラリと一緒に決める。
+* **transpiled VM**：`__Host_call__` は、VM に任せる（レビューの 4）。
+* **テスト**：test/fast14（どの VM にもある関数とエラーは、どの VM でも同じログ。wasm 版の VM では、test/fast14/host.js の JavaScript の関数を、-0、NaN、無限大、エスケープのある文字列、例外、返せない値で呼ぶ）。
 

@@ -69,6 +69,12 @@ sjs/test/run_all.sh
 * docs/dev/PLATFORM-PLAN-ja.md に、M2 が読んで気付いたことと、6 節の決めることへの M2 の案を書いた（14b2c28）。その後、レビューは計画書と分けることにして（m2/platform-plan-review）、計画書を ddf6520 の文に戻し、レビューを docs/dev/REVIEW-ja.md の 2026-11-19 の節に移した。計画書には、そこへのリンクを 1 行足しただけ。文書だけなので、流すものはない（m1/platform-plan と同じく、main に直接入れず、alpha から入れる）。
 * docs/dev/REVIEW-ja.md に、段階 P1（m1/platform-p1）のレビューの節（2026-11-19（2））を足した（m2/platform-p1-review）。文書だけなので、流すものはない。alpha から入れる。
 
+### m1/platform-p2
+
+* 段階 P2（docs/dev/PLATFORM-PLAN-ja.md の 8.2）：コア ConMa のプリミティブ `__Host_call__` を足した（Python 版、Rust 版。wasm 版と transpiled VM も）。どの VM にもあるテストのホストの関数（機能 `"test"`）、wasm 版のホストの JavaScript の関数（vm/wasm/conma.js の `hostFunctions`、`hostFeatures`。vm-node.js は `CONMA_HOST`）。フロントエンドが `(Platform "host")` を付ける（vm/frontend.module.se を作り直した）。新しいテストは test/fast14。
+* Rust VM、wasm 版（`consh/js/build.sh`）、transpiled VM（`bench/build.sh`。ConSh のモジュールは変わらない）を作り直す。
+* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。ブラウザでは試していない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
