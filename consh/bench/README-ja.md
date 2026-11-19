@@ -74,7 +74,7 @@ consh/bench/roles.py /tmp/p.tsv 250000
 
 ### 2026-11-19：a471875 の Full ConSh Bench（Bash と最適化版＋transpiled VM。`00`〜`18`、`22`）
 
-Apple M2（macOS 27.2.1）、2026-11-19、a471875（alpha。m2/lazy-rest と m1/seq-varlist-gc の後。ブランチ m2/bench-a471875）。rustc 1.99.1、`/bin/bash` 3.2.57。user + sys、起動を含む、3 回の最小、Bash と ConSh を順に替えながら（`run.py -v bash,conma:transpiled`）。transpiled VM は、このコミットで `bench/build.sh` で作った（18 分）。頼まれた版（Bash と最適化版＋transpiled VM）だけを測った。前後の比べはしない。大きさは「スクリプト」の表のとおり。括弧の中は Bash の時間に対する倍率（1 より小さいのは Bash より速い）。どのスクリプトも、出力（終了コードと標準出力）は同じだった。`19`〜`21` は、このコミットの後に consh/sjs/bench/consh に移したので測っていない（m1/sjs-bench-move）。
+Apple M2（macOS 27.2.1）、2026-11-19、a471875（alpha。m2/lazy-rest と m1/seq-varlist-gc の後。ブランチ m2/bench-a471875）。rustc 1.99.1、`/bin/bash` 3.2.57。user + sys、起動を含む、3 回の最小、Bash と ConSh を順に替えながら（`run.py -v bash,conma:transpiled`）。transpiled VM は、このコミットで `bench/build.sh` で作った（18 分）。頼まれた版（Bash と最適化版＋transpiled VM）だけを測った。前後の比べはしない。大きさは「スクリプト」の表のとおり。括弧の中は Bash の時間に対する倍率（1 より小さいのは Bash より速い）。どのスクリプトも、出力（終了コードと標準出力）は同じだった。`19`〜`21` は、このコミットの後に consh/sjs/bench/consh（2026-11-19 に sjs/bench/consh へ移動）に移したので測っていない（m1/sjs-bench-move）。
 
 | スクリプト | 大きさ | Bash | 最適化版＋transpiled VM |
 |---|---|---|---|
