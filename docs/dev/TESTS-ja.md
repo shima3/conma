@@ -82,6 +82,10 @@ sjs/test/run_all.sh
 
 * 文書だけ（docs/dev/PLATFORM-PLAN-ja.md と docs/dev/REVIEW-ja.md）。流すものはない。
 
+### m1/platform-p3-design
+
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 3.4 節、段階 P3 の設計の案）。流すものはない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

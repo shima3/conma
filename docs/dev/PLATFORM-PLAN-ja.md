@@ -76,6 +76,33 @@ sjs/ に、JavaScript の安全なサブセットを ConMa に変換する変換
 | デスクトップ（macOS、Linux、Windows） | Rust 版、transpiled VM | OS、GUI（ウィンドウと描画のライブラリを Rust で包む） | 中くらい：Windows の OS の部分（パイプ、プロセス）を作る |
 | モバイル（iOS、Android） | Rust 版を組み込む | 画面、通知、センサー | 大きい：アプリの殻と、プラットフォームの言語との橋が要る |
 
+### 3.4. 段階 P3 の設計（案、2026-11-19。作る前に決める）
+
+**待つホストの呼び出し**（6 節の 3）
+
+* **プリミティブ**：
+    * `__Host_start__ onError name args ,(inputStream)`：ホストの関数 name を args で呼び始め、パイプの読む側を返す。関数が終わると、ホストが結果を VM に渡し、VM がパイプの書く側を閉じる。値の種類と名前は `__Host_call__` と同じ。
+    * `__Host_result__ onError inputStream ,(result)`：終わった呼び出しの結果。関数が失敗したら、そのメッセージで onError に行く。まだ終わっていなければ onError に行く。結果を取ると、Stream を閉じる。
+    * 待つのは、今ある `__OS_wait_readable__ onError inputStream ,()`（パイプが EOF になると読める）。包むライブラリ（下）が、3 つを 1 つの関数にする：`Host_wait onError name args ,(result)`。
+* **パイプにする理由**：`__JS_call__` と同じ仕組みなので、スケジューラは「外を待っている」と見なし、wasm 版の VM は Idle で返って、ホストの Promise が解決するのを待てる。待つ VProc のほかは動き続ける。Ref の変化を待つ形（`__Ref_wait_change__`）では、すべての VProc が待つとき、スケジューラが行き詰まり（Deadlock）と報告するので、その扱いを足すことになる。
+* **wasm 版のホスト**：`hostFunctions` の関数が Promise を返したら（`__Host_start__` のときだけ受け付ける。`__Host_call__` では今までどおりエラー）、解決したときに、VM の新しい export（`conma_host_done(job, 結果の JSON)`）で結果を渡す。VM は、その job のパイプの書く側を閉じる。ホストは、その後 VM をもう一度動かす（`jsDone` と同じ形のフック）。
+* **ネイティブの VM と Python 版の VM**：どの VM にもあるテストの関数（機能 `"test"`）を、`__Host_start__` でも呼べる。その場で呼んで結果を取っておき、書く側をすぐ閉じる（読めるようになっている）。待つ関数 `test.later`（引数を、そのまま LList で返す）を足す。wasm 版の VM では、`test.later` は、マイクロタスク 1 つの後で終わる（本当に待つ）。どの VM でもログは同じ。
+
+**canvas**（6 節の 1）
+
+* **機能の名前**：`"canvas"`。docs/PRIMITIVES.md の `__Feature_available__` の一覧に足す。
+* **ホストの関数**（JavaScript。新しい vm/wasm/host/canvas.js が、canvas か OffscreenCanvas を受け取り、`hostFunctions` と `hostFeatures` を作る）：
+    * すぐ返るもの：`canvas.size`（幅と高さ）、`canvas.clear`、`canvas.fill_style`、`canvas.stroke_style`、`canvas.line_width`、`canvas.font`、`canvas.fill_rect`、`canvas.stroke_rect`、`canvas.begin_path`、`canvas.move_to`、`canvas.line_to`、`canvas.arc`、`canvas.close_path`、`canvas.fill`、`canvas.stroke`、`canvas.fill_text`。
+    * まとめて描くもの：`canvas.draw`（上の命令のリスト。`("fill_rect" x y w h)` などを順に。1 回の呼び出しで何百もの命令を描く）。
+    * 待つもの：`canvas.frame`（次のアニメーションの 1 コマ、`requestAnimationFrame` を待ち、その時刻を返す）。
+* **ConMa のライブラリ**（新しい include/platform/canvas.se。`(include "platform/canvas.se")`）：上の関数を包む ConMa の関数（`Canvas_fill_rect onError x y w h ,()` など）と `Host_wait`（include/platform/host.se）。包むライブラリが、自分の機能の名前（`"canvas"`）を `__Feature_available__` で確かめる関数（`Canvas_available ,(Boolean)`）も持つ（M2 のレビュー（2026-11-19）の 1：機能の印は、包むライブラリが示す）。
+* **見本のページ**：ConMa のプログラムが canvas にアニメーションを描くページ（vm/wasm/web/canvas.html と、その ConMa のソース）。ページの中で VM を動かす（Worker と OffscreenCanvas は、後で）。consh/js/serve.py で見て、ブラウザで動くことを確かめる。
+* **測ること**：線を 1 本描く 1 回の時間を、`__Host_call__` 1 回ずつ、`canvas.draw` でまとめたとき、今の `js` コマンド（`__JS_call__`）の 3 つで比べる。
+* **テスト**：
+    * 待つ呼び出し：test/fast15（`__Host_start__`、`__Host_result__`、`__OS_wait_readable__` と `test.later`、エラー。どの VM でも同じログ。wasm 版の VM では、`CONMA_HOST` の JavaScript の関数が Promise を返す場合も）。
+    * canvas のライブラリ：canvas のない VM で、`Canvas_available` が偽で、描く関数が onError に行くこと。wasm 版の VM（Node.js）では、`CONMA_HOST` に、命令を記録するだけの canvas のまね（test の中の JavaScript）を渡し、描いた命令の列を確かめる。
+    * 名前の一覧：見本と test が使う `canvas.` の名前が、docs/PRIMITIVES.md の一覧にあること（M2 のレビュー（2026-11-19（2））の 3）。
+
 ## 4. 目標 B：ConMa に変換する言語の道具（言語キット）
 
 SJS の作りから、言語によらない部品を取り出し、新しい言語を少ない手間で作れるようにする。
