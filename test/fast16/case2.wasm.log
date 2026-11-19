@@ -1,0 +1,21 @@
+canvas: yes
+size: 320 x 200
+drawn
+3 frames
+draw nope: canvas.draw: unknown command "nope"
+fill_rect a String: canvas.fill_rect: expected a number, got string
+clearRect(0, 0, 320, 200)
+fillStyle = #3366cc
+fillRect(0, 0, 10, 20)
+strokeStyle = red
+lineWidth = 0.5
+beginPath()
+moveTo(0, 0)
+lineTo(10, 20)
+stroke()
+font = 16px sans-serif
+fillText(hi, 10, 10)
+arc(10, 10, 3, 0, 0.5)
+lineTo(10, 20)
+fill()
+exit: 0
