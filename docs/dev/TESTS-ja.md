@@ -59,6 +59,11 @@ sjs/test/run_all.sh
 
 * docs/dev/PLATFORM-PLAN-ja.md（計画書）を足し、docs/dev/README.md の一覧に載せただけ。文書だけなので、流すものはない（計画書が sjs/ を指すので、main に直接入れず、alpha から入れる）。
 
+### m1/platform-p1
+
+* 段階 P1（docs/dev/PLATFORM-PLAN-ja.md の 8.1）：コア ConMa のプリミティブ `__Feature_available__` を足し（Python 版、Rust 版。wasm 版と transpiled VM も）、フロントエンドが `__JS_call__` と `__JS_value__` を使うモジュールに `(Platform "js")` を付ける（bin/resolver、include/resolver.se、reference/resolver.se。vm/frontend.module.se を作り直した）。新しいテストは test/fast13。
+* Rust VM を作り直し、ConSh を動かしてモジュールを作り直し（ConSh のモジュールにも `(Platform "js")` が付く）、それから transpiled VM を `bench/build.sh` で作り直す。wasm 版は `consh/js/build.sh` で作り直す。
+* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17）。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。
 ### m2/platform-plan-notes
 
 * docs/dev/PLATFORM-PLAN-ja.md に、M2 が読んで気付いたことと、6 節の決めることへの M2 の案を書いた（14b2c28）。その後、レビューは計画書と分けることにして（m2/platform-plan-review）、計画書を ddf6520 の文に戻し、レビューを docs/dev/REVIEW-ja.md の 2026-11-19 の節に移した。計画書には、そこへのリンクを 1 行足しただけ。文書だけなので、流すものはない（m1/platform-plan と同じく、main に直接入れず、alpha から入れる）。

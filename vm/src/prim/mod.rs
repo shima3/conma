@@ -167,6 +167,7 @@ prims! {
     "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
     "__JS_call__"          => "prim_JS_call", js::call;
     "__JS_value__"         => "prim_JS_value", js::value;
+    "__Feature_available__" => "prim_Feature_available", js::feature_available;
     "__Wasm_compile__"     => "prim_Wasm_compile", wasm::compile;
     "__Wasm_call__"        => "prim_Wasm_call", wasm::call;
     "__Wasm_call_memory__" => "prim_Wasm_call_memory", wasm::call_memory;

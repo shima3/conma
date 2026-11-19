@@ -1,0 +1,11 @@
+array: yes
+bitwise32: yes
+boolean: yes
+chan: yes
+control: yes
+wasm: no
+js: no
+canvas: no
+: no
+JS: no
+exit: 0
