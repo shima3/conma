@@ -85,7 +85,7 @@ sjs/test/run_all.sh
 ### m1/platform-p3-design
 
 * 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 3.4 節、段階 P3 の設計の案）。流すものはない。
-* M2 の ConJS のレビュー（docs/dev/REVIEW-ja.md の 2026-11-19（4））への答えを、計画書の 4.1 節と、そのレビューの「対応」に書いた。これも文書だけ。
+* M2 の ConJS のレビュー（docs/dev/REVIEW-ja.md の 2026-11-19（4））への答えを、計画書の 4.1 節と、そのレビューの「対応」に書いた。Promise は受け付けないと決めた。これも文書だけ。
 
 ## 記録
 
