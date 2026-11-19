@@ -319,6 +319,19 @@ fn lvenv_child(env: &LVEnv, f: &mut dyn FnMut(Node)) {
     }
 }
 
+/// The place of a Ref in `nodes` that its gc_slot gives, if it is still there.
+fn slot_of(c: &Node, nodes: &[Node]) -> Option<usize> {
+    if let Node::Ref(r) = c {
+        let j = r.gc_slot.get() as usize;
+        if let Some(Node::Ref(n)) = nodes.get(j) {
+            if Rc::ptr_eq(n, r) {
+                return Some(j);
+            }
+        }
+    }
+    None
+}
+
 /// Collect the cycles that nothing outside them reaches. Returns the number of
 /// containers freed.
 pub fn collect() -> usize {
@@ -346,10 +359,21 @@ pub fn collect() -> usize {
     });
     // Fx rather than SipHash: the keys are addresses, and the index is made at
     // every collection (SipHash took about a seventh of the time of collect).
+    // Refs, which are most of the containers when a program keeps a long
+    // LazyList, are found by their gc_slot instead, so they are not put in it
+    // (looking them up took about two thirds of the time spent going through
+    // the values, and collect took 1.8 times as long, when it held the
+    // millions of Refs of the rest of consh/bench/11_seq_varlist.sh).
+    let refs = nodes.iter().filter(|n| matches!(n, Node::Ref(_))).count();
     let mut index: HashMap<usize, usize, crate::value::FxBuild> =
-        HashMap::with_capacity_and_hasher(nodes.len() * 4, Default::default());
+        HashMap::with_capacity_and_hasher((nodes.len() - refs) * 4, Default::default());
     for (i, n) in nodes.iter().enumerate() {
-        index.insert(n.addr(), i);
+        match n {
+            Node::Ref(r) if i < u32::MAX as usize => r.gc_slot.set(i as u32),
+            _ => {
+                index.insert(n.addr(), i);
+            }
+        }
     }
     // Every value reachable from the containers, the references to each one
     // from inside the graph, and the edges.
@@ -376,8 +400,8 @@ pub fn collect() -> usize {
                 seen &= c.children(&mut |g| found.push(g));
                 continue;
             }
-            let j = match index.get(&c.addr()) {
-                Some(&j) => j,
+            let j = match slot_of(&c, &nodes).or_else(|| index.get(&c.addr()).copied()) {
+                Some(j) => j,
                 None => {
                     let j = nodes.len();
                     index.insert(c.addr(), j);
