@@ -62,6 +62,7 @@
   __Dict_new__ ,(d) __LList_cons__ d __NULL__ ,(a) wait "a Dict" "test.echo" a ,()
   too_early ,()
   tracked ,()
+  long_results ,()
   __NULL__)
 
 ;; 終わる前に結果を取るとエラー。そのあと待てば取れる。結果を取った Stream は閉じている
@@ -75,6 +76,23 @@
   __Host_result__ (,(e) say "again" e ,() return) s ,(r)
   println "not reached" ,()
   return)
+
+;; text を n 回、自分とつなげる（長さは 2 の n 乗倍）
+(define double ,(text n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end) __if__ end (,() return text) ,()
+  __String_concat__ text text ,(text)
+  num "1" ,(n1) __Number_subtract__ n n1 ,(n)
+  double text n)
+
+;; 結果がパイプに入りきらないほど長いと、エラーの結果になる（VM は止まらない）。128 KB の文字列
+(define long_results ,()
+  num "17" ,(n17) num "0" ,(n0)
+  double "x" n17 ,(long)
+  __LList_cons__ long __NULL__ ,(a)
+  wait "echo 128 KB" "test.echo" a ,()
+  __LList_cons__ n0 a ,(a)
+  wait "later 128 KB" "test.later" a)
 
 ;; __Host_start_tracked__ は Stream を Ref に入れる
 (define tracked ,()

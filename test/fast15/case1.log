@@ -12,4 +12,6 @@ again: __Host_result__: closed input Stream
 tracked: 1
 tracked echo: (1 "x")
 tracked a Number: error: __Host_start_tracked__: expected a Ref of an LList, got Number
+echo 128 KB: error: __Host_start__: the result of test.echo is longer than 8192 bytes
+later 128 KB: error: __Host_start__: the result of test.later is longer than 8192 bytes
 exit: 0

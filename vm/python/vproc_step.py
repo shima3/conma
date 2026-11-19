@@ -1245,7 +1245,8 @@ def _host_finish(w, text):
         pass
     os.close(w)
 
-# The longest result that a function of HOST_FUNCTIONS writes to its pipe in the step of the call
+# The longest result that a function of HOST_FUNCTIONS (in the step of the call) or test.later (in the
+# scheduler) writes to its pipe before any VProc reads it
 HOST_PIPE_MAX = 8192
 
 def prim_Host_start(vp, gvenv):
@@ -1283,18 +1284,21 @@ def _host_start(vp, prim, tracked):
     elif f is None:
         _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
         return
-    r, w = os.pipe()
     if later:
-        SCHEDULER.later_calls += 1
-        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w,
-                                     _host_result_json(True, hargs)))
+        text = _host_result_json(True, hargs)
     else:
         try:
             text = _host_result_json(True, f(hargs))
         except _HostError as e:
             text = _host_result_json(False, str(e))
-        if len(text.encode()) > HOST_PIPE_MAX:
-            text = _host_result_json(False, f"{prim}: the result of {fname} is longer than {HOST_PIPE_MAX} bytes")
+    # The scheduler writes the result of test.later before any VProc reads it: a longer one would block it
+    if len(text.encode()) > HOST_PIPE_MAX:
+        text = _host_result_json(False, f"{prim}: the result of {fname} is longer than {HOST_PIPE_MAX} bytes")
+    r, w = os.pipe()
+    if later:
+        SCHEDULER.later_calls += 1
+        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w, text))
+    else:
         _host_finish(w, text)
     stream = Stream(r, "r")
     if tracked:

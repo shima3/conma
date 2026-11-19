@@ -181,10 +181,21 @@ fn finish(w: i32, text: &str) {
     let _ = sys::close_fd(w);
 }
 
-/// The longest result that a function of BUILTIN writes to its pipe: a pipe of
-/// the OS takes at least this much without a reader (the native and Python
-/// VMs write it in the step of the call).
+/// The longest result that a function of BUILTIN or test.later writes to its
+/// pipe: a pipe of the OS takes at least this much without a reader (the
+/// native and Python VMs write it in the step of the call, or in the
+/// scheduler for test.later, before any VProc reads it).
 const PIPE_MAX: usize = 8192;
+
+/// The result text, or an error result if it is longer than PIPE_MAX (the
+/// scheduler writes the result of test.later, so a longer one would block it).
+fn capped(prim: &str, fname: &str, text: String) -> String {
+    if text.len() > PIPE_MAX {
+        result_json(&Err(format!("{}: the result of {} is longer than {} bytes", prim, fname, PIPE_MAX)))
+    } else {
+        text
+    }
+}
 
 /// The calls of test.later that have not finished, by the virtual clock: when
 /// no VProc can run, the call with the earliest deadline (then the first
@@ -263,13 +274,10 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
         let deadline = m.host_later.clock + if let Some(HostValue::Num(n)) = args.first() { *n } else { 0.0 };
         m.host_later.calls += 1;
         let n = m.host_later.calls;
-        m.host_later.jobs.push((deadline, n, w, result_json(&Ok(HostValue::List(args)))));
+        let text = capped(prim, &fname, result_json(&Ok(HostValue::List(args))));
+        m.host_later.jobs.push((deadline, n, w, text));
     } else if let Some(f) = builtin {
-        let mut text = result_json(&f(&args));
-        if text.len() > PIPE_MAX {
-            text = result_json(&Err(format!("{}: the result of {} is longer than {} bytes", prim, fname, PIPE_MAX)));
-        }
-        finish(w, &text);
+        finish(w, &capped(prim, &fname, result_json(&f(&args))));
     } else {
         sys::host_start(&fname, &to_json(&HostValue::List(args)), w);
     }
