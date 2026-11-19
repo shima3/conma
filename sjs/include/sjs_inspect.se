@@ -43,6 +43,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "Object [Generator] {}") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "Object [AsyncGenerator] {}") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_ins_promise X v depth indent ,(s) return s) ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "[Task]") ,()
   __String_equal__ kind "object" ,(isObject)
   __if__ isObject
     (,()

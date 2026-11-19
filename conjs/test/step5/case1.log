@@ -1,0 +1,3 @@
+main does not join
+conjs: Deadlock: tasks waiting in join: 2
+exit: 2

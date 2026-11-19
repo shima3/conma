@@ -15,3 +15,4 @@ vm/wasm/web/conma.wasm
 vm/wasm/web/conma.js
 vm/wasm/web/canvas.js
 vm/wasm/web/canvas_demo.module.se
+vm/wasm/web/canvas_demo_conjs.module.se

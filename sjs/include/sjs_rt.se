@@ -95,6 +95,11 @@
 
 ;; ── エラー ──
 
+;; 言語の印（PDict の "sjs_lang"）が ConJS か（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。conjs/conjsc.se と Conjs_run が置く）
+(define Sjs_is_conjs ,()
+  __PDict_lookup_or__ "sjs_lang" (,(k) __NULL__ "sjs") ,(lang)
+  __String_equal__ lang "conjs")
+
 (define Sjs_throw ,(name msg)
   ;; 変換するとき（G がない）は、そのまま出して終える
   __PDict_lookup_or__ "sjs_G" (,(k) __NULL__ __NULL__) ,(G)
@@ -115,7 +120,9 @@
   __is_null__ fail ,(test__) __unless__ test__ (,() fail text) ,()
   __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(pos)
   __is_null__ pos ,(noPos)
-  __if_then_else__ noPos (,() __NULL__ "sjs: ") (,() __String_concat__ pos ": ") ,(s)
+  Sjs_is_conjs ,(conjs)
+  __if_then_else__ conjs (,() __NULL__ "conjs: ") (,() __NULL__ "sjs: ") ,(prefix)
+  __if_then_else__ noPos (,() __NULL__ prefix) (,() __String_concat__ pos ": ") ,(s)
   __String_concat__ s text ,(s)
   __String_concat__ s "\n" ,(s)
   __OS_print_error__ s ,()
@@ -222,6 +229,8 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "object") ,()
+  ;; ConJS の処理（conjs/include/conjs_rt.se）
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "object") ,()
   __NULL__ kind)
 
 (define Sjs_is_number ,(v)
@@ -283,6 +292,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "a generator") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "an async generator") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "a promise") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "a task") ,()
   Sjs_to_string v ,(s)
   __String_concat__ "the " kind ,(a)
   __String_concat__ a " " ,(a)
@@ -660,6 +670,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "[object Generator]") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "[object AsyncGenerator]") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "[object Promise]") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "[object Task]") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
@@ -1224,7 +1235,7 @@
 (define Sjs_in_op ,(G k o)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
-  Sjs_word_in kind "array object function generator asyncgen promise" ,(isObject)
+  Sjs_word_in kind "array object function generator asyncgen promise task" ,(isObject)
   __unless__ isObject
     (,()
       Sjs_key_string k ,(ks)
@@ -2229,6 +2240,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "{}") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "{}") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "{}") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "{}") ,()
   __NULL__ __NULL__)
 
 (define Sjs_json_items ,(list acc first)

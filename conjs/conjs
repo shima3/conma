@@ -1,0 +1,36 @@
+#!/bin/bash
+# ConJS のファイルを ConMa に変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。sjs/sjs と同じ形。
+#   conjs/conjs [--emit] file.con.js
+# --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm/target/release/conma）で行い、
+# 変換したプログラムは CONMA_VM の VM で動かす：なし（Rust 版）、wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）
+conjs="$(cd "$(dirname "$0")"; pwd)"
+root="${conjs%/*}"
+sjs="$root/sjs"
+conma="$root/vm/target/release/conma"
+emit=
+if [ "$1" = --emit ]; then emit=yes; shift; fi
+if [ $# -ne 1 ]; then echo "usage: conjs [--emit] file.con.js" >&2; exit 2; fi
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/conjs.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+# 変換器のモジュールは、ソースか VM が新しくなったときだけ作り直す（sjs/sjs と同じ。置き場所は bin/cache-dir の場所）
+module="$("$root/bin/cache-dir")/conjsc.module.se" || exit 1
+dirs=("$sjs/include" "$root/include/ext" "$root/include")
+if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$conjs/conjsc.se" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
+   [ "$conma" -nt "$module" ]; then
+  module_tmp=$(mktemp "$module.XXXXXX") || exit 1
+  if ! "$conma" build --include "$sjs/include" "$conjs/conjsc.se" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
+  mv -f "$module_tmp" "$module" || { rm -f "$module_tmp"; exit 1; }
+fi
+"$conma" --main "$module" "$1" > "$tmp/prog.se" || exit $?
+if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
+inc=(--include "$conjs/include" --include "$sjs/include")
+case "$CONMA_VM" in
+  wasm)
+    "$conma" build "${inc[@]}" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
+    exec "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se" ;;
+  python)
+    "$conma" build "${inc[@]}" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
+    exec "$root/bin/vm" --main "$tmp/prog.module.se" ;;
+  *)
+    exec "$conma" run "${inc[@]}" "$tmp/prog.se" ;;
+esac

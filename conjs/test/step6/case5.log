@@ -1,0 +1,4 @@
+{ then: 2, async_name: 'ok' } {"then":[1]} 2
+10
+TypeError: the property then of the number 42 is not a function
+exit: 0

@@ -1,0 +1,5 @@
+late: joined later
+main end 42
+case2.con.js:3:53: Uncaught (in task) TypeError: Cannot read properties of undefined (reading 'y')
+case2.con.js:2:43: Uncaught (in task) second
+exit: 2

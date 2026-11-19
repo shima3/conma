@@ -1,0 +1,4 @@
+loop finished 199990000
+watcher sees done = true
+main t1-a t2-a t1-b t2-b
+exit: 0

@@ -1,0 +1,9 @@
+main before join object [Task]
+A start
+B start
+B got [ 1, 'b' ]
+A got [ 2, 'a' ]
+join a: A
+join b: B
+main end
+exit: 0
