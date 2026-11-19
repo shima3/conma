@@ -55,6 +55,15 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/seq-varlist-gc
+
+* ベンチマーク：Full ConSh Bench。測るコミットは a471875（alpha。m2/lazy-rest と m1/seq-varlist-gc の後）。版は Bash と最適化版＋transpiled VM だけ（ほかの版は測らない）。スクリプトは `00`〜`18` と `22`（`19`〜`21` は、m1/sjs-bench-move で consh/sjs/bench/consh に移したので含まない）。前後の比べはしない。
+
+### m1/sjs-bench-move
+
+* consh/bench の `19_loop.sh`、`20_fib.sh`、`21_nbody.sh` と、`bash/` の `19` と `20` を、consh/sjs/bench/consh の `loop.sh`、`fib.sh`、`nbody.sh` と `bash/` に移した（wasm 版の VM でしか約 1 秒の大きさにならないため）。consh/bench/run.py は、Bash 版をスクリプトの隣の `bash/` から探し、`(( ))` のスクリプトを既定の一覧から除く処理をなくした。ビルドとテストが読むファイルは変えていないので、作り直すものはない。
+* 確かめたこと：`run.py -n 1 -v bash,conma:wasm` で移した `loop.sh` と `fib.sh`（Bash は小さい大きさ）、`-v conma:wasm` で `nbody.sh`、`-v bash,conma:transpiled` で consh/bench の `02_for_seq.sh` が動き、出力が同じだったこと。suite は流していない（どの suite も、変えたファイルを読まない）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

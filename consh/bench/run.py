@@ -11,7 +11,7 @@ VERSION is one of
   reference:transpiled  the reference ConMa version on the transpiled VM
   conma:wasm            the extended ConMa version on the wasm VM (vm/wasm/vm-wasm.sh, vm/wasm/build.sh)
   reference:wasm        the reference ConMa version on the wasm VM
-  bash                  Bash (bash in PATH) with the Bash version of the script, bash/NN_*.sh
+  bash                  Bash (bash in PATH) with the Bash version of the script, in bash/ beside it
 (by default rust,conma:transpiled). VERSION=PATH runs the version with another executable: PATH in place of
 consh-rs, of bash, of the VM (vm/target/release/conma, vm/target-transpiled/release/conma), or of
 vm/wasm/vm-wasm.sh, such as a copy made before rebuilding it, to measure the version before a change beside
@@ -19,16 +19,18 @@ the version after it: -v conma:transpiled=/tmp/before/conma,conma:transpiled. A 
 layout of the repository: vm-wasm.sh, vm-node.js, vm-jsc.js, conma.js and
 target/wasm32-unknown-unknown/release/conma_wasm.wasm of vm/wasm in DIR/vm/wasm, and vm/frontend.module.se in
 DIR/vm (vm-node.js reads it from ../.. of its directory). The column of the table is VERSION=PATH as given.
-Each script (by default, all the scripts NN_*.sh here) is run N times (3 by default) with each version, the
+A script is a path, or the name of a script here. Each script (by default, all the scripts NN_*.sh here) is
+run N times (3 by default) with each version, the
 versions in turn (the first run of each version, then the second, ...), so that a change of the state of the
 machine falls on all of them, and the least user + sys time of the process is printed, including its
 start, as a Markdown table with the ratio of each version to the first one; the outputs of the versions
 must be the same (for bash, only the status and the standard output, as its error messages are not those of
-ConSh). The scripts that use (( )) (19 to 21), which the Rust version does not have, are left out of the
-default list when rust is among the versions, and the scripts that have no Bash version (21) when bash is.
-A Bash version smaller than its script (19 and 20) says in a line "# smaller size: A/B" that the script does
-A/B times its work: its time is printed with that times A/B, which the ratios use, and only its status is
-compared.
+ConSh). The scripts that have no Bash version are left out of the default list when bash is among the
+versions. A Bash version smaller than its script (consh/sjs/bench/consh/bash/loop.sh and fib.sh) says in a
+line "# smaller size: A/B" that the script does A/B times its work: its time is printed with that times A/B,
+which the ratios use, and only its status is compared. The scripts whose work is all in (( )), which only the
+wasm VM runs in about a second, are in consh/sjs/bench/consh (until 2026-11-19, here as 19 to 21): give their
+paths, as in consh/bench/run.py -v conma:wasm consh/sjs/bench/consh/*.sh; the Rust version has no (( )).
 
 The executables are started as bin/consh starts them, without bin/consh: consh-rs run <script>, and
 conma --main <module> run-src <script> <script>. The modules (consh.module.se and consh.reference.module.se
@@ -61,7 +63,6 @@ MODULES = {
     "reference": os.path.join(MODULE_DIR, "consh.reference.module.se"),
 }
 RUST = os.path.join(CONSH, "rust/target/release/consh-rs")
-BASH_DIR = os.path.join(HERE, "bash")
 
 
 def fail(msg):
@@ -112,13 +113,13 @@ def command(spec):
 
 
 def bash_script(script):
-    """The Bash version of a script: bash/ with the same name."""
-    return os.path.join(BASH_DIR, os.path.basename(script))
+    """The Bash version of a script: bash/ beside it, with the same name."""
+    return os.path.join(os.path.dirname(script), "bash", os.path.basename(script))
 
 
 def bash_scale(script):
-    """How many times the work of the Bash version of a script that is smaller than the script (19 and 20,
-    which would take half an hour in Bash) the script does, from its line "# smaller size: A/B"; 1 for a Bash
+    """How many times the work of the Bash version of a script that is smaller than the script (loop.sh and
+    fib.sh of consh/sjs/bench/consh, which would take half an hour in Bash) the script does, from its line "# smaller size: A/B"; 1 for a Bash
     version of the same size."""
     with open(bash_script(script), encoding="utf-8") as f:
         for line in f:
@@ -173,12 +174,6 @@ def main():
     scripts = [os.path.abspath(s if os.path.exists(s) else os.path.join(HERE, s)) for s in a.scripts]
     if not scripts:
         scripts = sorted(glob.glob(os.path.join(HERE, "[0-9][0-9]_*.sh")))
-        if "rust" in names:
-            arith = [s for s in scripts if "((" in open(s, encoding="utf-8").read()]
-            scripts = [s for s in scripts if s not in arith]
-            if arith:
-                print("run.py: left out, as the Rust version has no (( )): "
-                      + " ".join(os.path.basename(s) for s in arith), file=sys.stderr)
         if "bash" in names:
             nobash = [s for s in scripts if not os.path.exists(bash_script(s))]
             scripts = [s for s in scripts if s not in nobash]
