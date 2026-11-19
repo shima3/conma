@@ -77,6 +77,10 @@ sjs/test/run_all.sh
 * Rust VM、wasm 版（`consh/js/build.sh`）、transpiled VM（`bench/build.sh`。ConSh のモジュールは変わらない）を作り直す。
 * 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。ブラウザでは試していない。
 
+### m1/conjs-decision
+
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md と docs/dev/REVIEW-ja.md）。流すものはない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
