@@ -59,6 +59,12 @@ sjs/test/run_all.sh
 
 * docs/dev/PLATFORM-PLAN-ja.md（計画書）を足し、docs/dev/README.md の一覧に載せただけ。文書だけなので、流すものはない（計画書が sjs/ を指すので、main に直接入れず、alpha から入れる）。
 
+### m1/platform-p1
+
+* 段階 P1（docs/dev/PLATFORM-PLAN-ja.md の 8.1）：コア ConMa のプリミティブ `__Feature_available__` を足し（Python 版、Rust 版。wasm 版と transpiled VM も）、フロントエンドが `__JS_call__` と `__JS_value__` を使うモジュールに `(Platform "js")` を付ける（bin/resolver、include/resolver.se、reference/resolver.se。vm/frontend.module.se を作り直した）。新しいテストは test/fast13。
+* Rust VM を作り直し、ConSh を動かしてモジュールを作り直し（ConSh のモジュールにも `(Platform "js")` が付く）、それから transpiled VM を `bench/build.sh` で作り直す。wasm 版は `consh/js/build.sh` で作り直す。
+* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17）。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

@@ -112,3 +112,31 @@ fn json_string(s: &str, out: &mut String) {
     }
     out.push('"');
 }
+
+/// The features that __Feature_available__ answers true for on every VM: the
+/// features of extended ConMa, which work on every VM (on the Python VM
+/// through the replacement definitions of bin/to-core). "wasm" and the
+/// platform features ("js"; docs/dev/PLATFORM-PLAN-ja.md) depend on the VM and
+/// its host.
+const FEATURES_EVERYWHERE: &[&str] = &["array", "bitwise32", "boolean", "chan", "control"];
+
+/// __Feature_available__ name ,(Boolean): true if the feature named name can
+/// be used here: a feature of extended ConMa, "wasm" when WebAssembly runs
+/// (the VM for wasm32, without --trace, CONMA_PROFILE and CONMA_NO_WASM, as
+/// for __Wasm_call__), "js" when the host has JavaScript; false for any other
+/// name.
+pub fn feature_available(m: &mut Machine, vp: &mut VProc) -> PResult {
+    let name = "__Feature_available__";
+    let a = take_n(vp, name, 1)?;
+    let Some(text) = crate::value::string_cow(&a[0]) else {
+        return Err(VmError::Error(format!("{}: expected String, got {}", name, value_type_name(&a[0]))));
+    };
+    let text = text.map_err(VmError::Error)?;
+    let yes = match &*text {
+        "wasm" => super::wasm::available(m),
+        "js" => sys::js_available(),
+        f => FEATURES_EVERYWHERE.contains(&f),
+    };
+    vp.prim_return1(if yes { m.true_closure() } else { m.false_closure() });
+    Ok(())
+}

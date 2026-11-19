@@ -568,6 +568,11 @@ pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
     Ok((r, to_host))
 }
 
+/// The host has JavaScript (__JS_call__, __JS_value__; __Feature_available__ "js").
+pub fn js_available() -> bool {
+    true
+}
+
 pub fn js_value(id: &str) -> io::Result<String> {
     host_text(|out, cap| unsafe { host_js_value(id.as_ptr(), id.len(), out, cap) })
 }

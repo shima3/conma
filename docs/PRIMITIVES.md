@@ -178,6 +178,13 @@ After execution, it resumes the **LCont** with an empty OList — no values are 
 * **Usage**: A shell variable of ConSh that holds a JavaScript value, when it is read with `$`.
 * **Error**: If `id` is not a String, or the host has no value of that number, invokes `onError` with an error message string. The native VMs (`vm/python/vproc_step.py` and `vm/`) have no JavaScript: with a String, they invoke `onError` with `"__JS_value__: JavaScript is not available"`.
 
+
+### **`__Feature_available__ name ,(Boolean)`**
+* **Description**: True if the feature named `name` (a String) can be used on this VM and its host, false otherwise.
+* **Behavior**: True for the features of extended ConMa that work on every VM (`"array"`, `"bitwise32"`, `"boolean"`, `"chan"` and `"control"`: on the Python VM through the replacement definitions of section 16); for `"wasm"` only where `__Wasm_call__` runs WebAssembly (the VM for wasm32, without `--trace`, `CONMA_PROFILE` and `CONMA_NO_WASM`); for the platform feature `"js"` only where the host has JavaScript (the VM for wasm32); false for any other name. A program asks it before it uses what a platform has, and takes another way where it is not there (docs/dev/PLATFORM-PLAN-ja.md, in Japanese).
+* **Error**: If `name` is not a String, the VProc stops with an error, as for the String primitives.
+
+**Platform features.** `__JS_call__` and `__JS_value__` make up the platform feature `"js"`: what a platform has, not part of the language, so that it is another axis than core and extended ConMa (section 16). Every VM has their primitives, which go to `onError` where the platform does not have the feature, and the Python VM runs them as they are (`bin/to-core` does not replace them). A module that uses one of them as a global without a definition gets `(Platform "js")` from the frontend, after its `(Uses ...)` or, without one, after its `(F ...)` (docs/RESOLVER.md). More platform features (drawing on a canvas of a browser first) are planned in docs/dev/PLATFORM-PLAN-ja.md.
 ---
 
 ## 2. Number Primitives

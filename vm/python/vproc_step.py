@@ -1093,6 +1093,19 @@ def prim_JS_value(vp, gvenv):
         return
     _prim_error(vp, on_error, f"{name}: JavaScript is not available")
 
+# The features that __Feature_available__ answers true for on this VM: the features of extended ConMa, which work on
+# every VM (on this one through the replacement definitions of bin/to-core), but not "wasm", whose primitives go to
+# onError here as on the native VMs. This VM has no platform feature ("js" and the others; docs/dev/PLATFORM-PLAN-ja.md)
+FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control")
+
+def prim_Feature_available(vp, gvenv):
+    """__Feature_available__ name ,(Boolean)
+    True if the feature named name can be used here: a feature of extended
+    ConMa (except "wasm"), or a platform feature that this VM and its host
+    have. This VM has no WebAssembly and no platform feature."""
+    (name,) = _string_args(vp, "__Feature_available__", 1)
+    _prim_return(vp, [TRUE_CLOSURE if name in FEATURES_AVAILABLE else FALSE_CLOSURE])
+
 def prim_OS_sysconf(vp, gvenv):
     """__OS_sysconf__ onError name ,(Number)
     The value of the system configuration variable name (a String such as
@@ -2892,6 +2905,7 @@ PRIMITIVES = {
     "__Ref_wait_change__":     prim_Ref_wait_change,
     "__JS_call__":             prim_JS_call,
     "__JS_value__":            prim_JS_value,
+    "__Feature_available__":   prim_Feature_available,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

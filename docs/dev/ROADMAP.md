@@ -896,6 +896,17 @@ No new primitive.
 * Fix: the scheduler (`Scheduler.run` of vm/python/vproc_step.py, `Machine::run_slice` of vm/src/sched.rs, which the wasm VM shares) also finishes a VProc taken from the ready queue that has nothing left to do, instead of stepping it. No step is counted, so the step numbers and traces of other programs are the same.
 * Tests: `test/step48` (a VProc ending with `__VProc_wait__`, one ending with `__Ref_wait_change__`, and the first VProc ending with `__VProc_wait__`), which failed before on the Python VM.
 
+## Step 49: Asking for a feature, and the platform feature "js"
+
+| Primitive | Status |
+|---|---|
+| `__Feature_available__ name ,(Boolean)` (core ConMa) | implemented |
+
+* Goal: stage P1 of docs/dev/PLATFORM-PLAN-ja.md (2026-11-19): a program can ask whether a feature can be used where it runs, and the modules say which features of their platform they use, before more platform features (a canvas in a browser) are added.
+* `__Feature_available__` is true for the features of extended ConMa that work on every VM, for `"wasm"` where WebAssembly runs, for `"js"` where the host has JavaScript (the VM for wasm32), and false for any other name (`vm/python/vproc_step.py`, `vm/src/prim/js.rs`; `sys::js_available` of `vm/src/sys.rs` and `vm/wasm/src/sys.rs`).
+* `__JS_call__` and `__JS_value__` are the platform feature `"js"`: both frontends (`bin/resolver`, `include/resolver.se` and `reference/resolver.se`; `vm/frontend.module.se` made again) write `(Platform "js")` after `(Uses ...)`. Not an item of `Uses`, which `bin/to-core` replaces for the Python VM: platform features are another axis than core and extended ConMa, every VM has their primitives, and the reference version of ConSh, which is core ConMa, keeps JavaScript on the wasm VM.
+* Tests: `test/fast13` (the answers on each VM, also with `CONMA_NO_WASM`, the error of a name that is not a String, using `"js"` after asking, the item the frontends write and that `bin/to-core` keeps).
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from docs/consh/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in docs/consh/dev/SAFEJS-REVIEW-ja.md (3.1.4).

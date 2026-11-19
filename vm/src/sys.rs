@@ -230,6 +230,12 @@ pub fn js_call(_code: &str, _args_json: &str) -> io::Result<(c_int, c_int)> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
 }
 
+/// The host has JavaScript (__JS_call__, __JS_value__; __Feature_available__
+/// "js"). The native VM has none.
+pub fn js_available() -> bool {
+    false
+}
+
 /// __JS_value__: the JS value numbered id in the host, as an S-expression of
 /// a value of ConSh. The native VM has no JavaScript.
 pub fn js_value(_id: &str) -> io::Result<String> {

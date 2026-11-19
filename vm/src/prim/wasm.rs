@@ -19,7 +19,7 @@ const MAX_FUEL: f64 = 9007199254740992.0;
 
 /// WebAssembly can be used: the VM for wasm32, without --trace and CONMA_PROFILE (which count the
 /// steps of ConMa) and without CONMA_NO_WASM.
-fn available(m: &Machine) -> bool {
+pub(crate) fn available(m: &Machine) -> bool {
     sys::wasm_available()
         && !m.trace
         && m.profile.is_none()

@@ -26,6 +26,15 @@ EXT_PRIMITIVES = [
     ("wasm", ("__Wasm_compile__", "__Wasm_call__", "__Wasm_call_memory__", "__Dict_numbers__", "__Dict_put_numbers__")),
 ]
 
+# The platform features and the primitives of each (docs/dev/PLATFORM-PLAN-ja.md 3.1): a module that uses one of them as
+# a global without a definition gets (Platform "feature") after its (Uses ...), or after its (F ...) when it has none
+# (include/resolver.se does the same). They are another axis than core and extended ConMa: every VM has their
+# primitives, which go to onError on a platform without the feature
+PLATFORM_PRIMITIVES = [
+    # __JS_call__ and __JS_value__, JavaScript in the host of the VM for wasm32 (docs/consh/dev/JS-PLAN-ja.md 2.1)
+    ("js", ("__JS_call__", "__JS_value__")),
+]
+
 class ASTNode:
     def __init__(self, node_type, line, col, value=None):
         self.type = node_type
@@ -289,6 +298,10 @@ class Resolver:
                 if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
         if uses:
             f_node += " (Uses " + " ".join(f'"{f}"' for f in uses) + ")"
+        platform = [f for f, prims in PLATFORM_PRIMITIVES
+                    if any(n in self.global_registry and self.global_registry[n]["value"] is None for n in prims)]
+        if platform:
+            f_node += " (Platform " + " ".join(f'"{f}"' for f in platform) + ")"
 
         lines = [f"(Module {f_node}"]
 
