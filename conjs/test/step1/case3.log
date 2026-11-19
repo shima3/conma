@@ -1,0 +1,9 @@
+before wait, ticks = 0
+tick 1
+tick 2
+tick 3
+after wait, ticks = 3
+outer
+inner
+outer returned 3
+exit: 0

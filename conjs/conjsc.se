@@ -1,0 +1,27 @@
+;; ConJS の変換器（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）：ConJS のファイルを読み、ConMa のソースを標準出力に出す。
+;;   main の引数: ConJS のファイル名
+;; 変換は SJS の変換器（sjs/include の sjs_lex.se、sjs_parse.se、sjs_gen.se）に、言語の印（PDict の "sjs_lang" を "conjs"）を
+;; 付けて使う。作ったソースは conjs_rt.se（conjs/include）を include する
+(include "util.se")
+(include "sjs_rt.se")
+(include "sjs_lex.se")
+(include "sjs_parse.se")
+(include "sjs_gen.se")
+(include "sjs_wasm.se")
+
+(define main ,(args)
+  __Seq_get__ (,() __print_exit_error__ "usage: conjsc.se <file.con.js>\n") args ,(path rest)
+  __OS_open__ (,(msg) __String_concat__ "conjsc: " msg ,(m) __String_concat__ m "\n" ,(m) __print_exit_error__ m) path "r" ,(stream)
+  __LazyList_lines__ stream ,(lines)
+  Sjsc_join lines "" ,(text)
+  __OS_close__ __print_exit_error__ stream ,()
+  __PDict_put__ "sjs_lang" "conjs" ,()
+  Sjs_translate_file text path ,(source)
+  __OS_print__ source)
+
+;; 行の LazyList を 1 つの String にする（__LazyList_lines__ の行は、改行を含む）
+(define Sjsc_join ,(lines acc)
+  __Cont_get__ ,(return)
+  __LazyList_uncons__ (,() return acc) lines ,(line rest)
+  __String_concat__ acc line ,(acc)
+  Sjsc_join rest acc)

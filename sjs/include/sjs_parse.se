@@ -59,13 +59,30 @@
     (,() __String_concat__ "not in SJS: " text ,(m) __String_concat__ m " (use " ,(m) __String_concat__ m text ,(m) __String_concat__ m "=)" ,(m) Sjs_not_in m) ,()
   Sjs_check_tokens rest tok)
 
-;; 「not in SJS」のエラー（段階 A と同じく、エラーの名前を付けない）
+;; 「not in SJS」のエラー（段階 A と同じく、エラーの名前を付けない）。ConJS では「not in ConJS」
 (define Sjs_not_in ,(msg)
+  Sjs_is_conjs ,(conjs)
+  Sjs_starts msg "not in SJS" ,(sjs)
+  __and__ conjs sjs ,(test__)
+  __if__ test__
+    (,()
+      __String_length__ msg ,(len)
+      __Number_fromString__ __print_exit_error__ "10" ,(ten)
+      __String_substring__ __print_exit_error__ msg ten len ,(rest)
+      __String_concat__ "not in ConJS" rest ,(m)
+      Sjs_uncaught m) ,()
   Sjs_uncaught msg)
 
 ;; SJS の範囲の外の名前（段階 A の SJS_NAMES と、__ で始まる名前）なら、「not in SJS」のエラー
 (define P_check_name ,(name)
   __Cont_get__ ,(return)
+  ;; ConJS（言語の印 "sjs_lang" が "conjs"。conjs/conjsc.se）は、async、await、Promise も受け付けない
+  ;; （docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）
+  Sjs_is_conjs ,(conjs)
+  __if__ conjs
+    (,()
+      Sjs_in_words name "async await Promise" ,(test__)
+      __if__ test__ (,() __String_concat__ "not in ConJS: " name ,(msg) Sjs_not_in msg) ,()) ,()
   Sjs_in_words name "this new class super import export with eval arguments debugger globalThis window self document Function" ,(bad)
   Sjs_starts name "__" ,(under)
   __or__ bad under ,(test__) __unless__ test__ return ,()

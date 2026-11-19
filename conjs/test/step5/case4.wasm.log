@@ -1,0 +1,5 @@
+sum: 3
+slow sum: 5
+Error: demo.reject: no
+Error: demo.slow_bool: returned a boolean (only numbers, strings and arrays of them go back)
+exit: 0

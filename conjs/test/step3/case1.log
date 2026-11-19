@@ -1,0 +1,5 @@
+caught TypeError: Cannot read properties of null (reading 'x')
+again TypeError: Cannot read properties of null (reading 'x')
+value plain value
+case1.con.js:4:8: TypeError: Cannot read properties of null (reading 'x')
+exit: 2

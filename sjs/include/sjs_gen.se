@@ -21,6 +21,7 @@
 
 ;; file は、SInfo のファイル名（エラーの位置に出る）
 (define Sjs_translate_file ,(text file)
+  __Cont_get__ ,(return)
   Sjs_parse text ,(program)
   ;; 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2。sjs_wasm.se）：モジュールの WAT と、数の関数の fn の印
   Wasm_prepare program ,(wat)
@@ -39,6 +40,8 @@
   __String_concat__ wc code ,(code)
   ;; 位置の入らなかった印を消す
   Gen_replace_marks code "" ,(code)
+  Sjs_is_conjs ,(conjs)
+  __if__ conjs (,() Gen_conjs_program code ,(s) return s) ,()
   __String_join_lines__
     ";; SJS を変換したもの（sjs/include/sjs_gen.se）"
     "(include \"util.se\")"
@@ -49,6 +52,21 @@
   __String_join_lines__
     ""
     "  Sjs_run_jobs ,()"
+    "  __nop__)" ,(tail)
+  Cat3 head code tail)
+
+;; ConJS（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）：文の並びを main の処理として動かす（conjs/include/conjs_rt.se）
+(define Gen_conjs_program ,(code)
+  __String_join_lines__
+    ";; ConJS を変換したもの（sjs/include/sjs_gen.se）"
+    "(include \"util.se\")"
+    "(include \"conjs_rt.se\")"
+    "(define main ,(args)"
+    "  Sjs_init ,(G)"
+    "  Conjs_run G (,()" ,(head)
+  __String_join_lines__
+    ""
+    "  __nop__) ,()"
     "  __nop__)" ,(tail)
   Cat3 head code tail)
 

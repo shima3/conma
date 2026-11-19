@@ -33,6 +33,9 @@ CONMA_VM=wasm consh/test/run_all.sh -j 3
 CONMA_VM=transpiled consh/test/run_all.sh -j 6
 consh/js/test/run_all.sh
 sjs/test/run_all.sh
+conjs/test/run_all.sh                                  # ConJS（Rust 版の VM）
+CONMA_VM=wasm conjs/test/run_all.sh
+CONMA_VM=python conjs/test/run_all.sh
 ```
 
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
@@ -96,6 +99,13 @@ sjs/test/run_all.sh
 * VM が変わった（vm/src/sched.rs、vm/src/prim/host.rs、vm/python/vproc_step.py、vm/wasm/conma.js）ので、test/ と consh/test を、Python 版、Rust 版、wasm 版の VM と transpiled VM で流す。transpiled VM は、作り直してから（17〜21 分）。
 * M1 が流したもの（Apple M1）：test/ を Python 版（122 秒）、Rust 版（25 秒）、wasm 版（39 秒）の VM で（`-j 8`）。consh/test を Rust 版と wasm 版の VM で。違いは既知のもの（wasm 版の test/step40、consh/test の step8 と step17）と、wasm 版の test/step31 が `-j 8` で 1 回だけ違ったこと（シグナルのタイミング。1 つずつ 5 回流し直して、すべて通った）。流していないもの：transpiled VM（作り直していない）と、Python 版の VM の consh/test。
 * 見本のページ（vm/wasm/web/canvas.html）は、vm/wasm/web/build.sh の後、ブラウザで見る。測り方は vm/wasm/web/measure.sh（9 秒ほど）。
+
+### m1/platform-p3b
+
+* 段階 P3b（docs/dev/PLATFORM-PLAN-ja.md の 8.4 節）：ConJS（conjs/。conjs/README-ja.md）。SJS の変換器と実行時の支え（sjs/include の sjs_parse.se、sjs_gen.se、sjs_rt.se、sjs_inspect.se）にも足した。
+* 新しいテスト：conjs/test（`conjs/test/run_all.sh`。`CONMA_VM` なし、wasm、python）。「全部流す」に足した。
+* sjs/include を変えたので、sjs/test と、SJS を使う consh/test（`(( ))`）と consh/js/test も流す。VM は変えていない。
+* M1 が流したもの：（あとで書く）
 
 ## 記録
 
