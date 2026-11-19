@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${0%/*}
 . ../common.sh
-# 段階 21：SJS の (( )) と $(( )) を、ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の段階 B4。consh/sjs/README-ja.md）。
+# 段階 21：SJS の (( )) と $(( )) を、ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の段階 B4。sjs/README-ja.md）。
 # JavaScript のない版（ネイティブの VM）でも動く。Rust 版の ConSh には (( )) がないので、確かめない
 [ "$CONSH_IMPL" = rust ] && exit 0
 # case1：値、SJS変数とその写し、$名前、関数、メソッド、console.log とリダイレクト、SJS関数をコマンドとして呼ぶ

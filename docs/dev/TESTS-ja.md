@@ -32,7 +32,7 @@ CONMA_VM=rust CONSH_IMPL=reference consh/test/run_all.sh -j 6   # ConSh の参�
 CONMA_VM=wasm consh/test/run_all.sh -j 3
 CONMA_VM=transpiled consh/test/run_all.sh -j 6
 consh/js/test/run_all.sh
-consh/sjs/test/run_all.sh
+sjs/test/run_all.sh
 ```
 
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
@@ -57,8 +57,14 @@ consh/sjs/test/run_all.sh
 
 ### m1/sjs-bench-move
 
-* consh/bench の `19_loop.sh`、`20_fib.sh`、`21_nbody.sh` と、`bash/` の `19` と `20` を、consh/sjs/bench/consh の `loop.sh`、`fib.sh`、`nbody.sh` と `bash/` に移した（wasm 版の VM でしか約 1 秒の大きさにならないため）。consh/bench/run.py は、Bash 版をスクリプトの隣の `bash/` から探し、`(( ))` のスクリプトを既定の一覧から除く処理をなくした。ビルドとテストが読むファイルは変えていないので、作り直すものはない。
+* consh/bench の `19_loop.sh`、`20_fib.sh`、`21_nbody.sh` と、`bash/` の `19` と `20` を、sjs/bench/consh の `loop.sh`、`fib.sh`、`nbody.sh` と `bash/` に移した（wasm 版の VM でしか約 1 秒の大きさにならないため）。consh/bench/run.py は、Bash 版をスクリプトの隣の `bash/` から探し、`(( ))` のスクリプトを既定の一覧から除く処理をなくした。ビルドとテストが読むファイルは変えていないので、作り直すものはない。
 * 確かめたこと：`run.py -n 1 -v bash,conma:wasm` で移した `loop.sh` と `fib.sh`（Bash は小さい大きさ）、`-v conma:wasm` で `nbody.sh`、`-v bash,conma:transpiled` で consh/bench の `02_for_seq.sh` が動き、出力が同じだったこと。suite は流していない（どの suite も、変えたファイルを読まない）。
+
+### m1/sjs-top
+
+* consh/sjs を sjs/ に、SJS の変換器と実行時の支え（consh/include の `sjs_*.se` 7 つと consh/include/core/sjs_bits.se）を sjs/include（と sjs/include/core）に移した。ConSh のモジュールは、consh/include の次に sjs/include を探して作る（consh/bin/consh、consh/js/build.sh。参照版は sjs/include/core も）。sjs/test は `sjs/test/run_all.sh` で流す。
+* ConSh のモジュールの中のファイル名が変わるので、ConSh を動かしてモジュールを作り直してから、transpiled VM を `bench/build.sh` で作り直す。wasm 版は `consh/js/build.sh` で作り直す（ブラウザ版のモジュールも作り直す）。
+* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17）。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない（どちらも SJS を使わない）。ブラウザでは確かめていない。
 
 ## 記録
 

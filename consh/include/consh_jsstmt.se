@@ -7,7 +7,7 @@
 ;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（docs/consh/dev/JS-PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
-;; SJS の変換器と実行時の支え（段階 B。consh/sjs/README-ja.md）
+;; SJS の変換器と実行時の支え（段階 B。sjs/README-ja.md）
 (include "sjs_rt.se")
 (include "sjs_lex.se")
 (include "sjs_parse.se")
@@ -446,7 +446,7 @@
   is "bigint:0" ,()
   __NULL__ __FALSE__)
 
-;; ── 段階 B4：SJS を ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2、consh/sjs/README-ja.md）──
+;; ── 段階 B4：SJS を ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2、sjs/README-ja.md）──
 ;; (( )) と $(( )) の SJS式を、sjs_gen.se の Sjs_translate_module でモジュールのソースにし、一時ファイルに書いて
 ;; （コードの文字列ごとに覚えておく）、__VProc_spawn__ で新しい VProc として動かし、終わるのを待つ。
 ;; モジュールは、実行時の支えの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、

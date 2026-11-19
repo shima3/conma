@@ -8,7 +8,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
     * `__String_length__` は、全体が ASCII か（`is_ascii`）を調べ、そうでなければ文字を数える（vm/src/prim/string.rs の `char_count`）。
     * `__String_substring__`、`__String_find__`、`__String_find_any__` は、位置の前のバイトが ASCII か（`char_to_byte`）を調べ、そうでなければ文字をたどる。`__String_find__` は、見つけた所の位置を、そこまでの文字を数えて求める（`chars_in`）。
     * どれも、呼ぶたびに文字列の長さ（か位置）に比例する手間がかかる。長い文字列を 1 文字ずつ読むと、全体で文字列の長さの 2 乗になる。
-* **測った例**（2026-11-16、Apple M4、user 秒。consh/sjs/README-ja.md の「文字列の添字」）：SJS の `for (let i = 0; i < s.length; i++) { if (s[i] === "a") n++; }` は、1 回に `s.length`（`__String_length__`）と `s[i]`（`__String_substring__`）を呼ぶ。
+* **測った例**（2026-11-16、Apple M4、user 秒。sjs/README-ja.md の「文字列の添字」）：SJS の `for (let i = 0; i < s.length; i++) { if (s[i] === "a") n++; }` は、1 回に `s.length`（`__String_length__`）と `s[i]`（`__String_substring__`）を呼ぶ。
 
 | 文字数 | Rust 版の VM | wasm 版の VM | wasm 版の 1 回 |
 |---|---|---|---|
@@ -53,9 +53,9 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
 |---|---|---|
 | S1 | 測る台を作る：1 の SJS のループ（2 万、10 万、20 万文字）、長い ASCII の文字列を位置で 1 文字ずつ読む ConMa のプログラム、日本語を含む文字列の同じもの、consh/bench の行を読むスクリプト（`02`、`12`）。今の時間とステップを、Rust 版と wasm 版の VM で記録する | 表にする |
 | S2 | `StrObj` と印（vm/src/value.rs、`string_value`、`Value::Str` を作る所と読む所、トレースの表示、GC が文字列を数えるなら gc.rs）。まだプリミティブは印を見ない | test/ が Rust 版の VM で同じログ。S1 の時間が遅くならないこと |
-| S3 | プリミティブが印を見て、受け継ぐ（vm/src/prim/string.rs）。変換した VM の生成コードが呼ぶ関数も | test/、consh/test、consh/sjs/test が Rust 版の VM で通る。境目のテスト（空の文字列、ASCII と ASCII でないもののつなぎ、ASCII でない文字列の一部で ASCII になるもの、範囲の外）を test/ に足す |
+| S3 | プリミティブが印を見て、受け継ぐ（vm/src/prim/string.rs）。変換した VM の生成コードが呼ぶ関数も | test/、consh/test、consh/sjs/test（2026-11-19 に sjs/test へ移動） が Rust 版の VM で通る。境目のテスト（空の文字列、ASCII と ASCII でないもののつなぎ、ASCII でない文字列の一部で ASCII になるもの、範囲の外）を test/ に足す |
 | S4 | wasm 版の VM を作り直す。変換した VM を bench/build.sh で作り直す | S3 のテストを wasm 版と変換した VM で |
-| S5 | 測って書く：S1 の表の後の時間。vm/README.md の「Positions in Strings」、consh/sjs/README-ja.md。ConSh の `$( )` の 1024 文字の断片（1 の 4 つ目）が要らなくなるかを調べる（要らなくなっても、外すのは別にする） | 表にする |
+| S5 | 測って書く：S1 の表の後の時間。vm/README.md の「Positions in Strings」、sjs/README-ja.md。ConSh の `$( )` の 1024 文字の断片（1 の 4 つ目）が要らなくなるかを調べる（要らなくなっても、外すのは別にする） | 表にする |
 
 * **見込み**：ASCII の長い文字列を 1 文字ずつ読むループは、1 回の時間が文字列の長さによらなくなる。wasm 版の VM で 20 万文字のループは、8.78 秒から、2 万文字の 1 回（23 µs）に近い 4〜5 秒になる見込み。残りは ConMa のステップ（SJS の型の確かめなど）。
 * 全部のテスト（docs/dev/TESTS-ja.md）は、別の担当者に頼む。
@@ -80,7 +80,7 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
     * 本文を同じ割り当てに置く形（3 の最後）は採らなかった：割り当てが 1 つ増えるが、前と後の VM を交互に 7 回ずつ測った最小で、consh/bench の `02`、`06`、`10`、`11`、`12` は 0.99〜1.007 倍（最初に 1 回ずつ測ったときの `11` の 1.04 倍は、ばらつきだった）。test/ は Rust 版の VM で違いなく通る。wasm 版の VM もビルドできる。
 * **S3（作った、2026-11-16）**：vm/src/prim/string.rs。`__String_length__`、`__String_substring__`、`__String_find__`、`__String_find_any__` は、文字列の印（`info`）を見て、分からなければ一度だけ調べて覚える。ASCII なら、位置はバイトの位置で、長さはバイトの数（`char_to_byte_info`、`count`）。`__String_find__` は、ASCII なら見つけた所のバイトの位置をそのまま返す。印を受け継ぐのは、`__String_concat__`（両方が分かっていれば：ASCII どうしは ASCII、ほかは文字数の和。プログラムに書いた文字列はその場で調べる。片方でも分からなければ「まだ調べていない」）、`__String_substring__` と `__String_strip_suffix__`（ASCII の一部は ASCII）、`__String_fromCode__`。範囲の外のエラーの長さも、覚えた文字数で書く（同じ値）。変換した VM の生成コードは `concat_core` を通るので、同じく受け継ぐ。
     * test/step46：空の文字列、ASCII、日本語を含むもの、そのつなぎ（印を覚える前と後）、ASCII でない文字列の ASCII の一部、範囲の外のエラー、find、find_any、strip_suffix、fromCode。ログは Python 版の VM で作り、変更前の Rust 版の VM（S2 の前）と変更後の Rust 版の VM が同じログになる。
-    * test/（すべて）、consh/test（最適化版と参照版）、consh/sjs/test が、Rust 版の VM で違いなく通る。
+    * test/（すべて）、consh/test（最適化版と参照版）、consh/sjs/test（2026-11-19 に sjs/test へ移動） が、Rust 版の VM で違いなく通る。
     * S1 のプログラム（Rust 版の VM、user 秒）：ASCII の 163,840 文字が 0.55 秒から 0.13 秒、40,960 文字が 0.05 秒から 0.03 秒。ASCII でない文字列は変わらない（18.56 秒から 18.00 秒。位置は今までどおり文字をたどる）。
 * **S4（作った、2026-11-16）**：wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh、19 分）を作り直した。wasm 版の VM で test/step41、step45、step46、fast11 が通り、consh/test は既知の違い（step8、step17）だけ。変換した VM で test/（すべて）と consh/test が違いなく通る。
 * **S5（測った、2026-11-16、Apple M4、user 秒。機械が空いているとき）**：
@@ -98,6 +98,6 @@ Rust 版の VM（wasm 版と変換した VM も同じコード）の文字列に
     * ASCII の文字列では、1 回の時間が文字列の長さによらなくなった（wasm 版の 2 乗の遅さがなくなった）。SJS のループの残りは、ConMa のステップ（1 回 460 ステップ。SJS の型の確かめなど）。
     * consh/bench（run.py、3 回の最小）は変わらない：`02` が Rust 版 0.774 秒、wasm 版 0.958 秒、変換した VM 0.429 秒、`12` が 4.054、4.216、2.096 秒、`10` が 1.184、1.728、0.836 秒、`11` が 0.598、0.960、0.373 秒。ConSh は行を 1024 文字の断片で読むので、もともと長い文字列の位置を求めていない。
     * ConSh の 1024 文字の断片（1 の 4 つ目）は、ASCII の行なら要らなくなったが、ASCII でない文字を含む行では今も要る。外すかどうかは、この計画では決めない。
-    * vm/README.md の「Positions in Strings」、docs/dev/SPEED-ja.md、consh/sjs/README-ja.md に書いた。
+    * vm/README.md の「Positions in Strings」、docs/dev/SPEED-ja.md、sjs/README-ja.md に書いた。
 
 計画した段階は、すべて作った。

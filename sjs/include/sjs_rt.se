@@ -2538,7 +2538,7 @@
   Sjs_pow_loop x half acc)
 
 ;; ビット演算（& | ^ ~ << >> >>>）は sjs_bits.se：拡張 ConMa のプリミティブ（"bitwise32"）を呼ぶ。コア ConMa で作るとき
-;; （ConSh の参照版）は consh/include/core/sjs_bits.se が代わりに使われ、標準ライブラリの include/core/bitwise32.se の定義が
+;; （ConSh の参照版）は sjs/include/core/sjs_bits.se が代わりに使われ、標準ライブラリの include/core/bitwise32.se の定義が
 ;; 同じ名前で入る（docs/dev/BITWISE-PLAN-ja.md の W6）
 
 ;; ── 段階 B4：分割代入、スプレッド、switch ──
@@ -2876,7 +2876,7 @@
 ;; "reactions" は、決着を待つ (成功の Closure 失敗の Closure) の逆順の LList の Ref、"handled" は、受け手が付いたか、
 ;; "resolved" は、resolve か reject が呼ばれたか（2 度目からは何もしない）。
 ;; 決着したときと、決着した Promise に受け手を付けたときは、受け手を呼ぶジョブを、PDict の "sjs_jobs" の列
-;; （マイクロタスクの列）に入れる。Sjs_run_jobs が列を最後まで動かす（ConSh は評価ごと、consh/sjs/sjs は最後に）。
+;; （マイクロタスクの列）に入れる。Sjs_run_jobs が列を最後まで動かす（ConSh は評価ごと、sjs/sjs は最後に）。
 ;; 列が空になったとき、受け手のない拒否された Promise があれば、受け手のない例外にする。
 ;; async 関数は、本体をジェネレータの本体として動かし（Sjs_async）、await は yield にする（Sjs_await）。
 ;; 本体が止まるたびに、await した値の Promise に、本体を続けるジョブを受け手として付ける

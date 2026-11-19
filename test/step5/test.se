@@ -118,7 +118,7 @@
   )
 
 ;; case7: 17 桁目がちょうど真ん中になる数は、Python の repr と同じく、近い方（同じなら偶数）の桁を出す（Rust VM は前、
-;; 違う方を出した）。整数の値は、正確な桁を出す（JavaScript の最短の桁とは違う。consh/sjs が JavaScript に直す）
+;; 違う方を出した）。整数の値は、正確な桁を出す（JavaScript の最短の桁とは違う。sjs が JavaScript に直す）
 (define case7 ,()
   roundTrip "0.0023775100708007812" ,()
   roundTrip "1.6872329711914062" ,()

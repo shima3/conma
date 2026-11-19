@@ -77,7 +77,7 @@ conma2rust は、融合した鎖（1 つの関数の Body の並び）の中だ�
 | T1 | 試算：bench/fib と nbody だけで変換した VM を作り（`vm/conma2rust/build.sh` にそのモジュールだけを渡す）、生成した Rust のコードを手で、引数と戻り値を f64 にした形と、さらに直接の呼び出しにした形に書き換えて測る | 出力が同じ。時間の上限が分かる |
 | T2 | 関数をまたぐ推論を conma2rust に入れる（数と真偽値の、引数と戻り値） | 推論した型を出す（`CONMA2RUST_TYPES=1` など）。T0 の道具と比べる |
 | T3 | f64 の入口と f64 の戻り値の生成。型の分からない所は今の入口 | test/ と test/transpiled、consh/test が変換した VM で通る。bench/ の出力が同じ |
-| T4 | 測って書く：bench/、consh/bench、consh/sjs/bench。vm/README.md、docs/dev/SPEED-ja.md | 表にする |
+| T4 | 測って書く：bench/、consh/bench、consh/sjs/bench（2026-11-19 に sjs/bench へ移動）。vm/README.md、docs/dev/SPEED-ja.md | 表にする |
 | T5 | 段階 2 を決める | — |
 
 ## 5. 今の状態
