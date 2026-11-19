@@ -1,0 +1,71 @@
+#!/bin/bash
+# bin/lang-emit-check: 言語キット（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）に部品を移しても、SJS と ConJS が
+# 作る ConMa のコードが変わらないことを確かめる。
+#   bin/lang-emit-check [--steps] BASE
+# BASE（コミット）の木と、今のワークツリーの、それぞれの変換器（sjs/sjsc.se、conjs/conjsc.se と、その木の sjs/include、
+# include）で、sjs/test、sjs/bench、conjs/test、vm/wasm/web のすべての .safe.js と .con.js を変換し、出力（標準出力、
+# 標準エラー、終了ステータス）が 1 文字も違わないことを diff で確かめる。違いがなければ何も出さず、0 で終わる。
+# --steps を付けると、変換のステップ数（Rust 版の VM の CONMA_PROFILE。すべてのファイルの合計）も、2 つの木で数えて出す
+# （4.3 節の「変換の速さ」。数えると VM が遅くなるので、ふだんは数えない）。
+# VM は、どちらの木でも、このワークツリーの Rust 版の VM（vm/target/release/conma）を使う。BASE の木は、一時ディレクトリに
+# git worktree で作り、終わったら消す。
+set -e -o pipefail
+root="$(cd "$(dirname "$0")/.."; pwd -P)"
+conma="$root/vm/target/release/conma"
+steps=
+if [ "$1" = --steps ]; then steps=yes; shift; fi
+if [ $# -ne 1 ]; then echo "usage: lang-emit-check [--steps] BASE" >&2; exit 2; fi
+base="$(git -C "$root" rev-parse --verify "$1^{commit}")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang-emit-check.XXXXXX")"
+cleanup() {
+  git -C "$root" worktree remove --force "$tmp/base" 2>/dev/null || true
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+git -C "$root" worktree add --quiet --detach "$tmp/base" "$base"
+
+# 木 tree の変換器で、files を変換し、出力を out の下に、ファイルと同じ相対パスで置く。ステップ数を数えるなら、その合計を
+# out/steps に書く
+emit_tree() {
+  local tree="$1" out="$2" f module lang
+  mkdir -p "$out"
+  for lang in sjs conjs; do
+    "$conma" build --include "$tree/include" --include "$tree/sjs/include" "$tree/$lang/${lang}c.se" > "$out/$lang.module.se"
+  done
+  : > "$out/steps"
+  for f in "${files[@]}"; do
+    case "$f" in *.con.js) lang=conjs ;; *) lang=sjs ;; esac
+    mkdir -p "$out/$(dirname "$f")"
+    set +e
+    if [ -n "$steps" ]; then
+      (cd "$tree" && CONMA_PROFILE="$out/prof.tsv" "$conma" --main "$out/$lang.module.se" "$f" > "$out/$f.out" 2> "$out/$f.err" < /dev/null)
+      echo "exit: $?" >> "$out/$f.out"
+      awk -F '\t' '$2 == "body" { s += $1 } END { print s + 0 }' "$out/prof.tsv" >> "$out/steps"
+    else
+      (cd "$tree" && "$conma" --main "$out/$lang.module.se" "$f" > "$out/$f.out" 2> "$out/$f.err" < /dev/null)
+      echo "exit: $?" >> "$out/$f.out"
+    fi
+    set -e
+  done
+  rm -f "$out/prof.tsv"
+}
+
+cd "$root"
+files=()
+while IFS= read -r f; do files+=("$f"); done < <(
+  { ls sjs/test/*/*.safe.js sjs/bench/*.safe.js conjs/test/*/*.con.js vm/wasm/web/*.con.js 2>/dev/null; } | sort)
+emit_tree "$tmp/base" "$tmp/out-base"
+emit_tree "$root" "$tmp/out-now"
+status=0
+for f in "${files[@]}"; do
+  if [ ! -f "$tmp/base/$f" ]; then continue; fi   # BASE にないファイル（新しいテスト）は比べない
+  for x in out err; do
+    diff "$tmp/out-base/$f.$x" "$tmp/out-now/$f.$x" > "$tmp/diff" || { echo "== $f ($x)"; head -20 "$tmp/diff"; status=1; }
+  done
+done
+if [ -n "$steps" ]; then
+  b=$(awk '{ s += $1 } END { print s }' "$tmp/out-base/steps")
+  n=$(awk '{ s += $1 } END { print s }' "$tmp/out-now/steps")
+  echo "steps of the translators over ${#files[@]} files: $b (BASE), $n (now), $(awk -v b="$b" -v n="$n" 'BEGIN { printf "%+.2f%%", (n - b) * 100 / b }')"
+fi
+exit $status
