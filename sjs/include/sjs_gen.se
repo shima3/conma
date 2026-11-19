@@ -153,7 +153,7 @@
 
 ;; モジュールが受け取る関数の名前（sjs_rt.se の Sjs_rt_dict と同じ）
 (define Sjs_rt_names ,()
-  Sjs_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_reraise Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close Sjs_eq_lit Sjs_ne_lit Sjs_wasm_module Sjs_wasm_fn_checked")
+  Kit_lex_words "__TRUE__ __FALSE__ __not__ __nop__ __print_exit_error__ Sjs_add Sjs_arg Sjs_array Sjs_call Sjs_call_member Sjs_div Sjs_function Sjs_ge Sjs_get_member Sjs_global Sjs_gt Sjs_handlers Sjs_is_nullish Sjs_iter_keys Sjs_iter_values Sjs_key Sjs_key_string Sjs_le Sjs_reraise Sjs_lt Sjs_mod Sjs_mul Sjs_neg Sjs_object Sjs_pos Sjs_raise Sjs_seq Sjs_set_global Sjs_set_handlers Sjs_set_member Sjs_shell_get Sjs_shell_number Sjs_step Sjs_sub Sjs_throw Sjs_to_string Sjs_truthy Sjs_try Sjs_type_error Sjs_typeof Sjs_pow Sjs_band Sjs_bor Sjs_bxor Sjs_bnot Sjs_shl Sjs_shr Sjs_ushr Sjs_is_undefined Sjs_array_new Sjs_array_push Sjs_array_list Sjs_spread_into Sjs_object_new Sjs_obj_set Sjs_object_spread Sjs_object_rest Sjs_case_runs Sjs_generator Sjs_yield Sjs_yield_star Sjs_iter_open Sjs_iter_more Sjs_iter_take Sjs_try_catch Sjs_async Sjs_await Sjs_run_jobs Sjs_need Sjs_eq_num Sjs_ne_num Sjs_get_index Sjs_set_index Sjs_array_hole Sjs_iter_next Sjs_iter_rest Sjs_iter_close Sjs_template_strings Sjs_async_generator Sjs_ag_yield Sjs_ag_yield_star Sjs_aiter_open Sjs_aiter_more Sjs_aiter_close Sjs_in_op Sjs_pattern_open Sjs_pattern_next Sjs_pattern_rest Sjs_pattern_close Sjs_eq_lit Sjs_ne_lit Sjs_wasm_module Sjs_wasm_fn_checked")
 
 (define Gen_binds ,(names acc)
   __Cont_get__ ,(return)
@@ -1783,7 +1783,7 @@
 
 ;; 文字列の LList を作る手順と、その変数名
 (define Gen_string_list ,(g strs)
-  Sjs_reverse strs ,(rev)
+  Kit_lex_reverse strs ,(rev)
   Gen_string_list_rev g rev "" "__NULL__")
 
 (define Gen_string_list_rev ,(g rev code l)
