@@ -27,7 +27,7 @@ ConMa を、いろいろなプラットフォームで、そのプラットフ�
 
 docs/PRIMITIVES.md の 16 節（docs/dev/FAST-PLAN-ja.md）。モジュールが機能のプリミティブ（`"array"`、`"bitwise32"`、`"boolean"`、`"control"`、`"chan"`、`"wasm"`）を使うと、フロントエンドが `(Uses "機能")` を付ける。その機能を持つ VM はプリミティブで動かし、持たない VM（Python 版）には、`bin/to-core` がコア ConMa の代わりの定義（include/core）を入れる。
 
-* つまり、「機能に名前を付け、モジュールが使う機能を記し、VM が持たない機能は代わりの定義で補う」仕組みが、もうある。`"wasm"` の代わりの定義は、計算をまねず、「使えない」と onError に行く。プラットフォームの機能も、この形にできる（3 節）。
+* つまり、「機能に名前を付け、モジュールが使う機能を記し、VM が持たない機能は代わりの定義で補う」仕組みが、もうある。`"wasm"` の代わりの定義は、計算をまねず、「使えない」と onError に行く。プラットフォームの機能も、初めはこの形に載せるつもりだったが、P1 で、言語の層とは別の軸（`(Platform ...)`。どの VM もプリミティブを持つ）にした（3.1 節、8.1 節）。
 
 ### 2.3. SJS
 
@@ -49,7 +49,7 @@ sjs/ に、JavaScript の安全なサブセットを ConMa に変換する変換
 | プラットフォームの機能（新しく足す） | `"js"`、`"canvas"`、`"wasi"`、`"android"` など | その機能を持つプラットフォームだけ | どの VM もプリミティブを持ち、「使えない」と onError に行く |
 
 * プラットフォームの機能も、名前を付け、モジュールに `(Platform "機能")` を付ける（`(Uses ...)` の後）。どの機能を使うプログラムかが、モジュールを見れば分かる。初めは `(Uses "機能")` に入れるつもりだったが、P1 で別の印にした（8 節）。
-* プログラムが、使う前に機能の有無を調べられるようにする（案：`__Feature_available__ 名前 ,(Boolean)`）。ブラウザなら canvas に描き、ほかでは文字で出す、といった使い分けができる。
+* プログラムが、使う前に機能の有無を調べられるようにする（`__Feature_available__ 名前 ,(Boolean)`。P1 で作った。8.1 節）。ブラウザなら canvas に描き、ほかでは文字で出す、といった使い分けができる。
 * 今の `__JS_call__`、`__JS_value__` は、機能 `"js"` としてこの層に移す（使い方は変えない）。
 
 ### 3.2. ホストを呼ぶ共通の口
@@ -97,7 +97,7 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 | P0 | この計画書。6 節を決める | 決めたことを、この文書に書く |
 | P1（作った、2026-11-19。8 節） | プラットフォームの機能の層：`(Platform "機能")` の付け方、`__Feature_available__`。`__JS_call__` と `__JS_value__` を機能 `"js"` にする | test/ と consh/test がすべての VM で通る。機能の有無で振る舞いを変えるテスト |
 | P2 | `__Host_call__`：wasm 版（JavaScript）、Rust 版と transpiled VM（Rust の表）、Python 版（Python の表）。テストのためのホストの関数 | 同じテストのトレースが Python 版と Rust 版で同じ。wasm 版の Node.js で同じ出力 |
-| P3 | 最初のプラットフォームの機能（6 節で選ぶ。ブラウザの canvas なら、描く見本のページ） | 見本が動く。1 回の呼び出しの時間を、今の `js` コマンドと比べて測る |
+| P3 | 最初のプラットフォームの機能（6 節で選ぶ。ブラウザの canvas なら、描く見本のページ） | 見本が動く。1 回の呼び出しの時間を、今の `js` コマンドと比べて測る。足した機能の名前を docs/PRIMITIVES.md の `__Feature_available__` の一覧に書き、テストで、見本が使う名前が一覧にあることを確かめる（知らない名前は黙って偽になり、書き間違いと区別できないため） |
 | P4 | 言語キット：SJS から部品を取り出し、SJS をキットの上に書き直す | sjs/test、consh/test、sjs/bench（遅くならないこと） |
 | P5 | 見本の言語を、キットで作る | その言語のテストが、すべての VM で通る。P3 の機能を使う見本 |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
@@ -116,6 +116,7 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 
 ## 7. 気を付けること
 
+* **トレースとプロファイルの道**：`__Feature_available__ "wasm"` は、wasm 版の VM でも、`--trace` と `CONMA_PROFILE` のときは偽になる（`__Wasm_call__` が WebAssembly を使わないのと揃えた）。これで道を分けるプログラムは、トレースやプロファイルを取ると、ふだんと違う道（WebAssembly を使わない道）を通る。デバッグやプロファイルで見ているのが、ふだんの道でないことがある。
 * **トレースの一致**：Python 版と Rust 版の VM はステップごとに同じトレースを出し、テストがそれを比べる。ホストの呼び出しは外の世界に触れるので、テストでは、どの VM にも同じ、決まった値を返すホストの関数を使う。
 * **コア ConMa を小さく保つ**：プラットフォームの機能は、コア ConMa にも拡張の機能にも入れない。持たない VM では「使えない」になるだけで、言語の意味は変えない。
 * **変換したコード**：transpiled VM は、`__Host_call__` を、VM に任せる呼び出し（変換したコードから VM に戻る所）として扱うところから始める。速さが要れば、後で直接呼ぶ。
@@ -126,7 +127,7 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 ### 8.1. 段階 P1（2026-11-19）
 
 * **`__Feature_available__ name ,(Boolean)`**（コア ConMa のプリミティブ。docs/PRIMITIVES.md の `__JS_value__` の後、docs/dev/ROADMAP.md の Step 49）：拡張 ConMa の機能（`"array"`、`"bitwise32"`、`"boolean"`、`"chan"`、`"control"`）は、どの VM でも使えるので真。`"wasm"` は、WebAssembly が本当に動くとき（wasm 版の VM で、`--trace`、`CONMA_PROFILE`、`CONMA_NO_WASM` のないとき。`__Wasm_call__` と同じ）だけ真。`"js"` は、ホストに JavaScript があるとき（wasm 版の VM）だけ真。ほかの名前は偽。名前が String でなければ、String のプリミティブと同じくエラーで止まる。Python 版（vm/python/vproc_step.py）と Rust 版（vm/src/prim/js.rs。wasm 版と transpiled VM も同じ）。
-* **`(Platform "js")`**：`__JS_call__` と `__JS_value__` を、定義のない大域の名前として使うモジュールに、フロントエンド（bin/resolver、include/resolver.se、reference/resolver.se。vm/frontend.module.se を作り直した）が付ける。`(Uses ...)` の後、なければ `(F ...)` の後に置く。
+* **`(Platform "js")`**：`__JS_call__` と `__JS_value__` を、定義のない大域の名前として使うモジュールに、フロントエンド（bin/resolver、include/resolver.se、reference/resolver.se。vm/frontend.module.se を作り直した）が付ける。`(Uses ...)` の後、なければ `(F ...)` の後に置く。この印は、読み込みを止めない。知らせるだけで、JavaScript のない VM でも読み込め、呼んだときに初めて onError に行く（プログラムは `__Feature_available__` で確かめてから使う）。
 * **`(Uses ...)` に入れなかった理由**：`(Uses ...)` は「コア ConMa の VM（Python）では、bin/to-core が代わりの定義に置き換える」印である。`"js"` をそこに入れると、Python 版の VM では JavaScript の呼び出しが代わりの定義になり、コア ConMa で作る ConSh の参照版（`__JS_call__` を使う）は、拡張の機能を使わないために代わりの定義を include することになって、wasm 版の VM でも JavaScript を使えなくなる。プラットフォームの機能は、言語の層とは別の軸なので、別の印にし、どの VM もそのプリミティブを持つ（今までどおり、ないプラットフォームでは onError に行く）。bin/to-core は `(Platform ...)` を残し、VM は読み飛ばす。
 * **今の `"wasm"`**：WebAssembly も、本来はプラットフォームの機能である。ただ、今は拡張の機能として `(Uses "wasm")` で、Python 版の VM では代わりの定義が onError に行く。P1 では変えず、P2 か P3 で `(Platform ...)` に移すかを決める。
 * **テスト**：test/fast13（VM ごとの答え、wasm 版の `CONMA_NO_WASM=1`、String でない名前のエラー、確かめてから `"js"` を使う、フロントエンドの印と bin/to-core が残すこと）。Python 版と Rust 版はエラーのステップの数まで同じログ、wasm 版は `caseN.wasm.log`。
