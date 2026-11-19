@@ -37,7 +37,7 @@ ConJS の構文は JavaScript の部分集合だが、ConJS のプログラム�
 
 ## 作り
 
-* **conjs/include/conjs_sched.se**：スケジューラ。ConJS の構文にも SJS の名前にもよらない部分で、P4 で言語キットに移す。処理の継続の列（FIFO）、待つ呼び出し（`__Host_start__` で始め、待つための小さな VProc がパイプを待って、結果をチャネルに入れる）、join、終わり。処理だけの状態は、受け取った save と restore の関数で保存して戻す。
+* **include/lang/sched.se**：スケジューラ。ConJS の構文にも SJS の名前にもよらない部分で、P4 で言語キットに移す。処理の継続の列（FIFO）、待つ呼び出し（`__Host_start__` で始め、待つための小さな VProc がパイプを待って、結果をチャネルに入れる）、join、終わり。処理だけの状態は、受け取った save と restore の関数で保存して戻す。
 * **conjs/include/conjs_rt.se**：SJS の実行時の支えとのつなぎ。処理だけの状態にする PDict の名前（`"sjs_handlers"`、`"sjs_gen"`、`"sjs_pos"`）を 1 か所にまとめ、`spawn`、`join`、`host` を置く。
 * **conjs/conjsc.se**：変換器の入口（言語の印を付けて、SJS の変換器を呼ぶ）。sjs_gen.se は、印があれば、文の並びを `Conjs_run` の中に置いたソースを作る。
 * **見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る。vm/wasm/web/build.sh が変換する）。

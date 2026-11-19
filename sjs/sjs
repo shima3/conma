@@ -1,33 +1,10 @@
 #!/bin/bash
-# SJS のファイルを ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の段階 B1）。Rust 版の VM（vm/target/release/conma）を使う。
+# SJS のファイルを ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の段階 B1）。
 #   sjs/sjs [--emit] file.safe.js
-# --emit を付けると、動かさずに、変換した ConMa のソースを出す。CONMA_VM=wasm なら wasm 版の VM で動かす
+# --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm で cargo build --release しておく）で行い、
+# 変換したプログラムは CONMA_VM の VM で動かす（なし：Rust 版、wasm：wasm 版の VM。数の関数は WebAssembly で動く、python）。
+# 2026-11-20 から、言語キットの bin/lang（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節）を呼ぶだけにした（設定は sjs/lang.conf）
+if [ "$1" = --emit ]; then [ $# -eq 2 ] || { echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; }
+elif [ $# -ne 1 ]; then echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; fi
 sjs="$(cd "$(dirname "$0")"; pwd)"
-root="${sjs%/*}"
-conma="$root/vm/target/release/conma"
-emit=
-if [ "$1" = --emit ]; then emit=yes; shift; fi
-if [ $# -ne 1 ]; then echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; fi
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs.XXXXXX")" || exit 1
-trap 'rm -rf "$tmp"' EXIT
-# 変換器（sjsc.se と include するもの）のモジュールは、ソースか VM（フロントエンドを持つ）が新しくなったときだけ作り直す
-# （作るのに約 4 秒、動かすのは 0.2 秒ほど）。置き場所は bin/cache-dir の場所（${XDG_CACHE_HOME:-$HOME/.cache}/conma/
-# <リポジトリのパスのチェックサム>。持ち主だけが読み書きでき、別のチェックアウトとは分かれる）。一時ファイルに作ってから
-# mv で置き換えるので、同時に動く sjs が作りかけのモジュールを読むことはない
-module="$("$root/bin/cache-dir")/sjsc.module.se" || exit 1
-dirs=("$sjs/include" "$root/include/ext" "$root/include")
-if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$sjs/sjsc.se" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
-   [ "$conma" -nt "$module" ]; then
-  module_tmp=$(mktemp "$module.XXXXXX") || exit 1
-  if ! "$conma" build --include "$sjs/include" "$sjs/sjsc.se" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
-  mv -f "$module_tmp" "$module" || { rm -f "$module_tmp"; exit 1; }
-fi
-"$conma" --main "$module" "$1" > "$tmp/prog.se" || exit $?
-if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
-# CONMA_VM=wasm：変換したプログラムを wasm 版の VM（vm/wasm/vm-wasm.sh。Node.js）で動かす。数の関数は wasm 版で動く
-# （docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2）。ほかの VM では、数の関数も ConMa 版で動く
-if [ "$CONMA_VM" = wasm ]; then
-  "$conma" build --include "$sjs/include" "$tmp/prog.se" > "$tmp/prog.module.se" || exit $?
-  exec "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se"
-fi
-"$conma" run --include "$sjs/include" "$tmp/prog.se"
+exec "${sjs%/*}/bin/lang" "${@:1:$#-1}" "$sjs" "${@: -1}"

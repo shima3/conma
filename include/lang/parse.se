@@ -1,0 +1,145 @@
+;; 言語キットの構文解析の部品（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）。SJS の構文解析（sjs/include/sjs_parse.se）から
+;; 取り出した読む状態と節の部品と、演算子の優先順位で 2 項演算を読む部品。include/lang/lex.se の字句を読む。
+;;
+;; 読む状態 p は Dict で、"toks" に、残りの字句の LList の Ref を持つ（Kit_parse_new。言語が、ほかの名前を足してよい）。
+;; 字句の列は "eof" の字句で終わり、Kit_parse_next は "eof" の先には進まない。
+;; 節は Dict で、"t" に種類を持つ（Kit_parse_node）。Kit_parse_at は、節に、その始まりの字句の行と桁（"line" と "col"）を置く。
+;; エラー（「expected 'x' but found 'y'」、「unexpected 'y'」）は Kit_lex_error（SyntaxError）で出す
+(include "lang/lex.se")
+
+(define Kit_parse_new ,(toks)
+  __Ref_new__ toks ,(ref)
+  __Dict_new__ ,(p)
+  __Dict_put__ p "toks" ref ,()
+  __NULL__ p)
+
+(define Kit_parse_node ,(t)
+  __Dict_new__ ,(n)
+  __Dict_put__ n "t" t ,()
+  __NULL__ n)
+
+(define Kit_parse_get ,(n key)
+  __Dict_lookup_or__ n key __print_exit_error__)
+
+(define Kit_parse_peek ,(p)
+  __Dict_lookup_or__ p "toks" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(toks)
+  __LList_uncons__ __print_exit_error__ toks ,(tok rest)
+  __NULL__ tok)
+
+;; n 個先の字句（0 は今の字句）。入力の終わりより先は eof
+(define Kit_parse_peek_at ,(p n)
+  __Dict_lookup_or__ p "toks" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(toks)
+  Kit_parse_nth toks n)
+
+(define Kit_parse_nth ,(toks n)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ toks ,(tok rest)
+  __Number_is_zero__ n ,(test__) __if__ test__ (,() return tok) ,()
+  __is_null__ rest ,(test__) __if__ test__ (,() return tok) ,()
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_subtract__ n one ,(n)
+  Kit_parse_nth rest n)
+
+(define Kit_parse_next ,(p)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ p "toks" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(toks)
+  __LList_uncons__ __print_exit_error__ toks ,(tok rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() return tok) ,()
+  __Ref_set__ ref rest ,()
+  __NULL__ tok)
+
+;; 字句 tok が、記号か名前の text か
+(define Kit_parse_tok_is ,(tok text)
+  __Cont_get__ ,(return)
+  Kit_lex_tok_kind tok ,(kind)
+  __String_equal__ kind "punct" ,(punct)
+  __String_equal__ kind "id" ,(id)
+  __or__ punct id ,(ok)
+  __unless__ ok (,() return __FALSE__) ,()
+  Kit_lex_tok_text tok ,(t)
+  __String_equal__ t text)
+
+(define Kit_parse_is ,(p text)
+  Kit_parse_peek p ,(tok)
+  Kit_parse_tok_is tok text)
+
+(define Kit_parse_eat ,(p text)
+  __Cont_get__ ,(return)
+  Kit_parse_is p text ,(yes)
+  __unless__ yes (,() return __FALSE__) ,()
+  Kit_parse_next p ,(tok)
+  __NULL__ __TRUE__)
+
+(define Kit_parse_expect ,(p text)
+  __Cont_get__ ,(return)
+  Kit_parse_eat p text ,(ok)
+  __if__ ok return ,()
+  Kit_parse_peek p ,(tok)
+  Kit_parse_describe tok ,(d)
+  __String_concat__ "expected '" text ,(msg)
+  __String_concat__ msg "' but found " ,(msg)
+  __String_concat__ msg d ,(msg)
+  Kit_lex_error msg)
+
+(define Kit_parse_describe ,(tok)
+  __Cont_get__ ,(return)
+  Kit_lex_tok_kind tok ,(kind)
+  __String_equal__ kind "eof" ,(test__) __if__ test__ (,() return "the end") ,()
+  Kit_lex_tok_text tok ,(t)
+  __String_concat__ "'" t ,(s)
+  __String_concat__ s "'")
+
+(define Kit_parse_fail ,(p)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_kind tok ,(kind)
+  __String_equal__ kind "eof" ,(eof)
+  __if_then_else__ eof (,() __NULL__ "end of the expression") (,() Kit_parse_describe tok) ,(d)
+  __String_concat__ "unexpected " d ,(msg)
+  Kit_lex_error msg)
+
+;; 節 n に、字句 tok の位置（"line" と "col"。String）を入れる。もう位置があるか、節でなければ何もしない
+(define Kit_parse_at ,(n tok)
+  __Cont_get__ ,(return)
+  __type_name__ n ,(t)
+  __String_equal__ t "Dict" ,(d)
+  __unless__ d return ,()
+  __Dict_lookup_or__ n "col" (,(k) __NULL__ __NULL__) ,(c)
+  __is_null__ c ,(none)
+  __unless__ none return ,()
+  Kit_lex_tok_line tok ,(line)
+  Kit_lex_tok_col tok ,(col)
+  __Dict_put__ n "line" line ,()
+  __Dict_put__ n "col" col)
+
+;; 演算子の優先順位で 2 項演算を読む（左結合）。operand は p を受け取って被演算子の節を返す関数、prec は、次の字句の
+;; 記号の優先順位（Number。大きいほど強い。2 項演算子でなければ null）を返す関数。min より強い演算子だけを読む
+;; （初めは 0）。節は "binary" で、"op"、"left"、"right" を持つ
+(define Kit_parse_binary ,(p min operand prec)
+  Kit_parse_peek p ,(tok)
+  operand p ,(left)
+  Kit_parse_at left tok ,()
+  Kit_parse_binary_rest p min left operand prec)
+
+(define Kit_parse_binary_rest ,(p min left operand prec)
+  __Cont_get__ ,(return)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_kind tok ,(kind)
+  __String_equal__ kind "punct" ,(punct)
+  __unless__ punct (,() return left) ,()
+  Kit_lex_tok_text tok ,(op)
+  prec op ,(level)
+  __is_null__ level ,(test__) __if__ test__ (,() return left) ,()
+  __Number_subtract__ level min ,(d)
+  __Number_is_positive__ d ,(higher)
+  __unless__ higher (,() return left) ,()
+  Kit_parse_next p ,(t)
+  Kit_parse_binary p level operand prec ,(rhs)
+  Kit_parse_node "binary" ,(n)
+  __Dict_put__ n "op" op ,()
+  __Dict_put__ n "left" left ,()
+  __Dict_put__ n "right" rhs ,()
+  Kit_parse_at n tok ,()
+  Kit_parse_binary_rest p min n operand prec)

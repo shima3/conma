@@ -1,12 +1,12 @@
 ;; ConJS の実行時の支え（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。SJS の実行時の支え（sjs_rt.se）と
-;; スケジューラ（conjs_sched.se）をつなぎ、ConJS の大域の名前（spawn、join、host）を置く。変換したプログラムは、
+;; スケジューラ（include/lang/sched.se）をつなぎ、ConJS の大域の名前（spawn、join、host）を置く。変換したプログラムは、
 ;;   Sjs_init ,(G)
 ;;   Conjs_run G (,() 文の並び __nop__) ,()
 ;; の形で、ファイルの文の並び（main）を最初の処理として動かす。
 ;;
 ;; 処理（task）の SJS の値は Dict：「"t" は "task"、"id" は値の番号、"sched" はスケジューラの処理」
 (include "sjs_rt.se")
-(include "conjs_sched.se")
+(include "lang/sched.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
 ;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）
@@ -49,7 +49,7 @@
   __Cont_get__ ,(return)
   __PDict_put__ "sjs_lang" "conjs" ,()
   Conjs_builtins G ,()
-  Sched_run (,() Conjs_save) (,(local) Conjs_restore local) body ,(blocked failed)
+  Kit_sched_run (,() Conjs_save) (,(local) Conjs_restore local) body ,(blocked failed)
   Conjs_report failed __FALSE__ ,(bad)
   __Number_is_zero__ blocked ,(noDeadlock)
   __unless__ noDeadlock
@@ -68,7 +68,7 @@
   __Cont_get__ ,(return)
   __is_null__ failed ,(test__) __if__ test__ (,() return bad) ,()
   __LList_uncons__ __print_exit_error__ failed ,(t rest)
-  Sched_payload t ,(p)
+  Kit_sched_payload t ,(p)
   __LList_uncons__ __print_exit_error__ p ,(e more)
   __LList_uncons__ __print_exit_error__ more ,(pos more)
   Sjs_error_text e ,(text)
@@ -97,7 +97,7 @@
   Sjs_kind f ,(kind)
   __String_equal__ kind "function" ,(ok)
   __unless__ ok (,() Sjs_describe f ,(d) __String_concat__ "spawn: " d ,(m) __String_concat__ m " is not a function" ,(m) Sjs_type_error m) ,()
-  Sched_spawn (,() Conjs_task_body f) ,(st)
+  Kit_sched_spawn (,() Conjs_task_body f) ,(st)
   Sjs_new_id G ,(id)
   __Dict_new__ ,(t)
   __Dict_put__ t "t" "task" ,()
@@ -123,9 +123,9 @@
   __String_equal__ kind "task" ,(ok)
   __unless__ ok (,() Sjs_describe t ,(d) __String_concat__ "join: " d ,(m) __String_concat__ m " is not a task" ,(m) Sjs_type_error m) ,()
   __Dict_lookup_or__ t "sched" __print_exit_error__ ,(st)
-  Sched_is_current st ,(self)
+  Kit_sched_is_current st ,(self)
   __if__ self (,() Sjs_type_error "join: a task cannot join itself") ,()
-  Sched_join st ,(ok payload)
+  Kit_sched_join st ,(ok payload)
   __if__ ok (,() return payload) ,()
   __LList_uncons__ __print_exit_error__ payload ,(e more)
   __LList_uncons__ __print_exit_error__ more ,(pos more)
@@ -157,7 +157,7 @@
   Sjs_arg args ,(name rest)
   Conjs_host_name "host.wait" name ,()
   Conjs_to_host_list "host.wait" rest ,(list)
-  Sched_wait (,(msg) Sjs_throw "Error" msg) name list ,(ok payload)
+  Kit_sched_wait (,(msg) Sjs_throw "Error" msg) name list ,(ok payload)
   __unless__ ok (,() Sjs_throw "Error" payload) ,()
   Conjs_from_host G payload)
 
