@@ -22,7 +22,7 @@ if [ -z "$n" ]; then
     *) echo "usage: sjs/bench/run.sh NAME [N [M]] (NAME: loop, fib, nbody)" >&2; exit 2 ;;
   esac
 fi
-# SJS_INCLUDE で、変換器と実行時の支えのディレクトリを替えられる（前の版と比べるとき）
+# SJS_INCLUDE で、変換器とランタイムのディレクトリを替えられる（前の版と比べるとき）
 inc="${SJS_INCLUDE:-$sjs/include}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs-bench.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT

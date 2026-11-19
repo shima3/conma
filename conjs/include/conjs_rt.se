@@ -1,4 +1,4 @@
-;; ConJS の実行時の支え（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。SJS の実行時の支え（sjs_rt.se）と
+;; ConJS のランタイム（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。SJS のランタイム（sjs_rt.se）と
 ;; スケジューラ（include/lang/sched.se）をつなぎ、ConJS の大域の名前（spawn、join、host）を置く。変換したプログラムは、
 ;;   Sjs_init ,(G)
 ;;   Conjs_run G (,() 文の並び __nop__) ,()

@@ -7,7 +7,7 @@
 ;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（docs/consh/dev/JS-PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
-;; SJS の変換器と実行時の支え（段階 B。sjs/README-ja.md）
+;; SJS の変換器とランタイム（段階 B。sjs/README-ja.md）
 (include "sjs_rt.se")
 (include "sjs_lex.se")
 (include "sjs_parse.se")
@@ -449,7 +449,7 @@
 ;; ── 段階 B4：SJS を ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2、sjs/README-ja.md）──
 ;; (( )) と $(( )) の SJS式を、sjs_gen.se の Sjs_translate_module でモジュールのソースにし、一時ファイルに書いて
 ;; （コードの文字列ごとに覚えておく）、__VProc_spawn__ で新しい VProc として動かし、終わるのを待つ。
-;; モジュールは、実行時の支えの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、
+;; モジュールは、ランタイムの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、
 ;; "setup"（Sjsb_setup）で、その VProc の PDict に、SJS変数の Dict（文脈の "sjsvars"）、$名前 を引く関数、
 ;; console.log の出力先、受け手のない例外の行き先を置く。SJS の値は ConMa の値（sjs_rt.se）で、シェル変数には、
 ;; 文字列はそのまま、ほかは {"sjsv": 値} の Dict で入れる（Value_force が、$ で読むたびにシェルの値にする。Sjsb_to_shell）。

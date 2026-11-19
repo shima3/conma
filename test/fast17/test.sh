@@ -1,6 +1,6 @@
 #!/bin/bash
 # 言語キット（include/lang。docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）の部品だけで作った、小さな電卓の言語 calc。
-# calc.se（変換器）で caseN.calc を ConMa のソースにし、calc_rt.se（実行時の支え）と一緒にモジュールにして動かす。
+# calc.se（変換器）で caseN.calc を ConMa のソースにし、calc_rt.se（ランタイム）と一緒にモジュールにして動かす。
 # 変換も実行も、選んだ VM（CONMA_VM）で行う。どの VM でも同じログ。キットの部品が SJS の名前を使わないこと、字句、構文、
 # 優先順位の 2 項演算（Kit_parse_binary）、名前の有効範囲、SInfo の印とエラーの位置（Kit_err_pos、Kit_err_report）、
 # キットのエラーのメッセージを確かめる

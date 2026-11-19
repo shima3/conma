@@ -1,7 +1,7 @@
 ;; SJS の数の関数を WebAssembly のテキスト（WAT）にする（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2）。
 ;; Wasm_prepare が、プログラムの一番外の function 宣言のうち、数だけを扱うもの（数の関数）を見つけて、
 ;; その fn の節に "wasm"（export の名前）を付け、それらをまとめた 1 つのモジュールの WAT を返す（なければ ""）。
-;; 変換器（sjs_gen.se）は、印の付いた関数を Sjs_wasm_fn で包み、呼ばれたとき、実行時の支え（sjs_rt.se）が、引数が
+;; 変換器（sjs_gen.se）は、印の付いた関数を Sjs_wasm_fn で包み、呼ばれたとき、ランタイム（sjs_rt.se）が、引数が
 ;; 数なら wasm 版を、そうでなければ ConMa 版を動かす。2 つの版の結果は同じになる（f64 の演算は IEEE 754 のとおり）。
 ;;
 ;; 数の関数の条件（計画の 3。段階 2 は単独の SJS のファイルだけ）：
@@ -1983,7 +1983,7 @@
   Wx_all_ok E rest)
 
 ;; 数の関数の fn に、配列に書くか（自分か、たどって呼ぶ数の関数が $__set を使うか）を "wasmWrites" に付ける。書かない関数は、
-;; 呼んだ後に配列を書き戻さない（実行時の支えの Sjs_wasm_run_memory。写す費用の改善）
+;; 呼んだ後に配列を書き戻さない（ランタイムの Sjs_wasm_run_memory。写す費用の改善）
 (define Wx_mark_writes ,(E infos)
   __Cont_get__ ,(return)
   __is_null__ infos ,(test__) __if__ test__ return ,()

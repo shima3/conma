@@ -4,7 +4,7 @@
 ;; 変換の状態 g は Dict で、"n" に一時変数の番号の Ref、"file" に、SInfo のファイル名（Kit_code_quote したもの）、"lang" に
 ;; 言語の名前（SInfo の最後の値）、"sinfoEnd" に SInfo の終わりの部分を持つ（Kit_code_state、Kit_code_set_lang。言語が、ほかの名前を足してよい）。
 ;; 名前の有効範囲 scope は、名前から ConMa の変数名への Dict の LList（内側が先）で、"const:名前" があれば const（Kit_code_lookup）。
-;; SInfo の印：言語の実行時の支えを呼ぶ所に、印のタブ（"\t"）を置いておき、節の行と桁が分かったら Kit_code_sinfo_fill で、
+;; SInfo の印：言語のランタイムを呼ぶ所に、印のタブ（"\t"）を置いておき、節の行と桁が分かったら Kit_code_sinfo_fill で、
 ;; そこに (__SInfo__ ファイル 行 桁 言語) を入れる。最後に Kit_code_replace_marks code "" で、位置の入らなかった印を消す
 (include "lang/lex.se")
 
@@ -110,7 +110,7 @@
   __NULL__ v c)
 
 ;; ── 位置（SInfo）──
-;; 実行時の支えを呼ぶ Body（失敗しうる）は、変換器が "\t" の印を前に置いて出す（制御文字は、文字列のリテラルに
+;; ランタイムを呼ぶ Body（失敗しうる）は、変換器が "\t" の印を前に置いて出す（制御文字は、文字列のリテラルに
 ;; 出さないので、印と紛れない。Kit_code_quote）。言語の変換器（SJS では Gen_expr と Gen_stmt）は、自分の手順に残った印を、自分の節の位置の
 ;; (__SInfo__ ファイル 行 桁 "sjs") にする。子の式が先に入れるので、呼び出しは、それを作ったいちばん内側の式の位置になる。
 ;; 4 番目の言語の名前（g の "lang"。SJS は "sjs"）は、受け手のない例外の位置を CChain から探すときの印（SJS では Sjs_raise_pos）。VM のエラーは先頭の 3 つで出る

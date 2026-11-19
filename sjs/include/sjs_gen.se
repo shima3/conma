@@ -114,9 +114,9 @@
 
 ;; ConSh の (( )) と $(( )) の SJS式を、モジュールのソースにする（段階 B4。consh_jsstmt.se が __VProc_spawn__ で動かす）。
 ;; モジュールは Sjs_entry だけを定義する。Sjs_entry は、__VProc_spawn__ の引数（err ctx in out）の ctx（Dict）から、
-;; 実行時の支えの関数（"rt"。Sjs_rt_names の名前の関数と、__TRUE__ などの標準の関数）を同じ名前の局所変数に束縛し、
+;; ランタイムの関数（"rt"。Sjs_rt_names の名前の関数と、__TRUE__ などの標準の関数）を同じ名前の局所変数に束縛し、
 ;; 文脈 G を受け取り、"setup"（この VProc の PDict を置く）を呼んでから式を求め、値を "done" に渡す。
-;; モジュールは何も include しないので、作るのは速い（実行時の支えは ConSh のモジュールにある）
+;; モジュールは何も include しないので、作るのは速い（ランタイムは ConSh のモジュールにある）
 (define Sjs_translate_module ,(text file)
   Sjs_parse_expression text ,(e)
   ;; 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 4。sjs_wasm.se の Wasm_prepare_expr）
@@ -273,7 +273,7 @@
   __String_concat__ acc code ,(acc)
   Gen_stmts g scope rest cx acc)
 
-;; 文。実行時の支えの呼び出しに、文の位置の SInfo を入れる（式が入れなかったもの。Kit_code_sinfo_fill）
+;; 文。ランタイムの呼び出しに、文の位置の SInfo を入れる（式が入れなかったもの。Kit_code_sinfo_fill）
 (define Gen_stmt ,(g scope s cx)
   __Cont_get__ ,(return)
   Kit_parse_get s "t" ,(t)
@@ -289,7 +289,7 @@
       Kit_code_cat3 f it " ,() " ,(c)
       return c) ,()
   Gen_stmt_body g scope s cx ,(c)
-  ;; 文の中で、式が位置を入れなかった実行時の支えの呼び出しには、文の位置を入れる
+  ;; 文の中で、式が位置を入れなかったランタイムの呼び出しには、文の位置を入れる
   Kit_code_sinfo_fill g s c)
 
 ;; 呼び出しの後に行を記録し直すことは、SInfo にしたのでしない（段階 B9）
@@ -1959,7 +1959,7 @@
       Kit_code_cat4 c bind bodyCode ") ,(" ,(c)
       Kit_code_cat3 c v ") " ,(c)
       return c v) ,()
-  ;; 数の関数（sjs_wasm.se が印を付けたもの）：ConMa 版を Sjs_wasm_fn で包む（実行時の支えが wasm 版と選ぶ）
+  ;; 数の関数（sjs_wasm.se が印を付けたもの）：ConMa 版を Sjs_wasm_fn で包む（ランタイムが wasm 版と選ぶ）
   __Dict_lookup_or__ e "wasm" (,(k) __NULL__ "") ,(wname)
   __String_equal__ wname "" ,(test__) __unless__ test__
     (,()
