@@ -55,24 +55,13 @@ consh/sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m2/lazy-rest
-
-* ConSh の最適化版だけを変えた（consh/include の consh_eval.se と consh_expand.se）。ConSh のモジュールを作り直し、transpiled VM も `bench/build.sh` で作り直す。
-* consh/test の step6 の case15 に、rest を読まずに置き換える、2 回読む、`${rest}` で写す、関数に渡す場合を足した。
-* 流したもの：consh/test（Rust VM の最適化版、`CONMA_GC_THRESHOLD=1000` でも、参照版、`CONSH_IMPL=rust`、transpiled VM、`CONMA_GC_THRESHOLD=1000` でも、wasm 版）、consh/js/test。既知の違いだけ。test/ と consh/sjs/test は流していない（VM と consh/sjs は変えていない）。
-
-### m1/seq-varlist-gc
-
-* VM の GC だけを変えた（vm/src の gc.rs と value.rs）。Ref に GC の中での番号（`gc_slot`）を持たせ、Ref の serial を u32 にした。Rust 版の VM、wasm 版の VM、transpiled VM を作り直す。ConSh のモジュールは変わらない。
-* 流したもの：test/ と consh/test（Rust VM、`CONMA_GC_THRESHOLD=100`（test/）と `1000`（consh/test）でも）、wasm 版の test/ と consh/test（既知の違いだけ）、consh/js/test、consh/sjs/test（ここまで alpha を merge する前の fb62d36）。merge した後の 0df6e4d で、transpiled VM の test/ と consh/test、Rust VM の consh/test の最適化版と参照版。Python 版の VM と `CONSH_IMPL=rust` は流していない（Python 版の VM と ConSh の Rust 版は変えていない）。
-* 測ったもの：consh/bench の `02`〜`18` と `22` を、3 つの VM で前後に（consh/bench/README-ja.md、ブランチ m1/bench-0df6e4d）。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-19 | a471875 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/lazy-rest と m1/seq-varlist-gc の、流していなかった組み合わせ（test/ と consh/sjs/test、Python 版の VM、`CONSH_IMPL=rust`）も通った。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、a471875 で作り直した（10 分 41 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-19 | m2/docs-full-bench（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | Full Bench の定義を、表が比べるすべての版ではなく、頼んだ版で、ディレクトリのすべてのベンチマークを測るものに直した（docs/dev/CONTRIBUTING.md の Benchmarks と 3、この文書の申し送り）。すべての版で流す Full Test との違いと、版を書かない頼みはすべての版であることを書いた。リンクは足していない |
 | 2026-11-19 | m1/docs-dev-off-pages（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | GitHub Pages に docs/dev と docs/consh/dev を出さないようにした（docs/_config.yml の `exclude`）。開発者の文書は GitHub の alpha で読む。docs/index.md と docs/consh/index.md の開発者向けの一覧を、新しい docs/dev/README.md と docs/consh/dev/README.md に移し（GitHub がフォルダの画面に出す）、index からは GitHub の alpha へのリンクにした。docs/dev と docs/consh/dev の文書の、ほかの文書への `.html` のリンク（22 か所、GitHub では切れていた）を `.md` にした。docs/dev/CONTRIBUTING.md と README.md にも書いた。確かめたこと：変えた 8 つのファイルのリンクの先がすべてあること、docs/ の Markdown がすべてどれかの一覧からリンクされていること、Liquid の開き括弧が増えていないこと。Jekyll は動かしていない（`exclude` が効くことは、main に入った後の Pages で見る） |
 | 2026-11-19 | m4/docs-transpiled-cache（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 変換版の VM を作る前に ConSh のモジュールを作り直しておくことの説明に、ほかの suite と並べて流すときも作り直し終えてから `bench/build.sh` を始めること、そうしないと出る警告、`transpiled code: used` の確かめ方を足した（442e41d の Full Test の 1 回目の作り直しで、古いモジュールを変換した）。確かめたこと：リンクは足していないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない |
