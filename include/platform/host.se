@@ -1,0 +1,19 @@
+;; ホストの関数を呼ぶ（プラットフォームの機能。docs/dev/PLATFORM-PLAN-ja.md の 3.2 と 3.4）。
+;; すぐ返る呼び出しは __Host_call__ をそのまま使う。待つ呼び出しは、__Host_start__、__OS_wait_readable__、
+;; __Host_result__ の 3 つを 1 つにした、次の関数で呼ぶ。待っている間、ほかの VProc は動く。
+;;   Host_wait onError name args ,(result)
+;;   Host_wait_tracked onError name args track ,(result)
+;;       track は Stream の LList を持つ Ref。呼び始めるのと同じステップで、パイプの Stream を前に入れる
+;;       （__Host_start_tracked__）。待っている VProc が殺されたら、track を持つ側が、その Stream を閉じる。
+;;       結果を取ると Stream は閉じるが、track には残る（閉じた Stream を __OS_close__ すると onError に行く）
+;; onError は、メッセージを 1 つ受け取る。ホストにその関数がない、関数が失敗した、渡せない値を渡したとき。
+
+(define Host_wait ,(onError name args)
+  __Host_start__ onError name args ,(s)
+  __OS_wait_readable__ onError s ,()
+  __Host_result__ onError s)
+
+(define Host_wait_tracked ,(onError name args track)
+  __Host_start_tracked__ onError name args track ,(s)
+  __OS_wait_readable__ onError s ,()
+  __Host_result__ onError s)

@@ -1,0 +1,85 @@
+;; canvas のライブラリ（include/platform/canvas.se。docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）。
+;; case1 は、canvas のない VM（CONMA_HOST なし）：Canvas_available が偽で、描く関数は onError に行く。
+;; case2 は、wasm 版の VM で、描いた命令を記録する canvas のまね（CONMA_HOST=host.js）。ほかの VM には canvas がない。
+
+(include "platform/canvas.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ (,(e) println e) text)
+
+(define say ,(label s)
+  __String_concat__ label ": " ,(m) __String_concat__ m s ,(m) println m)
+
+(define available ,()
+  Canvas_available ,(b)
+  __if_then_else__ b (,() __NULL__ "yes") (,() __NULL__ "no") ,(answer)
+  say "canvas" answer)
+
+(define case1 ,()
+  __Cont_get__ ,(return)
+  available ,()
+  num "0" ,(n0) num "10" ,(n10)
+  Canvas_fill_rect (,(e) say "fill_rect" e ,() return) n0 n0 n10 n10 ,()
+  println "not reached" ,()
+  return)
+
+(define case1b ,()
+  __Cont_get__ ,(return)
+  Canvas_frame (,(e) say "frame" e ,() return) ,(t)
+  println "not reached" ,()
+  return)
+
+;; 文字列の LList を 1 行ずつ書く
+(define print_lines ,(l)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(end) __if__ end return ,()
+  __LList_uncons__ (,(e) println e) l ,(h rest)
+  println h ,()
+  print_lines rest)
+
+(define frames ,(n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end) __if__ end return ,()
+  Canvas_frame (,(e) say "frame" e ,() return) ,(t)
+  num "1" ,(n1) __Number_subtract__ n n1 ,(n)
+  frames n)
+
+(define case2 ,()
+  __Cont_get__ ,(return)
+  available ,()
+  Canvas_size (,(e) say "size" e ,() return) ,(w h)
+  __Number_toString__ w ,(ws) __Number_toString__ h ,(hs) __String_concat__ ws " x " ,(s) __String_concat__ s hs ,(s)
+  say "size" s ,()
+  num "0" ,(n0) num "10" ,(n10) num "20" ,(n20) num "0.5" ,(half) num "3" ,(n3)
+  Canvas_clear (,(e) say "clear" e ,() return) ,()
+  Canvas_fill_style (,(e) say "fill_style" e ,() return) "#3366cc" ,()
+  Canvas_fill_rect (,(e) say "fill_rect" e ,() return) n0 n0 n10 n20 ,()
+  Canvas_stroke_style (,(e) say "stroke_style" e ,() return) "red" ,()
+  Canvas_line_width (,(e) say "line_width" e ,() return) half ,()
+  Canvas_begin_path (,(e) say "begin_path" e ,() return) ,()
+  Canvas_move_to (,(e) say "move_to" e ,() return) n0 n0 ,()
+  Canvas_line_to (,(e) say "line_to" e ,() return) n10 n20 ,()
+  Canvas_stroke (,(e) say "stroke" e ,() return) ,()
+  Canvas_font (,(e) say "font" e ,() return) "16px sans-serif" ,()
+  Canvas_fill_text (,(e) say "fill_text" e ,() return) "hi" n10 n10 ,()
+  Canvas_arc (,(e) say "arc" e ,() return) n10 n10 n3 n0 half ,()
+  ;; まとめて描く
+  __LList_cons__ n20 __NULL__ ,(c) __LList_cons__ n10 c ,(c) __LList_cons__ "line_to" c ,(c1)
+  __LList_cons__ "fill" __NULL__ ,(c2)
+  __LList_cons__ c2 __NULL__ ,(cs) __LList_cons__ c1 cs ,(cs)
+  Canvas_draw (,(e) say "draw" e ,() return) cs ,()
+  println "drawn" ,()
+  ;; 3 コマ待つ
+  frames n3 ,()
+  println "3 frames" ,()
+  ;; 間違った命令
+  __LList_cons__ "nope" __NULL__ ,(bad) __LList_cons__ bad __NULL__ ,(bads)
+  Canvas_draw (,(e) say "draw nope" e) bads ,()
+  Canvas_fill_rect (,(e) say "fill_rect a String" e) "x" n0 n0 n0 ,()
+  Host_wait (,(e) say "dump" e ,() return) "rec.dump" __NULL__ ,(lines)
+  print_lines lines ,()
+  return)

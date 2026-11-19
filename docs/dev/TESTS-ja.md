@@ -89,6 +89,14 @@ sjs/test/run_all.sh
 * M2 の PR（shima3/conma#1）のコメントを受けて、3.4 節を直した：`test.later` の終わる順をどの VM でも同じにする決め方、`__Host_start_tracked__`、プラットフォームの印、`canvas.frame` の時刻。これも文書だけ。
 * M2 の次のコメントを受けて、`test.later` の終わる順を、どの VM でも同じ仮の時計（締め切り = 今の時計 + 待つ数）で決めることにした。これも文書だけ。
 
+### m1/platform-p3
+
+* 段階 P3（docs/dev/PLATFORM-PLAN-ja.md の 8.3 節）：待つホストの呼び出し（`__Host_start__`、`__Host_start_tracked__`、`__Host_result__`、`test.later`）と、canvas（vm/wasm/host/canvas.js、include/platform/、vm/wasm/web/）。
+* 新しいテスト：test/fast15 と test/fast16。どちらも test/run_all.sh に入る（fast*）。CONMA_VM=python、rust、wasm で通ることを確かめた。
+* VM が変わった（vm/src/sched.rs、vm/src/prim/host.rs、vm/python/vproc_step.py、vm/wasm/conma.js）ので、test/ と consh/test を、Python 版、Rust 版、wasm 版の VM と transpiled VM で流す。transpiled VM は、作り直してから（17〜21 分）。
+* M1 が流したもの（Apple M1）：test/ を Python 版（122 秒）、Rust 版（25 秒）、wasm 版（39 秒）の VM で（`-j 8`）。consh/test を Rust 版と wasm 版の VM で。違いは既知のもの（wasm 版の test/step40、consh/test の step8 と step17）と、wasm 版の test/step31 が `-j 8` で 1 回だけ違ったこと（シグナルのタイミング。1 つずつ 5 回流し直して、すべて通った）。流していないもの：transpiled VM（作り直していない）と、Python 版の VM の consh/test。
+* 見本のページ（vm/wasm/web/canvas.html）は、vm/wasm/web/build.sh の後、ブラウザで見る。測り方は vm/wasm/web/measure.sh（9 秒ほど）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

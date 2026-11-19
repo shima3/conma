@@ -52,7 +52,11 @@
 // test.fail, vm/src/prim/host.rs). A function is called with the arguments as JavaScript values,
 // numbers, strings and arrays of them (an empty LList, null, is []), and returns such a value (null
 // and undefined are null, the empty LList), or throws: the message of what it throws goes to onError.
-// It is called once and must not wait (a Promise is an error). hostFeatures, if given, is an array of
+// For __Host_call__ it is called once and must not wait (a Promise is an error). __Host_start__ name
+// args (a call that waits, 3.4 of the plan) calls it too, and it may return a Promise then: when the
+// function has returned, or its Promise has settled, its result is written to the pipe of the call
+// and the pipe is closed (in a later task, never inside conma_run), and the VM is run again (jsDone).
+// hostFeatures, if given, is an array of
 // the names of the platform features these functions give, for which __Feature_available__ is true.
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
@@ -2012,6 +2016,37 @@ var ConMaVM = (function () {
           const n = Math.min(cap, hostResult.length);
           putAt(hostResult.subarray(0, n), out);
           return n;
+        },
+        host_fn_has: (namePtr, nameLen) =>
+          hostFunctions && Object.prototype.hasOwnProperty.call(hostFunctions, str(namePtr, nameLen)) ? 1 : 0,
+        // __Host_start__: the result goes to the pipe fd as the JSON text of a result, and the pipe is
+        // closed; jsPending counts the call until then, so that the host lets its event loop run
+        host_fn_start: (namePtr, nameLen, argsPtr, argsLen, fd) => {
+          const name = str(namePtr, nameLen);
+          const argsText = str(argsPtr, argsLen);
+          jsPending++;
+          const done = (result) => {
+            pass(utf8(result), (p, n) => x.conma_write(fd, p, n));
+            x.conma_close(fd);
+            jsPending--;
+            wake();
+          };
+          const ok = (r) => {
+            let result;
+            try {
+              result = JSON.stringify({ r: hostEncode(name, r) });
+            } catch (e) {
+              result = JSON.stringify({ e: e instanceof Error ? e.message : String(e) });
+            }
+            done(result);
+          };
+          const fail = (e) => done(JSON.stringify({ e: e instanceof Error ? e.message : String(e) }));
+          Promise.resolve()
+            .then(() => {
+              const args = JSON.parse(argsText);
+              return hostFunctions[name](...(args === null ? [] : args.map(hostDecode)));
+            })
+            .then(ok, fail);
         },
         host_fn_feature: (namePtr, nameLen) =>
           Array.isArray(hostFeatures) && hostFeatures.includes(str(namePtr, nameLen)) ? 1 : 0,

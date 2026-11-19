@@ -1,0 +1,77 @@
+;; ブラウザの canvas に描く（プラットフォームの機能 "canvas"。docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）。
+;; ホストの関数は vm/wasm/host/canvas.js（wasm 版の VM を動かすページが、hostFunctions と hostFeatures に渡す）。
+;; canvas のないプラットフォームでは、Canvas_available が偽で、描く関数は onError に行く。
+;; 数は Number、色とフォントは CSS の文字列（"red"、"#3366cc"、"16px sans-serif"）。角度はラジアン。
+;;   Canvas_available ,(Boolean)                  このプラットフォームに canvas があるか
+;;   Canvas_size onError ,(width height)
+;;   Canvas_clear onError ,()                     全体を消す
+;;   Canvas_fill_style onError css ,()            Canvas_stroke_style onError css ,()
+;;   Canvas_line_width onError width ,()          Canvas_font onError css ,()
+;;   Canvas_fill_rect onError x y w h ,()         Canvas_stroke_rect onError x y w h ,()
+;;   Canvas_begin_path onError ,()                Canvas_close_path onError ,()
+;;   Canvas_move_to onError x y ,()               Canvas_line_to onError x y ,()
+;;   Canvas_arc onError x y r start end ,()       Canvas_fill onError ,()     Canvas_stroke onError ,()
+;;   Canvas_fill_text onError text x y ,()
+;;   Canvas_draw onError commands ,()             命令のリストをまとめて描く。命令は、名前（"canvas." を除く）と
+;;                                                引数の LList：("fill_rect" 0 0 10 10)。1 回の呼び出しで何百も描ける
+;;   Canvas_frame onError ,(time)                 次のアニメーションの 1 コマを待つ（その間、ほかの VProc は動く）。
+;;                                                その時刻（ミリ秒）
+
+(include "host.se")
+
+(define Canvas_available ,()
+  __Feature_available__ "canvas")
+
+;; name を、引数の LList args で呼ぶ（値を返さない）
+(define Canvas_call ,(onError name args)
+  __String_concat__ "canvas." name ,(fname)
+  __Host_call__ onError fname args ,(r)
+  __NULL__)
+
+(define Canvas_size ,(onError)
+  __Host_call__ onError "canvas.size" __NULL__ ,(r)
+  __LList_uncons__ onError r ,(w rest)
+  __LList_uncons__ onError rest ,(h rest)
+  __NULL__ w h)
+
+(define Canvas_clear ,(onError) Canvas_call onError "clear" __NULL__)
+(define Canvas_begin_path ,(onError) Canvas_call onError "begin_path" __NULL__)
+(define Canvas_close_path ,(onError) Canvas_call onError "close_path" __NULL__)
+(define Canvas_fill ,(onError) Canvas_call onError "fill" __NULL__)
+(define Canvas_stroke ,(onError) Canvas_call onError "stroke" __NULL__)
+
+(define Canvas_fill_style ,(onError css)
+  __LList_cons__ css __NULL__ ,(a) Canvas_call onError "fill_style" a)
+(define Canvas_stroke_style ,(onError css)
+  __LList_cons__ css __NULL__ ,(a) Canvas_call onError "stroke_style" a)
+(define Canvas_line_width ,(onError width)
+  __LList_cons__ width __NULL__ ,(a) Canvas_call onError "line_width" a)
+(define Canvas_font ,(onError css)
+  __LList_cons__ css __NULL__ ,(a) Canvas_call onError "font" a)
+
+(define Canvas_move_to ,(onError x y)
+  __LList_cons__ y __NULL__ ,(a) __LList_cons__ x a ,(a) Canvas_call onError "move_to" a)
+(define Canvas_line_to ,(onError x y)
+  __LList_cons__ y __NULL__ ,(a) __LList_cons__ x a ,(a) Canvas_call onError "line_to" a)
+
+(define Canvas_fill_rect ,(onError x y w h)
+  __LList_cons__ h __NULL__ ,(a) __LList_cons__ w a ,(a) __LList_cons__ y a ,(a) __LList_cons__ x a ,(a)
+  Canvas_call onError "fill_rect" a)
+(define Canvas_stroke_rect ,(onError x y w h)
+  __LList_cons__ h __NULL__ ,(a) __LList_cons__ w a ,(a) __LList_cons__ y a ,(a) __LList_cons__ x a ,(a)
+  Canvas_call onError "stroke_rect" a)
+
+(define Canvas_arc ,(onError x y r start end)
+  __LList_cons__ end __NULL__ ,(a) __LList_cons__ start a ,(a) __LList_cons__ r a ,(a)
+  __LList_cons__ y a ,(a) __LList_cons__ x a ,(a)
+  Canvas_call onError "arc" a)
+
+(define Canvas_fill_text ,(onError text x y)
+  __LList_cons__ y __NULL__ ,(a) __LList_cons__ x a ,(a) __LList_cons__ text a ,(a)
+  Canvas_call onError "fill_text" a)
+
+(define Canvas_draw ,(onError commands)
+  __LList_cons__ commands __NULL__ ,(a) Canvas_call onError "draw" a)
+
+(define Canvas_frame ,(onError)
+  Host_wait onError "canvas.frame" __NULL__)

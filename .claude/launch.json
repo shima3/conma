@@ -23,6 +23,20 @@
         "consh/js/web"
       ],
       "port": 8766
+    },
+    {
+      "name": "conma-canvas",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8767",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "vm/wasm/web"
+      ],
+      "port": 8767
     }
   ]
 }

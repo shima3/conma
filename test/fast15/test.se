@@ -1,0 +1,166 @@
+;; 待つホストの呼び出し：__Host_start__、__Host_start_tracked__、__Host_result__（docs/PRIMITIVES.md、
+;; docs/dev/PLATFORM-PLAN-ja.md の 3.4 節、段階 P3）。test.later は、どの VM でも同じ仮の時計で終わる。
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ (,(e) println e) text)
+
+;; 値の文字列：Number、"String"、(要素 ...)、() は空の LList（null）
+(define text_of ,(v)
+  __Cont_get__ ,(return)
+  __is_null__ v ,(isNull)
+  __if__ isNull (,() return "()") ,()
+  __type_name__ v ,(t)
+  __String_equal__ t "Number" ,(isNum)
+  __if__ isNum (,() __Number_toString__ v ,(s) return s) ,()
+  __String_equal__ t "String" ,(isStr)
+  __if__ isStr (,() __String_concat__ "\"" v ,(s) __String_concat__ s "\"" ,(s) return s) ,()
+  __String_equal__ t "LList" ,(isList)
+  __if__ isList (,() items_text v "(" ,(s) return s) ,()
+  return t)
+
+(define items_text ,(v acc)
+  __LList_uncons__ (,(e) println e) v ,(h rest)
+  text_of h ,(s)
+  __String_concat__ acc s ,(acc)
+  __is_null__ rest ,(end)
+  __if_then_else__ end
+    (,() __String_concat__ acc ")")
+    (,() __String_concat__ acc " " ,(acc) items_text rest acc))
+
+(define say ,(label s)
+  __String_concat__ label ": " ,(m) __String_concat__ m s ,(m) println m)
+
+;; label: error: メッセージ を書いて、k へ
+(define err ,(label e k)
+  __String_concat__ label ": error: " ,(m) __String_concat__ m e ,(m) println m ,() k)
+
+;; 呼び始めて、終わるのを待ち、結果を書く
+(define wait ,(label name args)
+  __Cont_get__ ,(return)
+  __Host_start__ (,(e) err label e return) name args ,(s)
+  __OS_wait_readable__ (,(e) err label e return) s ,()
+  __Host_result__ (,(e) err label e return) s ,(r)
+  text_of r ,(t)
+  say label t ,()
+  return)
+
+;; どの VM にもあるホストの関数（機能 "test"）とエラー
+(define case1 ,()
+  num "1" ,(n1) num "2" ,(n2) num "-1" ,(m1)
+  __LList_cons__ n2 __NULL__ ,(a) __LList_cons__ n1 a ,(a)
+  wait "add 1 2" "test.add" a ,()
+  wait "fail" "test.fail" __NULL__ ,()
+  wait "unknown" "test.none" __NULL__ ,()
+  wait "later without a count" "test.later" __NULL__ ,()
+  __LList_cons__ m1 __NULL__ ,(a) wait "later -1" "test.later" a ,()
+  __LList_cons__ "x" __NULL__ ,(a) wait "later \"x\"" "test.later" a ,()
+  wait "a Number name" n1 __NULL__ ,()
+  __Dict_new__ ,(d) __LList_cons__ d __NULL__ ,(a) wait "a Dict" "test.echo" a ,()
+  too_early ,()
+  tracked ,()
+  long_results ,()
+  __NULL__)
+
+;; 終わる前に結果を取るとエラー。そのあと待てば取れる。結果を取った Stream は閉じている
+(define too_early ,()
+  __Cont_get__ ,(return)
+  num "1" ,(n1)
+  __LList_cons__ "x" __NULL__ ,(a) __LList_cons__ n1 a ,(a)
+  __Host_start__ (,(e) err "start" e return) "test.later" a ,(s)
+  __Host_result__ (,(e) say "too early" e ,() __OS_wait_readable__ (,(e) err "wait" e return) s ,() __Host_result__ (,(e) err "result" e return) s) s ,(r)
+  text_of r ,(t) say "later 1 \"x\"" t ,()
+  __Host_result__ (,(e) say "again" e ,() return) s ,(r)
+  println "not reached" ,()
+  return)
+
+;; text を n 回、自分とつなげる（長さは 2 の n 乗倍）
+(define double ,(text n)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end) __if__ end (,() return text) ,()
+  __String_concat__ text text ,(text)
+  num "1" ,(n1) __Number_subtract__ n n1 ,(n)
+  double text n)
+
+;; 結果がパイプに入りきらないほど長いと、エラーの結果になる（VM は止まらない）。128 KB の文字列
+(define long_results ,()
+  num "17" ,(n17) num "0" ,(n0)
+  double "x" n17 ,(long)
+  __LList_cons__ long __NULL__ ,(a)
+  wait "echo 128 KB" "test.echo" a ,()
+  __LList_cons__ n0 a ,(a)
+  wait "later 128 KB" "test.later" a)
+
+;; __Host_start_tracked__ は Stream を Ref に入れる
+(define tracked ,()
+  __Cont_get__ ,(return)
+  num "1" ,(n1)
+  __LList_cons__ "x" __NULL__ ,(a) __LList_cons__ n1 a ,(a)
+  __Ref_new__ __NULL__ ,(track)
+  __Host_start_tracked__ (,(e) err "tracked" e return) "test.echo" a track ,(s)
+  __Ref_get__ track ,(l) __LList_length__ l ,(n) __Number_toString__ n ,(t) say "tracked" t ,()
+  __OS_wait_readable__ (,(e) err "wait" e return) s ,()
+  __Host_result__ (,(e) err "result" e return) s ,(r) text_of r ,(t) say "tracked echo" t ,()
+  __Host_start_tracked__ (,(e) err "tracked a Number" e return) "test.echo" a n1 ,(s)
+  println "not reached" ,()
+  return)
+
+;; label の VProc：count だけ待つ test.later を呼び、終わったら label を書く
+(define later_vproc ,(label count)
+  __Cont_get__ ,(return)
+  __LList_cons__ label __NULL__ ,(a) __LList_cons__ count a ,(a)
+  __VProc_start__ (,() wait label "test.later" a) ,(v)
+  return v)
+
+;; test.later の終わる順：締め切り（呼んだときの時計 + 待つ数）の早い順、同じなら呼んだ順
+(define case2 ,()
+  num "0" ,(n0) num "1" ,(n1) num "2" ,(n2) num "3" ,(n3)
+  later_vproc "A 3" n3 ,(a)
+  later_vproc "B 1" n1 ,(b)
+  later_vproc "C 2" n2 ,(c)
+  later_vproc "D 1" n1 ,(d)
+  later_vproc "E 0" n0 ,(e)
+  __VProc_wait__ (,(x) println x) a ,() __VProc_wait__ (,(x) println x) b ,()
+  __VProc_wait__ (,(x) println x) c ,() __VProc_wait__ (,(x) println x) d ,()
+  __VProc_wait__ (,(x) println x) e ,()
+  println "--" ,()
+  ;; F は時計 0 で締め切り 3。G（締め切り 1）が終わって時計が 1 になった後に呼ぶ H は、締め切り 2 で、F より先
+  later_vproc "F 3" n3 ,(f)
+  __LList_cons__ "G 1" __NULL__ ,(a1) __LList_cons__ n1 a1 ,(a1)
+  wait "G 1" "test.later" a1 ,()
+  later_vproc "H 1" n1 ,(h)
+  __VProc_wait__ (,(x) println x) f ,() __VProc_wait__ (,(x) println x) h ,()
+  __NULL__)
+
+;; 待っている VProc を殺して、記録した Stream を閉じる。その呼び出しの結果は捨てられる
+(define case3 ,()
+  num "1" ,(n1) num "5" ,(n5) num "9" ,(n9)
+  __Ref_new__ __NULL__ ,(track)
+  __LList_cons__ "killed" __NULL__ ,(a) __LList_cons__ n5 a ,(a)
+  __VProc_start__ (,()
+    __Host_start_tracked__ (,(e) println e) "test.later" a track ,(s)
+    __OS_wait_readable__ (,(e) println e) s ,()
+    println "not reached") ,(v)
+  __LList_cons__ "first" __NULL__ ,(a1) __LList_cons__ n1 a1 ,(a1)
+  wait "first" "test.later" a1 ,()
+  __VProc_kill__ v ,()
+  __Ref_get__ track ,(l) __LList_uncons__ (,(e) println e) l ,(s rest)
+  __OS_close__ (,(e) println e) s ,()
+  println "closed the Stream of the killed VProc" ,()
+  __LList_cons__ "after" __NULL__ ,(a2) __LList_cons__ n9 a2 ,(a2)
+  wait "after" "test.later" a2 ,()
+  __NULL__)
+
+;; ホストの JavaScript の関数（wasm 版の VM で CONMA_HOST=host.js。ほかの VM には、その関数がない）
+(define case4 ,()
+  num "1" ,(n1) num "2" ,(n2)
+  __LList_cons__ n2 __NULL__ ,(a) __LList_cons__ n1 a ,(a)
+  wait "sum" "demo.sum" a ,()
+  wait "slow sum" "demo.slow_sum" a ,()
+  wait "rejected" "demo.reject" __NULL__ ,()
+  wait "throw" "demo.throw" __NULL__ ,()
+  wait "boolean" "demo.slow_bool" __NULL__ ,()
+  __NULL__)
