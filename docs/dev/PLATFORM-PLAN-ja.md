@@ -84,9 +84,15 @@ sjs/ に、JavaScript の安全なサブセットを ConMa に変換する変換
     * `__Host_start__ onError name args ,(inputStream)`：ホストの関数 name を args で呼び始め、パイプの読む側を返す。関数が終わると、ホストが結果を VM に渡し、VM がパイプの書く側を閉じる。値の種類と名前は `__Host_call__` と同じ。
     * `__Host_result__ onError inputStream ,(result)`：終わった呼び出しの結果。関数が失敗したら、そのメッセージで onError に行く。まだ終わっていなければ onError に行く。結果を取ると、Stream を閉じる。
     * 待つのは、今ある `__OS_wait_readable__ onError inputStream ,()`（パイプが EOF になると読める）。包むライブラリ（下）が、3 つを 1 つの関数にする：`Host_wait onError name args ,(result)`。
+    * `__Host_start_tracked__ onError name args Ref ,(inputStream)`：`__Host_start__` と同じで、同じステップの中で、Stream を Ref の LList の前に入れる（`__OS_open_tracked__` と同じ形）。待っている VProc が殺されても、記録した Stream を閉じられる（M2 の PR のコメントの 3）。閉じた Stream の呼び出しが後で終わったら、VM は結果を捨てる。`Host_wait` は、こちらを使う。
+    * プラットフォームの印：`__Host_start__`、`__Host_start_tracked__`、`__Host_result__` も、`__Host_call__` と同じく `(Platform "host")` にする（bin/resolver、include/resolver.se、reference/resolver.se）。transpiled VM は、この 3 つを VM に任せる（`__Host_call__` と同じ）。
 * **パイプにする理由**：`__JS_call__` と同じ仕組みなので、スケジューラは「外を待っている」と見なし、wasm 版の VM は Idle で返って、ホストの Promise が解決するのを待てる。待つ VProc のほかは動き続ける。Ref の変化を待つ形（`__Ref_wait_change__`）では、すべての VProc が待つとき、スケジューラが行き詰まり（Deadlock）と報告するので、その扱いを足すことになる。
 * **wasm 版のホスト**：`hostFunctions` の関数が Promise を返したら（`__Host_start__` のときだけ受け付ける。`__Host_call__` では今までどおりエラー）、解決したときに、VM の新しい export（`conma_host_done(job, 結果の JSON)`）で結果を渡す。VM は、その job のパイプの書く側を閉じる。ホストは、その後 VM をもう一度動かす（`jsDone` と同じ形のフック）。
-* **ネイティブの VM と Python 版の VM**：どの VM にもあるテストの関数（機能 `"test"`）を、`__Host_start__` でも呼べる。その場で呼んで結果を取っておき、書く側をすぐ閉じる（読めるようになっている）。待つ関数 `test.later`（引数を、そのまま LList で返す）を足す。wasm 版の VM では、`test.later` は、最初の引数の数だけマイクロタスクを待ってから終わる（本当に待ち、返す順をテストで決められる。ConJS の動かす順のテストに使う。4.1 節）。どの VM でもログは同じ。
+* **テストの関数**：どの VM にもあるテストの関数（機能 `"test"`）を、`__Host_start__` でも呼べる。その場で呼んで結果を取っておき、書く側をすぐ閉じる（読めるようになっている）。待つ関数 `test.later`（引数を、そのまま LList で返す。最初の引数は待つ数）を足す。
+* **終わる順を決める**（M2 の PR のコメントの 2）：`test.later` の終わる順は、どの VM でも同じにする。ConJS の動かす順のテスト（4.1 節）のログを、VM によらず同じにするため。
+    * ネイティブの VM と Python 版の VM：`test.later` の呼び出しは、すぐには終わらせずに持っておく。動かせる VProc がなくなったとき（スケジューラが外を待つ所）に、待つ数がいちばん小さいもの（同じ数なら呼んだ順）を 1 つだけ終わらせる（書く側を閉じる）。そのあと、また動かせる VProc がなくなるまで動かす。
+    * wasm 版の VM：`test.later` は、待つ数だけマイクロタスクを待ってから終わる。終わった呼び出しの結果は、conma.js が列に入れ、VM が Idle で返るたびに 1 つずつ渡す。待つ数と呼んだ順で、ネイティブの VM と同じ順になる。
+    * 待つことが本当に並行に進むのは、wasm 版の VM の本物のホストの関数（fetch など）のときで、そのときの順はホストが決める（4.1 節の「決定的でないのはそこだけ」）。
 
 **canvas**（6 節の 1）
 
@@ -94,7 +100,7 @@ sjs/ に、JavaScript の安全なサブセットを ConMa に変換する変換
 * **ホストの関数**（JavaScript。新しい vm/wasm/host/canvas.js が、canvas か OffscreenCanvas を受け取り、`hostFunctions` と `hostFeatures` を作る）：
     * すぐ返るもの：`canvas.size`（幅と高さ）、`canvas.clear`、`canvas.fill_style`、`canvas.stroke_style`、`canvas.line_width`、`canvas.font`、`canvas.fill_rect`、`canvas.stroke_rect`、`canvas.begin_path`、`canvas.move_to`、`canvas.line_to`、`canvas.arc`、`canvas.close_path`、`canvas.fill`、`canvas.stroke`、`canvas.fill_text`。
     * まとめて描くもの：`canvas.draw`（上の命令のリスト。`("fill_rect" x y w h)` などを順に。1 回の呼び出しで何百もの命令を描く）。
-    * 待つもの：`canvas.frame`（次のアニメーションの 1 コマ、`requestAnimationFrame` を待ち、その時刻を返す）。
+    * 待つもの：`canvas.frame`（次のアニメーションの 1 コマ、`requestAnimationFrame` を待ち、その時刻を返す）。Node.js には `requestAnimationFrame` がないので、命令を記録する canvas のまね（下のテスト）は、決まった時刻（コマの番号 × 16 ミリ秒）を返す。テストのログには時刻を出さない（M2 の PR のコメントの 3）。
 * **ConMa のライブラリ**（新しい include/platform/canvas.se。`(include "platform/canvas.se")`）：上の関数を包む ConMa の関数（`Canvas_fill_rect onError x y w h ,()` など）と `Host_wait`（include/platform/host.se）。包むライブラリが、自分の機能の名前（`"canvas"`）を `__Feature_available__` で確かめる関数（`Canvas_available ,(Boolean)`）も持つ（M2 のレビュー（2026-11-19）の 1：機能の印は、包むライブラリが示す）。
 * **見本のページ**：ConMa のプログラムが canvas にアニメーションを描くページ（vm/wasm/web/canvas.html と、その ConMa のソース）。ページの中で VM を動かす（Worker と OffscreenCanvas は、後で）。consh/js/serve.py で見て、ブラウザで動くことを確かめる。
 * **測ること**：線を 1 本描く 1 回の時間を、`__Host_call__` 1 回ずつ、`canvas.draw` でまとめたとき、今の `js` コマンド（`__JS_call__`）の 3 つで比べる。
