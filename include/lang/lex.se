@@ -407,3 +407,15 @@
   __Number_fromString__ __print_exit_error__ "1" ,(one)
   __Number_subtract__ n one ,(n)
   Kit_lex_drop rest n)
+
+;; word が、空白で区切った語の並び words の 1 つか
+;; word が、空白で区切った語の並び words の 1 つか
+(define Kit_lex_in_words ,(word words)
+  __String_concat__ " " words ,(s)
+  __String_concat__ s " " ,(s)
+  __String_concat__ " " word ,(w)
+  __String_concat__ w " " ,(w)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ s w zero ,(at)
+  __is_null__ at ,(none)
+  __not__ none)
