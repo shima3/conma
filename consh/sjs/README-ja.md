@@ -64,6 +64,23 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * CPython は、N では 1 分を超えないが、10〜34 秒かかる（M では測らない）。
 * 起動（Rust 版の VM、N = 1）は SJS が 0.007〜0.014 秒、手で書いた ConMa が 0.003〜0.004 秒。ステップは、N を 1 増やすごとに、SJS と手で書いた ConMa で loop 63 と 13、fib 4,755 と 528、nbody 16,170 と 1,766。変換は loop と fib が 0.024 秒、nbody が 0.155 秒。
 
+**ConSh の `(( ))` から**（consh/sjs/bench/consh。2026-11-19 に consh/bench から移した）。同じ 3 つの計算を、ConSh のスクリプトの `(( ))` の SJS の関数に書いたもの。ConSh が `(( ))` を変換してモジュールを作る時間と起動を含めて、上の表の SJS と比べられる。consh/bench/run.py にパスを渡して測る（consh/bench/README-ja.md の「測る」）。結果の表は、移す前のものが consh/bench/README-ja.md の「結果」にある（`19_loop`、`20_fib`、`21_nbody`）。
+
+```
+consh/bench/run.py -v bash,conma:wasm consh/sjs/bench/consh/loop.sh consh/sjs/bench/consh/fib.sh
+consh/bench/run.py -v conma:wasm consh/sjs/bench/consh/nbody.sh
+```
+
+| スクリプト | 測るもの |
+|---|---|
+| `loop.sh` | `(( ))` の SJS の関数 `loop` で、5 億回数える |
+| `fib.sh` | `(( ))` の SJS の関数 `fib` で、素朴な再帰の `fib(39)` |
+| `nbody.sh` | `(( ))` の SJS で、木星型惑星の軌道を 30 万ステップ（`consh/examples/nbody.sh` の N を 300000 にしたもの） |
+
+* `loop.sh`、`fib.sh`、`nbody.sh`（2026-11-19 までの consh/bench の `19`〜`21`）は、計算のすべてを `(( ))` の SJS の関数に書いたもので、`bench/loop`、`bench/fib`、`bench/nbody` の Python と `consh/sjs/bench` の SJS と同じ計算を、CPython で約 1 秒かかる大きさで行っていた（2026-11-16）。2026-11-17 に、`loop.sh` と `fib.sh` を、最も速い組み合わせ（最適化版＋wasm 版の VM）で約 1 秒かかる大きさ（3000 万を 5 億、`fib(35)` を `fib(39)`）にした（CPython では約 17 秒と約 7 秒と見積もられる。最適化版と参照版の Rust 版の VM と変換した VM は、1 回が 60 秒を大きく超えるので、この大きさでは測らない）。`nbody.sh` は、wasm 版の VM で 1.6 秒かかり、その大半が毎回かかる時間（起動と `(( ))` の翻訳、約 1.57 秒）で、大きさを小さくしても 1 秒に届かないので、30 万ステップのままにした。Rust 版には `(( ))` がないので、`-v` に `rust` は書かない。
+* `bash/` の `loop.sh` と `fib.sh` は Bash 版で、consh/bench の Bash 版と同じく書いた（consh/bench/README-ja.md の「Bash 版」）。`(( ))` の SJS の関数を、`$(( ))` と `(( ))` を使う Bash の関数にし、結果を大域変数 `r` で返す（consh/bench の `15` と同じ）。同じ大きさでは 1 回に約 22 分と約 32 分かかる（Apple M1 の `/bin/bash` 3.2）ので、Bash で約 1 秒の小さい大きさにした：`loop.sh` は 40 万回（ConSh 版は 5 億回）、`fib.sh` は `fib(23)`（ConSh 版は `fib(39)`）。2 行目の `# smaller size: A/B` は、ConSh 版の仕事がその A/B 倍であること（`loop.sh` は回数の比、`fib.sh` は `fib` を呼ぶ回数 2 fib(n+1) − 1 の比）を run.py に伝える。run.py は、Bash の時間を A/B 倍したものも出し、ほかの版の倍率はそれに対して計算し、出力は終了コードだけを比べる。`nbody.sh` は浮動小数点を使うので Bash 版はない（Bash の `$(( ))` は整数だけ）。
+* Full SJS Bench（docs/dev/CONTRIBUTING.md の Benchmarks）は、このディレクトリのスクリプトも含む。
+
 以下は、前の大きさで測った結果。
 
 `consh/sjs/bench/run.sh`（2026-11-12、9b3b5dd の後の Rust 版の VM、Apple M4、user + sys 秒の 3 回の最良）。Node.js と CPython は同じ計算の JavaScript と Python、手で書いた ConMa は bench/ の `.se`。
@@ -147,7 +164,8 @@ CPython で約 1 秒かかる大きさでも測った（同じ日、Apple M1、u
 consh/sjs/
 ├── sjs              変換して動かすスクリプト
 ├── sjsc.se          変換器の main：SJS のファイルを読み、ConMa のソースを出す
-├── bench/           loop.safe.js、fib.safe.js、nbody.safe.js（bench/ と同じ計算）と run.sh
+├── bench/           loop.safe.js、fib.safe.js、nbody.safe.js（bench/ と同じ計算）と run.sh、
+│                    consh/ に同じ計算を ConSh の (( )) で書いた loop.sh、fib.sh、nbody.sh と、その Bash 版の bash/
 └── test/            step1〜step8 の caseN.safe.js と caseN.log、run_all.sh、compare.sh
 consh/include/
 ├── sjs_lex.se       字句解析（conma.js の jsTokens と同じ区切り方。字句は行と桁を持つ）

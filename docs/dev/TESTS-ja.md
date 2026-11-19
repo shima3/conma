@@ -66,7 +66,12 @@ consh/sjs/test/run_all.sh
 * VM の GC だけを変えた（vm/src の gc.rs と value.rs）。Ref に GC の中での番号（`gc_slot`）を持たせ、Ref の serial を u32 にした。Rust 版の VM、wasm 版の VM、transpiled VM を作り直す。ConSh のモジュールは変わらない。
 * 流したもの：test/ と consh/test（Rust VM、`CONMA_GC_THRESHOLD=100`（test/）と `1000`（consh/test）でも）、wasm 版の test/ と consh/test（既知の違いだけ）、consh/js/test、consh/sjs/test（ここまで alpha を merge する前の fb62d36）。merge した後の 0df6e4d で、transpiled VM の test/ と consh/test、Rust VM の consh/test の最適化版と参照版。Python 版の VM と `CONSH_IMPL=rust` は流していない（Python 版の VM と ConSh の Rust 版は変えていない）。
 * 測ったもの：consh/bench の `02`〜`18` と `22` を、3 つの VM で前後に（consh/bench/README-ja.md、ブランチ m1/bench-0df6e4d）。
-* ベンチマーク：Full ConSh Bench。測るコミットは a471875（alpha。m2/lazy-rest と m1/seq-varlist-gc の後）。版は Bash と最適化版＋transpiled VM だけ（ほかの版は測らない）。スクリプトは `00`〜`22`。transpiled VM の `19`〜`21` は 1 回が 60 秒を大きく超え、Bash の `19` と `20` は小さい大きさで測るので、docs/dev/CONTRIBUTING.md の Benchmarks の 1 と consh/bench/README-ja.md の「Bash 版」のとおりにする。`21` は Bash 版がない。前後の比べはしない。
+* ベンチマーク：Full ConSh Bench。測るコミットは a471875（alpha。m2/lazy-rest と m1/seq-varlist-gc の後）。版は Bash と最適化版＋transpiled VM だけ（ほかの版は測らない）。スクリプトは `00`〜`18` と `22`（`19`〜`21` は、m1/sjs-bench-move で consh/sjs/bench/consh に移したので含まない）。前後の比べはしない。
+
+### m1/sjs-bench-move
+
+* consh/bench の `19_loop.sh`、`20_fib.sh`、`21_nbody.sh` と、`bash/` の `19` と `20` を、consh/sjs/bench/consh の `loop.sh`、`fib.sh`、`nbody.sh` と `bash/` に移した（wasm 版の VM でしか約 1 秒の大きさにならないため）。consh/bench/run.py は、Bash 版をスクリプトの隣の `bash/` から探し、`(( ))` のスクリプトを既定の一覧から除く処理をなくした。ビルドとテストが読むファイルは変えていないので、作り直すものはない。
+* 確かめたこと：`run.py -n 1 -v bash,conma:wasm` で移した `loop.sh` と `fib.sh`（Bash は小さい大きさ）、`-v conma:wasm` で `nbody.sh`、`-v bash,conma:transpiled` で consh/bench の `02_for_seq.sh` が動き、出力が同じだったこと。suite は流していない（どの suite も、変えたファイルを読まない）。
 
 ## 記録
 
