@@ -1,5 +1,6 @@
-# rest のある受け取りの LazyList（最適化版は MSeq から 1 回で作る。LazyList_from_mseq）と、
-# for 文などで $rest を語にする所（最適化版は、バイト数を数えないとき、評価済みの要素を 1 回でたどる。Ready_fields）
+# rest のある受け取りの LazyList（最適化版は、読まれたときに MSeq から 1 回で作るサンク 1 つ。LazyList_from_mseq）と、
+# for 文などで $rest を語にする所（最適化版は、バイト数を数えないとき、評価済みの要素を 1 回でたどる。Ready_fields。
+# 先頭がサンクなら評価してから。Rest_fields）
 seq 1 5 > (a . rest)
 n=0; for x in $rest; do n=$x; done; echo "a=$a n=$n"
 for x in $rest; do echo "x=$x"; done
@@ -26,3 +27,14 @@ for x in $v; do echo "v=$x"; done
 # 外部コマンドの引数（バイト数を数える）
 seq 1 3 > (a . rest)
 printf '[%s]' $rest; echo
+# 読まずに置き換えた rest と、2 回目に読む rest（評価済み）。関数の引数と "$rest" と、ほかの変数に写した rest
+seq 1 3 > (a . rest)
+rest=gone
+echo "rest=$rest"
+seq 4 6 > (a . rest)
+copy=${rest}
+for x in $copy; do echo "c=$x"; done
+for x in $rest; do echo "r=$x"; done
+function f (x y) { echo "f x=$x y=$y"; }
+f $rest
+echo "q=$rest"
