@@ -1,0 +1,15 @@
+add 1 2: 3
+fail: error: test.fail: failed
+unknown: error: __Host_start__: no host function "test.none"
+later without a count: error: __Host_start__: test.later: expected a count (a Number, 0 or more) first
+later -1: error: __Host_start__: test.later: expected a count (a Number, 0 or more) first
+later "x": error: __Host_start__: test.later: expected a count (a Number, 0 or more) first
+a Number name: error: __Host_start__: expected String name, got Number
+a Dict: error: __Host_start__: expected an LList of Numbers, Strings and LLists, got Dict
+too early: __Host_result__: the call has not finished
+later 1 "x": (1 "x")
+again: __Host_result__: closed input Stream
+tracked: 1
+tracked echo: (1 "x")
+tracked a Number: error: __Host_start_tracked__: expected a Ref of an LList, got Number
+exit: 0

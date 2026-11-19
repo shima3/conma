@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal
+import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal, json
 from collections import deque
 import types
 
@@ -1189,6 +1189,152 @@ def prim_Host_call(vp, gvenv):
         return
     _prim_return(vp, [_from_host(result)])
 
+def _host_name_args(vp, prim, on_error, name, args):
+    """The name and the arguments of a call of the host, or None after going to onError."""
+    if value_type_name(name) != "String":
+        _prim_error(vp, on_error, f"{prim}: expected String name, got {value_type_name(name)}")
+        return None
+    try:
+        hargs = _to_host(args)
+        if not isinstance(hargs, list):
+            raise _HostError(value_type_name(args))
+    except _HostError as e:
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        return None
+    return _value_to_display(name), hargs
+
+# The result of a call that waits goes through a pipe as the JSON text of a result, {"r":value} or
+# {"e":"message"}, as on the VM for wasm32 (vm/src/prim/host.rs): a Number that JSON cannot write as
+# {"n":"-0"} and the like, the empty LList as null.
+def _host_json(h):
+    if isinstance(h, float):
+        if math.isnan(h): return '{"n":"NaN"}'
+        if math.isinf(h): return '{"n":"Infinity"}' if h > 0 else '{"n":"-Infinity"}'
+        if h == 0 and math.copysign(1.0, h) < 0: return '{"n":"-0"}'
+        return repr(h)
+    if isinstance(h, str):
+        return json.dumps(h, ensure_ascii=False)
+    if not h:
+        return "null"
+    return "[" + ",".join(_host_json(x) for x in h) + "]"
+
+def _host_result_json(ok, v):
+    return '{"r":' + _host_json(v) + "}" if ok else '{"e":' + json.dumps(v, ensure_ascii=False) + "}"
+
+def _host_from_json(v):
+    if v is None: return []
+    if isinstance(v, list): return [_host_from_json(x) for x in v]
+    if isinstance(v, dict):
+        n = {"-0": -0.0, "NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}.get(v.get("n"))
+        if n is None or len(v) != 1: raise ValueError("a value that is not a Number, a String or a list")
+        return n
+    if isinstance(v, bool): raise ValueError("a value that is not a Number, a String or a list")
+    if isinstance(v, (int, float)): return float(v)
+    return v
+
+def _host_finish(w, text):
+    """Write the result text to the pipe end w and close it. A reader that has gone (its VProc was
+    killed and the Stream closed) makes the write fail: the result is dropped then."""
+    data = text.encode()
+    try:
+        while data:
+            n = os.write(w, data)
+            if n <= 0: break
+            data = data[n:]
+    except OSError:
+        pass
+    os.close(w)
+
+# The longest result that a function of HOST_FUNCTIONS writes to its pipe in the step of the call
+HOST_PIPE_MAX = 8192
+
+def prim_Host_start(vp, gvenv):
+    """__Host_start__ onError name args ,(inputStream)
+    Start the function of the host named name with args; when it has finished, inputStream is at its
+    end (__OS_wait_readable__), and __Host_result__ gives its result. The functions of HOST_FUNCTIONS
+    finish at once; test.later (its first argument is a count) by the virtual clock."""
+    _host_start(vp, "__Host_start__", False)
+
+def prim_Host_start_tracked(vp, gvenv):
+    """__Host_start_tracked__ onError name args Ref ,(inputStream)
+    __Host_start__, and in the same step, put the Stream in front of the LList in the Ref (as
+    __OS_open_tracked__), so that a killed VProc leaves no pipe open."""
+    _host_start(vp, "__Host_start_tracked__", True)
+
+def _host_start(vp, prim, tracked):
+    olist = vp["olist"]
+    n = 4 if tracked else 3
+    if len(olist) < n: raise VProcError(f"{prim}: missing argument(s)")
+    on_error, name, args = [olist.pop(0) for _ in range(3)]
+    track = olist.pop(0) if tracked else None
+    if tracked and not (isinstance(track, Ref) and (is_null_value(track.value) or isinstance(track.value, LList))):
+        got = f"a Ref of {value_type_name(track.value)}" if isinstance(track, Ref) else value_type_name(track)
+        _prim_error(vp, on_error, f"{prim}: expected a Ref of an LList, got {got}")
+        return
+    na = _host_name_args(vp, prim, on_error, name, args)
+    if na is None: return
+    fname, hargs = na
+    later = fname == "test.later"
+    f = HOST_FUNCTIONS.get(fname)
+    if later:
+        if not (hargs and isinstance(hargs[0], float) and hargs[0] >= 0):
+            _prim_error(vp, on_error, f"{prim}: test.later: expected a count (a Number, 0 or more) first")
+            return
+    elif f is None:
+        _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
+        return
+    r, w = os.pipe()
+    if later:
+        SCHEDULER.later_calls += 1
+        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w,
+                                     _host_result_json(True, hargs)))
+    else:
+        try:
+            text = _host_result_json(True, f(hargs))
+        except _HostError as e:
+            text = _host_result_json(False, str(e))
+        if len(text.encode()) > HOST_PIPE_MAX:
+            text = _host_result_json(False, f"{prim}: the result of {fname} is longer than {HOST_PIPE_MAX} bytes")
+        _host_finish(w, text)
+    stream = Stream(r, "r")
+    if tracked:
+        track.value = LList(stream, track.value)
+        SCHEDULER.ref_changed = True
+    _prim_return(vp, [stream])
+
+def prim_Host_result(vp, gvenv):
+    """__Host_result__ onError inputStream ,(result)
+    The result of the call of __Host_start__ that gave inputStream, which is then closed. onError if
+    the call failed, or has not finished (the pipe is not at its end)."""
+    prim  = "__Host_result__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{prim}: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not _check_stream(vp, on_error, prim, stream, "r"): return
+    data = b""
+    while True:
+        readable, _, _ = select.select([stream.fd], [], [], 0)
+        if not readable:
+            _prim_error(vp, on_error, f"{prim}: the call has not finished")
+            return
+        chunk = os.read(stream.fd, 4096)
+        if not chunk: break
+        data += chunk
+    stream.close()
+    try:
+        obj = json.loads(data.decode("utf-8", errors="replace"))
+        if not (isinstance(obj, dict) and len(obj) == 1 and ("r" in obj or "e" in obj)):
+            raise ValueError("a JSON text that is not a result")
+        if "e" in obj:
+            _prim_error(vp, on_error, str(obj["e"]))
+            return
+        value = _host_from_json(obj["r"])
+    except ValueError as e:
+        _prim_error(vp, on_error, f"{prim}: the host gave {e}")
+        return
+    _prim_return(vp, [_from_host(value)])
+
 def prim_OS_sysconf(vp, gvenv):
     """__OS_sysconf__ onError name ,(Number)
     The value of the system configuration variable name (a String such as
@@ -2288,6 +2434,22 @@ class Scheduler:
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
         self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
         self.rng      = None     # CONMA_SEED: choose the next VProc at random (run)
+        # The calls of test.later (__Host_start__) by the virtual clock: the clock, the number of
+        # the last call, and (deadline, number, write end of the pipe, result text) of each call
+        self.later_clock = 0.0
+        self.later_calls = 0
+        self.later_jobs  = []
+
+    def finish_later(self):
+        """Finish the call of test.later with the earliest deadline (then the first called), and move
+        the virtual clock to its deadline (docs/dev/PLATFORM-PLAN-ja.md 3.4); False if there is none."""
+        if not self.later_jobs:
+            return False
+        job = min(self.later_jobs, key=lambda j: (j[0], j[1]))
+        self.later_jobs.remove(job)
+        self.later_clock = job[0]
+        _host_finish(job[2], job[3])
+        return True
 
     def _install_sigchld(self):
         """Make SIGCHLD write a byte to a pipe, so that select() wakes up
@@ -2463,8 +2625,10 @@ class Scheduler:
             if self.waiting:
                 if not self.ready:
                     # Without a ready VProc, sleep in the OS instead of busy waiting.
+                    # A call of test.later finishes first (the virtual clock moves),
+                    # and the check does not sleep then: its reader may have gone.
                     self.unpolled = 0
-                    self.check_waiting(block=True)
+                    self.check_waiting(block=not self.finish_later())
                     if not self.ready: continue
                 elif self.unpolled >= POLL_INTERVAL:
                     # While other VProcs are ready, check the OS only every
@@ -2990,6 +3154,9 @@ PRIMITIVES = {
     "__JS_value__":            prim_JS_value,
     "__Feature_available__":   prim_Feature_available,
     "__Host_call__":           prim_Host_call,
+    "__Host_start__":          prim_Host_start,
+    "__Host_start_tracked__":  prim_Host_start_tracked,
+    "__Host_result__":         prim_Host_result,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

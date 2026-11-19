@@ -238,6 +238,17 @@ pub fn host_call(_name: &str, _args_json: &str) -> Option<Result<String, String>
     None
 }
 
+/// The host has a function name for __Host_start__ (none on the native VM).
+pub fn host_has(_name: &str) -> bool {
+    false
+}
+
+/// __Host_start__: start the function name of the host, which writes its
+/// result to the pipe end w and closes it (never called: see host_has).
+pub fn host_start(_name: &str, _args_json: &str, w: c_int) {
+    let _ = close_fd(w);
+}
+
 /// The host gives the platform feature name (__Feature_available__). The
 /// native VM has no host.
 pub fn host_feature(_name: &str) -> bool {
