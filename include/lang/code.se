@@ -1,0 +1,143 @@
+;; 言語キットの、ConMa のソースを作る部品（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）。SJS の変換器
+;; （sjs/include/sjs_gen.se）から取り出した。変換器は、構文木から ConMa のソースの String を作る。
+;;
+;; 変換の状態 g は Dict で、"n" に一時変数の番号の Ref、"file" に、SInfo のファイル名（Kit_code_quote したもの）、"lang" に
+;; 言語の名前（SInfo の最後の値）、"sinfoEnd" に SInfo の終わりの部分を持つ（Kit_code_state、Kit_code_set_lang。言語が、ほかの名前を足してよい）。
+;; 名前の有効範囲 scope は、名前から ConMa の変数名への Dict の LList（内側が先）で、"const:名前" があれば const（Kit_code_lookup）。
+;; SInfo の印：言語の実行時の支えを呼ぶ所に、印のタブ（"\t"）を置いておき、節の行と桁が分かったら Kit_code_sinfo_fill で、
+;; そこに (__SInfo__ ファイル 行 桁 言語) を入れる。最後に Kit_code_replace_marks code "" で、位置の入らなかった印を消す
+(include "lang/lex.se")
+
+;; 変換の状態。file はファイル名（引用符を付ける前）、lang は言語の名前
+(define Kit_code_state ,(file lang)
+  __Dict_new__ ,(g)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Ref_new__ zero ,(counter)
+  __Dict_put__ g "n" counter ,()
+  Kit_code_quote file ,(fq)
+  __Dict_put__ g "file" fq ,()
+  Kit_code_set_lang g lang ,()
+  __NULL__ g)
+
+;; 言語の名前を g に置く（"lang" と、SInfo の終わりの部分 "sinfoEnd"：桁の後の「" "言語")」と空白）
+(define Kit_code_set_lang ,(g lang)
+  __Dict_put__ g "lang" lang ,()
+  Kit_code_cat3 "\" \"" lang "\") " ,(end)
+  __Dict_put__ g "sinfoEnd" end)
+
+;; 新しい一時変数の名前（prefix に番号を付ける）
+(define Kit_code_temp ,(g prefix)
+  __Dict_lookup_or__ g "n" __print_exit_error__ ,(ref)
+  __Ref_get__ ref ,(n)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Ref_set__ ref n ,()
+  __Number_toString__ n ,(s)
+  __String_concat__ prefix s)
+
+;; 文字列を ConMa の文字列のリテラルにする。書き換える文字（" と \ と制御文字）を __String_find_any__ で探し、その間はまとめて写す
+(define Kit_code_quote ,(s)
+  Kit_code_quote_specials ,(specials)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Kit_code_quote_from s specials zero "\"")
+
+(define Kit_code_quote_from ,(s specials i acc)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __String_find_any__ __print_exit_error__ s specials i ,(at)
+  __is_null__ at ,(test__) __if__ test__
+    (,() __String_substring__ __print_exit_error__ s i len ,(tail) Kit_code_cat3 acc tail "\"" ,(q) return q) ,()
+  __String_substring__ __print_exit_error__ s i at ,(plain)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ at one ,(next)
+  __String_substring__ __print_exit_error__ s at next ,(c)
+  __String_equal__ c "\"" ,(q)
+  __String_equal__ c "\\" ,(b)
+  __String_equal__ c "\n" ,(n)
+  __String_equal__ c "\t" ,(t)
+  __String_equal__ c "\r" ,(r)
+  __if_then_else__ q (,() __NULL__ "\\\"") (,()
+  __if_then_else__ b (,() __NULL__ "\\\\") (,()
+  __if_then_else__ n (,() __NULL__ "\\n") (,()
+  __if_then_else__ t (,() __NULL__ "\\t") (,()
+  __if_then_else__ r (,() __NULL__ "\\r") (,()
+  Kit_lex_error "a control character in Kit_code_quote"))))) ,(e)
+  Kit_code_cat3 acc plain e ,(acc)
+  Kit_code_quote_from s specials next acc)
+
+;; Kit_code_quote が書き換える文字：" と \ と、番号が 32 より小さい文字（VProc ごとに 1 度作って PDict に覚える）
+(define Kit_code_quote_specials ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "gen_quote_specials" (,(k) __NULL__ __NULL__) ,(cached)
+  __is_null__ cached ,(test__) __unless__ test__ (,() return cached) ,()
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Kit_code_controls zero "\"\\" ,(specials)
+  __PDict_put__ "gen_quote_specials" specials ,()
+  __NULL__ specials)
+
+(define Kit_code_controls ,(code acc)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "32" ,(space)
+  __Number_subtract__ code space ,(d)
+  __Number_is_negative__ d ,(test__) __unless__ test__ (,() return acc) ,()
+  __String_fromCode__ __print_exit_error__ code ,(c)
+  __String_concat__ acc c ,(acc)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ code one ,(code)
+  Kit_code_controls code acc)
+
+;; 文字列をつなぐ（a b c ...）
+(define Kit_code_cat3 ,(a b c)
+  __String_concat__ a b ,(s)
+  __String_concat__ s c)
+
+(define Kit_code_cat4 ,(a b c d)
+  Kit_code_cat3 a b c ,(s)
+  __String_concat__ s d)
+
+(define Kit_code_cat5 ,(a b c d e)
+  Kit_code_cat4 a b c d ,(s)
+  __String_concat__ s e)
+
+;; 名前 name の ConMa の変数名と、const か。宣言されていなければ null と偽
+(define Kit_code_lookup ,(scope name)
+  __Cont_get__ ,(return)
+  __is_null__ scope ,(test__) __if__ test__ (,() return __NULL__ __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ scope ,(dict rest)
+  __Dict_lookup_or__ dict name (,(key) Kit_code_lookup rest key ,(v c) return v c) ,(v)
+  __String_concat__ "const:" name ,(ck)
+  __Dict_lookup_or__ dict ck (,(key) __NULL__ __FALSE__) ,(c)
+  __NULL__ v c)
+
+;; ── 位置（SInfo）──
+;; 実行時の支えを呼ぶ Body（失敗しうる）は、変換器が "\t" の印を前に置いて出す（制御文字は、文字列のリテラルに
+;; 出さないので、印と紛れない。Kit_code_quote）。言語の変換器（SJS では Gen_expr と Gen_stmt）は、自分の手順に残った印を、自分の節の位置の
+;; (__SInfo__ ファイル 行 桁 "sjs") にする。子の式が先に入れるので、呼び出しは、それを作ったいちばん内側の式の位置になる。
+;; 4 番目の言語の名前（g の "lang"。SJS は "sjs"）は、受け手のない例外の位置を CChain から探すときの印（SJS では Sjs_raise_pos）。VM のエラーは先頭の 3 つで出る
+(define Kit_code_sinfo_fill ,(g node code)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ node "col" (,(k) __NULL__ __NULL__) ,(col)
+  __is_null__ col ,(test__) __if__ test__ (,() return code) ,()
+  __Dict_lookup_or__ node "line" __print_exit_error__ ,(line)
+  __Dict_lookup_or__ g "file" __print_exit_error__ ,(fq)
+  __Dict_lookup_or__ g "sinfoEnd" __print_exit_error__ ,(end)
+  Kit_code_cat5 "(__SInfo__ " fq " \"" line "\" \"" ,(si)
+  Kit_code_cat3 si col end ,(si)
+  Kit_code_replace_marks code si)
+
+;; code の印 "\t" をすべて with にする
+(define Kit_code_replace_marks ,(code with)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  Kit_code_replace_from code with zero "")
+
+(define Kit_code_replace_from ,(code with at acc)
+  __Cont_get__ ,(return)
+  __String_find__ __print_exit_error__ code "\t" at ,(i)
+  __String_length__ code ,(n)
+  __is_null__ i ,(test__) __if__ test__
+    (,() __String_substring__ __print_exit_error__ code at n ,(tail) __String_concat__ acc tail ,(r) return r) ,()
+  __String_substring__ __print_exit_error__ code at i ,(part)
+  Kit_code_cat3 acc part with ,(acc)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ i one ,(next)
+  Kit_code_replace_from code with next acc)

@@ -684,7 +684,7 @@
   ;; 同じ式を同時に動かすときに、ファイルを分けることが多いように足す
   __String_length__ source ,(slen)
   __Number_toString__ slen ,(ls)
-  Cat3 ch "-" ls ,(hash)
+  Kit_code_cat3 ch "-" ls ,(hash)
   __OS_get_envDict__ ,(env)
   __Dict_lookup_or__ env "TMPDIR" (,(k) __NULL__ "/tmp") ,(dir)
   Str_ends dir "/" ,(slash)

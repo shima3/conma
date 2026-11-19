@@ -130,7 +130,7 @@
   __OS_exit__ __print_exit_error__ two)
 
 ;; 例外を投げた所の SJS の位置（"ファイル:行:桁"。なければ null）：CChain の CFrame のうち、SInfo の最後が
-;; "sjs" のいちばん上のもの（変換器が付ける。sjs_gen.se の Gen_sinfo_fill）。CFrame を取り出して調べ、最後に
+;; "sjs" のいちばん上のもの（変換器が付ける。include/lang/code.se の Kit_code_sinfo_fill）。CFrame を取り出して調べ、最後に
 ;; __CChain_set__ で元の CChain に戻してから値を返す（調べる間は、CFrame を積む呼び出しをしない）
 (define Sjs_raise_pos ,()
   __CChain_get__ ,(cc)
