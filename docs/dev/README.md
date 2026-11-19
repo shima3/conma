@@ -18,6 +18,7 @@ This list is the only list of these documents; a new one is added here.
 - [Types in transpiled code](TYPES-PLAN-ja.md): the plan of inferring the types of values to make the transpiled VM faster
 - [Arrays](ARRAY-PLAN-ja.md): the plan of arrays that are read and written by index in O(1), as primitives of extended ConMa
 - [LazyList in the VM](LAZYLIST-PLAN-ja.md): the plan of reading the evaluated cells of a LazyList with primitives of extended ConMa
+- [Platforms and languages translated to ConMa](PLATFORM-PLAN-ja.md): the plan of running ConMa on more platforms with their own features, and of a kit for making languages that are translated to ConMa, as SJS is
 - [Speed-ups](SPEED-ja.md): every speed-up tried, with its effect and whether it was kept
 - [Running the tests and their record](TESTS-ja.md)
 - [Reviews of ConMa](REVIEW-ja.md) (those of ConSh are in [ConSh](../consh/dev/README.md))
