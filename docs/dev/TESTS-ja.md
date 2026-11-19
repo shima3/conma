@@ -82,6 +82,13 @@ sjs/test/run_all.sh
 
 * 文書だけ（docs/dev/PLATFORM-PLAN-ja.md と docs/dev/REVIEW-ja.md）。流すものはない。
 
+### m1/platform-p3-design
+
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 3.4 節、段階 P3 の設計の案）。流すものはない。
+* M2 の ConJS のレビュー（docs/dev/REVIEW-ja.md の 2026-11-19（4））への答えを、計画書の 4.1 節と、そのレビューの「対応」に書いた。Promise は受け付けないと決めた。これも文書だけ。
+* M2 の PR（shima3/conma#1）のコメントを受けて、3.4 節を直した：`test.later` の終わる順をどの VM でも同じにする決め方、`__Host_start_tracked__`、プラットフォームの印、`canvas.frame` の時刻。これも文書だけ。
+* M2 の次のコメントを受けて、`test.later` の終わる順を、どの VM でも同じ仮の時計（締め切り = 今の時計 + 待つ数）で決めることにした。これも文書だけ。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

@@ -76,6 +76,40 @@ sjs/ に、JavaScript の安全なサブセットを ConMa に変換する変換
 | デスクトップ（macOS、Linux、Windows） | Rust 版、transpiled VM | OS、GUI（ウィンドウと描画のライブラリを Rust で包む） | 中くらい：Windows の OS の部分（パイプ、プロセス）を作る |
 | モバイル（iOS、Android） | Rust 版を組み込む | 画面、通知、センサー | 大きい：アプリの殻と、プラットフォームの言語との橋が要る |
 
+### 3.4. 段階 P3 の設計（決めた、2026-11-19。M2 のレビューは PR shima3/conma#1）
+
+**待つホストの呼び出し**（6 節の 3）
+
+* **プリミティブ**：
+    * `__Host_start__ onError name args ,(inputStream)`：ホストの関数 name を args で呼び始め、パイプの読む側を返す。関数が終わると、ホストが結果を VM に渡し、VM がパイプの書く側を閉じる。値の種類と名前は `__Host_call__` と同じ。
+    * `__Host_result__ onError inputStream ,(result)`：終わった呼び出しの結果。関数が失敗したら、そのメッセージで onError に行く。まだ終わっていなければ onError に行く。結果を取ると、Stream を閉じる。
+    * 待つのは、今ある `__OS_wait_readable__ onError inputStream ,()`（パイプが EOF になると読める）。包むライブラリ（下）が、3 つを 1 つの関数にする：`Host_wait onError name args ,(result)`。
+    * `__Host_start_tracked__ onError name args Ref ,(inputStream)`：`__Host_start__` と同じで、同じステップの中で、Stream を Ref の LList の前に入れる（`__OS_open_tracked__` と同じ形）。待っている VProc が殺されても、記録した Stream を閉じられる（M2 の PR のコメントの 3）。閉じた Stream の呼び出しが後で終わったら、VM は結果を捨てる。`Host_wait` は、こちらを使う。
+    * プラットフォームの印：`__Host_start__`、`__Host_start_tracked__`、`__Host_result__` も、`__Host_call__` と同じく `(Platform "host")` にする（bin/resolver、include/resolver.se、reference/resolver.se）。transpiled VM は、この 3 つを VM に任せる（`__Host_call__` と同じ）。
+* **パイプにする理由**：`__JS_call__` と同じ仕組みなので、スケジューラは「外を待っている」と見なし、wasm 版の VM は Idle で返って、ホストの Promise が解決するのを待てる。待つ VProc のほかは動き続ける。Ref の変化を待つ形（`__Ref_wait_change__`）では、すべての VProc が待つとき、スケジューラが行き詰まり（Deadlock）と報告するので、その扱いを足すことになる。
+* **wasm 版のホスト**：`hostFunctions` の関数が Promise を返したら（`__Host_start__` のときだけ受け付ける。`__Host_call__` では今までどおりエラー）、解決したときに、VM の新しい export（`conma_host_done(job, 結果の JSON)`）で結果を渡す。VM は、その job のパイプの書く側を閉じる。ホストは、その後 VM をもう一度動かす（`jsDone` と同じ形のフック）。
+* **テストの関数**：どの VM にもあるテストの関数（機能 `"test"`）を、`__Host_start__` でも呼べる。`test.later` のほかは、その場で呼んで結果を取っておき、書く側をすぐ閉じる（読めるようになっている）。待つ関数 `test.later`（引数を、そのまま LList で返す。最初の引数は待つ数）を足す。
+* **終わる順を決める**（M2 の PR のコメントの 2 と、その次のコメント）：`test.later` の終わる順は、どの VM でも同じにする。ConJS の動かす順のテスト（4.1 節）のログを、VM によらず同じにするため。どの VM も、同じ仮の時計で決める（言葉の上では 1 つの決め方で、ログが同じになることが作りから言える）。
+    * VM（wasm 版の VM では conma.js）が時計（初めは 0）を持つ。`test.later` を待つ数 n で呼んだら、締め切りを「今の時計 + n」とし、すぐには終わらせずに持っておく。
+    * 動かせる VProc がなくなったら（スケジューラが外を待つ所。wasm 版の VM では Idle で返ったとき）、締め切りのいちばん早いもの（同じなら呼んだ順）を 1 つだけ終わらせ（書く側を閉じ）、時計をその締め切りまで進める。そのあと、また動かせる VProc がなくなるまで動かす。
+    * wasm 版の VM でも、本物のマイクロタスクでは待たない（1 回の実行が何個のマイクロタスクにまたがるかは conma.js の作りで変わるため）。ホストの関数が Promise を返す道は、`CONMA_HOST` の関数で確かめる（下のテスト）。
+    * 待つことが本当に並行に進むのは、wasm 版の VM の本物のホストの関数（fetch など）のときで、そのときの順はホストが決める（4.1 節の「決定的でないのはそこだけ」）。
+
+**canvas**（6 節の 1）
+
+* **機能の名前**：`"canvas"`。docs/PRIMITIVES.md の `__Feature_available__` の一覧に足す。
+* **ホストの関数**（JavaScript。新しい vm/wasm/host/canvas.js が、canvas か OffscreenCanvas を受け取り、`hostFunctions` と `hostFeatures` を作る）：
+    * すぐ返るもの：`canvas.size`（幅と高さ）、`canvas.clear`、`canvas.fill_style`、`canvas.stroke_style`、`canvas.line_width`、`canvas.font`、`canvas.fill_rect`、`canvas.stroke_rect`、`canvas.begin_path`、`canvas.move_to`、`canvas.line_to`、`canvas.arc`、`canvas.close_path`、`canvas.fill`、`canvas.stroke`、`canvas.fill_text`。
+    * まとめて描くもの：`canvas.draw`（上の命令のリスト。`("fill_rect" x y w h)` などを順に。1 回の呼び出しで何百もの命令を描く）。
+    * 待つもの：`canvas.frame`（次のアニメーションの 1 コマ、`requestAnimationFrame` を待ち、その時刻を返す）。Node.js には `requestAnimationFrame` がないので、命令を記録する canvas のまね（下のテスト）は、決まった時刻（コマの番号 × 16 ミリ秒）を返す。テストのログには時刻を出さない（M2 の PR のコメントの 3）。
+* **ConMa のライブラリ**（新しい include/platform/canvas.se。`(include "platform/canvas.se")`）：上の関数を包む ConMa の関数（`Canvas_fill_rect onError x y w h ,()` など）と `Host_wait`（include/platform/host.se）。包むライブラリが、自分の機能の名前（`"canvas"`）を `__Feature_available__` で確かめる関数（`Canvas_available ,(Boolean)`）も持つ（M2 のレビュー（2026-11-19）の 1：機能の印は、包むライブラリが示す）。
+* **見本のページ**：ConMa のプログラムが canvas にアニメーションを描くページ（vm/wasm/web/canvas.html と、その ConMa のソース）。ページの中で VM を動かす（Worker と OffscreenCanvas は、後で）。consh/js/serve.py で見て、ブラウザで動くことを確かめる。
+* **測ること**：線を 1 本描く 1 回の時間を、`__Host_call__` 1 回ずつ、`canvas.draw` でまとめたとき、今の `js` コマンド（`__JS_call__`）の 3 つで比べる。
+* **テスト**：
+    * 待つ呼び出し：test/fast15（`__Host_start__`、`__Host_result__`、`__OS_wait_readable__` と `test.later`、エラー。どの VM でも同じログ。wasm 版の VM では、`CONMA_HOST` の JavaScript の関数が Promise を返す場合も）。
+    * canvas のライブラリ：canvas のない VM で、`Canvas_available` が偽で、描く関数が onError に行くこと。wasm 版の VM（Node.js）では、`CONMA_HOST` に、命令を記録するだけの canvas のまね（test の中の JavaScript）を渡し、描いた命令の列を確かめる。
+    * 名前の一覧：見本と test が使う `canvas.` の名前が、docs/PRIMITIVES.md の一覧にあること（M2 のレビュー（2026-11-19（2））の 3）。
+
 ## 4. 目標 B：ConMa に変換する言語の道具（言語キット）
 
 SJS の作りから、言語によらない部品を取り出し、新しい言語を少ない手間で作れるようにする。
@@ -97,7 +131,11 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 * **ConMa で作る甲斐**：JavaScript では、待つ処理が、呼び出す側に `async` と `await` を広げていく（関数の色）。ConMa は CPS で、どの呼び出しの途中でも継続を持つので、待つ処理を「待つ」ことにするだけで、関数に色が付かない（ConSh のパイプと `$( )` が、もうこの形で動いている）。Go のゴルーチンや Java の仮想スレッドの考え方を、JavaScript の構文で、ConMa の動くどのプラットフォームでも試せる。ふつうの JavaScript ではできず、ほかの言語の上に作るのも難しい。
 * **協調的に切り替える**（決めた、2026-11-19。M2 の意見の 3）：JavaScript では、2 つの `await` の間のコードは、割り込まれずに最後まで動き（run-to-completion）、プログラムはそれを頼りにオブジェクトを共有する。ConMa の VProc はステップの数で切り替わるので、処理ごとに VProc を使うと、どこでも入り混じる。そこで、ConJS の処理（並べて動かすものも）は、すべて 1 つの VProc の中で動かし、実行時の支えが継続で切り替える。切り替わるのは、待つ呼び出しの所だけである。待つこと自体は、待つためだけの小さな VProc に任せ、その VProc が結果をチャネルに入れる。実行時の支えは、動かせる処理がなくなったときだけ、そのチャネルを待つ。待つことは並行に進み、ConJS の処理は協調的に切り替わる。VM とスケジューラは変えない。
 * **使うもの**：字句解析、構文解析、実行時の支え（数、文字列、配列、オブジェクト、例外）の多くは SJS のもの。待つ呼び出しは、P3 で決めるホストの待つ呼び出し（6 節の 3）。
-* **これから決めること**：並べて動かす書き方（たとえば `spawn(() => ...)` と、終わりを待つ `join`、またはチャネル）。JavaScript との関係（構文は部分集合でも、意味は違う。JavaScript では Promise を返す呼び出しが、ConJS では結果を返すので、同じソースが Node.js で同じに動くとは言えない。`async`、`await`、Promise も受け付けて、`await` を「その場で待つ」と読めば、SJS の書き方と行き来しやすい）。置き場所（conjs/ など）。
+* **動かす順**（M2 の意見（docs/dev/REVIEW-ja.md の 2026-11-19（4））の 1）：動かせる処理の列は FIFO にする。`spawn` した処理は列の最後に入り、呼んだ側が次に待つまで動き続ける（JavaScript のマイクロタスクと同じ）。待つ呼び出しの結果が届いた処理も、列の最後に入る（いくつか届いていれば、チャネルに届いた順）。これで ConJS のプログラムの動きは、ホストが結果を返す順だけで決まる。決定的でないのは、待つための小さな VProc がチャネルに入れる順だけなので、テストではテストのホストの関数（`test.*`）で返す順を決める。
+* **Promise**（決めた、2026-11-19。M2 の意見の 2）：`Promise`、`async`、`.then` は受け付けず、エラーにする。並べて待つには `spawn` と `join` を使う。Promise を受け付けると、`await Promise.all([fetch(a), fetch(b)])` が、エラーにならずに 2 つの fetch を順に待ち、遅くなるだけで気付きにくい。`await` だけは、SJS との行き来のために「その場で待つ」と読んでもよいが、これも P3b で決める。
+* **spawn した処理の例外**（M2 の意見の 3）：`join` で、その例外をもう一度投げる。`join` されないまま例外で終わった処理があれば、プログラムの終わりに報告する（JavaScript の unhandled rejection のように）。P3b のテストに、spawn した処理の例外の場合（join する場合としない場合）を入れる。
+* **スケジューラを部品にする**（M2 の意見の 4）：ConJS の切り替え（待つ呼び出しで継続を取り、列に入れ、ほかの処理を動かす）は、「待つ」というエフェクトのハンドラそのものである。P3b では ConJS の中に作るが、継続の列とチャネルを待つことを、ConJS の構文によらない部分として分けておき、P4 で言語キットの部品として取り出す。P5 の見本の言語で、このスケジューラをハンドラとして書けることを確かめる。
+* **これから決めること**：並べて動かす書き方の細部（`spawn(() => ...)` と終わりを待つ `join`、またはチャネル）。JavaScript との関係（構文は部分集合でも、意味は違う。JavaScript では Promise を返す呼び出しが、ConJS では結果を返すので、同じソースが Node.js で同じに動くとは言えない）。置き場所（conjs/ など）。
 
 ## 5. 段階
 
