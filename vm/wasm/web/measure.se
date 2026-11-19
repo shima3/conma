@@ -1,0 +1,69 @@
+;; canvas に線を 1 本描く 1 回の時間を測る（docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）。measure.sh が、wasm 版の VM
+;; （Node.js）で、何もしない canvas（measure_host.js）を使って、それぞれ n 本描く時間を測る：
+;; 本数は環境変数 MEASURE_N（なければ 50000）。
+;;   base n    引数を作るだけ（ほかの時間から引く）
+;;   host n    Canvas_line_to（__Host_call__）を 1 本ずつ
+;;   draw n    canvas.draw に、1000 本ずつの命令のリストをまとめて渡す（Canvas_draw）
+;;   js n      今の js コマンドと同じ __JS_call__ で、ctx.lineTo を 1 本ずつ（結果のパイプを終わりまで読む）
+
+(include "platform/canvas.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define fail ,(e)
+  println e ,() __Number_fromString__ fail "1" ,(n1) __OS_exit__ fail n1)
+
+(define num ,(text)
+  __Number_fromString__ fail text)
+
+;; 本数 n：環境変数 MEASURE_N
+(define count ,()
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "MEASURE_N" "50000" ,(a)
+  num a)
+
+;; i を n まで 1 ずつ増やしながら body i を呼ぶ
+(define loop ,(i n body)
+  __Cont_get__ ,(return)
+  __Number_if_greater__ n i (,() body i ,() num "1" ,(n1) __Number_add__ i n1 ,(i) loop i n body) ,()
+  return)
+
+(define base ,()
+  count ,(n) num "0" ,(n0) num "5" ,(y)
+  loop n0 n (,(i) __LList_cons__ y __NULL__ ,(a) __LList_cons__ i a ,(a) __NULL__))
+
+(define host ,()
+  count ,(n) num "0" ,(n0) num "5" ,(y)
+  loop n0 n (,(i) Canvas_line_to fail i y))
+
+;; 1000 本ずつ命令のリストを作って、まとめて描く
+(define batch ,(i k y acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ k ,(end) __if__ end (,() return acc) ,()
+  __LList_cons__ y __NULL__ ,(c) __LList_cons__ i c ,(c) __LList_cons__ "line_to" c ,(c)
+  __LList_cons__ c acc ,(acc)
+  num "1" ,(n1) __Number_subtract__ k n1 ,(k)
+  batch i k y acc)
+
+(define draw ,()
+  count ,(n) num "0" ,(n0) num "5" ,(y) num "1000" ,(n1000)
+  __Number_divide__ fail n n1000 ,(batches)
+  loop n0 batches (,(i) batch i n1000 y __NULL__ ,(cmds) Canvas_draw fail cmds))
+
+;; Stream を終わりまで読む
+(define drain ,(s)
+  __Cont_get__ ,(return)
+  __OS_wait_readable__ fail s ,()
+  __OS_read__ fail s ,(text)
+  __is_null__ text ,(end) __if__ end return ,()
+  drain s)
+
+(define js ,()
+  count ,(n) num "0" ,(n0)
+  loop n0 n (,(i)
+    __Number_toString__ i ,(x)
+    __LList_cons__ "5" __NULL__ ,(a) __LList_cons__ x a ,(a)
+    __JS_call__ fail "(x, y) => ctx.lineTo(+x, +y)" a ,(in out)
+    drain in))
