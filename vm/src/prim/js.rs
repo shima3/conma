@@ -123,8 +123,9 @@ const FEATURES_EVERYWHERE: &[&str] = &["array", "bitwise32", "boolean", "chan", 
 /// __Feature_available__ name ,(Boolean): true if the feature named name can
 /// be used here: a feature of extended ConMa, "wasm" when WebAssembly runs
 /// (the VM for wasm32, without --trace, CONMA_PROFILE and CONMA_NO_WASM, as
-/// for __Wasm_call__), "js" when the host has JavaScript; false for any other
-/// name.
+/// for __Wasm_call__), "js" when the host has JavaScript, "test" (the test
+/// functions of __Host_call__) and the features the host of the VM for wasm32
+/// names; false for any other name.
 pub fn feature_available(m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = "__Feature_available__";
     let a = take_n(vp, name, 1)?;
@@ -135,7 +136,7 @@ pub fn feature_available(m: &mut Machine, vp: &mut VProc) -> PResult {
     let yes = match &*text {
         "wasm" => super::wasm::available(m),
         "js" => sys::js_available(),
-        f => FEATURES_EVERYWHERE.contains(&f),
+        f => FEATURES_EVERYWHERE.contains(&f) || super::host::feature(f),
     };
     vp.prim_return1(if yes { m.true_closure() } else { m.false_closure() });
     Ok(())

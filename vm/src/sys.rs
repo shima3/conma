@@ -230,6 +230,20 @@ pub fn js_call(_code: &str, _args_json: &str) -> io::Result<(c_int, c_int)> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
 }
 
+/// __Host_call__: call the function name of the host with args (JSON;
+/// prim/host.rs): None when the host has no such function, else the result
+/// as JSON. The native VM has no host: its functions are those every VM has
+/// (prim/host.rs, BUILTIN).
+pub fn host_call(_name: &str, _args_json: &str) -> Option<Result<String, String>> {
+    None
+}
+
+/// The host gives the platform feature name (__Feature_available__). The
+/// native VM has no host.
+pub fn host_feature(_name: &str) -> bool {
+    false
+}
+
 /// The host has JavaScript (__JS_call__, __JS_value__; __Feature_available__
 /// "js"). The native VM has none.
 pub fn js_available() -> bool {
