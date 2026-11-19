@@ -112,7 +112,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * 段階 P4（docs/dev/PLATFORM-PLAN-ja.md の 8.5 節）：言語キット（include/lang/）、bin/lang、bin/lang-test、bin/lang-emit-check、bin/lang-step-check。SJS（sjs/include）と ConJS を、キットの部品を使う形に書き直した。consh/include/consh_jsstmt.se は、呼ぶ名前だけが変わった。
 * 新しいテスト：test/fast17（キットだけで作った電卓の言語。test/run_all.sh に入る）。
 * sjs/include と consh/include が変わったので、sjs/test、conjs/test、consh/test、consh/js/test を流す。ConSh のモジュールが変わるので、transpiled VM は作り直してから consh/test を流す。VM は変えていない。
-* M1 が流したもの（Apple M1）：`bin/lang-emit-check --steps 68795c9`（作るコードは同じ、変換のステップは +0.05%）、`bin/lang-step-check 68795c9`（83 のプログラムで出力は同じ。例外を投げるものだけ、ステップが 1〜8 多い）。sjs/test（2 分 19 秒）、conjs/test を Rust 版（27 秒）、wasm 版（28 秒）、Python 版（1 分 30 秒）の VM で。consh/test を Rust 版（33 秒）と wasm 版（50 秒）の VM で。consh/js/test（16 秒）。test/ を Rust 版の VM で（22 秒）。test/fast17 を Python 版、Rust 版、wasm 版の VM で。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。流していないもの：Python 版と wasm 版と transpiled VM の test/、ConSh の参照版、transpiled VM と Python 版の VM の consh/test。
+* M1 が流したもの（Apple M1）：`bin/lang-emit-check --steps 68795c9`（作るコードは同じ、変換のステップは +0.05%）、`bin/lang-step-check 68795c9`（83 のプログラムで出力は同じ。例外を投げる 40 のプログラムだけ、ステップが 1〜11 多い。受け入れた違いなので、この比べ方では終了ステータス 1 になる）。sjs/test（2 分 19 秒）、conjs/test を Rust 版（27 秒）、wasm 版（28 秒）、Python 版（1 分 30 秒）の VM で。consh/test を Rust 版（33 秒）と wasm 版（50 秒）の VM で。consh/js/test（16 秒）。test/ を Rust 版の VM で（22 秒）。test/fast17 を Python 版、Rust 版、wasm 版の VM で。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。流していないもの：Python 版と wasm 版と transpiled VM の test/、ConSh の参照版、transpiled VM と Python 版の VM の consh/test。
 * ベンチマーク：sjs/bench の実行は、作るコードと、実行時のステップ数（例外を投げない所）が変わらないので、測っていない。sjs/bench/consh の nbody.sh で変換の時間を前と後で測ることも、まだしていない（変換のステップ数は +0.05%）。
 
 ## 記録

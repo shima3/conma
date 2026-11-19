@@ -49,5 +49,5 @@ case "$CONMA_VM" in
     exec "$root/bin/vm" --main "$tmp/prog.module.se" ;;
   ''|rust|transpiled)
     exec "$conma" run "${inc[@]}" "$tmp/prog.se" ;;
-  *) echo "lang: CONMA_VM must be empty, rust, wasm or python, not \"$CONMA_VM\"" >&2; exit 2 ;;
+  *) echo "lang: CONMA_VM must be empty, rust, transpiled, wasm or python, not \"$CONMA_VM\"" >&2; exit 2 ;;
 esac
