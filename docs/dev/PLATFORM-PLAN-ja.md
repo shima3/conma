@@ -144,7 +144,7 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 | P0 | この計画書。6 節を決める | 決めたことを、この文書に書く |
 | P1（作った、2026-11-19。8 節） | プラットフォームの機能の層：`(Platform "機能")` の付け方、`__Feature_available__`。`__JS_call__` と `__JS_value__` を機能 `"js"` にする | test/ と consh/test がすべての VM で通る。機能の有無で振る舞いを変えるテスト |
 | P2（作った、2026-11-19。8.2 節） | `__Host_call__`：wasm 版（JavaScript）、Rust 版と transpiled VM（Rust の表）、Python 版（Python の表）。テストのためのホストの関数 | 同じテストのトレースが Python 版と Rust 版で同じ。wasm 版の Node.js で同じ出力 |
-| P3 | 待つホストの呼び出しの形を決めて作る（6 節の 3）。最初のプラットフォームの機能（ブラウザの canvas。描く見本のページ） | 見本が動く。1 回の呼び出しの時間を、今の `js` コマンドと比べて測る。足した機能の名前を docs/PRIMITIVES.md の `__Feature_available__` の一覧に書き、テストで、見本が使う名前が一覧にあることを確かめる（知らない名前は黙って偽になり、書き間違いと区別できないため） |
+| P3（作った、2026-11-19。8.3 節） | 待つホストの呼び出しの形を決めて作る（6 節の 3）。最初のプラットフォームの機能（ブラウザの canvas。描く見本のページ） | 見本が動く。1 回の呼び出しの時間を、今の `js` コマンドと比べて測る。足した機能の名前を docs/PRIMITIVES.md の `__Feature_available__` の一覧に書き、テストで、見本が使う名前が一覧にあることを確かめる（知らない名前は黙って偽になり、書き間違いと区別できないため） |
 | P3b | ConJS（4.1 節）：SJS の部品で作る。P3 の待つ呼び出しを使う | ConJS のテストが、すべての VM で通る。協調的に切り替わること（待つ呼び出しの所だけで切り替わる）を確かめるテスト |
 | P4 | 言語キット：SJS から部品を取り出し、SJS と ConJS をキットの上に書き直す | sjs/test、consh/test、sjs/bench（遅くならないこと） |
 | P5 | 見本の言語（代数的エフェクトとハンドラの小さな言語。6 節の 2）を、キットで作る | その言語のテストが、すべての VM で通る。P3 の機能を使う見本 |
@@ -189,3 +189,19 @@ SJS の作りから、言語によらない部品を取り出し、新しい言�
 * **transpiled VM**：`__Host_call__` は、VM に任せる（レビューの 4）。
 * **テスト**：test/fast14（どの VM にもある関数とエラーは、どの VM でも同じログ。wasm 版の VM では、test/fast14/host.js の JavaScript の関数を、-0、NaN、無限大、エスケープのある文字列、例外、返せない値で呼ぶ）。
 
+### 8.3. 段階 P3（2026-11-19）
+
+3.4 節の設計（PR shima3/conma#1 で M2 がレビューした）で作った。作るときに設計と変えたところは、下の「設計と変えたところ」に書く。
+
+* **待つホストの呼び出し**（コア ConMa のプリミティブ。プラットフォームの機能 `"host"`。docs/PRIMITIVES.md、docs/dev/ROADMAP.md の Step 51）：`__Host_start__ onError name args ,(inputStream)`、`__Host_start_tracked__ onError name args Ref ,(inputStream)`、`__Host_result__ onError inputStream ,(result)`。結果は、パイプを通る結果の JSON（`{"r":値}` か `{"e":"メッセージ"}`）で、どの VM でも同じ形。`__Host_result__` は、パイプが終わりでなければ「the call has not finished」で onError に行く。
+* **test.later と仮の時計**：Rust 版の VM の `Later`（vm/src/prim/host.rs）を、スケジューラ（vm/src/sched.rs）が、動かせる VProc がないときに 1 つ終わらせる。wasm 版の VM も同じスケジューラなので、conma.js には何も要らない。Python 版の VM は、そのスケジューラの `finish_later`。呼び出しを終わらせた後は、OS を待たずに確かめる（終わらせた呼び出しの読み手が、もういないことがあるため。test/fast15 の case3 で見つかった）。
+* **wasm 版の VM のホスト**：`BUILTIN` にない名前は、import の `host_fn_has` で確かめ、`host_fn_start` で呼ぶ。conma.js は、関数を後のタスクで呼び（`conma_run` の中で VM に入り直さないため）、値か Promise の結果を、パイプに `conma_write` で書いて `conma_close` で閉じ、`jsDone` で VM をもう一度動かす。その間は `jsPending` に数える。
+* **ネイティブの VM と Python 版の VM**：`BUILTIN` の関数は、呼んだステップで結果をパイプに書いて閉じる。OS のパイプに読み手なしで書けるのは限りがあるので、結果が 8192 バイトを超えたら、それをエラーの結果にする（`PIPE_MAX`、`HOST_PIPE_MAX`）。テストの関数の結果は小さい。
+* **canvas**：vm/wasm/host/canvas.js（3.4 節の関数。2D の context と、コマを呼ぶ関数を、オプションで受け取れる）、include/platform/host.se（`Host_wait`、`Host_wait_tracked`）、include/platform/canvas.se（`Canvas_available` と `Canvas_fill_rect` など）。
+* **見本のページ**：vm/wasm/web/canvas.html と canvas_demo.se（跳ねる玉。1 コマを 1 回の `Canvas_draw` で描き、`Canvas_frame` で待つ）。vm/wasm/web/build.sh が VM とモジュールを置き（git には入れない）、`.claude/launch.json` の `conma-canvas`（または `python3 -m http.server -d vm/wasm/web`）で見る。アプリの中のブラウザで、玉が動き、コンソールにエラーがないことを確かめた。ページの中で VM を動かす（Worker と OffscreenCanvas は、まだ）。
+* **測ったこと**（vm/wasm/web/measure.sh。wasm 版の VM、Node.js、何もしない canvas。引数を作るだけの時間を引いた、線 1 本あたり。5 万本、3 回の中央値）：`__Host_call__` で 1 本ずつ 2.3 µs、`canvas.draw` で 1000 本ずつまとめて 0.7 µs、今の `js` コマンドと同じ `__JS_call__` で 35 µs。`__JS_call__` は、20 万本では 118 µs になり、呼ぶほど 1 回が遅くなる（ほかの 2 つは本数に比例する）。原因は、まだ調べていない。
+* **テスト**：test/fast15（3.4 節の待つ呼び出し：結果、エラー、終わる前の `__Host_result__`、`__Host_start_tracked__`、`test.later` の終わる順、殺した VProc の Stream、wasm 版の VM で Promise を返す関数。Python 版、Rust 版、wasm 版の VM で同じログ）、test/fast16（canvas のない VM での canvas のライブラリ、wasm 版の VM で命令を記録する canvas のまね、ライブラリが使う `canvas.` の名前が docs/PRIMITIVES.md にあること）。
+* **設計と変えたところ**：
+    * wasm 版の VM に、新しい export の `conma_host_done` は作らなかった。結果は、今ある `conma_write` と `conma_close` でパイプに書く（`__JS_call__` と同じ）。
+    * 仮の時計は、conma.js ではなく、Rust のスケジューラに置いた（wasm 版の VM も同じスケジューラなので、決め方を 1 か所に書ける）。
+    * `Host_wait` は `__Host_start__` を使う。`__Host_start_tracked__` の Ref は、それを閉じる側が持つものなので、Ref を受け取る `Host_wait_tracked` を別に置いた（`__OS_open_tracked__` を使う ConSh と同じ形）。
