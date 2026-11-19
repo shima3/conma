@@ -55,17 +55,6 @@ sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/sjs-bench-move
-
-* consh/bench の `19_loop.sh`、`20_fib.sh`、`21_nbody.sh` と、`bash/` の `19` と `20` を、sjs/bench/consh の `loop.sh`、`fib.sh`、`nbody.sh` と `bash/` に移した（wasm 版の VM でしか約 1 秒の大きさにならないため）。consh/bench/run.py は、Bash 版をスクリプトの隣の `bash/` から探し、`(( ))` のスクリプトを既定の一覧から除く処理をなくした。ビルドとテストが読むファイルは変えていないので、作り直すものはない。
-* 確かめたこと：`run.py -n 1 -v bash,conma:wasm` で移した `loop.sh` と `fib.sh`（Bash は小さい大きさ）、`-v conma:wasm` で `nbody.sh`、`-v bash,conma:transpiled` で consh/bench の `02_for_seq.sh` が動き、出力が同じだったこと。suite は流していない（どの suite も、変えたファイルを読まない）。
-
-### m1/sjs-top
-
-* consh/sjs を sjs/ に、SJS の変換器と実行時の支え（consh/include の `sjs_*.se` 7 つと consh/include/core/sjs_bits.se）を sjs/include（と sjs/include/core）に移した。ConSh のモジュールは、consh/include の次に sjs/include を探して作る（consh/bin/consh、consh/js/build.sh。参照版は sjs/include/core も）。sjs/test は `sjs/test/run_all.sh` で流す。
-* ConSh のモジュールの中のファイル名が変わるので、ConSh を動かしてモジュールを作り直してから、transpiled VM を `bench/build.sh` で作り直す。wasm 版は `consh/js/build.sh` で作り直す（ブラウザ版のモジュールも作り直す）。
-* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17）。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない（どちらも SJS を使わない）。ブラウザでは確かめていない。
-
 ### m1/platform-plan
 
 * docs/dev/PLATFORM-PLAN-ja.md（計画書）を足し、docs/dev/README.md の一覧に載せただけ。文書だけなので、流すものはない（計画書が sjs/ を指すので、main に直接入れず、alpha から入れる）。
@@ -76,7 +65,7 @@ sjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
-| 2026-11-19 | 449a0db | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。m1/sjs-top で consh/sjs から移った sjs/test も通った（`sjs/test/run_all.sh`）。m1/sjs-bench-move、m2/bench-a471875、m1/note-sjs-path も含む。transpiled VM は、consh/include が変わったので、Rust VM の consh/test で ConSh のモジュールを作り直してから、449a0db で作り直した（11 分 24 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
+| 2026-11-19 | 449a0db | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。m1/sjs-top で consh/sjs から移った sjs/test も通った（`sjs/test/run_all.sh`）。申し送りの m1/sjs-top の、流していなかった組み合わせ（`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。申し送りの m1/sjs-bench-move（suite は変えたファイルを読まない）と、m2/bench-a471875、m1/note-sjs-path も含む。transpiled VM は、consh/include が変わったので、Rust VM の consh/test で ConSh のモジュールを作り直してから、449a0db で作り直した（11 分 24 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-19 | a471875 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/lazy-rest と m1/seq-varlist-gc の、流していなかった組み合わせ（test/ と consh/sjs/test、Python 版の VM、`CONSH_IMPL=rust`）も通った。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、a471875 で作り直した（10 分 41 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-19 | m2/docs-full-bench（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | Full Bench の定義を、表が比べるすべての版ではなく、頼んだ版で、ディレクトリのすべてのベンチマークを測るものに直した（docs/dev/CONTRIBUTING.md の Benchmarks と 3、この文書の申し送り）。すべての版で流す Full Test との違いと、版を書かない頼みはすべての版であることを書いた。リンクは足していない |
 | 2026-11-19 | m1/docs-dev-off-pages（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | GitHub Pages に docs/dev と docs/consh/dev を出さないようにした（docs/_config.yml の `exclude`）。開発者の文書は GitHub の alpha で読む。docs/index.md と docs/consh/index.md の開発者向けの一覧を、新しい docs/dev/README.md と docs/consh/dev/README.md に移し（GitHub がフォルダの画面に出す）、index からは GitHub の alpha へのリンクにした。docs/dev と docs/consh/dev の文書の、ほかの文書への `.html` のリンク（22 か所、GitHub では切れていた）を `.md` にした。docs/dev/CONTRIBUTING.md と README.md にも書いた。確かめたこと：変えた 8 つのファイルのリンクの先がすべてあること、docs/ の Markdown がすべてどれかの一覧からリンクされていること、Liquid の開き括弧が増えていないこと。Jekyll は動かしていない（`exclude` が効くことは、main に入った後の Pages で見る） |
