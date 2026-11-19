@@ -59,6 +59,10 @@ sjs/test/run_all.sh
 
 * docs/dev/PLATFORM-PLAN-ja.md（計画書）を足し、docs/dev/README.md の一覧に載せただけ。文書だけなので、流すものはない（計画書が sjs/ を指すので、main に直接入れず、alpha から入れる）。
 
+### m2/platform-plan-notes
+
+* docs/dev/PLATFORM-PLAN-ja.md に、M2 が読んで気付いたこと（`__Host_call__` と `(Uses "機能")` の付け方、ホストのない VM の代わりの定義と `__Feature_available__`、はじめは Dict を渡さないこと、transpiled VM の扱い）と、6 節の決めることへの M2 の案を書いただけ。文書だけなので、流すものはない（m1/platform-plan と同じく、main に直接入れず、alpha から入れる）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
