@@ -70,6 +70,7 @@ sjs/test/run_all.sh
 * docs/dev/PLATFORM-PLAN-ja.md に、M2 が読んで気付いたことと、6 節の決めることへの M2 の案を書いた（14b2c28）。その後、レビューは計画書と分けることにして（m2/platform-plan-review）、計画書を ddf6520 の文に戻し、レビューを docs/dev/REVIEW-ja.md の 2026-11-19 の節に移した。計画書には、そこへのリンクを 1 行足しただけ。文書だけなので、流すものはない（m1/platform-plan と同じく、main に直接入れず、alpha から入れる）。
 * docs/dev/REVIEW-ja.md に、段階 P1（m1/platform-p1）のレビューの節（2026-11-19（2））を足した（m2/platform-p1-review）。文書だけなので、流すものはない。alpha から入れる。
 * docs/dev/REVIEW-ja.md に、見本の言語の案（直接スタイルの JS）と段階 P2 のレビューの節（2026-11-19（3））を足した（m2/platform-p2-review）。文書だけなので、流すものはない。alpha から入れる。
+* docs/dev/REVIEW-ja.md に、ConJS の決定（m1/conjs-decision）のレビューの節（2026-11-19（4））を足した（m2/platform-conjs-review）。文書だけなので、流すものはない。alpha から入れる。
 
 ### m1/platform-p2
 
