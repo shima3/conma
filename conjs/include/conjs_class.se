@@ -26,17 +26,20 @@
   __Dict_put__ R "errname" name ,()
   Sjs_function G name (,(args) Conjs_instance G R ,(o) Conjs_error_init o R args ,() __NULL__ o) ,(F)
   Conjs_record_fn R F ,()
+  ;; name と toString は、JavaScript のプロトタイプのものと同じく、メソッドの表から見つける（インスタンスの自分の
+  ;; プロパティではないので、this.name = "MyErr" は名前の一覧に入る）。name を作る Closure は、関数でなく名前を返す
+  Conjs_method R "name" (,(self) __NULL__ name) ,()
+  Conjs_method R "toString" (,(self) Sjs_function G "toString" (,(args) Sjs_to_string self)) ,()
   __Dict_put__ G name F ,()
   __NULL__ R)
 
-;; エラーのオブジェクトにする：name と message を、名前の一覧に入れずに持つ（sjs_rt.se の Sjs_error_object と同じ）
+;; エラーのオブジェクトにする：message を、名前の一覧に入れずに持つ（sjs_rt.se の Sjs_error_object と同じ。name は
+;; 記録のメソッドの表にある。Sjs_error_name）
 (define Conjs_error_init ,(o R args)
-  __Dict_lookup_or__ R "errname" __print_exit_error__ ,(name)
   Sjs_arg args ,(m rest)
   __is_null__ m ,(none)
   __if_then_else__ none (,() __NULL__ "") (,() Sjs_to_string m) ,(msg)
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
-  __Dict_put__ props "name" name ,()
   __Dict_put__ props "message" msg ,()
   __Dict_put__ o "error" __TRUE__)
 
@@ -132,25 +135,30 @@
   Conjs_class_of C ,(R)
   __is_null__ R ,(test__) __if__ test__ (,() Sjs_describe C ,(d) __String_concat__ d " is not a constructor" ,(msg) Sjs_type_error msg) ,()
   Conjs_instance G R ,(o)
-  Conjs_init G R o args ,()
-  __NULL__ o)
+  Conjs_init G R o args ,(r)
+  __is_null__ r ,(test__) __if__ test__ (,() return o) ,()
+  __NULL__ r)
 
 ;; R のフィールドとコンストラクタで、インスタンス o を初めにする。親のないクラスは、フィールドを入れてからコンストラクタ。
 ;; 親のあるクラスは、コンストラクタの super(...)（Conjs_super_call）が、親で初めにしてからフィールドを入れる。コンストラクタを
-;; 書かなければ、constructor(...args) { super(...args); } と同じ
+;; 書かなければ、constructor(...args) { super(...args); } と同じ。返すのは、コンストラクタが返したオブジェクト（JavaScript と
+;; 同じく、new の値になる。オブジェクトでなければ null）
 (define Conjs_init ,(G R o args)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ R "builtin" (,(k) __NULL__ __FALSE__) ,(builtin)
-  __if__ builtin (,() Conjs_error_init o R args ,() return) ,()
+  __if__ builtin (,() Conjs_error_init o R args ,() return __NULL__) ,()
   __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
   __Dict_lookup_or__ R "ctor" __print_exit_error__ ,(ctor)
   __is_null__ parent ,(base)
   __if__ base (,() Conjs_run_fields R o ,()) ,()
   __is_null__ ctor ,(test__) __if__ test__
-    (,() __unless__ base (,() Conjs_super_call G R o args ,()) ,() return) ,()
+    (,() __unless__ base (,() Conjs_super_call G R o args ,()) ,() return __NULL__) ,()
   ctor o ,(f)
   Sjs_call f args ,(r)
-  return)
+  Sjs_kind r ,(kind)
+  Sjs_word_in kind "array object function generator asyncgen promise task" ,(isObject)
+  __if__ isObject (,() return r) ,()
+  __NULL__ __NULL__)
 
 (define Conjs_run_fields ,(R o)
   __Cont_get__ ,(return)
@@ -162,7 +170,8 @@
 ;; super(...)：R（super(...) を書いたクラス）の親で o を初めにしてから、R のフィールドを入れる
 (define Conjs_super_call ,(G R o args)
   __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
-  Conjs_init G parent o args ,()
+  ;; 親のコンストラクタが返したオブジェクトは使わない（JavaScript では this になる。conjs/README-ja.md の違い）
+  Conjs_init G parent o args ,(r)
   Conjs_run_fields R o)
 
 ;; extends のあるクラスのコンストラクタの this（Ref）。super(...) の前は ReferenceError
@@ -183,7 +192,8 @@
   maker self)
 
 ;; v instanceof C：C はクラスか組み込みのエラーのコンストラクタ（ほかは TypeError）。インスタンスは、クラスと親で真。
-;; ランタイムが投げるエラー（Sjs_error_object。"cls" がない）は、Error と、名前が同じエラーのコンストラクタで真
+;; ランタイムが投げるエラーは、同じ名前のエラーのコンストラクタの記録を持つ（Sjs_error_object）。それでも記録のないエラーは、
+;; Error と、名前が同じエラーのコンストラクタで真
 (define Conjs_instanceof ,(v C)
   __Cont_get__ ,(return)
   Conjs_class_of C ,(R)

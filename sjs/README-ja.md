@@ -200,7 +200,7 @@ SJS は ConSh に依らない（include するのは、標準ライブラリの 
 
 ## テスト
 
-* sjs/test：step1（基本）、step2（配列、オブジェクト、ループ、組み込み）、step3（例外とエラーの位置）、step4（ジェネレータ）、step5（async と Promise）、step6（残りの書き方）、step7（言語の残り）、step8（`in`、配列のメンバー、分割代入、Ref のない `const` など）、step12（`JSON.parse` と配列の `sort`）。step1 と step2 の多くは、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの位置の前置きを除く）。段階 A にない書き方（step4〜step8）とエラーの位置は、Node.js の結果と比べた。
+* sjs/test：step1（基本）、step2（配列、オブジェクト、ループ、組み込み）、step3（例外とエラーの位置）、step4（ジェネレータ）、step5（async と Promise）、step6（残りの書き方）、step7（言語の残り）、step8（`in`、配列のメンバー、分割代入、Ref のない `const` など）、step12（`JSON.parse` と配列の `sort`、JSON でない文字列）。step1 と step2 の多くは、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの位置の前置きを除く）。段階 A にない書き方（step4〜step8）とエラーの位置は、Node.js の結果と比べた。
 * ConSh の `(( ))` と `$(( ))`：consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）。ブラウザ版はページで確かめた（docs/consh/dev/JS-PLAN-ja.md の 3.29、3.30）。
 
 ## 経緯
@@ -444,5 +444,5 @@ ConJS にクラスを足す段階 P5b（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節
 
 * `JSON.parse(text)`：ConJS の `fetch` の `json()` の読み手（conjs/include/conjs_lib.se）を sjs_rt.se に移した。読めなければ SyntaxError（`Unexpected token in JSON at position N`。Node.js とはメッセージが違う）。第 2 引数（reviver）は使わない。キーが `constructor` や `__proto__` のオブジェクトも、JSON のデータとして正しいので、そのまま作る（プロトタイプはないので安全）。そのプロパティは `Object.keys` に出るが、読むと、今までどおり `TypeError: the property constructor is not in SJS`（JavaScript では読める）。
 * `sort(compare)`：安定な並べ替え（マージソート）。`compare` がなければ文字列にして、SJS の `<` と同じく文字の番号で比べる（JavaScript は UTF-16 の単位で比べるので、基本多言語面の外の文字だけ順が違うことがある）。`undefined` は `compare` を呼ばずに最後に、穴はその後に置く（JavaScript と同じ）。
-* sjs/test/step12 が、Node.js の結果と比べる（case1）。case2 は、キーが `constructor` のオブジェクト。
+* sjs/test/step12 が、Node.js の結果と比べる（case1）。case2 は、キーが `constructor` のオブジェクト。case3 は、JSON でない文字列（`+1`、`01`、`1.`、`.5`、文字列の中の生の制御文字）が SyntaxError になること（M2 のレビューで、数の形と制御文字を確かめるようにした。Node.js と同じ）。
 * ConJS のクラスのために、sjs_rt.se の `Sjs_get_member`（オブジェクトの 2 つの道と関数の道）と `Sjs_in_op` は、メンバーが自分のプロパティになかったとき、隠したキー `"cls"` を見る（`Sjs_class_member`）。SJS の値は `"cls"` を持たないので、結果は変わらない。sjs_inspect.se も、オブジェクトと関数を出すときに `"cls"` を見る。メッセージが空のエラーの `String(e)` は、名前だけにした（JavaScript と同じ。SJS のランタイムのエラーは、いつもメッセージがある）。

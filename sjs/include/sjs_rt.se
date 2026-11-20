@@ -167,14 +167,35 @@
   Sjs_set_handlers saved ,()
   handler exc)
 
-;; エラーのオブジェクト：name と message を、名前の一覧に入れずに持つ（Object.keys と JSON に出ない）
+;; エラーのオブジェクト：name と message を、名前の一覧に入れずに持つ（Object.keys と JSON に出ない）。ConJS では、
+;; 同じ名前のエラーのコンストラクタ（conjs/include/conjs_class.se）の記録を "cls" に持つ（toString などのメソッド）
 (define Sjs_error_object ,(G name msg)
+  __Cont_get__ ,(return)
   Sjs_object_new G ,(o)
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
   __Dict_put__ props "name" name ,()
   __Dict_put__ props "message" msg ,()
   __Dict_put__ o "error" __TRUE__ ,()
+  __Dict_lookup_or__ G name (,(k) return o) ,(F)
+  __type_name__ F ,(type)
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ (,() return o) ,()
+  __Dict_lookup_or__ F "t" (,(k) return o) ,(t)
+  __String_equal__ t "function" ,(test__) __unless__ test__ (,() return o) ,()
+  __Dict_lookup_or__ F "cls" (,(k) return o) ,(R)
+  __Dict_put__ o "cls" R ,()
   __NULL__ o)
+
+;; エラーのオブジェクト o の名前：自分の name（ConJS の this.name = ...、ランタイムのエラー）か、なければ、ConJS のクラスの
+;; 記録の、組み込みのエラーのコンストラクタの名前（new Error() など）
+(define Sjs_error_name ,(o)
+  __Cont_get__ ,(return)
+  Sjs_obj_get o "name" ,(name)
+  __is_null__ name ,(test__) __unless__ test__ (,() return name) ,()
+  __Dict_lookup_or__ o "cls" (,(k) return "Error") ,(R)
+  Sjs_record_errname R)
+
+(define Sjs_record_errname ,(R)
+  __Dict_lookup_or__ R "errname" (,(k) __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent) Sjs_record_errname parent))
 
 (define Sjs_type_error ,(msg)
   Sjs_throw "TypeError" msg)
@@ -649,7 +670,7 @@
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
-      Sjs_obj_get v "name" ,(name)
+      Sjs_error_name v ,(name)
       Sjs_obj_get v "message" ,(msg)
       Sjs_to_string name ,(n)
       Sjs_to_string msg ,(m)
@@ -4082,28 +4103,74 @@
 
 (define Sjs_jp_number ,(text n pos)
   __Ref_get__ pos ,(start)
-  Sjs_jp_number_end text n pos ,()
+  Sjs_jp_num "1" ,(one)
+  ;; JSON の数の形：-? (0 | [1-9][0-9]*) (.[0-9]+)? ([eE][+-]?[0-9]+)?。ほかは SyntaxError（+1、01、1.、.5）
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "-" ,(test__) __if__ test__ (,() Sjs_jp_skip pos one) ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "0" ,(zero)
+  __if_then_else__ zero (,() Sjs_jp_skip pos one) (,() Sjs_jp_digits text n pos) ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "." ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() Sjs_jp_digits text n pos) ,()
+  Sjs_jp_peek_in text n pos "eE" ,(at)
+  __is_null__ at ,(test__) __unless__ test__
+    (,()
+      Sjs_jp_skip pos one ,()
+      Sjs_jp_peek_in text n pos "+-" ,(at)
+      __is_null__ at ,(test__) __unless__ test__ (,() Sjs_jp_skip pos one) ,()
+      Sjs_jp_digits text n pos) ,()
   __Ref_get__ pos ,(end)
-  __Number_subtract__ end start ,(len)
-  __Number_is_zero__ len ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
   __String_substring__ __print_exit_error__ text start end ,(digits)
   __Number_fromString__ (,(msg) __Ref_set__ pos start ,() Sjs_jp_error pos) digits)
 
-(define Sjs_jp_number_end ,(text n pos)
+;; 位置の文字が set にあれば、set の中の位置（終わりか、なければ null）
+(define Sjs_jp_peek_in ,(text n pos set)
   __Cont_get__ ,(return)
   Sjs_jp_peek text n pos ,(c)
-  __String_equal__ c "" ,(test__) __if__ test__ return ,()
-  Sjs_jp_find "-+0123456789.eE" c ,(at)
+  __String_equal__ c "" ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Sjs_jp_find set c)
+
+;; 1 つ以上の数字を読み進める。なければ SyntaxError
+(define Sjs_jp_digits ,(text n pos)
+  Sjs_jp_peek_in text n pos "0123456789" ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_more_digits text n pos)
+
+(define Sjs_jp_more_digits ,(text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_peek_in text n pos "0123456789" ,(at)
   __is_null__ at ,(test__) __if__ test__ return ,()
   Sjs_jp_num "1" ,(one)
   Sjs_jp_skip pos one ,()
-  Sjs_jp_number_end text n pos)
+  Sjs_jp_more_digits text n pos)
+
+;; 文字列の中で止まる文字：" と \ と、制御文字（U+0000〜U+001F。JSON では、そのままは書けない）。一度作って PDict に置く
+(define Sjs_jp_stops ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_jp_stops" (,(k) __NULL__ __NULL__) ,(stops)
+  __is_null__ stops ,(test__) __unless__ test__ (,() return stops) ,()
+  Sjs_jp_num "0" ,(zero)
+  Sjs_jp_controls zero "\"\\" ,(stops)
+  __PDict_put__ "sjs_jp_stops" stops ,()
+  __NULL__ stops)
+
+(define Sjs_jp_controls ,(k acc)
+  __Cont_get__ ,(return)
+  Sjs_jp_num "32" ,(limit)
+  __Number_subtract__ k limit ,(d)
+  __Number_is_zero__ d ,(test__) __if__ test__ (,() return acc) ,()
+  __String_fromCode__ __print_exit_error__ k ,(c)
+  __String_concat__ acc c ,(acc)
+  Sjs_jp_num "1" ,(one)
+  __Number_add__ k one ,(k)
+  Sjs_jp_controls k acc)
 
 ;; 文字列の中身（最初の " の後から）。acc は読んだ分
 (define Sjs_jp_string ,(text n pos acc)
   __Cont_get__ ,(return)
   __Ref_get__ pos ,(i)
-  __String_find_any__ __print_exit_error__ text "\"\\" i ,(at)
+  Sjs_jp_stops ,(stops)
+  __String_find_any__ __print_exit_error__ text stops i ,(at)
   __is_null__ at ,(test__) __if__ test__ (,() __Ref_set__ pos n ,() Sjs_jp_error pos) ,()
   __String_substring__ __print_exit_error__ text i at ,(part)
   __String_concat__ acc part ,(acc)
@@ -4112,6 +4179,7 @@
   Sjs_jp_num "1" ,(one)
   Sjs_jp_skip pos one ,()
   __String_equal__ c "\"" ,(test__) __if__ test__ (,() return acc) ,()
+  __String_equal__ c "\\" ,(test__) __unless__ test__ (,() __Ref_set__ pos at ,() Sjs_jp_error pos) ,()
   Sjs_jp_escape text n pos ,(e)
   __String_concat__ acc e ,(acc)
   Sjs_jp_string text n pos acc)

@@ -1,0 +1,8 @@
+{ z: 1 }
+Ret2 { a: 1 }
+[ 'name' ] MyErr: bad MyErr MyErr: bad {"name":"MyErr"}
+TypeError TypeError: x [] true
+Error RangeError: r SyntaxError: s
+TypeError: Cannot read properties of null (reading 'x') true true false TypeError
+true SyntaxError
+exit: 0

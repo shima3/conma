@@ -28,9 +28,10 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
 * **除くもの**（変換するときに `conjs: not in ConJS: async` のようなエラー、終了ステータス 2）：`async`、`await`（`for await` も）、名前 `Promise`。SJS の範囲の外のもの（`import`、`with` など）も、「not in ConJS」と書く。`then` は、ふつうの名前として使える。3 つの名前も、オブジェクトのキー（`{ async: 1 }`）とメンバーの名前（`o.await`）には使える（省略形の `{ async }` は変数なので、エラー）。
 * **クラス**（段階 P5b。docs/dev/PLATFORM-PLAN-ja.md の 4.5 節。conjs/include/conjs_class.se）：SJS は除くが、ConJS は受け付ける。
     * **`class`**（宣言と式）：`constructor`、メソッド、`static` のメソッド（親から継承する。`this` は、メソッドを読んだクラス）、インスタンスのフィールド（`x = 1;`。書いた順に、コンストラクタの前に入れる。初期化の式で `this` を使える）、`extends`（クラスか、組み込みのエラーのコンストラクタ）、`super(...)`、`super.m(...)`、ジェネレータのメソッド。`extends` のあるクラスでコンストラクタを書かなければ、引数をそのまま親に渡す。
-    * **`new C(...)`**：C はクラスか、`Error`、`TypeError`、`RangeError`、`SyntaxError`、`ReferenceError`。ふつうの関数の `new` と、クラスの `new` なしの呼び出しは TypeError。エラーのコンストラクタは、`new` なしでも呼べる（JavaScript と同じ）。
+    * **`new C(...)`**：C はクラスか、`Error`、`TypeError`、`RangeError`、`SyntaxError`、`ReferenceError`。ふつうの関数の `new` と、クラスの `new` なしの呼び出しは TypeError。エラーのコンストラクタは、`new` なしでも呼べる（JavaScript と同じ）。コンストラクタがオブジェクトを返せば、それが `new` の値になる（JavaScript と同じ）。
     * **`this`**：クラスのコンストラクタ、メソッド、フィールドの初期化と、その中のアロー関数の中だけ。ふつうの `function` の中とプログラムの上の階層では、変換するときのエラー（`conjs: this outside a class`）。`extends` のあるクラスのコンストラクタで、`super(...)` の前の `this` は ReferenceError。
     * **`instanceof`**：右はクラスか、エラーのコンストラクタ（ほかは TypeError）。ランタイムが投げるエラー（`null.x` の TypeError など）も、`Error` と、名前が同じエラーのコンストラクタで真。
+    * **エラー**：エラーのオブジェクトは `name`、`message`、`toString()` を持つ。`name` と `toString` は、JavaScript のプロトタイプのものと同じく、メソッドと同じ道で見つけるので、`this.name = "MyErr"` は `Object.keys` と JSON に出る（JavaScript と同じ）。`message` は、`Object.keys` と JSON に出ない。
     * **足さないもの**（変換するときのエラー）：getter と setter、`#` で始まるプライベートなフィールド、`static` のフィールドとブロック、計算した名前のメソッド、`new.target`。プロトタイプ（`prototype`、`constructor`、`__proto__`）は、今までどおり、どの形でも読めない。
     * `console.log` は、Node.js と同じく、インスタンスを `Point { x: 1, y: 2 }`、クラスを `[class Point]`（`[class B extends A]`）と出す。`Object.keys`、`JSON.stringify`、スプレッドは、自分のプロパティだけを見る（JavaScript と同じ）。
 * **`spawn(f)`**：引数のない関数 f を新しい処理として列の最後に入れ、処理（task）を返す。呼んだ側は、次に待つまで動き続ける。task は `console.log` で `[Task]`、`typeof` は `"object"`。
@@ -42,7 +43,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
     * **`Date.now()`**：1970 年 1 月 1 日からのミリ秒（整数）。`Date` はこれだけを持つオブジェクトで、`new Date()` は書けない（`new` は、クラスとエラーのコンストラクタだけ）。
     * **`fs.readFile(path)`、`fs.writeFile(path, text)`**：ファイル全体を文字列で読み書きする（Node.js の名前。`fs` はグローバルにある）。相対パスは、プログラムを動かしたディレクトリから。ふつうのファイルはすぐ読み書きできるので、処理は切り替わらない。読み書きできなければ `fs.readFile: ` で始まるメッセージの Error。ブラウザのページ（ホストのファイルを渡さない wasm 版の VM）では、VM のメモリの中のファイルを読み書きする（ページを閉じると消える。まだ確かめていない）。
     * **`fetch(url, options)`**：HTTP の要求。options は `method`（文字列）、`headers`（オブジェクト）、`body`（文字列）。返すのは、本体を全部読んである Response のようなオブジェクトで、`status`、`ok`（状態が 200〜299）、`text()`、`json()` を持つ（どれも待たない）。404 などは例外にせず `ok` を偽にし、つながらないときは TypeError（`fetch failed`）を投げる（JavaScript と同じ）。wasm 版の VM ではホストの `fetch`（Node.js 18 以降とブラウザ）を、Rust 版と Python 版の VM では `curl` を、待つための VProc で動かす（curl がなければ TypeError）。`json()` は `JSON.parse` と同じ読み手を使う。curl の道では、HEAD は `-X HEAD` でなく `--head` で送る（`-X HEAD` の curl は、来ない本体を待って失敗する）。
-* **JavaScript との違い**（クラス）：メソッドは、メンバーを読むたびに、`this` を付けた関数として作る。そのため、取り出したメソッドを後で呼んでも、`this` は元のオブジェクトのまま（JavaScript では `undefined`）で、`o.m === o.m` は偽（JavaScript では真）。プロトタイプがないので、メソッドは、メンバーを読んで自分のプロパティになかったときだけ、クラスと親から探す。`extends` のあるクラスのコンストラクタが `super(...)` を呼ばずに終わっても、エラーにしない（JavaScript では ReferenceError。親とこのクラスのフィールドは入らない）。
+* **JavaScript との違い**（クラス）：メソッドは、メンバーを読むたびに、`this` を付けた関数として作る。そのため、取り出したメソッドを後で呼んでも、`this` は元のオブジェクトのまま（JavaScript では `undefined`）で、`o.m === o.m` は偽（JavaScript では真）。プロトタイプがないので、メソッドは、メンバーを読んで自分のプロパティになかったときだけ、クラスと親から探す。`extends` のあるクラスのコンストラクタが `super(...)` を呼ばずに終わっても、エラーにしない（JavaScript では ReferenceError。親とこのクラスのフィールドは入らない）。親のコンストラクタがオブジェクトを返しても、子の `this` にはならない（JavaScript ではなる。`new` の値になるのは、`new` で書いたクラスのコンストラクタが返したものだけ）。
 * **関数の色がない**：どの関数の中でも待てる（配列の `map` に渡した関数、ジェネレータの本体、try と finally の中）。
 * **割り込まれない**：処理は、1 つの VProc の中で、待つ呼び出し（`host.wait` と `join`）の所でだけ切り替わる。2 つの待つ呼び出しの間のコードは、割り込まれずに動く。待たない長いループは、その間ほかの処理を止める（JavaScript と同じ）。
 * **動かす順**：動かせる処理の列は FIFO。待つ呼び出しの結果が届いた処理も、列の最後に入る。結果は、動かせる処理がなくなったときに 1 つずつ受け取るので、spawn し続けて列が空にならないプログラムには、ホストの結果が届かない（Node.js でマイクロタスクを積み続けたときと同じ）。
@@ -75,7 +76,7 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step9 | fetch：GET、`json()`、404、POST と PUT とヘッダ、HEAD、2 つの処理で並べて待つ、つながらない所の TypeError、引数のエラー。step9/server.py の HTTP のサーバ（127.0.0.1）を使う |
 | step10 | ConJS だけの名前を使わないプログラム（conjs/test/compare.sh が Node.js と比べる） |
 | step11 | クラス：コンストラクタ、メソッド、フィールド、`static` とその継承、`extends` と `super`、`instanceof`、`in`、アロー関数の `this`、`console.log` と `Object.keys`。JavaScript との違い（case3） |
-| step12 | エラーのコンストラクタと `instanceof`、`class ... extends Error`、受け手のないエラー、変換するときのエラー（`this`、計算した名前、getter）、実行時のエラー |
-| step13 | `JSON.parse` と配列の `sort`（sjs/test の step12 と同じもの）。キーが `constructor` のオブジェクト（case2） |
+| step12 | エラーのコンストラクタと `instanceof`、`class ... extends Error`、受け手のないエラー、変換するときのエラー（`this`、計算した名前、getter）、実行時のエラー。コンストラクタが返すオブジェクト、エラーの `name` と `toString()`（case8） |
+| step13 | `JSON.parse` と配列の `sort`（sjs/test の step12 と同じもの）。キーが `constructor` のオブジェクト（case2）。JSON でない文字列（case3） |
 
 Node.js と比べる場合は、各ステップの node.txt に並べる（変換するときのエラーと、JavaScript との違いの場合は入れない）。step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。
