@@ -1,0 +1,9 @@
+// 電卓の言語：let、print、+ - * /、括弧、単項の -、コメント
+let x = 1 + 2 * 3;
+print x;
+print (x - 1) / 4;
+let y = -x + 10 - 2 * -1;
+print y;
+let x = x * x;   // 前の x を隠す
+print x;
+print "done";

@@ -1,0 +1,10 @@
+#!/bin/bash
+# ConJS のファイルを ConMa に変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。
+#   conjs/conjs [--emit] file.con.js
+# --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm/target/release/conma）で行い、
+# 変換したプログラムは CONMA_VM の VM で動かす：なし（Rust 版）、wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。
+# 2026-11-20 から、言語キットの bin/lang（4.3 節）を呼ぶだけにした（設定は conjs/lang.conf）
+if [ "$1" = --emit ]; then [ $# -eq 2 ] || { echo "usage: conjs [--emit] file.con.js" >&2; exit 2; }
+elif [ $# -ne 1 ]; then echo "usage: conjs [--emit] file.con.js" >&2; exit 2; fi
+conjs="$(cd "$(dirname "$0")"; pwd)"
+exec "${conjs%/*}/bin/lang" "${@:1:$#-1}" "$conjs" "${@: -1}"

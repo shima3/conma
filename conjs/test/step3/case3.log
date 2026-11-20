@@ -1,0 +1,4 @@
+runs first
+main throws
+case3.con.js:6:6: TypeError: Cannot read properties of null (reading 'z')
+exit: 2

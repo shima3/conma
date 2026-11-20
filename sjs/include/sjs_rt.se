@@ -1,4 +1,4 @@
-;; SJS の実行時の支え（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
+;; SJS のランタイム（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
 ;;
 ;; SJS の値の表し方：
 ;;   数        Number（IEEE 754 の倍精度。ConMa の Number と同じ）
@@ -20,6 +20,7 @@
 ;; 実行時のエラー（TypeError など）は、隠した name と message を持つオブジェクト（"error" の印。JSON では {}、
 ;; String では "TypeError: メッセージ"。段階 A の Error と同じ見え方）にして投げる。文脈 G は PDict の "sjs_G" にも置く
 (include "sjs_bits.se")
+(include "lang/error.se")
 (include "sjs_inspect.se")
 
 ;; ── 文脈と大域の名前 ──
@@ -95,6 +96,11 @@
 
 ;; ── エラー ──
 
+;; 言語の印（PDict の "sjs_lang"）が ConJS か（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。conjs/conjsc.se と Conjs_run が置く）
+(define Sjs_is_conjs ,()
+  __PDict_lookup_or__ "sjs_lang" (,(k) __NULL__ "sjs") ,(lang)
+  __String_equal__ lang "conjs")
+
 (define Sjs_throw ,(name msg)
   ;; 変換するとき（G がない）は、そのまま出して終える
   __PDict_lookup_or__ "sjs_G" (,(k) __NULL__ __NULL__) ,(G)
@@ -102,7 +108,7 @@
   Sjs_error_object G name msg ,(e)
   ;; エラーのオブジェクトは、作った所の位置を持つ（受け手のない Promise の拒否で、JavaScript と同じくそこを出す。
   ;; Sjs_promise_reject）。投げるのも同じ所
-  Sjs_raise_pos ,(pos)
+  Kit_err_pos ":sjs" ,(pos)
   __Dict_put__ e "pos" pos ,()
   __PDict_put__ "sjs_pos" pos ,()
   Sjs_reraise e)
@@ -114,33 +120,9 @@
   __PDict_lookup_or__ "sjs_fail" (,(k) __NULL__ __NULL__) ,(fail)
   __is_null__ fail ,(test__) __unless__ test__ (,() fail text) ,()
   __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(pos)
-  __is_null__ pos ,(noPos)
-  __if_then_else__ noPos (,() __NULL__ "sjs: ") (,() __String_concat__ pos ": ") ,(s)
-  __String_concat__ s text ,(s)
-  __String_concat__ s "\n" ,(s)
-  __OS_print_error__ s ,()
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
-  __OS_exit__ __print_exit_error__ two)
-
-;; 例外を投げた所の SJS の位置（"ファイル:行:桁"。なければ null）：CChain の CFrame のうち、SInfo の最後が
-;; "sjs" のいちばん上のもの（変換器が付ける。sjs_gen.se の Gen_sinfo_fill）。CFrame を取り出して調べ、最後に
-;; __CChain_set__ で元の CChain に戻してから値を返す（調べる間は、CFrame を積む呼び出しをしない）
-(define Sjs_raise_pos ,()
-  __CChain_get__ ,(cc)
-  Sjs_raise_pos_scan cc)
-
-(define Sjs_raise_pos_scan ,(cc)
-  __CChain_pop_CFrame__ ,(cf)
-  __is_null__ cf ,(none)
-  __if_then_else__ none
-    (,() __CChain_set__ cc ,() __NULL__ __NULL__)
-    (,()
-      __CFrame_get_SInfo__ cf ,(si)
-      __String_strip_suffix__ si ":sjs" ,(pos)
-      __String_equal__ pos si ,(other)
-      __if_then_else__ other
-        (,() Sjs_raise_pos_scan cc)
-        (,() __CChain_set__ cc ,() __NULL__ pos)))
+  Sjs_is_conjs ,(conjs)
+  __if_then_else__ conjs (,() __NULL__ "conjs: ") (,() __NULL__ "sjs: ") ,(prefix)
+  Kit_err_report pos prefix text)
 
 ;; ── 例外 ──
 
@@ -152,7 +134,7 @@
 
 ;; 値 v を投げる。投げた所の位置を "sjs_pos" に置いて（受け手のない例外のメッセージに出す）、Sjs_reraise
 (define Sjs_raise ,(v)
-  Sjs_raise_pos ,(pos)
+  Kit_err_pos ":sjs" ,(pos)
   __PDict_put__ "sjs_pos" pos ,()
   Sjs_reraise v)
 
@@ -222,6 +204,8 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "object") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "object") ,()
+  ;; ConJS の処理（conjs/include/conjs_rt.se）
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "object") ,()
   __NULL__ kind)
 
 (define Sjs_is_number ,(v)
@@ -283,6 +267,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "a generator") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "an async generator") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "a promise") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "a task") ,()
   Sjs_to_string v ,(s)
   __String_concat__ "the " kind ,(a)
   __String_concat__ a " " ,(a)
@@ -660,6 +645,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "[object Generator]") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "[object AsyncGenerator]") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "[object Promise]") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "[object Task]") ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
@@ -1224,7 +1210,7 @@
 (define Sjs_in_op ,(G k o)
   __Cont_get__ ,(return)
   Sjs_kind o ,(kind)
-  Sjs_word_in kind "array object function generator asyncgen promise" ,(isObject)
+  Sjs_word_in kind "array object function generator asyncgen promise task" ,(isObject)
   __unless__ isObject
     (,()
       Sjs_key_string k ,(ks)
@@ -2229,6 +2215,7 @@
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() return "{}") ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "{}") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "{}") ,()
+  __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "{}") ,()
   __NULL__ __NULL__)
 
 (define Sjs_json_items ,(list acc first)
@@ -2464,7 +2451,7 @@
   Sjs_take_digits rest acc)
 
 ;; ════ 段階 B4：ConSh から動かすモジュールに渡す関数 ════
-;; 変換したモジュール（sjs_gen.se の Sjs_translate_module）は何も include しないので、実行時の支えの関数と、標準の関数
+;; 変換したモジュール（sjs_gen.se の Sjs_translate_module）は何も include しないので、ランタイムの関数と、標準の関数
 ;; （__TRUE__ など）を、この Dict で受け取り、同じ名前の局所変数に束縛する（名前の一覧は sjs_gen.se の Sjs_rt_names）
 
 (define Sjs_rt_dict ,()

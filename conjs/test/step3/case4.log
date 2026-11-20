@@ -1,0 +1,6 @@
+b: caught b's error
+a: no exception here
+main: join b threw b uncaught
+d: caught TypeError: Cannot read properties of null (reading 'other')
+case4.con.js:20:15: TypeError: Cannot read properties of undefined (reading 'first')
+exit: 2

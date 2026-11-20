@@ -69,6 +69,22 @@ extern "C" {
     fn host_wasm_error(out: *mut u8, cap: usize) -> i32;
     /// Forget module id.
     fn host_wasm_free(id: i32);
+    /// Call the function of the host named name with the arguments (a JSON
+    /// array; vm/src/prim/host.rs): -1 if the host has no such function, else
+    /// the length of the result ({"r":value} or {"e":"message"}), which
+    /// host_fn_result copies.
+    fn host_fn_call(name_ptr: *const u8, name_len: usize, args_ptr: *const u8, args_len: usize) -> i32;
+    /// Copy the result of the last host_fn_call to out (cap bytes); its length.
+    fn host_fn_result(out: *mut u8, cap: usize) -> i32;
+    /// 1 if the host gives the platform feature name (__Feature_available__).
+    fn host_fn_feature(name_ptr: *const u8, name_len: usize) -> i32;
+    /// 1 if the host has a function named name (__Host_start__).
+    fn host_fn_has(name_ptr: *const u8, name_len: usize) -> i32;
+    /// Start the function of the host named name with the arguments (a JSON
+    /// array): when it has finished (a Promise when it settles), the host
+    /// writes the result ({"r":value} or {"e":"message"}) to the pipe fd
+    /// (conma_write) and closes it (conma_close), then runs the VM again.
+    fn host_fn_start(name_ptr: *const u8, name_len: usize, args_ptr: *const u8, args_len: usize, fd: i32);
 
     // Files of the host (after conma_use_host_fs): paths are absolute and as
     // the VM has them (the host resolves . and .. and symbolic links), and a
@@ -566,6 +582,41 @@ pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
     });
     unsafe { host_js_call(w, job, code.as_ptr(), code.len(), args_json.as_ptr(), args_json.len()) };
     Ok((r, to_host))
+}
+
+/// __Host_call__: call the function name of the host (vm/wasm/conma.js, the
+/// hook hostFunctions). The function is called once; its result is then
+/// copied, in a buffer as large as it needs.
+pub fn host_call(name: &str, args_json: &str) -> Option<Result<String, String>> {
+    let n = unsafe { host_fn_call(name.as_ptr(), name.len(), args_json.as_ptr(), args_json.len()) };
+    if n < 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; n as usize];
+    let m = unsafe { host_fn_result(buf.as_mut_ptr(), buf.len()) };
+    buf.truncate(m.max(0) as usize);
+    Some(Ok(String::from_utf8_lossy(&buf).into_owned()))
+}
+
+/// The host has a function name for __Host_start__ (the hook hostFunctions).
+pub fn host_has(name: &str) -> bool {
+    unsafe { host_fn_has(name.as_ptr(), name.len()) == 1 }
+}
+
+/// __Host_start__: start the function name of the host, which writes its
+/// result to the pipe end w and closes it.
+pub fn host_start(name: &str, args_json: &str, w: c_int) {
+    unsafe { host_fn_start(name.as_ptr(), name.len(), args_json.as_ptr(), args_json.len(), w) };
+}
+
+/// The host gives the platform feature name (the hook hostFeatures).
+pub fn host_feature(name: &str) -> bool {
+    unsafe { host_fn_feature(name.as_ptr(), name.len()) == 1 }
+}
+
+/// The host has JavaScript (__JS_call__, __JS_value__; __Feature_available__ "js").
+pub fn js_available() -> bool {
+    true
 }
 
 pub fn js_value(id: &str) -> io::Result<String> {

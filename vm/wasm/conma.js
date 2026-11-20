@@ -47,6 +47,20 @@
 // program runs a module of core ConMa): {ok: true, text} with the file
 // names in SInfo relative to the directory above the repository, or
 // {ok: false, message} with the first line of the error.
+// hostFunctions, if given, is an object of the functions that __Host_call__ name args calls by
+// name (docs/dev/PLATFORM-PLAN-ja.md 3.2), besides those every VM has (test.add, test.echo and
+// test.fail, vm/src/prim/host.rs). A function is called with the arguments as JavaScript values,
+// numbers, strings and arrays of them (an empty LList, null, is []), and returns such a value (null
+// and undefined are null, the empty LList), or throws: the message of what it throws goes to onError.
+// For __Host_call__ it is called once and must not wait (a Promise is an error). __Host_start__ name
+// args (a call that waits, 3.4 of the plan) calls it too, and it may return a Promise then: when the
+// function has returned, or its Promise has settled, its result is written to the pipe of the call
+// and the pipe is closed (in a later task, never inside conma_run), and the VM is run again (jsDone).
+// hostFeatures, if given, is an array of
+// the names of the platform features these functions give, for which __Feature_available__ is true.
+// Every host also has the functions of defaultHostFunctions below (time.now, time.sleep, and
+// http.fetch where the host has fetch; stage P5 of the plan, 4.4), unless hostFunctions gives
+// its own of the same name, and their features ("time", "fetch").
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -1758,8 +1772,70 @@ var ConMaVM = (function () {
     };
   }
 
+  // A value of __Host_call__ from the VM as a JavaScript value: {"n":"NaN"} and the like are
+  // numbers, null in a list is [] (the empty LList)
+  function hostDecode(v) {
+    if (v === null) return [];
+    if (Array.isArray(v)) return v.map(hostDecode);
+    if (typeof v === "object") return v.n === "-0" ? -0 : Number(v.n);
+    return v;
+  }
+  // A result of a function of the host as a value for the VM: a number, a string, null (also for
+  // undefined and []) or an array of them; anything else is an error of the function name
+  function hostEncode(name, v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "number") {
+      if (Number.isNaN(v)) return { n: "NaN" };
+      if (v === Infinity) return { n: "Infinity" };
+      if (v === -Infinity) return { n: "-Infinity" };
+      if (Object.is(v, -0)) return { n: "-0" };
+      return v;
+    }
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return v.length === 0 ? null : v.map((e) => hostEncode(name, e));
+    throw new Error(name + ": returned a " + typeof v + " (only numbers, strings and arrays of them go back)");
+  }
+
+  // The functions of the host that every host of this VM has (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage
+  // P5): the native and Python VMs have time.now and time.sleep in their tables, and their ConJS
+  // runs curl for fetch.
+  //   time.now                     the time in milliseconds since 1970-01-01 (Date.now)
+  //   time.sleep ms                waits ms milliseconds (__Host_start__ only), then null
+  //   http.fetch url method headers body
+  //                                an HTTP request with fetch: headers a list of (name value),
+  //                                body a string ("" for none); the status and the text of the body
+  function defaultHostFunctions() {
+    const f = {
+      "time.now": () => Date.now(),
+      "time.sleep": (ms) => {
+        if (typeof ms !== "number" || !(ms >= 0)) throw new Error("time.sleep: expected milliseconds (a Number, 0 or more)");
+        return new Promise((resolve) => setTimeout(() => resolve(null), ms));
+      },
+    };
+    const features = ["time"];
+    if (typeof globalThis.fetch === "function") {
+      f["http.fetch"] = async (url, method, headers, body) => {
+        const init = { method: method || "GET", headers: (headers || []).map((h) => [String(h[0]), String(h[1])]) };
+        if (body !== "" && body !== null && body !== undefined) init.body = body;
+        let res;
+        try {
+          res = await globalThis.fetch(url, init);
+        } catch (e) {
+          throw new Error("fetch failed: " + (e && e.cause && e.cause.message ? e.cause.message : e instanceof Error ? e.message : String(e)));
+        }
+        return [res.status, await res.text()];
+      };
+      features.push("fetch");
+    }
+    return { f, features };
+  }
+
   function create(wasmModule, write, hooks) {
     const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote } = hooks || {};
+    const defaults = defaultHostFunctions();
+    const hostFunctions = Object.assign(defaults.f, (hooks && hooks.hostFunctions) || {});
+    const hostFeatures = defaults.features.concat((hooks && Array.isArray(hooks.hostFeatures) && hooks.hostFeatures) || []);
+    let hostResult = new Uint8Array(0); // the result of the last host_fn_call, for host_fn_result
     // The last result of buildModule, until the VM has taken it all (host_build_module)
     let lastBuild = null;
     let x = null;
@@ -1957,6 +2033,62 @@ var ConMaVM = (function () {
         host_wasm_free: (id) => {
           wasmModules.delete(id);
         },
+        // __Host_call__ (vm/src/prim/host.rs): the arguments and the result go as JSON, a Number that
+        // JSON cannot write as {"n":"-0"} and the like, the empty LList as null
+        host_fn_call: (namePtr, nameLen, argsPtr, argsLen) => {
+          const name = str(namePtr, nameLen);
+          if (!hostFunctions || !Object.prototype.hasOwnProperty.call(hostFunctions, name)) return -1;
+          let result;
+          try {
+            const args = JSON.parse(str(argsPtr, argsLen));
+            const r = hostFunctions[name](...(args === null ? [] : args.map(hostDecode)));
+            if (r !== null && typeof r === "object" && typeof r.then === "function")
+              throw new Error(name + ": returned a Promise (a call that waits is not supported yet)");
+            result = JSON.stringify({ r: hostEncode(name, r) });
+          } catch (e) {
+            result = JSON.stringify({ e: e instanceof Error ? e.message : String(e) });
+          }
+          hostResult = utf8(result);
+          return hostResult.length;
+        },
+        host_fn_result: (out, cap) => {
+          const n = Math.min(cap, hostResult.length);
+          putAt(hostResult.subarray(0, n), out);
+          return n;
+        },
+        host_fn_has: (namePtr, nameLen) =>
+          hostFunctions && Object.prototype.hasOwnProperty.call(hostFunctions, str(namePtr, nameLen)) ? 1 : 0,
+        // __Host_start__: the result goes to the pipe fd as the JSON text of a result, and the pipe is
+        // closed; jsPending counts the call until then, so that the host lets its event loop run
+        host_fn_start: (namePtr, nameLen, argsPtr, argsLen, fd) => {
+          const name = str(namePtr, nameLen);
+          const argsText = str(argsPtr, argsLen);
+          jsPending++;
+          const done = (result) => {
+            pass(utf8(result), (p, n) => x.conma_write(fd, p, n));
+            x.conma_close(fd);
+            jsPending--;
+            wake();
+          };
+          const ok = (r) => {
+            let result;
+            try {
+              result = JSON.stringify({ r: hostEncode(name, r) });
+            } catch (e) {
+              result = JSON.stringify({ e: e instanceof Error ? e.message : String(e) });
+            }
+            done(result);
+          };
+          const fail = (e) => done(JSON.stringify({ e: e instanceof Error ? e.message : String(e) }));
+          Promise.resolve()
+            .then(() => {
+              const args = JSON.parse(argsText);
+              return hostFunctions[name](...(args === null ? [] : args.map(hostDecode)));
+            })
+            .then(ok, fail);
+        },
+        host_fn_feature: (namePtr, nameLen) =>
+          Array.isArray(hostFeatures) && hostFeatures.includes(str(namePtr, nameLen)) ? 1 : 0,
       },
     });
     x = instance.exports;

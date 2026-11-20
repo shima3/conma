@@ -896,6 +896,42 @@ No new primitive.
 * Fix: the scheduler (`Scheduler.run` of vm/python/vproc_step.py, `Machine::run_slice` of vm/src/sched.rs, which the wasm VM shares) also finishes a VProc taken from the ready queue that has nothing left to do, instead of stepping it. No step is counted, so the step numbers and traces of other programs are the same.
 * Tests: `test/step48` (a VProc ending with `__VProc_wait__`, one ending with `__Ref_wait_change__`, and the first VProc ending with `__VProc_wait__`), which failed before on the Python VM.
 
+## Step 49: Asking for a feature, and the platform feature "js"
+
+| Primitive | Status |
+|---|---|
+| `__Feature_available__ name ,(Boolean)` (core ConMa) | implemented |
+
+* Goal: stage P1 of docs/dev/PLATFORM-PLAN-ja.md (2026-11-19): a program can ask whether a feature can be used where it runs, and the modules say which features of their platform they use, before more platform features (a canvas in a browser) are added.
+* `__Feature_available__` is true for the features of extended ConMa that work on every VM, for `"wasm"` where WebAssembly runs, for `"js"` where the host has JavaScript (the VM for wasm32), and false for any other name (`vm/python/vproc_step.py`, `vm/src/prim/js.rs`; `sys::js_available` of `vm/src/sys.rs` and `vm/wasm/src/sys.rs`).
+* `__JS_call__` and `__JS_value__` are the platform feature `"js"`: both frontends (`bin/resolver`, `include/resolver.se` and `reference/resolver.se`; `vm/frontend.module.se` made again) write `(Platform "js")` after `(Uses ...)`. Not an item of `Uses`, which `bin/to-core` replaces for the Python VM: platform features are another axis than core and extended ConMa, every VM has their primitives, and the reference version of ConSh, which is core ConMa, keeps JavaScript on the wasm VM.
+* Tests: `test/fast13` (the answers on each VM, also with `CONMA_NO_WASM`, the error of a name that is not a String, using `"js"` after asking, the item the frontends write and that `bin/to-core` keeps).
+
+## Step 50: Calling the functions of the host
+
+| Primitive | Status |
+|---|---|
+| `__Host_call__ onError name args ,(result)` (core ConMa; platform feature `"host"`) | implemented |
+
+* Goal: stage P2 of docs/dev/PLATFORM-PLAN-ja.md (2026-11-19): one primitive through which a program calls what its platform has, by the name of a function of the host, instead of a primitive for each (the canvas of a browser comes next, in P3).
+* The values are Numbers, Strings and LLists of them, null being the empty LList; Dicts and Booleans are not passed, and a call returns at once. Every VM has the functions of the platform feature `"test"` (`test.add`, `test.echo`, `test.fail`; `BUILTIN` of `vm/src/prim/host.rs` and `HOST_FUNCTIONS` of `vm/python/vproc_step.py`), so that a test runs the same on every VM. The VM for wasm32 also calls the functions its host gives (`hostFunctions` and `hostFeatures` of `vm/wasm/conma.js`; `CONMA_HOST` of `vm/wasm/vm-node.js`): the values go as JSON, -0, NaN and the infinities as `{"n":"-0"}` and the like, through the imports `host_fn_call` and `host_fn_result` (the function is called once, then its result copied), and `host_fn_feature` for `__Feature_available__`. The native VMs have no other host. The transpiled VM leaves `__Host_call__` to the VM.
+* The frontends write `(Platform "host")` for a module that uses `__Host_call__`.
+* Tests: `test/fast14` (the test functions and the errors on every VM; on the wasm VM, functions of JavaScript with -0, NaN, the infinities, a String with escapes, an exception, and results that cannot go back).
+
+## Step 51: Host calls that wait, and the canvas
+
+| Primitive | Status |
+|---|---|
+| `__Host_start__ onError name args ,(inputStream)` (core ConMa; platform feature `"host"`) | implemented |
+| `__Host_start_tracked__ onError name args Ref ,(inputStream)` (core ConMa; platform feature `"host"`) | implemented |
+| `__Host_result__ onError inputStream ,(result)` (core ConMa; platform feature `"host"`) | implemented |
+
+* Goal: stage P3 of docs/dev/PLATFORM-PLAN-ja.md (2026-11-19, designed in its section 3.4 and reviewed in pull request shima3/conma#1): calls of the host that wait (the next frame of an animation now, fetch and timers for ConJS later), and the first platform feature, the canvas of a browser.
+* A call that waits gives the read end of a pipe, which the program waits for with `__OS_wait_readable__` (so the scheduler takes it as waiting for the OS, and the wasm VM returns IDLE until the host has the result), then `__Host_result__` reads the result from the pipe as JSON and closes it. `__Host_start_tracked__` records the Stream in a Ref as `__OS_open_tracked__` does, so that a killed VProc leaves nothing open; a result whose reader has gone is dropped.
+* `test.later` finishes by a virtual clock that is the same on every VM: when no VProc is ready, the call with the earliest deadline (clock + count, then the first called) finishes. The clock is in the scheduler of the Rust VM (`Later` of `vm/src/prim/host.rs`, used in `vm/src/sched.rs`, so also the wasm VM) and of the Python VM. On the wasm VM, other names go to `hostFunctions` (imports `host_fn_has` and `host_fn_start`); a function may return a Promise, and `conma.js` writes the result to the pipe and closes it in a later task.
+* The canvas: `vm/wasm/host/canvas.js` (feature `"canvas"`), `include/platform/canvas.se` and `include/platform/host.se` (`Host_wait`), the sample page `vm/wasm/web/canvas.html` with `canvas_demo.se`, and `vm/wasm/web/measure.sh`: on the wasm VM in Node.js, a line takes about 2.3 µs with `__Host_call__`, 0.7 µs with `canvas.draw` in batches, and 35 µs with `__JS_call__`.
+* Tests: `test/fast15` (the waiting calls, the order of `test.later`, a killed VProc, Promises on the wasm VM; the same logs on the Python, Rust and wasm VMs), `test/fast16` (the canvas library without a canvas, and on the wasm VM with a canvas that records each call; every canvas name used is in docs/PRIMITIVES.md).
+
 ## Planned: returning without making the escape continuation
 
 Not built, and decided not to be built (2026-11-12, docs/dev/FAST-PLAN-ja.md 4.4): on the Rust VM after F5, `__Cont_get__` takes 3.2% of the steps of the optimized version of ConSh in consh/bench 02_for_seq_100000 (renamed to `02_for_seq` on 2026-11-17) (about 3% of its time at most), and only 48 of the 637 functions meet the conditions below. Moved here from docs/consh/dev/SAFEJS-PLAN-ja.md (stage B8), since it concerns ConMa and not only SJS, after the review in docs/consh/dev/SAFEJS-REVIEW-ja.md (3.1.4).

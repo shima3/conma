@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConMa canvas</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  canvas { border: 1px solid #ccc; max-width: 100%; }
+  pre { background: #f4f4f4; padding: 8px; min-height: 1.5em; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>ConMa canvas</h1>
+<p>wasm 版の ConMa の VM が、canvas_demo.se を動かして描く（docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）。
+1 コマごとに Canvas_draw でまとめて描き、Canvas_frame（requestAnimationFrame）で次のコマを待つ。
+<a href="?conjs">ConJS 版</a>（canvas_demo.con.js。4.2 節、段階 P3b）は、同じ絵を ConJS で書き、host.wait("canvas.frame") を await なしで待つ。
+<a href="?">ConMa 版</a>。</p>
+<canvas id="canvas" width="480" height="320"></canvas>
+<p id="status">読み込み中…</p>
+<pre id="out"></pre>
+<script src="conma.js"></script>
+<script src="canvas.js"></script>
+<script>
+"use strict";
+// The page runs the VM in its own thread: conma.js and canvas.js (vm/wasm/host), as build.sh puts them here
+(async () => {
+  const out = document.getElementById("out");
+  const status = document.getElementById("status");
+  const decoder = new TextDecoder();
+  const write = (fd, bytes) => {
+    out.textContent += decoder.decode(bytes, { stream: true });
+  };
+  try {
+    // ?conjs なら ConJS 版（main は引数を受け取るので、-m で __start__ から呼ぶ）
+    const conjs = new URLSearchParams(location.search).has("conjs");
+    const file = conjs ? "canvas_demo_conjs.module.se" : "canvas_demo.module.se";
+    const [wasmBytes, moduleText] = await Promise.all([
+      fetch("conma.wasm").then((r) => r.arrayBuffer()),
+      fetch(file).then((r) => r.text()),
+    ]);
+    const host = ConmaCanvas(document.getElementById("canvas"));
+    let wake = null;
+    const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), write, {
+      hostFunctions: host.hostFunctions,
+      hostFeatures: host.hostFeatures,
+      // A call of the host (canvas.frame) has finished: run the VM again
+      jsDone: () => {
+        if (wake) {
+          const w = wake;
+          wake = null;
+          w();
+        }
+      },
+    });
+    let code = vm.start(moduleText, conjs ? ["-m", file] : [file, "main"]);
+    if (code !== 0) throw new Error("the VM did not start (" + code + ")");
+    status.textContent = (conjs ? "ConJS 版が" : "ConMa 版が") + "動いている";
+    for (;;) {
+      code = vm.run(100000);
+      if (code === ConMaVM.RUNNING) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } else if (code === ConMaVM.IDLE) {
+        if (vm.jsPending() === 0) break; // nothing can wake the VM
+        await new Promise((resolve) => (wake = resolve));
+      } else {
+        break;
+      }
+    }
+    status.textContent = "終わった（" + code + "）";
+  } catch (e) {
+    status.textContent = "エラー：" + e.message;
+  }
+})();
+</script>
+</body>
+</html>

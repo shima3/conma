@@ -1,0 +1,4 @@
+b: TypeError: Generator is already running
+a: first
+then: second
+exit: 0

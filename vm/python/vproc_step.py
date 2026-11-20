@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal
+import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal, json, time
 from collections import deque
 import types
 
@@ -1092,6 +1092,270 @@ def prim_JS_value(vp, gvenv):
         _prim_error(vp, on_error, f"{name}: expected String id, got {value_type_name(id_)}")
         return
     _prim_error(vp, on_error, f"{name}: JavaScript is not available")
+
+# The features that __Feature_available__ answers true for on this VM: the features of extended ConMa, which work on
+# every VM (on this one through the replacement definitions of bin/to-core), but not "wasm", whose primitives go to
+# onError here as on the native VMs, "test", the test functions of __Host_call__ that every VM has, and "time"
+# (time.now and time.sleep, as on the native VMs). This VM has no other platform feature ("js" and the
+# others; docs/dev/PLATFORM-PLAN-ja.md)
+FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control", "test", "time")
+
+def prim_Feature_available(vp, gvenv):
+    """__Feature_available__ name ,(Boolean)
+    True if the feature named name can be used here: a feature of extended
+    ConMa (except "wasm"), or a platform feature that this VM and its host
+    have. This VM has no WebAssembly and no platform feature."""
+    (name,) = _string_args(vp, "__Feature_available__", 1)
+    _prim_return(vp, [TRUE_CLOSURE if name in FEATURES_AVAILABLE else FALSE_CLOSURE])
+
+# The functions of the host for __Host_call__ that every VM has (vm/src/prim/host.rs, BUILTIN): those
+# of the platform feature "test", for the tests. This VM has no other host. A value for the host is a
+# float, a str or a list of them (the empty LList, null, is []).
+def _host_test_add(args):
+    total = 0.0
+    for a in args:
+        if not isinstance(a, float):
+            raise _HostError("test.add: expected Numbers")
+        total += a
+    return total
+
+def _host_test_fail(args):
+    raise _HostError("test.fail: failed")
+
+class _HostError(Exception):
+    pass
+
+# The function of the platform feature "time" (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage P5), as on the native
+# VMs: time.now, the time in milliseconds since 1970-01-01 00:00 UTC. time.sleep, which waits, is handled by
+# __Host_start__ (the scheduler finishes it when the time has come).
+def _host_time_now(args):
+    return time.time() * 1000.0
+
+HOST_FUNCTIONS = {"test.add": _host_test_add, "test.echo": lambda args: list(args), "test.fail": _host_test_fail,
+                  "time.now": _host_time_now}
+
+def _to_host(v):
+    """A value for the host, or raise _HostError with the type name of the first value that is not a
+    Number, a String or an LList of them."""
+    if is_null_value(v):
+        return []
+    t = value_type_name(v)
+    if t == "Number":
+        return v.value
+    if t == "String":
+        return _value_to_display(v)
+    if isinstance(v, LList):
+        items = []
+        while not is_null_value(v):
+            if not isinstance(v, LList):
+                raise _HostError(value_type_name(v))
+            items.append(_to_host(v.head))
+            v = v.tail
+        return items
+    raise _HostError(t)
+
+def _from_host(h):
+    if isinstance(h, float):
+        return Number(h)
+    if isinstance(h, str):
+        return string_value(h)
+    result = NULL
+    for item in reversed(h):
+        result = LList(_from_host(item), result)
+    return result
+
+def prim_Host_call(vp, gvenv):
+    """__Host_call__ onError name args ,(result)
+    Call the function of the host named name with args (an LList of Numbers,
+    Strings and LLists of them). This VM has only the functions every VM has
+    (HOST_FUNCTIONS); another name goes to onError."""
+    prim  = "__Host_call__"
+    olist = vp["olist"]
+    if len(olist) < 3: raise VProcError(f"{prim}: missing argument(s)")
+    on_error = olist.pop(0)
+    name     = olist.pop(0)
+    args     = olist.pop(0)
+    if value_type_name(name) != "String":
+        _prim_error(vp, on_error, f"{prim}: expected String name, got {value_type_name(name)}")
+        return
+    fname = _value_to_display(name)
+    try:
+        hargs = _to_host(args)
+        if not isinstance(hargs, list):
+            raise _HostError(value_type_name(args))
+    except _HostError as e:
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        return
+    f = HOST_FUNCTIONS.get(fname)
+    if f is None:
+        _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
+        return
+    try:
+        result = f(hargs)
+    except _HostError as e:
+        _prim_error(vp, on_error, str(e))
+        return
+    _prim_return(vp, [_from_host(result)])
+
+def _host_name_args(vp, prim, on_error, name, args):
+    """The name and the arguments of a call of the host, or None after going to onError."""
+    if value_type_name(name) != "String":
+        _prim_error(vp, on_error, f"{prim}: expected String name, got {value_type_name(name)}")
+        return None
+    try:
+        hargs = _to_host(args)
+        if not isinstance(hargs, list):
+            raise _HostError(value_type_name(args))
+    except _HostError as e:
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        return None
+    return _value_to_display(name), hargs
+
+# The result of a call that waits goes through a pipe as the JSON text of a result, {"r":value} or
+# {"e":"message"}, as on the VM for wasm32 (vm/src/prim/host.rs): a Number that JSON cannot write as
+# {"n":"-0"} and the like, the empty LList as null.
+def _host_json(h):
+    if isinstance(h, float):
+        if math.isnan(h): return '{"n":"NaN"}'
+        if math.isinf(h): return '{"n":"Infinity"}' if h > 0 else '{"n":"-Infinity"}'
+        if h == 0 and math.copysign(1.0, h) < 0: return '{"n":"-0"}'
+        return repr(h)
+    if isinstance(h, str):
+        return json.dumps(h, ensure_ascii=False)
+    if not h:
+        return "null"
+    return "[" + ",".join(_host_json(x) for x in h) + "]"
+
+def _host_result_json(ok, v):
+    return '{"r":' + _host_json(v) + "}" if ok else '{"e":' + json.dumps(v, ensure_ascii=False) + "}"
+
+def _host_from_json(v):
+    if v is None: return []
+    if isinstance(v, list): return [_host_from_json(x) for x in v]
+    if isinstance(v, dict):
+        n = {"-0": -0.0, "NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}.get(v.get("n"))
+        if n is None or len(v) != 1: raise ValueError("a value that is not a Number, a String or a list")
+        return n
+    if isinstance(v, bool): raise ValueError("a value that is not a Number, a String or a list")
+    if isinstance(v, (int, float)): return float(v)
+    return v
+
+def _host_finish(w, text):
+    """Write the result text to the pipe end w and close it. A reader that has gone (its VProc was
+    killed and the Stream closed) makes the write fail: the result is dropped then."""
+    data = text.encode()
+    try:
+        while data:
+            n = os.write(w, data)
+            if n <= 0: break
+            data = data[n:]
+    except OSError:
+        pass
+    os.close(w)
+
+# The longest result that a function of HOST_FUNCTIONS (in the step of the call) or test.later (in the
+# scheduler) writes to its pipe before any VProc reads it
+HOST_PIPE_MAX = 8192
+
+def prim_Host_start(vp, gvenv):
+    """__Host_start__ onError name args ,(inputStream)
+    Start the function of the host named name with args; when it has finished, inputStream is at its
+    end (__OS_wait_readable__), and __Host_result__ gives its result. The functions of HOST_FUNCTIONS
+    finish at once; test.later (its first argument is a count) by the virtual clock."""
+    _host_start(vp, "__Host_start__", False)
+
+def prim_Host_start_tracked(vp, gvenv):
+    """__Host_start_tracked__ onError name args Ref ,(inputStream)
+    __Host_start__, and in the same step, put the Stream in front of the LList in the Ref (as
+    __OS_open_tracked__), so that a killed VProc leaves no pipe open."""
+    _host_start(vp, "__Host_start_tracked__", True)
+
+def _host_start(vp, prim, tracked):
+    olist = vp["olist"]
+    n = 4 if tracked else 3
+    if len(olist) < n: raise VProcError(f"{prim}: missing argument(s)")
+    on_error, name, args = [olist.pop(0) for _ in range(3)]
+    track = olist.pop(0) if tracked else None
+    if tracked and not (isinstance(track, Ref) and (is_null_value(track.value) or isinstance(track.value, LList))):
+        got = f"a Ref of {value_type_name(track.value)}" if isinstance(track, Ref) else value_type_name(track)
+        _prim_error(vp, on_error, f"{prim}: expected a Ref of an LList, got {got}")
+        return
+    na = _host_name_args(vp, prim, on_error, name, args)
+    if na is None: return
+    fname, hargs = na
+    later = fname == "test.later"
+    sleep = fname == "time.sleep"
+    f = HOST_FUNCTIONS.get(fname)
+    if sleep:
+        if not (hargs and isinstance(hargs[0], float) and hargs[0] >= 0):
+            _prim_error(vp, on_error, f"{prim}: time.sleep: expected milliseconds (a Number, 0 or more)")
+            return
+    elif later:
+        if not (hargs and isinstance(hargs[0], float) and hargs[0] >= 0):
+            _prim_error(vp, on_error, f"{prim}: test.later: expected a count (a Number, 0 or more) first")
+            return
+    elif f is None:
+        _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
+        return
+    if later:
+        text = _host_result_json(True, hargs)
+    elif sleep:
+        text = _host_result_json(True, [])
+    else:
+        try:
+            text = _host_result_json(True, f(hargs))
+        except _HostError as e:
+            text = _host_result_json(False, str(e))
+    # The scheduler writes the result of test.later before any VProc reads it: a longer one would block it
+    if len(text.encode()) > HOST_PIPE_MAX:
+        text = _host_result_json(False, f"{prim}: the result of {fname} is longer than {HOST_PIPE_MAX} bytes")
+    r, w = os.pipe()
+    if later:
+        SCHEDULER.later_calls += 1
+        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w, text))
+    elif sleep:
+        # The scheduler finishes it when the time has come (Scheduler.finish_timers)
+        SCHEDULER.timers.append((time.monotonic() + min(hargs[0], 1e12) / 1000.0, w, text))
+    else:
+        _host_finish(w, text)
+    stream = Stream(r, "r")
+    if tracked:
+        track.value = LList(stream, track.value)
+        SCHEDULER.ref_changed = True
+    _prim_return(vp, [stream])
+
+def prim_Host_result(vp, gvenv):
+    """__Host_result__ onError inputStream ,(result)
+    The result of the call of __Host_start__ that gave inputStream, which is then closed. onError if
+    the call failed, or has not finished (the pipe is not at its end)."""
+    prim  = "__Host_result__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{prim}: missing argument(s)")
+    on_error = olist.pop(0)
+    stream   = olist.pop(0)
+    if not _check_stream(vp, on_error, prim, stream, "r"): return
+    data = b""
+    while True:
+        readable, _, _ = select.select([stream.fd], [], [], 0)
+        if not readable:
+            _prim_error(vp, on_error, f"{prim}: the call has not finished")
+            return
+        chunk = os.read(stream.fd, 4096)
+        if not chunk: break
+        data += chunk
+    stream.close()
+    try:
+        obj = json.loads(data.decode("utf-8", errors="replace"))
+        if not (isinstance(obj, dict) and len(obj) == 1 and ("r" in obj or "e" in obj)):
+            raise ValueError("a JSON text that is not a result")
+        if "e" in obj:
+            _prim_error(vp, on_error, str(obj["e"]))
+            return
+        value = _host_from_json(obj["r"])
+    except ValueError as e:
+        _prim_error(vp, on_error, f"{prim}: the host gave {e}")
+        return
+    _prim_return(vp, [_from_host(value)])
 
 def prim_OS_sysconf(vp, gvenv):
     """__OS_sysconf__ onError name ,(Number)
@@ -2192,6 +2456,34 @@ class Scheduler:
         self.unpolled = 0        # steps since the OS was last checked for the waiting VProcs
         self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
         self.rng      = None     # CONMA_SEED: choose the next VProc at random (run)
+        # The calls of test.later (__Host_start__) by the virtual clock: the clock, the number of
+        # the last call, and (deadline, number, write end of the pipe, result text) of each call
+        self.later_clock = 0.0
+        self.later_calls = 0
+        self.later_jobs  = []
+        # The calls of time.sleep by the real clock: (when, write end of the pipe, result text). They are
+        # finished between two steps, so that a VProc sees the result written and the pipe closed at once
+        self.timers = []
+
+    def finish_timers(self):
+        """Finish the calls of time.sleep whose time has come."""
+        now = time.monotonic()
+        due = [t for t in self.timers if t[0] <= now]
+        if due:
+            self.timers = [t for t in self.timers if t[0] > now]
+            for _, w, text in due:
+                _host_finish(w, text)
+
+    def finish_later(self):
+        """Finish the call of test.later with the earliest deadline (then the first called), and move
+        the virtual clock to its deadline (docs/dev/PLATFORM-PLAN-ja.md 3.4); False if there is none."""
+        if not self.later_jobs:
+            return False
+        job = min(self.later_jobs, key=lambda j: (j[0], j[1]))
+        self.later_jobs.remove(job)
+        self.later_clock = job[0]
+        _host_finish(job[2], job[3])
+        return True
 
     def _install_sigchld(self):
         """Make SIGCHLD write a byte to a pipe, so that select() wakes up
@@ -2278,6 +2570,9 @@ class Scheduler:
         wfds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed and t.mode == "w"]
         if self.wakeup is not None: fds.append(self.wakeup)
         timeout = None if block else 0
+        if block and self.timers:
+            # a call of time.sleep that is not due yet: sleep no longer than until then
+            timeout = max(0.0, min(t[0] for t in self.timers) - time.monotonic())
         if any(isinstance(t, Stream) and t.closed for _, t in self.waiting):
             timeout = 0                 # a closed Stream wakes its VProc at once
         if fds or wfds or timeout == 0:
@@ -2365,10 +2660,14 @@ class Scheduler:
                 self.ref_changed = False
                 self.check_changes()
             if self.waiting:
+                if self.timers:
+                    self.finish_timers()
                 if not self.ready:
                     # Without a ready VProc, sleep in the OS instead of busy waiting.
+                    # A call of test.later finishes first (the virtual clock moves),
+                    # and the check does not sleep then: its reader may have gone.
                     self.unpolled = 0
-                    self.check_waiting(block=True)
+                    self.check_waiting(block=not self.finish_later())
                     if not self.ready: continue
                 elif self.unpolled >= POLL_INTERVAL:
                     # While other VProcs are ready, check the OS only every
@@ -2892,6 +3191,11 @@ PRIMITIVES = {
     "__Ref_wait_change__":     prim_Ref_wait_change,
     "__JS_call__":             prim_JS_call,
     "__JS_value__":            prim_JS_value,
+    "__Feature_available__":   prim_Feature_available,
+    "__Host_call__":           prim_Host_call,
+    "__Host_start__":          prim_Host_start,
+    "__Host_start_tracked__":  prim_Host_start_tracked,
+    "__Host_result__":         prim_Host_result,
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

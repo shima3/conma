@@ -1,0 +1,81 @@
+#!/bin/bash
+# bin/lang-step-check: 言語キット（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）に実行時の部品（エラー、スケジューラ）を
+# 移しても、変換したプログラムの動きと速さが変わらないことを、ステップ数で確かめる（M2 の PR shima3/conma#5 のレビューの 1）。
+#   bin/lang-step-check BASE
+# BASE（コミット）の木と、今のワークツリーのそれぞれで、sjs/test（wasm 版の VM だけで流す step9 と step10 を除く）と
+# conjs/test の場合（ファイルを書くか、HTTP のサーバが要るので、conjs/test/run_case.sh が一時ディレクトリに写して動かす、
+# copy.txt のあるステップを除く。段階 P5）と、sjs/bench の loop、fib、nbody
+# （小さい大きさ：100000、20、2000）を、その木の変換器で変換し、その木の include で作ったモジュールを、Rust 版の VM で
+# CONMA_PROFILE を付けて動かす。プログラムごとに、出力（標準出力、標準エラー、終了ステータス）とステップ数を比べ、違うものを
+# 出す（その木にないプログラムは、動かさず、比べない）。最後に、ステップ数の合計を出す。違いがなければ 0 で終わる。VM は、どちらの木でも、このワークツリーの Rust 版の VM。
+# 時間がかかる（Apple M1 で数分）。段階 P4 より前（alpha の 68795c9 まで）と比べると、例外を投げるプログラムは、投げるたびに
+# 1 ステップ多くなる（docs/dev/PLATFORM-PLAN-ja.md の 8.5 節。受け入れた違い）ので、P4 の後のコミットと比べる。
+set -e -o pipefail
+root="$(cd "$(dirname "$0")/.."; pwd -P)"
+conma="$root/vm/target/release/conma"
+if [ $# -ne 1 ]; then echo "usage: lang-step-check BASE" >&2; exit 2; fi
+base="$(git -C "$root" rev-parse --verify "$1^{commit}")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang-step-check.XXXXXX")"
+cleanup() {
+  git -C "$root" worktree remove --force "$tmp/base" 2>/dev/null || true
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+git -C "$root" worktree add --quiet --detach "$tmp/base" "$base"
+
+# 木 tree で、programs を動かし、out/プログラム.out（出力）と out/プログラム.steps（ステップ数）を作る
+run_tree() {
+  local tree="$1" out="$2" f lang src inc
+  mkdir -p "$out"
+  for lang in sjs conjs; do
+    "$conma" build --include "$tree/include" --include "$tree/sjs/include" "$tree/$lang/${lang}c.se" > "$out/$lang.module.se"
+  done
+  inc=(--include "$tree/include" --include "$tree/conjs/include" --include "$tree/sjs/include")
+  for f in "${programs[@]}"; do
+    [ -f "$tree/$f" ] || continue   # その木にないプログラム（BASE にない新しいテスト）は動かさない
+    case "$f" in *.con.js) lang=conjs ;; *) lang=sjs ;; esac
+    mkdir -p "$out/$(dirname "$f")"
+    src="$tree/$f"
+    case "$f" in
+      sjs/bench/loop.safe.js) sed 's/N_ARG/100000/' "$src" > "$out/$f.src" ; src="$out/$f.src" ;;
+      sjs/bench/fib.safe.js) sed 's/N_ARG/20/' "$src" > "$out/$f.src" ; src="$out/$f.src" ;;
+      sjs/bench/nbody.safe.js) sed 's/N_ARG/2000/' "$src" > "$out/$f.src" ; src="$out/$f.src" ;;
+    esac
+    set +e
+    (cd "$(dirname "$tree/$f")" && "$conma" --main "$out/$lang.module.se" "$src" > "$out/$f.se" 2> "$out/$f.out" < /dev/null)
+    if [ $? -ne 0 ]; then
+      # 変換のエラー（受け付けない構文のテスト）：その出力を比べる
+      echo "translate: failed" >> "$out/$f.out"; echo 0 > "$out/$f.steps"; set -e; continue
+    fi
+    "$conma" build "${inc[@]}" "$out/$f.se" > "$out/$f.module.se" 2>> "$out/$f.out"
+    (cd "$(dirname "$tree/$f")" && CONMA_PROFILE="$out/prof.tsv" "$conma" --main "$out/$f.module.se" > "$out/$f.run" 2>&1 < /dev/null)
+    echo "exit: $?" >> "$out/$f.run"
+    cat "$out/$f.run" >> "$out/$f.out"
+    awk -F '\t' '$2 == "body" { s += $1 } END { print s + 0 }' "$out/prof.tsv" > "$out/$f.steps"
+    rm -f "$out/prof.tsv" "$out/$f.module.se"
+    set -e
+  done
+}
+
+cd "$root"
+programs=()
+while IFS= read -r f; do programs+=("$f"); done < <(
+  { ls sjs/test/*/*.safe.js conjs/test/*/*.con.js | grep -v -e '^sjs/test/step9/' -e '^sjs/test/step10/' |
+      while IFS= read -r f; do [ -f "$(dirname "$f")/copy.txt" ] || echo "$f"; done
+    echo sjs/bench/loop.safe.js; echo sjs/bench/fib.safe.js; echo sjs/bench/nbody.safe.js; } | sort)
+run_tree "$tmp/base" "$tmp/out-base"
+run_tree "$root" "$tmp/out-now"
+status=0
+tb=0; tn=0
+for f in "${programs[@]}"; do
+  if [ ! -f "$tmp/base/$f" ]; then continue; fi   # BASE にないプログラム（新しいテスト）は比べない
+  # 出力のパスは木によって違うので、木のパスを消してから比べる
+  sed -e "s|$tmp/base/||g" -e "s|$tmp/out-base/||g" "$tmp/out-base/$f.out" > "$tmp/a"
+  sed -e "s|$root/||g" -e "s|$tmp/out-now/||g" "$tmp/out-now/$f.out" > "$tmp/b"
+  diff "$tmp/a" "$tmp/b" > "$tmp/diff" || { echo "== $f (output)"; head -10 "$tmp/diff"; status=1; }
+  b=$(cat "$tmp/out-base/$f.steps"); n=$(cat "$tmp/out-now/$f.steps")
+  tb=$((tb + b)); tn=$((tn + n))
+  if [ "$b" != "$n" ]; then echo "== $f: steps $b (BASE), $n (now), $((n - b))"; status=1; fi
+done
+echo "steps of ${#programs[@]} programs: $tb (BASE), $tn (now), $((tn - tb))"
+exit $status

@@ -1,0 +1,3 @@
+canvas: no
+fill_rect: __Host_call__: no host function "canvas.fill_rect"
+exit: 0

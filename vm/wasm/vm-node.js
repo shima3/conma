@@ -8,6 +8,9 @@
 // waits for it. The builtin js of ConSh (__JS_call__) evaluates JavaScript in this process (conma.js).
 // __VProc_spawn__ makes the module of its source file as conma build does: another instance of the
 // VM runs the ConMa frontend in the repository (vm/frontend.module.se) to its end.
+// CONMA_HOST, if set, is the path of a JavaScript file (a CommonJS module) whose exports give the
+// functions of the host that __Host_call__ calls and the platform features they make available
+// ({hostFunctions: {name: f, ...}, hostFeatures: [...]}, the hooks of conma.js; docs/dev/PLATFORM-PLAN-ja.md).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -347,7 +350,10 @@ function buildModule(wasm, source, cwd, core) {
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
   let vm = null;
+  const host = process.env.CONMA_HOST ? require(path.resolve(process.env.CONMA_HOST)) : {};
   vm = ConMaVM.create(wasm, writeAll, {
+    hostFunctions: host.hostFunctions,
+    hostFeatures: host.hostFeatures,
     inputNeeded: readInput,
     jsDone: notify,
     hostFs,

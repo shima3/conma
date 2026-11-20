@@ -1,0 +1,35 @@
+;; __Feature_available__ name ,(Boolean)（docs/PRIMITIVES.md の 15、docs/dev/PLATFORM-PLAN-ja.md の段階 P1）と、
+;; プラットフォームの機能 "js" の印 (Platform "js")。
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; name: yes か no
+(define show ,(name next)
+  __Feature_available__ name ,(b)
+  __if_then_else__ b (,() __NULL__ "yes") (,() __NULL__ "no") ,(answer)
+  __String_concat__ name ": " ,(s) __String_concat__ s answer ,(s)
+  println s ,()
+  next)
+
+;; 拡張 ConMa の機能はどこでも使える。"wasm" と "js" は VM とホストによる。ほかの名前は使えない
+(define case1 ,()
+  show "array" (,() show "bitwise32" (,() show "boolean" (,() show "chan" (,() show "control" (,()
+  show "wasm" (,() show "js" (,() show "canvas" (,() show "" (,() show "JS" (,() __NULL__)))))))))))
+
+;; 名前が String でなければエラー
+(define case2 ,()
+  __Number_fromString__ (,(e) println e) "1" ,(one)
+  __Feature_available__ one ,(b)
+  println "not reached")
+
+;; "js" を確かめてから使う。ネイティブの VM と Python の VM には JavaScript がない。確かめずに使えば onError に行く
+(define case3 ,()
+  __Feature_available__ "js" ,(js)
+  __if_then_else__ js
+    (,() __JS_call__ (,(e) println e) "1 + 2" __NULL__ ,(in out) println "called")
+    (,() println "no JavaScript: not called") ,()
+  __Cont_get__ ,(return)
+  __JS_value__ (,(e) println e ,() return) "no such value" ,(v)
+  println v)

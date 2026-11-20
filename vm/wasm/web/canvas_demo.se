@@ -1,0 +1,108 @@
+;; canvas の見本（docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）：跳ねる玉を描くアニメーション。
+;; canvas.html が、wasm 版の VM で動かす。1 コマごとに、全体の命令を Canvas_draw でまとめて描き、
+;; Canvas_frame で次のコマを待つ（待つ間、ほかの VProc は動く）。canvas のないプラットフォームでは、そう書いて終わる。
+;; canvas.html は main を引数なしで呼ぶ。
+
+(include "platform/canvas.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+(define num ,(text)
+  __Number_fromString__ (,(e) println e) text)
+
+(define fail ,(e)
+  __String_concat__ "canvas_demo: " e ,(m) println m ,()
+  num "1" ,(n1) __OS_exit__ (,(e) __NULL__) n1)
+
+;; 0 以上 1 未満の数の列（線形合同法。VM によらず同じ）：次の種と値
+(define rand ,(seed)
+  num "1103515245" ,(a) num "12345" ,(c) num "2147483648" ,(m)
+  __Number_multiply__ seed a ,(s) __Number_add__ s c ,(s) __Number_remainder__ fail s m ,(s)
+  __Number_divide__ fail s m ,(v)
+  __NULL__ s v)
+
+(define colors ,()
+  __LList_cons__ "#e4572e" __NULL__ ,(l) __LList_cons__ "#29335c" l ,(l) __LList_cons__ "#f3a712" l ,(l)
+  __LList_cons__ "#669bbc" l ,(l) __LList_cons__ "#a8c686" l ,(l) __LList_cons__ "#8e5572" l ,(l)
+  __NULL__ l)
+
+;; n 個の玉：(x y dx dy r color) の LList
+(define make_balls ,(n w h seed palette acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ n ,(end) __if__ end (,() return acc) ,()
+  rand seed ,(seed rx) rand seed ,(seed ry) rand seed ,(seed rdx) rand seed ,(seed rdy) rand seed ,(seed rr)
+  num "8" ,(n8) num "16" ,(n16) num "6" ,(n6) num "3" ,(n3) num "1" ,(n1)
+  __Number_multiply__ rr n16 ,(r) __Number_add__ r n8 ,(r)
+  __Number_multiply__ r n3 ,(r3) __Number_subtract__ w r3 ,(spanx) __Number_subtract__ h r3 ,(spany)
+  __Number_multiply__ rx spanx ,(x) __Number_add__ x r ,(x)
+  __Number_multiply__ ry spany ,(y) __Number_add__ y r ,(y)
+  __Number_multiply__ rdx n6 ,(dx) __Number_subtract__ dx n3 ,(dx)
+  __Number_multiply__ rdy n6 ,(dy) __Number_subtract__ dy n3 ,(dy)
+  __LList_uncons__ fail palette ,(color rest)
+  __is_null__ rest ,(empty)
+  __if_then_else__ empty (,() colors) (,() __NULL__ rest) ,(rest)
+  __LList_cons__ color __NULL__ ,(b) __LList_cons__ r b ,(b) __LList_cons__ dy b ,(b) __LList_cons__ dx b ,(b)
+  __LList_cons__ y b ,(b) __LList_cons__ x b ,(b)
+  __LList_cons__ b acc ,(acc)
+  __Number_subtract__ n n1 ,(n)
+  make_balls n w h seed rest acc)
+
+;; p を d だけ動かし、0 + r から size - r の外に出たら、向きを変える：新しい p と d
+(define bounce ,(p d r size)
+  __Cont_get__ ,(return)
+  __Number_add__ p d ,(p)
+  __Number_subtract__ size r ,(hi)
+  num "0" ,(n0) __Number_subtract__ n0 d ,(back)
+  __Number_if_greater__ r p (,() __Number_subtract__ r p ,(over) __Number_add__ r over ,(p) return p back) ,()
+  __Number_if_greater__ p hi (,() __Number_subtract__ p hi ,(over) __Number_subtract__ hi over ,(p) return p back) ,()
+  return p d)
+
+;; 玉を 1 コマ動かし、描く命令を cmds の前に加える：動かした玉の LList と cmds
+(define step_balls ,(balls w h moved cmds)
+  __Cont_get__ ,(return)
+  __is_null__ balls ,(end) __if__ end (,() return moved cmds) ,()
+  __LList_uncons__ fail balls ,(b rest)
+  __LList_uncons__ fail b ,(x b) __LList_uncons__ fail b ,(y b) __LList_uncons__ fail b ,(dx b)
+  __LList_uncons__ fail b ,(dy b) __LList_uncons__ fail b ,(r b) __LList_uncons__ fail b ,(color b)
+  bounce x dx r w ,(x dx)
+  bounce y dy r h ,(y dy)
+  __LList_cons__ color __NULL__ ,(nb) __LList_cons__ r nb ,(nb) __LList_cons__ dy nb ,(nb) __LList_cons__ dx nb ,(nb)
+  __LList_cons__ y nb ,(nb) __LList_cons__ x nb ,(nb)
+  __LList_cons__ nb moved ,(moved)
+  num "0" ,(n0) num "6.283185307179586" ,(tau)
+  __LList_cons__ "fill" __NULL__ ,(c) __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ tau __NULL__ ,(c) __LList_cons__ n0 c ,(c) __LList_cons__ r c ,(c) __LList_cons__ y c ,(c)
+  __LList_cons__ x c ,(c) __LList_cons__ "arc" c ,(c) __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ "begin_path" __NULL__ ,(c) __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ color __NULL__ ,(c) __LList_cons__ "fill_style" c ,(c) __LList_cons__ c cmds ,(cmds)
+  step_balls rest w h moved cmds)
+
+;; コマを描き続ける。frames は描いたコマの数
+(define animate ,(balls w h frames)
+  step_balls balls w h __NULL__ __NULL__ ,(balls cmds)
+  num "0" ,(n0) num "10" ,(n10) num "24" ,(n24)
+  __Number_toString__ frames ,(fs) __String_concat__ "ConMa frame " fs ,(label)
+  __LList_cons__ n24 __NULL__ ,(c) __LList_cons__ n10 c ,(c) __LList_cons__ label c ,(c) __LList_cons__ "fill_text" c ,(c)
+  __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ "#333" __NULL__ ,(c) __LList_cons__ "fill_style" c ,(c) __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ h __NULL__ ,(c) __LList_cons__ w c ,(c) __LList_cons__ n0 c ,(c) __LList_cons__ n0 c ,(c)
+  __LList_cons__ "fill_rect" c ,(c) __LList_cons__ c cmds ,(cmds)
+  __LList_cons__ "#fafafa" __NULL__ ,(c) __LList_cons__ "fill_style" c ,(c) __LList_cons__ c cmds ,(cmds)
+  Canvas_draw fail cmds ,()
+  Canvas_frame fail ,(t)
+  num "1" ,(n1) __Number_add__ frames n1 ,(frames)
+  animate balls w h frames)
+
+(define main ,()
+  Canvas_available ,(ok)
+  __unless__ ok (,() println "canvas_demo: this platform has no canvas" ,() num "1" ,(n1) __OS_exit__ (,(e) __NULL__) n1) ,()
+  num "12" ,(n)
+  Canvas_size fail ,(w h)
+  Canvas_font fail "16px sans-serif" ,()
+  num "42" ,(seed)
+  colors ,(palette)
+  make_balls n w h seed palette __NULL__ ,(balls)
+  num "0" ,(n0)
+  animate balls w h n0)

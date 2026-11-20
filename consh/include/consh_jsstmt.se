@@ -7,7 +7,7 @@
 ;; 先頭の語で JavaScript と判定する JS の文は、段階 A3 で消した（docs/consh/dev/JS-PLAN-ja.md の 3.26）。
 ;; consh_eval.se（参照版も）が include する
 
-;; SJS の変換器と実行時の支え（段階 B。sjs/README-ja.md）
+;; SJS の変換器とランタイム（段階 B。sjs/README-ja.md）
 (include "sjs_rt.se")
 (include "sjs_lex.se")
 (include "sjs_parse.se")
@@ -449,7 +449,7 @@
 ;; ── 段階 B4：SJS を ConMa に変換して動かす（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2、sjs/README-ja.md）──
 ;; (( )) と $(( )) の SJS式を、sjs_gen.se の Sjs_translate_module でモジュールのソースにし、一時ファイルに書いて
 ;; （コードの文字列ごとに覚えておく）、__VProc_spawn__ で新しい VProc として動かし、終わるのを待つ。
-;; モジュールは、実行時の支えの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、
+;; モジュールは、ランタイムの関数（Sjs_rt_dict）と文脈 G（組み込みと値の番号。ConSh 全体で 1 つ）を受け取り、
 ;; "setup"（Sjsb_setup）で、その VProc の PDict に、SJS変数の Dict（文脈の "sjsvars"）、$名前 を引く関数、
 ;; console.log の出力先、受け手のない例外の行き先を置く。SJS の値は ConMa の値（sjs_rt.se）で、シェル変数には、
 ;; 文字列はそのまま、ほかは {"sjsv": 値} の Dict で入れる（Value_force が、$ で読むたびにシェルの値にする。Sjsb_to_shell）。
@@ -684,7 +684,7 @@
   ;; 同じ式を同時に動かすときに、ファイルを分けることが多いように足す
   __String_length__ source ,(slen)
   __Number_toString__ slen ,(ls)
-  Cat3 ch "-" ls ,(hash)
+  Kit_code_cat3 ch "-" ls ,(hash)
   __OS_get_envDict__ ,(env)
   __Dict_lookup_or__ env "TMPDIR" (,(k) __NULL__ "/tmp") ,(dir)
   Str_ends dir "/" ,(slash)
@@ -786,7 +786,7 @@
 ;; 共有する）。配列は要素を文字列かリストとして（オブジェクトの要素は JSON の文字列になる）。関数は SJS の値にならない
 (define Sjsb_from_js ,(G raw id)
   __Cont_get__ ,(return)
-  Sjs_starts id "number:" ,(test__) __if__ test__
+  Kit_lex_starts_with id "number:" ,(test__) __if__ test__
     (,() Js_force raw ,(text) __Number_fromString__ (,(m) return text __TRUE__) text ,(n) return n __TRUE__) ,()
   __String_equal__ id "boolean:true" ,(test__) __if__ test__ (,() return __TRUE__ __TRUE__) ,()
   __String_equal__ id "boolean:false" ,(test__) __if__ test__ (,() return __FALSE__ __TRUE__) ,()
@@ -797,7 +797,7 @@
   __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return __NULL__ __FALSE__) ,()
   __String_equal__ type "String" ,(test__) __unless__ test__
     (,() List_fromLazyList value ,(items) Sjsb_from_list G items __NULL__ ,(vs) Sjs_reverse_list vs ,(vs) Sjs_array G vs ,(a) return a __TRUE__) ,()
-  Sjs_starts value "{" ,(test__) __unless__ test__ (,() return value __TRUE__) ,()
+  Kit_lex_starts_with value "{" ,(test__) __unless__ test__ (,() return value __TRUE__) ,()
   Sjs_lex value ,(toks)
   Sjsb_json G toks ,(v rest)
   __NULL__ v __TRUE__)
@@ -806,8 +806,8 @@
 (define Sjsb_json ,(G toks)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
-  Tok_kind tok ,(kind)
-  Tok_text tok ,(text)
+  Kit_lex_tok_kind tok ,(kind)
+  Kit_lex_tok_text tok ,(text)
   __String_equal__ kind "str" ,(test__) __if__ test__ (,() return text rest) ,()
   __String_equal__ kind "num" ,(test__) __if__ test__ (,() __Number_fromString__ __print_exit_error__ text ,(n) return n rest) ,()
   __String_equal__ text "-" ,(test__) __if__ test__
@@ -825,7 +825,7 @@
 (define Sjsb_json_items ,(G a toks)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
-  Tok_text tok ,(text)
+  Kit_lex_tok_text tok ,(text)
   __String_equal__ text "]" ,(test__) __if__ test__ (,() return rest) ,()
   __String_equal__ text "," ,(test__) __if__ test__ (,() Sjsb_json_items G a rest ,(r) return r) ,()
   Sjsb_json G toks ,(v rest)
@@ -836,7 +836,7 @@
 (define Sjsb_json_props ,(G o toks)
   __Cont_get__ ,(return)
   __LList_uncons__ __print_exit_error__ toks ,(tok rest)
-  Tok_text tok ,(text)
+  Kit_lex_tok_text tok ,(text)
   __String_equal__ text "}" ,(test__) __if__ test__ (,() return rest) ,()
   __String_equal__ text "," ,(test__) __if__ test__ (,() Sjsb_json_props G o rest ,(r) return r) ,()
   ;; 名前 : 値
@@ -969,7 +969,7 @@
 
 ;; PDict の SJS の文脈を保存して戻す（SJS の関数を、ConSh の VProc で呼ぶとき）
 (define Sjsb_pdict_keys ,()
-  Sjs_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_pos sjs_gen sjs_jobs sjs_unhandled")
+  Kit_lex_words "sjs_G sjs_vars sjs_shell sjs_out sjs_fail sjs_handlers sjs_pos sjs_gen sjs_jobs sjs_unhandled")
 
 (define Sjsb_pdict_save ,()
   Sjsb_pdict_keys ,(keys)

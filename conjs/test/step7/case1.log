@@ -1,0 +1,6 @@
+waited at least 100 ms: true
+the other task ran during sleep: true
+counter stopped
+Date.now() is an integer: true number
+sleep returns undefined
+exit: 0

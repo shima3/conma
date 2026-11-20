@@ -47,6 +47,13 @@
 ;; "control" は __if_then_else__、__if__、__unless__、__Cont_get__ と、値を自分で確かめる 6 つの条件分岐
 ;; （__if_null_then_else__ など）、"wasm" は __Wasm_compile__、__Wasm_call__、__Wasm_call_memory__、__Dict_numbers__、__Dict_put_numbers__
 (define __Resolver_uses__ ,(globals values entries)
+  __Resolver_platform__ globals values ,(platform)
+  __is_null__ platform ,(none)
+  __if_then_else__ none
+    (,() __NULL__ entries)
+    (,()
+      __AST_new__ "Platform" __NULL__ platform ,(item)
+      __LList_cons__ item entries) ,(entries)
   __Resolver_features__ globals values ,(features)
   __is_null__ features ,(none)
   __if_then_else__ none
@@ -54,6 +61,27 @@
     (,()
       __AST_new__ "Uses" __NULL__ features ,(uses)
       __LList_cons__ uses entries))
+
+;; プラットフォームの機能（docs/dev/PLATFORM-PLAN-ja.md の 3.1）：その組み込みを定義のない大域の名前として使うモジュールは、
+;; (Uses ...) の後（なければ (F ...) の後）に (Platform ...) を置く（bin/resolver と同じ）。言語の層（コア ConMa と拡張 ConMa）とは
+;; 別の軸で、どの VM もその組み込みを持ち、ないプラットフォームでは onError に行く。"js" は __JS_call__ と __JS_value__、
+;; "host" は __Host_call__ と、待つ __Host_start__、__Host_start_tracked__、__Host_result__（ホストの関数を名前で呼ぶ。
+;; docs/dev/PLATFORM-PLAN-ja.md の 3.2 と 3.4）
+(define __Resolver_platform__ ,(globals values)
+  __LList_cons__ "__Host_result__" __NULL__ ,(hosts)
+  __LList_cons__ "__Host_start_tracked__" hosts ,(hosts)
+  __LList_cons__ "__Host_start__" hosts ,(hosts)
+  __LList_cons__ "__Host_call__" hosts ,(hosts)
+  __Resolver_uses_prim__ globals values hosts ,(usesHost)
+  __if_then_else__ usesHost
+    (,() __LList_cons__ "host" __NULL__)
+    (,() __NULL__ __NULL__) ,(features)
+  __LList_cons__ "__JS_value__" __NULL__ ,(js)
+  __LList_cons__ "__JS_call__" js ,(js)
+  __Resolver_uses_prim__ globals values js ,(usesJs)
+  __if_then_else__ usesJs
+    (,() __LList_cons__ "js" features)
+    (,() __NULL__ features))
 
 ;; 使う機能の名前の列（bin/resolver の EXT_PRIMITIVES の順）
 (define __Resolver_features__ ,(globals values)
@@ -331,7 +359,7 @@
 (define __Resolver_warnings__ ,(module)
   __LList_uncons__ __print_exit_error__ module ,(ast_kind__ ast_rest__) __LList_uncons__ __print_exit_error__ ast_rest__ ,(ast_pos__ children)
   __LList_uncons__ __print_exit_error__ children ,(f entries)
-  ;; (Uses ...) があれば飛ばす（__Resolver_uses__）
+  ;; (Uses ...) と (Platform ...) があれば飛ばす（__Resolver_uses__）
   __Resolver_skip_uses__ entries ,(entries)
   __Dict_new__ ,(arities)
   __Resolver_arities__ arities entries ,()
@@ -340,16 +368,20 @@
   __Ref_get__ acc ,(messages)
   __Resolver_reverse__ messages __NULL__)
 
-;; entries の最初が (Uses ...) なら、それを除いたもの
+;; entries の初めの (Uses ...) と (Platform ...) を除いたもの
 (define __Resolver_skip_uses__ ,(entries)
   __is_null__ entries ,(test__) __if_then_else__ test__
     (,() __NULL__ entries)
     (,()
       __LList_uncons__ __print_exit_error__ entries ,(first rest)
       __LList_uncons__ __print_exit_error__ first ,(kind more)
-      __String_equal__ kind "Uses" ,(test__) __if_then_else__ test__
-        (,() __NULL__ rest)
-        (,() __NULL__ entries)))
+      __String_equal__ kind "Uses" ,(isUses)
+      __String_equal__ kind "Platform" ,(isPlatform)
+      __if_then_else__ isUses
+        (,() __Resolver_skip_uses__ rest)
+        (,() __if_then_else__ isPlatform
+          (,() __Resolver_skip_uses__ rest)
+          (,() __NULL__ entries))))
 
 ;; 各 entry (G id "name" value) の value が可変長でない Function なら、name に Head のパラメータの数を入れる
 (define __Resolver_arities__ ,(arities entries)

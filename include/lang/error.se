@@ -1,0 +1,36 @@
+;; 言語キットの、実行時のエラーの部品（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）。SJS のランタイム
+;; （sjs/include/sjs_rt.se）から取り出した。変換したプログラムが include する。
+;;   Kit_err_pos suffix ,(pos)
+;;       例外を投げた所の位置（"ファイル:行:桁"。なければ null）：CChain の CFrame のうち、SInfo が suffix（":言語"。SJS は
+;;       ":sjs"）で終わるいちばん上のもの（変換器が include/lang/code.se の Kit_code_sinfo_fill で付ける）から suffix を除いたもの。
+;;       CFrame を取り出して調べ、最後に __CChain_set__ で元の CChain に戻してから値を返す（調べる間は、CFrame を積む呼び出しを
+;;       しない）。位置をどこに置くか（SJS は PDict の "sjs_pos"）は、言語が決める
+;;   Kit_err_report pos prefix text
+;;       受け手のない例外：「位置: text」（pos が null なら「prefix text」。prefix は "sjs: " など）を標準エラーに出し、
+;;       終了ステータス 2 で終える
+
+(define Kit_err_pos ,(suffix)
+  __CChain_get__ ,(cc)
+  Kit_err_pos_scan cc suffix)
+
+(define Kit_err_pos_scan ,(cc suffix)
+  __CChain_pop_CFrame__ ,(cf)
+  __is_null__ cf ,(none)
+  __if_then_else__ none
+    (,() __CChain_set__ cc ,() __NULL__ __NULL__)
+    (,()
+      __CFrame_get_SInfo__ cf ,(si)
+      __String_strip_suffix__ si suffix ,(pos)
+      __String_equal__ pos si ,(other)
+      __if_then_else__ other
+        (,() Kit_err_pos_scan cc suffix)
+        (,() __CChain_set__ cc ,() __NULL__ pos)))
+
+(define Kit_err_report ,(pos prefix text)
+  __is_null__ pos ,(noPos)
+  __if_then_else__ noPos (,() __NULL__ prefix) (,() __String_concat__ pos ": ") ,(s)
+  __String_concat__ s text ,(s)
+  __String_concat__ s "\n" ,(s)
+  __OS_print_error__ s ,()
+  __Number_fromString__ __print_exit_error__ "2" ,(two)
+  __OS_exit__ __print_exit_error__ two)
