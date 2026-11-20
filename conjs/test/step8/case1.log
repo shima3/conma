@@ -1,0 +1,5 @@
+"first line\nsecond line\n"
+日本語のテキスト 8
+""
+writeFile returns undefined
+exit: 0

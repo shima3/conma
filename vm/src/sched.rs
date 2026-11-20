@@ -84,6 +84,8 @@ pub struct Machine {
     pub ref_changed: bool,
     /// The calls of test.later (__Host_start__) by the virtual clock.
     pub host_later: crate::prim::host::Later,
+    /// The calls of time.sleep (__Host_start__) by the real clock.
+    pub host_timers: crate::prim::host::Timers,
     /// Serial numbers of the values that traces show by number.
     pub serials: Serials,
     next_serial: usize,
@@ -256,6 +258,7 @@ impl Machine {
             main_failed: false,
             ref_changed: false,
             host_later: Default::default(),
+            host_timers: Default::default(),
             serials: Serials::default(),
             rng: None,
             blocking: true,
@@ -408,7 +411,8 @@ impl Machine {
         self.signals_seen = crate::sys::signals();
         let mut reads = Vec::new();
         let mut writes = Vec::new();
-        let mut timeout = if block { None } else { Some(0) };
+        // a call of time.sleep that is not due yet: sleep no longer than until then
+        let mut timeout = if block { self.host_timers.timeout_ms() } else { Some(0) };
         for (_, t) in &self.waiting {
             if let OsTarget::Stream(s) = t {
                 if s.closed.get() {
@@ -649,6 +653,9 @@ impl Machine {
                 self.check_changes();
             }
             if !self.waiting.is_empty() {
+                if !self.host_timers.is_empty() {
+                    self.host_timers.finish_due();
+                }
                 if self.ready.is_empty() {
                     // Without a ready VProc, sleep in the OS instead of busy waiting.
                     // A call of test.later finishes first (the virtual clock moves),

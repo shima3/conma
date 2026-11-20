@@ -62,10 +62,80 @@ fn test_fail(_args: &[HostValue]) -> Result<HostValue, String> {
     Err("test.fail: failed".into())
 }
 
+/// The functions of the host of the feature "time" (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage P5) that
+/// the native and transpiled VMs have (vm/python/vproc_step.py has the same); the VM for wasm32,
+/// which has no clock, asks its host (vm/wasm/conma.js). time.sleep, which waits, is not here:
+/// __Host_start__ handles it.
+#[cfg(unix)]
+const NATIVE: &[(&str, HostFn)] = &[("time.now", time_now)];
+#[cfg(not(unix))]
+const NATIVE: &[(&str, HostFn)] = &[];
+
+/// time.now: the time in milliseconds since 1970-01-01 00:00 UTC.
+#[cfg(unix)]
+fn time_now(_args: &[HostValue]) -> Result<HostValue, String> {
+    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "time.now: the clock is before 1970")?;
+    Ok(HostValue::Num(d.as_secs_f64() * 1000.0))
+}
+
+/// The function of BUILTIN or NATIVE named name.
+fn builtin(name: &str) -> Option<HostFn> {
+    BUILTIN.iter().chain(NATIVE.iter()).find(|(n, _)| *n == name).map(|(_, f)| *f)
+}
+
+/// time.sleep ms waits on the native and transpiled VMs (on the VM for wasm32 the host does it).
+const SLEEP: &str = "time.sleep";
+
+/// The calls of time.sleep that have not finished, by the real clock. The scheduler finishes those
+/// whose time has come between two steps (sched.rs), so that a VProc sees the result written and the
+/// pipe closed at once (a thread writing them could be seen between the two), and sleeps in poll()
+/// no longer than until the next one.
+#[derive(Default)]
+pub struct Timers {
+    /// (when, write end of the pipe, result text)
+    jobs: Vec<(std::time::Instant, i32, String)>,
+}
+
+impl Timers {
+    pub fn is_empty(&self) -> bool {
+        self.jobs.is_empty()
+    }
+
+    fn add(&mut self, ms: f64, w: i32, text: String) {
+        let d = std::time::Duration::from_secs_f64(ms.min(1e12) / 1000.0);
+        self.jobs.push((std::time::Instant::now() + d, w, text));
+    }
+
+    /// Finish the calls whose time has come.
+    pub fn finish_due(&mut self) {
+        let now = std::time::Instant::now();
+        let mut i = 0;
+        while i < self.jobs.len() {
+            if self.jobs[i].0 <= now {
+                let (_, w, text) = self.jobs.remove(i);
+                finish(w, &text);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// The milliseconds until the next call is due (rounded up), or None if there is none.
+    pub fn timeout_ms(&self) -> Option<i32> {
+        let now = std::time::Instant::now();
+        self.jobs
+            .iter()
+            .map(|(t, _, _)| t.saturating_duration_since(now))
+            .min()
+            .map(|d| d.as_micros().div_ceil(1000).min(i32::MAX as u128) as i32)
+    }
+}
+
 /// The platform features that the functions of the host give: "test" on every
-/// VM, and on the VM for wasm32 those its host names (sys::host_feature).
+/// VM, "time" on the native and transpiled VMs, and on the VM for wasm32 those its host names
+/// (sys::host_feature: "time" too).
 pub fn feature(name: &str) -> bool {
-    name == "test" || sys::host_feature(name)
+    name == "test" || (cfg!(unix) && name == "time") || sys::host_feature(name)
 }
 
 /// The value v as a value for the host; Err with the type name of the first
@@ -141,8 +211,8 @@ pub fn call(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let name = a.pop().unwrap();
     let on_error = a.pop().unwrap();
     let Some((fname, args)) = name_args(vp, prim, &on_error, &name, &args) else { return Ok(()) };
-    let result = match BUILTIN.iter().find(|(n, _)| *n == fname) {
-        Some((_, f)) => f(&args),
+    let result = match builtin(&fname) {
+        Some(f) => f(&args),
         None => match sys::host_call(&fname, &to_json(&HostValue::List(args))) {
             None => Err(format!("{}: no host function \"{}\"", prim, fname)),
             Some(Err(message)) => Err(message),
@@ -255,9 +325,18 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
         }
     };
     let Some((fname, args)) = name_args(vp, prim, &on_error, &name, &args) else { return Ok(()) };
-    let builtin = BUILTIN.iter().find(|(n, _)| *n == fname).map(|(_, f)| *f);
+    let builtin = builtin(&fname);
     let later = fname == "test.later";
-    if later {
+    let sleep = cfg!(unix) && fname == SLEEP;
+    if sleep {
+        match args.first() {
+            Some(HostValue::Num(n)) if *n >= 0.0 => {}
+            _ => {
+                vp.prim_error(on_error, &format!("{}: time.sleep: expected milliseconds (a Number, 0 or more)", prim));
+                return Ok(());
+            }
+        }
+    } else if later {
         match args.first() {
             Some(HostValue::Num(n)) if *n >= 0.0 => {}
             _ => {
@@ -276,6 +355,10 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
         let n = m.host_later.calls;
         let text = capped(prim, &fname, result_json(&Ok(HostValue::List(args))));
         m.host_later.jobs.push((deadline, n, w, text));
+    } else if sleep {
+        // the scheduler finishes it when the time has come (Timers)
+        let ms = if let Some(HostValue::Num(n)) = args.first() { *n } else { 0.0 };
+        m.host_timers.add(ms, w, result_json(&Ok(HostValue::List(Vec::new()))));
     } else if let Some(f) = builtin {
         finish(w, &capped(prim, &fname, result_json(&f(&args))));
     } else {

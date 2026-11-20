@@ -7,3 +7,9 @@ do
   echo "== ${t%/}"
   bash run_case.sh ${t%/}
 done
+# 待つ呼び出しのライブラリ（conjs/include/conjs_lib.se。4.4 節、段階 P5）が使うホストの関数と機能の名前が、docs/PRIMITIVES.md に
+# あることを確かめる（知らない名前は黙って onError や偽になり、書き間違いと区別できないため。test/fast16 と同じ）
+for name in $(grep -o '"[a-z]*\.[a-z_]*"' ../include/conjs_lib.se | tr -d '"' | grep -v '^fs\.' | sort -u) $(grep -o '__Feature_available__ "[a-z]*"' ../include/conjs_lib.se | sed 's/.*"\(.*\)"/\1/' | sort -u)
+do
+  grep -q "\`\"$name\"\`" ../../docs/PRIMITIVES.md || echo "$name is not in docs/PRIMITIVES.md"
+done

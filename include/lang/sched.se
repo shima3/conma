@@ -254,6 +254,25 @@
   Kit_sched_set_running S ,()
   __NULL__ ok payload)
 
+;; 待つための VProc で work を動かし、結果が届くまで今の処理だけを止める（Kit_sched_wait の、ホストの呼び出しでない形。
+;; ConJS の fetch が curl を動かすのに使う。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。work ,(ok payload) は、
+;; 待つための VProc の中で動き、ほかの処理は、その間も動く。返すのは work が返した（成否、値）
+(define Kit_sched_wait_work ,(work)
+  Kit_sched_state ,(S)
+  (,()
+    __Cont_get__ ,(k)
+    Kit_sched_suspend S k "waiting" ,(task)
+    Kit_sched_add S "pending" "1" ,()
+    __Dict_lookup_or__ S "self" __print_exit_error__ ,(self)
+    __Chan_of__ self ,(chan)
+    __Chan_writer__ chan ,(w)
+    __VProc_start__ (,() work ,(ok v) Kit_sched_put w task ok v) ,(vp)
+    Kit_sched_next S) ,(r)
+  __LList_uncons__ __print_exit_error__ r ,(ok more)
+  __LList_uncons__ __print_exit_error__ more ,(payload more)
+  Kit_sched_set_running S ,()
+  __NULL__ ok payload)
+
 (define Kit_sched_set_running ,(S)
   Kit_sched_get S "current" ,(task)
   Kit_sched_set task "state" "ready")

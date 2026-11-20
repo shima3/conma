@@ -1,0 +1,6 @@
+TypeError sleep: expected milliseconds (a number), got the string "x"
+TypeError setTimeout: the number 1 is not a function
+TypeError setTimeout: expected milliseconds (a number), got the string "soon"
+function function function function function
+time: true
+exit: 0
