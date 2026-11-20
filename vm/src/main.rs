@@ -5,6 +5,7 @@
 //!     conma [-t|--trace] -m|--main <module_file> [<arg> ...]
 //!     conma build [--warn-arity] [--include <dir>]... <source>
 //!     conma run [--include <dir>]... <source> [<arg> ...]
+//!     conma link <runtime_module> <program_module>
 //!
 //! build makes the module of a ConMa source file (and the files it includes)
 //! with the ConMa frontend that this executable embeds (vm/frontend.module.se,
@@ -12,7 +13,8 @@
 //! and bin/resolver do; the standard library (CONMA_INCLUDE, or include/ of
 //! the repository) is searched after the --include directories. run makes the
 //! module and runs it with __start__ and the arguments, as --main does.
-//! Neither needs Python.
+//! Neither needs Python. link joins two modules by the names of their globals
+//! (link.rs) and writes the module to standard output.
 //!
 //! --trace prints the VProc state to standard error before the first step and
 //! after each step. --main starts the program with __start__ and passes the
@@ -23,6 +25,7 @@
 
 mod alloc;
 mod gc;
+mod link;
 mod module;
 mod transpiled;
 mod prim;
@@ -112,10 +115,42 @@ fn run_source(args: Vec<String>) -> i32 {
     run_text(String::from_utf8_lossy(&out.stdout).into_owned(), &source, "__start__".into(), Some(it.collect()), false)
 }
 
+/// conma link <runtime_module> <program_module> (link.rs)
+fn link_modules(args: &[String]) -> i32 {
+    if args.len() != 2 {
+        usage_error("link: expected <runtime_module> <program_module>");
+    }
+    let mut texts = Vec::new();
+    for f in args {
+        match std::fs::read_to_string(f) {
+            Ok(t) => texts.push(t),
+            Err(e) => {
+                eprintln!("Error: [Errno {}] {}: '{}'", e.raw_os_error().unwrap_or(0), e, f);
+                return 1;
+            }
+        }
+    }
+    match link::link(&texts[0], &texts[1]) {
+        Ok(m) => {
+            use std::io::Write;
+            let mut out = std::io::stdout().lock();
+            if out.write_all(m.as_bytes()).and_then(|_| out.flush()).is_err() {
+                return 1;
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            1
+        }
+    }
+}
+
 fn run(args: Vec<String>) -> i32 {
     match args.first().map(|s| s.as_str()) {
         Some("build") => return build(args[1..].to_vec()),
         Some("run") => return run_source(args[1..].to_vec()),
+        Some("link") => return link_modules(&args[1..]),
         _ => {}
     }
     let mut trace = false;
