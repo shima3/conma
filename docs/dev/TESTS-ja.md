@@ -61,6 +61,7 @@ CONMA_VM=python conjs/test/run_all.sh
 ### m1/platform-p5b-design
 
 * 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節、段階 P5b の設計の案と、5 節の表の P5b の行）。流すものはない。PR は shima3/conma#10。
+* M2 の PR のレビューを受けて、4.5 節を直した（メソッドを探す所、`console.log` の出し方、`static` のメソッドの継承、`JSON.parse` と `sort`、Node.js と比べる場合の選び方など）。これも文書だけ。
 
 ## 記録
 

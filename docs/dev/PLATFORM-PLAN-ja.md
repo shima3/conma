@@ -309,10 +309,12 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 
 * **`class`**（宣言と式）：`constructor`、メソッド、`static` のメソッド、インスタンスのフィールド（`x = 1;`。コンストラクタの前に、書いた順に初期化する）、`extends`（クラスか、組み込みのエラーのコンストラクタだけ）、コンストラクタの中の `super(...)`、メソッドの中の `super.m(...)`。`extends` のあるクラスでコンストラクタを書かなければ、`constructor(...args) { super(...args); }` と同じ。
 * **`new C(...)`**：C はクラスか、組み込みのエラーのコンストラクタ（`Error`、`TypeError`、`RangeError`、`SyntaxError`、`ReferenceError`）。ふつうの関数を `new` すると TypeError（`... is not a constructor`。JavaScript では関数もコンストラクタになるが、ConJS では、作るのはクラスだけにする）。クラスを `new` なしで呼ぶと TypeError（JavaScript と同じ）。
-* **`this`**：クラスのコンストラクタ、メソッド（`this` はインスタンス）、`static` のメソッド（`this` はクラス）の中と、その中のアロー関数の中だけ。ふつうの `function` の中とプログラムの上の階層の `this` は、変換するときのエラー（`conjs: this outside a class`）。`extends` のあるクラスのコンストラクタで、`super(...)` の前に `this` を使うと ReferenceError（JavaScript と同じ）。
+* **`static` のメソッドの継承**：`class B extends A` の `B.f()` で、A の `static` のメソッド f を呼べ、その `this` は B（JavaScript と同じ）。
+* **`this`**：クラスのコンストラクタ、メソッド（`this` はインスタンス）、インスタンスのフィールドの初期化（`x = this.y * 2;`。`this` はインスタンス）、`static` のメソッド（`this` は、メソッドを読んだクラス）の中と、その中のアロー関数の中だけ。ふつうの `function` の中とプログラムの上の階層の `this` は、変換するときのエラー（`conjs: this outside a class`）。`extends` のあるクラスのコンストラクタで、`super(...)` の前に `this` を使うと ReferenceError（JavaScript と同じ）。
 * **`instanceof`**：右がクラスか、組み込みのエラーのコンストラクタ（ほかは TypeError）。インスタンスは、クラスと、`extends` でたどる親で真。ランタイムが投げるエラー（`Sjs_error_object` で作るもの）は、`Error` と、名前が同じエラーのコンストラクタ（`TypeError` など）で真。
 * **エラーのコンストラクタ**：`new Error(message)` などは、今の SJS のエラーのオブジェクト（`name` と `message` を持ち、`Object.keys` と JSON に出ない）と同じものを作る。`class MyError extends Error` のインスタンスもエラーのオブジェクトで、`throw` でき、受け手のない例外の報告にも `message` が出る。
-* **`JSON.parse(text)`**（今は ConJS の Response の `json()` の中だけにある読み手。conjs/include/conjs_lib.se）と、**配列の `sort(compare)`**（`compare` がなければ、JavaScript と同じく、文字列にして比べる。安定な並べ替え）。
+* **`JSON.parse(text)`**（今は ConJS の Response の `json()` の中だけにある読み手。conjs/include/conjs_lib.se）。キーが `constructor` や `__proto__` のオブジェクトも、JSON のデータとして正しいので、そのまま作る（プロトタイプはないので安全）。そのプロパティを読むと、今の実行時の検査で TypeError（`the property constructor is not in SJS`）になり、`Object.keys` には出る。SJS では、リテラルと計算したキーで、こういうキーのオブジェクトを作る道がなかったので、新しい場合として sjs/test に足す。
+* **配列の `sort(compare)`**：安定な並べ替え。`compare` がなければ、JavaScript と同じく文字列にして比べ、比べ方は SJS の文字列の `<` と同じにする（JavaScript は UTF-16 の単位で比べるので、基本多言語面の外の文字だけ順が違うことがある。違えば README に書く）。`undefined` は、`compare` を呼ばずに最後に置く（JavaScript と同じ）。
 
 **足さないもの**（後の候補）：getter と setter、`#` で始まるプライベートなフィールド、`static` のフィールドとブロック、計算した名前のメソッド、`new.target`、ふつうの関数とオブジェクトのリテラルのメソッドの `this`、`Map` と `Set`、`Symbol` と反復のプロトコル、正規表現。プロトタイプには、どの形でも触れられない：`prototype`、`constructor`、`__proto__` の名前のプロパティは、今までどおり、変換するときと（計算したキーは）実行時に止める。
 
@@ -320,22 +322,25 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 
 * **構文解析と変換**（sjs/include）：印が ConJS のときだけ、`class`、`new`、`this`、`super`、`instanceof` を名前の検査で通し、構文解析とコードの生成が、それらの節を扱う。SJS のプログラムは、今と同じ道だけを通り、作るコードは 1 文字も変わらない（bin/lang-emit-check で確かめる）。作るコードは、ConJS のランタイムの関数（conjs/include/conjs_class.se。`Conjs_class`、`Conjs_new`、`Conjs_super_call`、`Conjs_super_get`、`Conjs_instanceof`）を呼ぶ。
 * **値の表し方**：
-    * クラスは、関数の値（`"t"` が `"function"`。`typeof` は `"function"`）で、`"cls"` に、メソッド（名前 → `this` と引数の LList を受け取る ConMa の関数）の Dict、コンストラクタ、フィールドの初期化、親を持つ。`static` のメソッドは、関数のメンバーに、`this` をクラスにした関数として置く。
+    * クラスは、関数の値（`"t"` が `"function"`。`typeof` は `"function"`）で、`"cls"` に、メソッド（名前 → `this` と引数の LList を受け取る ConMa の関数）の Dict、`static` のメソッドの Dict（同じ形）、コンストラクタ、フィールドの初期化、親を持つ。`static` のメソッドは、関数のメンバー（`"members"`）には置かない。そのため、`Object.keys(C)` に出ない（JavaScript と同じ）。
     * インスタンスは、今のオブジェクト（`"t"` が `"object"`）に、隠したキー `"cls"`（クラス）を足したもの。`typeof`、`Object.keys`、`JSON.stringify`、スプレッドは、今のオブジェクトと同じく、自分のプロパティだけを見る（JavaScript と同じ）。
-    * メソッドを読む（`o.m`）と、自分のプロパティになければ、`"cls"` からクラスと親をたどってメソッドを探し、`this` を o にした関数を返す。そのため、取り出したメソッドを後で呼んでも、`this` は o のまま（JavaScript では undefined になる。README の JavaScript との違いに書く）。`in` も、同じくメソッドを見る。
-* **SJS の道への影響**：メソッドを探すのは、オブジェクトのメンバーを読んで、自分のプロパティになかったとき（今は undefined を返す所）だけにする（sjs_rt.se の `Sjs_get_member`）。SJS のオブジェクトは `"cls"` を持たないので、結果は変わらず、ステップ数は、ないメンバーを読む所でだけ少し増える。メンバーがある所（いちばん多い）は変わらない。これを bin/lang-step-check で確かめる。プロトタイプのキーを止める実行時の検査（M2 の PR shima3/conma#8 のレビューの 3）は、プロトタイプを見せないので、印をランタイムで見る必要がなく、今のまま変えない。
+    * メソッドを読む（`o.m`）と、自分のプロパティになければ、`"cls"` からクラスと親をたどってメソッドを探し、`this` を o にした関数を返す。そのため、取り出したメソッドを後で呼んでも、`this` は o のまま（JavaScript では undefined になる）で、読むたびに新しい関数を作るので、`o.m === o.m` は偽（JavaScript では真）。この 2 つを README の JavaScript との違いに書く。`in` も、同じくメソッドを見る。
+    * `static` のメソッドを読む（`C.f`）と、関数のメンバーになければ、`"cls"` から C と親をたどって探し、`this` を C にした関数を返す。
+    * `console.log` は、Node.js に合わせて、インスタンスを `Point { x: 1, y: 2 }`、クラスを `[class Point]`（`extends` があれば `[class B extends A]`）と出す。sjs_inspect.se が、オブジェクトと関数を出す所で隠したキー `"cls"` を見る（SJS の値は持たないので、出すものは変わらない）。エラーは、Node.js がスタックトレースを出すので、テストでは `console.log` に渡さず、`e.message` や `` `${e}` `` を出す。
+* **SJS の道への影響**：メソッドを探すのは、メンバーを読んで、自分のプロパティになかったとき（今は undefined を返す所）だけにする。探す所は、sjs_rt.se の `Sjs_get_member` の、オブジェクトの 2 つの道（初めの「キーが文字列」の速い道と、`Sjs_key_string` の後の道。どちらも `Sjs_obj_get` の後）と関数の道（`Sjs_members_find` で見つからなかった後）、`in` の `Sjs_in_op`（`Sjs_obj_has` が偽の後）だけ。`Sjs_obj_get` と `Sjs_obj_has` は、自分のプロパティだけを見るままにする（`Sjs_obj_set` は `Sjs_obj_has` で名前が新しいかを決めるので、メソッドを見ると、`o.m = 1` の m が名前の一覧に入らず、`Object.keys` と JSON に出なくなる。ほかにもランタイムの 17 か所と sjs_inspect.se が使う）。SJS の値は `"cls"` を持たないので、結果は変わらず、ステップ数は、ないメンバーを読む所でだけ 1 ステップほど増える。メンバーがある所（いちばん多い）は変わらない。これを bin/lang-step-check で確かめる。プロトタイプのキーを止める実行時の検査（M2 の PR shima3/conma#8 のレビューの 3）は、プロトタイプを見せないので、印をランタイムで見る必要がなく、今のまま変えない。
 * **`JSON.parse` と `sort`**：プロトタイプにもホストにも触れない、ふつうの JavaScript の関数なので、作るときに安全と決め、SJS のランタイム（sjs_rt.se）に置いて、すぐに SJS と共有する（4.1 節の「安全なものを SJS に移す」を、この 2 つは足すときに行う）。SJS では sjs/test で Node.js と比べる。conjs_lib.se の JSON の読み手は、`JSON.parse` に移す。
 
-**テスト**（conjs/test の step11〜13。Rust 版、wasm 版、Python 版の VM で同じログ。spawn などを使わないので、どれも conjs/test/compare.sh で Node.js と比べる）
+**テスト**（conjs/test の step11〜13。Rust 版、wasm 版、Python 版の VM で同じログ）
 
-1. step11（クラス）：コンストラクタ、メソッド、フィールド、`static`、`extends` と `super(...)`、`super.m(...)`、`instanceof`、アロー関数の `this`、取り出したメソッドの `this`（JavaScript との違いなので、Node.js と比べない場合にする）。
+1. step11（クラス）：コンストラクタ、メソッド、フィールドとその初期化の `this`、`static` とその継承、`extends` と `super(...)`、`super.m(...)`、`instanceof`、アロー関数の `this`、`console.log` のインスタンスとクラス、`Object.keys` のインスタンスとクラス。JavaScript との違い（取り出したメソッドの `this`、`o.m === o.m`）は、別の場合にする。
 2. step12（エラー）：`new Error(...)` などと `instanceof`、`class MyError extends Error`、受け手のない例外の報告。変換するときのエラー（ふつうの関数の `this`、計算した名前のメソッド、getter）と、実行時のエラー（関数の `new`、クラスの `new` なしの呼び出し、`super(...)` の前の `this`）。
-3. step13（`JSON.parse` と `sort`）。sjs/test にも、同じものの場合を足す。
-* bin/lang-emit-check（SJS が作るコードは同じ）、bin/lang-step-check（SJS のステップ数は、ないメンバーを読む所でだけ増える）。sjs/bench の nbody を、物体をクラスにして ConJS で書いたもの（conjs/bench/nbody_class.con.js）の時間を、今の nbody と比べて、8 節に書く（メソッドを呼ぶたびに `this` を付けた関数を作るので、遅ければ、P5b の中で作り方を考え直す）。
+3. step13（`JSON.parse` と `sort`）。sjs/test にも、同じものの場合と、`constructor` のキーの場合を足す。
+* **Node.js と比べるもの**：compare.sh は標準出力だけを比べるので、変換するときのエラーの場合と、JavaScript との違いの場合は比べられない。ステップのディレクトリに、Node.js と比べる場合の名前を並べたファイル node.txt を置き、compare.sh は、ファイルを書かなければ、すべての step の node.txt の場合を比べる（step10 にも node.txt を置く）。
+* bin/lang-emit-check（SJS が作るコードは同じ）、bin/lang-step-check（SJS のステップ数は、ないメンバーを読む所でだけ増える）。sjs/bench の nbody を、物体をクラスにして ConJS で書いたもの（conjs/bench/nbody_class.con.js）の時間を、今の nbody と比べて、8 節に書く。メソッドを呼ぶたびに `this` を付けた関数を作るので、遅ければ、P5b の中で作り方を変える。そのときの案：ConJS のプログラムだけ、`o.m(...)` を ConJS のランタイムの関数 `Conjs_call_member` で呼ぶ。この関数は、メソッドを見つけたら、関数を作らずに `this` と引数で直接呼ぶ（SJS が作るコードとステップ数は変わらず、ConJS が作るコードだけが変わる）。
 
-**終わりとすること**（5 節の表）：上のテストが 3 つの VM で通り、step11〜13 の場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/test、consh/test、consh/js/test が通る。sjs/bench が遅くならない。
+**終わりとすること**（5 節の表）：上のテストが 3 つの VM で通り、node.txt に並べた場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/test、consh/test、consh/js/test が通る。sjs/bench が遅くならない。
 
-**M2 に聞きたいこと**：足すものと足さないものの分け方。ふつうの関数の `this` を、変換するときのエラーにすること。取り出したメソッドの `this` が変わらないこと（JavaScript との違い）。メソッドを、ないメンバーを読む所で探す作り（SJS の道への影響）。`JSON.parse` と `sort` を、足すときに安全と決めて SJS と共有すること。
+**M2 のレビュー**（PR shima3/conma#10）：分け方、ふつうの関数の `this` をエラーにすること、取り出したメソッドの `this`、メソッドを探す作り、`JSON.parse` と `sort` を足すときに SJS と共有すること（ユーザーにも確かめた）に賛成をもらった。指摘を受けて、メソッドを探す所（`Sjs_get_member` と `Sjs_in_op` だけ）、`console.log` の出し方、`o.m === o.m` の違いと遅いときの案、`static` のメソッドの継承と `Object.keys(C)`、`JSON.parse` の `constructor` のキー、`sort` の比べ方と `undefined`、Node.js と比べる場合の選び方（node.txt）、フィールドの初期化の `this` を書き足した。
 
 ## 5. 段階
 
