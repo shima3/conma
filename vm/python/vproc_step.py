@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vproc_step.py — Execute one Operator Application of a ConMa VProc."""
 
-import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal, json
+import sys, re, math, os, codecs, subprocess, pathlib, select, stat, errno, signal, json, time
 from collections import deque
 import types
 
@@ -1095,9 +1095,10 @@ def prim_JS_value(vp, gvenv):
 
 # The features that __Feature_available__ answers true for on this VM: the features of extended ConMa, which work on
 # every VM (on this one through the replacement definitions of bin/to-core), but not "wasm", whose primitives go to
-# onError here as on the native VMs, and "test", the test functions of __Host_call__ that every VM has. This VM
-# has no other platform feature ("js" and the others; docs/dev/PLATFORM-PLAN-ja.md)
-FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control", "test")
+# onError here as on the native VMs, "test", the test functions of __Host_call__ that every VM has, and "time"
+# (time.now and time.sleep, as on the native VMs). This VM has no other platform feature ("js" and the
+# others; docs/dev/PLATFORM-PLAN-ja.md)
+FEATURES_AVAILABLE = ("array", "bitwise32", "boolean", "chan", "control", "test", "time")
 
 def prim_Feature_available(vp, gvenv):
     """__Feature_available__ name ,(Boolean)
@@ -1124,7 +1125,14 @@ def _host_test_fail(args):
 class _HostError(Exception):
     pass
 
-HOST_FUNCTIONS = {"test.add": _host_test_add, "test.echo": lambda args: list(args), "test.fail": _host_test_fail}
+# The function of the platform feature "time" (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage P5), as on the native
+# VMs: time.now, the time in milliseconds since 1970-01-01 00:00 UTC. time.sleep, which waits, is handled by
+# __Host_start__ (the scheduler finishes it when the time has come).
+def _host_time_now(args):
+    return time.time() * 1000.0
+
+HOST_FUNCTIONS = {"test.add": _host_test_add, "test.echo": lambda args: list(args), "test.fail": _host_test_fail,
+                  "time.now": _host_time_now}
 
 def _to_host(v):
     """A value for the host, or raise _HostError with the type name of the first value that is not a
@@ -1276,8 +1284,13 @@ def _host_start(vp, prim, tracked):
     if na is None: return
     fname, hargs = na
     later = fname == "test.later"
+    sleep = fname == "time.sleep"
     f = HOST_FUNCTIONS.get(fname)
-    if later:
+    if sleep:
+        if not (hargs and isinstance(hargs[0], float) and hargs[0] >= 0):
+            _prim_error(vp, on_error, f"{prim}: time.sleep: expected milliseconds (a Number, 0 or more)")
+            return
+    elif later:
         if not (hargs and isinstance(hargs[0], float) and hargs[0] >= 0):
             _prim_error(vp, on_error, f"{prim}: test.later: expected a count (a Number, 0 or more) first")
             return
@@ -1286,6 +1299,8 @@ def _host_start(vp, prim, tracked):
         return
     if later:
         text = _host_result_json(True, hargs)
+    elif sleep:
+        text = _host_result_json(True, [])
     else:
         try:
             text = _host_result_json(True, f(hargs))
@@ -1298,6 +1313,9 @@ def _host_start(vp, prim, tracked):
     if later:
         SCHEDULER.later_calls += 1
         SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w, text))
+    elif sleep:
+        # The scheduler finishes it when the time has come (Scheduler.finish_timers)
+        SCHEDULER.timers.append((time.monotonic() + min(hargs[0], 1e12) / 1000.0, w, text))
     else:
         _host_finish(w, text)
     stream = Stream(r, "r")
@@ -2443,6 +2461,18 @@ class Scheduler:
         self.later_clock = 0.0
         self.later_calls = 0
         self.later_jobs  = []
+        # The calls of time.sleep by the real clock: (when, write end of the pipe, result text). They are
+        # finished between two steps, so that a VProc sees the result written and the pipe closed at once
+        self.timers = []
+
+    def finish_timers(self):
+        """Finish the calls of time.sleep whose time has come."""
+        now = time.monotonic()
+        due = [t for t in self.timers if t[0] <= now]
+        if due:
+            self.timers = [t for t in self.timers if t[0] > now]
+            for _, w, text in due:
+                _host_finish(w, text)
 
     def finish_later(self):
         """Finish the call of test.later with the earliest deadline (then the first called), and move
@@ -2540,6 +2570,9 @@ class Scheduler:
         wfds = [t.fd for _, t in self.waiting if isinstance(t, Stream) and not t.closed and t.mode == "w"]
         if self.wakeup is not None: fds.append(self.wakeup)
         timeout = None if block else 0
+        if block and self.timers:
+            # a call of time.sleep that is not due yet: sleep no longer than until then
+            timeout = max(0.0, min(t[0] for t in self.timers) - time.monotonic())
         if any(isinstance(t, Stream) and t.closed for _, t in self.waiting):
             timeout = 0                 # a closed Stream wakes its VProc at once
         if fds or wfds or timeout == 0:
@@ -2627,6 +2660,8 @@ class Scheduler:
                 self.ref_changed = False
                 self.check_changes()
             if self.waiting:
+                if self.timers:
+                    self.finish_timers()
                 if not self.ready:
                     # Without a ready VProc, sleep in the OS instead of busy waiting.
                     # A call of test.later finishes first (the virtual clock moves),

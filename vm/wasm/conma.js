@@ -58,6 +58,9 @@
 // and the pipe is closed (in a later task, never inside conma_run), and the VM is run again (jsDone).
 // hostFeatures, if given, is an array of
 // the names of the platform features these functions give, for which __Feature_available__ is true.
+// Every host also has the functions of defaultHostFunctions below (time.now, time.sleep, and
+// http.fetch where the host has fetch; stage P5 of the plan, 4.4), unless hostFunctions gives
+// its own of the same name, and their features ("time", "fetch").
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -1793,9 +1796,45 @@ var ConMaVM = (function () {
     throw new Error(name + ": returned a " + typeof v + " (only numbers, strings and arrays of them go back)");
   }
 
+  // The functions of the host that every host of this VM has (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage
+  // P5): the native and Python VMs have time.now and time.sleep in their tables, and their ConJS
+  // runs curl for fetch.
+  //   time.now                     the time in milliseconds since 1970-01-01 (Date.now)
+  //   time.sleep ms                waits ms milliseconds (__Host_start__ only), then null
+  //   http.fetch url method headers body
+  //                                an HTTP request with fetch: headers a list of (name value),
+  //                                body a string ("" for none); the status and the text of the body
+  function defaultHostFunctions() {
+    const f = {
+      "time.now": () => Date.now(),
+      "time.sleep": (ms) => {
+        if (typeof ms !== "number" || !(ms >= 0)) throw new Error("time.sleep: expected milliseconds (a Number, 0 or more)");
+        return new Promise((resolve) => setTimeout(() => resolve(null), ms));
+      },
+    };
+    const features = ["time"];
+    if (typeof globalThis.fetch === "function") {
+      f["http.fetch"] = async (url, method, headers, body) => {
+        const init = { method: method || "GET", headers: (headers || []).map((h) => [String(h[0]), String(h[1])]) };
+        if (body !== "" && body !== null && body !== undefined) init.body = body;
+        let res;
+        try {
+          res = await globalThis.fetch(url, init);
+        } catch (e) {
+          throw new Error("fetch failed: " + (e && e.cause && e.cause.message ? e.cause.message : e instanceof Error ? e.message : String(e)));
+        }
+        return [res.status, await res.text()];
+      };
+      features.push("fetch");
+    }
+    return { f, features };
+  }
+
   function create(wasmModule, write, hooks) {
-    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote,
-      hostFunctions, hostFeatures } = hooks || {};
+    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote } = hooks || {};
+    const defaults = defaultHostFunctions();
+    const hostFunctions = Object.assign(defaults.f, (hooks && hooks.hostFunctions) || {});
+    const hostFeatures = defaults.features.concat((hooks && Array.isArray(hooks.hostFeatures) && hooks.hostFeatures) || []);
     let hostResult = new Uint8Array(0); // the result of the last host_fn_call, for host_fn_result
     // The last result of buildModule, until the VM has taken it all (host_build_module)
     let lastBuild = null;
