@@ -35,6 +35,9 @@
   __String_equal__ kind "null" ,(test__) __if__ test__ (,() return "null") ,()
   __String_equal__ kind "function" ,(test__) __if__ test__
     (,()
+      ;; ConJS のクラス（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節）：[class 名前]、[class 名前 extends 親]
+      __Dict_lookup_or__ v "cls" (,(k) __NULL__ __NULL__) ,(cls)
+      __is_null__ cls ,(test__) __unless__ test__ (,() Sjs_ins_class cls ,(s) __String_equal__ s "" ,(test__) __unless__ test__ (,() return s) ,()) ,()
       __Dict_lookup_or__ v "name" (,(k) __NULL__ "") ,(name)
       __String_equal__ name "" ,(anon)
       __if__ anon (,() return "[Function (anonymous)]") ,()
@@ -75,6 +78,9 @@
 (define Sjs_ins_container ,(X v kind depth indent)
   __Cont_get__ ,(return)
   __String_equal__ kind "array" ,(isArray)
+  ;; ConJS のクラスのインスタンスは、クラスの名前を前に付ける（Point { x: 1 }、Point {}、[Point]。4.5 節）
+  __if_then_else__ isArray (,() __NULL__ "") (,() Sjs_ins_class_name v) ,(cname)
+  __String_equal__ cname "" ,(plainName)
   ;; 循環、空、深さの順に見る（Node.js と同じ。深すぎても空なら [] と {}）
   __Dict_lookup_or__ v "id" __print_exit_error__ ,(id)
   __Dict_lookup_or__ X "seen" __print_exit_error__ ,(seenRef)
@@ -82,12 +88,12 @@
   Sjs_ins_member id seen ,(test__) __if__ test__ (,() Sjs_ins_ref X id ,(n) Cat3s "[Circular *" n "]" ,(s) return s) ,()
   __if_then_else__ isArray (,() Sjs_array_length v) (,() Sjs_obj_keys v ,(keys) __LList_length__ keys) ,(count)
   __Number_is_zero__ count ,(test__) __if__ test__
-    (,() __if_then_else__ isArray (,() __NULL__ "[]") (,() __NULL__ "{}") ,(s) return s) ,()
+    (,() __if_then_else__ isArray (,() __NULL__ "[]") (,() __if_then_else__ plainName (,() __NULL__ "{}") (,() __String_concat__ cname " {}")) ,(s) return s) ,()
   ;; 深さが 2 より深ければ [Array]、[Object]
   Sjs_two ,(two)
   __Number_subtract__ depth two ,(over)
   __Number_is_positive__ over ,(test__) __if__ test__
-    (,() __if_then_else__ isArray (,() __NULL__ "[Array]") (,() __NULL__ "[Object]") ,(s) return s) ,()
+    (,() __if_then_else__ isArray (,() __NULL__ "[Array]") (,() __if_then_else__ plainName (,() __NULL__ "[Object]") (,() Cat3s "[" cname "]")) ,(s) return s) ,()
   __LList_cons__ id seen ,(seen2)
   __Ref_set__ seenRef seen2 ,()
   __Dict_lookup_or__ X "cur" __print_exit_error__ ,(cur)
@@ -96,7 +102,7 @@
   __Number_add__ indent two ,(i2)
   __if_then_else__ isArray (,() Sjs_ins_array X v d1 i2) (,() Sjs_obj_keys v ,(keys) Sjs_ins_props X v keys d1 i2 __NULL__) ,(output)
   __Ref_set__ seenRef seen ,()
-  __if_then_else__ isArray (,() __NULL__ "[") (,() __NULL__ "{") ,(open)
+  __if_then_else__ isArray (,() __NULL__ "[") (,() __if_then_else__ plainName (,() __NULL__ "{") (,() __String_concat__ cname " {")) ,(open)
   __if_then_else__ isArray (,() __NULL__ "]") (,() __NULL__ "}") ,(close)
   __LList_length__ output ,(entries)
   Sjs_ins_reduce X output "" open close isArray depth indent entries v ,(s)
@@ -669,3 +675,24 @@
   __if_then_else__ right (,() __String_concat__ pad cell) (,() __String_concat__ cell pad) ,(cell)
   __String_concat__ acc cell ,(acc)
   Sjs_ins_row orest lrest wrest k1 right acc)
+
+;; ConJS のクラスのインスタンス o のクラスの名前（クラスでないか、名前がなければ ""）
+(define Sjs_ins_class_name ,(o)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "cls" (,(k) return "") ,(cls)
+  __Dict_lookup_or__ cls "name" __print_exit_error__)
+
+;; ConJS のクラス（cls はクラスの記録）の形。組み込みのエラーのコンストラクタは ""（[Function: Error] にする）
+(define Sjs_ins_class ,(cls)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cls "builtin" (,(k) __NULL__ __FALSE__) ,(builtin)
+  __if__ builtin (,() return "") ,()
+  __Dict_lookup_or__ cls "name" __print_exit_error__ ,(name)
+  __String_equal__ name "" ,(anon)
+  __if_then_else__ anon (,() __NULL__ "(anonymous)") (,() __NULL__ name) ,(shown)
+  __String_concat__ "[class " shown ,(s)
+  __Dict_lookup_or__ cls "parent" __print_exit_error__ ,(parent)
+  __is_null__ parent ,(test__) __if__ test__ (,() __String_concat__ s "]" ,(s) return s) ,()
+  __Dict_lookup_or__ parent "name" __print_exit_error__ ,(pname)
+  Cat3s s " extends " pname ,(s)
+  __String_concat__ s "]")

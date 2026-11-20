@@ -1,0 +1,211 @@
+;; ConJS のクラス（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節。段階 P5b）：class、new、this、super、instanceof と、組み込みのエラーの
+;; コンストラクタ。sjs/include/sjs_gen.se が、ConJS のクラスのために作るコードが呼ぶ。プロトタイプは見せない。
+;;
+;; クラスの記録（R）は Dict：「"name" は名前（なければ ""）、"parent" は親の記録（なければ null）、"methods" と "statics" は
+;; 名前 → メソッドを作る Closure（,(self) で、this を self にした SJS の関数を返す）の Dict、"ctor" はコンストラクタを作る
+;; Closure（なければ null）、"fields" はフィールドを入れる Closure（,(self)。なければ null）、"fn" はクラスの値、"id" は
+;; クラスの値の番号、"find" は Conjs_find_member（sjs_rt.se の Sjs_class_member が呼ぶ）。組み込みのエラーのコンストラクタは
+;; "builtin" と "errname"（name に入れる名前）も持つ」。
+;; クラスの値は SJS の関数（typeof は "function"）で、隠したキー "cls" に記録を持つ。インスタンスは SJS のオブジェクトで、
+;; 隠したキー "cls" に記録を持つ（Object.keys、JSON、スプレッドは、今のオブジェクトと同じく自分のプロパティだけを見る）。
+;; メソッドは、メンバーを読んで、自分のプロパティになかったときだけ探す（sjs_rt.se の Sjs_get_member、Sjs_in_op）
+
+;; 組み込みのエラーのコンストラクタ（Error、TypeError、RangeError、SyntaxError、ReferenceError）を G に置く
+(define Conjs_class_builtins ,(G)
+  Conjs_error_class G "Error" __NULL__ ,(err)
+  Conjs_error_class G "TypeError" err ,(r)
+  Conjs_error_class G "RangeError" err ,(r)
+  Conjs_error_class G "SyntaxError" err ,(r)
+  Conjs_error_class G "ReferenceError" err ,(r)
+  __nop__)
+
+;; エラーのコンストラクタ name の記録。new なしで呼んでも、エラーのオブジェクトを作る（JavaScript と同じ）
+(define Conjs_error_class ,(G name parent)
+  Conjs_record name parent ,(R)
+  __Dict_put__ R "builtin" __TRUE__ ,()
+  __Dict_put__ R "errname" name ,()
+  Sjs_function G name (,(args) Conjs_instance G R ,(o) Conjs_error_init o R args ,() __NULL__ o) ,(F)
+  Conjs_record_fn R F ,()
+  __Dict_put__ G name F ,()
+  __NULL__ R)
+
+;; エラーのオブジェクトにする：name と message を、名前の一覧に入れずに持つ（sjs_rt.se の Sjs_error_object と同じ）
+(define Conjs_error_init ,(o R args)
+  __Dict_lookup_or__ R "errname" __print_exit_error__ ,(name)
+  Sjs_arg args ,(m rest)
+  __is_null__ m ,(none)
+  __if_then_else__ none (,() __NULL__ "") (,() Sjs_to_string m) ,(msg)
+  __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
+  __Dict_put__ props "name" name ,()
+  __Dict_put__ props "message" msg ,()
+  __Dict_put__ o "error" __TRUE__)
+
+;; 記録（"fn" と "id" は、クラスの値を作ってから Conjs_record_fn で入れる）
+(define Conjs_record ,(name parent)
+  __Dict_new__ ,(R)
+  __Dict_put__ R "name" name ,()
+  __Dict_put__ R "parent" parent ,()
+  __Dict_new__ ,(methods)
+  __Dict_put__ R "methods" methods ,()
+  __Dict_new__ ,(statics)
+  __Dict_put__ R "statics" statics ,()
+  __Dict_put__ R "ctor" __NULL__ ,()
+  __Dict_put__ R "fields" __NULL__ ,()
+  __Dict_put__ R "find" Conjs_find_member ,()
+  __NULL__ R)
+
+(define Conjs_record_fn ,(R F)
+  __Dict_put__ F "cls" R ,()
+  __Dict_put__ R "fn" F ,()
+  __Dict_lookup_or__ F "id" __print_exit_error__ ,(id)
+  __Dict_put__ R "id" id)
+
+;; class 式：記録とクラスの値。親（hasParent なら parent）は、クラスか組み込みのエラーのコンストラクタ
+(define Conjs_class ,(G name hasParent parent)
+  __Cont_get__ ,(return)
+  __if_then_else__ hasParent (,() Conjs_class_of parent) (,() __NULL__ __NULL__) ,(pr)
+  __is_null__ pr ,(noRecord)
+  __and__ hasParent noRecord ,(test__) __if__ test__
+    (,()
+      Sjs_describe parent ,(d)
+      Cat3s "Class extends value " d " is not a constructor or null" ,(msg)
+      Sjs_type_error msg) ,()
+  Conjs_record name pr ,(R)
+  Cat3s "Class constructor " name " cannot be invoked without 'new'" ,(msg)
+  Sjs_function G name (,(args) Sjs_type_error msg) ,(F)
+  Conjs_record_fn R F ,()
+  __NULL__ R F)
+
+;; 値 v がクラス（か組み込みのエラーのコンストラクタ）なら、その記録。ほかは null
+(define Conjs_class_of ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "function" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __Dict_lookup_or__ v "cls" (,(k) __NULL__ __NULL__))
+
+(define Conjs_method ,(R key maker)
+  __Dict_lookup_or__ R "methods" __print_exit_error__ ,(t)
+  __Dict_put__ t key maker)
+
+(define Conjs_static ,(R key maker)
+  __Dict_lookup_or__ R "statics" __print_exit_error__ ,(t)
+  __Dict_put__ t key maker)
+
+(define Conjs_ctor ,(R maker)
+  __Dict_put__ R "ctor" maker)
+
+(define Conjs_fields ,(R f)
+  __Dict_put__ R "fields" f)
+
+;; R と親の記録の、表 table（"methods" か "statics"）の key（なければ null）
+(define Conjs_lookup ,(R table key)
+  __Cont_get__ ,(return)
+  __is_null__ R ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __Dict_lookup_or__ R table __print_exit_error__ ,(t)
+  __Dict_lookup_or__ t key (,(k) __NULL__ __NULL__) ,(maker)
+  __is_null__ maker ,(test__) __unless__ test__ (,() return maker) ,()
+  __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
+  Conjs_lookup parent table key)
+
+;; Sjs_class_member が呼ぶ：o（インスタンスかクラス）の自分のプロパティにない key を、メソッド（クラスなら static の
+;; メソッド。親のものも）から探し、this を o にした関数を返す（なければ undefined）。読むたびに作るので、取り出した
+;; メソッドの this は o のまま、o.m === o.m は偽（JavaScript との違い）
+(define Conjs_find_member ,(G o key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "cls" __print_exit_error__ ,(R)
+  Sjs_kind o ,(kind)
+  __String_equal__ kind "function" ,(isClass)
+  __if_then_else__ isClass (,() __NULL__ "statics") (,() __NULL__ "methods") ,(table)
+  Conjs_lookup R table key ,(maker)
+  __is_null__ maker ,(test__) __if__ test__ (,() return __NULL__) ,()
+  maker o)
+
+;; R のインスタンス（まだ何も入れていない）
+(define Conjs_instance ,(G R)
+  Sjs_object_new G ,(o)
+  __Dict_put__ o "cls" R ,()
+  __NULL__ o)
+
+;; new C(args)
+(define Conjs_new ,(G C args)
+  __Cont_get__ ,(return)
+  Conjs_class_of C ,(R)
+  __is_null__ R ,(test__) __if__ test__ (,() Sjs_describe C ,(d) __String_concat__ d " is not a constructor" ,(msg) Sjs_type_error msg) ,()
+  Conjs_instance G R ,(o)
+  Conjs_init G R o args ,()
+  __NULL__ o)
+
+;; R のフィールドとコンストラクタで、インスタンス o を初めにする。親のないクラスは、フィールドを入れてからコンストラクタ。
+;; 親のあるクラスは、コンストラクタの super(...)（Conjs_super_call）が、親で初めにしてからフィールドを入れる。コンストラクタを
+;; 書かなければ、constructor(...args) { super(...args); } と同じ
+(define Conjs_init ,(G R o args)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ R "builtin" (,(k) __NULL__ __FALSE__) ,(builtin)
+  __if__ builtin (,() Conjs_error_init o R args ,() return) ,()
+  __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
+  __Dict_lookup_or__ R "ctor" __print_exit_error__ ,(ctor)
+  __is_null__ parent ,(base)
+  __if__ base (,() Conjs_run_fields R o ,()) ,()
+  __is_null__ ctor ,(test__) __if__ test__
+    (,() __unless__ base (,() Conjs_super_call G R o args ,()) ,() return) ,()
+  ctor o ,(f)
+  Sjs_call f args ,(r)
+  return)
+
+(define Conjs_run_fields ,(R o)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ R "fields" __print_exit_error__ ,(f)
+  __is_null__ f ,(test__) __if__ test__ return ,()
+  f o ,(x)
+  return)
+
+;; super(...)：R（super(...) を書いたクラス）の親で o を初めにしてから、R のフィールドを入れる
+(define Conjs_super_call ,(G R o args)
+  __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
+  Conjs_init G parent o args ,()
+  Conjs_run_fields R o)
+
+;; extends のあるクラスのコンストラクタの this（Ref）。super(...) の前は ReferenceError
+(define Conjs_this ,(ref)
+  __Ref_get__ ref ,(v)
+  __is_null__ v ,(test__) __if__ test__
+    (,() Sjs_throw "ReferenceError" "Must call super constructor in derived class before accessing 'this' or returning from derived constructor") ,()
+  __NULL__ v)
+
+;; super.key：R（super を書いたクラス）の親のメソッド（isStatic なら static のメソッド）を、this を self にして返す
+(define Conjs_super_get ,(G R isStatic self key)
+  __Cont_get__ ,(return)
+  Sjs_key_string key ,(ks)
+  __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
+  __if_then_else__ isStatic (,() __NULL__ "statics") (,() __NULL__ "methods") ,(table)
+  Conjs_lookup parent table ks ,(maker)
+  __is_null__ maker ,(test__) __if__ test__ (,() return __NULL__) ,()
+  maker self)
+
+;; v instanceof C：C はクラスか組み込みのエラーのコンストラクタ（ほかは TypeError）。インスタンスは、クラスと親で真。
+;; ランタイムが投げるエラー（Sjs_error_object。"cls" がない）は、Error と、名前が同じエラーのコンストラクタで真
+(define Conjs_instanceof ,(v C)
+  __Cont_get__ ,(return)
+  Conjs_class_of C ,(R)
+  __is_null__ R ,(test__) __if__ test__ (,() Sjs_type_error "Right-hand side of 'instanceof' is not a class") ,()
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "object" ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  __Dict_lookup_or__ R "id" __print_exit_error__ ,(id)
+  __Dict_lookup_or__ v "cls" (,(k) __NULL__ __NULL__) ,(vr)
+  __is_null__ vr ,(test__) __unless__ test__ (,() Conjs_extends vr id ,(t) return t) ,()
+  __Dict_lookup_or__ v "error" (,(k) __NULL__ __FALSE__) ,(isError)
+  __unless__ isError (,() return __FALSE__) ,()
+  __Dict_lookup_or__ R "errname" (,(k) return __FALSE__) ,(errname)
+  __String_equal__ errname "Error" ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Sjs_obj_get v "name" ,(name)
+  __String_equal__ name errname)
+
+;; 記録 R か、その親の番号が id か
+(define Conjs_extends ,(R id)
+  __Cont_get__ ,(return)
+  __is_null__ R ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __Dict_lookup_or__ R "id" __print_exit_error__ ,(rid)
+  __Number_subtract__ rid id ,(d)
+  __Number_is_zero__ d ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent)
+  Conjs_extends parent id)

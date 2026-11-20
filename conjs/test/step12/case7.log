@@ -1,0 +1,6 @@
+TypeError a function is not a constructor
+TypeError Class constructor A cannot be invoked without 'new'
+ReferenceError Must call super constructor in derived class before accessing 'this' or returning from derived constructor
+TypeError Right-hand side of 'instanceof' is not a class
+ok {}
+exit: 0

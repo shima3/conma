@@ -63,6 +63,12 @@ CONMA_VM=python conjs/test/run_all.sh
 * 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節、段階 P5b の設計の案と、5 節の表の P5b の行）。流すものはない。PR は shima3/conma#10。
 * M2 の PR のレビューを受けて、4.5 節を直した（メソッドを探す所、`console.log` の出し方、`static` のメソッドの継承、`JSON.parse` と `sort`、Node.js と比べる場合の選び方など）。これも文書だけ。
 
+### m1/platform-p5b
+
+* 段階 P5b を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.7 節）：ConJS のクラス（`class`、`new`、`this`、`super`、`instanceof`、エラーのコンストラクタ。conjs/include/conjs_class.se と、sjs/include の sjs_parse.se、sjs_gen.se）、SJS と共有する `JSON.parse` と配列の `sort`（sjs/include/sjs_rt.se）、メソッドを探す所（sjs_rt.se の `Sjs_get_member`、`Sjs_in_op`）と、`console.log` のインスタンスとクラス（sjs_inspect.se）。
+* 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS のランタイムが入る）。VM は変えていない。
+* 新しいテスト：conjs/test の step11〜13、sjs/test の step12。conjs/test/compare.sh は、各ステップの node.txt に並べた場合を Node.js と比べる。conjs/test/step6/case6 のログを変えた。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

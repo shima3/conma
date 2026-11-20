@@ -8,6 +8,7 @@
 (include "sjs_rt.se")
 (include "lang/sched.se")
 (include "conjs_lib.se")
+(include "conjs_class.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
 ;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）
@@ -82,6 +83,7 @@
   Conjs_report rest __TRUE__)
 
 (define Conjs_builtins ,(G)
+  Conjs_class_builtins G ,()
   Sjs_function G "spawn" (,(args) Sjs_arg args ,(f rest) Conjs_spawn G f) ,(spawn)
   __Dict_put__ G "spawn" spawn ,()
   Sjs_function G "join" (,(args) Sjs_arg args ,(t rest) Conjs_join t) ,(join)
