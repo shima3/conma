@@ -58,67 +58,9 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/platform-plan
-
-* docs/dev/PLATFORM-PLAN-ja.md（計画書）を足し、docs/dev/README.md の一覧に載せただけ。文書だけなので、流すものはない（計画書が sjs/ を指すので、main に直接入れず、alpha から入れる）。
-
-### m1/platform-p1
-
-* 段階 P1（docs/dev/PLATFORM-PLAN-ja.md の 8.1）：コア ConMa のプリミティブ `__Feature_available__` を足し（Python 版、Rust 版。wasm 版と transpiled VM も）、フロントエンドが `__JS_call__` と `__JS_value__` を使うモジュールに `(Platform "js")` を付ける（bin/resolver、include/resolver.se、reference/resolver.se。vm/frontend.module.se を作り直した）。新しいテストは test/fast13。
-* Rust VM を作り直し、ConSh を動かしてモジュールを作り直し（ConSh のモジュールにも `(Platform "js")` が付く）、それから transpiled VM を `bench/build.sh` で作り直す。wasm 版は `consh/js/build.sh` で作り直す。
-* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17）。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。
-
-### m2/platform-plan-notes
-
-* docs/dev/PLATFORM-PLAN-ja.md に、M2 が読んで気付いたことと、6 節の決めることへの M2 の案を書いた（14b2c28）。その後、レビューは計画書と分けることにして（m2/platform-plan-review）、計画書を ddf6520 の文に戻し、レビューを docs/dev/REVIEW-ja.md の 2026-11-19 の節に移した。計画書には、そこへのリンクを 1 行足しただけ。文書だけなので、流すものはない（m1/platform-plan と同じく、main に直接入れず、alpha から入れる）。
-* docs/dev/REVIEW-ja.md に、段階 P1（m1/platform-p1）のレビューの節（2026-11-19（2））を足した（m2/platform-p1-review）。文書だけなので、流すものはない。alpha から入れる。
-* docs/dev/REVIEW-ja.md に、見本の言語の案（直接スタイルの JS）と段階 P2 のレビューの節（2026-11-19（3））を足した（m2/platform-p2-review）。文書だけなので、流すものはない。alpha から入れる。
-* docs/dev/REVIEW-ja.md に、ConJS の決定（m1/conjs-decision）のレビューの節（2026-11-19（4））を足した（m2/platform-conjs-review）。文書だけなので、流すものはない。alpha から入れる。
-* docs/dev/REVIEW-ja.md に、ConJS を SJS と別の言語にしたこと（m1/wording の 960abae）のレビューの節（2026-11-20）を足した（m2/conjs-own-language-review）。文書だけなので、流すものはない。alpha から入れる。
-
-### m1/platform-p2
-
-* 段階 P2（docs/dev/PLATFORM-PLAN-ja.md の 8.2）：コア ConMa のプリミティブ `__Host_call__` を足した（Python 版、Rust 版。wasm 版と transpiled VM も）。どの VM にもあるテストのホストの関数（機能 `"test"`）、wasm 版のホストの JavaScript の関数（vm/wasm/conma.js の `hostFunctions`、`hostFeatures`。vm-node.js は `CONMA_HOST`）。フロントエンドが `(Platform "host")` を付ける（vm/frontend.module.se を作り直した）。新しいテストは test/fast14。
-* Rust VM、wasm 版（`consh/js/build.sh`）、transpiled VM（`bench/build.sh`。ConSh のモジュールは変わらない）を作り直す。
-* 流したもの：全部流す（Python 版、Rust 版、wasm 版、transpiled VM の test/、Rust 版の consh/test の最適化版と参照版、wasm 版と transpiled VM の consh/test、consh/js/test、sjs/test）。既知の違いだけ。`CONMA_REFERENCE=1` の test/ と `CONSH_IMPL=rust` の consh/test は流していない。ブラウザでは試していない。
-
-### m1/conjs-decision
-
-* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md と docs/dev/REVIEW-ja.md）。流すものはない。
-
-### m1/platform-p3-design
-
-* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 3.4 節、段階 P3 の設計の案）。流すものはない。
-* M2 の ConJS のレビュー（docs/dev/REVIEW-ja.md の 2026-11-19（4））への答えを、計画書の 4.1 節と、そのレビューの「対応」に書いた。Promise は受け付けないと決めた。これも文書だけ。
-* M2 の PR（shima3/conma#1）のコメントを受けて、3.4 節を直した：`test.later` の終わる順をどの VM でも同じにする決め方、`__Host_start_tracked__`、プラットフォームの印、`canvas.frame` の時刻。これも文書だけ。
-* M2 の次のコメントを受けて、`test.later` の終わる順を、どの VM でも同じ仮の時計（締め切り = 今の時計 + 待つ数）で決めることにした。これも文書だけ。
-
-### m1/platform-p3
-
-* 段階 P3（docs/dev/PLATFORM-PLAN-ja.md の 8.3 節）：待つホストの呼び出し（`__Host_start__`、`__Host_start_tracked__`、`__Host_result__`、`test.later`）と、canvas（vm/wasm/host/canvas.js、include/platform/、vm/wasm/web/）。
-* 新しいテスト：test/fast15 と test/fast16。どちらも test/run_all.sh に入る（fast*）。CONMA_VM=python、rust、wasm で通ることを確かめた。
-* VM が変わった（vm/src/sched.rs、vm/src/prim/host.rs、vm/python/vproc_step.py、vm/wasm/conma.js）ので、test/ と consh/test を、Python 版、Rust 版、wasm 版の VM と transpiled VM で流す。transpiled VM は、作り直してから（17〜21 分）。
-* M1 が流したもの（Apple M1）：test/ を Python 版（122 秒）、Rust 版（25 秒）、wasm 版（39 秒）の VM で（`-j 8`）。consh/test を Rust 版と wasm 版の VM で。違いは既知のもの（wasm 版の test/step40、consh/test の step8 と step17）と、wasm 版の test/step31 が `-j 8` で 1 回だけ違ったこと（シグナルのタイミング。1 つずつ 5 回流し直して、すべて通った）。流していないもの：transpiled VM（作り直していない）と、Python 版の VM の consh/test。
-* 見本のページ（vm/wasm/web/canvas.html）は、vm/wasm/web/build.sh の後、ブラウザで見る。測り方は vm/wasm/web/measure.sh（9 秒ほど）。
-
-### m1/platform-p3b
-
-* 段階 P3b（docs/dev/PLATFORM-PLAN-ja.md の 8.4 節）：ConJS（conjs/。conjs/README-ja.md）。SJS の変換器とランタイム（sjs/include の sjs_parse.se、sjs_gen.se、sjs_rt.se、sjs_inspect.se）にも足した。
-* 新しいテスト：conjs/test（`conjs/test/run_all.sh`。`CONMA_VM` なし、wasm、python）。「全部流す」に足した。
-* sjs/include を変えたので、sjs/test と、SJS を使う consh/test（`(( ))`）と consh/js/test も流す。VM は変えていない。
-* M1 が流したもの（Apple M1）：conjs/test を Rust 版（30 秒）、wasm 版（29 秒）、Python 版（1 分 30 秒）の VM で。sjs/test（2 分 32 秒）。consh/test を Rust 版（39 秒）と wasm 版（56 秒）の VM で（`-j 6`、`-j 3`）。consh/js/test（17 秒）。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。PR shima3/conma#4 のレビューで sjs_parse.se を直した後に、conjs/test（3 つの VM）、sjs/test、Rust 版の consh/test を流し直し、すべて通った。流していないもの：test/（VM を変えていない）、ConSh の参照版と transpiled VM と Python 版の VM の consh/test。sjs/bench は測っていない（ベンチマークが動かすコードは変わらない。変えたのは、処理の値の種類の検査と、変換するときの名前の検査だけ）。
-
 ### m1/platform-p4
 
-* 段階 P4（docs/dev/PLATFORM-PLAN-ja.md の 8.5 節）：言語キット（include/lang/）、bin/lang、bin/lang-test、bin/lang-emit-check、bin/lang-step-check。SJS（sjs/include）と ConJS を、キットの部品を使う形に書き直した。consh/include/consh_jsstmt.se は、呼ぶ名前だけが変わった。
-* 新しいテスト：test/fast17（キットだけで作った電卓の言語。test/run_all.sh に入る）。
-* sjs/include と consh/include が変わったので、sjs/test、conjs/test、consh/test、consh/js/test を流す。ConSh のモジュールが変わるので、transpiled VM は作り直してから consh/test を流す。VM は変えていない。
-* M1 が流したもの（Apple M1）：`bin/lang-emit-check --steps 68795c9`（作るコードは同じ、変換のステップは +0.05%）、`bin/lang-step-check 68795c9`（83 のプログラムで出力は同じ。例外を投げる 40 のプログラムだけ、ステップが 1〜11 多い。受け入れた違いなので、この比べ方では終了ステータス 1 になる）。sjs/test（2 分 19 秒）、conjs/test を Rust 版（27 秒）、wasm 版（28 秒）、Python 版（1 分 30 秒）の VM で。consh/test を Rust 版（33 秒）と wasm 版（50 秒）の VM で。consh/js/test（16 秒）。test/ を Rust 版の VM で（22 秒）。test/fast17 を Python 版、Rust 版、wasm 版の VM で。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。流していないもの：Python 版と wasm 版と transpiled VM の test/、ConSh の参照版、transpiled VM と Python 版の VM の consh/test。
 * ベンチマーク：sjs/bench の実行は、作るコードと、実行時のステップ数（例外を投げない所）が変わらないので、測っていない。sjs/bench/consh の nbody.sh で変換の時間を前と後で測ることも、まだしていない（変換のステップ数は +0.05%）。
-
-### m1/conjs-own-review
-
-* M2 のレビュー（docs/dev/REVIEW-ja.md の 2026-11-20）への対応：計画書の 4.1 節と 4.2 節、conjs/README-ja.md の文を直し、ConJS を広げる道を 4.1 節に書いた。文書だけなので、流すものはない。
 
 ### m1/platform-p5
 
@@ -131,6 +73,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-20 | dfd70e1 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）と、wasm 版の test/step31 の case1 が 1 回だけ違った（`after the second: 1`。suite を並べて流していたとき。step31 を 1 つで 10 回、wasm 版の test/ を全部で 2 回流し直して、すべて通った。M1 が m1/platform-p3 で `-j 8` で見たものと同じ、シグナルのタイミング）。新しい conjs/test は、Rust 版、Python 版、wasm 版の VM で通った。申し送りの m1/platform-p1、m1/platform-p2、m1/platform-p3、m1/platform-p3b、m1/platform-p4 の、流していなかった組み合わせ（transpiled VM の test/ と consh/test、Python 版と wasm 版の VM の test/、ConSh の参照版、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。申し送りの m1/platform-plan、m2/platform-plan-notes、m1/conjs-decision、m1/platform-p3-design、m1/conjs-own-review（文書だけ）も含む。m1/platform-p4 の見出しは、「ベンチマーク：」の行だけを残した。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、dfd70e1 で作り直した（10 分 51 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-20 | m2/docs-pr-flow（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | プルリクエストで、作者のほかの人がレビューしてテストを流す決まりを、docs/dev/CONTRIBUTING.md の Branches の 6 に足し、説明の型 .github/pull_request_template.md を作った。役目ではなく、書いた機械を本文の初めに書く（テストと開発の担当は変わるため）。PR shima3/conma#7 の M4 のレビューを受けて、流す状態（ブランチの先頭。alpha と衝突するときは作者が先に alpha をマージ）、GitHub の承認が使えないことと「指摘なし」の合図、型を body.md に写すこと、開いた後に申し送りへ番号を足すこと、文書だけの PR を gh でマージした後の手順、申し送りに PR で流したものを短く書くことを足した。記録と申し送り、マージの後の Full Test は変えていない。確かめたこと：足したリンクとパス（docs/dev/TESTS-ja.md、.github/pull_request_template.md）があること、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない |
 | 2026-11-19 | 449a0db | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。m1/sjs-top で consh/sjs から移った sjs/test も通った（`sjs/test/run_all.sh`）。申し送りの m1/sjs-top の、流していなかった組み合わせ（`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。申し送りの m1/sjs-bench-move（suite は変えたファイルを読まない）と、m2/bench-a471875、m1/note-sjs-path も含む。transpiled VM は、consh/include が変わったので、Rust VM の consh/test で ConSh のモジュールを作り直してから、449a0db で作り直した（11 分 24 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-19 | a471875 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/lazy-rest と m1/seq-varlist-gc の、流していなかった組み合わせ（test/ と consh/sjs/test、Python 版の VM、`CONSH_IMPL=rust`）も通った。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、a471875 で作り直した（10 分 41 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
