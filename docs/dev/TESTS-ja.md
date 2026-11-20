@@ -122,7 +122,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### m1/platform-p5
 
-* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5 の設計の案。4 節、5 節の表、6 節の 2 も直した）。流すものはない。
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5 の設計の案。4 節、5 節の表、6 節の 2 も直した）。流すものはない。PR は shima3/conma#8。
 
 ## 記録
 
