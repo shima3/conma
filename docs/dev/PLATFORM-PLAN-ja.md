@@ -342,7 +342,7 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 
 **M2 のレビュー**（PR shima3/conma#10）：分け方、ふつうの関数の `this` をエラーにすること、取り出したメソッドの `this`、メソッドを探す作り、`JSON.parse` と `sort` を足すときに SJS と共有すること（ユーザーにも確かめた）に賛成をもらった。指摘を受けて、メソッドを探す所（`Sjs_get_member` と `Sjs_in_op` だけ）、`console.log` の出し方、`o.m === o.m` の違いと遅いときの案、`static` のメソッドの継承と `Object.keys(C)`、`JSON.parse` の `constructor` のキー、`sort` の比べ方と `undefined`、Node.js と比べる場合の選び方（node.txt）、フィールドの初期化の `this` を書き足した。
 
-### 4.6. 段階 P5c の設計（案、2026-11-21）
+### 4.6. 段階 P5c の設計（案、2026-11-21。M2 のレビューは PR shima3/conma#12）
 
 P5c では、ConJS のプログラムが、ブラウザのキーとマウスの入力を、待つ呼び出しとして待てるようにする。見本として、入力を待つ対話のゲームを ConJS で書き、ブラウザで動かす。作者の方針（2026-11-21）：「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」のうち、入力を待つ対話を選び、それを動かせるように ConJS を広げる。プラットフォームを増やす段階（5 節の表の P6）は、その後にする。
 
@@ -353,7 +353,8 @@ P5c では、ConJS のプログラムが、ブラウザのキーとマウスの�
 ```js
 while (true) {
   if (!title()) break;            // 画面を描き、キーかクリックを待つ（Escape なら偽）
-  const score = play();           // 遊んで、終わったら点を返す
+  const score = play();           // 遊んで、終わったら点を返す（Escape なら undefined）
+  if (score === undefined) break;
   if (!result(score)) break;      // 点を出し、キーを待つ
 }
 
@@ -365,39 +366,46 @@ function play() {
   const painter = spawn(() => {                          // 1 コマごとに描く処理
     while (!game.over) { draw(game); host.wait("canvas.frame"); }
   });
+  let quit = false;
   while (!game.over) {                                   // 自分は、キーを待って動く
-    const e = nextEvent(500);                            // 500 ミリ秒でキーがなければ undefined
-    if (e && e.type === "key") movePlayer(game, e.key);
+    const e = nextEvent(100);                            // 100 ミリ秒でキーがなければ undefined
+    if (e && e.type === "key" && e.key === "Escape") { quit = true; game.over = true; }
+    else if (e && e.type === "key") movePlayer(game, e.key);
   }
   ghosts.forEach(join); join(painter);
-  return game.score;
+  return quit ? undefined : game.score;
 }
 ```
 
 * **JavaScript で同じものを書くと**：画面の移り変わりは「今の画面」の状態の変数と、keydown のイベントの受け手の中の分岐になる。おばけの動きは `setInterval` の受け手に分かれ、遊ぶ所を抜けるときに `clearInterval` で止める。`async` と `await` で書いても、キーを 1 つ待つ Promise を自分で作り（受け手を足して、1 回で外す）、時間切れとの競争（`Promise.race`）も書くことになる。ConJS では、上のように、画面の順と、おばけごとの動きを、ふつうのループと関数で書ける。
 * **割り込まれないこと**（4.1 節）：3 種類の処理が `game` を共有するが、切り替わるのは待つ呼び出し（`nextEvent`、`sleep`、`host.wait`）の所だけなので、`moveGhost` や `movePlayer` の途中で、ほかの処理が `game` を見ることはない。
+* **待つ間隔**：自分の処理は、`nextEvent(100)` で 100 ミリ秒ごとに起き、おばけの処理が立てた `game.over` を見る。おばけにぶつかってから結果の画面に移るまで、最大 0.1 秒かかる（M2 のレビューの 4。0.5 秒では、遊ぶ人にわかる遅れになる）。
+* **残った入力を捨てる**（M2 のレビューの 2）：列は入力を捨てないので、遊ぶ所で押し続けた矢印のキー（繰り返しも 1 つずつ入る）が、次の画面の「キーを待つ」にすぐ渡ってしまう。見本は、画面を描いた後に `while (pollEvent()) {}` で残りを捨ててから待つ。結果の画面は、300 ミリ秒 `sleep` してから捨てる（遊ぶ人の手が離れるまでのキーも捨てる）。ライブラリに足すものは要らない。
 * 見本は、`nextEvent` のない所（Rust 版と Python 版の VM、Node.js）では、「this platform has no input」と出して終える（canvas_demo.con.js と同じ形）。
 
 **足すもの**
 
-* **ホストの関数**（プラットフォームの機能 `"input"`。新しい vm/wasm/host/input.js。canvas.js と同じ形で、`ConmaInput(target, options)` が `hostFunctions` と `hostFeatures` を返す）：
-    * ホストは、target（canvas か document）の keydown と pointerdown を、届いた順に列にためる。待つ人がいないときに来た入力も捨てない。矢印のキー、スペース、Escape は、ページが動かないように `preventDefault` する。
+* **ホストの関数**（プラットフォームの機能 `"input"`。新しい vm/wasm/host/input.js。canvas.js と同じ形で、`ConmaInput(canvas, options)` が `hostFunctions` と `hostFeatures` を返す）：
+    * options（どれもなくてよい）：`keyTarget`（keydown を受け取るもの。既定は canvas。ページのどこでキーを押してもよいときは document）、`setTimeout` と `clearTimeout`（時間切れに使う時計。既定は globalThis のもの。テストは手で進める時計を渡す）。canvas は EventTarget であればよい（テストは Node.js の `EventTarget` を渡す）。input.js は、`KeyboardEvent` などの型を見ず、イベントの `key`、`clientX`、`clientY` だけを読む。
+    * ホストは、keyTarget の keydown と、canvas の pointerdown を、届いた順に列にためる。待つ人がいないときに来た入力も捨てない。矢印のキー、スペース、Escape は、ページが動かないように `preventDefault` する。
     * `input.next ms`（待つ呼び出し）：列の先頭の入力を返す。列が空なら、次の入力まで待つ。ms が 0 以上の数なら、その時間に入力がなければ null を返す。ms が負の数なら、時間を限らない。
     * `input.poll`（すぐ返る）：列の先頭の入力か、空なら null。
-    * 入力は LList：`("key" キーの名前)`（`KeyboardEvent.key`。`"ArrowUp"`、`"a"`、`" "`、`"Escape"` など。キーを押し続けたときの繰り返しも、1 つずつ入る）、`("click" x y)`（canvas の中の座標。canvas の表示の大きさと幅や高さが違っても、canvas の座標に直す）。
+    * 入力は LList：`("key" キーの名前)`（`KeyboardEvent.key`。`"ArrowUp"`、`"a"`、`" "`、`"Escape"` など。キーを押し続けたときの繰り返しも、1 つずつ入る）、`("click" x y)`（いつも canvas の座標。`clientX` と `clientY` から、canvas の `getBoundingClientRect()` の左上を引き、表示の大きさと canvas の幅や高さが違えば、その比で直す。`getBoundingClientRect` のない canvas（テストのまね）では、`clientX` と `clientY` をそのまま使う）。
     * 2 つの処理が同時に `input.next` を待てば、先に待ったほうが先の入力を受け取る。時間切れになった待ちは、列から外す（後の入力を取らない）。
 * **ConJS のライブラリ**（conjs/include/conjs_lib.se。ConJS だけ。SJS には移さない）：
-    * `nextEvent(ms)`：`input.next` を待ち、入力をオブジェクトにして返す：`{ type: "key", key: "ArrowUp" }`、`{ type: "click", x: 10, y: 20 }`。時間切れなら `undefined`。ms を書かなければ、時間を限らない。ms は `sleep` と同じく数（ほかは TypeError）。
+    * `nextEvent(ms)`：`input.next` を待ち、入力をオブジェクトにして返す：`{ type: "key", key: "ArrowUp" }`、`{ type: "click", x: 10, y: 20 }`。時間切れなら `undefined`。
+    * ms（M2 のレビューの 3）：`undefined`（書かない）と `Infinity` は、時間を限らない（`input.next` に -1 を渡す）。負の数と NaN は 0（すぐに時間切れ。`setTimeout` と同じ）。数でなければ TypeError。`sleep` の `Conjs_ms` は `undefined` と無限を 0 にするので、そのままは使わない。
     * `pollEvent()`：`input.poll`。同じ形のオブジェクトか `undefined`。待たない。
     * 機能 `"input"` がなければ、どちらも TypeError（`nextEvent: this platform has no input`）。プログラムは `host.available("input")` で先に確かめられる。
     * 名前は JavaScript にない（`sleep`、`spawn` と同じく ConJS の名前）。
-* **見本のページ**（vm/wasm/web/stars.html）：canvas と、canvas.js、input.js のホストの関数で、stars.con.js を変換したモジュールを動かす。canvas にフォーカスを置き、クリックでもフォーカスを取る。vm/wasm/web/build.sh が、canvas_demo_conjs と同じ形で stars_conjs.module.se を作る。`.claude/launch.json` の `conma-canvas` で見る。
+* **見本のページ**（vm/wasm/web/stars.html）：canvas と、canvas.js、input.js のホストの関数で、stars.con.js を変換したモジュールを動かす。canvas が keydown を受け取れるように `tabindex="0"` を付け、ページを開いたときと、クリックしたときにフォーカスを置く。vm/wasm/web/build.sh が、canvas_demo_conjs と同じ形で stars_conjs.module.se を作る。`.claude/launch.json` の `conma-canvas` で見る。
 * canvas に描くのは、今の `host.call("canvas.draw", 命令のリスト)` のまま。JavaScript の canvas の API に似た形（`ctx.fillRect(...)`）は、P5c では作らない。
 
 **テスト**
 
 * **conjs/test/step14**（入力のライブラリ）：
-    * case1：`nextEvent` と `pollEvent`。case1.host.js（wasm 版の VM のホストの関数。bin/lang-test の `case*.host.js`）が、決まった入力の列を渡す入力のまね。キー、クリック、時間切れ、列が空のときの `pollEvent`、2 つの処理が同時に待つときの順、ms が数でないときの TypeError を確かめる。入力のまねは、待つ呼び出しをその場で返し（時計を使わない）、時間切れは、列の中の印で表す。そのため、ログは時間によらず決まる。
+    * case1：`nextEvent` と `pollEvent`。case1.host.js（wasm 版の VM のホストの関数。bin/lang-test の `case*.host.js`）は、本物の input.js に、Node.js の `EventTarget` と、手で進める時計を渡す（test/fast16/host.js が、本物の canvas.js に記録する context を渡すのと同じ形。M2 のレビューの 1）。これで、ConJS の側だけでなく、input.js の列と待ちの決め方も確かめる：待つ人がいないときの入力をためること、2 つの処理が同時に待つとき先に待ったほうが先の入力を受け取ること、時間切れの待ちを列から外して後の入力を取らないこと。ほかに、キー、クリック、列が空のときの `pollEvent`、ms の扱い（`undefined`、`Infinity`、負の数、数でないときの TypeError）。
+    * 入力のまねの進め方：決まった手順の表を持ち、`input.next` が呼ばれた数で手順を進める。手順は「n 回目の `input.next` が呼ばれたら、次のタスクで、これらの入力を `dispatchEvent` で入れる」か「時計を ms だけ進める（時間切れの待ちが終わる）」。そのため、ログは本当の時計によらず決まる。手順を使い終わった後に `input.next` が呼ばれたら、Error（`input: the test has no more events`）にする（ずっと返さない Promise にすると、待っている呼び出しがあるので、スケジューラが終わらず、テストが止まる）。
     * Rust 版と Python 版の VM には機能 `"input"` がないので、同じ case1 が、`host.available("input")` の偽と、`nextEvent` の TypeError を出す（case1.log。wasm 版は case1.wasm.log）。
     * 入力のライブラリが使うホストの関数の名前（`input.next`、`input.poll`）と機能の名前（`"input"`）が、docs/PRIMITIVES.md にあることを、conjs/test/run_all.sh の今の検査で確かめる。
 * **見本**：conjs/test/step14/case2 で、stars.con.js を、canvas のまね（test/fast16 の命令を記録する canvas と同じ形）と入力のまねで動かす（wasm 版の VM だけ）。決まったキーの列で、タイトルから遊ぶ所に入り、何マスか動き、Escape で終わることと、例外が出ないことを確かめる。描いた命令とおばけの動きは、本当の時計（`sleep`）によるので、ログに出さない。Rust 版と Python 版の VM では、「this platform has no input」を出して終わる。
@@ -408,7 +416,7 @@ function play() {
 
 **P5c でしないこと**（後の候補）：ネイティブの VM の端末でキーを待つこと（端末を raw にする OS の機能が要る。Rust 版と Python 版の VM の `input.*`）。キーを押しているかを調べる関数（`isKeyDown`）、keyup、マウスの移動、タッチの複数の指。canvas の API に似た描き方。DOM の要素（ボタンや文字の入力欄）を待つこと。音。
 
-**M2 に聞きたいこと**：見本の選び方と大きさ。`nextEvent` と `pollEvent` の名前と形（オブジェクトで返すこと、時間切れを `undefined` で表すこと）。入力をためる列と、2 つの処理が待つときの決め方。テストを、入力のまねで時間によらないものにし、見本は終わり方だけを確かめること。
+**M2 のレビュー**（PR shima3/conma#12）：見本の選び方と大きさ、`nextEvent` と `pollEvent` の名前と形、入力をためる列と待ちの決め方、P5c でしないことの分け方に、賛成をもらった。指摘を受けて、case1 で本物の input.js を時計のまねで動かすこと（手順を使い終わったときの Error も）、見本が画面を変えるときに残った入力を捨てること、`nextEvent` の ms の扱い、見本の Escape と待つ間隔（100 ミリ秒）、canvas の `tabindex` と、クリックの座標をいつも canvas の座標にすることを書き足した。
 
 ## 5. 段階
 
