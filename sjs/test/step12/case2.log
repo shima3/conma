@@ -1,0 +1,5 @@
+[ 'constructor', '__proto__', 'x' ] {"constructor":1,"__proto__":2,"x":3}
+constructor TypeError the property constructor is not in SJS
+__proto__ TypeError the property __proto__ is not in SJS
+x 3
+exit: 0

@@ -58,6 +58,16 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/platform-p5b
+
+* 段階 P5b を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.7 節）：ConJS のクラス（`class`、`new`、`this`、`super`、`instanceof`、エラーのコンストラクタ。conjs/include/conjs_class.se と、sjs/include の sjs_parse.se、sjs_gen.se）、SJS と共有する `JSON.parse` と配列の `sort`（sjs/include/sjs_rt.se）、メソッドを探す所（sjs_rt.se の `Sjs_get_member`、`Sjs_in_op`）と、`console.log` のインスタンスとクラス（sjs_inspect.se）。PR は shima3/conma#11。
+* 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS のランタイムが入る）。VM は変えていない。
+* 新しいテスト：conjs/test の step11〜13、sjs/test の step12。conjs/test/compare.sh は、各ステップの node.txt に並べた場合を Node.js と比べる。conjs/test/step6/case6 のログを変えた。
+* M1 が流したもの（Apple M1、7bc2792）：conjs/test を Rust 版（10 秒）、wasm 版（10 秒）、Python 版（3 分 1 秒）で。conjs/test/compare.sh（node.txt の 6 つの場合）。sjs/test（36 秒）。consh/test を Rust 版（6 分 18 秒）と wasm 版（2 分 14 秒。違いは既知の step8 と step17 だけ）で。consh/js/test（18 秒）。`bin/lang-emit-check alpha`（違いは conjs/test/step6/case6 のメッセージだけ）と `bin/lang-step-check alpha`（出力は case6 のほかは同じ。ステップ数の違いは docs/dev/PLATFORM-PLAN-ja.md の 8.7 節。終了ステータス 1 になる）。流していないもの：test/（VM は変えていない）、transpiled VM、Python 版の VM の sjs/test と consh/test、ConSh の参照版、ブラウザのページ。
+* 測ったもの：nbody（2000）を ConJS で、配列で 1.46 秒、クラスで 2.33 秒（8.7 節）。Full Bench の依頼はない。
+* M2 のレビューを受けて直した（ee93ec8）：コンストラクタが返すオブジェクトを `new` の値にする、エラーの `name` と `toString` をクラスの記録のメソッドの表に置く（ConJS では、ランタイムのエラーも記録を持つ）、`JSON.parse` が数の形と文字列の中の制御文字を確かめる。新しいテストは conjs/test/step12/case8、step13/case3、sjs/test/step12/case3（どれも node.txt に入れ、Node.js と同じ）。
+* M1 が流したもの（ee93ec8）：conjs/test を Rust 版（7 秒）、wasm 版（11 秒）、Python 版（3 分 11 秒）で。conjs/test/compare.sh（node.txt の 8 つの場合）。sjs/test を Rust 版（42 秒）と wasm 版（42 秒）で。consh/test を Rust 版（`-j 6`、5 分 18 秒）で。consh/js/test（24 秒）。`bin/lang-emit-check origin/alpha`（違いは case6 だけ）。`bin/lang-step-check origin/alpha`：106 のプログラムで 57,098,369 ステップ。前の版と比べて、ランタイムのエラーを作るたびに 24 ステップ多い（同じ名前のエラーのコンストラクタを G で探す）。`JSON.parse` は、26 万 7 千文字の parse が 745 ミリ秒から 840 ミリ秒になった（数の形を確かめる分）。流していないもの：consh/test の wasm 版、Python 版の VM の sjs/test、ほかは上と同じ。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
