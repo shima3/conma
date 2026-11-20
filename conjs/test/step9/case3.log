@@ -1,0 +1,5 @@
+TypeError true
+TypeError fetch: url: expected a string, got the number 5
+TypeError fetch: headers must be an object, got the number 5
+TypeError fetch: method: expected a string, got the number 1
+exit: 0

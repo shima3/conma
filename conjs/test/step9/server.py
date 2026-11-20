@@ -1,0 +1,47 @@
+# conjs/test/step9 の fetch のテストのための、小さな HTTP サーバ（127.0.0.1。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。
+#   python3 server.py PORTFILE
+# OS が選んだポートで待ち、その番号を PORTFILE に書く。標準入力が閉じたら終わる（テストが終わればサーバも終わる）。
+#   GET /hello       200、本体 "hello from server"
+#   GET /json        200、本体 {"a": [1, 2], "b": "x"}
+#   POST /echo       200、本体 "METHOD 本体 X-Test ヘッダの値"
+#   ほか             404、本体 "not found"
+import http.server, socketserver, sys, threading
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def reply(self, code, body):
+        data = body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == "/hello":
+            self.reply(200, "hello from server")
+        elif self.path == "/json":
+            self.reply(200, '{"a": [1, 2], "b": "x"}')
+        else:
+            self.reply(404, "not found")
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n).decode()
+        if self.path == "/echo":
+            self.reply(200, "%s %s %s" % (self.command, body, self.headers.get("X-Test")))
+        else:
+            self.reply(404, "not found")
+
+    do_PUT = do_POST
+
+    def log_message(self, *args):
+        pass
+
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+server = Server(("127.0.0.1", 0), Handler)
+with open(sys.argv[1], "w") as f:
+    f.write(str(server.server_address[1]))
+threading.Thread(target=server.serve_forever, daemon=True).start()
+sys.stdin.read()

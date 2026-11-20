@@ -7,6 +7,7 @@
 ;; 処理（task）の SJS の値は Dict：「"t" は "task"、"id" は値の番号、"sched" はスケジューラの処理」
 (include "sjs_rt.se")
 (include "lang/sched.se")
+(include "conjs_lib.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
 ;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）
@@ -90,6 +91,7 @@
   Sjs_def G host "wait" (,(args) Conjs_host_wait G args) ,()
   Sjs_def G host "available" (,(args) Sjs_arg args ,(f rest) Conjs_host_name "host.available" f ,() __Feature_available__ f) ,()
   __Dict_put__ G "host" host ,()
+  Conjs_lib_builtins G ,()
   __Dict_remove__ G "Promise")
 
 ;; spawn(f)

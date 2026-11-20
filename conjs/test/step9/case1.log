@@ -1,0 +1,4 @@
+200 true hello from server
+{"a":[1,2],"b":"x"} 2 string
+404 false not found
+exit: 0

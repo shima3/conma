@@ -1,0 +1,5 @@
+Error true
+Error true
+TypeError fs.readFile: path: expected a string, got the number 5
+TypeError fs.writeFile: data: expected a string, got the number 5
+exit: 0
