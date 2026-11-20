@@ -116,6 +116,10 @@ CONMA_VM=python conjs/test/run_all.sh
 * M1 が流したもの（Apple M1）：`bin/lang-emit-check --steps 68795c9`（作るコードは同じ、変換のステップは +0.05%）、`bin/lang-step-check 68795c9`（83 のプログラムで出力は同じ。例外を投げる 40 のプログラムだけ、ステップが 1〜11 多い。受け入れた違いなので、この比べ方では終了ステータス 1 になる）。sjs/test（2 分 19 秒）、conjs/test を Rust 版（27 秒）、wasm 版（28 秒）、Python 版（1 分 30 秒）の VM で。consh/test を Rust 版（33 秒）と wasm 版（50 秒）の VM で。consh/js/test（16 秒）。test/ を Rust 版の VM で（22 秒）。test/fast17 を Python 版、Rust 版、wasm 版の VM で。違いは既知のもの（wasm 版の consh/test の step8 と step17）だけ。流していないもの：Python 版と wasm 版と transpiled VM の test/、ConSh の参照版、transpiled VM と Python 版の VM の consh/test。
 * ベンチマーク：sjs/bench の実行は、作るコードと、実行時のステップ数（例外を投げない所）が変わらないので、測っていない。sjs/bench/consh の nbody.sh で変換の時間を前と後で測ることも、まだしていない（変換のステップ数は +0.05%）。
 
+### m1/conjs-own-review
+
+* M2 のレビュー（docs/dev/REVIEW-ja.md の 2026-11-20）への対応：計画書の 4.1 節と 4.2 節、conjs/README-ja.md の文を直し、ConJS を広げる道を 4.1 節に書いた。文書だけなので、流すものはない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
