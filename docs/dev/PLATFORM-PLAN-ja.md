@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）の設計の案を 4.5 節に書いた。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -301,7 +301,7 @@ P5 では、ConJS をふだん使えるものにする。することは 2 つ�
 
 **M2 に聞きたいこと**：起動部が、変換したコードを `__VProc_spawn__` で動かす形（ConSh の `(( ))` と同じ）と、名前の一覧の確かめ方。ConJS が作るコードが変わること（bin/lang-emit-check は SJS だけで確かめる）。ライブラリの名前と範囲（`sleep` は JavaScript にない名前、`fs` は Node.js にならう、fetch の本体を先に全部読む）。ネイティブの VM の fetch を `curl` で行うこと。`time.now` と `time.sleep` を、Rust 版と Python 版の VM に足すこと。
 
-### 4.5. 段階 P5b の設計（案、2026-11-20）
+### 4.5. 段階 P5b の設計（決めた、2026-11-20。M2 のレビューは PR shima3/conma#10）
 
 P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「ConJS を広げる道」。まず ConJS に足し、そのうち安全なものを SJS に移して共有する）。最初に足すのは、ふつうの JavaScript のプログラムでいちばんよく使い、SJS が安全のために除いているもの：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。あわせて、SJS にもない、ふつうの JavaScript の関数 `JSON.parse` と配列の `sort` を足す。プラットフォームを増やす段階（5 節の表の P6）は、その後にする。
 
@@ -353,7 +353,7 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 | P3b（作った、2026-11-19。8.4 節） | ConJS（4.1 節）：SJS の部品で作る。P3 の待つ呼び出しを使う | ConJS のテストが、すべての VM で通る。協調的に切り替わること（待つ呼び出しの所だけで切り替わる）を確かめるテスト |
 | P4（作った、2026-11-20。8.5 節） | 言語キット：SJS から部品を取り出し、SJS と ConJS をキットの上に書き直す | sjs/test、consh/test、sjs/bench（遅くならないこと） |
 | P5（作った、2026-11-20。8.6 節） | ConJS をふだん使えるものにする：ランタイムを先にモジュールにしておく。待つ呼び出しのライブラリ（タイマー、時刻、ファイル、fetch） | conjs/test が 3 つの VM で通る。`console.log("hi")` を動かす時間が 0.2 秒以下。sjs/bench の計算を ConJS で動かして遅くならない |
-| P5b（設計の案は 4.5 節） | ConJS が受け付ける JavaScript を広げる：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。`JSON.parse` と配列の `sort`（SJS と共有） | conjs/test が 3 つの VM で通り、足したものの場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/bench が遅くならない |
+| P5b（作った、2026-11-20。8.7 節） | ConJS が受け付ける JavaScript を広げる：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。`JSON.parse` と配列の `sort`（SJS と共有） | conjs/test が 3 つの VM で通り、足したものの場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/bench が遅くならない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 
 ## 6. 決めること
@@ -469,3 +469,25 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
     * M2 の PR shima3/conma#9 のレビューを受けて直した：bin/lang は、ランタイムのソース（キャッシュの「name」-rt-ハッシュ.se）も、一時ファイルに書いてから mv で置く（同時に動く bin/lang が、書きかけのソースからモジュールを作らないように）。curl の道の fetch は、HEAD を `--head` で送る（`-X HEAD` の curl は、来ない本体を待って終了コード 18 で終わり、TypeError になっていた。step9 に HEAD の場合を足した）。bin/lang-step-check は、copy.txt のあるステップ（step8 と step9。ファイルを書くか、サーバが要る）を除き、BASE にないプログラムを動かさない（step8 のファイルを作業ツリーに残し、cd のエラーを出していた）。
     * ブラウザのページでの `fs`（VM のメモリの中のファイル）と、canvas の見本は、確かめていない（見本は変換器もランタイムも、作るコードも変わっていないので、vm/wasm/web/build.sh で作り直せば今と同じ）。
 
+### 8.7. 段階 P5b（2026-11-20）
+
+4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った。使い方は conjs/README-ja.md の「言語」。
+
+* **構文解析と変換**（sjs/include/sjs_parse.se、sjs_gen.se）：ConJS のときだけ、名前の検査で `this`、`new`、`class`、`super` を通し、`instanceof` を受け付ける。class 宣言は、`let 名前 = class 名前 { ... }` の宣言の節にする（宣言より前に使えないのも let と同じ）。変換は、クラスの中のスコープの Dict に、this を読む変数（メソッドとフィールドでは、インスタンスの変数そのもの。`extends` のあるクラスのコンストラクタでは、`super(...)` が入れる Ref）と、今のクラスの記録の変数を置く。ふつうの `function` は、その Dict に「読めない」の印を置くので、中の `this` と `super` は変換するときのエラー（`conjs: this outside a class`、`'super' keyword unexpected here`）。アロー関数は、外のものを読む。SJS は、字句の名前の検査で先に止まるので、SJS が作るコードは変わらない。
+* **ランタイム**（conjs/include/conjs_class.se）：`Conjs_class`、`Conjs_method`、`Conjs_static`、`Conjs_ctor`、`Conjs_fields`、`Conjs_new`、`Conjs_super_call`、`Conjs_super_get`、`Conjs_this`、`Conjs_instanceof` と、組み込みのエラーのコンストラクタ。クラスの値とインスタンスは、隠したキー `"cls"` にクラスの記録を持ち、記録の `"find"`（`Conjs_find_member`）がメソッドを探す。sjs/include/sjs_rt.se は、`Sjs_get_member` のオブジェクトの 2 つの道と関数の道、`Sjs_in_op` で、メンバーが自分のプロパティになかったときだけ `Sjs_class_member` を呼ぶ（新しい `Sjs_obj_member`、`Sjs_function_member`、`Sjs_obj_in`。メンバーがあるときの手順の数は、前の `Sjs_obj_get`、`Sjs_members_find`、`Sjs_obj_has` と同じ）。`Sjs_obj_get` と `Sjs_obj_has` は変えていない。sjs_inspect.se は、インスタンスを `Point { x: 1 }`、クラスを `[class Point]` と出す。
+* **`JSON.parse` と `sort`**（sjs_rt.se）：conjs_lib.se の JSON の読み手を `JSON.parse` に移し、配列の `sort`（安定なマージソート）を足した。SJS と ConJS で共有する（sjs/README-ja.md の「JSON.parse と配列の sort」）。
+* **テスト**：conjs/test の step11（クラス）、step12（エラーのコンストラクタと、エラーの場合）、step13（`JSON.parse` と `sort`）、sjs/test の step12。Node.js と比べる場合を、各ステップの node.txt に並べ、conjs/test/compare.sh は、ファイルを書かなければ、それらを比べる（step10 にも node.txt を置いた）。conjs/test/step6 の case6（上の階層の `this`）は、メッセージが `conjs: not in ConJS: this` から `conjs: this outside a class` になった。
+* **確かめたこと**（Apple M1、Rust 版の VM で変換）：
+    * conjs/test/compare.sh：node.txt の 6 つの場合（step10 の 2 つ、step11 の 2 つ、step12 と step13 の 1 つずつ）が、Node.js と同じ標準出力。sjs/test/step12 の case1 も、Node.js と、ConSh の段階 A（`sjs/test/compare.sh`）と同じ。
+    * bin/lang-emit-check（alpha の 117e4c3 と比べる）：作るコードは、conjs/test/step6/case6（上のメッセージ）のほかは、すべてのソースで 1 文字も違わない。
+    * bin/lang-step-check（同じ）：89 のプログラムで、出力は case6 のほかは同じ。SJS のプログラムは、始めに `JSON.parse` を置く分の 69 ステップのほかに、ないメンバーを読む所、`in`、`console.log` に渡すオブジェクトの数によって −4〜+64 ステップ違う（81 のうち 25 は 69 ステップちょうど。いちばん多い sjs/test/step8 の case12 は、さらに 784）。ConJS の今までのプログラムは 502〜574 ステップ多い（始めにエラーのコンストラクタを置く分）。sjs/bench の loop、fib、nbody は 69 ステップだけ多い（計算の中のステップは同じ）。
+    * nbody（大きさ 2000）を ConJS で動かす時間（user + sys、3 回の最良）：物体を配列にした今の nbody（sjs/bench/nbody.safe.js）が 1.46 秒、物体をクラス Body にした conjs/bench/nbody_class.con.js が 2.33 秒、そのうえで、ループの中のメソッドの呼び出し（`b1.pull(b2, dt)`、`b.move(dt)`）をふつうの関数の呼び出しにしたものが 2.21 秒。メソッドを読むたびに関数を作る分は約 5% で、残りの違いは、フィールドを名前で読む（配列は、数の添字の速い道 `Sjs_get_index` を通る）ことから来る。そのため、4.5 節の遅いときの案（`Conjs_call_member`）は作らなかった。
+* **設計と変えたところ**：
+    * ふつうの関数の `new` のメッセージは、JavaScript の `F is not a constructor` でなく、`a function is not a constructor`（SJS の `Sjs_describe`。`... is not a function` と同じ書き方）。
+    * 足さないもの（getter、計算した名前、static のフィールドとブロック）のメッセージは、ほかの範囲の外のものと同じく `conjs: not in ConJS: a getter or a setter` などにした。
+    * メッセージが空のエラーの `String(e)` を、名前だけにした（`new Error()` を `Error` と書く。JavaScript と同じ）。
+    * 配列の `sort` に、関数でない compare を渡したときのメッセージは、Node.js と同じく値を付ける（`...: 1`）。
+* **M2 の PR のレビューで直したこと**（PR shima3/conma#11）：
+    * コンストラクタが返すオブジェクトを、`new` の値にする（JavaScript と同じ）。親のコンストラクタが返したものは、子の `this` にしない（conjs/README-ja.md の違い）。
+    * エラーの `name` と `toString` を、組み込みのエラーのコンストラクタの記録の、メソッドの表に置く（JavaScript のプロトタイプと同じ所）。`this.name = "MyErr"` が `Object.keys` と JSON に出て、`new Error().toString()` が動く。ConJS では、ランタイムが投げるエラーも、同じ名前のエラーのコンストラクタの記録を持つ（sjs_rt.se の `Sjs_error_object`。エラーを作るたびに 24 ステップ多い）。
+    * `JSON.parse` は、JSON の数の形（`+1`、`01`、`1.`、`.5` は SyntaxError）と、文字列の中の生の制御文字を確かめる。大きな JSON の parse は、1 割ほど遅くなった。

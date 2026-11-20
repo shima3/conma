@@ -1,0 +1,19 @@
+{ a: [ 1, 2.5, -300, { b: null } ], c: 'x\nyé😀', d: true, e: false }
+[] {} s 42 null
+[ 3, 1, 2 ] true [ 'list', 'name', 'nested' ]
+SyntaxError true
+SyntaxError true
+SyntaxError true
+SyntaxError true
+SyntaxError true
+SyntaxError true
+[ 1, 10, 2, 21, 3 ]
+[ 1, 2, 3, 10, 21 ]
+[ 21, 10, 3, 2, 1 ]
+[ 'a', 'b', 'c', undefined, undefined ]
+[ '', 'Cherry', 'apple', 'apple2', 'banana' ]
+ebdac
+true [ 3, 4, 5 ] [] [ 1 ]
+true 200 0 100
+TypeError The comparison function must be either a function or undefined: 1
+exit: 0

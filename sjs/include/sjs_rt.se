@@ -167,14 +167,35 @@
   Sjs_set_handlers saved ,()
   handler exc)
 
-;; エラーのオブジェクト：name と message を、名前の一覧に入れずに持つ（Object.keys と JSON に出ない）
+;; エラーのオブジェクト：name と message を、名前の一覧に入れずに持つ（Object.keys と JSON に出ない）。ConJS では、
+;; 同じ名前のエラーのコンストラクタ（conjs/include/conjs_class.se）の記録を "cls" に持つ（toString などのメソッド）
 (define Sjs_error_object ,(G name msg)
+  __Cont_get__ ,(return)
   Sjs_object_new G ,(o)
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
   __Dict_put__ props "name" name ,()
   __Dict_put__ props "message" msg ,()
   __Dict_put__ o "error" __TRUE__ ,()
+  __Dict_lookup_or__ G name (,(k) return o) ,(F)
+  __type_name__ F ,(type)
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ (,() return o) ,()
+  __Dict_lookup_or__ F "t" (,(k) return o) ,(t)
+  __String_equal__ t "function" ,(test__) __unless__ test__ (,() return o) ,()
+  __Dict_lookup_or__ F "cls" (,(k) return o) ,(R)
+  __Dict_put__ o "cls" R ,()
   __NULL__ o)
+
+;; エラーのオブジェクト o の名前：自分の name（ConJS の this.name = ...、ランタイムのエラー）か、なければ、ConJS のクラスの
+;; 記録の、組み込みのエラーのコンストラクタの名前（new Error() など）
+(define Sjs_error_name ,(o)
+  __Cont_get__ ,(return)
+  Sjs_obj_get o "name" ,(name)
+  __is_null__ name ,(test__) __unless__ test__ (,() return name) ,()
+  __Dict_lookup_or__ o "cls" (,(k) return "Error") ,(R)
+  Sjs_record_errname R)
+
+(define Sjs_record_errname ,(R)
+  __Dict_lookup_or__ R "errname" (,(k) __Dict_lookup_or__ R "parent" __print_exit_error__ ,(parent) Sjs_record_errname parent))
 
 (define Sjs_type_error ,(msg)
   Sjs_throw "TypeError" msg)
@@ -649,10 +670,12 @@
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
-      Sjs_obj_get v "name" ,(name)
+      Sjs_error_name v ,(name)
       Sjs_obj_get v "message" ,(msg)
       Sjs_to_string name ,(n)
       Sjs_to_string msg ,(m)
+      ;; メッセージが空なら名前だけ（JavaScript と同じ。ConJS の new Error()）
+      __String_equal__ m "" ,(test__) __if__ test__ (,() return n) ,()
       __String_concat__ n ": " ,(s)
       __String_concat__ s m ,(s)
       return s) ,()
@@ -1204,6 +1227,39 @@
   __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
   __Dict_lookup_or__ props key (,(k) __NULL__ __NULL__))
 
+;; ── ConJS のクラスのメソッド（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節。段階 P5b）──
+;; メンバーを読んで、自分のプロパティ（関数は、入れたメンバー）になかったときだけ、ConJS のクラスのメソッドを探す
+;; （Sjs_get_member の、オブジェクトの 2 つの道と関数の道、Sjs_in_op）。Sjs_obj_get と Sjs_obj_has は、自分の
+;; プロパティだけを見るままにする（Sjs_obj_set が、Sjs_obj_has で名前が新しいかを決める）。メンバーがあるときの
+;; 手順は、Sjs_obj_get、Sjs_obj_has、Sjs_members_find と同じ数
+
+;; o の自分のプロパティ key。なければ Sjs_class_member
+(define Sjs_obj_member ,(G o key)
+  __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
+  __Dict_lookup_or__ props key (,(k) Sjs_class_member G o key))
+
+;; 関数 o の入れたメンバー key。なければ Sjs_class_member（ConJS のクラスの static のメソッド）
+(define Sjs_function_member ,(G o key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "members" (,(x) Sjs_class_member G o key ,(v) return v) ,(m)
+  __Dict_lookup_or__ m "props" __print_exit_error__ ,(props)
+  __Dict_lookup_or__ props key (,(x) Sjs_class_member G o key))
+
+;; key in o（o はオブジェクト）：自分のプロパティか、ConJS のクラスのメソッドがあるか
+(define Sjs_obj_in ,(G o key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "props" __print_exit_error__ ,(props)
+  __Dict_lookup_or__ props key (,(k) Sjs_class_member G o key ,(m) __is_null__ m ,(none) __not__ none ,(h) return h) ,(v)
+  __NULL__ __TRUE__)
+
+;; o の隠したキー "cls"（ConJS のクラス。conjs/include/conjs_class.se）があれば、その "find" で key を探す
+;; （メソッドなら、this を o にした関数）。SJS の値は "cls" を持たないので、いつも undefined
+(define Sjs_class_member ,(G o key)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ o "cls" (,(k) return __NULL__) ,(cls)
+  __Dict_lookup_or__ cls "find" __print_exit_error__ ,(find)
+  find G o key)
+
 ;; k in o：o のメンバーに k があるか。オブジェクトは自分のメンバー、配列は要素のある添字（穴は偽）、ほかは
 ;; メンバー（"members"）と、読んで値のある名前（length、メソッド。プロトタイプはないので、SJS にあるメソッドだけ）。
 ;; 関数の length と name は、SJS では読めないが、JavaScript と同じく真。o がオブジェクトの類でなければ TypeError
@@ -1224,10 +1280,12 @@
       Sjs_index k ,(i)
       __is_null__ i ,(test__) __unless__ test__ (,() Sjs_array_has o i ,(h) return h) ,()) ,()
   Sjs_key_string k ,(ks)
-  __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_obj_has o ks ,(h) return h) ,()
+  __String_equal__ kind "object" ,(test__) __if__ test__ (,() Sjs_obj_in G o ks ,(h) return h) ,()
   Sjs_members_find o ks ,(found v)
   __if__ found (,() return __TRUE__) ,()
-  __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_word_in ks "length name" ,(h) return h) ,()
+  ;; 関数の length と name。ほかは、ConJS のクラスの static のメソッド（Sjs_class_member）
+  __String_equal__ kind "function" ,(test__) __if__ test__
+    (,() Sjs_word_in ks "length name" ,(h) __if__ h (,() return h) ,() Sjs_class_member G o ks ,(m) __is_null__ m ,(none) __not__ none ,(h) return h) ,()
   Sjs_get_member G o ks ,(m)
   __is_null__ m ,(none)
   __not__ none)
@@ -1434,7 +1492,7 @@
   Sjs_kind o ,(kind)
   ;; オブジェクトの名前（o.name。Math.sqrt など）は、props をそのまま引く
   __String_equal__ kind "object" ,(test__) __if__ test__
-    (,() __type_name__ key ,(kt) __String_equal__ kt "String" ,(test__) __if__ test__ (,() Sjs_obj_get o key ,(v) return v) ,()) ,()
+    (,() __type_name__ key ,(kt) __String_equal__ kt "String" ,(test__) __if__ test__ (,() Sjs_obj_member G o key ,(v) return v) ,()) ,()
   ;; 配列の添字（いちばん多い）は、キーを文字列にせずに読む。数のキーは、そのまま items を引く
   ;; （整数でない数と負の数は、items にないので undefined になる）
   __String_equal__ kind "array" ,(test__) __if__ test__
@@ -1487,11 +1545,11 @@
       Sjs_string_method G o ks ,(m)
       return m) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
-    (,() Sjs_obj_get o ks ,(v) return v) ,()
+    (,() Sjs_obj_member G o ks ,(v) return v) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjs_gen_method G o ks ,(m) return m) ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() Sjs_ag_method G o ks ,(m) return m) ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_promise_method G o ks ,(m) return m) ,()
-  __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_members_find o ks ,(found v) return v) ,()
+  __String_equal__ kind "function" ,(test__) __if__ test__ (,() Sjs_function_member G o ks ,(v) return v) ,()
   __NULL__ __NULL__)
 
 ;; i 番目の文字（なければ undefined）。i は 0 以上の整数。範囲の外は __String_substring__ の onError で undefined にする
@@ -1958,6 +2016,11 @@
     Sjs_reverse_into a items idx n ,()
     __Dict_put__ a "items" items ,()
     __NULL__ a) ,()
+  method "sort" (,(args)
+    guard "Cannot assign to read only property '0' of object '[object Array]'" ,()
+    Sjs_arg args ,(cmp rest)
+    Sjs_array_sort G a cmp ,()
+    __NULL__ a) ,()
   __NULL__ __NULL__)
 
 ;; 値の LList の from 番目から to 番目の前まで
@@ -2316,6 +2379,7 @@
   ;; JSON
   Sjs_object_new G ,(json)
   Sjs_def G json "stringify" (,(args) Sjs_arg args ,(v rest) Sjs_json v) ,()
+  Sjs_def G json "parse" (,(args) Sjs_arg args ,(v rest) Sjs_to_string v ,(text) Sjs_json_parse G text) ,()
   __Dict_put__ G "JSON" json ,()
   ;; Object
   Sjs_object_new G ,(object)
@@ -3956,3 +4020,359 @@
   __LList_cons__ a tail ,(l)
   __NULL__ ok l)
 
+;; ── JSON.parse（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節。段階 P5b で、ConJS の Response の json() の読み手（conjs/include/conjs_lib.se）を
+;; 移した）。読めないときは SyntaxError。キーが constructor や __proto__ でも、そのままのプロパティにする（プロトタイプは
+;; ないので安全。読むと、今までどおり Sjs_bad_property で止まる）──
+
+(define Sjs_jp_num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+;; 文字 c が s にあれば、その位置（なければ null）
+(define Sjs_jp_find ,(s c)
+  Sjs_zero ,(zero)
+  __String_find__ __print_exit_error__ s c zero)
+
+(define Sjs_json_parse ,(G text)
+  __String_length__ text ,(n)
+  Sjs_jp_num "0" ,(zero)
+  __Ref_new__ zero ,(pos)
+  Sjs_jp_value G text n pos ,(v)
+  Sjs_jp_ws text n pos ,()
+  __Ref_get__ pos ,(i)
+  __Number_subtract__ n i ,(left)
+  __Number_is_zero__ left ,(test__) __unless__ test__ (,() Sjs_jp_error pos) ,()
+  __NULL__ v)
+
+(define Sjs_jp_error ,(pos)
+  __Ref_get__ pos ,(i)
+  Sjs_num_str i ,(at)
+  __String_concat__ "Unexpected token in JSON at position " at ,(m)
+  Sjs_throw "SyntaxError" m)
+
+;; 位置の文字（終わりなら ""）
+(define Sjs_jp_peek ,(text n pos)
+  __Cont_get__ ,(return)
+  __Ref_get__ pos ,(i)
+  __Number_subtract__ n i ,(left)
+  __Number_is_zero__ left ,(test__) __if__ test__ (,() return "") ,()
+  Sjs_jp_num "1" ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ text i j)
+
+(define Sjs_jp_skip ,(pos k)
+  __Ref_get__ pos ,(i)
+  __Number_add__ i k ,(j)
+  __Ref_set__ pos j)
+
+(define Sjs_jp_ws ,(text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "" ,(test__) __if__ test__ return ,()
+  Sjs_jp_find " \t\n\r" c ,(at)
+  __is_null__ at ,(test__) __if__ test__ return ,()
+  Sjs_jp_num "1" ,(one)
+  Sjs_jp_skip pos one ,()
+  Sjs_jp_ws text n pos)
+
+(define Sjs_jp_value ,(G text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_num "1" ,(one)
+  __String_equal__ c "{" ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() Sjs_object_new G ,(o) Sjs_jp_members G text n pos o __TRUE__ ,(v) return v) ,()
+  __String_equal__ c "[" ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() Sjs_jp_items G text n pos __NULL__ __TRUE__ ,(l) Sjs_array G l ,(a) return a) ,()
+  __String_equal__ c "\"" ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() Sjs_jp_string text n pos "" ,(str) return str) ,()
+  Sjs_jp_word text n pos "true" __TRUE__ ,(found v) __if__ found (,() return v) ,()
+  Sjs_jp_word text n pos "false" __FALSE__ ,(found v) __if__ found (,() return v) ,()
+  __Ref_new__ __NULL__ ,(jsNull)
+  Sjs_jp_word text n pos "null" jsNull ,(found v) __if__ found (,() return v) ,()
+  Sjs_jp_number text n pos)
+
+;; 位置に word があれば、読み進めて（真、v）
+(define Sjs_jp_word ,(text n pos word v)
+  __Cont_get__ ,(return)
+  __Ref_get__ pos ,(i)
+  __String_length__ word ,(k)
+  __Number_add__ i k ,(j)
+  __Number_subtract__ n j ,(left)
+  __Number_is_negative__ left ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  __String_substring__ __print_exit_error__ text i j ,(w)
+  __String_equal__ w word ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  __Ref_set__ pos j ,()
+  __NULL__ __TRUE__ v)
+
+(define Sjs_jp_number ,(text n pos)
+  __Ref_get__ pos ,(start)
+  Sjs_jp_num "1" ,(one)
+  ;; JSON の数の形：-? (0 | [1-9][0-9]*) (.[0-9]+)? ([eE][+-]?[0-9]+)?。ほかは SyntaxError（+1、01、1.、.5）
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "-" ,(test__) __if__ test__ (,() Sjs_jp_skip pos one) ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "0" ,(zero)
+  __if_then_else__ zero (,() Sjs_jp_skip pos one) (,() Sjs_jp_digits text n pos) ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "." ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() Sjs_jp_digits text n pos) ,()
+  Sjs_jp_peek_in text n pos "eE" ,(at)
+  __is_null__ at ,(test__) __unless__ test__
+    (,()
+      Sjs_jp_skip pos one ,()
+      Sjs_jp_peek_in text n pos "+-" ,(at)
+      __is_null__ at ,(test__) __unless__ test__ (,() Sjs_jp_skip pos one) ,()
+      Sjs_jp_digits text n pos) ,()
+  __Ref_get__ pos ,(end)
+  __String_substring__ __print_exit_error__ text start end ,(digits)
+  __Number_fromString__ (,(msg) __Ref_set__ pos start ,() Sjs_jp_error pos) digits)
+
+;; 位置の文字が set にあれば、set の中の位置（終わりか、なければ null）
+(define Sjs_jp_peek_in ,(text n pos set)
+  __Cont_get__ ,(return)
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "" ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Sjs_jp_find set c)
+
+;; 1 つ以上の数字を読み進める。なければ SyntaxError
+(define Sjs_jp_digits ,(text n pos)
+  Sjs_jp_peek_in text n pos "0123456789" ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_more_digits text n pos)
+
+(define Sjs_jp_more_digits ,(text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_peek_in text n pos "0123456789" ,(at)
+  __is_null__ at ,(test__) __if__ test__ return ,()
+  Sjs_jp_num "1" ,(one)
+  Sjs_jp_skip pos one ,()
+  Sjs_jp_more_digits text n pos)
+
+;; 文字列の中で止まる文字：" と \ と、制御文字（U+0000〜U+001F。JSON では、そのままは書けない）。一度作って PDict に置く
+(define Sjs_jp_stops ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_jp_stops" (,(k) __NULL__ __NULL__) ,(stops)
+  __is_null__ stops ,(test__) __unless__ test__ (,() return stops) ,()
+  Sjs_jp_num "0" ,(zero)
+  Sjs_jp_controls zero "\"\\" ,(stops)
+  __PDict_put__ "sjs_jp_stops" stops ,()
+  __NULL__ stops)
+
+(define Sjs_jp_controls ,(k acc)
+  __Cont_get__ ,(return)
+  Sjs_jp_num "32" ,(limit)
+  __Number_subtract__ k limit ,(d)
+  __Number_is_zero__ d ,(test__) __if__ test__ (,() return acc) ,()
+  __String_fromCode__ __print_exit_error__ k ,(c)
+  __String_concat__ acc c ,(acc)
+  Sjs_jp_num "1" ,(one)
+  __Number_add__ k one ,(k)
+  Sjs_jp_controls k acc)
+
+;; 文字列の中身（最初の " の後から）。acc は読んだ分
+(define Sjs_jp_string ,(text n pos acc)
+  __Cont_get__ ,(return)
+  __Ref_get__ pos ,(i)
+  Sjs_jp_stops ,(stops)
+  __String_find_any__ __print_exit_error__ text stops i ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() __Ref_set__ pos n ,() Sjs_jp_error pos) ,()
+  __String_substring__ __print_exit_error__ text i at ,(part)
+  __String_concat__ acc part ,(acc)
+  __Ref_set__ pos at ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_num "1" ,(one)
+  Sjs_jp_skip pos one ,()
+  __String_equal__ c "\"" ,(test__) __if__ test__ (,() return acc) ,()
+  __String_equal__ c "\\" ,(test__) __unless__ test__ (,() __Ref_set__ pos at ,() Sjs_jp_error pos) ,()
+  Sjs_jp_escape text n pos ,(e)
+  __String_concat__ acc e ,(acc)
+  Sjs_jp_string text n pos acc)
+
+(define Sjs_jp_escape ,(text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_num "1" ,(one)
+  Sjs_jp_skip pos one ,()
+  __String_equal__ c "n" ,(test__) __if__ test__ (,() Sjs_jp_num "10" ,(k) __String_fromCode__ __print_exit_error__ k ,(s) return s) ,()
+  __String_equal__ c "t" ,(test__) __if__ test__ (,() Sjs_jp_num "9" ,(k) __String_fromCode__ __print_exit_error__ k ,(s) return s) ,()
+  __String_equal__ c "r" ,(test__) __if__ test__ (,() Sjs_jp_num "13" ,(k) __String_fromCode__ __print_exit_error__ k ,(s) return s) ,()
+  __String_equal__ c "b" ,(test__) __if__ test__ (,() Sjs_jp_num "8" ,(k) __String_fromCode__ __print_exit_error__ k ,(s) return s) ,()
+  __String_equal__ c "f" ,(test__) __if__ test__ (,() Sjs_jp_num "12" ,(k) __String_fromCode__ __print_exit_error__ k ,(s) return s) ,()
+  __String_equal__ c "u" ,(test__) __if__ test__ (,() Sjs_jp_unicode text n pos ,(s) return s) ,()
+  Sjs_jp_find "\"\\/" c ,(at)
+  __is_null__ at ,(bad)
+  __String_equal__ c "" ,(end)
+  __or__ bad end ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
+  __NULL__ c)
+
+;; \uXXXX（と、続く下位のサロゲート）
+(define Sjs_jp_unicode ,(text n pos)
+  __Cont_get__ ,(return)
+  Sjs_jp_hex4 text n pos ,(hi)
+  Sjs_jp_num "55296" ,(d800)
+  Sjs_jp_num "56320" ,(dc00)
+  __Number_subtract__ hi d800 ,(a)
+  __Number_subtract__ hi dc00 ,(b)
+  __Number_is_negative__ a ,(below)
+  __Number_is_negative__ b ,(under)
+  __not__ below ,(atLeast)
+  __and__ atLeast under ,(lead)
+  __unless__ lead (,() __String_fromCode__ (,(m) Sjs_jp_error pos) hi ,(s) return s) ,()
+  Sjs_jp_word text n pos "\\u" __TRUE__ ,(found v)
+  __unless__ found (,() Sjs_jp_error pos) ,()
+  Sjs_jp_hex4 text n pos ,(lo)
+  ;; 0x10000 + (hi - 0xD800) * 0x400 + (lo - 0xDC00)
+  Sjs_jp_num "1024" ,(k400)
+  Sjs_jp_num "65536" ,(k10000)
+  __Number_multiply__ a k400 ,(x)
+  __Number_subtract__ lo dc00 ,(y)
+  __Number_add__ x y ,(x)
+  __Number_add__ x k10000 ,(code)
+  __String_fromCode__ (,(m) Sjs_jp_error pos) code)
+
+(define Sjs_jp_hex4 ,(text n pos)
+  Sjs_jp_num "0" ,(zero)
+  Sjs_jp_hex text n pos zero zero)
+
+(define Sjs_jp_hex ,(text n pos k acc)
+  __Cont_get__ ,(return)
+  Sjs_jp_num "4" ,(four)
+  __Number_subtract__ k four ,(d)
+  __Number_is_zero__ d ,(test__) __if__ test__ (,() return acc) ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c "" ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_find "0123456789abcdef0123456789ABCDEF" c ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_num "16" ,(sixteen)
+  __Number_divide__ __print_exit_error__ at sixteen ,(q)
+  __Number_floor__ q ,(q)
+  __Number_multiply__ q sixteen ,(q)
+  __Number_subtract__ at q ,(digit)
+  __Number_multiply__ acc sixteen ,(acc)
+  __Number_add__ acc digit ,(acc)
+  Sjs_jp_num "1" ,(one)
+  Sjs_jp_skip pos one ,()
+  __Number_add__ k one ,(k)
+  Sjs_jp_hex text n pos k acc)
+
+;; 配列の要素（最初の [ の後から）。acc は逆順の LList
+(define Sjs_jp_items ,(G text n pos acc first)
+  __Cont_get__ ,(return)
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_num "1" ,(one)
+  __String_equal__ c "]" ,(close)
+  __and__ close first ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() return __NULL__) ,()
+  Sjs_jp_value G text n pos ,(v)
+  __LList_cons__ v acc ,(acc)
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_skip pos one ,()
+  __String_equal__ c "]" ,(test__) __if__ test__ (,() Sjs_reverse_list acc ,(l) return l) ,()
+  __String_equal__ c "," ,(test__) __unless__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_items G text n pos acc __FALSE__)
+
+;; オブジェクトのメンバー（最初の { の後から）
+(define Sjs_jp_members ,(G text n pos o first)
+  __Cont_get__ ,(return)
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_num "1" ,(one)
+  __String_equal__ c "}" ,(close)
+  __and__ close first ,(test__) __if__ test__ (,() Sjs_jp_skip pos one ,() return o) ,()
+  __String_equal__ c "\"" ,(test__) __unless__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_skip pos one ,()
+  Sjs_jp_string text n pos "" ,(key)
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  __String_equal__ c ":" ,(test__) __unless__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_skip pos one ,()
+  Sjs_jp_value G text n pos ,(v)
+  Sjs_obj_set o key v ,()
+  Sjs_jp_ws text n pos ,()
+  Sjs_jp_peek text n pos ,(c)
+  Sjs_jp_skip pos one ,()
+  __String_equal__ c "}" ,(test__) __if__ test__ (,() return o) ,()
+  __String_equal__ c "," ,(test__) __unless__ test__ (,() Sjs_jp_error pos) ,()
+  Sjs_jp_members G text n pos o __FALSE__)
+
+;; ── 配列の sort（4.5 節）──
+;; 安定な並べ替え（マージソート）。compare がなければ、文字列にして、SJS の < と同じく文字の番号で比べる。undefined は
+;; compare を呼ばずに最後に、穴はその後に置く（JavaScript と同じ）
+(define Sjs_array_sort ,(G a cmp)
+  __Cont_get__ ,(return)
+  Sjs_kind cmp ,(ck)
+  __String_equal__ ck "undefined" ,(plain)
+  __String_equal__ ck "function" ,(isFn)
+  __or__ plain isFn ,(ok)
+  __unless__ ok (,() Sjs_to_string cmp ,(cs) __String_concat__ "The comparison function must be either a function or undefined: " cs ,(msg) Sjs_type_error msg) ,()
+  __if_then_else__ plain
+    (,() __NULL__ (,(x y) Sjs_to_string x ,(xs) Sjs_to_string y ,(ys) Sjs_less ys xs))
+    (,() __NULL__ (,(x y)
+      __LList_cons__ y __NULL__ ,(l)
+      __LList_cons__ x l ,(l)
+      Sjs_call cmp l ,(r)
+      Sjs_to_number r ,(n)
+      __Number_is_positive__ n)) ,(after)
+  Sjs_array_present a ,(idx)
+  Sjs_sort_values a idx __NULL__ __NULL__ ,(rvals undefs)
+  Sjs_reverse_list rvals ,(vals)
+  __LList_length__ vals ,(n)
+  Sjs_msort vals n after ,(sorted)
+  __Dict_new__ ,(items)
+  Sjs_zero ,(zero)
+  Sjs_sort_put items sorted zero ,(i)
+  Sjs_sort_put items undefs i ,(i)
+  __Dict_put__ a "items" items ,()
+  return)
+
+;; 要素のある添字 idx の値の LList（undefined を除く）と、undefined の LList（どちらも逆順）
+(define Sjs_sort_values ,(a idx vals undefs)
+  __Cont_get__ ,(return)
+  __is_null__ idx ,(test__) __if__ test__ (,() return vals undefs) ,()
+  __LList_uncons__ __print_exit_error__ idx ,(i rest)
+  Sjs_array_get a i ,(v)
+  __is_null__ v ,(test__) __if__ test__ (,() __LList_cons__ v undefs ,(undefs) Sjs_sort_values a rest vals undefs ,(x y) return x y) ,()
+  __LList_cons__ v vals ,(vals)
+  Sjs_sort_values a rest vals undefs)
+
+;; 値の LList を、items の i 番目から入れる。次の添字を返す
+(define Sjs_sort_put ,(items list i)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return i) ,()
+  __LList_uncons__ __print_exit_error__ list ,(v rest)
+  __Number_toString__ i ,(k)
+  __Dict_put__ items k v ,()
+  Sjs_inc i ,(i)
+  Sjs_sort_put items rest i)
+
+;; 長さ n の LList l を安定に並べたもの。after x y は、x を y の後に置くか（JavaScript の compare(x, y) > 0）
+(define Sjs_msort ,(l n after)
+  __Cont_get__ ,(return)
+  Sjs_dec n ,(m)
+  __Number_is_positive__ m ,(test__) __unless__ test__ (,() return l) ,()
+  Sjs_jp_num "2" ,(two)
+  __Number_divide__ __print_exit_error__ n two ,(h)
+  __Number_floor__ h ,(h)
+  Sjs_sort_split l h __NULL__ ,(left right)
+  __Number_subtract__ n h ,(rn)
+  Sjs_msort left h after ,(ls)
+  Sjs_msort right rn after ,(rs)
+  Sjs_sort_merge ls rs after __NULL__)
+
+;; l の最初の k 個と残り
+(define Sjs_sort_split ,(l k acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ k ,(test__) __if__ test__ (,() Sjs_reverse_list acc ,(left) return left l) ,()
+  __LList_uncons__ __print_exit_error__ l ,(x rest)
+  __LList_cons__ x acc ,(acc)
+  Sjs_dec k ,(k)
+  Sjs_sort_split rest k acc)
+
+;; 並べた a と b を合わせる。acc は合わせた分（逆順）。同じなら a を先にする（安定）
+(define Sjs_sort_merge ,(a b after acc)
+  __Cont_get__ ,(return)
+  __is_null__ a ,(test__) __if__ test__ (,() Sjs_reverse_onto_list acc b ,(l) return l) ,()
+  __is_null__ b ,(test__) __if__ test__ (,() Sjs_reverse_onto_list acc a ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ a ,(x as)
+  __LList_uncons__ __print_exit_error__ b ,(y bs)
+  after x y ,(later)
+  __if__ later (,() __LList_cons__ y acc ,(acc) Sjs_sort_merge a bs after acc ,(l) return l) ,()
+  __LList_cons__ x acc ,(acc)
+  Sjs_sort_merge as b after acc)

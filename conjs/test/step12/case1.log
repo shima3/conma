@@ -1,0 +1,13 @@
+Error e Error: e true false false
+TypeError t TypeError: t true true false
+RangeError r RangeError: r true false true
+SyntaxError s SyntaxError: s true false false
+ReferenceError f ReferenceError: f true false false
+Error no new Error: no new true false false
+Error true [] {}
+page not found 404 page not found (404) Error: page not found
+true true true false
+TypeError: Cannot read properties of null (reading 'x')
+TypeError: undefined is not a function
+RangeError: out
+exit: 0

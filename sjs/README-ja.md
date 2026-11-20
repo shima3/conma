@@ -25,7 +25,7 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 * **式**：算術（`+ - * / % **`）、ビット演算、単項の `- + ! ~ typeof`、比較（`< <= > >=` は数どうしか文字列どうし、`===`、`!==`、`in`）、`&&`、`||`、`??`、条件演算子、コンマ演算子、代入と複合の代入（算術とビット演算）、`++`、`--`、メンバー（`.`、`[]`、`?.` の鎖）、呼び出し、スプレッド、テンプレート文字列とタグ付きテンプレート、配列とオブジェクトのリテラル（短縮形、計算したキー、メソッド、穴）
 * **文**：`let`、`const`、`var`、分割代入（既定値と残りの要素）、ブロック、`if`、`switch`、`while`、`do...while`、`for`、`for...of`、`for...in`、`for await`、`break`、`continue`、ラベル、`return`、`throw`、`try`/`catch`/`finally`
 * **関数**：アロー関数、`function` の式と宣言（ブロックの始めで作る）、メソッド、引数の既定値と残りの引数、ジェネレータ（`function*`、`yield`、`yield*`）、`async` と `await`、async ジェネレータ
-* **組み込み**：`console.log`、`Math`（`floor`、`ceil`、`round`、`trunc`、`abs`、`sqrt`、`sign`、`max`、`min`、`PI`）、`JSON.stringify`、`Object.keys`、`values`、`entries`、`Array.isArray`、`String`（`String.raw`）、`Number`（`Number.isInteger`）、`Boolean`、`isNaN`、`parseInt`、`Infinity`、`NaN`、`Promise`（`resolve`、`reject`、`all`、`then`、`catch`、`finally`）。配列と文字列の主なメソッド（経緯の「段階 B2」と「言語の残り」）
+* **組み込み**：`console.log`、`Math`（`floor`、`ceil`、`round`、`trunc`、`abs`、`sqrt`、`sign`、`max`、`min`、`PI`）、`JSON.stringify`、`JSON.parse`、`Object.keys`、`values`、`entries`、`Array.isArray`、`String`（`String.raw`）、`Number`（`Number.isInteger`）、`Boolean`、`isNaN`、`parseInt`、`Infinity`、`NaN`、`Promise`（`resolve`、`reject`、`all`、`then`、`catch`、`finally`）。配列と文字列の主なメソッド（経緯の「段階 B2」と「言語の残り」）
 * **演算の型**：段階 A と同じく、紛らわしい組み合わせはエラーにする（`+` は数どうしだけ。文字列をつなぐときはテンプレート文字列。大小の比較は数どうしか文字列どうし）。SJS でエラーにならずに動いたコードは、JavaScript でも同じ結果になる
 * **ConSh とのつながり**：`$名前` でシェル変数を読む（演算子の隣なら数にする）。SJS の値は SJS変数とシェル変数に入り、`$` で読むとシェルの値（文字列か語の並び）になる。SJS の関数をコマンドとして呼べる。ジェネレータをシェルの値にすると、読むたびに `next` を呼ぶ LazyList になる。`console.log` は ConSh のリダイレクトに従う
 
@@ -200,7 +200,7 @@ SJS は ConSh に依らない（include するのは、標準ライブラリの 
 
 ## テスト
 
-* sjs/test：step1（基本）、step2（配列、オブジェクト、ループ、組み込み）、step3（例外とエラーの位置）、step4（ジェネレータ）、step5（async と Promise）、step6（残りの書き方）、step7（言語の残り）、step8（`in`、配列のメンバー、分割代入、Ref のない `const` など）。step1 と step2 の多くは、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの位置の前置きを除く）。段階 A にない書き方（step4〜step8）とエラーの位置は、Node.js の結果と比べた。
+* sjs/test：step1（基本）、step2（配列、オブジェクト、ループ、組み込み）、step3（例外とエラーの位置）、step4（ジェネレータ）、step5（async と Promise）、step6（残りの書き方）、step7（言語の残り）、step8（`in`、配列のメンバー、分割代入、Ref のない `const` など）、step12（`JSON.parse` と配列の `sort`、JSON でない文字列）。step1 と step2 の多くは、`compare.sh` で段階 A と同じ出力になることを確かめた（エラーの位置の前置きを除く）。段階 A にない書き方（step4〜step8）とエラーの位置は、Node.js の結果と比べた。
 * ConSh の `(( ))` と `$(( ))`：consh/test/step21（ConMa 版の ConSh。ネイティブの VM と wasm 版で同じログ）と consh/js/test/step6（Node.js の wasm 版）。ブラウザ版はページで確かめた（docs/consh/dev/JS-PLAN-ja.md の 3.29、3.30）。
 
 ## 経緯
@@ -437,3 +437,12 @@ wasm 版の VM で、nbody の N=1 を動かす時間（実時間、7 回の最�
     * 5 つの数の文字列の `Number()` を 4000 回ずつ（2 万回）：wasm 版の VM で 1,758 → 995 ms、ネイティブ版の VM で 1,284 → 683 ms。
 * sjs/test/step8 の case13 が、`Number()` の 52 の文字列と `trim()` を Node.js の結果と比べる。`"0x10"`、`"+Infinity"`、`"1e400"` は、SJS では前から NaN になり（Node.js は 16、Infinity、Infinity）、比べていない。
 * その後、VM がモジュールの Function を初めて使うときに読むようにした（vm/README.md の「Start-up」）。wasm 版の VM で、`console.log(1)` は約 105 → 95 ms、nbody の N=1 は約 119 → 112 ms になった。
+
+### JSON.parse と配列の sort（2026-11-20）
+
+ConJS にクラスを足す段階 P5b（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節）で、`JSON.parse` と配列の `sort` を足し、SJS と ConJS で共有した。どちらもプロトタイプにもホストにも触れない、ふつうの JavaScript の関数なので、ConJS で試す期間を置かずに SJS にも入れた（M2 のレビューと、作者の了解。PR shima3/conma#10）。
+
+* `JSON.parse(text)`：ConJS の `fetch` の `json()` の読み手（conjs/include/conjs_lib.se）を sjs_rt.se に移した。読めなければ SyntaxError（`Unexpected token in JSON at position N`。Node.js とはメッセージが違う）。第 2 引数（reviver）は使わない。キーが `constructor` や `__proto__` のオブジェクトも、JSON のデータとして正しいので、そのまま作る（プロトタイプはないので安全）。そのプロパティは `Object.keys` に出るが、読むと、今までどおり `TypeError: the property constructor is not in SJS`（JavaScript では読める）。
+* `sort(compare)`：安定な並べ替え（マージソート）。`compare` がなければ文字列にして、SJS の `<` と同じく文字の番号で比べる（JavaScript は UTF-16 の単位で比べるので、基本多言語面の外の文字だけ順が違うことがある）。`undefined` は `compare` を呼ばずに最後に、穴はその後に置く（JavaScript と同じ）。
+* sjs/test/step12 が、Node.js の結果と比べる（case1）。case2 は、キーが `constructor` のオブジェクト。case3 は、JSON でない文字列（`+1`、`01`、`1.`、`.5`、文字列の中の生の制御文字）が SyntaxError になること（M2 のレビューで、数の形と制御文字を確かめるようにした。Node.js と同じ）。
+* ConJS のクラスのために、sjs_rt.se の `Sjs_get_member`（オブジェクトの 2 つの道と関数の道）と `Sjs_in_op` は、メンバーが自分のプロパティになかったとき、隠したキー `"cls"` を見る（`Sjs_class_member`）。SJS の値は `"cls"` を持たないので、結果は変わらない。sjs_inspect.se も、オブジェクトと関数を出すときに `"cls"` を見る。メッセージが空のエラーの `String(e)` は、名前だけにした（JavaScript と同じ。SJS のランタイムのエラーは、いつもメッセージがある）。
