@@ -68,6 +68,10 @@ CONMA_VM=python conjs/test/run_all.sh
 * M2 のレビューを受けて直した（ee93ec8）：コンストラクタが返すオブジェクトを `new` の値にする、エラーの `name` と `toString` をクラスの記録のメソッドの表に置く（ConJS では、ランタイムのエラーも記録を持つ）、`JSON.parse` が数の形と文字列の中の制御文字を確かめる。新しいテストは conjs/test/step12/case8、step13/case3、sjs/test/step12/case3（どれも node.txt に入れ、Node.js と同じ）。
 * M1 が流したもの（ee93ec8）：conjs/test を Rust 版（7 秒）、wasm 版（11 秒）、Python 版（3 分 11 秒）で。conjs/test/compare.sh（node.txt の 8 つの場合）。sjs/test を Rust 版（42 秒）と wasm 版（42 秒）で。consh/test を Rust 版（`-j 6`、5 分 18 秒）で。consh/js/test（24 秒）。`bin/lang-emit-check origin/alpha`（違いは case6 だけ）。`bin/lang-step-check origin/alpha`：106 のプログラムで 57,098,369 ステップ。前の版と比べて、ランタイムのエラーを作るたびに 24 ステップ多い（同じ名前のエラーのコンストラクタを G で探す）。`JSON.parse` は、26 万 7 千文字の parse が 745 ミリ秒から 840 ミリ秒になった（数の形を確かめる分）。流していないもの：consh/test の wasm 版、Python 版の VM の sjs/test、ほかは上と同じ。
 
+### m1/platform-p5c-design
+
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c の設計の案と、5 節の表の P5c の行）。流すものはない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
