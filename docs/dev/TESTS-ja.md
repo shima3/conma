@@ -68,6 +68,8 @@ CONMA_VM=python conjs/test/run_all.sh
 * 段階 P5b を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.7 節）：ConJS のクラス（`class`、`new`、`this`、`super`、`instanceof`、エラーのコンストラクタ。conjs/include/conjs_class.se と、sjs/include の sjs_parse.se、sjs_gen.se）、SJS と共有する `JSON.parse` と配列の `sort`（sjs/include/sjs_rt.se）、メソッドを探す所（sjs_rt.se の `Sjs_get_member`、`Sjs_in_op`）と、`console.log` のインスタンスとクラス（sjs_inspect.se）。
 * 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS のランタイムが入る）。VM は変えていない。
 * 新しいテスト：conjs/test の step11〜13、sjs/test の step12。conjs/test/compare.sh は、各ステップの node.txt に並べた場合を Node.js と比べる。conjs/test/step6/case6 のログを変えた。
+* M1 が流したもの（Apple M1、7bc2792）：conjs/test を Rust 版（10 秒）、wasm 版（10 秒）、Python 版（3 分 1 秒）で。conjs/test/compare.sh（node.txt の 6 つの場合）。sjs/test（36 秒）。consh/test を Rust 版（6 分 18 秒）と wasm 版（2 分 14 秒。違いは既知の step8 と step17 だけ）で。consh/js/test（18 秒）。`bin/lang-emit-check alpha`（違いは conjs/test/step6/case6 のメッセージだけ）と `bin/lang-step-check alpha`（出力は case6 のほかは同じ。ステップ数の違いは docs/dev/PLATFORM-PLAN-ja.md の 8.7 節。終了ステータス 1 になる）。流していないもの：test/（VM は変えていない）、transpiled VM、Python 版の VM の sjs/test と consh/test、ConSh の参照版、ブラウザのページ。
+* 測ったもの：nbody（2000）を ConJS で、配列で 1.46 秒、クラスで 2.33 秒（8.7 節）。Full Bench の依頼はない。
 
 ## 記録
 
