@@ -23,7 +23,7 @@ consh/
 │   ├── consh_util.se    LList、LazyList、Dict の補助関数
 │   ├── consh_expand.se  語の展開
 │   ├── consh_eval.se    文の実行
-│   └── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/consh/dev/SAFEJS-PLAN-ja.md）。SJS の変換器と実行時の支えは、リポジトリのルートの sjs/include にある（2026-11-19 に consh/sjs と consh/include から sjs/ に移した。sjs/README-ja.md）
+│   └── consh_jsstmt.se  JS の値と、SJS の算術評価 (( ))（JavaScript のある wasm 版。docs/consh/dev/SAFEJS-PLAN-ja.md）。SJS の変換器とランタイムは、リポジトリのルートの sjs/include にある（2026-11-19 に consh/sjs と consh/include から sjs/ に移した。sjs/README-ja.md）
 └── test/
     ├── run_all.sh       すべての test.sh を実行する
     ├── common.sh        各 test.sh が共通に使うパスと関数

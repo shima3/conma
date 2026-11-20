@@ -2,7 +2,7 @@
 
 ConMa 版の ConSh には、2 つの版がある。
 
-* **最適化版**（このフォルダ）：ConMa 版のすべてのファイル。ただし、`(( ))` が使う SJS の変換器と実行時の支え（`sjs_*.se`）は、SJS のものとして sjs/include にある（2026-11-19 にこのフォルダから移した。sjs/README-ja.md）。ふだん使い（`CONSH_IMPL=conma`）、機能もここに足す。
+* **最適化版**（このフォルダ）：ConMa 版のすべてのファイル。ただし、`(( ))` が使う SJS の変換器とランタイム（`sjs_*.se`）は、SJS のものとして sjs/include にある（2026-11-19 にこのフォルダから移した。sjs/README-ja.md）。ふだん使い（`CONSH_IMPL=conma`）、機能もここに足す。
 * **参照版**：仕様の参照実装。速くするために書き直したファイルについては、書き直す前のもの（読みやすさを優先したもの）を `consh/reference` に残す（`consh/reference/README-ja.md`）。
 
 2 つの版は、2026-11-15 までは「高速版」（「速い版」とも）と参照版と呼んでいた。参照実装（reference implementation）と、それを最適化した実装（optimized implementation）という、よく使われる言い方に合わせて「最適化版」にした。

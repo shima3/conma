@@ -1,4 +1,4 @@
-;; 電卓の言語 calc（test/fast17/calc.se）の実行時の支え。言語キットのエラーの部品（include/lang/error.se）を使う
+;; 電卓の言語 calc（test/fast17/calc.se）のランタイム。言語キットのエラーの部品（include/lang/error.se）を使う
 (include "util.se")
 (include "lang/error.se")
 

@@ -1,4 +1,4 @@
-;; 言語キットの、実行時のエラーの部品（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）。SJS の実行時の支え
+;; 言語キットの、実行時のエラーの部品（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4）。SJS のランタイム
 ;; （sjs/include/sjs_rt.se）から取り出した。変換したプログラムが include する。
 ;;   Kit_err_pos suffix ,(pos)
 ;;       例外を投げた所の位置（"ファイル:行:桁"。なければ null）：CChain の CFrame のうち、SInfo が suffix（":言語"。SJS は

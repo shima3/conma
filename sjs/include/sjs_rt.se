@@ -1,4 +1,4 @@
-;; SJS の実行時の支え（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
+;; SJS のランタイム（docs/consh/dev/SAFEJS-PLAN-ja.md の 4.2。段階 B1）。sjs_gen.se が作る ConMa のコードが呼ぶ。
 ;;
 ;; SJS の値の表し方：
 ;;   数        Number（IEEE 754 の倍精度。ConMa の Number と同じ）
@@ -2451,7 +2451,7 @@
   Sjs_take_digits rest acc)
 
 ;; ════ 段階 B4：ConSh から動かすモジュールに渡す関数 ════
-;; 変換したモジュール（sjs_gen.se の Sjs_translate_module）は何も include しないので、実行時の支えの関数と、標準の関数
+;; 変換したモジュール（sjs_gen.se の Sjs_translate_module）は何も include しないので、ランタイムの関数と、標準の関数
 ;; （__TRUE__ など）を、この Dict で受け取り、同じ名前の局所変数に束縛する（名前の一覧は sjs_gen.se の Sjs_rt_names）
 
 (define Sjs_rt_dict ,()
