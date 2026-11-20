@@ -70,6 +70,8 @@ CONMA_VM=python conjs/test/run_all.sh
 * 新しいテスト：conjs/test の step11〜13、sjs/test の step12。conjs/test/compare.sh は、各ステップの node.txt に並べた場合を Node.js と比べる。conjs/test/step6/case6 のログを変えた。
 * M1 が流したもの（Apple M1、7bc2792）：conjs/test を Rust 版（10 秒）、wasm 版（10 秒）、Python 版（3 分 1 秒）で。conjs/test/compare.sh（node.txt の 6 つの場合）。sjs/test（36 秒）。consh/test を Rust 版（6 分 18 秒）と wasm 版（2 分 14 秒。違いは既知の step8 と step17 だけ）で。consh/js/test（18 秒）。`bin/lang-emit-check alpha`（違いは conjs/test/step6/case6 のメッセージだけ）と `bin/lang-step-check alpha`（出力は case6 のほかは同じ。ステップ数の違いは docs/dev/PLATFORM-PLAN-ja.md の 8.7 節。終了ステータス 1 になる）。流していないもの：test/（VM は変えていない）、transpiled VM、Python 版の VM の sjs/test と consh/test、ConSh の参照版、ブラウザのページ。
 * 測ったもの：nbody（2000）を ConJS で、配列で 1.46 秒、クラスで 2.33 秒（8.7 節）。Full Bench の依頼はない。
+* M2 のレビューを受けて直した（ee93ec8）：コンストラクタが返すオブジェクトを `new` の値にする、エラーの `name` と `toString` をクラスの記録のメソッドの表に置く（ConJS では、ランタイムのエラーも記録を持つ）、`JSON.parse` が数の形と文字列の中の制御文字を確かめる。新しいテストは conjs/test/step12/case8、step13/case3、sjs/test/step12/case3（どれも node.txt に入れ、Node.js と同じ）。
+* M1 が流したもの（ee93ec8）：conjs/test を Rust 版（7 秒）、wasm 版（11 秒）、Python 版（3 分 11 秒）で。conjs/test/compare.sh（node.txt の 8 つの場合）。sjs/test を Rust 版（42 秒）と wasm 版（42 秒）で。consh/test を Rust 版（`-j 6`、5 分 18 秒）で。consh/js/test（24 秒）。`bin/lang-emit-check origin/alpha`（違いは case6 だけ）。`bin/lang-step-check origin/alpha`：106 のプログラムで 57,098,369 ステップ。前の版と比べて、ランタイムのエラーを作るたびに 24 ステップ多い（同じ名前のエラーのコンストラクタを G で探す）。`JSON.parse` は、26 万 7 千文字の parse が 745 ミリ秒から 840 ミリ秒になった（数の形を確かめる分）。流していないもの：consh/test の wasm 版、Python 版の VM の sjs/test、ほかは上と同じ。
 
 ## 記録
 

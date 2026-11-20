@@ -487,3 +487,7 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
     * 足さないもの（getter、計算した名前、static のフィールドとブロック）のメッセージは、ほかの範囲の外のものと同じく `conjs: not in ConJS: a getter or a setter` などにした。
     * メッセージが空のエラーの `String(e)` を、名前だけにした（`new Error()` を `Error` と書く。JavaScript と同じ）。
     * 配列の `sort` に、関数でない compare を渡したときのメッセージは、Node.js と同じく値を付ける（`...: 1`）。
+* **M2 の PR のレビューで直したこと**（PR shima3/conma#11）：
+    * コンストラクタが返すオブジェクトを、`new` の値にする（JavaScript と同じ）。親のコンストラクタが返したものは、子の `this` にしない（conjs/README-ja.md の違い）。
+    * エラーの `name` と `toString` を、組み込みのエラーのコンストラクタの記録の、メソッドの表に置く（JavaScript のプロトタイプと同じ所）。`this.name = "MyErr"` が `Object.keys` と JSON に出て、`new Error().toString()` が動く。ConJS では、ランタイムが投げるエラーも、同じ名前のエラーのコンストラクタの記録を持つ（sjs_rt.se の `Sjs_error_object`。エラーを作るたびに 24 ステップ多い）。
+    * `JSON.parse` は、JSON の数の形（`+1`、`01`、`1.`、`.5` は SyntaxError）と、文字列の中の生の制御文字を確かめる。大きな JSON の parse は、1 割ほど遅くなった。
