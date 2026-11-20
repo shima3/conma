@@ -60,7 +60,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### m1/platform-p5b-design
 
-* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節、段階 P5b の設計の案と、5 節の表の P5b の行）。流すものはない。
+* 文書だけ（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節、段階 P5b の設計の案と、5 節の表の P5b の行）。流すものはない。PR は shima3/conma#10。
 
 ## 記録
 
