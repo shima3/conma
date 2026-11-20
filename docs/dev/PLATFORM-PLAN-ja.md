@@ -1,13 +1,13 @@
 # いろいろなプラットフォームと、ConMa に変換する言語の計画
 
-ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、実験的な言語を ConMa に変換すれば、その言語を、ConMa が動くどのプラットフォームでも試せるようにする（2026-11-19）。
+ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
 **状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）の設計の案を 4.4 節に書いた（6 節の 2 の見本の言語は作らないことにした）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
 * **A. プラットフォーム**：同じ ConMa のプログラムが、どの VM とプラットフォームでも同じに動く（今のコア ConMa と拡張 ConMa）うえに、プラットフォームに固有の機能も使える。使えない所では、プログラムがそれを知って、別の道を選べる。
-* **B. ConMa に変換する言語**：新しい言語を、変換器とランタイムを ConMa で書いて作れば、それだけで ConMa のすべてのプラットフォームで動き、A の固有の機能も使える。SJS（sjs/README-ja.md）がその最初の例で、その作りを、次の言語を作る道具一式（言語キット）にする。
+* **B. ConMa に変換する言語**：JavaScript の部分集合（ConJS と SJS）を、変換器とランタイムを ConMa で書いて ConMa に変換し、ConMa のすべてのプラットフォームで動かし、A の固有の機能も使えるようにする。中心は ConJS（4.1 節）で、SJS（sjs/README-ja.md）がその最初の例である。2 つが共有する部品を、言語キットにする（4 節）。
 
 ## 2. 今あるもの
 
@@ -119,9 +119,9 @@ SJS の作りから、ConJS と SJS が共有する部品を取り出す（言�
 * **ConMa のコードを作る**：sjs_gen から、関数、継続、変数、SInfo（元の言語の行と桁）を書く部品。今は ConMa のソースの文字列を作ってからモジュールにするが、構文木から直接モジュールを作ると速いかもしれない（測ってから決める）。
 * **ランタイム**：値の種類、エラーとその位置、例外の型。
 * **動かす道具**：sjs/sjs を一般にしたもの（案：`bin/lang 言語 ファイル`）。変換器のモジュールを作ってキャッシュし、変換して、選んだ VM で動かす。
-* **テストとベンチマークの型**：本物の処理系がある言語なら、その出力と比べる（sjs/test の compare.sh の形）。ベンチマークは、bench/ と同じ計算で、ほかの言語と比べる。
-* **置き場所**：言語ごとに、sjs/ と同じ形のディレクトリ（`言語/include`、`言語/test`、`言語/bench`、`言語/README-ja.md`）を、リポジトリのルートに置く。言語キットの部品は、標準ライブラリ（include/）か、それとは別のディレクトリに置く（6 節で決める）。
-* **ConSh から使う**：SJS の `(( ))` と同じように、ConSh の中から別の言語の式や文を書ける形も、言語ごとに選べる。
+* **テストとベンチマークの型**：Node.js と出力を比べる（sjs/test の compare.sh の形）。ConJS でも、`spawn`、`join`、`host` と待つ呼び出しのライブラリを使わないプログラムは比べられる（4.1 節）。ベンチマークは、bench/ と同じ計算で比べる。
+* **置き場所**：sjs/ と conjs/ は、同じ形のディレクトリ（`include`、`test`、`bench`、`README-ja.md`）で、リポジトリのルートに置く。言語キットの部品は include/lang/ に置く（6 節の 4 と 5）。
+* **ConSh から使う**：今は SJS の `(( ))` がある。ConJS を ConSh から使う形は、まだ決めていない。
 * **見本の言語**（作らないことにした、2026-11-20。6 節の 2）：初めは、キットの部品が言語によらないことを確かめるために、小さな言語を 1 つ作るつもりだった。
 
 ### 4.1. ConJS（軽量スレッドを持つ JavaScript の部分集合）
@@ -135,7 +135,11 @@ SJS の作りから、ConJS と SJS が共有する部品を取り出す（言�
 * **Promise**（決めた、2026-11-19。M2 の意見の 2）：`Promise` と `async` は受け付けず、エラーにする。並べて待つには `spawn` と `join` を使う。Promise を受け付けると、`await Promise.all([fetch(a), fetch(b)])` が、エラーにならずに 2 つの fetch を順に待ち、遅くなるだけで気付きにくい。`await` だけは、SJS との行き来のために「その場で待つ」と読んでもよいが、これも P3b で決める。P3b の設計で、`await` も受け付けず、`.then` は除かないことにした（4.2 節）。
 * **spawn した処理の例外**（M2 の意見の 3）：`join` で、その例外をもう一度投げる。`join` されないまま例外で終わった処理があれば、プログラムの終わりに報告する（JavaScript の unhandled rejection のように）。P3b のテストに、spawn した処理の例外の場合（join する場合としない場合）を入れる。
 * **スケジューラを部品にする**（M2 の意見の 4）：ConJS の切り替え（待つ呼び出しで継続を取り、列に入れ、ほかの処理を動かす）は、「待つ」というエフェクトのハンドラそのものである。P3b では ConJS の中に作るが、継続の列とチャネルを待つことを、ConJS の構文によらない部分として分けておき、P4 で言語キットの部品として取り出す。
-* **ConJS を広げる道**（決めた、2026-11-20。M2 のレビュー（docs/dev/REVIEW-ja.md の 2026-11-20）の 2 の a）：足すものが、ふつうの JavaScript の構文と意味（`class`、`new`、`this` など）なら、SJS にも足し、sjs/test で Node.js と出力を比べて確かめる。ConJS は、印で除くもの（`async`、`await`、`Promise`）と、JavaScript と意味が違うもの（`spawn`、`join`、`host` と、待つ呼び出し）のほかは、SJS と同じ言語のまま広がる。こうすれば、2 つの言語の違いは印の所に集まったままになり、4.2 節の「印を見るのは、受け付けない構文の検査と、作ったソースの初めと終わりだけにする」も保てる。SJS に入れたくないものが出てきたら、そのとき、ConJS にだけ足して印を見る所を増やすか、ConJS の変換器をキットの部品で作り直すかを決める。
+* **ConJS を広げる道**（決めた、2026-11-20。作者の方針で、M2 が PR shima3/conma#8 のレビューの 3 で伝えた）：新しい JavaScript は、まず ConJS に足す。そのうち安全なものを SJS に移し、2 つの言語で共有する。`class`、`new`、`this` は、SJS が安全のために除いているもの（docs/consh/dev/SAFEJS-PLAN-ja.md の 3.2）なので、まず ConJS だけに足す候補になる。SJS に移すかどうかは、ものごとに決める（SJS は ConSh の `(( ))` の言語でもある）。
+    * 変換器とランタイムは、足したものをいつも扱えるようにし、SJS だけが、今の名前の検査（sjs_parse.se）で除く。安全だと決めたら、SJS の検査から外すだけで共有できる。4.2 節の「印を見るのは、受け付けない構文の検査と、作ったソースの初めと終わりだけにする」は保てる。
+    * ただし、計算したキーの `constructor`、`prototype` などは、変換するときでなく、ランタイムで止めている（sjs_rt.se）。ConJS で `class` を使えるようにすると、ConJS ではこれらのキーを通し、SJS では止める必要があり、印をランタイムで見ることになる（メンバーを読む、よく通る所に検査が増える）。`class` を足す段階の設計で決め、SJS が遅くならないことを sjs/bench で確かめる。
+    * 確かめ方：ConJS だけに足したものは、sjs/test では Node.js と比べられない。`spawn`、`join`、`host` と、待つ呼び出しのライブラリ（4.4 節）を使わない ConJS のプログラムは JavaScript のプログラムでもあるので、sjs/test/compare.sh と同じ形で Node.js と比べる場合を、conjs/test に置く。
+    * 初め（3709a40）は、M2 の勧め（docs/dev/REVIEW-ja.md の 2026-11-20 の 2 の a）で「ふつうの JavaScript は SJS にも足す」としていた。作者の方針で順を逆にした（M2 も勧めを取り下げた）。
 * **これから決めること**：並べて動かす書き方の細部、JavaScript との関係、置き場所。案は 4.2 節。
 
 ### 4.2. 段階 P3b の設計（決めた、2026-11-19。M2 のレビューは PR shima3/conma#3）
@@ -250,12 +254,14 @@ P5 では、ConJS をふだん使えるものにする。することは 2 つ�
 今は、プログラムを動かすたびに、変換した ConMa のソースと、それが include するランタイム（sjs_rt.se、conjs_rt.se など）を、まとめてフロントエンド（`conma build`）に通している。`console.log("hi")` だけのプログラムで、変換が約 0.02 秒、フロントエンドが約 1.41 秒、動かすのが約 0.01 秒かかる（Rust 版の VM、Apple M1。2026-11-20）。できたモジュール（約 1.7 MB）を読むのは速く、時間のほとんどはフロントエンドがランタイムを通す分である。
 
 * **変換したコードは、ランタイムを include しない**：ConSh の `(( ))`（sjs/include/sjs_gen.se の `Sjs_translate_module`）と同じく、変換したコードは `Conjs_entry` だけを定義する。`Conjs_entry` は、引数の Dict の `"rt"` からランタイムの関数を受け取り、同じ名前の局所変数に束縛してから、今の main と同じことをする。
-* **起動部**（conjs/conjs.se）：変換器とランタイムの両方を含む ConMa のプログラム。そのモジュールを 1 度だけ作り、キャッシュに置く（bin/lang が変換器のモジュールを置くのと同じ所）。起動部は、ファイルを変換し、変換したコードを一時ファイルに書き、`__VProc_spawn__` で新しい VProc として動かす。そのとき、ランタイムの関数の Dict を渡し、VProc が終わるのを待つ。フロントエンドが通すのは、変換したコードだけになる。
+* **起動部**（conjs/conjs_run.se）：ランタイムと、変換したファイルを `__VProc_spawn__` で動かすことだけを持つ ConMa のプログラム。そのモジュールを 1 度だけ作り、キャッシュに置く（bin/lang が変換器のモジュールを置くのと同じ所）。変換は、今のとおり bin/lang が Rust 版の VM で行い、変換したファイルを起動部に渡す。起動部は、それを新しい VProc として動かす。そのとき、ランタイムの関数の Dict を渡し、VProc が終わるのを待つ。フロントエンドが通すのは、変換したコードだけになる。
+    * 変換を起動部に入れない（M2 の PR shima3/conma#8 のレビューの 1）：起動部は選んだ VM で動くので、入れると、変換も選んだ VM で行うことになる。Python 版の VM では、20 行の変換だけで約 5.6 秒かかり（Rust 版は約 0.045 秒）、今より遅くなる。
     * `__VProc_spawn__` は、どの VM でもモジュールを作れる：Rust 版は `conma build` を別のプロセスで動かし、wasm 版（Node.js）は vm/wasm/vm-node.js の `buildModule` で、Python 版は bin/includer と bin/resolver で作る。どの VM も変えない。
-    * 小さなファイルを `conma build` に通すのは約 0.01 秒である。`console.log("hi")` は、今の約 1.45 秒から、約 0.1 秒になると見込む。
+    * 小さなファイルを `conma build` に通すのは約 0.01 秒である。Rust 版の VM で、`console.log("hi")` は、今の約 1.45 秒から、約 0.1 秒（変換器のモジュールを読んで変換する約 0.05 秒を含む）になると見込む。ConSh の `(( ))` は、同じ形で 1 回約 0.06 秒（Rust 版）、約 0.08 秒（wasm 版）かかる（M2 が Apple M2 で測った）。
+    * Python 版と wasm 版の VM の時間も測り、8.6 節に書く。今は、Rust 版が約 1.45 秒、wasm 版が約 1.55〜2.23 秒、Python 版が約 4.2 秒である（M2 が Apple M2 で測った）。
 * **1 つのモジュールにまとめる道も残す**：ランタイムと変換したファイルを include し、main から `Conjs_entry` をランタイムの関数の Dict を付けて呼ぶ、小さな ConMa のファイルで、今と同じく 1 つのモジュールにできる。ブラウザの見本（canvas_demo.con.js）は、この形で作る（vm/wasm/web/build.sh）。どちらの道でも、変換したコードは同じである。
-* **ランタイムの関数の名前の一覧**（`Conjs_rt_names`。SJS の `Sjs_rt_names` に、ConJS の名前を足したもの）：変換したコードが一覧にない名前を呼ぶと、動かして初めて分かる（定義のない大域変数）。そこで、テストのすべてのプログラムを変換し、ランタイムなしでモジュールにして、定義のない大域変数がプリミティブと一覧の名前だけであることを確かめる（conjs/test の検査に足す）。
-* **道具**：lang.conf に `runner=conjs.se` があれば、bin/lang は、起動部のモジュールを作ってキャッシュに置き（Python 版の VM のためには、bin/to-core を通したもの）、`VM --main 起動部のモジュール ファイル` で動かす。`--emit` は、変換したコード（`Conjs_entry` の形）を出す。sjs の lang.conf には `runner` を書かず、今のまま動かす。
+* **ランタイムの関数の名前の一覧**（`Conjs_rt_names`。SJS の `Sjs_rt_names` に、ConJS の名前を足したもの）：変換したコードが一覧にない名前を呼ぶと、動かして初めて分かる（定義のない大域変数）。そこで、テストのすべてのプログラムを変換し、ランタイムなしでモジュールにして、定義のない大域変数がプリミティブと一覧の名前だけであることを確かめる（conjs/test の検査に足す）。あわせて、一覧のすべての名前が、ランタイムの関数の Dict（`Conjs_rt_dict`）のキーにあることも確かめる。一覧にあって Dict にない名前は null に束縛され、その名前を呼ぶまで分からないため（M2 のレビューの 4）。Dict を一覧から作れるなら、そうする。
+* **道具**：lang.conf に `runner=conjs_run.se` があれば、bin/lang は、変換器でファイルを変換してから（Rust 版の VM）、起動部のモジュールを作ってキャッシュに置き（Python 版の VM のためには、bin/to-core を通したもの）、`VM --main 起動部のモジュール 変換したファイル` で動かす。`--emit` は、変換したコード（`Conjs_entry` の形）を出す。sjs の lang.conf には `runner` を書かず、今のまま動かす。
 * **変わること、変わらないこと**：
     * ConJS が作るコードは変わる（main の代わりに `Conjs_entry`）。SJS が作るコードは、今と 1 文字も違わないことを bin/lang-emit-check で確かめる。
     * 出力、終了ステータス、受け手のない例外の報告、行き詰まりのメッセージは、今と同じ（conjs/test の今の場合のログが変わらない）。
@@ -266,30 +272,32 @@ P5 では、ConJS をふだん使えるものにする。することは 2 つ�
 名前は JavaScript にならう。JavaScript と違うのは、Promise を返さず、結果が届くまで、呼んだ処理だけが待つことである。
 
 * `sleep(ms)`：ms ミリ秒、呼んだ処理だけが待つ（JavaScript にはない。`spawn` と同じく ConJS の名前）。
-* `setTimeout(f, ms)`：`spawn(() => { sleep(ms); f(); })` と同じ。処理を返す（`join` できる）。`clearTimeout` は作らない。
+* `setTimeout(f, ms)`：`spawn(() => { sleep(ms); f(); })` と同じ。処理を返す（`join` できる。JavaScript は数を返す）。`f` が投げた例外は、JavaScript のようにすぐ止めるのではなく、join されない処理の例外として、プログラムの終わりに報告する。この 2 つを、conjs/README-ja.md の JavaScript との違いに書く。`clearTimeout` は作らない。
 * `Date.now()`：今の時刻（1970 年 1 月 1 日からのミリ秒）。
-* `fs.readFile(path)`、`fs.writeFile(path, text)`：ファイル全体を文字列で読み書きする（Node.js の名前。`fs` はグローバルに置く）。ふつうのファイルはすぐ読み書きできるので、処理は切り替わらない。読めないときは Error を投げる。
+* `fs.readFile(path)`、`fs.writeFile(path, text)`：ファイル全体を文字列で読み書きする（Node.js の名前。`fs` はグローバルに置く）。ふつうのファイルはすぐ読み書きできるので、処理は切り替わらない。読めないときは Error を投げる。ブラウザのページ（ホストのファイルを渡さない wasm 版の VM）では、VM のメモリの中のファイルを読み書きする（ページを閉じると消える）。そう動くことを P5 で確かめ、conjs/README-ja.md に書く。
 * `fetch(url, options)`：HTTP の要求。返すのは Response のようなオブジェクト（`status`、`ok`、`text()`、`json()`）で、本体は返す前に全部読んでおく（`text()` は待たない）。options は `method`、`headers`（オブジェクト）、`body`（文字列）。つながらないときは TypeError を投げる（JavaScript と同じ）。
+* これらは、SJS が除くホストのもの（docs/consh/dev/SAFEJS-PLAN-ja.md の 3.2）なので、ConJS だけに足し、SJS には移さない（4.1 節の「ConJS を広げる道」）。
 
 作り：
 
 * **ホストの関数**（P2 と P3 の口。名前を docs/PRIMITIVES.md の `__Feature_available__` の一覧に足す）：
-    * `time.now`（すぐ返る。機能 `"time"`）：Rust 版と Python 版は VM の表に足す。wasm 版は vm/wasm/conma.js の既定のホストの関数にする（ページのフックがなくても使える）。
+    * `time.now`（すぐ返る。機能 `"time"`）：Rust 版と Python 版は VM の表に足す（Rust の表に足すので、transpiled VM も作り直す。P2 と同じ）。wasm 版は vm/wasm/conma.js の既定のホストの関数にする（ページのフックがなくても使える）。
     * `time.sleep ms`（待つ呼び出し。機能 `"time"`）：Rust 版と Python 版は、決まった時間の後に結果をパイプに書く（`test.later` の仮想の時計ではなく、本当の時計）。wasm 版は conma.js の `setTimeout`。
     * `http.fetch url method headers body`（待つ呼び出し。機能 `"fetch"`）：wasm 版だけ（conma.js の既定のホストの関数で、Node.js 18 以降とブラウザの `fetch`）。結果は、状態の番号と本体の文字列のリスト。
 * **ConJS のランタイム**（conjs/include/conjs_lib.se）：上の名前を、`host.call` と `host.wait` と同じ道で、ホストの関数につなぐ。`fs` は ConMa の `__OS_open__`、`__OS_read__`、`__OS_write__` で書く（どの VM も変えない）。`fetch` は、ホストに `http.fetch` があればそれを使い、なければ `curl` を子のプロセスとして動かす（`__OS_spawn__`。Rust 版と Python 版）。`curl` も動かせなければ TypeError を投げる。`curl` は、待つための VProc の中で動かし、終わるまで、呼んだ処理だけが待つ。
 
 **テスト**（conjs/test に、step7〜9 を足す。Rust 版、wasm 版（Node.js）、Python 版の VM で同じログ）
 
-* step7（タイマーと時刻）：長さの違う `sleep` をする 2 つの処理が、短い方から終わること（差を 200 ミリ秒ほどにして、順が揺れないようにする）、`sleep` の間にほかの処理が動くこと、`Date.now()` の差が `sleep` の長さ以上であること、`setTimeout`。
+* step7（タイマーと時刻）：本当の時計で確かめるのは、負荷で揺れないことだけにする（M2 のレビューの 2。テストはほかの場合と並べて動き、Python 版の VM は Rust 版の 100 倍ほど遅い）：`Date.now()` の差が `sleep` の長さ以上であること、`sleep` の間にほかの処理が動くこと（数を数えて確かめる）、`setTimeout` の関数が呼ばれ、`join` できること。処理の終わる順は、今のとおり `test.later`（仮の時計）で確かめる。
 * step8（ファイル）：一時ディレクトリに書いて読むこと、ないファイルを読むときの Error。
-* step9（fetch）：テストが 127.0.0.1 に小さな HTTP サーバ（Python で書く。conjs/test/step9/server.py）を立て、GET の本体と状態、404、POST の本体とヘッダ、つながらない所の TypeError を確かめる。Rust 版と Python 版は `curl` の道、wasm 版はホストの道を通る。
+* step9（fetch）：テストが 127.0.0.1 に小さな HTTP サーバ（Python で書く。conjs/test/step9/server.py）を立て、GET の本体と状態、404（`ok` が偽で、例外は投げない）、POST の本体とヘッダ、つながらない所の TypeError を確かめる。`curl` の道では、`curl` の終了コードで、つながらない場合と HTTP のエラーの状態を分ける。Rust 版と Python 版は `curl` の道、wasm 版はホストの道を通る。
+* `spawn`、`join`、`host` とライブラリを使わない場合は、sjs/test/compare.sh と同じ形で Node.js と比べる（4.1 節）。
 * step1〜6 の今のログが変わらないこと（起動部の道）。1 つのモジュールにまとめる道でも、step1〜6 を動かす。ランタイムの関数の名前の一覧の検査。
 * 動かし始めるまでの時間を測り、8.6 節に書く（`console.log("hi")`、Rust 版の VM）。
 
-**終わりとすること**（5 節の表）：上のテストが 3 つの VM で通る。`console.log("hi")` を動かす時間が 0.2 秒以下になる（Rust 版の VM、Apple M1）。sjs/bench の loop、fib、nbody を ConJS として動かして、今の形より遅くならない。sjs/test、consh/test が通り、SJS が作るコードが変わらない。
+**終わりとすること**（5 節の表）：上のテストが 3 つの VM で通る。`console.log("hi")` を動かす時間が 0.2 秒以下になる（Rust 版の VM、Apple M1）。Python 版と wasm 版の VM でも、今より遅くならない。sjs/bench の loop、fib、nbody を ConJS として動かして、今の形より遅くならない。sjs/test、consh/test が通り、SJS が作るコードが変わらない。
 
-**P5 でしないこと**：受け付ける JavaScript を広げること（`class`、`new`、`this` など。次の段階の候補）。ブラウザのページの中で ConJS を変換すること。ブラウザのモジュール（約 8 MB）を小さくすること。sjs/sjs を起動部の形にすること（同じ作りでできるので、ConJS で確かめてから決める）。fetch の本体を少しずつ読むこと、`AbortController`、`clearTimeout`。ファイルのストリームとディレクトリ。ConJS から子のプロセスを動かすこと。
+**P5 でしないこと**：受け付ける JavaScript を広げること（`class`、`new`、`this` など。次の段階で、まず ConJS に足す候補。4.1 節の「ConJS を広げる道」）。ブラウザのページの中で ConJS を変換すること。ブラウザのモジュール（約 8 MB）を小さくすること。sjs/sjs を起動部の形にすること（同じ作りでできるので、ConJS で確かめてから決める）。fetch の本体を少しずつ読むこと、`AbortController`、`clearTimeout`。ファイルのストリームとディレクトリ。ConJS から子のプロセスを動かすこと。
 
 **M2 に聞きたいこと**：起動部が、変換したコードを `__VProc_spawn__` で動かす形（ConSh の `(( ))` と同じ）と、名前の一覧の確かめ方。ConJS が作るコードが変わること（bin/lang-emit-check は SJS だけで確かめる）。ライブラリの名前と範囲（`sleep` は JavaScript にない名前、`fs` は Node.js にならう、fetch の本体を先に全部読む）。ネイティブの VM の fetch を `curl` で行うこと。`time.now` と `time.sleep` を、Rust 版と Python 版の VM に足すこと。
 
