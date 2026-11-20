@@ -355,6 +355,7 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 | P5（作った、2026-11-20。8.6 節） | ConJS をふだん使えるものにする：ランタイムを先にモジュールにしておく。待つ呼び出しのライブラリ（タイマー、時刻、ファイル、fetch） | conjs/test が 3 つの VM で通る。`console.log("hi")` を動かす時間が 0.2 秒以下。sjs/bench の計算を ConJS で動かして遅くならない |
 | P5b（作った、2026-11-20。8.7 節） | ConJS が受け付ける JavaScript を広げる：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。`JSON.parse` と配列の `sort`（SJS と共有） | conjs/test が 3 つの VM で通り、足したものの場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/bench が遅くならない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
+| P7（忘れないための行。P5 の続きと P6 の後でよい。ユーザーが 2026-11-21 に頼んだ） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 
 ## 6. 決めること
 
