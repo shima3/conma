@@ -1,4 +1,5 @@
 200 POST the body yes
 200 PUT put body 42
+HEAD 200 true ""
 hello from server 200
 exit: 0

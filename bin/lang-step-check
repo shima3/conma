@@ -3,10 +3,11 @@
 # 移しても、変換したプログラムの動きと速さが変わらないことを、ステップ数で確かめる（M2 の PR shima3/conma#5 のレビューの 1）。
 #   bin/lang-step-check BASE
 # BASE（コミット）の木と、今のワークツリーのそれぞれで、sjs/test（wasm 版の VM だけで流す step9 と step10 を除く）と
-# conjs/test のすべての場合と、sjs/bench の loop、fib、nbody
+# conjs/test の場合（ファイルを書くか、HTTP のサーバが要るので、conjs/test/run_case.sh が一時ディレクトリに写して動かす、
+# copy.txt のあるステップを除く。段階 P5）と、sjs/bench の loop、fib、nbody
 # （小さい大きさ：100000、20、2000）を、その木の変換器で変換し、その木の include で作ったモジュールを、Rust 版の VM で
 # CONMA_PROFILE を付けて動かす。プログラムごとに、出力（標準出力、標準エラー、終了ステータス）とステップ数を比べ、違うものを
-# 出す。最後に、ステップ数の合計を出す。違いがなければ 0 で終わる。VM は、どちらの木でも、このワークツリーの Rust 版の VM。
+# 出す（その木にないプログラムは、動かさず、比べない）。最後に、ステップ数の合計を出す。違いがなければ 0 で終わる。VM は、どちらの木でも、このワークツリーの Rust 版の VM。
 # 時間がかかる（Apple M1 で数分）。段階 P4 より前（alpha の 68795c9 まで）と比べると、例外を投げるプログラムは、投げるたびに
 # 1 ステップ多くなる（docs/dev/PLATFORM-PLAN-ja.md の 8.5 節。受け入れた違い）ので、P4 の後のコミットと比べる。
 set -e -o pipefail
@@ -31,6 +32,7 @@ run_tree() {
   done
   inc=(--include "$tree/include" --include "$tree/conjs/include" --include "$tree/sjs/include")
   for f in "${programs[@]}"; do
+    [ -f "$tree/$f" ] || continue   # その木にないプログラム（BASE にない新しいテスト）は動かさない
     case "$f" in *.con.js) lang=conjs ;; *) lang=sjs ;; esac
     mkdir -p "$out/$(dirname "$f")"
     src="$tree/$f"
@@ -58,7 +60,9 @@ run_tree() {
 cd "$root"
 programs=()
 while IFS= read -r f; do programs+=("$f"); done < <(
-  { ls sjs/test/*/*.safe.js conjs/test/*/*.con.js | grep -v -e '^sjs/test/step9/' -e '^sjs/test/step10/'; echo sjs/bench/loop.safe.js; echo sjs/bench/fib.safe.js; echo sjs/bench/nbody.safe.js; } | sort)
+  { ls sjs/test/*/*.safe.js conjs/test/*/*.con.js | grep -v -e '^sjs/test/step9/' -e '^sjs/test/step10/' |
+      while IFS= read -r f; do [ -f "$(dirname "$f")/copy.txt" ] || echo "$f"; done
+    echo sjs/bench/loop.safe.js; echo sjs/bench/fib.safe.js; echo sjs/bench/nbody.safe.js; } | sort)
 run_tree "$tmp/base" "$tmp/out-base"
 run_tree "$root" "$tmp/out-now"
 status=0

@@ -54,7 +54,11 @@ rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | shasum | cut -c1-12
 rtsrc="$cache/${name}-rt-$rthash.se" rtmod="$cache/${name}-rt-$rthash.module.se"
 if [ ! -s "$rtmod" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" \( -name '*.se' -o -type d \) -newer "$rtmod")" ] ||
    [ "$conma" -nt "$rtmod" ]; then
-  [ -f "$rtsrc" ] && cmp -s "$tmp/rt.se" "$rtsrc" || cp "$tmp/rt.se" "$rtsrc" || exit 1
+  # ソースも、一時ファイルに書いてから mv で置く（同時に動く bin/lang が、書きかけのソースからモジュールを作らないように）
+  if [ ! -f "$rtsrc" ] || ! cmp -s "$tmp/rt.se" "$rtsrc"; then
+    src_tmp=$(mktemp "$rtsrc.XXXXXX") || exit 1
+    cp "$tmp/rt.se" "$src_tmp" && mv -f "$src_tmp" "$rtsrc" || { rm -f "$src_tmp"; exit 1; }
+  fi
   rt_tmp=$(mktemp "$rtmod.XXXXXX") || exit 1
   if ! "$conma" build "${inc[@]}" "$rtsrc" > "$rt_tmp"; then rm -f "$rt_tmp"; exit 1; fi
   mv -f "$rt_tmp" "$rtmod" || { rm -f "$rt_tmp"; exit 1; }

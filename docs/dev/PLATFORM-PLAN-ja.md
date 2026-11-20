@@ -424,5 +424,6 @@ P5 では、ConJS をふだん使えるものにする。することは 2 つ�
     * Response の `json()` のために、ConJS の中に JSON の読み手を書いた（SJS には `JSON.parse` がない）。`JSON.parse` そのものは足していない（受け付ける JavaScript を広げる段階で決める）。
     * `Date` は、`now` だけを持つオブジェクトにした（`typeof Date` は JavaScript の `"function"` でなく `"object"`。`new` は SJS の範囲の外）。
     * step10 を書くときに、SJS に配列の `sort` がないことが分かった（ConJS を広げるときの候補）。
+    * M2 の PR shima3/conma#9 のレビューを受けて直した：bin/lang は、ランタイムのソース（キャッシュの「name」-rt-ハッシュ.se）も、一時ファイルに書いてから mv で置く（同時に動く bin/lang が、書きかけのソースからモジュールを作らないように）。curl の道の fetch は、HEAD を `--head` で送る（`-X HEAD` の curl は、来ない本体を待って終了コード 18 で終わり、TypeError になっていた。step9 に HEAD の場合を足した）。bin/lang-step-check は、copy.txt のあるステップ（step8 と step9。ファイルを書くか、サーバが要る）を除き、BASE にないプログラムを動かさない（step8 のファイルを作業ツリーに残し、cd のエラーを出していた）。
     * ブラウザのページでの `fs`（VM のメモリの中のファイル）と、canvas の見本は、確かめていない（見本は変換器もランタイムも、作るコードも変わっていないので、vm/wasm/web/build.sh で作り直せば今と同じ）。
 

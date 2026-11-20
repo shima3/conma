@@ -4,6 +4,7 @@
 #   GET /hello       200、本体 "hello from server"
 #   GET /json        200、本体 {"a": [1, 2], "b": "x"}
 #   POST /echo       200、本体 "METHOD 本体 X-Test ヘッダの値"
+#   HEAD /hello      200、本体なし（GET /hello と同じヘッダ）
 #   ほか             404、本体 "not found"
 import http.server, socketserver, sys, threading
 
@@ -33,6 +34,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(404, "not found")
 
     do_PUT = do_POST
+
+    def do_HEAD(self):
+        code = 200 if self.path == "/hello" else 404
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "17" if code == 200 else "9")
+        self.end_headers()
 
     def log_message(self, *args):
         pass

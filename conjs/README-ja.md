@@ -34,7 +34,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
     * **`setTimeout(f, ms, ...args)`**：`spawn(() => { sleep(ms); return f(...args); })` と同じ。JavaScript と違い、数ではなく処理を返すので、`join` で f の戻り値を受け取れる（`clearTimeout` はない）。f が投げた例外は、JavaScript のようにその場でプログラムを止めず、join されない処理の例外として、プログラムの終わりに報告する。
     * **`Date.now()`**：1970 年 1 月 1 日からのミリ秒（整数）。`Date` はこれだけを持つオブジェクトで、`new Date()` は書けない（`new` は SJS の範囲の外）。
     * **`fs.readFile(path)`、`fs.writeFile(path, text)`**：ファイル全体を文字列で読み書きする（Node.js の名前。`fs` はグローバルにある）。相対パスは、プログラムを動かしたディレクトリから。ふつうのファイルはすぐ読み書きできるので、処理は切り替わらない。読み書きできなければ `fs.readFile: ` で始まるメッセージの Error。ブラウザのページ（ホストのファイルを渡さない wasm 版の VM）では、VM のメモリの中のファイルを読み書きする（ページを閉じると消える。まだ確かめていない）。
-    * **`fetch(url, options)`**：HTTP の要求。options は `method`（文字列）、`headers`（オブジェクト）、`body`（文字列）。返すのは、本体を全部読んである Response のようなオブジェクトで、`status`、`ok`（状態が 200〜299）、`text()`、`json()` を持つ（どれも待たない）。404 などは例外にせず `ok` を偽にし、つながらないときは TypeError（`fetch failed`）を投げる（JavaScript と同じ）。wasm 版の VM ではホストの `fetch`（Node.js 18 以降とブラウザ）を、Rust 版と Python 版の VM では `curl` を、待つための VProc で動かす（curl がなければ TypeError）。`json()` は ConJS の中の JSON の読み手を使う（ConJS に `JSON.parse` はまだない）。
+    * **`fetch(url, options)`**：HTTP の要求。options は `method`（文字列）、`headers`（オブジェクト）、`body`（文字列）。返すのは、本体を全部読んである Response のようなオブジェクトで、`status`、`ok`（状態が 200〜299）、`text()`、`json()` を持つ（どれも待たない）。404 などは例外にせず `ok` を偽にし、つながらないときは TypeError（`fetch failed`）を投げる（JavaScript と同じ）。wasm 版の VM ではホストの `fetch`（Node.js 18 以降とブラウザ）を、Rust 版と Python 版の VM では `curl` を、待つための VProc で動かす（curl がなければ TypeError）。`json()` は ConJS の中の JSON の読み手を使う（ConJS に `JSON.parse` はまだない）。curl の道では、HEAD は `-X HEAD` でなく `--head` で送る（`-X HEAD` の curl は、来ない本体を待って失敗する）。
 * **関数の色がない**：どの関数の中でも待てる（配列の `map` に渡した関数、ジェネレータの本体、try と finally の中）。
 * **割り込まれない**：処理は、1 つの VProc の中で、待つ呼び出し（`host.wait` と `join`）の所でだけ切り替わる。2 つの待つ呼び出しの間のコードは、割り込まれずに動く。待たない長いループは、その間ほかの処理を止める（JavaScript と同じ）。
 * **動かす順**：動かせる処理の列は FIFO。待つ呼び出しの結果が届いた処理も、列の最後に入る。結果は、動かせる処理がなくなったときに 1 つずつ受け取るので、spawn し続けて列が空にならないプログラムには、ホストの結果が届かない（Node.js でマイクロタスクを積み続けたときと同じ）。
@@ -63,7 +63,7 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step6 | 受け付けない構文と、`then` をふつうの名前に、3 つの名前をキーとメンバーの名前に使えること |
 | step7 | タイマーと時刻：`sleep` の間にほかの処理が動く、`Date.now()` の差、`setTimeout` と join、join されない例外、引数のエラー（本当の時計を使うので、負荷で揺れないことだけを確かめる） |
 | step8 | ファイル：`fs.writeFile` と `fs.readFile`、読めないファイル、引数のエラー |
-| step9 | fetch：GET、`json()`、404、POST と PUT とヘッダ、2 つの処理で並べて待つ、つながらない所の TypeError、引数のエラー。step9/server.py の HTTP のサーバ（127.0.0.1）を使う |
+| step9 | fetch：GET、`json()`、404、POST と PUT とヘッダ、HEAD、2 つの処理で並べて待つ、つながらない所の TypeError、引数のエラー。step9/server.py の HTTP のサーバ（127.0.0.1）を使う |
 | step10 | ConJS だけの名前を使わないプログラム（conjs/test/compare.sh が Node.js と比べる） |
 
 step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。

@@ -66,6 +66,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * 作り直すもの：Rust 版の VM（cargo build --release）、wasm 版の VM（consh/js/build.sh。vm/wasm/build.sh も呼ぶ）、transpiled VM（bench/build.sh。Rust の表とスケジューラが変わった）。
 * 新しいテスト：conjs/test の step7〜10（conjs/test/run_all.sh に入る）。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。step8 と step9 は一時ディレクトリに写して動かすので、3 つの VM を同時に流してよい。conjs/test/compare.sh（step10 を Node.js と比べる。run_all.sh には入らない）。`cargo test link`（vm で）。
 * M1 が流したもの（Apple M1）：test/ を Rust 版（2 分 19 秒）、Python 版（2 分 17 秒）、wasm 版（47 秒）、transpiled VM（`CONMA2RUST_COMPACT=1` で作ったもの。25 秒）で。consh/test を Rust 版（5 分 4 秒。alpha の VM でも 5 分 9 秒）と wasm 版（46 秒）で。consh/js/test（17 秒）。sjs/test（42 秒）。conjs/test を Rust 版（5 秒）、wasm 版（8 秒）、Python 版（2 分 24 秒）で。conjs/test/compare.sh。`bin/lang-emit-check alpha`（作るコードは同じ）と `bin/lang-step-check alpha`（出力は同じ。ConJS の今までの 17 のプログラムだけ、ステップが 407 多い。ライブラリの組み込みを置く分で、受け入れた違いなので、終了ステータス 1 になる）。違いは既知のもの（wasm 版の test/step40、consh/test の step17、混んでいるときの test/step31）だけ。流していないもの：ConSh の参照版、transpiled VM と Python 版の VM の consh/test、ブラウザのページ。
+* M2 の PR のレビュー（shima3/conma#9）を受けて、bin/lang（ランタイムのソースを mv で置く）、conjs/include/conjs_lib.se（curl の道の HEAD）、conjs/test/step9（HEAD の場合）、bin/lang-step-check（step8 と step9 と、BASE にないプログラムを除く）を直した。conjs/test を 3 つの VM で、bin/lang-step-check alpha を流した。
 * 測ったもの：`console.log("hi")` を conjs/conjs で動かす時間が、Rust 版の VM で約 1.55 秒から 0.09 秒、wasm 版で約 1.65 秒から 0.19 秒、Python 版で約 5.4 秒から 3.8 秒。nbody（5000）を ConJS で動かす時間が 4.6 秒から 3.06 秒（動く速さは同じ）。Full Bench の依頼はない。
 
 ## 記録

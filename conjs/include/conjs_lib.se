@@ -179,7 +179,10 @@
   __Cont_get__ ,(return)
   __MSeq_new__ ,(argv)
   __NULL__ (,(x) __MSeq_append__ __print_exit_error__ argv x) ,(add)
-  add "curl" ,() add "-s" ,() add "-X" ,() add method ,() add "-w" ,() add "%{stderr}%{http_code}" ,()
+  add "curl" ,() add "-s" ,() add "-w" ,() add "%{stderr}%{http_code}" ,()
+  ;; HEAD は --head で（-X HEAD の curl は、来ない本体を待ち、終了コード 18 で終わる）。本体は読まない
+  __String_equal__ method "HEAD" ,(head)
+  __if_then_else__ head (,() add "--head" ,() add "-o" ,() add "/dev/null") (,() add "-X" ,() add method) ,()
   Conjs_curl_headers add headers ,()
   __String_equal__ body "" ,(noBody)
   __unless__ noBody (,() add "--data-raw" ,() add body) ,()
