@@ -33,7 +33,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
 * **動かす順**：動かせる処理の列は FIFO。待つ呼び出しの結果が届いた処理も、列の最後に入る。結果は、動かせる処理がなくなったときに 1 つずつ受け取るので、spawn し続けて列が空にならないプログラムには、ホストの結果が届かない（Node.js でマイクロタスクを積み続けたときと同じ）。
 * **終わり**：main（ファイルの文の並び）が受け手のない例外で終われば、ほかの処理を待たずに、すぐに終える（終了ステータス 2）。main が終わっても、残っている処理は動かし続ける。すべてが終わったら、join されないまま例外で終わった処理を、終わった順に `ファイル:行:桁: Uncaught (in task) メッセージ` で出し、終了ステータス 2 にする。join で待つ処理だけが残ったら、`conjs: Deadlock: tasks waiting in join: N` を出し、終了ステータス 2 にする。
 
-ConJS の構文は JavaScript の部分集合だが、ConJS のプログラムは JavaScript のプログラムではない（`spawn`、`join`、`host` は JavaScript になく、JavaScript では待つ呼び出しが Promise を返す）。そのため、sjs/test のように Node.js と出力を比べない。待つ呼び出しを使わない ConJS のプログラムは SJS のプログラムでもあり、同じ結果になる。
+ConJS の構文は JavaScript の部分集合だが、ConJS のプログラムは JavaScript のプログラムではない（`spawn`、`join`、`host` は JavaScript になく、JavaScript では待つ呼び出しが Promise を返す）。そのため、sjs/test のように Node.js と出力を比べない。ConJS と SJS の両方が受け付ける、待つ呼び出しを使わないプログラムは、どちらでも同じ結果になる（同じ変換器とランタイムで動くため）。ConJS を広げるときは、ふつうの JavaScript の構文と意味は SJS にも足し、sjs/test で Node.js と比べる（docs/dev/PLATFORM-PLAN-ja.md の 4.1 節）。
 
 ## 作り
 
