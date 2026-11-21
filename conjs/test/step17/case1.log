@@ -1,0 +1,5 @@
+start
+Error: __Host_start__: no host function "demo.never"
+end
+a task that ends
+exit: 0

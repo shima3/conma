@@ -1,20 +1,29 @@
 //! __Host_call__ onError name args ,(result): call the function of the host
 //! named name (docs/dev/PLATFORM-PLAN-ja.md 3.2, stage P2). The values that go
-//! to the host and come back are Numbers, Strings and LLists of them (null is
-//! the empty LList); Dicts and Booleans are not passed yet. The functions of
-//! BUILTIN are in every VM built from this crate (the native, transpiled and
-//! wasm VMs; vm/python/vproc_step.py has the same), so that tests run the same
-//! everywhere; the VM for wasm32 also asks its host for the other names
-//! (sys::host_call, the hook hostFunctions of vm/wasm/conma.js).
+//! to the host and come back are Numbers, Strings, Booleans, Dicts with String
+//! keys and LLists of them (null is the empty LList; Booleans and Dicts since
+//! stage P7, 4.9 of the plan). The functions are those of the table Host that
+//! the Machine has: Host::new gives those every VM has (the feature "test", and
+//! "time" on the native and transpiled VMs; vm/python/vproc_step.py has the
+//! same), and a program that embeds the VM adds its own (Host::function,
+//! Host::waiting, Host::feature; src/lib.rs, docs/HOST-ja.md). The VM for wasm32
+//! also asks its host for the other names (sys::host_call, the hook
+//! hostFunctions of vm/wasm/conma.js).
 //!
 //! __Host_start__, __Host_start_tracked__ and __Host_result__ are the calls
-//! that wait (3.4 of the plan, stage P3): the result comes as the JSON text of
-//! a result ({"r":value} or {"e":"message"}) in a pipe, whose read end the
-//! program waits for with __OS_wait_readable__ (the pipe is at its end when
-//! the call has finished). The functions of BUILTIN finish at once; test.later
-//! finishes by the virtual clock of Later, the same on every VM; on the VM for
-//! wasm32 the other names go to the host (sys::host_start), which writes the
-//! result to the pipe when the function (maybe a Promise) has finished.
+//! that wait (3.4 of the plan, stage P3): __Host_start__ returns the read end
+//! of a pipe, which the program waits for with __OS_wait_readable__; the pipe
+//! is at its end when the call has finished. The result of a function of Host
+//! is kept in the Machine (HostResults, by the serial of the Stream), and the
+//! pipe is only closed, so that a result of any size can be given (4.9 of the
+//! plan; before, it was written to the pipe, at most 8192 bytes). A function of
+//! Host::function finishes at once; a function of Host::waiting finishes when
+//! its Done is finished, maybe from another thread: the scheduler finishes the
+//! call between two steps (HostResults::take_finished). test.later finishes by
+//! the virtual clock of Later, the same on every VM, and time.sleep by the real
+//! clock (Timers). On the VM for wasm32 the other names go to the host
+//! (sys::host_start), which writes the JSON text of the result ({"r":value} or
+//! {"e":"message"}) to the pipe when the function (maybe a Promise) has finished.
 
 use super::stream::{check_stream, new_stream};
 use super::{take_n, PResult, VmError};
@@ -22,23 +31,201 @@ use crate::sched::Machine;
 use crate::sys;
 use crate::value::*;
 use crate::vproc::VProc;
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// A value that goes to the host or comes back.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum HostValue {
     Num(f64),
     Str(String),
     /// An LList; the empty one is null.
     List(Vec<HostValue>),
+    Bool(bool),
+    /// A Dict, its String keys in the order they were put in.
+    Dict(Vec<(String, HostValue)>),
 }
 
-type HostFn = fn(&[HostValue]) -> Result<HostValue, String>;
+type CallFn = Box<dyn Fn(&[HostValue]) -> Result<HostValue, String> + Send>;
+type WaitFn = Box<dyn Fn(&[HostValue], Done) + Send>;
 
-/// The functions of the host that every VM has: those of the feature "test",
-/// for the tests (test/fast14, test/fast15). test.later, which waits, is not
-/// here: __Host_start__ handles it (Later); __Host_call__ has no such name.
-const BUILTIN: &[(&str, HostFn)] = &[("test.add", test_add), ("test.echo", test_echo), ("test.fail", test_fail)];
+enum HostFn {
+    /// returns at once (Host::function)
+    Call(CallFn),
+    /// finishes later, with its Done (Host::waiting)
+    Wait(WaitFn),
+}
+
+/// The functions of the host that a VM can call, and the platform features they give
+/// (docs/HOST-ja.md).
+pub struct Host {
+    fns: HashMap<String, HostFn>,
+    features: Vec<String>,
+    shared: Arc<Shared>,
+}
+
+/// What a Host shares with the Done of its calls, which may be finished from other threads, also
+/// after the VM has ended: the results finished and not yet taken by the scheduler, and a pipe
+/// whose read end the scheduler polls, to which a finish writes a byte. The pipe is closed when
+/// the Host (in the Machine) and the last Done have gone, so that a late finish never writes to an
+/// fd that has been reused.
+struct Shared {
+    finished: Mutex<Vec<(usize, Result<HostValue, String>)>>,
+    any: AtomicBool,
+    wake: Mutex<Option<(i32, i32)>>,
+}
+
+impl Drop for Shared {
+    fn drop(&mut self) {
+        if let Some((r, w)) = self.wake.get_mut().ok().and_then(|o| o.take()) {
+            let _ = sys::close_fd(r);
+            let _ = sys::close_fd(w);
+        }
+    }
+}
+
+/// The end of a call of a function of Host::waiting: call finish once, from any thread, when the
+/// function has finished. A Done dropped without finish finishes the call with an error.
+pub struct Done {
+    shared: Arc<Shared>,
+    id: usize,
+    name: String,
+    finished: bool,
+}
+
+impl Done {
+    /// Finish the call with result: a value, or the message of an error.
+    pub fn finish(mut self, result: Result<HostValue, String>) {
+        self.finished = true;
+        self.shared.push(self.id, result);
+    }
+}
+
+impl Drop for Done {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.shared.push(self.id, Err(format!("{}: the host dropped the call", self.name)));
+        }
+    }
+}
+
+impl Shared {
+    fn push(&self, id: usize, result: Result<HostValue, String>) {
+        if let Ok(mut f) = self.finished.lock() {
+            f.push((id, result));
+        }
+        self.any.store(true, Ordering::SeqCst);
+        if let Ok(w) = self.wake.lock() {
+            if let Some((_, w)) = *w {
+                // the write end does not block: a full pipe wakes the scheduler anyway
+                let _ = sys::write_fd(w, b"x");
+            }
+        }
+    }
+}
+
+impl Default for Host {
+    fn default() -> Self {
+        Host::new()
+    }
+}
+
+impl Host {
+    /// The functions every VM has: those of the feature "test", for the tests (test/fast14,
+    /// test/fast15; test.later, which waits by the virtual clock, is handled by __Host_start__),
+    /// and on the native and transpiled VMs time.now of the feature "time" (docs/dev/PLATFORM-PLAN-ja.md
+    /// 4.4, stage P5; time.sleep, which waits by the real clock, is handled by __Host_start__; the
+    /// VM for wasm32, which has no clock, asks its host, vm/wasm/conma.js).
+    pub fn new() -> Host {
+        let mut h = Host {
+            fns: HashMap::new(),
+            features: vec!["test".to_string()],
+            shared: Arc::new(Shared { finished: Mutex::new(Vec::new()), any: AtomicBool::new(false), wake: Mutex::new(None) }),
+        };
+        h.function("test.add", test_add);
+        h.function("test.echo", |args: &[HostValue]| Ok(HostValue::List(args.to_vec())));
+        h.function("test.fail", |_: &[HostValue]| Err("test.fail: failed".to_string()));
+        #[cfg(unix)]
+        {
+            h.function("time.now", time_now);
+            h.feature("time");
+        }
+        h
+    }
+
+    /// Add (or replace) the function named name, which returns at once: __Host_call__ and
+    /// __Host_start__ call it with the arguments, and pass back its value, or go to onError with
+    /// its message. It runs in the thread of the VM, and the VM waits for it.
+    pub fn function(&mut self, name: &str, f: impl Fn(&[HostValue]) -> Result<HostValue, String> + Send + 'static) -> &mut Host {
+        self.fns.insert(name.to_string(), HostFn::Call(Box::new(f)));
+        self
+    }
+
+    /// Add (or replace) the function named name, which waits: __Host_start__ calls it with the
+    /// arguments and a Done, and the call finishes when the Done is finished (from any thread);
+    /// the other VProcs run in the meantime. f itself should return soon (it runs in the
+    /// thread of the VM): it starts the work, for example in a thread that gets the Done.
+    /// __Host_call__ cannot call it.
+    pub fn waiting(&mut self, name: &str, f: impl Fn(&[HostValue], Done) + Send + 'static) -> &mut Host {
+        self.fns.insert(name.to_string(), HostFn::Wait(Box::new(f)));
+        self
+    }
+
+    /// Make __Feature_available__ true for the platform feature name.
+    pub fn feature(&mut self, name: &str) -> &mut Host {
+        if !self.features.iter().any(|f| f == name) {
+            self.features.push(name.to_string());
+        }
+        self
+    }
+
+    /// True if name is a platform feature of these functions, or of the host of the VM for wasm32.
+    pub fn has_feature(&self, name: &str) -> bool {
+        self.features.iter().any(|f| f == name) || sys::host_feature(name)
+    }
+
+    fn has(&self, name: &str) -> bool {
+        self.fns.contains_key(name)
+    }
+
+    /// The read end of the pipe that a finish writes to, once a function of Host::waiting has
+    /// been called.
+    pub fn wake_fd(&self) -> Option<i32> {
+        self.shared.wake.lock().ok().and_then(|w| w.map(|(r, _)| r))
+    }
+
+    /// True if some call has been finished since the last take_finished.
+    #[inline]
+    pub fn any_finished(&self) -> bool {
+        self.shared.any.load(Ordering::Relaxed)
+    }
+
+    fn done(&self, id: usize, name: &str) -> Result<Done, String> {
+        let mut wake = self.shared.wake.lock().map_err(|_| "the host is broken".to_string())?;
+        if wake.is_none() {
+            *wake = Some(sys::make_wake_pipe().map_err(|e| sys::errno_str(&e))?);
+        }
+        Ok(Done { shared: self.shared.clone(), id, name: name.to_string(), finished: false })
+    }
+}
+
+thread_local! {
+    /// The Host that run_main_with gives to the VM of this thread (src/lib.rs).
+    static NEXT_HOST: RefCell<Option<Host>> = const { RefCell::new(None) };
+}
+
+/// Give host to the next Machine made in this thread.
+pub fn set_host(host: Host) {
+    NEXT_HOST.with(|h| *h.borrow_mut() = Some(host));
+}
+
+/// The Host for a new Machine: the one of set_host, or Host::new().
+pub fn take_host() -> Host {
+    NEXT_HOST.with(|h| h.borrow_mut().take()).unwrap_or_default()
+}
 
 /// test.add: the sum of its arguments, Numbers, from the left (0 for none).
 fn test_add(args: &[HostValue]) -> Result<HostValue, String> {
@@ -52,25 +239,6 @@ fn test_add(args: &[HostValue]) -> Result<HostValue, String> {
     Ok(HostValue::Num(sum))
 }
 
-/// test.echo: its arguments, as an LList.
-fn test_echo(args: &[HostValue]) -> Result<HostValue, String> {
-    Ok(HostValue::List(args.to_vec()))
-}
-
-/// test.fail: always fails.
-fn test_fail(_args: &[HostValue]) -> Result<HostValue, String> {
-    Err("test.fail: failed".into())
-}
-
-/// The functions of the host of the feature "time" (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage P5) that
-/// the native and transpiled VMs have (vm/python/vproc_step.py has the same); the VM for wasm32,
-/// which has no clock, asks its host (vm/wasm/conma.js). time.sleep, which waits, is not here:
-/// __Host_start__ handles it.
-#[cfg(unix)]
-const NATIVE: &[(&str, HostFn)] = &[("time.now", time_now)];
-#[cfg(not(unix))]
-const NATIVE: &[(&str, HostFn)] = &[];
-
 /// time.now: the time in milliseconds since 1970-01-01 00:00 UTC.
 #[cfg(unix)]
 fn time_now(_args: &[HostValue]) -> Result<HostValue, String> {
@@ -78,22 +246,62 @@ fn time_now(_args: &[HostValue]) -> Result<HostValue, String> {
     Ok(HostValue::Num(d.as_secs_f64() * 1000.0))
 }
 
-/// The function of BUILTIN or NATIVE named name.
-fn builtin(name: &str) -> Option<HostFn> {
-    BUILTIN.iter().chain(NATIVE.iter()).find(|(n, _)| *n == name).map(|(_, f)| *f)
-}
-
 /// time.sleep ms waits on the native and transpiled VMs (on the VM for wasm32 the host does it).
 const SLEEP: &str = "time.sleep";
 
+/// The calls of __Host_start__ that have not been finished, and the results of those that have
+/// and that __Host_result__ has not taken yet, by the serial of the Stream of the call.
+#[derive(Default)]
+pub struct HostResults {
+    /// a call of Host::waiting, Timers or Later: the write end of its pipe, and its Stream
+    calls: HashMap<usize, (i32, Weak<StreamObj>)>,
+    results: HashMap<usize, (Weak<StreamObj>, Result<HostValue, String>)>,
+}
+
+impl HostResults {
+    fn wait(&mut self, id: usize, w: i32, s: &Rc<StreamObj>) {
+        self.calls.insert(id, (w, Rc::downgrade(s)));
+    }
+
+    /// Finish the call id with result: keep the result, and close the pipe (which wakes the
+    /// reader). A call whose Stream has been closed (its VProc was killed) drops the result.
+    fn finish(&mut self, id: usize, result: Result<HostValue, String>) {
+        let Some((w, s)) = self.calls.remove(&id) else { return };
+        let _ = sys::close_fd(w);
+        if s.upgrade().is_some_and(|s| !s.closed.get()) {
+            // forget the results and the calls of Streams closed meanwhile
+            self.results.retain(|_, (s, _)| s.upgrade().is_some_and(|s| !s.closed.get()));
+            self.calls.retain(|_, (w, s)| {
+                let open = s.upgrade().is_some_and(|s| !s.closed.get());
+                if !open {
+                    let _ = sys::close_fd(*w);
+                }
+                open
+            });
+            self.results.insert(id, (s, result));
+        }
+    }
+
+    /// Finish the calls of Host::waiting whose Done has been finished.
+    pub fn take_finished(&mut self, host: &Host) {
+        host.shared.any.store(false, Ordering::SeqCst);
+        let list = match host.shared.finished.lock() {
+            Ok(mut f) => std::mem::take(&mut *f),
+            Err(_) => return,
+        };
+        for (id, r) in list {
+            self.finish(id, r);
+        }
+    }
+}
+
 /// The calls of time.sleep that have not finished, by the real clock. The scheduler finishes those
-/// whose time has come between two steps (sched.rs), so that a VProc sees the result written and the
-/// pipe closed at once (a thread writing them could be seen between the two), and sleeps in poll()
-/// no longer than until the next one.
+/// whose time has come between two steps (sched.rs), and sleeps in poll() no longer than until
+/// the next one.
 #[derive(Default)]
 pub struct Timers {
-    /// (when, write end of the pipe, result text)
-    jobs: Vec<(std::time::Instant, i32, String)>,
+    /// (when, serial of the Stream of the call)
+    jobs: Vec<(std::time::Instant, usize)>,
 }
 
 impl Timers {
@@ -101,19 +309,19 @@ impl Timers {
         self.jobs.is_empty()
     }
 
-    fn add(&mut self, ms: f64, w: i32, text: String) {
+    fn add(&mut self, ms: f64, id: usize) {
         let d = std::time::Duration::from_secs_f64(ms.min(1e12) / 1000.0);
-        self.jobs.push((std::time::Instant::now() + d, w, text));
+        self.jobs.push((std::time::Instant::now() + d, id));
     }
 
     /// Finish the calls whose time has come.
-    pub fn finish_due(&mut self) {
+    pub fn finish_due(&mut self, results: &mut HostResults) {
         let now = std::time::Instant::now();
         let mut i = 0;
         while i < self.jobs.len() {
             if self.jobs[i].0 <= now {
-                let (_, w, text) = self.jobs.remove(i);
-                finish(w, &text);
+                let (_, id) = self.jobs.remove(i);
+                results.finish(id, Ok(HostValue::List(Vec::new())));
             } else {
                 i += 1;
             }
@@ -125,24 +333,26 @@ impl Timers {
         let now = std::time::Instant::now();
         self.jobs
             .iter()
-            .map(|(t, _, _)| t.saturating_duration_since(now))
+            .map(|(t, _)| t.saturating_duration_since(now))
             .min()
             .map(|d| d.as_micros().div_ceil(1000).min(i32::MAX as u128) as i32)
     }
 }
 
-/// The platform features that the functions of the host give: "test" on every
-/// VM, "time" on the native and transpiled VMs, and on the VM for wasm32 those its host names
-/// (sys::host_feature: "time" too).
-pub fn feature(name: &str) -> bool {
-    name == "test" || (cfg!(unix) && name == "time") || sys::host_feature(name)
+/// The value v as a value for the host; Err with the type name of the first value that cannot
+/// go (a Closure that is not a Boolean, a Dict with a key that is not a String, a Dict that contains
+/// itself, ...).
+fn to_host(v: &Value) -> Result<HostValue, String> {
+    to_host_in(v, &mut Vec::new())
 }
 
-/// The value v as a value for the host; Err with the type name of the first
-/// value that is not a Number, a String or an LList of them.
-fn to_host(v: &Value) -> Result<HostValue, String> {
+/// to_host, with the Dicts being converted around v (a Dict among them again would never end).
+fn to_host_in(v: &Value, path: &mut Vec<*const DictObj>) -> Result<HostValue, String> {
     if v.is_null() {
         return Ok(HostValue::List(Vec::new()));
+    }
+    if let Some(b) = super::control::boolean_choice(v) {
+        return Ok(HostValue::Bool(b));
     }
     match v {
         Value::Number(x) => Ok(HostValue::Num(*x)),
@@ -155,7 +365,7 @@ fn to_host(v: &Value) -> Result<HostValue, String> {
                 }
                 let next = match &cur {
                     Value::LList(c) => {
-                        items.push(to_host(&c.head)?);
+                        items.push(to_host_in(&c.head, path)?);
                         c.tail.clone()
                     }
                     other => return Err(value_type_name(other)),
@@ -163,6 +373,25 @@ fn to_host(v: &Value) -> Result<HostValue, String> {
                 cur = next;
             }
             Ok(HostValue::List(items))
+        }
+        Value::Dict(d) => {
+            let p = Rc::as_ptr(d);
+            if path.contains(&p) {
+                return Err("a Dict that contains itself".to_string());
+            }
+            path.push(p);
+            let mut entries = Vec::new();
+            let list = d.entries.borrow().clone();
+            for (k, x) in list.iter() {
+                let key = match string_cow(k) {
+                    Some(Ok(s)) => s.into_owned(),
+                    Some(Err(e)) => return Err(e),
+                    None => return Err(format!("Dict with a {} key", value_type_name(k))),
+                };
+                entries.push((key, to_host_in(x, path)?));
+            }
+            path.pop();
+            Ok(HostValue::Dict(entries))
         }
         _ => match string_cow(v) {
             Some(Ok(s)) => Ok(HostValue::Str(s.into_owned())),
@@ -173,14 +402,34 @@ fn to_host(v: &Value) -> Result<HostValue, String> {
 }
 
 /// A value of the host as a value of ConMa.
-fn from_host(h: &HostValue) -> Value {
-    match h {
+fn from_host(m: &mut Machine, h: &HostValue) -> Result<Value, VmError> {
+    Ok(match h {
         HostValue::Num(x) => num(*x),
         HostValue::Str(s) => string_value(s),
-        HostValue::List(items) => {
-            items.iter().rev().fold(Value::Null, |tail, head| Value::LList(Rc::new(LList { head: from_host(head), tail })))
+        HostValue::Bool(b) => {
+            if *b {
+                m.true_closure()
+            } else {
+                m.false_closure()
+            }
         }
-    }
+        HostValue::List(items) => {
+            let mut tail = Value::Null;
+            for head in items.iter().rev() {
+                tail = Value::LList(Rc::new(LList { head: from_host(m, head)?, tail }));
+            }
+            tail
+        }
+        HostValue::Dict(entries) => {
+            m.serials.dicts += 1;
+            let d = Value::Dict(crate::gc::new_dict(DictObj::new(m.serials.dicts)));
+            for (k, x) in entries {
+                let x = from_host(m, x)?;
+                super::collections::dict_put_core(&d, string_value(k), x)?;
+            }
+            d
+        }
+    })
 }
 
 /// The name and the arguments of a call of the host (the arguments a, after
@@ -190,29 +439,31 @@ fn name_args(vp: &mut VProc, prim: &str, on_error: &Value, name: &Value, args: &
         vp.prim_error(on_error.clone(), &format!("{}: expected String name, got {}", prim, value_type_name(name)));
         return None;
     };
+    let expected = "expected an LList of Numbers, Strings, Booleans, Dicts and LLists";
     match to_host(args) {
         Ok(HostValue::List(items)) => Some((fname.into_owned(), items)),
         Ok(_) => {
-            vp.prim_error(on_error.clone(), &format!("{}: expected an LList of Numbers, Strings and LLists, got {}", prim, value_type_name(args)));
+            vp.prim_error(on_error.clone(), &format!("{}: {}, got {}", prim, expected, value_type_name(args)));
             None
         }
         Err(t) => {
-            vp.prim_error(on_error.clone(), &format!("{}: expected an LList of Numbers, Strings and LLists, got {}", prim, t));
+            vp.prim_error(on_error.clone(), &format!("{}: {}, got {}", prim, expected, t));
             None
         }
     }
 }
 
 /// __Host_call__ onError name args ,(result)
-pub fn call(_m: &mut Machine, vp: &mut VProc) -> PResult {
+pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let prim = "__Host_call__";
     let mut a = take_n(vp, prim, 3)?;
     let args = a.pop().unwrap();
     let name = a.pop().unwrap();
     let on_error = a.pop().unwrap();
     let Some((fname, args)) = name_args(vp, prim, &on_error, &name, &args) else { return Ok(()) };
-    let result = match builtin(&fname) {
-        Some(f) => f(&args),
+    let result = match m.host.fns.get(&fname) {
+        Some(HostFn::Call(f)) => f(&args),
+        Some(HostFn::Wait(_)) => Err(format!("{}: {} waits: call it with __Host_start__", prim, fname)),
         None => match sys::host_call(&fname, &to_json(&HostValue::List(args))) {
             None => Err(format!("{}: no host function \"{}\"", prim, fname)),
             Some(Err(message)) => Err(message),
@@ -223,48 +474,13 @@ pub fn call(_m: &mut Machine, vp: &mut VProc) -> PResult {
         },
     };
     match result {
-        Ok(h) => vp.prim_return1(from_host(&h)),
+        Ok(h) => {
+            let v = from_host(m, &h)?;
+            vp.prim_return1(v)
+        }
         Err(message) => vp.prim_error(on_error, &message),
     }
     Ok(())
-}
-
-/// The JSON text of a result.
-fn result_json(r: &Result<HostValue, String>) -> String {
-    match r {
-        Ok(h) => format!("{{\"r\":{}}}", to_json(h)),
-        Err(message) => format!("{{\"e\":{}}}", to_json(&HostValue::Str(message.clone()))),
-    }
-}
-
-/// Write the result text to the pipe end w and close it. A reader that has
-/// gone (its VProc was killed and the Stream closed) makes the write fail:
-/// the result is dropped then.
-fn finish(w: i32, text: &str) {
-    let mut b = text.as_bytes();
-    while !b.is_empty() {
-        match sys::write_fd(w, b) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => b = &b[n..],
-        }
-    }
-    let _ = sys::close_fd(w);
-}
-
-/// The longest result that a function of BUILTIN or test.later writes to its
-/// pipe: a pipe of the OS takes at least this much without a reader (the
-/// native and Python VMs write it in the step of the call, or in the
-/// scheduler for test.later, before any VProc reads it).
-const PIPE_MAX: usize = 8192;
-
-/// The result text, or an error result if it is longer than PIPE_MAX (the
-/// scheduler writes the result of test.later, so a longer one would block it).
-fn capped(prim: &str, fname: &str, text: String) -> String {
-    if text.len() > PIPE_MAX {
-        result_json(&Err(format!("{}: the result of {} is longer than {} bytes", prim, fname, PIPE_MAX)))
-    } else {
-        text
-    }
 }
 
 /// The calls of test.later that have not finished, by the virtual clock: when
@@ -274,22 +490,22 @@ fn capped(prim: &str, fname: &str, text: String) -> String {
 pub struct Later {
     clock: f64,
     calls: u64,
-    /// (deadline, number of the call, write end of the pipe, result text)
-    jobs: Vec<(f64, u64, i32, String)>,
+    /// (deadline, number of the call, serial of the Stream of the call, result)
+    jobs: Vec<(f64, u64, usize, HostValue)>,
 }
 
 impl Later {
     /// Finish the next call of test.later; false if there is none.
-    pub fn finish_next(&mut self) -> bool {
+    pub fn finish_next(&mut self, results: &mut HostResults) -> bool {
         let Some(i) = (0..self.jobs.len()).min_by(|&a, &b| {
             let (x, y) = (&self.jobs[a], &self.jobs[b]);
             x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal).then(x.1.cmp(&y.1))
         }) else {
             return false;
         };
-        let (deadline, _, w, text) = self.jobs.remove(i);
+        let (deadline, _, id, value) = self.jobs.remove(i);
         self.clock = deadline;
-        finish(w, &text);
+        results.finish(id, Ok(value));
         true
     }
 }
@@ -325,7 +541,6 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
         }
     };
     let Some((fname, args)) = name_args(vp, prim, &on_error, &name, &args) else { return Ok(()) };
-    let builtin = builtin(&fname);
     let later = fname == "test.later";
     let sleep = cfg!(unix) && fname == SLEEP;
     if sleep {
@@ -344,27 +559,48 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
                 return Ok(());
             }
         }
-    } else if builtin.is_none() && !sys::host_has(&fname) {
+    } else if !m.host.has(&fname) && !sys::host_has(&fname) {
         vp.prim_error(on_error, &format!("{}: no host function \"{}\"", prim, fname));
         return Ok(());
     }
     let (r, w) = sys::make_pipe().map_err(|e| VmError::Error(format!("{}: {}", prim, sys::errno_str(&e))))?;
+    let stream = new_stream(m, r, 'r');
+    let id = stream.serial;
     if later {
         let deadline = m.host_later.clock + if let Some(HostValue::Num(n)) = args.first() { *n } else { 0.0 };
         m.host_later.calls += 1;
         let n = m.host_later.calls;
-        let text = capped(prim, &fname, result_json(&Ok(HostValue::List(args))));
-        m.host_later.jobs.push((deadline, n, w, text));
+        m.host_results.wait(id, w, &stream);
+        m.host_later.jobs.push((deadline, n, id, HostValue::List(args)));
     } else if sleep {
         // the scheduler finishes it when the time has come (Timers)
         let ms = if let Some(HostValue::Num(n)) = args.first() { *n } else { 0.0 };
-        m.host_timers.add(ms, w, result_json(&Ok(HostValue::List(Vec::new()))));
-    } else if let Some(f) = builtin {
-        finish(w, &capped(prim, &fname, result_json(&f(&args))));
+        m.host_results.wait(id, w, &stream);
+        m.host_timers.add(ms, id);
     } else {
-        sys::host_start(&fname, &to_json(&HostValue::List(args)), w);
+        match m.host.fns.get(&fname) {
+            Some(HostFn::Call(f)) => {
+                let r = f(&args);
+                m.host_results.wait(id, w, &stream);
+                m.host_results.finish(id, r);
+            }
+            Some(HostFn::Wait(f)) => match m.host.done(id, &fname) {
+                Ok(done) => {
+                    m.host_results.wait(id, w, &stream);
+                    f(&args, done);
+                }
+                Err(e) => {
+                    let _ = sys::close_fd(r);
+                    let _ = sys::close_fd(w);
+                    stream.closed.set(true);
+                    vp.prim_error(on_error, &format!("{}: {}", prim, e));
+                    return Ok(());
+                }
+            },
+            None => sys::host_start(&fname, &to_json(&HostValue::List(args)), w),
+        }
     }
-    let s = Value::Stream(new_stream(m, r, 'r'));
+    let s = Value::Stream(stream);
     if let Some(t) = track {
         let tail = std::mem::replace(&mut *t.value.borrow_mut(), Value::Null);
         *t.value.borrow_mut() = Value::LList(Rc::new(LList { head: s.clone(), tail }));
@@ -377,7 +613,7 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
 /// __Host_result__ onError inputStream ,(result): the result of the call of
 /// __Host_start__ that gave inputStream, which is then closed. onError if the
 /// call failed, or has not finished (the pipe is not at its end).
-pub fn result(_m: &mut Machine, vp: &mut VProc) -> PResult {
+pub fn result(m: &mut Machine, vp: &mut VProc) -> PResult {
     let prim = "__Host_result__";
     let mut a = take_n(vp, prim, 2)?;
     let v = a.pop().unwrap();
@@ -398,14 +634,22 @@ pub fn result(_m: &mut Machine, vp: &mut VProc) -> PResult {
         Ok(false) => Err(format!("{}: the call has not finished", prim)),
         Ok(true) => {
             let _ = s.close();
-            match from_json(&String::from_utf8_lossy(&text)) {
-                Ok(r) => r,
-                Err(e) => Err(format!("{}: the host gave {}", prim, e)),
+            match m.host_results.results.remove(&s.serial) {
+                // a function of Host, test.later or time.sleep
+                Some((_, r)) => r,
+                // the host of the VM for wasm32 wrote the result
+                None => match from_json(&String::from_utf8_lossy(&text)) {
+                    Ok(r) => r,
+                    Err(e) => Err(format!("{}: the host gave {}", prim, e)),
+                },
             }
         }
     };
     match r {
-        Ok(h) => vp.prim_return1(from_host(&h)),
+        Ok(h) => {
+            let v = from_host(m, &h)?;
+            vp.prim_return1(v)
+        }
         Err(message) => vp.prim_error(on_error, &message),
     }
     Ok(())
@@ -413,7 +657,8 @@ pub fn result(_m: &mut Machine, vp: &mut VProc) -> PResult {
 
 // The values go to the host of the VM for wasm32 and come back as JSON: a
 // Number that JSON cannot write (-0, NaN, an infinity) as {"n":"-0"},
-// {"n":"NaN"}, {"n":"Infinity"} or {"n":"-Infinity"}, null for the empty LList.
+// {"n":"NaN"}, {"n":"Infinity"} or {"n":"-Infinity"}, null for the empty LList,
+// true and false for the Booleans, and a Dict as {"d":{"key":value,...}}.
 // A result is {"r":value} or {"e":"message"} (vm/wasm/conma.js, hostCall).
 
 /// The JSON of a value for the host.
@@ -451,6 +696,20 @@ fn write_json(h: &HostValue, out: &mut String) {
                 }
             }
             out.push('"');
+        }
+        HostValue::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        HostValue::Dict(entries) => {
+            // wrapped, so that a Dict is not taken for a Number such as {"n":"NaN"}
+            out.push_str("{\"d\":{");
+            for (i, (k, x)) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_json(&HostValue::Str(k.clone()), out);
+                out.push(':');
+                write_json(x, out);
+            }
+            out.push_str("}}");
         }
         HostValue::List(items) if items.is_empty() => out.push_str("null"),
         HostValue::List(items) => {
@@ -490,6 +749,8 @@ pub fn from_json(text: &str) -> Result<Result<HostValue, String>, String> {
     }
     Ok(r)
 }
+
+const VALUE_ERROR: &str = "a value that is not a Number, a String, a Boolean, a Dict or a list";
 
 struct Json<'a> {
     s: &'a [u8],
@@ -541,6 +802,14 @@ impl Json<'_> {
                 self.i += 4;
                 Ok(HostValue::List(Vec::new()))
             }
+            Some(b't') if self.s[self.i..].starts_with(b"true") => {
+                self.i += 4;
+                Ok(HostValue::Bool(true))
+            }
+            Some(b'f') if self.s[self.i..].starts_with(b"false") => {
+                self.i += 5;
+                Ok(HostValue::Bool(false))
+            }
             Some(b'{') => {
                 self.i += 1;
                 self.ws();
@@ -548,6 +817,39 @@ impl Json<'_> {
                 self.ws();
                 self.expect(b':')?;
                 self.ws();
+                if key == "d" {
+                    // a Dict: {"d":{"key":value,...}}
+                    self.expect(b'{')?;
+                    let mut entries: Vec<(String, HostValue)> = Vec::new();
+                    self.ws();
+                    if self.s.get(self.i) == Some(&b'}') {
+                        self.i += 1;
+                    } else {
+                        loop {
+                            self.ws();
+                            let k = self.string()?;
+                            self.ws();
+                            self.expect(b':')?;
+                            let x = self.value()?;
+                            match entries.iter_mut().find(|(e, _)| *e == k) {
+                                Some(e) => e.1 = x,
+                                None => entries.push((k, x)),
+                            }
+                            self.ws();
+                            match self.s.get(self.i) {
+                                Some(b',') => self.i += 1,
+                                Some(b'}') => {
+                                    self.i += 1;
+                                    break;
+                                }
+                                _ => return Err(format!("a JSON text that is not a result (at byte {})", self.i)),
+                            }
+                        }
+                    }
+                    self.ws();
+                    self.expect(b'}')?;
+                    return Ok(HostValue::Dict(entries));
+                }
                 let v = self.string()?;
                 self.ws();
                 self.expect(b'}')?;
@@ -556,7 +858,7 @@ impl Json<'_> {
                     ("n", "NaN") => f64::NAN,
                     ("n", "Infinity") => f64::INFINITY,
                     ("n", "-Infinity") => f64::NEG_INFINITY,
-                    _ => return Err("a value that is not a Number, a String or a list".into()),
+                    _ => return Err(VALUE_ERROR.into()),
                 };
                 Ok(HostValue::Num(x))
             }
@@ -568,7 +870,7 @@ impl Json<'_> {
                 let t = std::str::from_utf8(&self.s[start..self.i]).unwrap();
                 t.parse::<f64>().map(HostValue::Num).map_err(|_| format!("the number {}", t))
             }
-            _ => Err("a value that is not a Number, a String or a list".into()),
+            _ => Err(VALUE_ERROR.into()),
         }
     }
 

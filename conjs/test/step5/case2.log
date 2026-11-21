@@ -2,7 +2,8 @@ main: TypeError: join: a task cannot join itself
 TypeError: spawn: the number 42 is not a function
 TypeError: join: an object is not a task
 TypeError: host.call: expected a string name, got the number 1
-TypeError: host.wait: cannot pass the boolean true to the host (only numbers, strings and arrays of them)
-TypeError: host.call: cannot pass an object to the host (only numbers, strings and arrays of them)
+Error: __Host_start__: test.later: expected a count (a Number, 0 or more) first
+TypeError: host.call: cannot pass a function to the host (only numbers, strings, booleans, objects and arrays of them)
+TypeError: host.call: cannot pass null to the host (only numbers, strings, booleans, objects and arrays of them)
 typeof: object {} [object Task] true
 exit: 0

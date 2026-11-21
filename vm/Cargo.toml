@@ -5,6 +5,10 @@ edition = "2021"
 rust-version = "1.75"
 description = "The ConMa VM, compatible step by step with vm/python/vproc_step.py"
 
+[lib]
+name = "conma"
+path = "src/lib.rs"
+
 [[bin]]
 name = "conma"
 path = "src/main.rs"

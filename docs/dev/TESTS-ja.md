@@ -58,6 +58,17 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/platform-p7
+
+* 段階 P7 を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.11 節。使い方は新しい docs/HOST-ja.md）：vm のクレートを lib（vm/src/lib.rs）と bin に分け、組み込むプログラムが `Host::function`、`Host::waiting`（`Done` で後から返す）、`Host::feature` でホストの関数を足し、`conma::run_main_with` で動かせるようにした。ホストの関数の表を `Machine` に持たせ、`__Host_start__` の結果を VM に置いてパイプは閉じるだけにした（8 KB の限りがなくなった。Python 版の VM も同じ）。真偽と Dict を、すべての VM でホストと受け渡せるようにした（wasm 版のホストとは `{"d":{...}}`。ConJS はオブジェクトの自分のプロパティだけを渡す）。vm-node.js が、決まらない Promise を行き詰まりとして知らせる（終了ステータス 2）。見本の vm/examples/host_demo.rs、conjs/examples/host_demo.con.js、host_demo.host.js。bin/lang が `CONMA_RUNNER` で動かす実行ファイルを替えられる。
+* 作り直すもの：Rust 版の VM、wasm 版の VM（consh/js/build.sh）、transpiled VM（vm/src が変わった）。
+* 新しいテスト：test/host-api.sh（Rust の API。`cargo build --release --example host_demo` を自分で呼ぶ。run_all.sh には入らないので、別に流す。wasm 版の VM と node があれば、wasm 版でも同じログを確かめる）、conjs/test/step17。書き換えたログ：test/fast14、fast15（wasm 版のログも）、conjs/test/step5。
+* M1 が流したもの（Apple M1）：test/ を Rust 版（26 秒）、Python 版（1 分 50 秒）、wasm 版（51 秒。違いは既知の step40 だけ）で。consh/test を Rust 版で（32 秒）。consh/js/test（17 秒）、sjs/test（41 秒）。conjs/test を Rust 版（12 秒）、wasm 版（17 秒）、Python 版（4 分 22 秒）で。conjs/test/compare.sh。test/host-api.sh（Rust 版と wasm 版）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS は、書き換えた conjs/test/step5 の場合だけ違う）。vm の `cargo test --release`（3 つ通る。example も作られる）。transpiled VM を `CONMA2RUST_COMPACT=1 bench/build.sh` で作り直し（20 分。この transpiled VM はベンチマークに使わない）、その test/（27 秒）と consh/test（27 秒）が通る（`transpiled code: used`）。
+* 流していないもの：ConSh の参照版、Python 版の VM の sjs/test と consh/test、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、ブラウザのページ（vm/wasm/web。conma.js の `hostEncode` と `hostDecode` を変えた）。
+* 測ったもの：なし。ホストの関数を名前で引く所が、決まった表から `Machine` の `HashMap` になったが、ホストを呼ばない計算（sjs/bench など）は通らない所なので、測っていない。Full Bench の依頼はない。
+* PR は shima3/conma#26。
+* M2 のレビューで直したもの（自分を含む値を渡せないようにした。8.11 節）の後に流したもの：test/fast14 と fast15 を Python 版、Rust 版、wasm 版で。conjs/test を Rust 版と wasm 版で、step5、step14、step17 を Python 版で。test/ を Rust 版で。test/host-api.sh（Rust 版と wasm 版）。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

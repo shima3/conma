@@ -9,6 +9,8 @@ module.exports = {
       throw new Error("demo.throw: boom");
     },
     "demo.bool": () => true,
+    "demo.object": () => ({ a: 1, b: [true, "s"], c: {} }),
+    "demo.date": () => new Date(0),
     "demo.promise": () => Promise.resolve(1),
   },
 };
