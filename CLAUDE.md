@@ -11,7 +11,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 ## Before you act
 
 - Branches, merging, pull requests, the `wait-` labels and the signal 「PR確認」/"check your PRs"/"PRs": docs/dev/CONTRIBUTING.md, Branches 1–6.
-- Push only when the user says so in that message. Merge only on the user's words. Never rebase a pushed commit.
+- Push a branch of work when you open its pull request or answer a review (Branches 6). Push `alpha` and `main` only when the user says so (Merging, Branches 5). Merge only on the user's words. Never rebase a pushed commit.
 - A change of documents only (`docs/`, `.github/`, `*.md`) goes to `main` by Branches 5. A comment in a `.se`, `.rs`, `.py` or script file is not a document: it moves positions in logs and transpiled code.
 - Commit messages: a summary of 50–70 characters, a blank line, then what changed, why, and what you ran.
 
@@ -23,6 +23,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 - Do not switch the checkout while tests run in the background: they read the working tree. Use a worktree to test another commit.
 - The shell is macOS bash 3.2 and BSD sed (`sed -i ''`). Before a bulk replace with sed, check how many lines match: a pattern that ends a line in one record often ends many.
 - Benchmarks: measure the versions alternately, on the same machine.
+- Do not kill processes by a broad pattern (`pkill -f conma`): other sessions on the machine run the same commands. Stop only the processes you started.
 
 ## ConJS and SJS (not JavaScript)
 
@@ -31,6 +32,7 @@ Read conjs/README-ja.md (言語, JavaScript との違い) before writing ConJS. 
 - No `async`, `await`, `for await` or `Promise`: a call that waits is an ordinary call (`f.readLine()`, `sleep(ms)`); `spawn` and `join` run tasks.
 - `+` joins numbers only: join strings with template literals (`${a}${b}`).
 - No `Set`, `Map` or regular expressions.
+- Built-ins missing from the README's list may be missing too (`splice`, `Array.from`, `Math.cos`): a missing method fails only when it runs, so try a small program first.
 - A call that waits is a point where other tasks run, though nothing marks it. State kept across such a call in shared objects can be changed by another task (the readLine race in shima3/conma#21).
 - Node.js versions of ConJS samples sit beside them (`*.node.js`); conjs/test/compare.sh compares them.
 
@@ -40,5 +42,7 @@ Read docs/SPEC.md and docs/PRIMITIVES.md for the language. Things that are easy 
 
 - Every function is in continuation passing style: `f a b ,(x) rest` binds the result of `f a b` to `x`. `__Cont_get__ ,(return)` gives an early exit.
 - Primitives that can fail take `onError` first (`__print_exit_error__`, or a closure).
+- A clause of `__if__` or `__unless__` goes on to what follows it unless it ends in `return ...` of `__Cont_get__`.
+- A core Boolean only returns the value it chooses: `b (,() ...) (,() ...)` calls neither clause (`__TRUE__` is `,(t f) __NULL__ t`). To run the chosen clause, use `__if_then_else__ b (...) (...)`.
 - The scheduler can switch VProcs between any two steps, and there is no atomic update of a Ref: keep state in one owner VProc and talk to it through channels (include/core/chan.se), and close channel writers you no longer use.
 - The Rust VM runs until every VProc has finished: kill VProcs that wait for the OS when the program ends.
