@@ -58,6 +58,15 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m2/platform-p6b
+
+* 段階 P6b を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.12 節）：Node.js のネットワークのサーバ。ホストの関数 `server.listen`、`server.accept`、`server.respond`、`server.close`（新しい vm/wasm/host/server.js。機能 `"server"`。vm-node.js がはじめから渡す）と、ConJS の `http.listen`（conjs/include/conjs_lib.se）。見本の conjs/examples/counter_server.con.js と counter_server.node.js。docs/HOST-ja.md に、`CONMA_HOST` の関数で `require` する例（`node:crypto`）。
+* 作り直すもの：なし（vm/src は変えていない。wasm 版の VM のファイルは vm-node.js と host/server.js だけで、JavaScript なので作り直さない）。
+* 新しいテスト：conjs/test/step18（wasm 版は本当に待ち受ける。ほかの VM のログは、機能がないことの Error の 1 行。case2.con.js は見本へのシンボリックリンク）。conjs/test/compare.sh が、step18/case2.node-check.js（Node.js 版の見本と case2.wasm.log を比べる）も動かす。
+* M2 が流したもの（Apple M2）：conjs/test を Rust 版（12 秒）、wasm 版（19 秒）、Python 版（3 分 37 秒）で。conjs/test/compare.sh。wasm 版の step18 を 5 回。test/host-api.sh。sjs/test（Rust 版）。`bin/lang-emit-check origin/alpha`（違いなし）。test/ と consh/test を wasm 版で（vm-node.js を変えたので。違いは既知の test/ の step40、consh/test の step8 と step17 だけ）。
+* 流していないもの：Rust 版、Python 版、transpiled VM の test/ と consh/test、consh/js/test、ConSh の参照版、ブラウザのページ（server.js は渡さない）。
+* 測ったもの：なし。Full Bench の依頼はない。
+
 ### m2/python-argv
 
 * Python 版の VM（vm/python/vproc_run.py）が、モジュールのファイルより後の引数を、`-` で始まっても、そのままプログラムに渡すようにした（Rust 版の VM と同じ。オプションは、モジュールのファイルより前と `--` まで）。前は argparse が全体を読み、`--demo` はエラーで止まり、`-t` や `-m` は黙って VM のオプションになっていた（PR shima3/conma#28 の見本で気付いた）。
