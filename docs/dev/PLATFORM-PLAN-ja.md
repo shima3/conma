@@ -544,7 +544,9 @@ std::process::exit(conma::run_main_with(std::env::args().collect(), host));
 ```
 
 * **すぐ返る関数**（`function`）：`Fn(&[HostValue]) -> Result<HostValue, String>`。`__Host_call__` からも `__Host_start__` からも呼べる（後者では、すぐ結果を書く。今の BUILTIN と同じ）。
-* **待つ関数**（`waiting`）：`Fn(&[HostValue], Done)`。`__Host_start__` からだけ呼べる（`__Host_call__` では「待つ関数は `__Host_call__` で呼べない」のエラー。wasm 版で Promise を返したときと同じ扱い）。`Done` は `Send` で、`finish(result)` は、結果をスケジューラの列（`Mutex` の中）に入れ、起こすためのパイプに 1 バイト書くだけにする。スケジューラは、ステップの間でその列を見て、結果をその呼び出しのパイプに書いて閉じる（今の `Timers` が、時刻の来た `time.sleep` を、ステップの間で書くのと同じ。別のスレッドが直接パイプに書くと、書いた所と閉じた所の間を VProc が見て、`__Host_result__` が「終わっていない」になるため）。どの VProc も動けないときは、起こすためのパイプも `poll` で待つ。`finish` を呼ばずに `Done` を捨てたら、エラーの結果（`demo.delay: the host dropped the call`）にする（`Drop` で）。
+* **待つ関数**（`waiting`）：`Fn(&[HostValue], Done)`。`__Host_start__` からだけ呼べる（`__Host_call__` では「待つ関数は `__Host_call__` で呼べない」のエラー。wasm 版で Promise を返したときと同じ扱い）。`Done` は `Send` で、`finish(result)` は、結果をスケジューラの列（`Mutex` の中）に入れ、起こすためのパイプに 1 バイト書くだけにする。スケジューラは、ステップの間でその列を見て、その呼び出しを終える（下の「結果の置き場所」。今の `Timers` が、時刻の来た `time.sleep` を、ステップの間で終えるのと同じ。別のスレッドが直接パイプに書くと、書いた所と閉じた所の間を VProc が見て、`__Host_result__` が「終わっていない」になるため）。どの VProc も動けないときは、起こすためのパイプも `poll` で待つ。`finish` を呼ばずに `Done` を捨てたら、エラーの結果（`demo.delay: the host dropped the call`）にする（`Drop` で）。
+* **結果の置き場所**（M2 のレビューの 1）：今は、結果の JSON の文字列を、その呼び出しのパイプに書いてから閉じる。スケジューラや呼んだステップの中で書く結果（BUILTIN と `test.later`）は、読み手がまだいないので、OS のパイプに入り切る 8,192 バイト（`PIPE_MAX`）を超えるとエラーにしている（`capped`）。同じ形で待つ関数の結果を書くと、組み込む人の関数の結果（ファイルの中身、HTTP の本体）も 8 KB までになり、限りのない wasm 版（メモリの上のパイプ）と、渡せる大きさが違ってしまう。そこで、Rust 版と transpiled VM では、結果の文字列を `Machine` の表（呼び出しのパイプの読む側の fd から結果へ）に置き、パイプには何も書かずに閉じるだけにする（パイプは、終わったことを知らせて `__OS_wait_readable__` を起こすためだけに使う）。`__Host_result__` は、パイプの終わりを見てから、表の文字列を取り出す。すぐ返る関数を `__Host_start__` から呼んだときも、`test.later` も、同じ道にし、`capped` と `PIPE_MAX` はなくす。呼んだ VProc が殺されて Stream が閉じられたら（`__Host_start_tracked__`）、Stream を閉じる所で、その fd の結果を表から除く（残さない）。wasm 版の VM（パイプがメモリの上で、限りがない）は、今のまま。Python 版の VM も今のまま（関数はテストのものだけで、結果は小さいので、8 KB の限り `HOST_PIPE_MAX` を残す。テストの結果が 8 KB を超えないかぎり、トレースは Rust 版と同じ）。
+* **VM が終わった後の `finish`**（M2 のレビューの 2）：組み込む人のスレッドが、VM が終わった後（`run_main_with` が返った後）に `finish` を呼ぶことがある。起こすためのパイプを VM が閉じていると、その fd の番号が、組み込む人の開いた別のファイルに使い回され、そこに 1 バイト書いてしまうおそれがある。そこで、結果の列と起こすためのパイプは、`Done` と共有する `Arc` が持ち、VM と最後の `Done` の両方がなくなったときに閉じる。VM が終わった後の `finish` は、結果を捨てるだけにする。
 * **表を Machine に持たせる**：今の `BUILTIN` と `NATIVE` の決まった表と、`feature()` の決まった名前を、`Machine` が持つ `Host` の表に替える。`test.*` と `time.now` は、`Host::new()` が登録する（同じ API を使う。`time.sleep` も、`Timers` を使う待つ関数として登録できるかを作るときに確かめ、できなければ今のまま特別に扱う）。`test.later`（仮の時計）は、スケジューラと結び付いているので、今のまま特別に扱う。
 * **transpiled VM**：`__Host_call__` と `__Host_start__` は、変換したコードから VM に任せる所（7 節）なので、表が `Machine` にあれば、そのまま使える。組み込む人が transpiled VM を使うときは、自分のクレートで vm を依存にして、`CONMA_TRANSPILED` を付けて作る（vm/conma2rust/build.sh と同じ）。docs/HOST-ja.md に書く。
 * **wasm 版の VM**：今のまま（ホストの関数は JavaScript の側。7 節の「wasm 版の大きさ」）。Rust の API は、wasm 版のクレートでは使わない。
@@ -555,15 +557,16 @@ std::process::exit(conma::run_main_with(std::env::args().collect(), host));
 * 今、ホストと受け渡せるのは、数、文字列、それらの LList だけで（null は空の LList）、真偽と Dict は渡せない。ConJS では、ホストが返した空の配列も `undefined` になる。使う人が関数を足し始める前に決めたい。
 * M1 の案：真偽（`true`、`false`）と Dict（文字列の鍵。JavaScript のオブジェクト、Rust の `HostValue::Dict(Vec<(String, HostValue)>)`）を足す。wasm 版では、今の JSON の形のまま、真偽は JSON の真偽、Dict は JSON のオブジェクトにする（`{"n":...}` の特別な形は、数だけに使っているので、鍵が 1 つで名前が `n` の Dict と区別するため、Dict は `{"d":{...}}` で包む）。ConJS では、真偽はそのまま、Dict は SJS のオブジェクトにする。Python 版の VM の表（`test.echo`）も、同じに受け渡せるようにする（トレースを比べるため）。
 * null と空の配列の区別は、ConMa の値の形（null が空の LList）によるので、P7 でも変えない。docs/HOST-ja.md に書く。
+* ConJS からホストに渡すとき（M2 のレビューの 4）：ConJS のオブジェクトは、隠したキー（クラスの記録の `"cls"`、P8 のファイルの `"fs_stream"` など）も持つ Dict なので、`Conjs_to_host` は、自分のプロパティだけ（`Object.keys` と同じ）を Dict にして渡す。値が関数のものは、今と同じく TypeError にする。たとえば、P8 のファイルのオブジェクトを渡すと、`{ path: "a.txt" }` だけが渡る。
 
 **4. Node.js で決まらない Promise**（7 節）
 
-* vm-node.js で、VM が IDLE（どの VProc も外を待つ）で、待っているホストの呼び出しがあるのに、Node.js のイベントループに、ほかにすることがなくなったら（`process.on("beforeExit")`）、`conma: Deadlock: host calls that never finish: N`（N は待っているホストの呼び出しの数）を標準エラーに出し、終了ステータス 2 で終える。ConJS の join の行き詰まりと同じ終了ステータスにする。
+* vm-node.js で、VM が IDLE（どの VProc も外を待つ）で、待っているホストの呼び出しがあるのに、Node.js のイベントループに、ほかにすることがなくなったら（`process.on("beforeExit")`）、`vm-node: every VProc waits for host calls that never finish: N`（N は待っているホストの呼び出しの数）を標準エラーに出し、終了ステータス 2 で終える。今の `vm-node: every VProc waits, and nothing can wake them`（終了ステータス 2）にそろえ、2 つの違いが分かるようにする（M2 のレビューの 3）。M2 が確かめたとおり、今は、`jsPending` がその呼び出しを数え続けるので、その行にも来ず、`main()` の Promise が決まらないまま Node.js が終わり、何も出さずに終了ステータス 0 になる。
 * Rust 版の VM でも、待つ関数が `Done` を持ったまま何もしなければ、同じことが起きる（スケジューラが、起こすためのパイプを待ち続ける）。こちらは、`Done` を持つものがいなくなれば `Drop` でエラーになるので、持ち続ける場合だけである。見つける方法がないので、docs/HOST-ja.md に書くだけにする。
 
 **テスト**
 
-* **Rust の API**：vm/examples/host_demo.rs（`cargo run --example host_demo -- ...`。上の例の `demo.add`、`demo.delay`、機能 `"demo"` を登録して、今の main と同じに VM を動かす）を作り、conjs/examples/host_demo.con.js を動かして、決めたログと比べる。テストの台本は test/host-api.sh（新しい）。待つ関数は別のスレッドから `finish` するので、スレッドが結果を返す順を、決まるように作る（`demo.delay` の時間を十分に離す。ログには順だけを出す）。ほかに、`finish` を呼ばずに捨てたときのエラー、待つ関数を `__Host_call__` で呼んだときのエラー、登録していない名前のエラー、`host.available("demo")` が真で、登録しない main では偽になること。
+* **Rust の API**：vm/examples/host_demo.rs（`cargo run --example host_demo -- ...`。上の例の `demo.add`、`demo.delay`、機能 `"demo"` を登録して、今の main と同じに VM を動かす）を作り、conjs/examples/host_demo.con.js を動かして、決めたログと比べる。テストの台本は test/host-api.sh（新しい）。台本は、`cargo build --release --example host_demo` を自分で呼ぶ（今の Full Test の手順では example が作られないため。M2 のレビューの 5。作るときの申し送りにも書く）。待つ関数は別のスレッドから `finish` するので、スレッドが結果を返す順を、決まるように作る（`demo.delay` の時間を十分に離す。ログには順だけを出す）。ほかに、`finish` を呼ばずに捨てたときのエラー、待つ関数を `__Host_call__` で呼んだときのエラー、登録していない名前のエラー、`host.available("demo")` が真で、登録しない main では偽になること。
 * **wasm 版**：同じ host_demo.con.js を、同じ関数を JavaScript で書いた conjs/examples/host_demo.host.js（`CONMA_HOST`）で動かし、同じログになること（docs/HOST-ja.md の例と同じファイル）。
 * **値**：真偽と Dict を、`test.echo` で 3 つの VM に通す（test/ のホストの場合 fast14、fast15 に足すか、新しい場合。ConJS では conjs/test の新しい step）。
 * **決まらない Promise**：Promise を返して決めないホストの関数で、vm-node.js が Deadlock を出して 2 で終わること（conjs/test の新しい step の wasm 版のログ）。
@@ -573,7 +576,9 @@ std::process::exit(conma::run_main_with(std::env::args().collect(), host));
 
 **P7 でしないこと**（後の候補）：Python 版の VM に使う人が関数を足す口（Python のテストの VM なので要らない）。ホストの関数から ConMa の関数を呼び返すこと（コールバック）。ホストの値をつかんだまま渡すこと（JavaScript のオブジェクトを `__JS_value__` のように持つこと）。ホストの関数を、Rust のクレートを作らずに、動的なライブラリ（`.so`、`.dylib`）から読むこと。ConJS の `fetch` を、Rust 版の VM でホストの関数に替えること（curl をやめる。P7 の口を使って、後の段階で）。
 
-**M2 に聞きたいこと**
+**M2 のレビュー**（PR shima3/conma#22）：向き、値に真偽と Dict を足すこと（`{"d":{...}}` の形）、`Done` の作り、決まらない Promise を `beforeExit` で見つけること、テストの置き場所に、賛成をもらった。指摘を受けて、結果を `Machine` の表に置いて 8 KB の限りをなくすこと（1）、VM が終わった後の `finish`（2）、vm-node.js の出す行（3）、ConJS から渡すのは自分のプロパティだけにすること（4）、test/host-api.sh が example を作ること（5）を書き足した。
+
+**M2 に聞いたこと**
 
 1. **向き**：lib と bin に分け、`Host` の表を `Machine` に持たせ、組み込む人が自分の main を書く形でよいか。今の `conma` のコマンドに、組み込みでない方法（設定のファイルなど）で関数を足す道は作らない。
 2. **値**：真偽と Dict を P7 で足すか。足すなら、wasm 版の JSON の `{"d":{...}}` の形でよいか。
