@@ -1,0 +1,73 @@
+;; ConJS の端末の入力の、キーに分ける所（conjs/include/conjs_term.se の Conjs_term_keys。docs/dev/PLATFORM-PLAN-ja.md の
+;; 4.7 節、段階 P6a）。ESC の並びが 2 回の読みに分かれて届く場合は、ファイルの標準入力では作れないので、ここで直に確かめる。
+;; 読んだ分を渡すと、キーの名前と、持ち越す並びが返る。持ち越した並びに続きを付けて渡すと、1 つのキーになる
+
+(include "util.se")
+(include "conjs_term.se")
+(include "lang/sched.se")
+
+(define println ,(str)
+  __String_concat__ str "\n" ,(line)
+  __OS_print__ line)
+
+;; ESC を「^[」と書いた文字列を、本当の ESC にする
+(define esc ,(s)
+  __Number_fromString__ __print_exit_error__ "27" ,(k)
+  __String_fromCode__ __print_exit_error__ k ,(e)
+  replace s "^[" e "")
+
+(define replace ,(s from to acc)
+  __Cont_get__ ,(return)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __String_find__ __print_exit_error__ s from zero ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() __String_concat__ acc s ,(r) return r) ,()
+  __String_substring__ __print_exit_error__ s zero at ,(head)
+  __String_length__ from ,(k)
+  __Number_add__ at k ,(j)
+  __String_length__ s ,(n)
+  __String_substring__ __print_exit_error__ s j n ,(rest)
+  __String_concat__ acc head ,(acc)
+  __String_concat__ acc to ,(acc)
+  replace rest from to acc)
+
+(define join ,(names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(x rest)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ x) (,() __String_concat__ acc " " ,(a) __String_concat__ a x) ,(acc)
+  join rest acc)
+
+;; label: 渡した分（^[ は ESC）→ キーの名前 | 持ち越す並び（^[ で出す）
+(define show ,(label text final)
+  esc text ,(t)
+  Conjs_term_keys t final ,(names left)
+  join names "" ,(s)
+  Number_27 ,(k)
+  __String_fromCode__ __print_exit_error__ k ,(e)
+  replace left e "^[" "" ,(l)
+  __String_concat__ label ": " ,(line)
+  __String_concat__ line s ,(line)
+  __String_concat__ line " | " ,(line)
+  __String_concat__ line l ,(line)
+  println line)
+
+(define Number_27 ,() __Number_fromString__ __print_exit_error__ "27")
+
+(define main ,()
+  show "chars" "ab" __FALSE__ ,()
+  show "enter" "a\r\nb\rc\n" __FALSE__ ,()
+  show "arrows" "^[[A^[[B^[[C^[[D^[OA" __FALSE__ ,()
+  show "held" "^[[A^[[A^[[A" __FALSE__ ,()
+  show "params" "^[[1;5Ax" __FALSE__ ,()
+  show "alt" "^[x" __FALSE__ ,()
+  show "split1" "a^[" __FALSE__ ,()
+  show "split2" "^[[A" __FALSE__ ,()
+  show "split3" "^[[" __FALSE__ ,()
+  show "split4" "^[O" __FALSE__ ,()
+  show "split5" "^[[1;" __FALSE__ ,()
+  show "final1" "^[" __TRUE__ ,()
+  show "final2" "^[[" __TRUE__ ,()
+  show "final3" "^[[1;" __TRUE__ ,()
+  show "controls" "\t" __FALSE__ ,()
+  __nop__)

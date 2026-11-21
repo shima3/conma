@@ -9,8 +9,9 @@
 ;;   fetch(url, options)  ホストに http.fetch（機能 "fetch"）があればそれで、なければ curl を待つための VProc で動かす。
 ;;                        Response のようなオブジェクト（status、ok、text()、json()）を返す
 ;;   nextEvent(ms)        ホストの関数 input.next（待つ呼び出し。機能 "input"。4.6 節、段階 P5c）：キーかクリックを
-;;                        { type: "key", key } か { type: "click", x, y } で返す。ms の間に来なければ undefined
-;;   pollEvent()          ホストの関数 input.poll（すぐ返る）：同じ形のオブジェクトか undefined
+;;                        { type: "key", key } か { type: "click", x, y } で返す。ms の間に来なければ undefined。
+;;                        機能 "input" がなければ、標準入力のキーを読む（conjs_term.se。4.7 節、段階 P6a）
+;;   pollEvent()          ホストの関数 input.poll（すぐ返る）か、標準入力の列：同じ形のオブジェクトか undefined
 
 (define Conjs_lib_builtins ,(G)
   Sjs_function G "sleep" (,(args) Sjs_arg args ,(ms rest) Conjs_ms "sleep" ms ,(ms) Conjs_sleep ms) ,(sleep)
@@ -252,15 +253,8 @@
   __NULL__ r)
 
 ;; ── 入力（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）：ホストの関数 input.next と input.poll（機能 "input"。
-;; ブラウザのページでは vm/wasm/host/input.js）。ホストは、キーとクリックを届いた順に列にためる ──
-
-;; 機能 "input" がなければ TypeError
-(define Conjs_input_check ,(what)
-  __Cont_get__ ,(return)
-  __Feature_available__ "input" ,(ok)
-  __if__ ok return ,()
-  __String_concat__ what ": this platform has no input" ,(m)
-  Sjs_type_error m)
+;; ブラウザのページでは vm/wasm/host/input.js）。ホストは、キーとクリックを届いた順に列にためる。機能 "input" が
+;; なければ、標準入力のキーを読む（conjs_term.se。4.7 節、段階 P6a）──
 
 ;; nextEvent の ms を input.next の ms にする：undefined と Infinity は -1（時間を限らない）、負の数と NaN は 0（すぐに
 ;; 時間切れ。setTimeout と同じ）、数でなければ TypeError。sleep の Conjs_ms は undefined と無限を 0 にするので使わない
@@ -285,16 +279,67 @@
   __NULL__ v)
 
 (define Conjs_next_event ,(G ms)
-  Conjs_input_check "nextEvent" ,()
+  __Cont_get__ ,(return)
   Conjs_event_ms ms ,(ms)
+  __Feature_available__ "input" ,(host)
+  __unless__ host (,() Conjs_term_next ms ,(name) Conjs_key_object G name ,(o) return o) ,()
   __LList_cons__ ms __NULL__ ,(l)
   Conjs_wait_host "Error" "input.next" l ,(r)
   Conjs_event_object G r)
 
 (define Conjs_poll_event ,(G)
-  Conjs_input_check "pollEvent" ,()
+  __Cont_get__ ,(return)
+  __Feature_available__ "input" ,(host)
+  __unless__ host (,() Conjs_term_poll ,(name) Conjs_key_object G name ,(o) return o) ,()
   __Host_call__ (,(msg) Sjs_throw "Error" msg) "input.poll" __NULL__ ,(r)
   Conjs_event_object G r)
+
+;; 端末の道のキーの名前（null は、時間切れか、列が空）を、ConJS のオブジェクトにする
+(define Conjs_key_object ,(G name)
+  __Cont_get__ ,(return)
+  __is_null__ name ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_cons__ name __NULL__ ,(r)
+  __LList_cons__ "key" r ,(r)
+  Conjs_event_object G r)
+
+;; 端末の道の nextEvent：受け持つ VProc に ("wait" 処理 書き手 ms) を送り、結果が届くまで、この処理だけが待つ。
+;; キーの名前か null（時間切れ）を返す。標準入力が終わっていれば Error
+(define Conjs_term_next ,(ms)
+  Conjs_term ,(T)
+  __Dict_lookup_or__ T "w" __print_exit_error__ ,(tw)
+  Kit_sched_state ,(S)
+  (,()
+    __Cont_get__ ,(k)
+    Kit_sched_suspend S k "waiting" ,(task)
+    Kit_sched_add S "pending" "1" ,()
+    __Dict_lookup_or__ S "self" __print_exit_error__ ,(self)
+    __Chan_of__ self ,(chan)
+    __Chan_writer__ chan ,(w)
+    __LList_cons__ ms __NULL__ ,(m)
+    __LList_cons__ w m ,(m)
+    __LList_cons__ task m ,(m)
+    __LList_cons__ "wait" m ,(m)
+    __Chan_put__ (,() __nop__) tw m ,()
+    Kit_sched_next S) ,(r)
+  __LList_uncons__ __print_exit_error__ r ,(ok more)
+  __LList_uncons__ __print_exit_error__ more ,(payload more)
+  Kit_sched_set_running S ,()
+  __unless__ ok (,() Sjs_throw "Error" payload) ,()
+  __NULL__ payload)
+
+;; 端末の道の pollEvent：受け持つ VProc に ("poll" 書き手) を送り、答え（キーの名前か null）を受け取る
+(define Conjs_term_poll ,()
+  Conjs_term ,(T)
+  __Dict_lookup_or__ T "w" __print_exit_error__ ,(tw)
+  Conjs_num "1" ,(one)
+  __Chan_new__ one __NULL__ ,(c)
+  __Chan_writer__ c ,(pw)
+  __Chan_reader__ c ,(pr)
+  __LList_cons__ pw __NULL__ ,(m)
+  __LList_cons__ "poll" m ,(m)
+  __Chan_put__ (,() __nop__) tw m ,()
+  __Chan_take__ pr ,(name found)
+  __NULL__ name)
 
 ;; ホストの入力（("key" 名前) か ("click" x y)。null は時間切れか、列が空）を、ConJS のオブジェクトにする
 (define Conjs_event_object ,(G r)
