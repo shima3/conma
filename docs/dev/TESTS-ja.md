@@ -60,7 +60,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### m1/platform-p8
 
-* 段階 P8 を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.10 節）：ConJS の `fs.open`、ファイルのオブジェクト、`fs.readLines`、`fs.stdin`、`fs.stdout`（新しい conjs/include/conjs_file.se）と、プログラムの引数の `argv`（sjs/include/sjs_gen.se の `Gen_conjs_program` が main に 1 行足す。conjs/conjs と bin/lang が引数を渡す）。見本の conjs/examples（merge.con.js、merge.node.js、wordcount.con.js）。bin/lang-test が `case*.args` を引数にする。conjs/test/compare.sh が conjs/test/node-pairs.txt の組を比べる。
+* 段階 P8 を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.10 節）：ConJS の `fs.open`、ファイルのオブジェクト、`fs.readLines`、`fs.stdin`、`fs.stdout`（新しい conjs/include/conjs_file.se）と、プログラムの引数の `argv`（sjs/include/sjs_gen.se の `Gen_conjs_program` が main に 1 行足す。conjs/conjs と bin/lang が引数を渡す）。見本の conjs/examples（merge.con.js、merge.node.js、wordcount.con.js）。bin/lang-test が `case*.args` を引数にする。conjs/test/compare.sh が conjs/test/node-pairs.txt の組を比べる。PR は shima3/conma#21。
 * 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS の変換器が入る）。VM は変えていない。
 * 新しいテスト：conjs/test/step16。
 * M1 が流したもの（Apple M1）：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 16 秒）で。conjs/test/compare.sh。sjs/test（42 秒）、consh/js/test（23 秒）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS の 42 のプログラムは `Conjs_argv` の 1 行だけ違う）。流していないもの：consh/test（ConSh が使う SJS の変換は変えていない）、test/、transpiled VM、Python 版の VM の sjs/test、ConSh の参照版。
