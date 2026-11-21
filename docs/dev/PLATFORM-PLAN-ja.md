@@ -480,6 +480,7 @@ P6（プラットフォームを増やす）の最初の段階として、**端�
 | P6a（設計の案、2026-11-21。4.7 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（忘れないための行。P5 の続きと P6 の後でよい。ユーザーが 2026-11-21 に頼んだ） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
+| P8（忘れないための行。後でよい。ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
 
