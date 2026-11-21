@@ -1160,20 +1160,23 @@ def _host_boolean(v):
     except (IndexError, TypeError):
         return None
 
-def _to_host(v):
+def _to_host(v, path=()):
     """A value for the host, or raise _HostError with the type name of the first value that cannot go
-    (vm/src/prim/host.rs, to_host)."""
+    (vm/src/prim/host.rs, to_host). path: the ids of the Dicts being converted around v."""
     if is_null_value(v):
         return []
     b = _host_boolean(v)
     if b is not None:
         return b
     if isinstance(v, Dict):
+        if id(v) in path:
+            raise _HostError("a Dict that contains itself")
+        inner = path + (id(v),)
         entries = _HostDict()
-        for k, x in v.entries:
+        for k, x in list(v.entries):
             if value_type_name(k) != "String":
                 raise _HostError(f"Dict with a {value_type_name(k)} key")
-            entries.append((_value_to_display(k), _to_host(x)))
+            entries.append((_value_to_display(k), _to_host(x, inner)))
         return entries
     t = value_type_name(v)
     if t == "Number":
@@ -1185,7 +1188,7 @@ def _to_host(v):
         while not is_null_value(v):
             if not isinstance(v, LList):
                 raise _HostError(value_type_name(v))
-            items.append(_to_host(v.head))
+            items.append(_to_host(v.head, path))
             v = v.tail
         return items
     raise _HostError(t)

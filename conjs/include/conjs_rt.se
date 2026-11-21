@@ -156,7 +156,7 @@
 (define Conjs_host_call ,(G args)
   Sjs_arg args ,(name rest)
   Conjs_host_name "host.call" name ,()
-  Conjs_to_host_list "host.call" rest ,(list)
+  Conjs_to_host_list "host.call" rest __NULL__ ,(list)
   __Host_call__ (,(msg) Sjs_throw "Error" msg) name list ,(r)
   Conjs_from_host G r)
 
@@ -165,46 +165,63 @@
   __Cont_get__ ,(return)
   Sjs_arg args ,(name rest)
   Conjs_host_name "host.wait" name ,()
-  Conjs_to_host_list "host.wait" rest ,(list)
+  Conjs_to_host_list "host.wait" rest __NULL__ ,(list)
   Kit_sched_wait (,(msg) Sjs_throw "Error" msg) name list ,(ok payload)
   __unless__ ok (,() Sjs_throw "Error" payload) ,()
   Conjs_from_host G payload)
 
 ;; SJS の値の LList を、ホストに渡す値（数、文字列、真偽、Dict、それらの LList）の LList にする
-;; （真偽と Dict は段階 P7。docs/dev/PLATFORM-PLAN-ja.md の 4.9 節）
-(define Conjs_to_host_list ,(what vs)
+;; （真偽と Dict は段階 P7。docs/dev/PLATFORM-PLAN-ja.md の 4.9 節）。path は、今たどっているオブジェクトと配列の id の LList
+;; （自分を含む値は、たどり終わらないので TypeError にする。M2 の PR shima3/conma#26 のレビューの 1）
+(define Conjs_to_host_list ,(what vs path)
   __Cont_get__ ,(return)
   __is_null__ vs ,(test__) __if__ test__ (,() return __NULL__) ,()
   __LList_uncons__ __print_exit_error__ vs ,(v rest)
-  Conjs_to_host what v ,(h)
-  Conjs_to_host_list what rest ,(hs)
+  Conjs_to_host what v path ,(h)
+  Conjs_to_host_list what rest path ,(hs)
   __LList_cons__ h hs)
 
-(define Conjs_to_host ,(what v)
+(define Conjs_to_host ,(what v path)
   __Cont_get__ ,(return)
   Sjs_kind v ,(kind)
   __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
-  __String_equal__ kind "array" ,(test__) __if__ test__
-    (,() Sjs_array_list v ,(items) Conjs_to_host_list what items ,(l) return l) ,()
-  ;; オブジェクトは、自分のプロパティだけ（Object.keys と同じ）の Dict にする。隠したキー（クラスの記録など）は渡さない
-  __String_equal__ kind "object" ,(test__) __if__ test__
-    (,() Sjs_obj_keys v ,(keys) __Dict_new__ ,(d) Conjs_to_host_props what v keys d ,() return d) ,()
+  __String_equal__ kind "array" ,(isArray)
+  __String_equal__ kind "object" ,(isObject)
+  __or__ isArray isObject ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ v "id" __print_exit_error__ ,(id)
+      Conjs_host_seen id path ,(seen)
+      __if__ seen
+        (,()
+          __String_concat__ what ": cannot pass an object that contains itself to the host" ,(m)
+          Sjs_type_error m) ,()
+      __LList_cons__ id path ,(inner)
+      __if__ isArray (,() Sjs_array_list v ,(items) Conjs_to_host_list what items inner ,(l) return l) ,()
+      ;; オブジェクトは、自分のプロパティだけ（Object.keys と同じ）の Dict にする。隠したキー（クラスの記録など）は渡さない
+      Sjs_obj_keys v ,(keys) __Dict_new__ ,(d) Conjs_to_host_props what v keys d inner ,() return d) ,()
   Sjs_describe v ,(d)
   __String_concat__ what ": cannot pass " ,(m)
   __String_concat__ m d ,(m)
   __String_concat__ m " to the host (only numbers, strings, booleans, objects and arrays of them)" ,(m)
   Sjs_type_error m)
 
-(define Conjs_to_host_props ,(what o keys d)
+(define Conjs_host_seen ,(id path)
+  __Cont_get__ ,(return)
+  __is_null__ path ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ path ,(p rest)
+  __Number_subtract__ p id ,(diff) __Number_is_zero__ diff ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Conjs_host_seen id rest)
+
+(define Conjs_to_host_props ,(what o keys d path)
   __Cont_get__ ,(return)
   __is_null__ keys ,(test__) __if__ test__ return ,()
   __LList_uncons__ __print_exit_error__ keys ,(k rest)
   Sjs_obj_get o k ,(v)
-  Conjs_to_host what v ,(h)
+  Conjs_to_host what v path ,(h)
   __Dict_put__ d k h ,()
-  Conjs_to_host_props what o rest d)
+  Conjs_to_host_props what o rest d path)
 
 ;; ホストが返した値を SJS の値にする：LList は配列、null は undefined、Dict はオブジェクト（数、文字列、真偽はそのまま）
 (define Conjs_from_host ,(G r)

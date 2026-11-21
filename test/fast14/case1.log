@@ -9,6 +9,8 @@ unknown: error: __Host_call__: no host function "test.none"
 a Dict and Booleans: (true {k 1 b false in {} l ("x" true)})
 a Dict with a Number key: error: __Host_call__: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got Dict with a Number key
 a Closure: error: __Host_call__: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got Closure
+a Dict that contains itself: error: __Host_call__: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got a Dict that contains itself
+a Dict in two places: ({p {k 1} q {k 1}})
 not a list: error: __Host_call__: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got Number
 a Number name: error: __Host_call__: expected String name, got Number
 exit: 0

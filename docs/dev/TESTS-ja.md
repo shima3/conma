@@ -67,6 +67,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * 流していないもの：ConSh の参照版、Python 版の VM の sjs/test と consh/test、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、ブラウザのページ（vm/wasm/web。conma.js の `hostEncode` と `hostDecode` を変えた）。
 * 測ったもの：なし。ホストの関数を名前で引く所が、決まった表から `Machine` の `HashMap` になったが、ホストを呼ばない計算（sjs/bench など）は通らない所なので、測っていない。Full Bench の依頼はない。
 * PR は shima3/conma#26。
+* M2 のレビューで直したもの（自分を含む値を渡せないようにした。8.11 節）の後に流したもの：test/fast14 と fast15 を Python 版、Rust 版、wasm 版で。conjs/test を Rust 版と wasm 版で、step5、step14、step17 を Python 版で。test/ を Rust 版で。test/host-api.sh（Rust 版と wasm 版）。
 
 ## 記録
 

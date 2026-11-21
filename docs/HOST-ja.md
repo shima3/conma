@@ -42,7 +42,8 @@ if (host.available("demo")) {
 | LList（null は空の LList） | 配列 | 配列 | `List(Vec<HostValue>)` |
 
 * 真偽と Dict は、段階 P7 から渡せる。
-* ConJS のオブジェクトは、自分のプロパティ（`Object.keys` と同じ）だけを渡す。クラスのインスタンスも、メソッドは渡らない。値が関数や `null` のものは渡せない（`TypeError`）。
+* ConJS のオブジェクトは、自分のプロパティ（`Object.keys` と同じ）だけを渡す。クラスのインスタンスも、メソッドは渡らない。値が関数、`null`、`undefined` のプロパティがあると渡せない（`TypeError`。JavaScript の `JSON.stringify` は `undefined` のプロパティを飛ばすが、ConJS は飛ばさない）。
+* 自分を含む値（`o.self = o` のようなオブジェクトや配列、ConMa の Dict）は渡せない（ConJS では `TypeError`、ConMa では `onError`）。同じ値を 2 か所に持つだけなら渡せ、ホストには 2 つの別の値として届く。
 * JavaScript のホストが返せるオブジェクトは、ふつうのオブジェクト（`{ ... }`）だけ。`Date` などは、関数のエラーになる。
 * ConMa では、null と空の LList は同じ値なので、ホストが返した空の配列と `null` と `undefined` は区別できない（ConJS では、どれも `undefined` になる）。
 * 結果の大きさに限りはない（Rust 版、transpiled VM、Python 版の VM は、段階 P7 の前は 8 KB までだった）。

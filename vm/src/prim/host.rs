@@ -340,8 +340,14 @@ impl Timers {
 }
 
 /// The value v as a value for the host; Err with the type name of the first value that cannot
-/// go (a Closure that is not a Boolean, a Dict with a key that is not a String, ...).
+/// go (a Closure that is not a Boolean, a Dict with a key that is not a String, a Dict that contains
+/// itself, ...).
 fn to_host(v: &Value) -> Result<HostValue, String> {
+    to_host_in(v, &mut Vec::new())
+}
+
+/// to_host, with the Dicts being converted around v (a Dict among them again would never end).
+fn to_host_in(v: &Value, path: &mut Vec<*const DictObj>) -> Result<HostValue, String> {
     if v.is_null() {
         return Ok(HostValue::List(Vec::new()));
     }
@@ -359,7 +365,7 @@ fn to_host(v: &Value) -> Result<HostValue, String> {
                 }
                 let next = match &cur {
                     Value::LList(c) => {
-                        items.push(to_host(&c.head)?);
+                        items.push(to_host_in(&c.head, path)?);
                         c.tail.clone()
                     }
                     other => return Err(value_type_name(other)),
@@ -369,15 +375,22 @@ fn to_host(v: &Value) -> Result<HostValue, String> {
             Ok(HostValue::List(items))
         }
         Value::Dict(d) => {
+            let p = Rc::as_ptr(d);
+            if path.contains(&p) {
+                return Err("a Dict that contains itself".to_string());
+            }
+            path.push(p);
             let mut entries = Vec::new();
-            for (k, x) in d.entries.borrow().iter() {
+            let list = d.entries.borrow().clone();
+            for (k, x) in list.iter() {
                 let key = match string_cow(k) {
                     Some(Ok(s)) => s.into_owned(),
                     Some(Err(e)) => return Err(e),
                     None => return Err(format!("Dict with a {} key", value_type_name(k))),
                 };
-                entries.push((key, to_host(x)?));
+                entries.push((key, to_host_in(x, path)?));
             }
+            path.pop();
             Ok(HostValue::Dict(entries))
         }
         _ => match string_cow(v) {
