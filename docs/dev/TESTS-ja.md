@@ -59,30 +59,13 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m2/platform-p6b
-
-* 段階 P6b を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.12 節）：Node.js のネットワークのサーバ。ホストの関数 `server.listen`、`server.accept`、`server.respond`、`server.close`（新しい vm/wasm/host/server.js。機能 `"server"`。vm-node.js がはじめから渡す）と、ConJS の `http.listen`（conjs/include/conjs_lib.se）。見本の conjs/examples/counter_server.con.js と counter_server.node.js。docs/HOST-ja.md に、`CONMA_HOST` の関数で `require` する例（`node:crypto`）。
-* 作り直すもの：なし（vm/src は変えていない。wasm 版の VM のファイルは vm-node.js と host/server.js だけで、JavaScript なので作り直さない）。
-* 新しいテスト：conjs/test/step18（wasm 版は本当に待ち受ける。ほかの VM のログは、機能がないことの Error の 1 行。case2.con.js は見本へのシンボリックリンク）。conjs/test/compare.sh が、step18/case2.node-check.js（Node.js 版の見本と case2.wasm.log を比べる）も動かす。
-* M2 が流したもの（Apple M2）：conjs/test を Rust 版（12 秒）、wasm 版（19 秒）、Python 版（3 分 37 秒）で。conjs/test/compare.sh。wasm 版の step18 を 5 回。test/host-api.sh。sjs/test（Rust 版）。`bin/lang-emit-check origin/alpha`（違いなし）。test/ と consh/test を wasm 版で（vm-node.js を変えたので。違いは既知の test/ の step40、consh/test の step8 と step17 だけ）。
-* 流していないもの：Rust 版、Python 版、transpiled VM の test/ と consh/test、consh/js/test、ConSh の参照版、ブラウザのページ（server.js は渡さない）。
-* 測ったもの：なし。Full Bench の依頼はない。
-
-### m2/python-argv
-
-* Python 版の VM（vm/python/vproc_run.py）が、モジュールのファイルより後の引数を、`-` で始まっても、そのままプログラムに渡すようにした（Rust 版の VM と同じ。オプションは、モジュールのファイルより前と `--` まで）。前は argparse が全体を読み、`--demo` はエラーで止まり、`-t` や `-m` は黙って VM のオプションになっていた（PR shima3/conma#28 の見本で気付いた）。
-* 作り直すもの：なし。
-* 新しいテスト：conjs/test/step16 の case7（`-` で始まる引数が、3 つの VM で同じ `argv` になること）。
-* M2 が流したもの（Apple M2）：conjs/test を Rust 版（11 秒）、wasm 版（18 秒）、Python 版（3 分 33 秒）で。test/ を Python 版で（1 分 25 秒）。sjs/test と consh/test を Python 版で（ふだん流さない組み合わせ）：sjs/test は step1、2、3、5、12 で出力の順が違い、consh/test は step12 の case8（Ctrl-C）が `OSError: [Errno 5]` で失敗する。どちらも alpha（24468d4 と a604198）でも同じで、この変更とは関係ない。case8 は、上の既知の違いに足した（M1 のレビューの答えの 2）。
-* 流していないもの：Rust 版、wasm 版、transpiled VM の test/ と consh/test（vm/python のほかは変えていない）。
-* 測ったもの：なし。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-22 | e77af02 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/platform-p6b と m2/python-argv の、流していなかった組み合わせ（Rust 版、Python 版、transpiled VM の test/ と consh/test、wasm 版の VM の test/ と consh/test（m2/python-argv）、consh/js/test、ConSh の参照版、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。新しい conjs/test の step18 と step16 の case7 は、Rust 版、Python 版、wasm 版の VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、03602b4 で作ったものを使い直した（03602b4 からの差分は vm/python と vm/wasm の JavaScript だけ。`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-22 | 03602b4 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。wasm 版の test/step31 と `CONSH_IMPL=rust` の consh/test の step12 は、今回は出なかった。申し送りの m1/platform-p7（shima3/conma#26）の、流していなかった組み合わせ（ConSh の参照版、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、`CONMA2RUST_COMPACT` なしで作った transpiled VM の test/ と consh/test）も通った。test/host-api.sh は Rust 版と wasm 版で、新しい conjs/test の step17 と書き換えた test/fast14、fast15、conjs/test/step5 は、それぞれのすべての VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、03602b4 で作り直した（11 分 52 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-22 | m2/claude-md（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | リポジトリの一番上に CLAUDE.md を足した（ユーザーの指示）。どのクローンの AI のセッションも初めに読む短い覚え書きで、決まりは書かず、読む所（CONTRIBUTING、TESTS-ja、ConJS の README、SPEC、PRIMITIVES）と、AI が実際にした間違い（ConJS に `async`、`Set`、`Map`、正規表現がなく、文字列を `+` でつなげないこと、待つ呼び出しの所でほかの処理が動くこと、後ろでテストを流す間にチェックアウトを替えないこと、sed でまとめて置き換える前に当たる行を数えることなど）を書いた。M1 のレビューを受けて、push の行を、作業のブランチ（PR を開くときと答えるとき）と alpha・main（ユーザーが言ったときだけ）に分け、M1 がつまずいたこと（`__if__` の節は `return` で終えないと続くこと、コアの真偽は節を呼ばないこと、広い `pkill` をしないこと、README にない組み込みもないことがあるので小さく試すこと）を足した（ユーザーが選んだ）。日本語の文でも固有名詞は英語で書くことと、新しい間違いは PR で出してユーザーが足すかを決めることも書いた。確かめたこと：書いたパスがすべてあること、ConJS の 4 つの間違い（`Map`、`Set`、正規表現、文字列の `+`）が今もエラーになること、Liquid の開き括弧がないこと。Jekyll は動かしていない（docs/ の外）。PR は shima3/conma#25 |
 | 2026-11-21 | m2/docs-pr-return（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | ユーザーの指示で、docs/dev/CONTRIBUTING.md の Branches の 6 を直した。「指摘なし。」のコメントも作者に返し、作者がマージの前にすることを済ませて（なければそう書いて）`wait-user` に渡す（作者に返すべき場合の条件が複雑なため）。マージは、作者か、ユーザーが頼んだ機械がする。作者でない機械がマージしたら、そのことをコメントし、マージで閉じた PR に作者のラベルを残す。作者は「Check your PRs」でマージ済みの PR も探し、確かめてコメントし、ラベルを外して終える（マージした PR は閉じ直せないため。shima3/conma#23 を M1 がマージしたのを受けて）。確かめたこと：リンクは足していないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない。PR は shima3/conma#24 |
