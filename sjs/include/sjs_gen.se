@@ -64,6 +64,7 @@
     "(include \"conjs_rt.se\")"
     "(define main ,(args)"
     "  Sjs_init ,(G)"
+    "  Conjs_argv G args ,()"
     "  Conjs_run G (,()" ,(head)
   __String_join_lines__
     ""

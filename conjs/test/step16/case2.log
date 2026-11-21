@@ -1,0 +1,10 @@
+"first\nsecond\nthird"
+["first","second","third"]
+Error: File out.txt is closed
+Error
+Error
+Error: File out.txt is not open for writing
+Error: File out.txt is not open for reading
+TypeError: fs.open: mode must be "r", "w" or "a", not rw
+TypeError: fs.open: path: expected a string, got the number 1
+exit: 0

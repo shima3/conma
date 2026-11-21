@@ -58,6 +58,16 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m1/platform-p8
+
+* 段階 P8 を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.10 節）：ConJS の `fs.open`、ファイルのオブジェクト、`fs.readLines`、`fs.stdin`、`fs.stdout`（新しい conjs/include/conjs_file.se）と、プログラムの引数の `argv`（sjs/include/sjs_gen.se の `Gen_conjs_program` が main に 1 行足す。conjs/conjs と bin/lang が引数を渡す）。見本の conjs/examples（merge.con.js、merge.node.js、wordcount.con.js）。bin/lang-test が `case*.args` を引数にする。conjs/test/compare.sh が conjs/test/node-pairs.txt の組を比べる。PR は shima3/conma#21。
+* 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS の変換器が入る）。VM は変えていない。
+* 新しいテスト：conjs/test/step16。
+* M1 が流したもの（Apple M1）：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 16 秒）で。conjs/test/compare.sh。sjs/test（42 秒）、consh/js/test（23 秒）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS の 42 のプログラムは `Conjs_argv` の 1 行だけ違う）。流していないもの：consh/test（ConSh が使う SJS の変換は変えていない）、test/、transpiled VM、Python 版の VM の sjs/test、ConSh の参照版。
+* 測ったもの：大きなファイルを読む時間（8.10 節）。Full Bench の依頼はない。
+* M2 のレビューを受けて直した：とても長い 1 行で 2 乗にならないようにした（読んだかたまりを列にためて 1 回でつなぎ、`\n` は探した所の後ろから探す）。単独の `\r` のことを README に書いた。流したもの：conjs/test を Rust 版（11 秒）、wasm 版（17 秒）、Python 版（4 分 13 秒）で。conjs/test/compare.sh。長い 1 行と大きなファイルの時間（8.10 節）。
+* M2 の確かめを受けて直した：読んだかたまりをファイルのオブジェクトにため、2 つの処理が同じパイプから読んでも行が壊れないようにした。新しいテストは conjs/test/step16/case6（bin/lang-test が `case*.feed.py` の出力をパイプで渡す。python3 が要る）。流したもの：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 19 秒）で。step16 を Rust 版と wasm 版で 3 回ずつ。conjs/test/compare.sh。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

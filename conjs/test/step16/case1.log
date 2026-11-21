@@ -1,0 +1,9 @@
+["one","two",""]
+"こんにちは\nlast" "" undefined
+["two","","こんにちは","last"] true
+undefined "" []
+b1.txt 4090,10,3 xxx,hij,end
+b2.txt 4095,4 xxx,ext
+b3.txt 4098,3 あいう,end
+b4.txt 10000,5 xxx,ort
+exit: 0
