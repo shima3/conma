@@ -6,5 +6,6 @@ try { spawn(42); } catch (e) { console.log(String(e)); }
 try { join({}); } catch (e) { console.log(String(e)); }
 try { host.call(1); } catch (e) { console.log(String(e)); }
 try { host.wait("test.later", true); } catch (e) { console.log(String(e)); }
-try { host.call("test.echo", { a: 1 }); } catch (e) { console.log(String(e)); }
+try { host.call("test.echo", { a: () => 1 }); } catch (e) { console.log(String(e)); }
+try { host.call("test.echo", null); } catch (e) { console.log(String(e)); }
 console.log("typeof:", typeof me, JSON.stringify(me), String(me), "x" in { x: me });

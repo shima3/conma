@@ -86,6 +86,10 @@ pub struct Machine {
     pub host_later: crate::prim::host::Later,
     /// The calls of time.sleep (__Host_start__) by the real clock.
     pub host_timers: crate::prim::host::Timers,
+    /// The functions of the host (src/lib.rs, run_main_with), and the calls of __Host_start__
+    /// not finished or not yet taken by __Host_result__.
+    pub host: crate::prim::host::Host,
+    pub host_results: crate::prim::host::HostResults,
     /// Serial numbers of the values that traces show by number.
     pub serials: Serials,
     next_serial: usize,
@@ -259,6 +263,8 @@ impl Machine {
             ref_changed: false,
             host_later: Default::default(),
             host_timers: Default::default(),
+            host: crate::prim::host::take_host(),
+            host_results: Default::default(),
             serials: Serials::default(),
             rng: None,
             blocking: true,
@@ -427,12 +433,22 @@ impl Machine {
         if let Some(w) = self.wakeup {
             reads.push(w);
         }
+        // a Done of a function of the host may be finished by another thread
+        let host_wake = self.host.wake_fd();
+        if let Some(w) = host_wake {
+            reads.push(w);
+        }
         let ready = if !reads.is_empty() || !writes.is_empty() || timeout == Some(0) {
             crate::sys::wait_fds(&reads, &writes, timeout).unwrap_or_default()
         } else {
             Vec::new()
         };
         if let Some(w) = self.wakeup {
+            if ready.contains(&w) {
+                crate::sys::drain(w);
+            }
+        }
+        if let Some(w) = host_wake {
             if ready.contains(&w) {
                 crate::sys::drain(w);
             }
@@ -654,14 +670,17 @@ impl Machine {
             }
             if !self.waiting.is_empty() {
                 if !self.host_timers.is_empty() {
-                    self.host_timers.finish_due();
+                    self.host_timers.finish_due(&mut self.host_results);
+                }
+                if self.host.any_finished() {
+                    self.host_results.take_finished(&self.host);
                 }
                 if self.ready.is_empty() {
                     // Without a ready VProc, sleep in the OS instead of busy waiting.
                     // A call of test.later finishes first (the virtual clock moves),
                     // and the check does not sleep then: its reader may have gone.
                     self.unpolled = 0;
-                    let finished = self.host_later.finish_next();
+                    let finished = self.host_later.finish_next(&mut self.host_results);
                     self.check_waiting(self.blocking && !finished);
                     if self.ready.is_empty() {
                         if !self.blocking {

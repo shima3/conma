@@ -8,7 +8,7 @@
 (define num ,(text)
   __Number_fromString__ (,(e) println e) text)
 
-;; 値の文字列：Number、"String"、(要素 ...)、() は空の LList（null）
+;; 値の文字列：Number、"String"、(要素 ...)、() は空の LList（null）、{key 値 ...} は Dict、true と false は真偽
 (define text_of ,(v)
   __Cont_get__ ,(return)
   __is_null__ v ,(isNull)
@@ -20,7 +20,38 @@
   __if__ isStr (,() __String_concat__ "\"" v ,(s) __String_concat__ s "\"" ,(s) return s) ,()
   __String_equal__ t "LList" ,(isList)
   __if__ isList (,() items_text v "(" ,(s) return s) ,()
+  __String_equal__ t "Dict" ,(isDict)
+  __if__ isDict (,() dict_text v ,(s) return s) ,()
+  __String_equal__ t "Closure" ,(isClosure)
+  __if__ isClosure (,() __if_then_else__ v (,() __NULL__ "true") (,() __NULL__ "false") ,(b) return b) ,()
   return t)
+
+;; Dict の文字列：{key 値 ...}（キーは入れた順。どの VM も、その順に並べる）
+(define dict_text ,(d)
+  __Cont_get__ ,(return)
+  __Dict_keys__ d ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  __Ref_new__ __NULL__ ,(self)
+  __Ref_set__ self (,(k) __Ref_get__ acc ,(l) __LList_cons__ k l ,(l) __Ref_set__ acc l ,() __Ref_get__ self) ,()
+  __Ref_get__ self ,(sink)
+  keys sink ,(x)
+  __Ref_get__ acc ,(rev)
+  entries_text d rev "}" ,(s)
+  __String_concat__ "{" s)
+
+(define entries_text ,(d rev acc)
+  __Cont_get__ ,(return)
+  __is_null__ rev ,(end) __if__ end (,() return acc) ,()
+  __LList_uncons__ (,(e) println e) rev ,(k rest)
+  __Dict_lookup_or__ d k (,(k) println "no key") ,(v)
+  text_of v ,(s)
+  __String_concat__ k " " ,(e) __String_concat__ e s ,(e)
+  __is_null__ rest ,(first)
+  __String_equal__ acc "}" ,(last)
+  __if_then_else__ last (,() __NULL__ "") (,() __NULL__ " ") ,(sep)
+  __String_concat__ sep acc ,(acc)
+  __String_concat__ e acc ,(acc)
+  entries_text d rest acc)
 
 (define items_text ,(v acc)
   __LList_uncons__ (,(e) println e) v ,(h rest)
@@ -59,7 +90,8 @@
   __LList_cons__ m1 __NULL__ ,(a) wait "later -1" "test.later" a ,()
   __LList_cons__ "x" __NULL__ ,(a) wait "later \"x\"" "test.later" a ,()
   wait "a Number name" n1 __NULL__ ,()
-  __Dict_new__ ,(d) __LList_cons__ d __NULL__ ,(a) wait "a Dict" "test.echo" a ,()
+  num "1" ,(n1) __Dict_new__ ,(d) __Dict_put__ d "k" n1 ,() __Dict_put__ d "b" __TRUE__ ,()
+  __LList_cons__ d __NULL__ ,(a) __LList_cons__ __FALSE__ a ,(a) wait "a Dict and Booleans" "test.echo" a ,()
   too_early ,()
   tracked ,()
   long_results ,()
@@ -85,14 +117,32 @@
   num "1" ,(n1) __Number_subtract__ n n1 ,(n)
   double text n)
 
-;; 結果がパイプに入りきらないほど長いと、エラーの結果になる（VM は止まらない）。128 KB の文字列
+;; 長い結果も、そのまま受け取れる（段階 P7 から。前は、パイプに入りきらない 8 KB を超えるとエラーの結果だった）。
+;; 128 KB の文字列の長さを出す
 (define long_results ,()
   num "17" ,(n17) num "0" ,(n0)
   double "x" n17 ,(long)
   __LList_cons__ long __NULL__ ,(a)
-  wait "echo 128 KB" "test.echo" a ,()
+  wait_length "echo 128 KB" "test.echo" a ,()
   __LList_cons__ n0 a ,(a)
-  wait "later 128 KB" "test.later" a)
+  wait_length "later 128 KB" "test.later" a)
+
+;; label: 結果の LList の最後の要素（文字列）の長さ
+(define wait_length ,(label name args)
+  __Cont_get__ ,(return)
+  __Host_start__ (,(e) err label e return) name args ,(s)
+  __OS_wait_readable__ (,(e) err label e return) s ,()
+  __Host_result__ (,(e) err label e return) s ,(r)
+  last r ,(x)
+  __String_length__ x ,(n)
+  __Number_toString__ n ,(t)
+  say label t)
+
+(define last ,(l)
+  __Cont_get__ ,(return)
+  __LList_uncons__ (,(e) println e) l ,(h rest)
+  __is_null__ rest ,(end) __if__ end (,() return h) ,()
+  last rest)
 
 ;; __Host_start_tracked__ は Stream を Ref に入れる
 (define tracked ,()

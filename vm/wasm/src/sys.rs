@@ -886,6 +886,12 @@ pub fn install_wakeup() -> io::Result<c_int> {
     Err(unsupported())
 }
 
+/// The pipe of the functions of the host that wait, added in Rust (vm/src/prim/host.rs, Host::waiting):
+/// this VM has none (its host gives such functions in JavaScript).
+pub fn make_wake_pipe() -> io::Result<(c_int, c_int)> {
+    Err(unsupported())
+}
+
 pub fn trap_sigint() {
     unsafe { host_trap_sigint() };
 }

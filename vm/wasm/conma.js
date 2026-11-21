@@ -1773,15 +1773,21 @@ var ConMaVM = (function () {
   }
 
   // A value of __Host_call__ from the VM as a JavaScript value: {"n":"NaN"} and the like are
-  // numbers, null in a list is [] (the empty LList)
+  // numbers, null in a list is [] (the empty LList), true and false are booleans, and {"d":{...}}
+  // is a Dict, an object (docs/dev/PLATFORM-PLAN-ja.md 4.9, stage P7)
   function hostDecode(v) {
     if (v === null) return [];
     if (Array.isArray(v)) return v.map(hostDecode);
-    if (typeof v === "object") return v.n === "-0" ? -0 : Number(v.n);
+    if (typeof v === "object") {
+      if (Object.prototype.hasOwnProperty.call(v, "d"))
+        return Object.fromEntries(Object.entries(v.d).map(([k, e]) => [k, hostDecode(e)]));
+      return v.n === "-0" ? -0 : Number(v.n);
+    }
     return v;
   }
-  // A result of a function of the host as a value for the VM: a number, a string, null (also for
-  // undefined and []) or an array of them; anything else is an error of the function name
+  // A result of a function of the host as a value for the VM: a number, a string, a boolean, null
+  // (also for undefined and []), a plain object (its own enumerable properties, a Dict) or an array
+  // of them; anything else is an error of the function name
   function hostEncode(name, v) {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") {
@@ -1791,9 +1797,15 @@ var ConMaVM = (function () {
       if (Object.is(v, -0)) return { n: "-0" };
       return v;
     }
-    if (typeof v === "string") return v;
+    if (typeof v === "string" || typeof v === "boolean") return v;
     if (Array.isArray(v)) return v.length === 0 ? null : v.map((e) => hostEncode(name, e));
-    throw new Error(name + ": returned a " + typeof v + " (only numbers, strings and arrays of them go back)");
+    if (typeof v === "object") {
+      const proto = Object.getPrototypeOf(v);
+      if (proto === Object.prototype || proto === null)
+        return { d: Object.fromEntries(Object.entries(v).map(([k, e]) => [k, hostEncode(name, e)])) };
+    }
+    const what = typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v;
+    throw new Error(name + ": returned a " + what + " (only numbers, strings, booleans, plain objects and arrays of them go back)");
   }
 
   // The functions of the host that every host of this VM has (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage

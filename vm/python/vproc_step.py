@@ -1108,9 +1108,9 @@ def prim_Feature_available(vp, gvenv):
     (name,) = _string_args(vp, "__Feature_available__", 1)
     _prim_return(vp, [TRUE_CLOSURE if name in FEATURES_AVAILABLE else FALSE_CLOSURE])
 
-# The functions of the host for __Host_call__ that every VM has (vm/src/prim/host.rs, BUILTIN): those
+# The functions of the host for __Host_call__ that every VM has (vm/src/prim/host.rs, Host::new): those
 # of the platform feature "test", for the tests. This VM has no other host. A value for the host is a
-# float, a str or a list of them (the empty LList, null, is []).
+# float, a str, a bool, a _HostDict or a list of them (the empty LList, null, is []).
 def _host_test_add(args):
     total = 0.0
     for a in args:
@@ -1134,11 +1134,47 @@ def _host_time_now(args):
 HOST_FUNCTIONS = {"test.add": _host_test_add, "test.echo": lambda args: list(args), "test.fail": _host_test_fail,
                   "time.now": _host_time_now}
 
+class _HostDict(list):
+    """A Dict for the host: a list of (key, value), the keys Strings in the order they were put in."""
+
+def _host_boolean(v):
+    """True or False if v is a Boolean, the Closure ,(t f) __NULL__ t or ,(t f) __NULL__ f (as
+    boolean_choice of vm/src/prim/control.rs); None for any other value."""
+    if not isinstance(v, Closure) or v.variadic or len(v.params) != 2:
+        return None
+    b = v.body
+    try:
+        # ["Body", pos, (["SInfo", ...],) ["Operator", pos, ["Null", pos]], ["OList", pos, var], ["LCont", pos]]
+        parts = [x for x in b[2:] if x[0] != "SInfo"]
+        if b[0] != "Body" or len(parts) != 3:
+            return None
+        op, olist, lcont = parts
+        if op[0] != "Operator" or op[2][0] != "Null" or lcont[0] != "LCont" or len(lcont) != 2:
+            return None
+        if olist[0] != "OList" or len(olist) != 3:
+            return None
+        var = olist[2]
+        if var[0] != "Variable" or len(var) < 4 or var[3][0] != "L":
+            return None
+        return {"1": True, "0": False}.get(var[3][1])
+    except (IndexError, TypeError):
+        return None
+
 def _to_host(v):
-    """A value for the host, or raise _HostError with the type name of the first value that is not a
-    Number, a String or an LList of them."""
+    """A value for the host, or raise _HostError with the type name of the first value that cannot go
+    (vm/src/prim/host.rs, to_host)."""
     if is_null_value(v):
         return []
+    b = _host_boolean(v)
+    if b is not None:
+        return b
+    if isinstance(v, Dict):
+        entries = _HostDict()
+        for k, x in v.entries:
+            if value_type_name(k) != "String":
+                raise _HostError(f"Dict with a {value_type_name(k)} key")
+            entries.append((_value_to_display(k), _to_host(x)))
+        return entries
     t = value_type_name(v)
     if t == "Number":
         return v.value
@@ -1155,10 +1191,20 @@ def _to_host(v):
     raise _HostError(t)
 
 def _from_host(h):
+    if isinstance(h, bool):
+        return TRUE_CLOSURE if h else FALSE_CLOSURE
     if isinstance(h, float):
         return Number(h)
     if isinstance(h, str):
         return string_value(h)
+    if isinstance(h, _HostDict):
+        d = Dict()
+        for k, x in h:
+            key = string_value(k)
+            i = d.find(key)
+            if i < 0: d.append(key, _from_host(x))
+            else:     d.entries[i] = (d.entries[i][0], _from_host(x))
+        return d
     result = NULL
     for item in reversed(h):
         result = LList(_from_host(item), result)
@@ -1184,7 +1230,7 @@ def prim_Host_call(vp, gvenv):
         if not isinstance(hargs, list):
             raise _HostError(value_type_name(args))
     except _HostError as e:
-        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got {e}")
         return
     f = HOST_FUNCTIONS.get(fname)
     if f is None:
@@ -1207,55 +1253,17 @@ def _host_name_args(vp, prim, on_error, name, args):
         if not isinstance(hargs, list):
             raise _HostError(value_type_name(args))
     except _HostError as e:
-        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings and LLists, got {e}")
+        _prim_error(vp, on_error, f"{prim}: expected an LList of Numbers, Strings, Booleans, Dicts and LLists, got {e}")
         return None
     return _value_to_display(name), hargs
 
-# The result of a call that waits goes through a pipe as the JSON text of a result, {"r":value} or
-# {"e":"message"}, as on the VM for wasm32 (vm/src/prim/host.rs): a Number that JSON cannot write as
-# {"n":"-0"} and the like, the empty LList as null.
-def _host_json(h):
-    if isinstance(h, float):
-        if math.isnan(h): return '{"n":"NaN"}'
-        if math.isinf(h): return '{"n":"Infinity"}' if h > 0 else '{"n":"-Infinity"}'
-        if h == 0 and math.copysign(1.0, h) < 0: return '{"n":"-0"}'
-        return repr(h)
-    if isinstance(h, str):
-        return json.dumps(h, ensure_ascii=False)
-    if not h:
-        return "null"
-    return "[" + ",".join(_host_json(x) for x in h) + "]"
-
-def _host_result_json(ok, v):
-    return '{"r":' + _host_json(v) + "}" if ok else '{"e":' + json.dumps(v, ensure_ascii=False) + "}"
-
-def _host_from_json(v):
-    if v is None: return []
-    if isinstance(v, list): return [_host_from_json(x) for x in v]
-    if isinstance(v, dict):
-        n = {"-0": -0.0, "NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}.get(v.get("n"))
-        if n is None or len(v) != 1: raise ValueError("a value that is not a Number, a String or a list")
-        return n
-    if isinstance(v, bool): raise ValueError("a value that is not a Number, a String or a list")
-    if isinstance(v, (int, float)): return float(v)
-    return v
-
-def _host_finish(w, text):
-    """Write the result text to the pipe end w and close it. A reader that has gone (its VProc was
-    killed and the Stream closed) makes the write fail: the result is dropped then."""
-    data = text.encode()
-    try:
-        while data:
-            n = os.write(w, data)
-            if n <= 0: break
-            data = data[n:]
-    except OSError:
-        pass
+def _host_done(w, stream, ok, value):
+    """Finish a call of __Host_start__: keep the result on its Stream and close the write end of its
+    pipe, which wakes the reader (vm/src/prim/host.rs, HostResults; a result of any size can be given).
+    A Stream closed meanwhile (its VProc was killed) drops the result."""
+    if not stream.closed:
+        stream.host_result = (ok, value)
     os.close(w)
-
-# The longest result that a function of HOST_FUNCTIONS (in the step of the call) or test.later (in the
-# scheduler) writes to its pipe before any VProc reads it
-HOST_PIPE_MAX = 8192
 
 def prim_Host_start(vp, gvenv):
     """__Host_start__ onError name args ,(inputStream)
@@ -1297,28 +1305,19 @@ def _host_start(vp, prim, tracked):
     elif f is None:
         _prim_error(vp, on_error, f'{prim}: no host function "{fname}"')
         return
-    if later:
-        text = _host_result_json(True, hargs)
-    elif sleep:
-        text = _host_result_json(True, [])
-    else:
-        try:
-            text = _host_result_json(True, f(hargs))
-        except _HostError as e:
-            text = _host_result_json(False, str(e))
-    # The scheduler writes the result of test.later before any VProc reads it: a longer one would block it
-    if len(text.encode()) > HOST_PIPE_MAX:
-        text = _host_result_json(False, f"{prim}: the result of {fname} is longer than {HOST_PIPE_MAX} bytes")
     r, w = os.pipe()
+    stream = Stream(r, "r")
     if later:
         SCHEDULER.later_calls += 1
-        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w, text))
+        SCHEDULER.later_jobs.append((SCHEDULER.later_clock + hargs[0], SCHEDULER.later_calls, w, stream, hargs))
     elif sleep:
         # The scheduler finishes it when the time has come (Scheduler.finish_timers)
-        SCHEDULER.timers.append((time.monotonic() + min(hargs[0], 1e12) / 1000.0, w, text))
+        SCHEDULER.timers.append((time.monotonic() + min(hargs[0], 1e12) / 1000.0, w, stream))
     else:
-        _host_finish(w, text)
-    stream = Stream(r, "r")
+        try:
+            _host_done(w, stream, True, f(hargs))
+        except _HostError as e:
+            _host_done(w, stream, False, str(e))
     if tracked:
         track.value = LList(stream, track.value)
         SCHEDULER.ref_changed = True
@@ -1344,16 +1343,10 @@ def prim_Host_result(vp, gvenv):
         if not chunk: break
         data += chunk
     stream.close()
-    try:
-        obj = json.loads(data.decode("utf-8", errors="replace"))
-        if not (isinstance(obj, dict) and len(obj) == 1 and ("r" in obj or "e" in obj)):
-            raise ValueError("a JSON text that is not a result")
-        if "e" in obj:
-            _prim_error(vp, on_error, str(obj["e"]))
-            return
-        value = _host_from_json(obj["r"])
-    except ValueError as e:
-        _prim_error(vp, on_error, f"{prim}: the host gave {e}")
+    # every function of this VM keeps its result on the Stream (_host_done)
+    ok, value = getattr(stream, "host_result", (False, f"{prim}: the call has no result"))
+    if not ok:
+        _prim_error(vp, on_error, value)
         return
     _prim_return(vp, [_from_host(value)])
 
@@ -2457,11 +2450,11 @@ class Scheduler:
         self.trapped  = False    # __OS_trap_interrupt__ was called: a signal can change a Ref
         self.rng      = None     # CONMA_SEED: choose the next VProc at random (run)
         # The calls of test.later (__Host_start__) by the virtual clock: the clock, the number of
-        # the last call, and (deadline, number, write end of the pipe, result text) of each call
+        # the last call, and (deadline, number, write end of the pipe, Stream, result) of each call
         self.later_clock = 0.0
         self.later_calls = 0
         self.later_jobs  = []
-        # The calls of time.sleep by the real clock: (when, write end of the pipe, result text). They are
+        # The calls of time.sleep by the real clock: (when, write end of the pipe, Stream). They are
         # finished between two steps, so that a VProc sees the result written and the pipe closed at once
         self.timers = []
 
@@ -2471,8 +2464,8 @@ class Scheduler:
         due = [t for t in self.timers if t[0] <= now]
         if due:
             self.timers = [t for t in self.timers if t[0] > now]
-            for _, w, text in due:
-                _host_finish(w, text)
+            for _, w, stream in due:
+                _host_done(w, stream, True, [])
 
     def finish_later(self):
         """Finish the call of test.later with the earliest deadline (then the first called), and move
@@ -2482,7 +2475,7 @@ class Scheduler:
         job = min(self.later_jobs, key=lambda j: (j[0], j[1]))
         self.later_jobs.remove(job)
         self.later_clock = job[0]
-        _host_finish(job[2], job[3])
+        _host_done(job[2], job[3], True, job[4])
         return True
 
     def _install_sigchld(self):
