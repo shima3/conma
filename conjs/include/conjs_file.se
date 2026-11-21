@@ -9,6 +9,7 @@
 ;;   "fs_mode"    "r"、"w"、"a"
 ;;   "fs_buf"     読んだ文字列のうち、まだ返していない所を含む文字列の Ref
 ;;   "fs_pos"     fs_buf の中の、次に返す位置の Ref
+;;   "fs_scan"    fs_buf の中で、ここより前には \n がないと分かっている位置の Ref（\n を、そこから探す）
 ;;   "fs_eof"     ファイルの終わりに着いたかの Ref
 ;;   "fs_closed"  閉じたかの Ref
 ;;   "fs_std"     fs.stdin か fs.stdout か（close で、本当の Stream は閉じない）
@@ -50,6 +51,8 @@
   Conjs_file_num "0" ,(zero)
   __Ref_new__ zero ,(pos)
   __Dict_put__ o "fs_pos" pos ,()
+  __Ref_new__ zero ,(scan)
+  __Dict_put__ o "fs_scan" scan ,()
   __Ref_new__ __FALSE__ ,(eof)
   __Dict_put__ o "fs_eof" eof ,()
   __Ref_new__ __FALSE__ ,(closed)
@@ -109,30 +112,66 @@
   __String_concat__ "standard input is read as " used ,(m)
   Sjs_throw "Error" m)
 
-;; 読み足す：読んだ分を、まだ返していない所の後ろに付け、位置を 0 にする（返した前の部分は捨てる）。終わりなら fs_eof
-(define Conjs_file_fill ,(f)
+;; 読み足す（M2 の PR shima3/conma#21 のレビューの 2）：読んだかたまりを列にため、untilNewline なら \n を含むかたまりが来るか
+;; ファイルの終わりまで、そうでなければ終わりまで読んでから、まだ返していない所とまとめて 1 回でつなぐ（2 つずつつなぐので、
+;; 長さ L の行でも L log L ほどの手間。前は、4,096 バイトごとに全体をつなぎ直していたので、とても長い 1 行で 2 乗になった）。
+;; つないだら位置を 0 にし、まだ返していない所の長さを fs_scan にする（そこより前には \n がない）
+(define Conjs_file_gather ,(f untilNewline)
+  Conjs_file_gather_chunks f untilNewline __NULL__ ,(chunks)
+  Conjs_file_get f "fs_buf" ,(buf)
+  Conjs_file_get f "fs_pos" ,(pos)
+  __String_length__ buf ,(n)
+  __String_substring__ __print_exit_error__ buf pos n ,(rest)
+  __Number_subtract__ n pos ,(restLen)
+  __LList_cons__ rest chunks ,(parts)
+  Conjs_file_concat_all parts ,(buf)
+  Conjs_file_set f "fs_buf" buf ,()
+  Conjs_file_num "0" ,(zero)
+  Conjs_file_set f "fs_pos" zero ,()
+  Conjs_file_set f "fs_scan" restLen)
+
+;; 読んだかたまりの LList（古い順）。終わりなら fs_eof を真にする
+(define Conjs_file_gather_chunks ,(f untilNewline acc)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ f "fs_stream" __print_exit_error__ ,(s)
   Sjs_obj_get f "path" ,(path)
   __NULL__ (,(msg) Cat3s "File " path ": " ,(m) __String_concat__ m msg ,(m) Sjs_throw "Error" m) ,(fail)
   __OS_read__ fail s ,(data)
-  __is_null__ data ,(test__) __if__ test__ (,() Conjs_file_set f "fs_eof" __TRUE__ ,() return) ,()
+  __is_null__ data ,(test__) __if__ test__
+    (,() Conjs_file_set f "fs_eof" __TRUE__ ,() Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
   __String_equal__ data "" ,(none)
   __if__ none
     (,()
       ;; まだ読めない：読めるようになるまで、この処理だけが待つ
       Kit_sched_wait_work (,() __Cont_get__ ,(k) __OS_wait_readable__ (,(msg) k __FALSE__ msg) s ,() __NULL__ __TRUE__ __NULL__) ,(ok payload)
       __unless__ ok (,() fail payload) ,()
-      Conjs_file_fill f ,()
-      return) ,()
-  Conjs_file_get f "fs_buf" ,(buf)
-  Conjs_file_get f "fs_pos" ,(pos)
-  __String_length__ buf ,(n)
-  __String_substring__ __print_exit_error__ buf pos n ,(rest)
-  __String_concat__ rest data ,(buf)
-  Conjs_file_set f "fs_buf" buf ,()
+      Conjs_file_gather_chunks f untilNewline acc ,(l)
+      return l) ,()
+  __LList_cons__ data acc ,(acc)
+  __unless__ untilNewline (,() Conjs_file_gather_chunks f untilNewline acc ,(l) return l) ,()
   Conjs_file_num "0" ,(zero)
-  Conjs_file_set f "fs_pos" zero)
+  __String_find__ __print_exit_error__ data "\n" zero ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() Conjs_file_gather_chunks f untilNewline acc ,(l) return l) ,()
+  Kit_sched_reverse acc __NULL__)
+
+;; 文字列の LList を、隣どうしを 2 つずつつなぐことを繰り返して、1 つにする
+(define Conjs_file_concat_all ,(parts)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ parts ,(first rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() return first) ,()
+  Conjs_file_concat_pairs parts __NULL__ ,(paired)
+  Conjs_file_concat_all paired)
+
+(define Conjs_file_concat_pairs ,(parts acc)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(a rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() __LList_cons__ a acc ,(acc) Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(b more)
+  __String_concat__ a b ,(ab)
+  __LList_cons__ ab acc ,(acc)
+  Conjs_file_concat_pairs more acc)
 
 ;; f.readLine()：次の 1 行（\n か \r\n を除く）。終わりなら null（undefined）
 (define Conjs_file_read_line ,(f)
@@ -143,13 +182,19 @@
   __Cont_get__ ,(return)
   Conjs_file_get f "fs_buf" ,(buf)
   Conjs_file_get f "fs_pos" ,(pos)
+  Conjs_file_get f "fs_scan" ,(scan)
   __String_length__ buf ,(n)
-  __String_find__ __print_exit_error__ buf "\n" pos ,(at)
+  ;; \n は、pos と fs_scan の後ろのほうから探す（読み足した前の所は、もう探してある）
+  __Number_subtract__ scan pos ,(d)
+  __Number_is_negative__ d ,(scanBehind)
+  __if_then_else__ scanBehind (,() __NULL__ pos) (,() __NULL__ scan) ,(from)
+  __String_find__ __print_exit_error__ buf "\n" from ,(at)
   __is_null__ at ,(test__) __unless__ test__
     (,()
       Conjs_file_num "1" ,(one)
       __Number_add__ at one ,(next)
       Conjs_file_set f "fs_pos" next ,()
+      Conjs_file_set f "fs_scan" next ,()
       Conjs_file_strip_cr buf pos at ,(line)
       return line) ,()
   Conjs_file_get f "fs_eof" ,(eof)
@@ -160,7 +205,8 @@
       Conjs_file_set f "fs_pos" n ,()
       __String_substring__ __print_exit_error__ buf pos n ,(line)
       return line) ,()
-  Conjs_file_fill f ,()
+  Conjs_file_set f "fs_scan" n ,()
+  Conjs_file_gather f __TRUE__ ,()
   Conjs_file_next_line f)
 
 ;; buf の pos から end の前まで。最後が \r なら除く
@@ -183,7 +229,7 @@
 (define Conjs_file_read_rest ,(f)
   __Cont_get__ ,(return)
   Conjs_file_get f "fs_eof" ,(eof)
-  __unless__ eof (,() Conjs_file_fill f ,() Conjs_file_read_rest f ,(t) return t) ,()
+  __unless__ eof (,() Conjs_file_gather f __FALSE__ ,() Conjs_file_read_rest f ,(t) return t) ,()
   Conjs_file_get f "fs_buf" ,(buf)
   Conjs_file_get f "fs_pos" ,(pos)
   __String_length__ buf ,(n)
