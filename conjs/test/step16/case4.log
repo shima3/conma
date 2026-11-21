@@ -1,0 +1,6 @@
+[ 'α', 'β', '', 'γ' ]
+true
+Error: standard input is read as lines
+no newline, then one
+File { path: '<stdin>' } File { path: '<stdout>' }
+exit: 0

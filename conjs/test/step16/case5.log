@@ -1,0 +1,9 @@
+<	apple
+=	banana
+=	cherry
+>	date
+=	fig
+>	grape
+<	kiwi
+>	zucchini
+exit: 0

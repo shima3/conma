@@ -1,0 +1,304 @@
+;; ConJS のファイルの入出力（docs/dev/PLATFORM-PLAN-ja.md の 4.8 節、段階 P8）：fs.open、ファイルのオブジェクト、fs.readLines、
+;; fs.stdin、fs.stdout。ConMa の __OS_open__、__OS_read__、__OS_write__ で書き、VM は変えない。ホストのものなので ConJS だけ
+;; （SJS には移さない）。conjs_lib.se の Conjs_lib_builtins が Conjs_file_builtins を呼ぶ。
+;;
+;; ファイルのオブジェクトは SJS のオブジェクトで、自分のプロパティは path だけ（console.log では File { path: 'a.txt' }）。
+;; メソッドと closed は、ConJS のクラスの記録 "File"（conjs_class.se の Conjs_record）のメソッドの表から見つける
+;; （エラーの name と同じく、closed を作る Closure は、関数でなく真偽を返す）。隠したキー（Dict のキーで、props でない）：
+;;   "fs_stream"  Stream
+;;   "fs_mode"    "r"、"w"、"a"
+;;   "fs_buf"     読んだ文字列のうち、まだ返していない所を含む文字列の Ref
+;;   "fs_pos"     fs_buf の中の、次に返す位置の Ref
+;;   "fs_scan"    fs_buf の中で、ここより前には \n がないと分かっている位置の Ref（\n を、そこから探す）
+;;   "fs_chunks"  読んだが、まだ fs_buf につないでいないかたまりの LList（新しい順）の Ref。どれも \n を含まない
+;;   "fs_eof"     ファイルの終わりに着いたかの Ref
+;;   "fs_closed"  閉じたかの Ref
+;;   "fs_std"     fs.stdin か fs.stdout か（close で、本当の Stream は閉じない）
+;;
+;; 読むのは __OS_read__。ふつうのファイルは、すぐに読める。"" が返ったら（パイプにまだ何も届いていないか、届いたのが
+;; ASCII でない文字の途中までのバイトだけ）、__OS_wait_readable__ を Kit_sched_wait_work の VProc で待つ（待つ間、
+;; ほかの処理は動く）。__OS_read__ は文字の途中で区切らない（切れたバイトを Stream に持ち越す）
+
+(define Conjs_file_num ,(text)
+  __Number_fromString__ __print_exit_error__ text)
+
+(define Conjs_file_builtins ,(G fs)
+  Conjs_record "File" __NULL__ ,(R)
+  __Dict_put__ R "fs_G" G ,()
+  Conjs_method R "readLine" (,(self) Sjs_function G "readLine" (,(args) Conjs_file_read_line self ,(line) __NULL__ line)) ,()
+  Conjs_method R "readLines" (,(self) Sjs_function G "readLines" (,(args) Conjs_file_lines G self)) ,()
+  Conjs_method R "read" (,(self) Sjs_function G "read" (,(args) Conjs_file_read self)) ,()
+  Conjs_method R "write" (,(self) Sjs_function G "write" (,(args) Sjs_arg args ,(text rest) Conjs_file_write self text)) ,()
+  Conjs_method R "close" (,(self) Sjs_function G "close" (,(args) Conjs_file_close self)) ,()
+  Conjs_method R "closed" (,(self) __Dict_lookup_or__ self "fs_closed" __print_exit_error__ ,(ref) __Ref_get__ ref) ,()
+  Sjs_def G fs "open" (,(args) Sjs_arg args ,(path rest) Sjs_arg rest ,(mode more) Conjs_file_open G R path mode) ,()
+  Sjs_def G fs "readLines" (,(args) Sjs_arg args ,(path rest) Conjs_file_open G R path __NULL__ ,(f) Conjs_file_lines G f) ,()
+  __OS_get_stdin__ ,(stdin)
+  Conjs_file_object G R "<stdin>" "r" stdin __TRUE__ ,(fin)
+  Sjs_obj_set fs "stdin" fin ,()
+  __OS_get_stdout__ ,(stdout)
+  Conjs_file_object G R "<stdout>" "w" stdout __TRUE__ ,(fout)
+  Sjs_obj_set fs "stdout" fout)
+
+;; ファイルのオブジェクト
+(define Conjs_file_object ,(G R path mode s std)
+  Sjs_object_new G ,(o)
+  __Dict_put__ o "cls" R ,()
+  Sjs_obj_set o "path" path ,()
+  __Dict_put__ o "fs_stream" s ,()
+  __Dict_put__ o "fs_mode" mode ,()
+  __Ref_new__ "" ,(buf)
+  __Dict_put__ o "fs_buf" buf ,()
+  Conjs_file_num "0" ,(zero)
+  __Ref_new__ zero ,(pos)
+  __Dict_put__ o "fs_pos" pos ,()
+  __Ref_new__ zero ,(scan)
+  __Dict_put__ o "fs_scan" scan ,()
+  __Ref_new__ __NULL__ ,(chunks)
+  __Dict_put__ o "fs_chunks" chunks ,()
+  __Ref_new__ __FALSE__ ,(eof)
+  __Dict_put__ o "fs_eof" eof ,()
+  __Ref_new__ __FALSE__ ,(closed)
+  __Dict_put__ o "fs_closed" closed ,()
+  __Dict_put__ o "fs_std" std ,()
+  __NULL__ o)
+
+;; fs.open(path, mode)
+(define Conjs_file_open ,(G R path mode)
+  __Cont_get__ ,(return)
+  Conjs_string_arg "fs.open: path" path ,()
+  __is_null__ mode ,(noMode)
+  __if_then_else__ noMode (,() __NULL__ "r") (,() __NULL__ mode) ,(mode)
+  Conjs_string_arg "fs.open: mode" mode ,()
+  Sjs_word_in mode "r w a" ,(ok)
+  __unless__ ok
+    (,() __String_concat__ "fs.open: mode must be \"r\", \"w\" or \"a\", not " mode ,(m) Sjs_type_error m) ,()
+  __NULL__ (,(msg) __String_concat__ "fs.open: " msg ,(m) Sjs_throw "Error" m) ,(fail)
+  __OS_open__ fail path mode ,(s)
+  Conjs_file_object G R path mode s __FALSE__)
+
+(define Conjs_file_get ,(f key)
+  __Dict_lookup_or__ f key __print_exit_error__ ,(ref)
+  __Ref_get__ ref)
+
+(define Conjs_file_set ,(f key v)
+  __Dict_lookup_or__ f key __print_exit_error__ ,(ref)
+  __Ref_set__ ref v)
+
+;; 閉じていれば Error（File a.txt is closed）
+(define Conjs_file_check_open ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_closed" ,(closed)
+  __unless__ closed return ,()
+  Sjs_obj_get f "path" ,(path)
+  Cat3s "File " path " is closed" ,(m)
+  Sjs_throw "Error" m)
+
+;; 読むファイルか（でなければ Error）。fs.stdin なら、標準入力を行で読むことにする（P6a のキーと両方では読めない）
+(define Conjs_file_check_read ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_check_open f ,()
+  __Dict_lookup_or__ f "fs_mode" __print_exit_error__ ,(mode)
+  __String_equal__ mode "r" ,(reading)
+  __unless__ reading
+    (,() Sjs_obj_get f "path" ,(path) Cat3s "File " path " is not open for reading" ,(m) Sjs_throw "Error" m) ,()
+  __Dict_lookup_or__ f "fs_std" __print_exit_error__ ,(std)
+  __unless__ std return ,()
+  Conjs_stdin_use "lines")
+
+;; 標準入力をどう読むかを決める（"keys" か "lines"）。先に使ったほうに決まり、もう一方は Error
+(define Conjs_stdin_use ,(how)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_stdin" (,(k) __NULL__ __NULL__) ,(used)
+  __is_null__ used ,(test__) __if__ test__ (,() __PDict_put__ "conjs_stdin" how ,() return) ,()
+  __String_equal__ used how ,(test__) __if__ test__ return ,()
+  __String_concat__ "standard input is read as " used ,(m)
+  Sjs_throw "Error" m)
+
+;; 読み足す（M2 の PR shima3/conma#21 のレビュー）：1 回読み、読んだかたまりを、ファイルのオブジェクトの "fs_chunks" に足す。
+;; \n を含むかたまりか、ファイルの終わりなら、たまったかたまりを fs_buf にまとめてつなぐ（Conjs_file_join）。返すのは
+;; "more"（もっと読む）、"joined"（つないだ）、"waited"（読めなかったので待った）。待った後は、呼んだ側が初めからやり直す
+;; （待つ間に、ほかの処理が同じファイルを読み、つないでいることがあるため。かたまりを処理ごとの列にためると、待つ所を
+;; またいで、ほかの処理が読んだものと順が入れ替わる）。待つ所の間は割り込まれないので、Ref に足すのとつなぐのは安全
+(define Conjs_file_read_more ,(f)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ f "fs_stream" __print_exit_error__ ,(s)
+  Sjs_obj_get f "path" ,(path)
+  __NULL__ (,(msg) Cat3s "File " path ": " ,(m) __String_concat__ m msg ,(m) Sjs_throw "Error" m) ,(fail)
+  __OS_read__ fail s ,(data)
+  __is_null__ data ,(test__) __if__ test__
+    (,() Conjs_file_set f "fs_eof" __TRUE__ ,() Conjs_file_join f ,() return "joined") ,()
+  __String_equal__ data "" ,(none)
+  __if__ none
+    (,()
+      ;; まだ読めない：読めるようになるまで、この処理だけが待つ
+      Kit_sched_wait_work (,() __Cont_get__ ,(k) __OS_wait_readable__ (,(msg) k __FALSE__ msg) s ,() __NULL__ __TRUE__ __NULL__) ,(ok payload)
+      __unless__ ok (,() fail payload) ,()
+      return "waited") ,()
+  Conjs_file_get f "fs_chunks" ,(chunks)
+  __LList_cons__ data chunks ,(chunks)
+  Conjs_file_set f "fs_chunks" chunks ,()
+  Conjs_file_num "0" ,(zero)
+  __String_find__ __print_exit_error__ data "\n" zero ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return "more") ,()
+  Conjs_file_join f ,()
+  __NULL__ "joined")
+
+;; たまったかたまりを、まだ返していない所の後ろに、2 つずつつないで 1 回でまとめる（長さ L の行でも L log L ほどの手間）。
+;; 位置を 0 にし、まだ返していない所の長さを fs_scan にする（そこより前には \n がない）
+(define Conjs_file_join ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_chunks" ,(chunks)
+  __is_null__ chunks ,(test__) __if__ test__ return ,()
+  Conjs_file_set f "fs_chunks" __NULL__ ,()
+  Conjs_file_get f "fs_buf" ,(buf)
+  Conjs_file_get f "fs_pos" ,(pos)
+  __String_length__ buf ,(n)
+  __String_substring__ __print_exit_error__ buf pos n ,(rest)
+  __Number_subtract__ n pos ,(restLen)
+  Kit_sched_reverse chunks __NULL__ ,(parts)
+  __LList_cons__ rest parts ,(parts)
+  Conjs_file_concat_all parts ,(buf)
+  Conjs_file_set f "fs_buf" buf ,()
+  Conjs_file_num "0" ,(zero)
+  Conjs_file_set f "fs_pos" zero ,()
+  Conjs_file_set f "fs_scan" restLen)
+
+;; 文字列の LList を、隣どうしを 2 つずつつなぐことを繰り返して、1 つにする
+(define Conjs_file_concat_all ,(parts)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ parts ,(first rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() return first) ,()
+  Conjs_file_concat_pairs parts __NULL__ ,(paired)
+  Conjs_file_concat_all paired)
+
+(define Conjs_file_concat_pairs ,(parts acc)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(a rest)
+  __is_null__ rest ,(test__) __if__ test__ (,() __LList_cons__ a acc ,(acc) Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(b more)
+  __String_concat__ a b ,(ab)
+  __LList_cons__ ab acc ,(acc)
+  Conjs_file_concat_pairs more acc)
+
+;; f.readLine()：次の 1 行（\n か \r\n を除く）。終わりなら null（undefined）
+(define Conjs_file_read_line ,(f)
+  Conjs_file_check_read f ,()
+  Conjs_file_next_line f)
+
+(define Conjs_file_next_line ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_buf" ,(buf)
+  Conjs_file_get f "fs_pos" ,(pos)
+  Conjs_file_get f "fs_scan" ,(scan)
+  __String_length__ buf ,(n)
+  ;; \n は、pos と fs_scan の後ろのほうから探す（読み足した前の所は、もう探してある）
+  __Number_subtract__ scan pos ,(d)
+  __Number_is_negative__ d ,(scanBehind)
+  __if_then_else__ scanBehind (,() __NULL__ pos) (,() __NULL__ scan) ,(from)
+  __String_find__ __print_exit_error__ buf "\n" from ,(at)
+  __is_null__ at ,(test__) __unless__ test__
+    (,()
+      Conjs_file_num "1" ,(one)
+      __Number_add__ at one ,(next)
+      Conjs_file_set f "fs_pos" next ,()
+      Conjs_file_set f "fs_scan" next ,()
+      Conjs_file_strip_cr buf pos at ,(line)
+      return line) ,()
+  Conjs_file_get f "fs_eof" ,(eof)
+  __if__ eof
+    (,()
+      __Number_subtract__ n pos ,(left)
+      __Number_is_zero__ left ,(test__) __if__ test__ (,() return __NULL__) ,()
+      Conjs_file_set f "fs_pos" n ,()
+      __String_substring__ __print_exit_error__ buf pos n ,(line)
+      return line) ,()
+  Conjs_file_set f "fs_scan" n ,()
+  Conjs_file_read_more f ,(r)
+  Conjs_file_next_line f)
+
+;; buf の pos から end の前まで。最後が \r なら除く
+(define Conjs_file_strip_cr ,(buf pos end)
+  __Cont_get__ ,(return)
+  __Number_subtract__ end pos ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return "") ,()
+  Conjs_file_num "1" ,(one)
+  __Number_subtract__ end one ,(last)
+  __String_substring__ __print_exit_error__ buf last end ,(c)
+  __String_equal__ c "\r" ,(cr)
+  __if_then_else__ cr (,() __NULL__ last) (,() __NULL__ end) ,(stop)
+  __String_substring__ __print_exit_error__ buf pos stop)
+
+;; f.read()：残りを全部（終わりなら ""）
+(define Conjs_file_read ,(f)
+  Conjs_file_check_read f ,()
+  Conjs_file_read_rest f)
+
+(define Conjs_file_read_rest ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_eof" ,(eof)
+  __unless__ eof (,() Conjs_file_read_more f ,(r) Conjs_file_read_rest f ,(t) return t) ,()
+  Conjs_file_get f "fs_buf" ,(buf)
+  Conjs_file_get f "fs_pos" ,(pos)
+  __String_length__ buf ,(n)
+  Conjs_file_set f "fs_pos" n ,()
+  __String_substring__ __print_exit_error__ buf pos n)
+
+;; f.write(text)
+(define Conjs_file_write ,(f text)
+  Conjs_file_check_open f ,()
+  Sjs_obj_get f "path" ,(path)
+  __Dict_lookup_or__ f "fs_mode" __print_exit_error__ ,(mode)
+  __String_equal__ mode "r" ,(reading)
+  __if__ reading (,() Cat3s "File " path " is not open for writing" ,(m) Sjs_throw "Error" m) ,()
+  Conjs_string_arg "write: data" text ,()
+  __Dict_lookup_or__ f "fs_stream" __print_exit_error__ ,(s)
+  __NULL__ (,(msg) Cat3s "File " path ": " ,(m) __String_concat__ m msg ,(m) Sjs_throw "Error" m) ,(fail)
+  __OS_write__ fail s text ,()
+  __NULL__ __NULL__)
+
+;; f.close()：何度呼んでもよい。fs.stdin と fs.stdout は、閉じたことにするだけ（本当の Stream は閉じない）
+(define Conjs_file_close ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_closed" ,(closed)
+  __if__ closed (,() return __NULL__) ,()
+  Conjs_file_set f "fs_closed" __TRUE__ ,()
+  __Dict_lookup_or__ f "fs_std" __print_exit_error__ ,(std)
+  __if__ std (,() return __NULL__) ,()
+  __Dict_lookup_or__ f "fs_stream" __print_exit_error__ ,(s)
+  __OS_close__ (,(msg) __nop__) s ,()
+  __NULL__ __NULL__)
+
+;; f.readLines()：残りの行を返すジェネレータ（Sjs_generator）。ジェネレータが終わったときと、for を break、例外、
+;; 関数の return で抜けたとき（ジェネレータの return や throw が、yield の所から投げる）に、ファイルを閉じる
+(define Conjs_file_lines ,(G f)
+  Conjs_file_check_read f ,()
+  Sjs_generator G (,()
+    __Cont_get__ ,(return)
+    Sjs_try (,() Conjs_file_lines_loop f) (,(exc) Conjs_file_close f ,(u) Sjs_reraise exc) ,()
+    Conjs_file_close f ,(u)
+    return __NULL__))
+
+(define Conjs_file_lines_loop ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_check_open f ,()
+  Conjs_file_next_line f ,(line)
+  __is_null__ line ,(test__) __if__ test__ return ,()
+  Sjs_yield line ,(x)
+  Conjs_file_lines_loop f)
+
+;; argv（段階 P8）：プログラムに渡した引数の配列（Node.js の process.argv.slice(2)、Python の sys.argv[1:] にあたる）。
+;; 変換した main が、VM から受け取る引数の Seq（docs/SPEC.md の「Program Entry Point」）を渡す
+(define Conjs_argv ,(G args)
+  Conjs_argv_list args __NULL__ ,(l)
+  Kit_sched_reverse l __NULL__ ,(l)
+  Sjs_array G l ,(a)
+  __Dict_put__ G "argv" a)
+
+(define Conjs_argv_list ,(seq acc)
+  __Cont_get__ ,(return)
+  __Seq_get__ (,() return acc) seq ,(first rest)
+  __LList_cons__ first acc ,(acc)
+  Conjs_argv_list rest acc)
