@@ -72,6 +72,14 @@ PR は shima3/conma#16。
 
 * ConMa 版のフロントエンドの S 式の書き出し（include/ast.se の `__AST_toSexp__`）を、子の S 式を作ってから親につなぐ形から、木全体を 1 つの短い String につなげ、512 文字を超えたらかたまりにして最後に 1 度だけつなぐ形にした。vm/frontend.module.se を作り直した。出力は同じ：変える前と後の `conma build` で、conjs/test と sjs/test のすべてのケースの変換したプログラム、両方の変換器、ConSh（最適化版と参照版の include の並び）のモジュールが、バイトまで同じ（フロントエンド自身のモジュールだけが違う）。流したもの：Rust 版の VM の test/（`-j 4`）、conjs/test、sjs/test、wasm 版と Python 版の VM の test/frontend。流していないもの：wasm 版と Python 版の VM の test/ の残り、transpiled VM、consh/test
 
+### m1/str-pos
+
+PR は shima3/conma#18。
+
+* ASCII でない文字列の位置を、VM が最後に求めた位置からたどって求めるようにした（vm/src/value.rs の `StrObj` の `mark`、vm/src/prim/string.rs の `char_to_byte_at`。docs/dev/STRING-INDEX-PLAN-ja.md の 7）。結果、エラー、ステップの数は変わらない。
+* 作り直すもの：Rust 版の VM、wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh）。
+* 新しいテスト：test/step46 の case2（ASCII でない 1 つの文字列の位置を前後に動かし、1 文字ずつ前から、後ろから読む）。
+* M1 が流したもの（Apple M1）：test/ を Rust 版と wasm 版の VM で（`-j 4`。wasm 版は既知の step40 だけ）、conjs/test、sjs/test、consh/test を Rust 版の VM で。test/step46 は Python 版の VM でも。流していないもの：変換した VM、Python 版の VM の test/ の残り、ConSh の参照版、wasm 版の VM の consh/test
 ### m1/platform-p6a
 
 * 段階 P6a を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.9 節）：ConJS の `nextEvent` と `pollEvent` が、機能 `"input"` がないとき標準入力のキーを読む（新しい conjs/include/conjs_term.se と conjs_lib.se）。sjs/include/sjs_rt.se の `Sjs_uncaught` に、PDict の `"sjs_cleanup"` のフックを足した（SJS と ConSh は置かないので変わらない）。見本の vm/wasm/web/stars.con.js が端末にも描く。bin/lang-test が `case*.in` を標準入力にする。PR は shima3/conma#19。
@@ -86,6 +94,7 @@ PR は shima3/conma#16。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-21 | m2/plan-file-io（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P7 の後の段階 P8（ConJS のファイルの入出力を広げ、1 行ずつ読む見本を書く）を、忘れないための行として足した。確かめたこと：リンクは変えていない。PR は shima3/conma#17 |
 | 2026-11-21 | m4/docs-notes-scope（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 申し送りの見出しを書かないブランチを、変えたファイルがすべて Branches の 5 の文書で、ベンチマークも頼まないものに限った（docs/dev/CONTRIBUTING.md の Branches の 2 と、この文書の申し送りの説明。m1/notes-rule の「テストもベンチマークも要らないブランチ」では、作者が `.gitignore` や見本のページを、テストは要らないと考えて見出しを書かないことがありえたため。ユーザーの指示）。確かめたこと：リンクは足していないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない |
 | 2026-11-21 | m2/plan-host-guide（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P6 の後の段階 P7（使う人がホストの関数を足すための文書をまとめることと、Rust 版の VM に、組み込む人がホストの関数を足す口を作ること）を、忘れないための行として足した。確かめたこと：行に書いたファイルがあること。PR は shima3/conma#13 |
 | 2026-11-21 | m1/notes-rule（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 申し送りの見出しを、テストかベンチマークが要るブランチにだけ書くことにした（docs/dev/CONTRIBUTING.md の Branches の 2 と、この文書の申し送りの説明。ユーザーの指示）。確かめたこと：変えた 2 か所が、互いと Branches の 5（文書だけの変更）に合うこと。リンクは変えていない |
