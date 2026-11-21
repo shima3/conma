@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）の設計の案を、4.8 節に書いた。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -464,6 +464,48 @@ P6（プラットフォームを増やす）の最初の段階として、**端�
 
 **M2 のレビュー**（PR shima3/conma#15）：P6 を端末から始めること、VM を変えずに ConJS のライブラリで標準入力を読む作り、キーの名前をブラウザに合わせること、標準入力の終わりを Error にすること、端末を戻す 3 つの道、step14 のログが変わることに、賛成をもらった。指摘を受けて、列を 1 つの VProc だけが持ち、ほかの VProc はチャネルで知らせを送る形（M2 の確認で、いくつもの VProc が同じ列を読み書きすると混ざることが分かったため。待ちの列、`Kit_sched_put`、時間切れの VProc は、その VProc が扱う）と、受け持つ VProc と読み手を `"pending"` に数えないこと、終わりに止める VProc と、3 つの道を通らない終わり方（README の `stty sane`）、ESC の並びの持ち越しと 40 ミリ秒、1 回の読みからいくつものキーを取り出すこと、キーを待てるかを知る方法と見本の終わり方、名前のない制御文字、`"sjs_cleanup"` を置く PDict を書き足した。
 
+### 4.8. 段階 P8 の設計（案、2026-11-21）
+
+P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行ずつ読む見本を書く（5 節の表の P8 の行。ユーザーが 2026-11-21 に頼み、M2 が PR shima3/conma#17 で足した）。P5c と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。P6（プラットフォームを増やす）の続きと P7（ホストの関数を足す文書と口）より先にするのは、作ろうとしているのが ConJS で、P6a で作った標準入力を読む部品も使えるためである。
+
+* **今あるもの**：ファイル全体を文字列で読み書きする `fs.readFile(path)` と `fs.writeFile(path, text)` だけ（P5、4.4 節）。大きなファイルは、全部を 1 つの文字列にしないと読めない。
+* **JavaScript（Node.js）で 1 行ずつ読むと**：`fs.createReadStream` と `readline.createInterface` を作り、`for await (const line of rl)` で回し、`try`／`finally` で閉じる。関数は `async` になり、呼ぶ側にも `await` が広がる（関数の色）。2 つのファイルを並べて読む（下の見本）には、`for await` は使えず、`rl[Symbol.asyncIterator]()` の `next()` を、それぞれ `await` で呼ぶことになる。ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。
+
+**足すもの**（ConJS だけ。ホストのものなので、SJS には移さない。4.1 節の「ConJS を広げる道」）
+
+* **`fs.open(path, mode)`**：ファイルを開き、ファイルのオブジェクトを返す。mode は `"r"`（読む。既定）、`"w"`（書く。なければ作り、あれば空にする）、`"a"`（後ろに足す）。開けなければ Error（今の `fs.readFile` と同じメッセージの形）。ConMa の `__OS_open__` で開く（P5 の `fs` と同じ。VM は変えない）。
+* **ファイルのオブジェクト**（`console.log` では `File { path: 'a.txt' }`。ほかのプロパティは見せない）：
+    * `f.readLine()`：次の 1 行を、行の終わり（`\n` か `\r\n`）を除いて返す。ファイルの終わりなら `undefined`。最後の行が `\n` で終わっていなくても、その行を返す。空の行は `""`。
+    * `f.lines()`：残りの行を 1 行ずつ返すジェネレータ（`for (const line of f.lines())`）。ランタイムの `Sjs_generator` で作る。ジェネレータが終わったときと、`for` を `break` や例外で抜けたとき（ジェネレータの `return`）に、ファイルを閉じる。
+    * `f.read()`：残りを全部、1 つの文字列で返す（終わりなら `""`）。
+    * `f.write(text)`：文字列を書く（`"w"` と `"a"` のとき。ほかは Error）。
+    * `f.close()`：閉じる。何度呼んでもよい。閉じた後の `readLine`、`read`、`write` は Error（`File a.txt is closed` の形）。
+* **`fs.lines(path)`**：`fs.open(path).lines()` と同じ。いちばんよく使う形：`for (const line of fs.lines("log.txt")) { ... }`。
+* **標準入力と標準出力**：`fs.stdin`（読むだけのファイルのオブジェクト。`fs.stdin.readLine()`、`fs.stdin.lines()`）と `fs.stdout`（`write` だけ。`console.log` と違い、改行を足さない）。標準入力を、`nextEvent` のキー（P6a）と行の両方で読むことはできない。先に使ったほうに決まり、もう一方は Error（`standard input is read as keys` か `standard input is read as lines`）にする。端末のモードは変えない（行ごとに読む、ふつうのモード）。
+* **読み方**（conjs/include/conjs_lib.se に足す、新しい conjs/include/conjs_file.se）：
+    * ファイルのオブジェクトは、隠したキーに、Stream、読んだ文字列のバッファとその中の位置、終わりに着いたか、閉じたかを持つ。`readLine` は、バッファの位置から `\n` を探し（`__String_find__`。ASCII でない文字列の位置は、PR shima3/conma#18 で、前に求めた位置からたどるので速い）、なければ次を読み足す。バッファを読み足すときは、使い終わった前の部分を捨てる（1 行ごとに文字列を作り直さない。行の数に比例する時間で読む）。
+    * 読むのは `__OS_read__`。ふつうのファイルは、すぐに読める（処理は切り替わらない）。パイプ、FIFO、標準入力のように、すぐには読めないかもしれないものは、`__OS_wait_readable__` を、P5 の curl と同じ `Kit_sched_wait_work` の VProc で待つ（待つ間、ほかの処理は動く）。すぐ読めるかは、先に `__OS_read__` を試し、`""`（今は読めるものがない）が返ったときだけ待つ、で決める。
+    * `__OS_read__` が返す文字列の区切りが、ASCII でない文字の途中に来ないかを、作るときに確かめる（来るなら、バイトでなく文字で区切られているかを docs/PRIMITIVES.md で確かめ、テストに入れる）。
+* **見本**（conjs/examples/merge.con.js。新しいディレクトリ）：並べた（ソートした）2 つのファイルを 1 行ずつ読み、片方だけにある行と、両方にある行を出す（Unix の `comm` と同じ）。どちらのファイルも全部は読まず、2 つの `readLine` を、比べた結果で交互に進める。`-` は標準入力（`sort a.txt | conjs/conjs conjs/examples/merge.con.js - b.txt`）。大きなファイルでも、使うメモリは 1 行の長さほどで済む。
+    * README（conjs/README-ja.md）に、同じことを Node.js（`readline` と、2 つの非同期のイテレータの `next()` を `await` で呼ぶ形）で書いたものと並べて載せる。Node.js のほうは、git に入れる別のファイル（conjs/examples/merge.node.js）にし、同じ出力になることをテストで確かめる。
+    * もう 1 つ、ログの集計（conjs/examples/wordcount.con.js。`fs.lines` で 1 行ずつ読み、語の数の上位を出す）を、いちばん短い使い方の例として置く。
+
+**テスト**（conjs/test の step16。Rust 版、wasm 版（Node.js）、Python 版の VM で同じログ）
+
+* case1（読む）：`\n` と `\r\n` の行、空の行、最後の行に `\n` がないファイル、空のファイル、`read()` で残りを読むこと、`readLine` の後の `lines()`。ASCII でない文字の行。テストのファイルは、ステップのディレクトリに置く（一時ディレクトリに写す copy.txt を使う）。
+* case2（書く）：`"w"` で書いて閉じて読み直す、`"a"` で足す、閉じた後の Error、開けないファイルの Error、読むだけのファイルへの `write` の Error。
+* case3（`lines()` と閉じること）：`for` を回し切ったとき、`break` で抜けたとき、本体で例外を投げたときに、ファイルが閉じられること（閉じたかは、ファイルのオブジェクトの `closed` で見る。JavaScript の FileHandle にはないが、テストと使う人のために置く）。
+* case4（標準入力）：`case4.in` を `fs.stdin.lines()` で読む。キーと行の両方で読もうとしたときの Error。
+* case5（見本）：conjs/examples/merge.con.js を、ステップに置いた 2 つのファイルで動かす。同じファイルを merge.node.js でも動かし、出力が同じことを、conjs/test/compare.sh と同じ形で確かめる（node.txt には入れない。merge.con.js は ConJS だけの API を使うので、Node.js では動かない）。
+* 大きなファイル：10 万行と 100 万行のファイル（テストの中で作る）を `fs.lines` で数える時間を測り、行の数に比例することを確かめて 8 節に書く（ログには時間を出さない）。比べる相手として、同じファイルを `fs.readFile` と `split("\n")` で数える時間も測る。
+* conjs/test の今の場合、sjs/test、consh/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
+
+**終わりとすること**（5 節の表）：step16 が 3 つの VM で同じログで通る。見本が 3 つの VM で動き、Node.js で同じことを書いたものと同じ出力になる（README に並べて載せる）。大きなファイルを読む時間が、行の数に比例する。SJS が作るコードが変わらない。
+
+**P8 でしないこと**（後の候補）：バイトのデータ（`Buffer`）、UTF-8 でない文字コード、`seek` と位置、ディレクトリ（今は `__OS_listdir__` がある）、ファイルの情報（大きさ、時刻）、消すことと名前を変えること、`fs.watch`、子のプロセスの入出力。`for ... of` を、ジェネレータでない反復のプロトコル（`Symbol.iterator`）で回すこと（P5b で足さないものにした。ファイルのオブジェクトそのものは回せず、`lines()` を呼ぶ）。
+
+**M2 に聞きたいこと**：P8 を P6 の続きと P7 より先にすること。API の名前と形（`fs.open`、ファイルのオブジェクトの `readLine`、`lines()`、`read`、`write`、`close`、`closed`、`fs.lines`、`fs.stdin`、`fs.stdout`。Node.js の `fs.open` はファイル記述子を返す別のものなので、名前が同じでよいか）。`lines()` をランタイムの `Sjs_generator` で作り、抜けたときに閉じること。すぐ読めないものだけを待つ決め方。標準入力をキーと行の両方で読めないこと。見本の選び方（`comm` と同じものと、Node.js の版をテストで比べること）。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -480,7 +522,7 @@ P6（プラットフォームを増やす）の最初の段階として、**端�
 | P6a（作った、2026-11-21。8.9 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（忘れないための行。P5 の続きと P6 の後でよい。ユーザーが 2026-11-21 に頼んだ） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
-| P8（忘れないための行。後でよい。ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
+| P8（設計の案、2026-11-21。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
 
