@@ -597,33 +597,35 @@ P6（プラットフォームを増やす）の 2 つ目の段階として、**N
 
 * **ホストの関数**（新しい vm/wasm/host/server.js。機能 `"server"`。vm-node.js が、`CONMA_HOST` の関数とともに、はじめから渡す。ブラウザには渡さない）：
     * `server.listen` port host（待つ）：`http.createServer` で、host（既定 `"127.0.0.1"`。ほかの機械から届かないように）の port（0 なら OS が選ぶ）で待ち受けを始め、待ち受けた番号（サーバの id）と、実際の port の Dict `{id, port}` を返す。使えない port は関数のエラー（`server.listen: EADDRINUSE ...`）。
-    * `server.accept` id（待つ）：次の要求を返す。届いた要求は、受け取られるまで列にためる（受け取る処理がいなくても、Node.js の側で要求を止めない）。要求は Dict `{id, method, url, headers, body}`（headers は、名前を小文字にしたオブジェクト。body は、全部読んだ文字列。UTF-8）。サーバが閉じられたら `null`（ConJS では `undefined`）。
-    * `server.respond` request status headers body（すぐ返る）：要求に答える（`res.writeHead` と `res.end`）。2 度目は関数のエラー。
-    * `server.close` id（すぐ返る）：待ち受けをやめる。待っている `server.accept` は `null` を受け取る。答えていない要求は 503 で閉じる。
+    * `server.accept` id（待つ）：次の要求を返す。届いた要求は、受け取られるまで列にためる（受け取る処理がいなくても、Node.js の側で要求を止めない）。要求は Dict `{id, method, url, headers, body}`（id は要求の番号。headers は Node.js の `req.headers` のまま：名前は小文字、同じ名前のヘッダはまとめ、`set-cookie` だけは配列。body は、全部読んだ文字列。UTF-8）。本体は 1 MB までにし、超えた要求は列に入れずに 413 で答える（メモリーを使い切らないように。M2 のレビューの 3）。サーバが閉じられたら `null`（ConJS では `undefined`）。
+    * `server.respond` requestId status headers body（すぐ返る）：要求に答える（`res.writeHead` と `res.end`）。要求は番号だけで渡す（本体を渡し直さない。M2 のレビューの 3）。2 度目は関数のエラー。
+    * `server.close` id（すぐ返る）：Node.js の `server.close()` と同じく、新しい要求を受けなくなる（M2 のレビューの 2）。**受け取った（`accept` が返した）要求**は、`close` の後でも `respond` できる。**届いたが、まだ受け取っていない要求**（列にたまっているもの）だけを 503 で閉じる。待っている `server.accept` は `null` を受け取る。使っていない keep-alive の接続も閉じる（`server.closeIdleConnections()`。答えた後の、つながっただけの接続のために、プロセスがすぐ終わらないことがないように）。
     * 値は P7 の Dict で受け渡す（P7 を先にしたので、要求をそのままオブジェクトで返せる）。
 * **ConJS のライブラリ**（conjs/include/conjs_lib.se。ConJS だけ。SJS には移さない）：
     * **`http.listen(port, host)`**：サーバのオブジェクトを返す（`port` は実際の番号）。機能 `"server"` がないプラットフォームでは Error（`http.listen: this platform has no server (Node.js only)`）。
     * サーバのオブジェクト：`accept()`（次の要求。閉じた後は `undefined`）、`close()`、`port`。
-    * 要求のオブジェクト：`method`、`url`、`headers`、`body`、`respond(status, headers, body)`（`body` は文字列。`headers` は省略できる）。`json()`（`JSON.parse(body)`）。
+    * 要求のオブジェクト：`method`、`url`、`headers`、`body`、`respond(status, headers, body)`（`body` は文字列。`headers` は省略できる）。`json()`（`JSON.parse(body)`）。要求の番号は、隠したキーに持つ。
+    * **終わり方**（M2 のレビューの 1）：サーバは、`close()` するか、Ctrl-C（SIGINT）で終わるまで、要求を待ち続ける。`accept` で待つ処理だけが残るのは、動いているサーバのふつうの状態なので、行き詰まりとはしない。待ち受けを `unref` もしない（Node.js の待ち受けがイベントループを生かすので、P7 の `beforeExit` の知らせも出ない）。Node.js の `http.createServer().listen()`（main の後も動き続ける）と、Rust 版の VM（join されない処理が終わるまで終わらない）と同じ。README に書く。
     * Node.js の `http` と名前を分ける：Node.js の `http.createServer` はコールバックを取るので、同じ名前にすると、Node.js のプログラムをそのまま写せるように見えて紛らわしい。`http.listen` は ConJS だけの形（README の JavaScript との違いに書く）。
 * **見本**（conjs/examples）：
-    * **counter_server.con.js**：要求ごとに処理を `spawn` する小さなサーバ。`/count` は数を 1 つ増やして返し、`/slow` は `sleep(200)` してから答え（その間も、ほかの要求に答えること）、`/file?name=...` は P8 の `fs.readLines` で読んで行の数を返し、`/stop` で `close()` してループを抜ける。数を共有の変数に持っても、待つ所の間は割り込まれないので安全（4.1 節）。
+    * **counter_server.con.js**：要求ごとに処理を `spawn` する小さなサーバ。`/count` は数を 1 つ増やして返し、`/slow` は `sleep(200)` してから答え（その間も、ほかの要求に答えること）、`/file?name=...` は P8 の `fs.readLines` で読んで行の数を返し（決まった 1 つのディレクトリの中の名前だけ。`/` と `..` を含む名前は 400。見本は書き写されるので。M2 のレビューの 3）、`/stop` で `close()` してループを抜ける。数を共有の変数に持っても、待つ所の間は割り込まれないので安全（4.1 節）。
     * Node.js で同じことを書いた counter_server.node.js（`http.createServer` のコールバックの中で `async`、`await`、`setTimeout` の Promise、`fs.promises` と `readline`）を置き、README に並べて載せる。
     * 2 つを比べるテスト：同じ要求の列を送って、同じ答えが返ることを確かめる（下の case2。compare.sh は、出力のファイルを比べる形なので、サーバには使わず、テストの中で確かめる）。
 * **npm のライブラリ**：docs/HOST-ja.md の Node.js の節に、`CONMA_HOST` の関数の中で `require` したライブラリを呼ぶ例を足す（例は、Node.js に入っている `node:crypto` の `createHash` にし、npm から何も入れずに動かせるようにする）。
 
 **テスト**（conjs/test の step18。wasm 版の VM（Node.js）だけが機能 `"server"` を持つので、ログは case*.wasm.log と、ほかの VM の case*.log（「no server」の 1 行）に分ける）
 
-* case1（サーバの API）：port 0 で待ち受け、別の処理から `fetch` で自分のサーバに要求を送る（GET と POST、ヘッダ、本体、JSON）。`accept` と `respond`、2 度目の `respond` のエラー、`close` の後の `accept` が `undefined`、待っている `accept` が `close` で `undefined` を受け取ること、使われている port のエラー。
+* case1（サーバの API）：port 0 で待ち受け、別の処理から `fetch` で自分のサーバに要求を送る（GET と POST、ヘッダ、本体、JSON）。`accept` と `respond`、2 度目の `respond` のエラー、`close` の後の `accept` が `undefined`、待っている `accept` が `close` で `undefined` を受け取ること、受け取った要求に `close` の後でも答えられること（`/slow` の途中で `close` する。M2 のレビューの 2）、1 MB を超える本体の 413、使われている port のエラー。
 * case2（見本）：counter_server.con.js を port 0 で動かす小さな台本（同じプログラムの中で、サーバを `spawn` し、`/slow` と `/count` を並べて送り、`/slow` を待つ間に `/count` が先に答えることを、答えの順で確かめる。時計には頼らず、順だけをログに出す）。Node.js 版も、同じ要求の列で同じ答えになることを、step18 の中の Node.js の小さな台本（case2.node-check.js。node で動かす）で確かめる。
-* 終わり方：サーバを `close` しないまま main が終わると、vm-node.js は待ち受けがある間は終わらない（Node.js の待ち受けがイベントループを止めないため）。そこで、`server.accept` で待つ処理だけが残ったら、P7 の決まらない Promise と同じく、行き詰まりとして終える（`vm-node: every VProc waits for host calls that never finish: N`）か、待ち受けを `unref` して Node.js を終わらせるかを、作るときに決める（M2 に聞きたいことの 3）。
 * conjs/test の今の場合、sjs/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
 
 **終わりとすること**（5 節の表）：step18 が 3 つの VM で通る（wasm 版は本当に待ち受ける）。見本が Node.js で動き、Node.js で書いたものと同じ答えになる（README に並べて載せる）。docs/HOST-ja.md に npm のライブラリの例がある。SJS が作るコードが変わらない。
 
 **P6b でしないこと**（後の候補）：Rust 版の VM のサーバ（クレートを使わないので、`std::net` で HTTP を自分で読むことになる。P7 の Rust の API で、後で足せる）、HTTPS、TCP と UDP のソケット（`net`、`dgram`）、WebSocket、要求の本体を少しずつ読むこと（ストリーム）、HTTP/2、Node.js のワーカーのスレッド。WASI、デスクトップの GUI、Windows の端末（P6 の残り）。ConJS の `fetch` を Rust のホストの関数に替えること（P7 の後の候補）。
 
-**M2 に聞きたいこと**
+**M2 のレビュー**（PR shima3/conma#27）：向き、`http.listen` と `accept()` の名前、要求を Dict で返すこと、テストの分け方と Node.js 版との比べ方に、賛成をもらった。指摘を受けて、終わり方を「`close()` か Ctrl-C まで待ち続ける」に決め（行き詰まりにも `unref` にもしない。1）、`close` を Node.js と同じく、受け取った要求には答えられる形にし（2）、`respond` に要求の番号だけを渡すこと、本体を 1 MB までにすること、ヘッダは Node.js の `req.headers` のままであること、見本の `/file` が決まったディレクトリの中だけを読むこと（3）を書き足した。
+
+**M2 に聞いたこと**
 
 1. **向き**：Node.js の段階で、ネットワークのサーバを足すことでよいか（ファイルと npm は、もう使えるので）。
 2. **API の名前**：Node.js と違う `http.listen` と `server.accept()` にすることでよいか。要求を Dict（P7）で返す形でよいか。
