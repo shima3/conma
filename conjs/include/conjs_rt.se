@@ -7,6 +7,7 @@
 ;; 処理（task）の SJS の値は Dict：「"t" は "task"、"id" は値の番号、"sched" はスケジューラの処理」
 (include "sjs_rt.se")
 (include "lang/sched.se")
+(include "conjs_term.se")
 (include "conjs_lib.se")
 (include "conjs_class.se")
 
@@ -52,6 +53,9 @@
   __PDict_put__ "sjs_lang" "conjs" ,()
   Conjs_builtins G ,()
   Kit_sched_run (,() Conjs_save) (,(local) Conjs_restore local) body ,(blocked failed)
+  ;; 端末の入力の道（conjs_term.se）を使ったなら、端末のモードを戻し、その VProc を止める
+  __PDict_lookup_or__ "sjs_cleanup" (,(k) __NULL__ __NULL__) ,(cleanup)
+  __is_null__ cleanup ,(test__) __unless__ test__ cleanup ,()
   Conjs_report failed __FALSE__ ,(bad)
   __Number_is_zero__ blocked ,(noDeadlock)
   __unless__ noDeadlock

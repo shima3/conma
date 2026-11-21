@@ -116,6 +116,9 @@
 ;; 受け手のない例外：メッセージ text を、例外を投げた所の位置（"sjs_pos"。Sjs_raise）を付けて
 ;; 「ファイル:行:桁: メッセージ」の形で出し、終了ステータス 2 で終える。位置がなければ「sjs: メッセージ」
 (define Sjs_uncaught ,(text)
+  ;; 片付け（ConJS の端末の入力の道。conjs/include/conjs_term.se が main の VProc の PDict に置く。SJS と ConSh は置かない）
+  __PDict_lookup_or__ "sjs_cleanup" (,(k) __NULL__ __NULL__) ,(cleanup)
+  __is_null__ cleanup ,(test__) __unless__ test__ cleanup ,()
   ;; ConSh から動かすときは、ConSh に渡す（位置は、ConSh が PDict の "sjs_pos" から読む）
   __PDict_lookup_or__ "sjs_fail" (,(k) __NULL__ __NULL__) ,(fail)
   __is_null__ fail ,(test__) __unless__ test__ (,() fail text) ,()

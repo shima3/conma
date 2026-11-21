@@ -1,0 +1,16 @@
+chars: a b | 
+enter: a Enter b Enter c Enter | 
+arrows: ArrowUp ArrowDown ArrowRight ArrowLeft ArrowUp | 
+held: ArrowUp ArrowUp ArrowUp | 
+params: Unidentified x | 
+alt: Escape x | 
+split1: a | ^[
+split2: ArrowUp | 
+split3:  | ^[[
+split4:  | ^[O
+split5:  | ^[[1;
+final1: Escape | 
+final2: Unidentified | 
+final3: Unidentified | 
+controls: Tab | 
+exit: 0

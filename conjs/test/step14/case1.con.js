@@ -1,6 +1,7 @@
 // キーとクリックを待つ（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）：nextEvent と pollEvent。wasm 版の VM では、
 // case1.host.js が本物の vm/wasm/host/input.js を、手で進める時計で動かす（入力は、呼んだ数で決まり、時計によらない）。
-// Rust 版と Python 版の VM には機能 "input" がない（case1.log。wasm 版は case1.wasm.log）
+// Rust 版と Python 版の VM には機能 "input" がないので、標準入力（/dev/null）から読む端末の道になり、nextEvent は入力の
+// 終わりの Error を投げ、pollEvent は undefined を返す（4.7 節、段階 P6a。case1.log。wasm 版は case1.wasm.log）
 console.log(host.available("input"));
 if (!host.available("input")) {
   try { nextEvent(); } catch (e) { console.log(`${e}`); }
