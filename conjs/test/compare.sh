@@ -42,4 +42,13 @@ if [ -n "$pairs" ] && [ -f "$here/node-pairs.txt" ]; then
     fi
   done < "$here/node-pairs.txt"
 fi
+# ファイルを書かなければ、各ステップの case*.node-check.js も node で動かす（段階 P6b。サーバの見本は、ConJS の側が wasm 版
+# の VM でしか動かないので、Node.js の出力を、そのステップの wasm 版のログと比べる）
+if [ -n "$pairs" ]; then
+  for check in "$here"/step*/case*.node-check.js
+  do
+    [ -f "$check" ] || continue
+    node "$check" < /dev/null || status=1
+  done
+fi
 exit $status

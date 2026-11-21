@@ -13,6 +13,9 @@
 ;;                        機能 "input" がなければ、標準入力のキーを読む（conjs_term.se。4.7 節、段階 P6a）
 ;;   pollEvent()          ホストの関数 input.poll（すぐ返る）か、標準入力の列：同じ形のオブジェクトか undefined
 ;;   fs.open、fs.readLines、fs.stdin、fs.stdout  ファイルを 1 行ずつ読む（conjs_file.se。4.8 節、段階 P8）
+;;   http.listen(port, host)  ホストの関数 server.*（機能 "server"。Node.js だけ。4.10 節、段階 P6b）：HTTP のサーバを
+;;                        返す。accept()（次の要求。閉じた後は undefined）、close()、port。要求は method、url、headers、body、
+;;                        respond(status, headers, body)、json()
 
 (define Conjs_lib_builtins ,(G)
   Sjs_function G "sleep" (,(args) Sjs_arg args ,(ms rest) Conjs_ms "sleep" ms ,(ms) Conjs_sleep ms) ,(sleep)
@@ -32,7 +35,10 @@
   Sjs_function G "nextEvent" (,(args) Sjs_arg args ,(ms rest) Conjs_next_event G ms) ,(ne)
   __Dict_put__ G "nextEvent" ne ,()
   Sjs_function G "pollEvent" (,(args) Conjs_poll_event G) ,(pe)
-  __Dict_put__ G "pollEvent" pe)
+  __Dict_put__ G "pollEvent" pe ,()
+  Sjs_object_new G ,(http)
+  Sjs_def G http "listen" (,(args) Conjs_http_listen G args) ,()
+  __Dict_put__ G "http" http)
 
 (define Conjs_num ,(text)
   __Number_fromString__ __print_exit_error__ text)
@@ -359,3 +365,94 @@
   Sjs_obj_set o "x" x ,()
   Sjs_obj_set o "y" y ,()
   __NULL__ o)
+
+;; ── ネットワークのサーバ（docs/dev/PLATFORM-PLAN-ja.md の 4.10 節、段階 P6b）：ホストの関数 server.listen、server.accept、
+;; server.respond、server.close（機能 "server"。wasm 版の VM を Node.js で動かすときの vm/wasm/host/server.js）。
+;; サーバは、close() するか、Ctrl-C で終わるまで、要求を待ち続ける（accept で待つ処理だけが残っても、行き詰まりではない）──
+
+;; http.listen(port, host)：port は数（undefined は 0。OS が選ぶ）、host は文字列（undefined は "127.0.0.1"）
+(define Conjs_http_listen ,(G args)
+  Sjs_arg args ,(port rest)
+  Sjs_arg rest ,(host more)
+  __Feature_available__ "server" ,(ok)
+  __unless__ ok (,() Sjs_throw "Error" "http.listen: this platform has no server (Node.js only)") ,()
+  Conjs_listen_port port ,(port)
+  Sjs_is_undefined host ,(test__)
+  __if_then_else__ test__ (,() __NULL__ "127.0.0.1") (,() Conjs_string_arg "http.listen: host" host ,() __NULL__ host) ,(host)
+  __LList_cons__ host __NULL__ ,(l)
+  __LList_cons__ port l ,(l)
+  Conjs_wait_host "Error" "server.listen" l ,(d)
+  __Dict_lookup_or__ d "id" __print_exit_error__ ,(id)
+  __Dict_lookup_or__ d "port" __print_exit_error__ ,(p)
+  Sjs_object_new G ,(server)
+  Sjs_obj_set server "port" p ,()
+  Sjs_def G server "accept" (,(a) Conjs_server_accept G id) ,()
+  Sjs_def G server "close" (,(a) __LList_cons__ id __NULL__ ,(l) __Host_call__ (,(msg) Sjs_throw "Error" msg) "server.close" l ,(r) __NULL__ __NULL__) ,()
+  __NULL__ server)
+
+(define Conjs_listen_port ,(v)
+  __Cont_get__ ,(return)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() Conjs_num "0" ,(zero) return zero) ,()
+  __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
+  Sjs_describe v ,(d)
+  __String_concat__ "http.listen: expected a port (a number), got " d ,(m)
+  Sjs_type_error m)
+
+;; server.accept()：次の要求のオブジェクト。サーバが閉じられたら undefined
+(define Conjs_server_accept ,(G id)
+  __Cont_get__ ,(return)
+  __LList_cons__ id __NULL__ ,(l)
+  Conjs_wait_host "Error" "server.accept" l ,(r)
+  __is_null__ r ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Conjs_request G r)
+
+;; 要求のオブジェクト：method、url、headers、body と、respond(status, headers, body)、json()。要求の番号は、メソッドの
+;; 閉包に持つ（数えるメンバーにしない）
+(define Conjs_request ,(G r)
+  __Dict_lookup_or__ r "id" __print_exit_error__ ,(rid)
+  Sjs_object_new G ,(req)
+  Conjs_request_copy G r req "method" ,()
+  Conjs_request_copy G r req "url" ,()
+  Conjs_request_copy G r req "headers" ,()
+  Conjs_request_copy G r req "body" ,()
+  __Dict_lookup_or__ r "body" __print_exit_error__ ,(body)
+  Sjs_def G req "respond" (,(args) Conjs_respond G rid args) ,()
+  Sjs_def G req "json" (,(args) Sjs_json_parse G body) ,()
+  __NULL__ req)
+
+(define Conjs_request_copy ,(G r req k)
+  __Dict_lookup_or__ r k __print_exit_error__ ,(h)
+  Conjs_from_host G h ,(v)
+  Sjs_obj_set req k v)
+
+;; req.respond(status, headers, body)：headers は省略できる（respond(status, body)）。body がなければ ""
+(define Conjs_respond ,(G rid args)
+  Sjs_arg args ,(status rest)
+  Sjs_arg rest ,(headers more)
+  Sjs_arg more ,(body more)
+  Sjs_kind status ,(kind)
+  __String_equal__ kind "number" ,(ok)
+  __unless__ ok (,() Sjs_describe status ,(d) __String_concat__ "respond: expected a status (a number), got " d ,(m) Sjs_type_error m) ,()
+  ;; respond(status, body)
+  Sjs_kind headers ,(hkind)
+  __String_equal__ hkind "string" ,(short)
+  Sjs_is_undefined body ,(noBody)
+  __and__ short noBody ,(test__)
+  __if_then_else__ test__ (,() __NULL__ __NULL__ headers) (,() __NULL__ headers body) ,(headers body)
+  Sjs_is_nullish headers ,(noHeaders)
+  __if_then_else__ noHeaders
+    (,() __Dict_new__ ,(d) __NULL__ d)
+    (,()
+      Sjs_kind headers ,(hk)
+      __String_equal__ hk "object" ,(ok)
+      __unless__ ok (,() Sjs_describe headers ,(d) __String_concat__ "respond: headers must be an object, got " d ,(m) Sjs_type_error m) ,()
+      Conjs_to_host "respond" headers __NULL__) ,(h)
+  Sjs_is_undefined body ,(test__)
+  __if_then_else__ test__ (,() __NULL__ "") (,() Conjs_string_arg "respond: body" body ,() __NULL__ body) ,(body)
+  __LList_cons__ body __NULL__ ,(l)
+  __LList_cons__ h l ,(l)
+  __LList_cons__ status l ,(l)
+  __LList_cons__ rid l ,(l)
+  __Host_call__ (,(msg) Sjs_throw "Error" msg) "server.respond" l ,(r)
+  __NULL__ __NULL__)
