@@ -68,6 +68,8 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### m1/frontend-chain
 
+PR は shima3/conma#16。
+
 * ConMa 版のフロントエンドの S 式の書き出し（include/ast.se の `__AST_toSexp__`）を、子の S 式を作ってから親につなぐ形から、木全体を 1 つの短い String につなげ、512 文字を超えたらかたまりにして最後に 1 度だけつなぐ形にした。vm/frontend.module.se を作り直した。出力は同じ：変える前と後の `conma build` で、conjs/test と sjs/test のすべてのケースの変換したプログラム、両方の変換器、ConSh（最適化版と参照版の include の並び）のモジュールが、バイトまで同じ（フロントエンド自身のモジュールだけが違う）。流したもの：Rust 版の VM の test/（`-j 4`）、conjs/test、sjs/test、wasm 版と Python 版の VM の test/frontend。流していないもの：wasm 版と Python 版の VM の test/ の残り、transpiled VM、consh/test
 
 ## 記録
