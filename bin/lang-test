@@ -6,6 +6,7 @@
 # VM ごとに違うログは case*.$CONMA_VM.log に置く。case*.host.js があれば、wasm 版の VM のホストの関数（CONMA_HOST）にする。
 # case*.in があれば標準入力にする（なければ /dev/null。docs/dev/PLATFORM-PLAN-ja.md の 4.7 節、段階 P6a）。
 # case*.args があれば、その中の語（空白で区切る）を、プログラムの引数にする（ConJS の argv。4.8 節、段階 P8）。
+# case*.feed.py があれば、python3 で動かした出力を、パイプで標準入力に渡す（少しずつ届く入力。case*.in より先）。
 # 標準エラーは、標準出力の後に続ける（Python 版の VM は、ファイルへの標準出力をためてから出すので、混ぜると順が VM で違う）
 root="$(cd "$(dirname "$0")/.."; pwd)"
 if [ $# -ne 2 ]; then echo "usage: lang-test language-directory step-directory" >&2; exit 2; fi
@@ -25,7 +26,9 @@ do
   [ -f $c.in ] && in=$c.in
   args=
   [ -f $c.args ] && args=$(cat $c.args)
-  if [ -f $c.host.js ]; then
+  if [ -f $c.feed.py ]; then
+    python3 $c.feed.py < /dev/null | "$root/bin/lang" "$lang" $f $args > $out 2> $err
+  elif [ -f $c.host.js ]; then
     CONMA_HOST=$PWD/$c.host.js "$root/bin/lang" "$lang" $f $args > $out 2> $err < $in
   else
     "$root/bin/lang" "$lang" $f $args > $out 2> $err < $in

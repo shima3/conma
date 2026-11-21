@@ -66,6 +66,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * M1 が流したもの（Apple M1）：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 16 秒）で。conjs/test/compare.sh。sjs/test（42 秒）、consh/js/test（23 秒）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS の 42 のプログラムは `Conjs_argv` の 1 行だけ違う）。流していないもの：consh/test（ConSh が使う SJS の変換は変えていない）、test/、transpiled VM、Python 版の VM の sjs/test、ConSh の参照版。
 * 測ったもの：大きなファイルを読む時間（8.10 節）。Full Bench の依頼はない。
 * M2 のレビューを受けて直した：とても長い 1 行で 2 乗にならないようにした（読んだかたまりを列にためて 1 回でつなぎ、`\n` は探した所の後ろから探す）。単独の `\r` のことを README に書いた。流したもの：conjs/test を Rust 版（11 秒）、wasm 版（17 秒）、Python 版（4 分 13 秒）で。conjs/test/compare.sh。長い 1 行と大きなファイルの時間（8.10 節）。
+* M2 の確かめを受けて直した：読んだかたまりをファイルのオブジェクトにため、2 つの処理が同じパイプから読んでも行が壊れないようにした。新しいテストは conjs/test/step16/case6（bin/lang-test が `case*.feed.py` の出力をパイプで渡す。python3 が要る）。流したもの：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 19 秒）で。step16 を Rust 版と wasm 版で 3 回ずつ。conjs/test/compare.sh。
 
 ## 記録
 

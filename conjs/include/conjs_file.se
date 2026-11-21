@@ -10,6 +10,7 @@
 ;;   "fs_buf"     読んだ文字列のうち、まだ返していない所を含む文字列の Ref
 ;;   "fs_pos"     fs_buf の中の、次に返す位置の Ref
 ;;   "fs_scan"    fs_buf の中で、ここより前には \n がないと分かっている位置の Ref（\n を、そこから探す）
+;;   "fs_chunks"  読んだが、まだ fs_buf につないでいないかたまりの LList（新しい順）の Ref。どれも \n を含まない
 ;;   "fs_eof"     ファイルの終わりに着いたかの Ref
 ;;   "fs_closed"  閉じたかの Ref
 ;;   "fs_std"     fs.stdin か fs.stdout か（close で、本当の Stream は閉じない）
@@ -53,6 +54,8 @@
   __Dict_put__ o "fs_pos" pos ,()
   __Ref_new__ zero ,(scan)
   __Dict_put__ o "fs_scan" scan ,()
+  __Ref_new__ __NULL__ ,(chunks)
+  __Dict_put__ o "fs_chunks" chunks ,()
   __Ref_new__ __FALSE__ ,(eof)
   __Dict_put__ o "fs_eof" eof ,()
   __Ref_new__ __FALSE__ ,(closed)
@@ -112,47 +115,54 @@
   __String_concat__ "standard input is read as " used ,(m)
   Sjs_throw "Error" m)
 
-;; 読み足す（M2 の PR shima3/conma#21 のレビューの 2）：読んだかたまりを列にため、untilNewline なら \n を含むかたまりが来るか
-;; ファイルの終わりまで、そうでなければ終わりまで読んでから、まだ返していない所とまとめて 1 回でつなぐ（2 つずつつなぐので、
-;; 長さ L の行でも L log L ほどの手間。前は、4,096 バイトごとに全体をつなぎ直していたので、とても長い 1 行で 2 乗になった）。
-;; つないだら位置を 0 にし、まだ返していない所の長さを fs_scan にする（そこより前には \n がない）
-(define Conjs_file_gather ,(f untilNewline)
-  Conjs_file_gather_chunks f untilNewline __NULL__ ,(chunks)
-  Conjs_file_get f "fs_buf" ,(buf)
-  Conjs_file_get f "fs_pos" ,(pos)
-  __String_length__ buf ,(n)
-  __String_substring__ __print_exit_error__ buf pos n ,(rest)
-  __Number_subtract__ n pos ,(restLen)
-  __LList_cons__ rest chunks ,(parts)
-  Conjs_file_concat_all parts ,(buf)
-  Conjs_file_set f "fs_buf" buf ,()
-  Conjs_file_num "0" ,(zero)
-  Conjs_file_set f "fs_pos" zero ,()
-  Conjs_file_set f "fs_scan" restLen)
-
-;; 読んだかたまりの LList（古い順）。終わりなら fs_eof を真にする
-(define Conjs_file_gather_chunks ,(f untilNewline acc)
+;; 読み足す（M2 の PR shima3/conma#21 のレビュー）：1 回読み、読んだかたまりを、ファイルのオブジェクトの "fs_chunks" に足す。
+;; \n を含むかたまりか、ファイルの終わりなら、たまったかたまりを fs_buf にまとめてつなぐ（Conjs_file_join）。返すのは
+;; "more"（もっと読む）、"joined"（つないだ）、"waited"（読めなかったので待った）。待った後は、呼んだ側が初めからやり直す
+;; （待つ間に、ほかの処理が同じファイルを読み、つないでいることがあるため。かたまりを処理ごとの列にためると、待つ所を
+;; またいで、ほかの処理が読んだものと順が入れ替わる）。待つ所の間は割り込まれないので、Ref に足すのとつなぐのは安全
+(define Conjs_file_read_more ,(f)
   __Cont_get__ ,(return)
   __Dict_lookup_or__ f "fs_stream" __print_exit_error__ ,(s)
   Sjs_obj_get f "path" ,(path)
   __NULL__ (,(msg) Cat3s "File " path ": " ,(m) __String_concat__ m msg ,(m) Sjs_throw "Error" m) ,(fail)
   __OS_read__ fail s ,(data)
   __is_null__ data ,(test__) __if__ test__
-    (,() Conjs_file_set f "fs_eof" __TRUE__ ,() Kit_sched_reverse acc __NULL__ ,(l) return l) ,()
+    (,() Conjs_file_set f "fs_eof" __TRUE__ ,() Conjs_file_join f ,() return "joined") ,()
   __String_equal__ data "" ,(none)
   __if__ none
     (,()
       ;; まだ読めない：読めるようになるまで、この処理だけが待つ
       Kit_sched_wait_work (,() __Cont_get__ ,(k) __OS_wait_readable__ (,(msg) k __FALSE__ msg) s ,() __NULL__ __TRUE__ __NULL__) ,(ok payload)
       __unless__ ok (,() fail payload) ,()
-      Conjs_file_gather_chunks f untilNewline acc ,(l)
-      return l) ,()
-  __LList_cons__ data acc ,(acc)
-  __unless__ untilNewline (,() Conjs_file_gather_chunks f untilNewline acc ,(l) return l) ,()
+      return "waited") ,()
+  Conjs_file_get f "fs_chunks" ,(chunks)
+  __LList_cons__ data chunks ,(chunks)
+  Conjs_file_set f "fs_chunks" chunks ,()
   Conjs_file_num "0" ,(zero)
   __String_find__ __print_exit_error__ data "\n" zero ,(at)
-  __is_null__ at ,(test__) __if__ test__ (,() Conjs_file_gather_chunks f untilNewline acc ,(l) return l) ,()
-  Kit_sched_reverse acc __NULL__)
+  __is_null__ at ,(test__) __if__ test__ (,() return "more") ,()
+  Conjs_file_join f ,()
+  __NULL__ "joined")
+
+;; たまったかたまりを、まだ返していない所の後ろに、2 つずつつないで 1 回でまとめる（長さ L の行でも L log L ほどの手間）。
+;; 位置を 0 にし、まだ返していない所の長さを fs_scan にする（そこより前には \n がない）
+(define Conjs_file_join ,(f)
+  __Cont_get__ ,(return)
+  Conjs_file_get f "fs_chunks" ,(chunks)
+  __is_null__ chunks ,(test__) __if__ test__ return ,()
+  Conjs_file_set f "fs_chunks" __NULL__ ,()
+  Conjs_file_get f "fs_buf" ,(buf)
+  Conjs_file_get f "fs_pos" ,(pos)
+  __String_length__ buf ,(n)
+  __String_substring__ __print_exit_error__ buf pos n ,(rest)
+  __Number_subtract__ n pos ,(restLen)
+  Kit_sched_reverse chunks __NULL__ ,(parts)
+  __LList_cons__ rest parts ,(parts)
+  Conjs_file_concat_all parts ,(buf)
+  Conjs_file_set f "fs_buf" buf ,()
+  Conjs_file_num "0" ,(zero)
+  Conjs_file_set f "fs_pos" zero ,()
+  Conjs_file_set f "fs_scan" restLen)
 
 ;; 文字列の LList を、隣どうしを 2 つずつつなぐことを繰り返して、1 つにする
 (define Conjs_file_concat_all ,(parts)
@@ -206,7 +216,7 @@
       __String_substring__ __print_exit_error__ buf pos n ,(line)
       return line) ,()
   Conjs_file_set f "fs_scan" n ,()
-  Conjs_file_gather f __TRUE__ ,()
+  Conjs_file_read_more f ,(r)
   Conjs_file_next_line f)
 
 ;; buf の pos から end の前まで。最後が \r なら除く
@@ -229,7 +239,7 @@
 (define Conjs_file_read_rest ,(f)
   __Cont_get__ ,(return)
   Conjs_file_get f "fs_eof" ,(eof)
-  __unless__ eof (,() Conjs_file_gather f __FALSE__ ,() Conjs_file_read_rest f ,(t) return t) ,()
+  __unless__ eof (,() Conjs_file_read_more f ,(r) Conjs_file_read_rest f ,(t) return t) ,()
   Conjs_file_get f "fs_buf" ,(buf)
   Conjs_file_get f "fs_pos" ,(pos)
   __String_length__ buf ,(n)
