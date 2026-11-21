@@ -79,6 +79,26 @@ CONMA_VM=wasm CONMA_HOST=conjs/examples/host_demo.host.js bin/lang conjs conjs/e
 
 関数の書き方は、ブラウザと同じ（conjs/examples/host_demo.host.js）。待つ関数の Promise がいつまでも決まらず、Node.js にほかにすることがなくなると、`vm-node: every VProc waits for host calls that never finish: N` を出して、終了ステータス 2 で終える。
 
+関数の中では、Node.js のモジュールも npm のライブラリも `require` で使える。次の例は、Node.js に入っている `node:crypto` の `createHash` を呼ぶ（npm から何も入れずに動く。npm のライブラリは、`npm install` した後、同じく `require` する）。
+
+```js
+// hash.host.js
+const { createHash } = require("node:crypto");
+module.exports = {
+  hostFunctions: {
+    "hash.sha256": (text) => createHash("sha256").update(text).digest("hex"),
+  },
+  hostFeatures: ["hash"],
+};
+```
+
+```js
+// hash.con.js：CONMA_VM=wasm CONMA_HOST=hash.host.js conjs/conjs hash.con.js
+if (host.available("hash")) console.log(host.call("hash.sha256", "abc")); // ba7816bf...
+```
+
+vm-node.js は、`CONMA_HOST` がなくても、ネットワークのサーバの関数（機能 `"server"`、vm/wasm/host/server.js。段階 P6b）を渡す。ConJS では `http.listen`（conjs/README-ja.md）で使う。`CONMA_HOST` に同じ名前の関数があれば、そちらが使われる。
+
 ### 3.3. Rust 版の VM と transpiled VM
 
 VM を組み込む Rust のプログラムを書き、vm/ のクレート `conma` をライブラリとして使う。`Host::new()` に関数を登録して、`conma::run_main_with` で動かす。引数は `conma` のコマンドと同じ（`-m モジュール 引数 ...`、`build`、`run` など）なので、できたプログラムは、関数を足した `conma` として使える。
@@ -131,7 +151,7 @@ Python 版の VM（テストの基準の VM）には、関数を足す口はな�
 
 ## 4. どの VM にもある関数
 
-テストのための機能 `"test"`（`test.add`、`test.echo`、`test.fail`、仮の時計で待つ `test.later`）と、機能 `"time"`（`time.now`、`time.sleep`）。wasm 版の VM のホストには、`fetch` があれば `http.fetch`（機能 `"fetch"`）もある。詳しいことは [PRIMITIVES.md](PRIMITIVES.md) の `__Host_call__` と `__Host_start__`。
+テストのための機能 `"test"`（`test.add`、`test.echo`、`test.fail`、仮の時計で待つ `test.later`）と、機能 `"time"`（`time.now`、`time.sleep`）。wasm 版の VM のホストには、`fetch` があれば `http.fetch`（機能 `"fetch"`）もあり、Node.js で動かすとき（vm-node.js）は、ネットワークのサーバの `server.listen`、`server.accept`、`server.respond`、`server.close`（機能 `"server"`）もある。詳しいことは [PRIMITIVES.md](PRIMITIVES.md) の `__Host_call__` と `__Host_start__`。
 
 ## 5. テスト
 
