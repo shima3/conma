@@ -76,7 +76,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * 流していないもの：Rust 版、wasm 版、transpiled VM の test/ と consh/test（vm/python のほかは変えていない）。
 * 測ったもの：なし。
 
-### m2/python-sigint
+### m2/python-sigint（shima3/conma#30）
 
 * consh/test の step12 の case8（Ctrl-C）が Python 版の VM で失敗したのは、テストの待ち方のためで、VM や ConSh の誤りではなかった。Python 版の VM は ConSh を起動するのに約 7 秒かかる（Apple M2）が、case8.py は決まった秒数（3 秒と 1 秒ずつ）だけ待って入力と Ctrl-C を送っていた。Ctrl-C が `__OS_trap_interrupt__` の前に届くので、VM が SIGINT で止まり、次の書き込みが `OSError: [Errno 5]` になっていた。case8.py を、プロンプト（`$ `）が出てから次の行を送り、Ctrl-C は端末が返した `sleep 10` を読んで、consh の子孫に `sleep 10` のプロセス（Rust 版の ConSh では `/bin/sleep 10`）が動き出してから送るように変えた（上限は 120 秒ずつ）。端末に返した入力をまだ読まないうちに Ctrl-C を送ると、その出力が捨てられるので、それも待つ。上の既知の違いから、この行を除いた。
 * 2026-11-21 の 7db05fb の記録の、`CONSH_IMPL=rust` で `^C` の後にプロンプトが同じ行に出た 1 回も、Ctrl-C が `sleep` の起動より先に届いたためかもしれない（確かめてはいない）。この変更で、そうはならないはず。
