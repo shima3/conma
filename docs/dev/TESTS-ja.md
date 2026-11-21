@@ -64,7 +64,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
-| 2026-11-21 | m2/plan-file-io（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P7 の後の段階 P8（ConJS のファイルの入出力を広げ、1 行ずつ読む見本を書く）を、忘れないための行として足した。確かめたこと：リンクは変えていない |
+| 2026-11-21 | m2/plan-file-io（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P7 の後の段階 P8（ConJS のファイルの入出力を広げ、1 行ずつ読む見本を書く）を、忘れないための行として足した。確かめたこと：リンクは変えていない。PR は shima3/conma#17 |
 | 2026-11-21 | m4/docs-notes-scope（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 申し送りの見出しを書かないブランチを、変えたファイルがすべて Branches の 5 の文書で、ベンチマークも頼まないものに限った（docs/dev/CONTRIBUTING.md の Branches の 2 と、この文書の申し送りの説明。m1/notes-rule の「テストもベンチマークも要らないブランチ」では、作者が `.gitignore` や見本のページを、テストは要らないと考えて見出しを書かないことがありえたため。ユーザーの指示）。確かめたこと：リンクは足していないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない |
 | 2026-11-21 | m2/plan-host-guide（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P6 の後の段階 P7（使う人がホストの関数を足すための文書をまとめることと、Rust 版の VM に、組み込む人がホストの関数を足す口を作ること）を、忘れないための行として足した。確かめたこと：行に書いたファイルがあること。PR は shima3/conma#13 |
 | 2026-11-21 | m1/notes-rule（文書だけ） | Claude（M1） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 申し送りの見出しを、テストかベンチマークが要るブランチにだけ書くことにした（docs/dev/CONTRIBUTING.md の Branches の 2 と、この文書の申し送りの説明。ユーザーの指示）。確かめたこと：変えた 2 か所が、互いと Branches の 5（文書だけの変更）に合うこと。リンクは変えていない |
