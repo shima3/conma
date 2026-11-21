@@ -24,49 +24,66 @@
 
 ;; ノードを1行の S式の String にする。
 ;; String は "..." で囲むだけでエスケープしない（ソースのエスケープをそのまま持っているため）。
-;; 位置も子ノードもないノードは、kind だけを書く（resolver の Undefined）
+;; 位置も子ノードもないノードは、kind だけを書く（resolver の Undefined）。
+;; 木全体を 1 つの短い String cur の後ろにつなげ、ノードを閉じたときに cur が 512 文字を超えていれば、cur を
+;; 逆順のかたまりの LList chunks に積んで、空の cur から続ける。最後にかたまりを 1 度だけつなぐ（__Lines_join__）。
+;; 子の S式を作ってから親につなぐと、CPS の長い鎖のように深い木で、内側の String を深さの回数だけ写し、手間が
+;; 深さ × 長さになる。断片を 1 つずつ積んでからつなぐと、つなぐステップが断片の数 × log(断片の数) になる
 (define __AST_toSexp__ ,(node)
+  __Number_fromString__ __print_exit_error__ "512" ,(limit)
+  __AST_pieces__ limit __NULL__ "" node ,(chunks cur)
+  __Lines_join__ chunks cur)
+
+;; node の S式を cur の後ろにつなげる。chunks と cur を返す（limit はかたまりの長さ）
+(define __AST_pieces__ ,(limit chunks cur node)
   __LList_uncons__ __print_exit_error__ node ,(kind rest)
   __LList_uncons__ __print_exit_error__ rest ,(pos children)
   __is_null__ pos ,(noPos)
   __is_null__ children ,(noChildren)
   __and__ noPos noChildren ,(test__) __if_then_else__ test__
-    (,() __NULL__ kind)
+    (,() __String_concat__ cur kind ,(cur) __NULL__ chunks cur)
     (,()
-      __String_concat__ "(" kind ,(s)
+      __String_concat__ cur "(" ,(cur)
+      __String_concat__ cur kind ,(cur)
       __if_then_else__ noPos
-        (,() __NULL__ s)
+        (,() __NULL__ chunks cur)
         (,()
           __LList_uncons__ __print_exit_error__ pos ,(first more)
-          __String_concat__ s " (" ,(s)
-          __AST_value_append__ s first ,(s)
-          __AST_children_toSexp__ more s ,(s)
-          __String_concat__ s ")") ,(s)
-      __AST_children_toSexp__ children s ,(s)
-      __String_concat__ s ")"))
+          __String_concat__ cur " (" ,(cur)
+          __AST_value_pieces__ limit chunks cur first ,(chunks cur)
+          __AST_children_pieces__ limit more chunks cur ,(chunks cur)
+          __String_concat__ cur ")" ,(cur)
+          __NULL__ chunks cur) ,(chunks cur)
+      __AST_children_pieces__ limit children chunks cur ,(chunks cur)
+      __String_concat__ cur ")" ,(cur)
+      __String_length__ cur ,(len)
+      __Number_if_greater_then_else__ len limit
+        (,() __LList_cons__ cur chunks ,(chunks) __NULL__ chunks "")
+        (,() __NULL__ chunks cur)))
 
-;; children の各要素を、空白に続けて acc の後ろにつなげる
-(define __AST_children_toSexp__ ,(children acc)
+;; children の各要素を、空白に続けて cur の後ろにつなげる
+(define __AST_children_pieces__ ,(limit children chunks cur)
   __is_null__ children ,(test__) __if_then_else__ test__
-    (,() __NULL__ acc)
+    (,() __NULL__ chunks cur)
     (,()
       __LList_uncons__ __print_exit_error__ children ,(child rest)
-      __String_concat__ acc " " ,(acc)
-      __AST_value_append__ acc child ,(acc)
-      __AST_children_toSexp__ rest acc))
+      __String_concat__ cur " " ,(cur)
+      __AST_value_pieces__ limit chunks cur child ,(chunks cur)
+      __AST_children_pieces__ limit rest chunks cur))
 
-;; String、Number、ノードの S式を acc の後ろにつなげる（String は引用符と一緒に直接つなげる）。それ以外の値はエラー
-(define __AST_value_append__ ,(acc value)
+;; String、Number、ノードの S式を cur の後ろにつなげる（String は引用符と一緒に直接つなげる）。それ以外の値はエラー
+(define __AST_value_pieces__ ,(limit chunks cur value)
   __type_name__ value ,(type)
   __String_equal__ type "String" ,(test__) __if_then_else__ test__
     (,()
-      __String_concat__ acc "\"" ,(acc)
-      __String_concat__ acc value ,(acc)
-      __String_concat__ acc "\"") (,()
+      __String_concat__ cur "\"" ,(cur)
+      __String_concat__ cur value ,(cur)
+      __String_concat__ cur "\"" ,(cur)
+      __NULL__ chunks cur) (,()
   __String_equal__ type "Number" ,(test__) __if_then_else__ test__
-    (,() __Number_toString__ value ,(str) __String_concat__ acc str) (,()
+    (,() __Number_toString__ value ,(str) __String_concat__ cur str ,(cur) __NULL__ chunks cur) (,()
   __String_equal__ type "LList" ,(test__) __if_then_else__ test__
-    (,() __AST_toSexp__ value ,(str) __String_concat__ acc str)
+    (,() __AST_pieces__ limit chunks cur value)
     (,()
       __String_concat__ "__AST_toSexp__: unexpected value of type " type ,(msg)
       __String_concat__ msg "\n" ,(msg)

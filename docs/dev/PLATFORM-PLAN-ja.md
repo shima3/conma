@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）の設計の案を、4.7 節に書いた。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -342,6 +342,128 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 
 **M2 のレビュー**（PR shima3/conma#10）：分け方、ふつうの関数の `this` をエラーにすること、取り出したメソッドの `this`、メソッドを探す作り、`JSON.parse` と `sort` を足すときに SJS と共有すること（ユーザーにも確かめた）に賛成をもらった。指摘を受けて、メソッドを探す所（`Sjs_get_member` と `Sjs_in_op` だけ）、`console.log` の出し方、`o.m === o.m` の違いと遅いときの案、`static` のメソッドの継承と `Object.keys(C)`、`JSON.parse` の `constructor` のキー、`sort` の比べ方と `undefined`、Node.js と比べる場合の選び方（node.txt）、フィールドの初期化の `this` を書き足した。
 
+### 4.6. 段階 P5c の設計（決めた、2026-11-21。M2 のレビューは PR shima3/conma#12）
+
+P5c では、ConJS のプログラムが、ブラウザのキーとマウスの入力を、待つ呼び出しとして待てるようにする。見本として、入力を待つ対話のゲームを ConJS で書き、ブラウザで動かす。作者の方針（2026-11-21）：「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」のうち、入力を待つ対話を選び、それを動かせるように ConJS を広げる。プラットフォームを増やす段階（5 節の表の P6）は、その後にする。
+
+**見本のプログラム**（vm/wasm/web/stars.con.js。オリジナルの小さなゲーム「星ひろい」）
+
+格子の上で、矢印のキーで自分（四角）を 1 マスずつ動かし、星をすべて拾うと次の面に進む。おばけ（2〜4 匹）は、それぞれ一定の間隔で自分に 1 マス近づき、ぶつかると終わる。タイトル、遊ぶ所、結果の 3 つの画面を順に回る。Escape で、どの画面からでもプログラムを終える。
+
+```js
+while (true) {
+  if (!title()) break;            // 画面を描き、キーかクリックを待つ（Escape なら偽）
+  const score = play();           // 遊んで、終わったら点を返す（Escape なら undefined）
+  if (score === undefined) break;
+  if (!result(score)) break;      // 点を出し、キーを待つ
+}
+
+function play() {
+  const game = newGame();
+  const ghosts = game.ghosts.map((g) => spawn(() => {   // おばけごとに 1 つの処理
+    while (!game.over) { sleep(g.interval); moveGhost(game, g); }
+  }));
+  const painter = spawn(() => {                          // 1 コマごとに描く処理
+    while (!game.over) { draw(game); host.wait("canvas.frame"); }
+  });
+  let quit = false;
+  while (!game.over) {                                   // 自分は、キーを待って動く
+    const e = nextEvent(100);                            // 100 ミリ秒でキーがなければ undefined
+    if (e && e.type === "key" && e.key === "Escape") { quit = true; game.over = true; }
+    else if (e && e.type === "key") movePlayer(game, e.key);
+  }
+  ghosts.forEach(join); join(painter);
+  return quit ? undefined : game.score;
+}
+```
+
+* **JavaScript で同じものを書くと**：画面の移り変わりは「今の画面」の状態の変数と、keydown のイベントの受け手の中の分岐になる。おばけの動きは `setInterval` の受け手に分かれ、遊ぶ所を抜けるときに `clearInterval` で止める。`async` と `await` で書いても、キーを 1 つ待つ Promise を自分で作り（受け手を足して、1 回で外す）、時間切れとの競争（`Promise.race`）も書くことになる。ConJS では、上のように、画面の順と、おばけごとの動きを、ふつうのループと関数で書ける。
+* **割り込まれないこと**（4.1 節）：3 種類の処理が `game` を共有するが、切り替わるのは待つ呼び出し（`nextEvent`、`sleep`、`host.wait`）の所だけなので、`moveGhost` や `movePlayer` の途中で、ほかの処理が `game` を見ることはない。
+* **待つ間隔**：自分の処理は、`nextEvent(100)` で 100 ミリ秒ごとに起き、おばけの処理が立てた `game.over` を見る。おばけにぶつかってから結果の画面に移るまで、最大 0.1 秒かかる（M2 のレビューの 4。0.5 秒では、遊ぶ人にわかる遅れになる）。
+* **残った入力を捨てる**（M2 のレビューの 2）：列は入力を捨てないので、遊ぶ所で押し続けた矢印のキー（繰り返しも 1 つずつ入る）が、次の画面の「キーを待つ」にすぐ渡ってしまう。見本は、画面を描いた後に `while (pollEvent()) {}` で残りを捨ててから待つ。結果の画面は、300 ミリ秒 `sleep` してから捨てる（遊ぶ人の手が離れるまでのキーも捨てる）。ライブラリに足すものは要らない。
+* 見本は、`nextEvent` のない所（Rust 版と Python 版の VM、Node.js）では、「this platform has no input」と出して終える（canvas_demo.con.js と同じ形）。
+
+**足すもの**
+
+* **ホストの関数**（プラットフォームの機能 `"input"`。新しい vm/wasm/host/input.js。canvas.js と同じ形で、`ConmaInput(canvas, options)` が `hostFunctions` と `hostFeatures` を返す）：
+    * options（どれもなくてよい）：`keyTarget`（keydown を受け取るもの。既定は canvas。ページのどこでキーを押してもよいときは document）、`setTimeout` と `clearTimeout`（時間切れに使う時計。既定は globalThis のもの。テストは手で進める時計を渡す）。canvas は EventTarget であればよい（テストは Node.js の `EventTarget` を渡す）。input.js は、`KeyboardEvent` などの型を見ず、イベントの `key`、`clientX`、`clientY` だけを読む。
+    * ホストは、keyTarget の keydown と、canvas の pointerdown を、届いた順に列にためる。待つ人がいないときに来た入力も捨てない。矢印のキー、スペース、Escape は、ページが動かないように `preventDefault` する。
+    * `input.next ms`（待つ呼び出し）：列の先頭の入力を返す。列が空なら、次の入力まで待つ。ms が 0 以上の数なら、その時間に入力がなければ null を返す。ms が負の数なら、時間を限らない。
+    * `input.poll`（すぐ返る）：列の先頭の入力か、空なら null。
+    * 入力は LList：`("key" キーの名前)`（`KeyboardEvent.key`。`"ArrowUp"`、`"a"`、`" "`、`"Escape"` など。キーを押し続けたときの繰り返しも、1 つずつ入る）、`("click" x y)`（いつも canvas の座標。`clientX` と `clientY` から、canvas の `getBoundingClientRect()` の左上を引き、表示の大きさと canvas の幅や高さが違えば、その比で直す。`getBoundingClientRect` のない canvas（テストのまね）では、`clientX` と `clientY` をそのまま使う）。
+    * 2 つの処理が同時に `input.next` を待てば、先に待ったほうが先の入力を受け取る。時間切れになった待ちは、列から外す（後の入力を取らない）。
+* **ConJS のライブラリ**（conjs/include/conjs_lib.se。ConJS だけ。SJS には移さない）：
+    * `nextEvent(ms)`：`input.next` を待ち、入力をオブジェクトにして返す：`{ type: "key", key: "ArrowUp" }`、`{ type: "click", x: 10, y: 20 }`。時間切れなら `undefined`。
+    * ms（M2 のレビューの 3）：`undefined`（書かない）と `Infinity` は、時間を限らない（`input.next` に -1 を渡す）。負の数と NaN は 0（すぐに時間切れ。`setTimeout` と同じ）。数でなければ TypeError。`sleep` の `Conjs_ms` は `undefined` と無限を 0 にするので、そのままは使わない。
+    * `pollEvent()`：`input.poll`。同じ形のオブジェクトか `undefined`。待たない。
+    * 機能 `"input"` がなければ、どちらも TypeError（`nextEvent: this platform has no input`）。プログラムは `host.available("input")` で先に確かめられる。
+    * 名前は JavaScript にない（`sleep`、`spawn` と同じく ConJS の名前）。
+* **見本のページ**（vm/wasm/web/stars.html）：canvas と、canvas.js、input.js のホストの関数で、stars.con.js を変換したモジュールを動かす。canvas が keydown を受け取れるように `tabindex="0"` を付け、ページを開いたときと、クリックしたときにフォーカスを置く。vm/wasm/web/build.sh が、canvas_demo_conjs と同じ形で stars_conjs.module.se を作る。`.claude/launch.json` の `conma-canvas` で見る。
+* canvas に描くのは、今の `host.call("canvas.draw", 命令のリスト)` のまま。JavaScript の canvas の API に似た形（`ctx.fillRect(...)`）は、P5c では作らない。
+
+**テスト**
+
+* **conjs/test/step14**（入力のライブラリ）：
+    * case1：`nextEvent` と `pollEvent`。case1.host.js（wasm 版の VM のホストの関数。bin/lang-test の `case*.host.js`）は、本物の input.js に、Node.js の `EventTarget` と、手で進める時計を渡す（test/fast16/host.js が、本物の canvas.js に記録する context を渡すのと同じ形。M2 のレビューの 1）。これで、ConJS の側だけでなく、input.js の列と待ちの決め方も確かめる：待つ人がいないときの入力をためること、2 つの処理が同時に待つとき先に待ったほうが先の入力を受け取ること、時間切れの待ちを列から外して後の入力を取らないこと。ほかに、キー、クリック、列が空のときの `pollEvent`、ms の扱い（`undefined`、`Infinity`、負の数、数でないときの TypeError）。
+    * 入力のまねの進め方：決まった手順の表を持ち、`input.next` が呼ばれた数で手順を進める。手順は「n 回目の `input.next` が呼ばれたら、次のタスクで、これらの入力を `dispatchEvent` で入れる」か「時計を ms だけ進める（時間切れの待ちが終わる）」。そのため、ログは本当の時計によらず決まる。手順を使い終わった後に `input.next` が呼ばれたら、Error（`input: the test has no more events`）にする（ずっと返さない Promise にすると、待っている呼び出しがあるので、スケジューラが終わらず、テストが止まる）。
+    * Rust 版と Python 版の VM には機能 `"input"` がないので、同じ case1 が、`host.available("input")` の偽と、`nextEvent` の TypeError を出す（case1.log。wasm 版は case1.wasm.log）。
+    * 入力のライブラリが使うホストの関数の名前（`input.next`、`input.poll`）と機能の名前（`"input"`）が、docs/PRIMITIVES.md にあることを、conjs/test/run_all.sh の今の検査で確かめる。
+* **見本**：conjs/test/step14/case2 で、stars.con.js を、canvas のまね（test/fast16 の命令を記録する canvas と同じ形）と入力のまねで動かす（wasm 版の VM だけ）。決まったキーの列で、タイトルから遊ぶ所に入り、何マスか動き、Escape で終わることと、例外が出ないことを確かめる。描いた命令とおばけの動きは、本当の時計（`sleep`）によるので、ログに出さない。Rust 版と Python 版の VM では、「this platform has no input」を出して終わる。
+* **ブラウザ**：アプリの中のブラウザで stars.html を開き、キーで自分が動き、おばけが近づき、ぶつかると結果の画面に移り、キーでタイトルに戻ることと、コンソールにエラーがないことを確かめる。
+* conjs/test の今の場合、sjs/test、consh/test、consh/js/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
+
+**終わりとすること**（5 節の表）：step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない。
+
+**P5c でしないこと**（後の候補）：ネイティブの VM の端末でキーを待つこと（端末を raw にする OS の機能が要る。Rust 版と Python 版の VM の `input.*`）。キーを押しているかを調べる関数（`isKeyDown`）、keyup、マウスの移動、タッチの複数の指。canvas の API に似た描き方。DOM の要素（ボタンや文字の入力欄）を待つこと。音。
+
+**M2 のレビュー**（PR shima3/conma#12）：見本の選び方と大きさ、`nextEvent` と `pollEvent` の名前と形、入力をためる列と待ちの決め方、P5c でしないことの分け方に、賛成をもらった。指摘を受けて、case1 で本物の input.js を時計のまねで動かすこと（手順を使い終わったときの Error も）、見本が画面を変えるときに残った入力を捨てること、`nextEvent` の ms の扱い、見本の Escape と待つ間隔（100 ミリ秒）、canvas の `tabindex` と、クリックの座標をいつも canvas の座標にすることを書き足した。
+
+### 4.7. 段階 P6a の設計（案、2026-11-21。M2 のレビューは PR shima3/conma#15）
+
+P6（プラットフォームを増やす）の最初の段階として、**端末**（macOS と Linux の Rust 版、transpiled VM、Python 版の VM）を足す。P5c で、ConJS の `nextEvent` と `pollEvent` は、ブラウザのページでだけ使えるようにした。P6a では、同じ 2 つを端末のキーでも使えるようにし、P5c の見本「星ひろい」を、同じファイルのまま端末でも遊べるようにする。6 節の 1 の「P6 の順」は、まず端末とし、その後の順（Node.js、WASI、デスクトップの GUI、モバイル）は、P6a の後で決める。
+
+* **選んだ理由**：作ろうとしているのは ConJS で、ConJS のプログラムが、ConMa の動くどの所でも同じに動くことが目標である（1 節の B）。P5c の対話のプログラムは、今はブラウザでしか動かない。端末は、どの開発者の手元にもあり、テストも 3 つの VM で同じログにできる。M2 のレビュー（PR shima3/conma#12）でも、端末でキーを待つことは P6 で考える、とした。
+* **VM を変えない**：端末のキーは、ConMa の今のプリミティブ（`__OS_get_stdin__`、`__OS_wait_readable__`、`__OS_read__`、`__OS_spawn__`）だけで読める。P5 の `fs` と `fetch` の curl の道と同じく、ConJS のライブラリ（conjs/include/conjs_lib.se）に書き、どの VM も、conma.js も変えない。
+
+**足すもの**
+
+* **端末の入力の道**（conjs/include/conjs_lib.se）：`nextEvent` と `pollEvent` は、ホストに機能 `"input"` があれば今のとおりそれを使い（ブラウザ）、なければ、標準入力から読む（端末）。
+    * 入力の列と待ちの列：P5c の input.js と同じく、読んだキーを届いた順に列にため、待ちの列は待ち始めた順に入力を渡し、時間切れの待ちは列から外す。どちらも、ConMa の値（Ref と LList）で持つ。
+    * 列を受け持つ VProc（M2 のレビューの 1 と、その後の確認）：ConJS のスケジューラ（include/lang/sched.se）は、待っている処理を、自分のチャネルに `Kit_sched_put` で届いた結果でだけ起こす。また、ConMa のスケジューラは、どの 2 つのステップの間でも VProc を切り替え（docs/SPEC.md）、Ref を読んで書き換えるのをまとめて行うプリミティブはない。いくつもの VProc が同じ列を読み書きすると、時間切れとキーが同じ待ちを終えて結果が 2 つ届いたり、足した待ちが古い列の書き戻しで消えたりする。そこで、input.js（1 つのスレッドなので `put` と時間切れが混ざらない）と同じ決め方を守るために、列は 1 つの VProc だけが持つ。
+        * 入力を受け持つ VProc を 1 つ置く。入力の列、待ちの列、ESC の持ち越しは、その VProc だけが読み書きする。ほかの VProc は、ConMa のチャネル（書き手はいくつあってもよい）で、その VProc に知らせを送る。
+        * `nextEvent`：（"wait"、処理、チャネルの書き手、ms、待ちの番号）を送って止まる（`Kit_sched_suspend` と、`"pending"` に 1 を足す所は、`Kit_sched_wait_work` と同じ）。受け持つ VProc は、列にキーがあればすぐに `Kit_sched_put` で渡し、なければ待ちの列に入れる。ms が 0 以上なら、`time.sleep` を待つ時間切れの VProc を始め、その VProc は、時間が来たら（"timeout"、待ちの番号）を送るだけにする。
+        * `pollEvent`：（"poll"、チャネルの書き手）を送り、答え（キーか null）を受け取る。ConJS の処理から見れば、`Kit_sched_wait_work` の待ちと同じ。
+        * 読み手：`__OS_wait_readable__` で待ち、読めた文字列をそのまま（"data"、文字列）で送る。標準入力が終わったら（"end"）を送る。読み手は、キーに分けない。
+        * 受け持つ VProc は、届いた文字列をキーに分け（1 回の読みから、いくつものキーを取り出す。キーを押し続けると `ESC [ A ESC [ A ...` が並ぶ）、キーごとに、待ちの列の先頭があれば `Kit_sched_put` で渡し、なければ列にためる。待ちを終えたら、その時間切れの VProc を `__VProc_kill__` で止める。（"timeout"、番号）が来たとき、その待ちがもう終わっていれば、何もしない。こうすれば、1 つの待ちに結果が 2 つ届くことはない。
+        * 受け持つ VProc と読み手は、`"pending"` に数えない（数えると、`nextEvent` を一度呼んだプログラムが終わらなくなる）。どちらも、初めて `nextEvent` か `pollEvent` を呼んだときに始める（ConJS の処理の外の VProc）。
+    * キーの名前：ブラウザの `KeyboardEvent.key` に合わせる。ふつうの文字はその文字、`\r` と `\n` は `"Enter"`、`\t` は `"Tab"`、127 と 8 は `"Backspace"`、ESC `[` `A`〜`D`（と ESC `O` `A`〜`D`）は `"ArrowUp"`、`"ArrowDown"`、`"ArrowRight"`、`"ArrowLeft"`、ESC だけなら `"Escape"`。ほかの ESC の並びと、名前を決めていない制御文字（Ctrl-A など。`-icanon` では Ctrl-D も 1 文字として届く）は `"Unidentified"`（捨てずに渡す。プログラムは無視できる）。クリックは、端末では来ない（`type` は、いつも `"key"`）。
+    * ESC の並びが分かれて届くとき（M2 のレビューの 3）：ssh ごしなどでは、`ESC [ A` が `ESC` と `[A` に分かれて届くことがある。読んだ分の終わりが、ESC か、終わっていない並び（`ESC [`、`ESC O`）なら、次の読みに持ち越す。40 ミリ秒、続きが来なければ、`"Escape"` か `"Unidentified"` にする（受け持つ VProc が、持ち越したときに時間切れの VProc を始め、その VProc が（"esc-timeout"、番号）を送る。その前に続きが届いていれば、何もしない）。標準入力が終わったら、すぐにそうする（テストのファイルでは、時計によらない）。
+    * 標準入力の終わり：`pollEvent` は `undefined`。`nextEvent` は、列が空で、もう来ないので、Error（`nextEvent: the input has ended`）を投げる（ずっと待つと、プログラムが終わらない）。時間を限った `nextEvent` も、時間を待たずに同じ Error にする。
+    * 端末のモード：標準入力が端末なら、行ごとでなく 1 文字ずつ読み、打った文字を出さないように、初めて読むときに `stty -icanon -echo`（`__OS_spawn__` で、標準入力を受け継ぐ）にし、前の設定（`stty -g` の出力）を覚えておく。端末でなければ（テストのファイルやパイプ）、`stty` は失敗するので、何もせずに読む。
+    * 端末を戻し、VProc を止める（M2 のレビューの 2）：Rust 版の VM は、すべての VProc が終わるまで動き、OS を待つ VProc は行き詰まりとしても報告されない。そこで、ライブラリが始めた VProc（受け持つ VProc、読み手、時間切れの VProc、SIGINT を受け取るために `__OS_trap_interrupt__` の Ref を `__Ref_wait_change__` で待つ VProc）を覚えておき、3 つの終わり方のどれでも、端末を戻してから、それらを `__VProc_kill__` で止める。
+        * ふつうに終わったとき：`Conjs_run` の終わり。
+        * 受け手のない例外で終わるとき：sjs_rt.se の `Sjs_uncaught` が、PDict の `"sjs_cleanup"` にある関数を、出す前に呼ぶ。`"sjs_cleanup"` は main の VProc の PDict に置き、ConJS の処理ごとに入れ替える PDict の名前（`"sjs_handlers"`、`"sjs_gen"`、`"sjs_pos"`）には入れない（どの処理で例外が起きても読める）。SJS と ConSh は置かないので変わらない。
+        * Ctrl-C：`-icanon` だけなので（`isig` は残す）、Ctrl-C は SIGINT のまま届く。`__OS_trap_interrupt__` で受け取り、戻して止めてから、終了ステータス 130 で終える。
+        * 3 つの道を通らない終わり方（ConMa の `__print_exit_error__` の道や、VM の止まるエラー）では、main の VProc だけが終わって読み手が残り、VM は終わらず、端末も戻らない（`__OS_trap_interrupt__` の後なので、Ctrl-C でも止まらないことがある）。まれな場合なので防がない。conjs/README-ja.md に、端末が戻らなかったときは別の端末から VM を止め、`stty sane`（か `reset`）を打つ、と書く。
+    * キーを待てるかを知る方法（M2 のレビューの 4）：`nextEvent` と `pollEvent` は、どこでも使える。端末でも、標準入力がファイルやパイプでも読み、入力がなければ（`/dev/null` など）、`nextEvent` は終わりの Error になる。`host.available("input")` は、今のとおりブラウザのホストの機能（input.js）を表し、端末では偽のままにする。ブラウザで input.js を渡さないページだけは、標準入力もないので、今のとおり TypeError（`nextEvent: this platform has no input`）。
+* **見本**（vm/wasm/web/stars.con.js）：機能 `"canvas"` があれば今のとおり canvas に描き、なければ端末に描く（今の「`"canvas"` か `"input"` がなければ終える」判定は、なくす）。`nextEvent` の終わりの Error（標準入力が `/dev/null` やパイプで、尽きたとき）は、見本が受け止め、「入力が終わった」と出して、ふつうに終える（端末も戻る）。端末では、ANSI のエスケープの並び（画面を消して左上に戻る `\u001b[2J\u001b[H`、色）を `console.log` で出し、自分を `@`、星を `*`、おばけを `G` で描く。描く処理は、`host.wait("canvas.frame")` の代わりに `sleep(100)` で待ち、変わったときだけ描く。クリックは来ないので、タイトルと結果の画面の説明を、端末では「キーで始める」にする。ゲームの決まり（画面の順、おばけごとの `spawn`、`nextEvent(100)`）は、2 つの描き方で同じにする。
+* **道具**：bin/lang-test は、今は標準入力を `/dev/null` にして動かす。ステップのディレクトリに `case*.in` があれば、それを標準入力にする（ConJS と SJS のほかのテストは変わらない）。
+
+**テスト**（conjs/test の step15。Rust 版、wasm 版（Node.js）、Python 版の VM で同じログ）
+
+* case1：`case1.in`（ふつうの文字、Enter、Tab、Backspace、矢印のキーの ESC の並び、続けて並んだ矢印のキー、Ctrl-A、ESC だけ、のバイトの列）を標準入力にして、`nextEvent` と `pollEvent` が返すキーの名前、1 回の読みからいくつものキーを取り出すこと、列にためること、時間を限った `nextEvent` で列に入力があればすぐ返すこと、標準入力の終わりの Error を確かめる。最後の ESC は、ファイルの終わりで続きが来ないので、時計を待たずに `"Escape"` になる。本当の時計を使う時間切れは、ログに入れない。
+    * ESC の並びが分かれて届く場合は、ファイルでは作れないので、テストのための小さな ConMa の関数（キーに分ける所だけ。読んだ文字列の並びを渡して、取り出したキーを返す）を、case3 で直に呼んで確かめる。
+* case2：見本を端末の道で動かし、`case2.in` の Escape で、タイトルから終わることを確かめる（遊ぶ所は、おばけが本当の時計で動き、描く回数が揺れるので、ログで比べない）。
+* step14 のログが変わる：Rust 版と Python 版の VM の case1 と case2 は、今は「入力がない」を確かめているが、端末の道ができるので、標準入力が `/dev/null`（すぐに終わり）のときの振る舞いに変わる。case1 は `nextEvent` の終わりの Error、case2 は、見本がそれを受け止めて終える（受け手のない例外にならない）ログになる。wasm 版の VM のログ（case*.wasm.log。ホストの input.js を使う）は変わらない。
+* 端末で遊ぶこと：Rust 版の VM で、本当の端末で見本を動かし、キーで動いておばけにぶつかり、Escape で終わったとき、Ctrl-C で止めたとき、例外で止めたときに、端末が元に戻る（打った文字が見え、行ごとに読む）ことを確かめる。これはテストにできないので、M1 と M2 が手で確かめ、8 節に書く。
+* conjs/test の今の場合、sjs/test、consh/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
+
+**終わりとすること**（5 節の表）：step15 が 3 つの VM で同じログで通る。見本が、Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない。
+
+**P6a でしないこと**（後の候補）：Windows の端末（`stty` がない。コンソールの API が要る）、マウス、端末の大きさ（`stty size`）と、大きさが変わったとき、色を使えない端末、キーを離したこと。ブラウザと端末の描き方を 1 つの API にすること（見本は、2 つの描き方を自分で持つ）。
+
+**M2 のレビュー**（PR shima3/conma#15）：P6 を端末から始めること、VM を変えずに ConJS のライブラリで標準入力を読む作り、キーの名前をブラウザに合わせること、標準入力の終わりを Error にすること、端末を戻す 3 つの道、step14 のログが変わることに、賛成をもらった。指摘を受けて、列を 1 つの VProc だけが持ち、ほかの VProc はチャネルで知らせを送る形（M2 の確認で、いくつもの VProc が同じ列を読み書きすると混ざることが分かったため。待ちの列、`Kit_sched_put`、時間切れの VProc は、その VProc が扱う）と、受け持つ VProc と読み手を `"pending"` に数えないこと、終わりに止める VProc と、3 つの道を通らない終わり方（README の `stty sane`）、ESC の並びの持ち越しと 40 ミリ秒、1 回の読みからいくつものキーを取り出すこと、キーを待てるかを知る方法と見本の終わり方、名前のない制御文字、`"sjs_cleanup"` を置く PDict を書き足した。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -354,13 +476,15 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 | P4（作った、2026-11-20。8.5 節） | 言語キット：SJS から部品を取り出し、SJS と ConJS をキットの上に書き直す | sjs/test、consh/test、sjs/bench（遅くならないこと） |
 | P5（作った、2026-11-20。8.6 節） | ConJS をふだん使えるものにする：ランタイムを先にモジュールにしておく。待つ呼び出しのライブラリ（タイマー、時刻、ファイル、fetch） | conjs/test が 3 つの VM で通る。`console.log("hi")` を動かす時間が 0.2 秒以下。sjs/bench の計算を ConJS で動かして遅くならない |
 | P5b（作った、2026-11-20。8.7 節） | ConJS が受け付ける JavaScript を広げる：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。`JSON.parse` と配列の `sort`（SJS と共有） | conjs/test が 3 つの VM で通り、足したものの場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/bench が遅くならない |
+| P5c（作った、2026-11-21。8.8 節） | ConJS で、ブラウザのキーとマウスの入力を待つ：ホストの関数 `input.next`、`input.poll`（機能 `"input"`）と、ConJS の `nextEvent`、`pollEvent`。見本の対話のゲーム（stars.con.js） | conjs/test の step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない |
+| P6a（設計の案、2026-11-21。4.7 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（忘れないための行。P5 の続きと P6 の後でよい。ユーザーが 2026-11-21 に頼んだ） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（忘れないための行。後でよい。ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
 
-1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。
+1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。P6 は、まず端末から始める（2026-11-21。4.7 節、段階 P6a）。その後の順は、P6a の後で決める。
 2. **見本の言語**（決めた、2026-11-19）：P5 の見本の言語は、**代数的エフェクトとハンドラの小さな言語**（Koka や Eff のような）にする。ハンドラは、捕まえた継続を値として扱うだけ（`__Cont_get__`）で、ConMa で作りやすい。構文を自分で決められるので、SJS と違う構文で、キットが言語によらないこと（4 節）も確かめられる。
     * M1 は、初め「待つ処理を直接スタイルで書ける、JavaScript の部分集合」を見本の言語に勧めた（aae726a）。M2 の意見（docs/dev/REVIEW-ja.md の 2026-11-19（3））を受けて、名前を **ConJS** にし（「直接スタイル」は、ふつうの JavaScript もそうなので区別できない。「await なしの JS」は非同期ができないように聞こえる。ConMa、ConSh と並ぶ名前にした）、見本の言語ではなく、**SJS の次の段**として作る（4.1 節、段階 P3b）。JavaScript の構文なので、キットが構文によらないことの確かめにならないため。
     * 比べた候補：Lua のサブセット（M2 の初めの案。キットの確かめにはなるが、C の処理系がどこでも動くので、ConMa に変換する得は小さい）、小さな Lisp（S 式で、キットの字句解析と構文解析をほとんど確かめない）、Forth のようなスタックの言語、アクターやチャネルの並行言語、論理型言語の小さなもの。
@@ -376,6 +500,7 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
 * **コア ConMa を小さく保つ**：プラットフォームの機能は、コア ConMa にも拡張の機能にも入れない。持たない VM では「使えない」になるだけで、言語の意味は変えない。
 * **変換したコード**：transpiled VM は、`__Host_call__` を、VM に任せる呼び出し（変換したコードから VM に戻る所）として扱うところから始める。速さが要れば、後で直接呼ぶ。
 * **wasm 版の大きさ**：プラットフォームの機能を足しても、wasm のファイルは大きくしない（ホストの関数は JavaScript の側に置く）。
+* **Node.js で、決まらない Promise を待つとき**（2026-11-21。8.8 節。M2 の PR shima3/conma#14 のレビューの 2）：wasm 版の VM を Node.js で動かすと（vm/wasm/vm-node.js）、ホストの関数が返した Promise がいつまでも決まらず、ほかに動かせる処理もないとき、プロセスが何も出さずに終了ステータス 0 で終わる。テストはログと比べるので見逃さないが、手で動かすと、正しく終わったように見える。直すなら、vm-node.js が「待っている呼び出しがあるのに、起こすものがない」ことを見つけて、行き詰まりとして知らせる（P7 でホストの関数を足す口を作るときに考える）。
 
 ## 8. 作ったもの
 
@@ -493,3 +618,17 @@ P5b では、ConJS が受け付ける JavaScript を広げる（4.1 節の「Con
     * コンストラクタが返すオブジェクトを、`new` の値にする（JavaScript と同じ）。親のコンストラクタが返したものは、子の `this` にしない（conjs/README-ja.md の違い）。
     * エラーの `name` と `toString` を、組み込みのエラーのコンストラクタの記録の、メソッドの表に置く（JavaScript のプロトタイプと同じ所）。`this.name = "MyErr"` が `Object.keys` と JSON に出て、`new Error().toString()` が動く。ConJS では、ランタイムが投げるエラーも、同じ名前のエラーのコンストラクタの記録を持つ（sjs_rt.se の `Sjs_error_object`。エラーを作るたびに 24 ステップ多い）。
     * `JSON.parse` は、JSON の数の形（`+1`、`01`、`1.`、`.5` は SyntaxError）と、文字列の中の生の制御文字を確かめる。大きな JSON の parse は、1 割ほど遅くなった。
+
+### 8.8. 段階 P5c（2026-11-21）
+
+4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った。使い方は conjs/README-ja.md の「入力を待つ」。
+
+* **ホストの関数**（vm/wasm/host/input.js。機能 `"input"`。docs/PRIMITIVES.md）：`ConmaInput(canvas, options)` が、`input.next ms`（待つ）と `input.poll`（すぐ返る）を返す。keydown（options の `keyTarget`。既定は canvas）と、canvas の pointerdown を列にためる。待ちの列は、待ち始めた順に入力を渡し、時間切れの待ちは列から外す。時計（`setTimeout`、`clearTimeout`）は、options で替えられる。
+* **ConJS のライブラリ**（conjs/include/conjs_lib.se）：`nextEvent(ms)`（`Conjs_next_event`。ms は `Conjs_event_ms` で、`undefined` と `Infinity` を -1 にする）と `pollEvent()`（`Conjs_poll_event`）。入力の LList を、`Conjs_event_object` がオブジェクトにする。機能がなければ TypeError（`Conjs_input_check`）。
+* **見本**：vm/wasm/web/stars.con.js（「星ひろい」）と stars.html。vm/wasm/web/build.sh が、input.js と、変換したモジュール（stars_conjs.module.se。git には入れない）を置く。アプリの中のブラウザで、タイトルからクリックで始め、矢印のキーで動いて星を拾い、おばけにぶつかって結果の画面に移り、キーでタイトルに戻り、Escape で終わる（`stars: bye`）ことと、コンソールにエラーがないことを確かめた。面をクリアする道は、星を 1 つにした写しを、入力のまねで動かして確かめた（git には入れていない）。
+* **テスト**：conjs/test/step14。case1（`nextEvent` と `pollEvent`）と case2（見本。conjs/test/step14/case2.con.js は vm/wasm/web/stars.con.js へのシンボリックリンク）。wasm 版の VM では、case*.host.js が、本物の input.js を、入力のまね（conjs/test/step14/input_mock.js。`input.next` が呼ばれた数で手順を進め、手で進める時計を渡す）で動かす。case1 は、待つ人がいないときの入力をためること、2 つの処理が同時に待つときの順、時間切れの待ちが後の入力を取らないこと、ms の扱い、手順を使い終わった後の Error を確かめる。Rust 版と Python 版の VM では、機能がないことを確かめる（case*.log。wasm 版は case*.wasm.log）。
+* **確かめたこと**（Apple M1）：conjs/test が Rust 版（15 秒）、wasm 版（19 秒）、Python 版（3 分 30 秒）で通る。conjs/test/compare.sh が通る。bin/lang-emit-check（alpha と比べる）に違いがない（SJS と、今の ConJS のプログラムが作るコードは変わらない）。
+* **見つけたこと**（P5c では直さない）：
+    * フロントエンド（`conma build`）の時間が、1 つの CPS の鎖の長さ（続けて束縛する数）に対して、2 乗のように増える。ConJS のプログラムは、ファイルの文の並び全体が 1 つの鎖になるので、文が多いと遅い。`const x = [...]` を並べただけのプログラムで、100 文 0.46 秒、200 文 0.91 秒、400 文 2.23 秒、800 文 6.48 秒（Rust 版の VM。変換を含む）。stars.con.js（217 行。変換したものは約 88 KB で、束縛は約 1770）は、フロントエンドに約 6.6 秒かかる（canvas_demo.con.js は、束縛約 450 で約 0.1 秒）。そのため、conjs/test の step14 の case2 は、どの VM でも 7 秒ほどかかる。ページのモジュールは build.sh が先に作るので、遊ぶときには関係ない。
+    * wasm 版の VM を Node.js で動かすとき（vm/wasm/vm-node.js）、ホストの関数が返した Promise がいつまでも決まらず、ほかに動かせる処理もないと、Node.js のイベントループに何も残らないので、プロセスが何も出さずに終了ステータス 0 で終わる（vm-node.js は、`jsPending()` が 0 でないので、待つ Promise を作って待つが、それを起こすものがない）。ネイティブの VM なら待ち続ける所である。ページでは待ち続ける（正しい）。入力のまねの手順を間違えたときに見つけ、`host.wait` で決まらない Promise を返すホストの関数で確かめた。手順を使い終わった後の `input.next` を Error にしたので、テストでは起きない。
+
