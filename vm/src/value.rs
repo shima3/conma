@@ -973,11 +973,15 @@ pub enum StrInfo {
 pub struct StrObj {
     pub text: Box<str>,
     pub info: Cell<StrInfo>,
+    /// The last position found in a String that is not all ASCII, as (code points, byte offset),
+    /// so that the next position is found by walking from there (prim/string.rs, char_to_byte_at).
+    /// Only a cache, as info.
+    pub mark: Cell<(usize, usize)>,
 }
 
 impl StrObj {
     pub fn new(text: &str, info: StrInfo) -> StrObj {
-        StrObj { text: Box::from(text), info: Cell::new(info) }
+        StrObj { text: Box::from(text), info: Cell::new(info), mark: Cell::new((0, 0)) }
     }
 }
 

@@ -1,7 +1,10 @@
 ;; Step46：文字列の位置と長さ（docs/dev/STRING-INDEX-PLAN-ja.md の S3）。Rust 版の VM は、実行時に作った文字列に
 ;; 「すべて ASCII か」と文字数を覚え、つなぐ、一部を取るときに受け継ぐ。結果とエラーが、覚える前と同じこと
 ;; （Python 版の VM と同じこと）を、境目の値で確かめる：空の文字列、ASCII と ASCII でないもの、そのつなぎ、
-;; ASCII でない文字列の ASCII の一部、範囲の外（エラーの長さ）、find、find_any、strip_suffix、fromCode
+;; ASCII でない文字列の ASCII の一部、範囲の外（エラーの長さ）、find、find_any、strip_suffix、fromCode。
+;; case2：ASCII でない文字列で、最後に求めた位置から次の位置を求めるようにした（STRING-INDEX-PLAN-ja.md の 7）。
+;; 同じ文字列の位置を、前へ、少し後ろへ、頭に近い所へ、終わりへ、範囲の外へと動かし、1 文字ずつ前から後ろへ、
+;; 後ろから前へ読んでも、結果とエラーが Python 版の VM と同じこと
 (include "util.se")
 
 (define println ,(str)
@@ -109,3 +112,49 @@
   __String_concat__ big hira ,(two)
   show_len "fromCode A+あ" two ,()
   show_sub "fromCode A+あ 1 2" two "1" "2")
+
+;; s の i 文字目から 1 文字ずつ、step（1 か -1）ずつ動いて読み、つないだもの（i が範囲を出たら終わり）
+(define walk ,(s i step acc)
+  __String_length__ s ,(n)
+  __Number_is_negative__ i ,(before)
+  __Number_subtract__ i n ,(d)
+  __Number_is_negative__ d ,(inside)
+  __not__ inside ,(after)
+  __or__ before after ,(out)
+  __if_then_else__ out
+    (,() __NULL__ acc)
+    (,()
+      num "1" ,(one)
+      __Number_add__ i one ,(next)
+      __String_substring__ __print_exit_error__ s i next ,(c)
+      __String_concat__ acc c ,(acc)
+      __Number_add__ i step ,(i)
+      walk s i step acc))
+
+(define case2 ,()
+  made "ab日本cd語ef、ghいろは" ,(m)
+  show_len "mixed" m ,()
+  show_sub "mixed 3 4" m "3" "4" ,()
+  show_sub "mixed 6 9" m "6" "9" ,()
+  show_sub "mixed 5 6" m "5" "6" ,()
+  show_sub "mixed 0 2" m "0" "2" ,()
+  show_sub "mixed 13 15" m "13" "15" ,()
+  show_sub "mixed 15 15" m "15" "15" ,()
+  show_sub "mixed 1 3" m "1" "3" ,()
+  show_sub "mixed 15 16" m "15" "16" ,()
+  show_sub "mixed 14 15" m "14" "15" ,()
+  show_sub "mixed 2 16" m "2" "16" ,()
+  show_sub "mixed 8 12" m "8" "12" ,()
+  show_find "mixed find g 3" m "g" "3" ,()
+  show_find "mixed find 語 0" m "語" "0" ,()
+  show_find "mixed find 日 4" m "日" "4" ,()
+  show_any "mixed any ろf 11" m "ろf" "11" ,()
+  show_any "mixed any 本い 1" m "本い" "1" ,()
+  show_any "mixed any x 15" m "x" "15" ,()
+  show_any "mixed any x 16" m "x" "16" ,()
+  show_sub "mixed 0 15" m "0" "15" ,()
+  num "0" ,(zero) num "1" ,(one) num "14" ,(last) num "-1" ,(back)
+  walk m zero one "" ,(forward)
+  __String_concat__ "forward: " forward ,(l) println l ,()
+  walk m last back "" ,(backward)
+  __String_concat__ "backward: " backward ,(l) println l)
