@@ -66,6 +66,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * M1 が流したもの（Apple M1）：test/ を Rust 版（26 秒）、Python 版（1 分 50 秒）、wasm 版（51 秒。違いは既知の step40 だけ）で。consh/test を Rust 版で（32 秒）。consh/js/test（17 秒）、sjs/test（41 秒）。conjs/test を Rust 版（12 秒）、wasm 版（17 秒）、Python 版（4 分 22 秒）で。conjs/test/compare.sh。test/host-api.sh（Rust 版と wasm 版）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS は、書き換えた conjs/test/step5 の場合だけ違う）。vm の `cargo test --release`（3 つ通る。example も作られる）。transpiled VM を `CONMA2RUST_COMPACT=1 bench/build.sh` で作り直し（20 分。この transpiled VM はベンチマークに使わない）、その test/（27 秒）と consh/test（27 秒）が通る（`transpiled code: used`）。
 * 流していないもの：ConSh の参照版、Python 版の VM の sjs/test と consh/test、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、ブラウザのページ（vm/wasm/web。conma.js の `hostEncode` と `hostDecode` を変えた）。
 * 測ったもの：なし。ホストの関数を名前で引く所が、決まった表から `Machine` の `HashMap` になったが、ホストを呼ばない計算（sjs/bench など）は通らない所なので、測っていない。Full Bench の依頼はない。
+* PR は shima3/conma#26。
 
 ## 記録
 
