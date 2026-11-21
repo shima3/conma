@@ -53,6 +53,7 @@ CONMA_VM=python conjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
+| Python 版（Full Test には入らない組み合わせ） | consh/test の step12 の case8 | Ctrl-C を送るテストで、case8.py が疑似端末に書く所で `OSError: [Errno 5] Input/output error` になる（2026-11-22 に M2 が PR shima3/conma#29 で気付いた。alpha の 24468d4 と a604198 でも同じ）。まだ調べていない |
 
 ## 申し送り
 
@@ -72,7 +73,7 @@ CONMA_VM=python conjs/test/run_all.sh
 * Python 版の VM（vm/python/vproc_run.py）が、モジュールのファイルより後の引数を、`-` で始まっても、そのままプログラムに渡すようにした（Rust 版の VM と同じ。オプションは、モジュールのファイルより前と `--` まで）。前は argparse が全体を読み、`--demo` はエラーで止まり、`-t` や `-m` は黙って VM のオプションになっていた（PR shima3/conma#28 の見本で気付いた）。
 * 作り直すもの：なし。
 * 新しいテスト：conjs/test/step16 の case7（`-` で始まる引数が、3 つの VM で同じ `argv` になること）。
-* M2 が流したもの（Apple M2）：conjs/test を Rust 版（11 秒）、wasm 版（18 秒）、Python 版（3 分 33 秒）で。test/ を Python 版で（1 分 25 秒）。sjs/test と consh/test を Python 版で（ふだん流さない組み合わせ）：sjs/test は step1、2、3、5、12 で出力の順が違い、consh/test は step12 の case8（Ctrl-C）が `OSError: [Errno 5]` で失敗する。どちらも alpha（24468d4 と a604198）でも同じで、この変更とは関係ない。
+* M2 が流したもの（Apple M2）：conjs/test を Rust 版（11 秒）、wasm 版（18 秒）、Python 版（3 分 33 秒）で。test/ を Python 版で（1 分 25 秒）。sjs/test と consh/test を Python 版で（ふだん流さない組み合わせ）：sjs/test は step1、2、3、5、12 で出力の順が違い、consh/test は step12 の case8（Ctrl-C）が `OSError: [Errno 5]` で失敗する。どちらも alpha（24468d4 と a604198）でも同じで、この変更とは関係ない。case8 は、上の既知の違いに足した（M1 のレビューの答えの 2）。
 * 流していないもの：Rust 版、wasm 版、transpiled VM の test/ と consh/test（vm/python のほかは変えていない）。
 * 測ったもの：なし。
 
