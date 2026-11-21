@@ -418,7 +418,7 @@ function play() {
 
 **M2 のレビュー**（PR shima3/conma#12）：見本の選び方と大きさ、`nextEvent` と `pollEvent` の名前と形、入力をためる列と待ちの決め方、P5c でしないことの分け方に、賛成をもらった。指摘を受けて、case1 で本物の input.js を時計のまねで動かすこと（手順を使い終わったときの Error も）、見本が画面を変えるときに残った入力を捨てること、`nextEvent` の ms の扱い、見本の Escape と待つ間隔（100 ミリ秒）、canvas の `tabindex` と、クリックの座標をいつも canvas の座標にすることを書き足した。
 
-### 4.7. 段階 P6a の設計（案、2026-11-21）
+### 4.7. 段階 P6a の設計（案、2026-11-21。M2 のレビューは PR shima3/conma#15）
 
 P6（プラットフォームを増やす）の最初の段階として、**端末**（macOS と Linux の Rust 版、transpiled VM、Python 版の VM）を足す。P5c で、ConJS の `nextEvent` と `pollEvent` は、ブラウザのページでだけ使えるようにした。P6a では、同じ 2 つを端末のキーでも使えるようにし、P5c の見本「星ひろい」を、同じファイルのまま端末でも遊べるようにする。6 節の 1 の「P6 の順」は、まず端末とし、その後の順（Node.js、WASI、デスクトップの GUI、モバイル）は、P6a の後で決める。
 
@@ -428,21 +428,31 @@ P6（プラットフォームを増やす）の最初の段階として、**端�
 **足すもの**
 
 * **端末の入力の道**（conjs/include/conjs_lib.se）：`nextEvent` と `pollEvent` は、ホストに機能 `"input"` があれば今のとおりそれを使い（ブラウザ）、なければ、標準入力から読む（端末）。
-    * 入力の列：P5c の input.js と同じく、読んだキーを届いた順に列にため、待ちの列は待ち始めた順に入力を渡し、時間切れの待ちは列から外す。列と待ちの列は、ConMa の値（Ref と LList）で持つ。
-    * 読み手：初めて `nextEvent` か `pollEvent` を呼んだときに、標準入力を読むための VProc を 1 つ始める（`Kit_sched_wait_work` と同じく、ConJS の処理の外の VProc）。読み手は、`__OS_wait_readable__` で待ち、読めた分を `__OS_read__` で読み、キーに分けて列に入れる。`nextEvent` の時間切れは、`time.sleep` との競争で決める（先に終わったほうが待ちを終える。後から来たキーは列に残る）。
-    * キーの名前：ブラウザの `KeyboardEvent.key` に合わせる。ふつうの文字はその文字、`\r` と `\n` は `"Enter"`、`\t` は `"Tab"`、127 と 8 は `"Backspace"`、ESC `[` `A`〜`D`（と ESC `O` `A`〜`D`）は `"ArrowUp"`、`"ArrowDown"`、`"ArrowRight"`、`"ArrowLeft"`、1 回の `__OS_read__` で ESC だけが来たら `"Escape"`。ほかの ESC の並びは、`"Unidentified"`。クリックは、端末では来ない（`type` は、いつも `"key"`）。
+    * 入力の列と待ちの列：P5c の input.js と同じく、読んだキーを届いた順に列にため、待ちの列は待ち始めた順に入力を渡し、時間切れの待ちは列から外す。どちらも、ConMa の値（Ref と LList）で持つ。
+    * 読み手が直に起こす（M2 のレビューの 1）：ConJS のスケジューラ（include/lang/sched.se）は、待っている処理を、自分のチャネルに `Kit_sched_put` で届いた結果でだけ起こす。そこで、input.js の `put` と時間切れを、そのまま ConMa に写す。
+        * `nextEvent`：列にキーがあれば、すぐに返す。なければ、待ちの列に（処理、チャネルの書き手）を入れて止まる（`Kit_sched_suspend` と、`"pending"` に 1 を足す所は、`Kit_sched_wait_work` と同じ）。
+        * 読み手：初めて `nextEvent` か `pollEvent` を呼んだときに、標準入力を読むための VProc を 1 つ始める（ConJS の処理の外の VProc）。`__OS_wait_readable__` で待ち、読めた分を `__OS_read__` で読み、キーに分ける。キーごとに、待ちの列の先頭があれば、それに `Kit_sched_put` で渡し、なければ列にためる。読み手は `"pending"` に数えない（数えると、`nextEvent` を一度呼んだプログラムが終わらなくなる）。
+        * 時間を限った待ち：`time.sleep` を待つ VProc を 1 つ始める。その VProc は、待ちがまだ待ちの列にあれば外して null を渡し、もうなければ何もしない。キーが先に来て待ちを終えたら、読み手がその VProc を `__VProc_kill__` で止める。
+        * 1 回の `__OS_read__` から、いくつものキーを取り出す（キーを押し続けると、`ESC [ A ESC [ A ...` が並ぶ）。
+    * キーの名前：ブラウザの `KeyboardEvent.key` に合わせる。ふつうの文字はその文字、`\r` と `\n` は `"Enter"`、`\t` は `"Tab"`、127 と 8 は `"Backspace"`、ESC `[` `A`〜`D`（と ESC `O` `A`〜`D`）は `"ArrowUp"`、`"ArrowDown"`、`"ArrowRight"`、`"ArrowLeft"`、ESC だけなら `"Escape"`。ほかの ESC の並びと、名前を決めていない制御文字（Ctrl-A など。`-icanon` では Ctrl-D も 1 文字として届く）は `"Unidentified"`（捨てずに渡す。プログラムは無視できる）。クリックは、端末では来ない（`type` は、いつも `"key"`）。
+    * ESC の並びが分かれて届くとき（M2 のレビューの 3）：ssh ごしなどでは、`ESC [ A` が `ESC` と `[A` に分かれて届くことがある。読んだ分の終わりが、ESC か、終わっていない並び（`ESC [`、`ESC O`）なら、次の読みに持ち越す。40 ミリ秒、続きが来なければ（読み手が `__OS_wait_readable__` と `time.sleep` を競わせる）、`"Escape"` か `"Unidentified"` にする。標準入力が終わったら、すぐにそうする（テストのファイルでは、時計によらない）。
     * 標準入力の終わり：`pollEvent` は `undefined`。`nextEvent` は、列が空で、もう来ないので、Error（`nextEvent: the input has ended`）を投げる（ずっと待つと、プログラムが終わらない）。時間を限った `nextEvent` も、時間を待たずに同じ Error にする。
     * 端末のモード：標準入力が端末なら、行ごとでなく 1 文字ずつ読み、打った文字を出さないように、初めて読むときに `stty -icanon -echo`（`__OS_spawn__` で、標準入力を受け継ぐ）にし、前の設定（`stty -g` の出力）を覚えておく。端末でなければ（テストのファイルやパイプ）、`stty` は失敗するので、何もせずに読む。
-    * 端末を戻す：覚えた設定を、`stty` でプログラムの終わりに戻す。ふつうに終わったとき（`Conjs_run` の終わり）、受け手のない例外で終わるとき（sjs_rt.se の `Sjs_uncaught` が、PDict の `"sjs_cleanup"` にある関数を、出す前に呼ぶ。SJS と ConSh は置かないので変わらない）、Ctrl-C（`__OS_trap_interrupt__` で受け取り、戻してから終了ステータス 130 で終える。`-icanon` だけなので、Ctrl-C は SIGINT のまま届く）。読み手の VProc は、プログラムの終わりに止める。
-* **見本**（vm/wasm/web/stars.con.js）：機能 `"canvas"` があれば今のとおり canvas に描き、なければ端末に描く。端末では、ANSI のエスケープの並び（画面を消して左上に戻る `\u001b[2J\u001b[H`、色）を `console.log` で出し、自分を `@`、星を `*`、おばけを `G` で描く。描く処理は、`host.wait("canvas.frame")` の代わりに `sleep(100)` で待ち、変わったときだけ描く。クリックは来ないので、タイトルと結果の画面の説明を、端末では「キーで始める」にする。ゲームの決まり（画面の順、おばけごとの `spawn`、`nextEvent(100)`）は、2 つの描き方で同じにする。
+    * 端末を戻し、VProc を止める（M2 のレビューの 2）：Rust 版の VM は、すべての VProc が終わるまで動き、OS を待つ VProc は行き詰まりとしても報告されない。そこで、ライブラリが始めた VProc（読み手、時間切れの VProc、SIGINT を受け取るために `__OS_trap_interrupt__` の Ref を `__Ref_wait_change__` で待つ VProc）を覚えておき、3 つの終わり方のどれでも、端末を戻してから、それらを `__VProc_kill__` で止める。
+        * ふつうに終わったとき：`Conjs_run` の終わり。
+        * 受け手のない例外で終わるとき：sjs_rt.se の `Sjs_uncaught` が、PDict の `"sjs_cleanup"` にある関数を、出す前に呼ぶ。`"sjs_cleanup"` は main の VProc の PDict に置き、ConJS の処理ごとに入れ替える PDict の名前（`"sjs_handlers"`、`"sjs_gen"`、`"sjs_pos"`）には入れない（どの処理で例外が起きても読める）。SJS と ConSh は置かないので変わらない。
+        * Ctrl-C：`-icanon` だけなので（`isig` は残す）、Ctrl-C は SIGINT のまま届く。`__OS_trap_interrupt__` で受け取り、戻して止めてから、終了ステータス 130 で終える。
+        * 3 つの道を通らない終わり方（ConMa の `__print_exit_error__` の道や、VM の止まるエラー）では、main の VProc だけが終わって読み手が残り、VM は終わらず、端末も戻らない（`__OS_trap_interrupt__` の後なので、Ctrl-C でも止まらないことがある）。まれな場合なので防がない。conjs/README-ja.md に、端末が戻らなかったときは別の端末から VM を止め、`stty sane`（か `reset`）を打つ、と書く。
+    * キーを待てるかを知る方法（M2 のレビューの 4）：`nextEvent` と `pollEvent` は、どこでも使える。端末でも、標準入力がファイルやパイプでも読み、入力がなければ（`/dev/null` など）、`nextEvent` は終わりの Error になる。`host.available("input")` は、今のとおりブラウザのホストの機能（input.js）を表し、端末では偽のままにする。ブラウザで input.js を渡さないページだけは、標準入力もないので、今のとおり TypeError（`nextEvent: this platform has no input`）。
+* **見本**（vm/wasm/web/stars.con.js）：機能 `"canvas"` があれば今のとおり canvas に描き、なければ端末に描く（今の「`"canvas"` か `"input"` がなければ終える」判定は、なくす）。`nextEvent` の終わりの Error（標準入力が `/dev/null` やパイプで、尽きたとき）は、見本が受け止め、「入力が終わった」と出して、ふつうに終える（端末も戻る）。端末では、ANSI のエスケープの並び（画面を消して左上に戻る `\u001b[2J\u001b[H`、色）を `console.log` で出し、自分を `@`、星を `*`、おばけを `G` で描く。描く処理は、`host.wait("canvas.frame")` の代わりに `sleep(100)` で待ち、変わったときだけ描く。クリックは来ないので、タイトルと結果の画面の説明を、端末では「キーで始める」にする。ゲームの決まり（画面の順、おばけごとの `spawn`、`nextEvent(100)`）は、2 つの描き方で同じにする。
 * **道具**：bin/lang-test は、今は標準入力を `/dev/null` にして動かす。ステップのディレクトリに `case*.in` があれば、それを標準入力にする（ConJS と SJS のほかのテストは変わらない）。
 
 **テスト**（conjs/test の step15。Rust 版、wasm 版（Node.js）、Python 版の VM で同じログ）
 
-* case1：`case1.in`（ふつうの文字、Enter、矢印のキーの ESC の並び、ESC だけ、のバイトの列）を標準入力にして、`nextEvent` と `pollEvent` が返すキーの名前、列にためること、時間を限った `nextEvent` で列に入力があればすぐ返すこと、標準入力の終わりの Error を確かめる。時間切れそのもの（本当の時計）は、ログの順が揺れないように、終わりの Error の前の 1 回だけにする。
-    * ファイルは 1 回の `__OS_read__` でまとめて読まれることがあるので、ESC だけを「Escape」とするのは、その回の終わりに ESC が来たときだけにする。case1.in では、Escape を最後に置く。
+* case1：`case1.in`（ふつうの文字、Enter、Tab、Backspace、矢印のキーの ESC の並び、続けて並んだ矢印のキー、Ctrl-A、ESC だけ、のバイトの列）を標準入力にして、`nextEvent` と `pollEvent` が返すキーの名前、1 回の読みからいくつものキーを取り出すこと、列にためること、時間を限った `nextEvent` で列に入力があればすぐ返すこと、標準入力の終わりの Error を確かめる。最後の ESC は、ファイルの終わりで続きが来ないので、時計を待たずに `"Escape"` になる。本当の時計を使う時間切れは、ログに入れない。
+    * ESC の並びが分かれて届く場合は、ファイルでは作れないので、テストのための小さな ConMa の関数（キーに分ける所だけ。読んだ文字列の並びを渡して、取り出したキーを返す）を、case3 で直に呼んで確かめる。
 * case2：見本を端末の道で動かし、`case2.in` の Escape で、タイトルから終わることを確かめる（遊ぶ所は、おばけが本当の時計で動き、描く回数が揺れるので、ログで比べない）。
-* step14 のログが変わる：Rust 版と Python 版の VM の case1 と case2 は、今は「入力がない」を確かめているが、端末の道ができるので、標準入力が `/dev/null`（すぐに終わり）のときの振る舞い（`nextEvent` の終わりの Error、見本はタイトルで終わる）に変わる。wasm 版の VM のログ（case*.wasm.log。ホストの input.js を使う）は変わらない。
+* step14 のログが変わる：Rust 版と Python 版の VM の case1 と case2 は、今は「入力がない」を確かめているが、端末の道ができるので、標準入力が `/dev/null`（すぐに終わり）のときの振る舞いに変わる。case1 は `nextEvent` の終わりの Error、case2 は、見本がそれを受け止めて終える（受け手のない例外にならない）ログになる。wasm 版の VM のログ（case*.wasm.log。ホストの input.js を使う）は変わらない。
 * 端末で遊ぶこと：Rust 版の VM で、本当の端末で見本を動かし、キーで動いておばけにぶつかり、Escape で終わったとき、Ctrl-C で止めたとき、例外で止めたときに、端末が元に戻る（打った文字が見え、行ごとに読む）ことを確かめる。これはテストにできないので、M1 と M2 が手で確かめ、8 節に書く。
 * conjs/test の今の場合、sjs/test、consh/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
 
@@ -450,7 +460,7 @@ P6（プラットフォームを増やす）の最初の段階として、**端�
 
 **P6a でしないこと**（後の候補）：Windows の端末（`stty` がない。コンソールの API が要る）、マウス、端末の大きさ（`stty size`）と、大きさが変わったとき、色を使えない端末、キーを離したこと。ブラウザと端末の描き方を 1 つの API にすること（見本は、2 つの描き方を自分で持つ）。
 
-**M2 に聞きたいこと**：P6 を端末から始めること。VM を変えずに、ConJS のライブラリで標準入力を読む作り（読み手の VProc、`time.sleep` との競争、`stty`）。キーの名前の決め方と、ESC だけを Escape とする決め方。標準入力の終わりを Error にすること。端末を戻す 3 つの道（`"sjs_cleanup"` を SJS のランタイムに足すこと）。step14 のログが変わること。
+**M2 のレビュー**（PR shima3/conma#15）：P6 を端末から始めること、VM を変えずに ConJS のライブラリで標準入力を読む作り、キーの名前をブラウザに合わせること、標準入力の終わりを Error にすること、端末を戻す 3 つの道、step14 のログが変わることに、賛成をもらった。指摘を受けて、読み手が待っている処理を直に起こす形（待ちの列、`Kit_sched_put`、時間切れの VProc）と、読み手を `"pending"` に数えないこと、終わりに止める VProc と、3 つの道を通らない終わり方（README の `stty sane`）、ESC の並びの持ち越しと 40 ミリ秒、1 回の読みからいくつものキーを取り出すこと、キーを待てるかを知る方法と見本の終わり方、名前のない制御文字、`"sjs_cleanup"` を置く PDict を書き足した。
 
 ## 5. 段階
 
