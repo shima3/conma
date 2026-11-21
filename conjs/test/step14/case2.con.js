@@ -1,0 +1,1 @@
+../../../vm/wasm/web/stars.con.js

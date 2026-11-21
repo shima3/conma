@@ -1,0 +1,13 @@
+true
+TypeError: nextEvent: expected milliseconds (a number), got the string "soon"
+{ type: 'key', key: 'ArrowUp' }
+{ type: 'click', x: 10, y: 20 } undefined
+undefined
+undefined undefined
+undefined
+{ type: 'key', key: 'x' }
+main { type: 'key', key: 'a' }
+spawned { type: 'key', key: 'b' }
+{ type: 'key', key: 'Escape' }
+Error: input: the test has no more events
+exit: 0
