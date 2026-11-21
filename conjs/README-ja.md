@@ -36,7 +36,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
     * `console.log` は、Node.js と同じく、インスタンスを `Point { x: 1, y: 2 }`、クラスを `[class Point]`（`[class B extends A]`）と出す。`Object.keys`、`JSON.stringify`、スプレッドは、自分のプロパティだけを見る（JavaScript と同じ）。
 * **`spawn(f)`**：引数のない関数 f を新しい処理として列の最後に入れ、処理（task）を返す。呼んだ側は、次に待つまで動き続ける。task は `console.log` で `[Task]`、`typeof` は `"object"`。
 * **`join(t)`**：処理 t が終わるまで待ち、f の戻り値を返す。t が例外で終わっていれば、その例外を、t の中で投げた所の位置のまま投げ直す。何度でも、いくつの処理からでも join できる。自分自身の join は TypeError。
-* **`host.call(name, ...args)`**：すぐ返るホストの関数（`__Host_call__`）。**`host.wait(name, ...args)`**：待つホストの関数（`__Host_start__`）。**`host.available(feature)`**：`__Feature_available__`。渡せるのは、数、文字列、それらの配列で、ホストが返した LList は配列、null は `undefined` になる（空の配列も `undefined` になる）。ホストにない関数と、関数の失敗は、ホストのメッセージを持つ `Error` を投げる。テストの関数（`test.add`、`test.echo`、`test.fail`、`test.later`）は、どの VM にもある（docs/PRIMITIVES.md の `__Host_call__` と `__Host_start__`）。
+* **`host.call(name, ...args)`**：すぐ返るホストの関数（`__Host_call__`）。**`host.wait(name, ...args)`**：待つホストの関数（`__Host_start__`）。**`host.available(feature)`**：`__Feature_available__`。渡せるのは、数、文字列、真偽、オブジェクト（自分のプロパティだけ）、それらの配列で、ホストが返した LList は配列、Dict はオブジェクト、null は `undefined` になる（空の配列も `undefined` になる）。ホストにない関数と、関数の失敗は、ホストのメッセージを持つ `Error` を投げる。ホストの関数の足し方（ブラウザ、Node.js、Rust 版の VM）と、渡せる値の詳しいことは [docs/HOST-ja.md](../docs/HOST-ja.md)（段階 P7）。テストの関数（`test.add`、`test.echo`、`test.fail`、`test.later`）は、どの VM にもある。
 * **待つ呼び出しのライブラリ**（段階 P5。conjs/include/conjs_lib.se）：名前は JavaScript にならうが、Promise を返さず、結果が届くまで、呼んだ処理だけが待つ。SJS が除くホストのものなので、ConJS だけにあり、SJS にはない。
     * **`sleep(ms)`**：ms ミリ秒、呼んだ処理だけが待つ（JavaScript にない名前）。ms が `undefined`、負の数、NaN、無限なら 0。数でなければ TypeError。`undefined` を返す。
     * **`setTimeout(f, ms, ...args)`**：`spawn(() => { sleep(ms); return f(...args); })` と同じ。JavaScript と違い、数ではなく処理を返すので、`join` で f の戻り値を受け取れる（`clearTimeout` はない）。f が投げた例外は、JavaScript のようにその場でプログラムを止めず、join されない処理の例外として、プログラムの終わりに報告する。
@@ -72,6 +72,7 @@ ConJS の構文は JavaScript の部分集合だが、ConJS のプログラム�
 * **conjs/include/conjs_class.se**：クラス（段階 P5b）。クラスの値は SJS の関数で、インスタンスは SJS のオブジェクトで、どちらも隠したキー `"cls"` にクラスの記録（メソッド、static のメソッド、コンストラクタ、フィールド、親）を持つ。SJS のランタイムは、メンバーを読んで自分のプロパティになかったときだけ、`"cls"` を見る（sjs/include/sjs_rt.se の `Sjs_class_member`）。SJS の値は `"cls"` を持たないので、SJS の結果は変わらない。`JSON.parse` と配列の `sort` は、プロトタイプにもホストにも触れないので、SJS のランタイムに置いて SJS と共有する。
 * **conjs/conjsc.se**：変換器の入口（言語の印を付けて、SJS の変換器を呼ぶ）。sjs_gen.se は、印があれば、文の並びを `Conjs_run` の中に置いたソースを作る。
 * **ファイルの見本**（段階 P8。conjs/examples）：merge.con.js は、ソートした 2 つのファイルを 1 行ずつ読み比べ、片方だけにある行と両方にある行を出す（Unix の `comm` と同じ。`-` は標準入力）。2 つの `readLine` を、比べた結果で交互に進めるだけで書ける。同じことを Node.js で書いた merge.node.js では、`readline` の Interface を 2 つ作り、`for await` が使えないので、2 つの非同期のイテレータの `next()` を `await` で呼び、関数を `async` にし、`try`／`finally` で閉じる。2 つが同じ出力になることを、conjs/test/compare.sh が確かめる（conjs/test/node-pairs.txt）。wordcount.con.js は、`fs.readLines` で語を数える、いちばん短い使い方の例。
+* **ホストの関数の見本**（段階 P7。conjs/examples）：host_demo.con.js は、ホストの関数 `demo.*` を呼ぶ。同じ関数を、Rust の vm/examples/host_demo.rs と、JavaScript の host_demo.host.js（wasm 版の VM の `CONMA_HOST`）で書いてあり、test/host-api.sh が、2 つで同じログになることを確かめる（[docs/HOST-ja.md](../docs/HOST-ja.md)）。
 * **見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る）と、vm/wasm/web/stars.con.js（入力を待つ対話のゲーム「星ひろい」。stars.html で遊ぶ。段階 P5c。端末でも `conjs/conjs vm/wasm/web/stars.con.js` で遊べる。段階 P6a）。ページの分は、vm/wasm/web/build.sh が変換する。
 
 ## テスト
@@ -96,5 +97,6 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step14 | 入力：`nextEvent` と `pollEvent`（case1。wasm 版の VM では、本物の vm/wasm/host/input.js を、入力のまね input_mock.js が手で進める時計で動かす。ほかの VM は機能がないことの TypeError）。見本の stars.con.js を、決まったキーで動かして終わり方を確かめる（case2）。VM ごとのログ（case*.wasm.log） |
 | step15 | 端末の入力：標準入力のファイル（case*.in）からキーを読む（case1）。見本の stars.con.js を端末の道で動かし、Escape で終わる（case2）。ESC の並びが 2 回の読みに分かれる場合は、test/fast18 がキーに分ける関数を直に確かめる |
 | step16 | ファイルを 1 行ずつ読む：`readLine`、`read`、`readLines` と、4,096 バイトの読みの区切りをまたぐ場合（case1）。書く、閉じる、エラー（case2）。`readLines()` を回し切る、`break`、例外、`return` で閉じること（case3）。`fs.stdin` と `fs.stdout`、キーと行の両方で読めないこと（case4）。見本の merge.con.js（case5。引数は case5.args）。少しずつ届く標準入力（case6.feed.py の出力をパイプで渡す）を、3 つの処理で取り合っても行が壊れないこと（case6） |
+| step17 | ホストの関数の決まらない Promise（段階 P7）：wasm 版の VM で、`vm-node.js` が行き詰まりを知らせて終了ステータス 2 で終わること（case1.wasm.log。ほかの VM には、その関数がない） |
 
 Node.js と比べる場合は、各ステップの node.txt に並べる（変換するときのエラーと、JavaScript との違いの場合は入れない）。step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。

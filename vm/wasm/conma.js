@@ -48,10 +48,11 @@
 // names in SInfo relative to the directory above the repository, or
 // {ok: false, message} with the first line of the error.
 // hostFunctions, if given, is an object of the functions that __Host_call__ name args calls by
-// name (docs/dev/PLATFORM-PLAN-ja.md 3.2), besides those every VM has (test.add, test.echo and
-// test.fail, vm/src/prim/host.rs). A function is called with the arguments as JavaScript values,
-// numbers, strings and arrays of them (an empty LList, null, is []), and returns such a value (null
-// and undefined are null, the empty LList), or throws: the message of what it throws goes to onError.
+// name (docs/dev/PLATFORM-PLAN-ja.md 3.2; for the users, docs/HOST-ja.md), besides those every VM has
+// (test.add, test.echo and test.fail, vm/src/prim/host.rs). A function is called with the arguments
+// as JavaScript values, numbers, strings, booleans, plain objects (a Dict) and arrays of them (an
+// empty LList, null, is []), and returns such a value (null and undefined are null, the empty LList),
+// or throws: the message of what it throws goes to onError.
 // For __Host_call__ it is called once and must not wait (a Promise is an error). __Host_start__ name
 // args (a call that waits, 3.4 of the plan) calls it too, and it may return a Promise then: when the
 // function has returned, or its Promise has settled, its result is written to the pipe of the call

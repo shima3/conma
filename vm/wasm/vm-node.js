@@ -10,7 +10,7 @@
 // VM runs the ConMa frontend in the repository (vm/frontend.module.se) to its end.
 // CONMA_HOST, if set, is the path of a JavaScript file (a CommonJS module) whose exports give the
 // functions of the host that __Host_call__ calls and the platform features they make available
-// ({hostFunctions: {name: f, ...}, hostFeatures: [...]}, the hooks of conma.js; docs/dev/PLATFORM-PLAN-ja.md).
+// ({hostFunctions: {name: f, ...}, hostFeatures: [...]}, the hooks of conma.js; docs/HOST-ja.md).
 "use strict";
 const fs = require("fs");
 const path = require("path");
