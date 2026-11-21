@@ -14,6 +14,9 @@ Options:
     -m, --main      Start the program with __start__ and pass the <arg>s.
     -t, --trace     Print the VProc state to stderr before each step.
     -h, --help      Show this message and exit.
+Only the arguments before <module_file> are options (up to "--"), as in the
+native VM: the <arg>s go to the program as they are, also when they begin
+with "-".
 
 Environment:
     CONMA_SEED      Choose the VProc to run next at random with this seed
@@ -143,11 +146,22 @@ def main():
     parser.add_argument("names", nargs="*", metavar="func_name | arg",
                         help="Name of the function to call, or with --main the program arguments.")
 
-    args = parser.parse_args()
+    # As the native VM (vm/src/lib.rs) does: only the arguments before <module_file> are options (up to "--");
+    # those after it go to the program as they are, also when they begin with "-" ("--demo", "-t")
+    argv = sys.argv[1:]
+    opts = []
+    i = 0
+    while i < len(argv) and argv[i] in ("-t", "--trace", "-m", "--main", "-h", "--help"):
+        opts.append(argv[i])
+        i += 1
+    if i < len(argv) and argv[i] == "--":
+        i += 1
+    args = parser.parse_args(opts + ["--"] + argv[i:i + 1])
+    names = argv[i + 1:]
     if args.main:
-        run(args.module_file, "__start__", trace=args.trace, program_args=args.names)
-    elif len(args.names) == 1:
-        run(args.module_file, args.names[0], trace=args.trace)
+        run(args.module_file, "__start__", trace=args.trace, program_args=names)
+    elif len(names) == 1:
+        run(args.module_file, names[0], trace=args.trace)
     else:
         parser.error("expected exactly one func_name (or use --main)")
 
