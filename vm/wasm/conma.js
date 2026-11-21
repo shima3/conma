@@ -1853,6 +1853,8 @@ var ConMaVM = (function () {
     let x = null;
     let vm = null;
     let jsPending = 0;
+    // the calls of __Host_start__ among them (vm-node.js reports those that never finish)
+    let hostPending = 0;
     // Run the VM again (later: this may be inside conma_run).
     const wake = () => {
       if (jsDone) Promise.resolve().then(() => jsDone(vm));
@@ -2076,10 +2078,12 @@ var ConMaVM = (function () {
           const name = str(namePtr, nameLen);
           const argsText = str(argsPtr, argsLen);
           jsPending++;
+          hostPending++;
           const done = (result) => {
             pass(utf8(result), (p, n) => x.conma_write(fd, p, n));
             x.conma_close(fd);
             jsPending--;
+            hostPending--;
             wake();
           };
           const ok = (r) => {
@@ -2164,6 +2168,8 @@ var ConMaVM = (function () {
       inputEnd: () => x.conma_input_end(),
       // The number of calls of JavaScript whose results the VM has not got yet.
       jsPending: () => jsPending,
+      // The number of calls of __Host_start__ (functions of the host that wait) among them.
+      hostPending: () => hostPending,
       // For jsRemote: a line of a call from the engine (0 or an errno, 32 when the reader has gone),
       // and the end of the call.
       jsLine: (id, line) => jsOut.line(id, line),

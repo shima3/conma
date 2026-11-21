@@ -347,6 +347,9 @@ function buildModule(wasm, source, cwd, core) {
   return { ok: true, text: Buffer.concat(out).toString().split(prefix).join('"') };
 }
 
+// The VM of main, for the report of process.on("beforeExit") below.
+let liveVM = null;
+
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
   let vm = null;
@@ -369,6 +372,7 @@ async function main() {
       });
     },
   });
+  liveVM = vm;
   vm.useHostFs();
   vm.setCwd(process.cwd());
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);
@@ -416,6 +420,17 @@ async function main() {
     });
   }
 }
+
+// A Promise of a function of the host that never settles, and nothing else to do: Node.js would end
+// with nothing written and the status 0 (docs/dev/PLATFORM-PLAN-ja.md 4.9, stage P7). Report it as
+// a deadlock, as the line above does when nothing at all can wake the VM.
+process.on("beforeExit", () => {
+  if (!liveVM) return;
+  const n = liveVM.hostPending();
+  const why = n > 0 ? `for host calls that never finish: ${n}` : "for calls of JavaScript that never finish";
+  writeAll(2, ConMaVM.utf8(`vm-node: every VProc waits ${why}\n`));
+  process.exit(2);
+});
 
 // Exit without waiting for processes that are still running (the native VM leaves them).
 // Out of memory: one line, as the native VM writes, and the status of abort (134), as the native VM
