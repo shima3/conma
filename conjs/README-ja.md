@@ -96,7 +96,7 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step13 | `JSON.parse` と配列の `sort`（sjs/test の step12 と同じもの）。キーが `constructor` のオブジェクト（case2）。JSON でない文字列（case3） |
 | step14 | 入力：`nextEvent` と `pollEvent`（case1。wasm 版の VM では、本物の vm/wasm/host/input.js を、入力のまね input_mock.js が手で進める時計で動かす。ほかの VM は機能がないことの TypeError）。見本の stars.con.js を、決まったキーで動かして終わり方を確かめる（case2）。VM ごとのログ（case*.wasm.log） |
 | step15 | 端末の入力：標準入力のファイル（case*.in）からキーを読む（case1）。見本の stars.con.js を端末の道で動かし、Escape で終わる（case2）。ESC の並びが 2 回の読みに分かれる場合は、test/fast18 がキーに分ける関数を直に確かめる |
-| step16 | ファイルを 1 行ずつ読む：`readLine`、`read`、`readLines` と、4,096 バイトの読みの区切りをまたぐ場合（case1）。書く、閉じる、エラー（case2）。`readLines()` を回し切る、`break`、例外、`return` で閉じること（case3）。`fs.stdin` と `fs.stdout`、キーと行の両方で読めないこと（case4）。見本の merge.con.js（case5。引数は case5.args）。少しずつ届く標準入力（case6.feed.py の出力をパイプで渡す）を、3 つの処理で取り合っても行が壊れないこと（case6） |
+| step16 | ファイルを 1 行ずつ読む：`readLine`、`read`、`readLines` と、4,096 バイトの読みの区切りをまたぐ場合（case1）。書く、閉じる、エラー（case2）。`readLines()` を回し切る、`break`、例外、`return` で閉じること（case3）。`fs.stdin` と `fs.stdout`、キーと行の両方で読めないこと（case4）。見本の merge.con.js（case5。引数は case5.args）。少しずつ届く標準入力（case6.feed.py の出力をパイプで渡す）を、3 つの処理で取り合っても行が壊れないこと（case6）。`-` で始まるプログラムの引数が、VM のオプションと取り違えられずに `argv` に届くこと（case7） |
 | step17 | ホストの関数の決まらない Promise（段階 P7）：wasm 版の VM で、`vm-node.js` が行き詰まりを知らせて終了ステータス 2 で終わること（case1.wasm.log。ほかの VM には、その関数がない）。自分を含むオブジェクトと配列を渡すと TypeError、同じ値を 2 か所に持つだけなら渡せること（case2） |
 
 Node.js と比べる場合は、各ステップの node.txt に並べる（変換するときのエラーと、JavaScript との違いの場合は入れない）。step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。
