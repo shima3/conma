@@ -16,7 +16,7 @@
 ;;
 ;; 状態 T（main の VProc の PDict の "conjs_term"）は Dict："w"（main の VProc が知らせを送る書き手）、"saved"（stty -g が
 ;; 出した前の設定。端末でなければ null）、"owner" "reader" "sigint"（VProc か null）、"timers"（時間切れの VProc の
-;; LList の Ref。受け持つ VProc が足し、外す）、"done"（片付けたかの Ref）
+;; (id VProc 書き手) の LList の Ref。受け持つ VProc が足し、外す）、"done"（片付けたかの Ref）
 
 (define Conjs_term_num ,(text)
   __Number_fromString__ __print_exit_error__ text)
@@ -174,14 +174,18 @@
   Conjs_term_reader stdin w)
 
 ;; ── 受け持つ VProc ──
-;; 状態 O は Dict（どれも Ref）："keys"（キーの名前の LList。古い順）、"waits"（(id task w) の LList。古い順）、"carry"
-;; （持ち越した ESC の並び）、"esc"（その時間切れの番号）、"ended"、"ids"（番号を数える）
+;; 状態 O は Dict（どれも Ref）："kin" と "kout"（キーの名前の列。スケジューラの "in" と "out" と同じく、足す側は新しい
+;; 順、取る側は古い順の LList。足すのも取るのも、ならして 1 回の手間）、"waits"（(id task w) の LList。古い順。待つ
+;; 処理の数しか長くならない）、"carry"（持ち越した ESC の並び）、"esc"（その時間切れの番号）、"ended"、"ids"（番号を
+;; 数える）、"timers"（(id VProc 書き手) の LList）
 
 (define Conjs_term_owner ,(T chan r)
   __Dict_new__ ,(O)
   Conjs_term_num "0" ,(zero)
-  __Ref_new__ __NULL__ ,(keys)
-  __Dict_put__ O "keys" keys ,()
+  __Ref_new__ __NULL__ ,(kin)
+  __Dict_put__ O "kin" kin ,()
+  __Ref_new__ __NULL__ ,(kout)
+  __Dict_put__ O "kout" kout ,()
   __Ref_new__ __NULL__ ,(waits)
   __Dict_put__ O "waits" waits ,()
   __Ref_new__ "" ,(carry)
@@ -286,12 +290,13 @@
   Conjs_term_set O "ids" n ,()
   __NULL__ n)
 
-;; ms ミリ秒の後に (kind id) を送る、時間切れの VProc を始め、(id VProc) を "timers" に足す
+;; ms ミリ秒の後に (kind id) を送る、時間切れの VProc を始め、(id VProc 書き手) を "timers" に足す
 (define Conjs_term_timer ,(O kind id ms)
   __Dict_lookup_or__ O "chan" __print_exit_error__ ,(chan)
   __Chan_writer__ chan ,(w)
   __VProc_start__ (,() Conjs_term_sleeper w kind id ms) ,(vp)
-  __LList_cons__ vp __NULL__ ,(pair)
+  __LList_cons__ w __NULL__ ,(pair)
+  __LList_cons__ vp pair ,(pair)
   __LList_cons__ id pair ,(pair)
   Conjs_term_get O "timers" ,(timers)
   __LList_cons__ pair timers ,(timers)
@@ -309,7 +314,9 @@
   __Chan_put__ (,() __nop__) w m ,()
   __Chan_close__ w)
 
-;; 時間切れの VProc id を止めて（もう終わっていれば何もしない）、"timers" から外す
+;; 時間切れの VProc id を止めて（もう終わっていれば何もしない）、その書き手を閉じ、"timers" から外す。閉じないと、
+;; 読み手が閉じていない鎖の読み位置を持ち続ける（include/core/chan.se）。止めた後は、その鎖に書く VProc はほかにないので、
+;; 受け持つ VProc が閉じてよい。時間が来た VProc は自分で閉じているが、閉じた書き手を閉じても何も起きない
 (define Conjs_term_untimer ,(O id)
   Conjs_term_get O "timers" ,(timers)
   Conjs_term_remove_timer timers id __NULL__ ,(timers)
@@ -321,10 +328,12 @@
   __LList_uncons__ __print_exit_error__ list ,(pair rest)
   __LList_uncons__ __print_exit_error__ pair ,(i more)
   __LList_uncons__ __print_exit_error__ more ,(vp more)
+  __LList_uncons__ __print_exit_error__ more ,(w more)
   __Number_subtract__ i id ,(d)
   __Number_is_zero__ d ,(same)
   __unless__ same (,() __LList_cons__ pair acc ,(acc) Conjs_term_remove_timer rest id acc ,(l) return l) ,()
   __VProc_kill__ vp ,()
+  __Chan_close__ w ,()
   Conjs_term_append acc rest)
 
 ;; 持ち越した並びに、40 ミリ秒の時間切れを付ける（前の時間切れは、番号が変わるので働かない）
@@ -369,10 +378,9 @@
   Conjs_term_get O "waits" ,(waits)
   __is_null__ waits ,(test__) __if__ test__
     (,()
-      Conjs_term_get O "keys" ,(keys)
-      __LList_cons__ name __NULL__ ,(one)
-      Conjs_term_append keys one ,(keys)
-      Conjs_term_set O "keys" keys ,()
+      Conjs_term_get O "kin" ,(kin)
+      __LList_cons__ name kin ,(kin)
+      Conjs_term_set O "kin" kin ,()
       Conjs_term_deliver_all O rest ,()
       return) ,()
   __LList_uncons__ __print_exit_error__ waits ,(item more)
@@ -384,13 +392,18 @@
   Kit_sched_put w task __TRUE__ name ,()
   Conjs_term_deliver_all O rest)
 
-;; キーの列の先頭（なければ null）
+;; キーの列の先頭（なければ null）。取る側が空なら、足す側を逆にして取る側にする
 (define Conjs_term_pop ,(O)
   __Cont_get__ ,(return)
-  Conjs_term_get O "keys" ,(keys)
-  __is_null__ keys ,(test__) __if__ test__ (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ keys ,(name rest)
-  Conjs_term_set O "keys" rest ,()
+  Conjs_term_get O "kout" ,(kout)
+  __is_null__ kout ,(test__) __unless__ test__
+    (,() __LList_uncons__ __print_exit_error__ kout ,(name rest) Conjs_term_set O "kout" rest ,() return name) ,()
+  Conjs_term_get O "kin" ,(kin)
+  __is_null__ kin ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Conjs_term_set O "kin" __NULL__ ,()
+  Kit_sched_reverse kin __NULL__ ,(kout)
+  __LList_uncons__ __print_exit_error__ kout ,(name rest)
+  Conjs_term_set O "kout" rest ,()
   __NULL__ name)
 
 ;; 待ちの列から番号 id の待ちを外して返す（なければ null）

@@ -87,6 +87,7 @@ PR は shima3/conma#18。
 * 新しいテスト：conjs/test/step15、test/fast18。conjs/test/step14 の case1.log と case2.log（Rust 版と Python 版）を変えた。
 * M1 が流したもの（Apple M1）：conjs/test を Rust 版（26 秒）、wasm 版（31 秒）、Python 版（4 分 8 秒）で。conjs/test/compare.sh。test/fast18 を Python 版、Rust 版、wasm 版で。sjs/test（45 秒）。consh/js/test（24 秒）。consh/test を Rust 版（`-j 6`、5 分 10 秒）で。`bin/lang-emit-check origin/alpha`（違いは、変えた vm/wasm/web/stars.con.js だけ）。端末のモード（8.9 節。Python の pty で）。流していないもの：test/ のほかの suite、transpiled VM、Python 版の VM の sjs/test と consh/test、ConSh の参照版。
 * 気を付けること：wasm 版の VM を Node.js で端末から動かすと、見本は終わった後もプロセスが残る（8.9 節）。
+* M2 のレビューを受けて直した：キーの列を 2 つの LList にした（多くのキーが一度に届いても 2 乗にならない）、止めた時間切れの VProc の書き手を閉じる。alpha（c6ce993）を入れて、この見出しの衝突を直した。流したもの：conjs/test を Rust 版（16 秒）、wasm 版（15 秒）、Python 版（3 分 46 秒）で。test/fast18 を 3 つの VM で。pty で、Rust 版の VM の 3 つの終わり方。
 
 ## 記録
 
