@@ -495,7 +495,7 @@ P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行�
 * case1（読む）：`\n` と `\r\n` の行、空の行、最後の行に `\n` がないファイル、空のファイル、`read()` で残りを読むこと、`readLine` の後の `readLines()`。ASCII でない文字の行。テストのファイルは、ステップのディレクトリに置く（一時ディレクトリに写す copy.txt を使う）。
     * 読みの区切り（4,096 バイト）をまたぐ場合（M2 のレビューの 1。バッファを読み足す所は、4,096 バイトを超えるファイルでしか通らない）：1 つの行が区切りをまたぐファイル、`\r\n` の `\r` と `\n` が区切りの両側に分かれるファイル、ASCII でない文字が区切りをまたぐファイル、4,096 バイトより長い 1 行。ファイルは、テストの中で `fs.writeFile` で作る。
 * case2（書く）：`"w"` で書いて閉じて読み直す、`"a"` で足す、閉じた後の Error、開けないファイルの Error、読むだけのファイルへの `write` の Error。
-* case3（`readLines()` と閉じること）：`for` を回し切ったとき、`break` で抜けたとき、本体で例外を投げたときに、ファイルが閉じられること（閉じたかは、ファイルのオブジェクトの `closed` で見る。JavaScript の FileHandle にはないが、テストと使う人のために置く）。
+* case3（`readLines()` と閉じること）：`for` を回し切ったとき、`break` で抜けたとき、本体で例外を投げたとき、ループのある関数を `return` で抜けたときに、ファイルが閉じられること（閉じたかは、ファイルのオブジェクトの `closed` で見る。JavaScript の FileHandle にはないが、テストと使う人のために置く）。
 * case4（標準入力）：`case4.in` を `fs.stdin.readLines()` で読む。キーと行の両方で読もうとしたときの Error。
 * case5（見本）：conjs/examples/merge.con.js を、ステップに置いた 2 つのファイルで動かす（3 つの VM で同じログ）。
 * Node.js 版との比べ方（M2 のレビューの 4）：conjs/test/compare.sh に、ConJS のプログラムと Node.js のプログラムの組を並べるファイル（conjs/test/node-pairs.txt。1 行に 2 つのファイルと、渡す引数）を足し、compare.sh が、merge.con.js と merge.node.js を同じ引数で動かして、出力を比べる。compare.sh は今も `node` があることを前提にしているので（node.txt の場合）、Node.js のない機械では、compare.sh ごと流さない（conjs/test/run_all.sh と step16 は `node` を使わない）。
