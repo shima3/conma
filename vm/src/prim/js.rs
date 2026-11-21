@@ -136,7 +136,7 @@ pub fn feature_available(m: &mut Machine, vp: &mut VProc) -> PResult {
     let yes = match &*text {
         "wasm" => super::wasm::available(m),
         "js" => sys::js_available(),
-        f => FEATURES_EVERYWHERE.contains(&f) || super::host::feature(f),
+        f => FEATURES_EVERYWHERE.contains(&f) || m.host.has_feature(f),
     };
     vp.prim_return1(if yes { m.true_closure() } else { m.false_closure() });
     Ok(())

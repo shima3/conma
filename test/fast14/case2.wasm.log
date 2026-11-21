@@ -3,6 +3,8 @@ sum3: 6
 echo: (() 0 inf nan -inf "é	"q"")
 types: ("array" "-0" "number" "number" "number" "string")
 throw: error: demo.throw: boom
-boolean: error: demo.bool: returned a boolean (only numbers, strings and arrays of them go back)
+boolean: true
+object: {a 1 b (true "s") c {}}
+date: error: demo.date: returned a Date (only numbers, strings, booleans, plain objects and arrays of them go back)
 promise: error: demo.promise: returned a Promise (a call that waits is not supported yet)
 exit: 0

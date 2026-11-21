@@ -345,7 +345,8 @@ extern "C" fn on_sigint(sig: c_int) {
 }
 
 /// Make SIGCHLD write a byte to a pipe; returns the read end.
-pub fn install_wakeup() -> io::Result<c_int> {
+/// A pipe whose ends do not block: (read end, write end).
+pub fn make_wake_pipe() -> io::Result<(c_int, c_int)> {
     let (r, w) = make_pipe()?;
     for fd in [r, w] {
         // O_NONBLOCK: F_GETFL 3, F_SETFL 4
@@ -356,6 +357,11 @@ pub fn install_wakeup() -> io::Result<c_int> {
         let nb = 4;
         unsafe { fcntl(fd, 4, fl | nb) };
     }
+    Ok((r, w))
+}
+
+pub fn install_wakeup() -> io::Result<c_int> {
+    let (r, w) = make_wake_pipe()?;
     WAKE_FD.store(w, Ordering::SeqCst);
     unsafe { signal(SIGCHLD, on_sigchld as *const () as usize) };
     Ok(r)

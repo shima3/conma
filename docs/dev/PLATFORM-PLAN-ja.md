@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -508,6 +508,84 @@ P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行�
 
 **M2 のレビュー**（PR shima3/conma#20）：向き、`readLine()`、`read()`、`write()`、`close()`、mode の名前、`closed` を置くこと、ジェネレータで作り `finally` で閉じること、すぐに読めないものだけを待つこと、標準入力をキーと行の両方で読めないこと、見本の選び方に、賛成をもらった。M2 が、ジェネレータの `finally` が 4 つの抜け方で動くことと、`__OS_read__` が文字の途中で区切らないことを確かめた。指摘を受けて、読みの区切りをまたぐ場合を case1 に足し、大きなファイルの時間を手で測ることにし、`""` のもう 1 つの意味を書き、`lines()` を Node.js に合わせて `readLines()` に（`fs.lines` も `fs.readLines` に）し、`fs.stdin` と `fs.stdout` を README の違いに書くことにし、Node.js 版との比べ方を compare.sh に決めた。
 
+### 4.9. 段階 P7 の設計（決めた、2026-11-21。M2 のレビューは PR shima3/conma#22）
+
+P7 では、使う人がホストの関数を足すための文書をまとめ、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（5 節の表の P7 の行）。
+
+* **今、先にする理由**（ユーザーの判断、2026-11-21）：P7 は「P5 の続きと P6 の後でよい」として足した行だが、P9、P10 と進めて大きくなってからでは、変える量が大きくなる。特に、P6 の続き（Node.js、WASI、デスクトップの GUI）は、どれもホストの関数を足す段階で、口がないまま進むと、そのたびに VM の決まった表（vm/src/prim/host.rs）を書き換え、後で全部を API に移すことになる。ConJS の `fetch` が、Rust 版と Python 版の VM で curl を動かしているのも、口がないための回り道である。値の形（下の「値」）も、ホストの関数が増える前に決めるほうが、変える所が少ない。M1 が書いた P9（ConJS のチャネル）の案は、ホストの関数を足さないので P7 の量を増やさないが、P7 の後に回す（push していないブランチ m1/platform-p9-design に置いてある）。
+* **今あるもの**：
+    * ConMa：`__Host_call__`（すぐ返る）、`__Host_start__` と `__Host_result__`（待つ。結果は JSON の文字列でパイプに書く。3.4 節）、`__Feature_available__`。ConJS：`host.call`、`host.wait`、`host.available`。
+    * wasm 版の VM：ホスト（vm/wasm/conma.js）の `hostFunctions`（名前から関数。Promise を返せば待つ呼び出し）と `hostFeatures`。Node.js では `CONMA_HOST` の CommonJS のモジュール（vm/wasm/vm-node.js）。ブラウザのものは vm/wasm/host/canvas.js と input.js。
+    * Rust 版と transpiled VM：決まった表だけ（`test.add`、`test.echo`、`test.fail`、`time.now`、と `__Host_start__` の中で特別に扱う `test.later` と `time.sleep`）。VM は bin のクレート（vm/src/main.rs）で、ほかの Rust のプログラムからは使えない。
+    * Python 版の VM：`test.*` と `time.*` の表（vm/python/vproc_step.py）。
+    * 文書：conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。
+
+**1. 文書**（新しい docs/HOST-ja.md。使う人のための 1 か所）
+
+* ホストの関数とは何か、すぐ返る関数と待つ関数、機能の名前、渡せる値、エラー（ホストのメッセージが onError や ConJS の Error になる）。
+* 呼ぶ側：ConJS の `host.call`、`host.wait`、`host.available` と、ConMa の `__Host_call__`、`Host_wait`（include/platform/host.se）、`__Feature_available__`。
+* 足す側を、プラットフォームごとに：ブラウザ（`ConMaVM.create` の `hostFunctions` と `hostFeatures`）、Node.js（`CONMA_HOST`）、Rust 版の VM（下の 2）。それぞれに、同じ小さな例を置く：すぐ返る `demo.add`（数を足す）と、待つ `demo.delay`（ミリ秒の後に文字列を返す）と、それを呼ぶ 1 つの ConJS のプログラム（docs/examples ではなく、テストに使う conjs/examples/host_demo.con.js）。
+* 今の 5 か所は、詳しいことはそのまま残し（conma.js のコメントは、そのファイルを読む人のため）、docs/HOST-ja.md への参照を足す。ConJS の README の `host.call` の項は、短くして参照にする。
+
+**2. Rust の API**
+
+* **クレートを lib と bin に分ける**：vm/src に lib.rs を足し、今の main.rs の `mod` の並びを lib.rs に移す。main.rs は、lib の `conma::run_main(args)`（今の main の中身）を呼ぶだけにする。wasm 版のクレート（vm/wasm/src/lib.rs が vm/src のファイルを `#[path]` で使う）と transpiled VM（`CONMA_TRANSPILED` で、build.rs が作ったコードを入れる）は、今の作り方のまま動くようにする。
+* **登録**：組み込む人は、自分の main で表を作り、VM を動かす：
+
+```rust
+let mut host = conma::Host::new();          // test.* と time.* は、はじめから入っている
+host.function("demo.add", |args| { ... Ok(HostValue::Num(sum)) });
+host.waiting("demo.delay", |args, done| {   // done は、後で 1 回だけ呼ぶ（別のスレッドからでもよい）
+    let ms = ...;
+    std::thread::spawn(move || { sleep(ms); done.finish(Ok(HostValue::Str("late".into()))) });
+});
+host.feature("demo");
+std::process::exit(conma::run_main_with(std::env::args().collect(), host));
+```
+
+* **すぐ返る関数**（`function`）：`Fn(&[HostValue]) -> Result<HostValue, String>`。`__Host_call__` からも `__Host_start__` からも呼べる（後者では、すぐ結果を書く。今の BUILTIN と同じ）。
+* **待つ関数**（`waiting`）：`Fn(&[HostValue], Done)`。`__Host_start__` からだけ呼べる（`__Host_call__` では「待つ関数は `__Host_call__` で呼べない」のエラー。wasm 版で Promise を返したときと同じ扱い）。`Done` は `Send` で、`finish(result)` は、結果をスケジューラの列（`Mutex` の中）に入れ、起こすためのパイプに 1 バイト書くだけにする。スケジューラは、ステップの間でその列を見て、その呼び出しを終える（下の「結果の置き場所」。今の `Timers` が、時刻の来た `time.sleep` を、ステップの間で終えるのと同じ。別のスレッドが直接パイプに書くと、書いた所と閉じた所の間を VProc が見て、`__Host_result__` が「終わっていない」になるため）。どの VProc も動けないときは、起こすためのパイプも `poll` で待つ。`finish` を呼ばずに `Done` を捨てたら、エラーの結果（`demo.delay: the host dropped the call`）にする（`Drop` で）。
+* **結果の置き場所**（M2 のレビューの 1）：今は、結果の JSON の文字列を、その呼び出しのパイプに書いてから閉じる。スケジューラや呼んだステップの中で書く結果（BUILTIN と `test.later`）は、読み手がまだいないので、OS のパイプに入り切る 8,192 バイト（`PIPE_MAX`）を超えるとエラーにしている（`capped`）。同じ形で待つ関数の結果を書くと、組み込む人の関数の結果（ファイルの中身、HTTP の本体）も 8 KB までになり、限りのない wasm 版（メモリの上のパイプ）と、渡せる大きさが違ってしまう。そこで、Rust 版と transpiled VM では、結果の文字列を `Machine` の表（呼び出しのパイプの読む側の fd から結果へ）に置き、パイプには何も書かずに閉じるだけにする（パイプは、終わったことを知らせて `__OS_wait_readable__` を起こすためだけに使う）。`__Host_result__` は、パイプの終わりを見てから、表の文字列を取り出す。すぐ返る関数を `__Host_start__` から呼んだときも、`test.later` も、同じ道にし、`capped` と `PIPE_MAX` はなくす。呼んだ VProc が殺されて Stream が閉じられたら（`__Host_start_tracked__`）、Stream を閉じる所で、その fd の結果を表から除く（残さない）。wasm 版の VM（パイプがメモリの上で、限りがない）は、今のまま。Python 版の VM も今のまま（関数はテストのものだけで、結果は小さいので、8 KB の限り `HOST_PIPE_MAX` を残す。テストの結果が 8 KB を超えないかぎり、トレースは Rust 版と同じ）。
+* **VM が終わった後の `finish`**（M2 のレビューの 2）：組み込む人のスレッドが、VM が終わった後（`run_main_with` が返った後）に `finish` を呼ぶことがある。起こすためのパイプを VM が閉じていると、その fd の番号が、組み込む人の開いた別のファイルに使い回され、そこに 1 バイト書いてしまうおそれがある。そこで、結果の列と起こすためのパイプは、`Done` と共有する `Arc` が持ち、VM と最後の `Done` の両方がなくなったときに閉じる。VM が終わった後の `finish` は、結果を捨てるだけにする。
+* **表を Machine に持たせる**：今の `BUILTIN` と `NATIVE` の決まった表と、`feature()` の決まった名前を、`Machine` が持つ `Host` の表に替える。`test.*` と `time.now` は、`Host::new()` が登録する（同じ API を使う。`time.sleep` も、`Timers` を使う待つ関数として登録できるかを作るときに確かめ、できなければ今のまま特別に扱う）。`test.later`（仮の時計）は、スケジューラと結び付いているので、今のまま特別に扱う。
+* **transpiled VM**：`__Host_call__` と `__Host_start__` は、変換したコードから VM に任せる所（7 節）なので、表が `Machine` にあれば、そのまま使える。組み込む人が transpiled VM を使うときは、自分のクレートで vm を依存にして、`CONMA_TRANSPILED` を付けて作る（vm/conma2rust/build.sh と同じ）。docs/HOST-ja.md に書く。
+* **wasm 版の VM**：今のまま（ホストの関数は JavaScript の側。7 節の「wasm 版の大きさ」）。Rust の API は、wasm 版のクレートでは使わない。
+* **Python 版の VM**：今のまま（5 節の表の P7 の行のとおり。テストと `time.*` だけ）。
+
+**3. 値**（M2 に聞きたいことの 2）
+
+* 今、ホストと受け渡せるのは、数、文字列、それらの LList だけで（null は空の LList）、真偽と Dict は渡せない。ConJS では、ホストが返した空の配列も `undefined` になる。使う人が関数を足し始める前に決めたい。
+* M1 の案：真偽（`true`、`false`）と Dict（文字列の鍵。JavaScript のオブジェクト、Rust の `HostValue::Dict(Vec<(String, HostValue)>)`）を足す。wasm 版では、今の JSON の形のまま、真偽は JSON の真偽、Dict は JSON のオブジェクトにする（`{"n":...}` の特別な形は、数だけに使っているので、鍵が 1 つで名前が `n` の Dict と区別するため、Dict は `{"d":{...}}` で包む）。ConJS では、真偽はそのまま、Dict は SJS のオブジェクトにする。Python 版の VM の表（`test.echo`）も、同じに受け渡せるようにする（トレースを比べるため）。
+* null と空の配列の区別は、ConMa の値の形（null が空の LList）によるので、P7 でも変えない。docs/HOST-ja.md に書く。
+* ConJS からホストに渡すとき（M2 のレビューの 4）：ConJS のオブジェクトは、隠したキー（クラスの記録の `"cls"`、P8 のファイルの `"fs_stream"` など）も持つ Dict なので、`Conjs_to_host` は、自分のプロパティだけ（`Object.keys` と同じ）を Dict にして渡す。値が関数のものは、今と同じく TypeError にする。たとえば、P8 のファイルのオブジェクトを渡すと、`{ path: "a.txt" }` だけが渡る。
+
+**4. Node.js で決まらない Promise**（7 節）
+
+* vm-node.js で、VM が IDLE（どの VProc も外を待つ）で、待っているホストの呼び出しがあるのに、Node.js のイベントループに、ほかにすることがなくなったら（`process.on("beforeExit")`）、`vm-node: every VProc waits for host calls that never finish: N`（N は待っているホストの呼び出しの数）を標準エラーに出し、終了ステータス 2 で終える。今の `vm-node: every VProc waits, and nothing can wake them`（終了ステータス 2）にそろえ、2 つの違いが分かるようにする（M2 のレビューの 3）。M2 が確かめたとおり、今は、`jsPending` がその呼び出しを数え続けるので、その行にも来ず、`main()` の Promise が決まらないまま Node.js が終わり、何も出さずに終了ステータス 0 になる。
+* Rust 版の VM でも、待つ関数が `Done` を持ったまま何もしなければ、同じことが起きる（スケジューラが、起こすためのパイプを待ち続ける）。こちらは、`Done` を持つものがいなくなれば `Drop` でエラーになるので、持ち続ける場合だけである。見つける方法がないので、docs/HOST-ja.md に書くだけにする。
+
+**テスト**
+
+* **Rust の API**：vm/examples/host_demo.rs（`cargo run --example host_demo -- ...`。上の例の `demo.add`、`demo.delay`、機能 `"demo"` を登録して、今の main と同じに VM を動かす）を作り、conjs/examples/host_demo.con.js を動かして、決めたログと比べる。テストの台本は test/host-api.sh（新しい）。台本は、`cargo build --release --example host_demo` を自分で呼ぶ（今の Full Test の手順では example が作られないため。M2 のレビューの 5。作るときの申し送りにも書く）。待つ関数は別のスレッドから `finish` するので、スレッドが結果を返す順を、決まるように作る（`demo.delay` の時間を十分に離す。ログには順だけを出す）。ほかに、`finish` を呼ばずに捨てたときのエラー、待つ関数を `__Host_call__` で呼んだときのエラー、登録していない名前のエラー、`host.available("demo")` が真で、登録しない main では偽になること。
+* **wasm 版**：同じ host_demo.con.js を、同じ関数を JavaScript で書いた conjs/examples/host_demo.host.js（`CONMA_HOST`）で動かし、同じログになること（docs/HOST-ja.md の例と同じファイル）。
+* **値**：真偽と Dict を、`test.echo` で 3 つの VM に通す（test/ のホストの場合 fast14、fast15 に足すか、新しい場合。ConJS では conjs/test の新しい step）。
+* **決まらない Promise**：Promise を返して決めないホストの関数で、vm-node.js が Deadlock を出して 2 で終わること（conjs/test の新しい step の wasm 版のログ）。
+* test/、consh/test、sjs/test、conjs/test が 3 つの VM と transpiled VM で通る（クレートを分けたため）。wasm 版の VM と transpiled VM を作り直す。sjs/bench で遅くならないこと（表を `Machine` に持たせて、名前で引く所が変わるため）。
+
+**終わりとすること**（5 節の表）：docs/HOST-ja.md の例（ホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（test/host-api.sh）。値に真偽と Dict を足すなら、3 つの VM で受け渡せる。今のテストがすべて通る。
+
+**P7 でしないこと**（後の候補）：Python 版の VM に使う人が関数を足す口（Python のテストの VM なので要らない）。ホストの関数から ConMa の関数を呼び返すこと（コールバック）。ホストの値をつかんだまま渡すこと（JavaScript のオブジェクトを `__JS_value__` のように持つこと）。ホストの関数を、Rust のクレートを作らずに、動的なライブラリ（`.so`、`.dylib`）から読むこと。ConJS の `fetch` を、Rust 版の VM でホストの関数に替えること（curl をやめる。P7 の口を使って、後の段階で）。
+
+**M2 のレビュー**（PR shima3/conma#22）：向き、値に真偽と Dict を足すこと（`{"d":{...}}` の形）、`Done` の作り、決まらない Promise を `beforeExit` で見つけること、テストの置き場所に、賛成をもらった。指摘を受けて、結果を `Machine` の表に置いて 8 KB の限りをなくすこと（1）、VM が終わった後の `finish`（2）、vm-node.js の出す行（3）、ConJS から渡すのは自分のプロパティだけにすること（4）、test/host-api.sh が example を作ること（5）を書き足した。
+
+**M2 に聞いたこと**
+
+1. **向き**：lib と bin に分け、`Host` の表を `Machine` に持たせ、組み込む人が自分の main を書く形でよいか。今の `conma` のコマンドに、組み込みでない方法（設定のファイルなど）で関数を足す道は作らない。
+2. **値**：真偽と Dict を P7 で足すか。足すなら、wasm 版の JSON の `{"d":{...}}` の形でよいか。
+3. **待つ関数の `Done`**：別のスレッドから呼べるようにし、スケジューラがステップの間で書く形でよいか。`Drop` でエラーにすることも。
+4. **決まらない Promise**：vm-node.js の `beforeExit` で Deadlock にすることでよいか（ブラウザでは、ページは終わらないので見つけない）。
+5. **テストの置き場所**：Rust の API のテストを、cargo の example と test/host-api.sh にすることでよいか（今の bin/vm と bin/lang-test は、決まった VM の実行ファイルを使うため）。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -523,7 +601,7 @@ P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行�
 | P5c（作った、2026-11-21。8.8 節） | ConJS で、ブラウザのキーとマウスの入力を待つ：ホストの関数 `input.next`、`input.poll`（機能 `"input"`）と、ConJS の `nextEvent`、`pollEvent`。見本の対話のゲーム（stars.con.js） | conjs/test の step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない |
 | P6a（作った、2026-11-21。8.9 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
-| P7（忘れないための行。P5 の続きと P6 の後でよい。ユーザーが 2026-11-21 に頼んだ） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
+| P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
@@ -544,7 +622,7 @@ P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行�
 * **コア ConMa を小さく保つ**：プラットフォームの機能は、コア ConMa にも拡張の機能にも入れない。持たない VM では「使えない」になるだけで、言語の意味は変えない。
 * **変換したコード**：transpiled VM は、`__Host_call__` を、VM に任せる呼び出し（変換したコードから VM に戻る所）として扱うところから始める。速さが要れば、後で直接呼ぶ。
 * **wasm 版の大きさ**：プラットフォームの機能を足しても、wasm のファイルは大きくしない（ホストの関数は JavaScript の側に置く）。
-* **Node.js で、決まらない Promise を待つとき**（2026-11-21。8.8 節。M2 の PR shima3/conma#14 のレビューの 2）：wasm 版の VM を Node.js で動かすと（vm/wasm/vm-node.js）、ホストの関数が返した Promise がいつまでも決まらず、ほかに動かせる処理もないとき、プロセスが何も出さずに終了ステータス 0 で終わる。テストはログと比べるので見逃さないが、手で動かすと、正しく終わったように見える。直すなら、vm-node.js が「待っている呼び出しがあるのに、起こすものがない」ことを見つけて、行き詰まりとして知らせる（P7 でホストの関数を足す口を作るときに考える）。
+* **Node.js で、決まらない Promise を待つとき**（2026-11-21。8.8 節。M2 の PR shima3/conma#14 のレビューの 2）：wasm 版の VM を Node.js で動かすと（vm/wasm/vm-node.js）、ホストの関数が返した Promise がいつまでも決まらず、ほかに動かせる処理もないとき、プロセスが何も出さずに終了ステータス 0 で終わる。テストはログと比べるので見逃さないが、手で動かすと、正しく終わったように見える。直すなら、vm-node.js が「待っている呼び出しがあるのに、起こすものがない」ことを見つけて、行き詰まりとして知らせる（P7 でホストの関数を足す口を作るときに考える）。 → 段階 P7 で直した（2026-11-22。8.11 節）：vm-node.js が、`process.on("beforeExit")` で見つけ、`vm-node: every VProc waits for host calls that never finish: N` を出して、終了ステータス 2 で終える。ブラウザのページは終わらないので、見つけない。Rust の API の待つ関数で、`Done` を持ったまま何もしないときも、見つけない（docs/HOST-ja.md に書いた）。
 
 ## 8. 作ったもの
 
@@ -723,4 +801,20 @@ P8 では、ConJS のファイルの入出力を広げ、ファイルを 1 行�
     * とても長い 1 行は、前は長さの 2 乗に比例した（4,096 バイトごとに、まだ返していない所の全体をつなぎ直し、`\n` も初めから探し直していたため。M2 が測って、100 万文字の行が ASCII で 0.19 秒、ひらがなで 1.93 秒、200 万文字で 0.43 秒と 7.55 秒）。読んだかたまりを列にため、`\n` を含むかたまりが来てから 2 つずつつないで 1 回でまとめ（`Conjs_file_gather`）、`\n` は、もう探した所の後ろから探す（"fs_scan"）ようにした。直した後は、ASCII で 100 万、200 万、400 万文字が 0.11、0.11、0.12 秒、ひらがなで 100 万、200 万文字が 0.12、0.14 秒（動かし始める時間を含む）。ふつうの行は、少し遅くなった（10 万行が 2.30 秒から 2.49 秒、100 万行が 22.1 秒から 24.0 秒）。
     * 単独の `\r` は行の終わりにしない（Node.js の readline と違う）ことを、README の JavaScript との違いに書いた。
     * 上の 1 つ目の直しで、読んだかたまりを処理ごとの列にためたため、2 つ以上の処理が同じパイプから読むと、待つ所をまたいで、ほかの処理が読んだものと順が入れ替わり、行が壊れるようになった（M2 が確かめで見つけた。前の版では起きなかった）。かたまりは、ファイルのオブジェクトの隠したキー "fs_chunks" にためるようにし（`Conjs_file_read_more`）、待った後は、行を探すところからやり直す。テストに、少しずつ届く標準入力を 3 つの処理で取り合う case6 を足した（bin/lang-test は、`case*.feed.py` の出力をパイプで標準入力に渡す）。case6 の入力は、M2 の確かめと同じ形（乱数の種を決めた、行の途中で分けた送り方）で、前の版では 3 回のうち 2 回、行が壊れた。
+
+### 8.11. 段階 P7（2026-11-22）
+
+4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った。使い方は、新しい docs/HOST-ja.md（使う人のための 1 か所）。
+
+* **文書**：docs/HOST-ja.md に、呼ぶ側（ConJS と ConMa）、渡せる値、足す側（ブラウザ、Node.js、Rust 版の VM と transpiled VM）、どの VM にもある関数、テストをまとめた。今までの 5 か所（conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md）は、詳しいことを残し、docs/HOST-ja.md への参照を足した。vm/README.md にも、ライブラリとして使えることを書いた。
+* **クレートを lib と bin に分けた**：vm/src/lib.rs（今までの main.rs の中身と、`run_main`、`run_main_with`、`Host`、`HostValue`、`Done`、`Pool` の re-export）と、`conma::run_main` を呼ぶだけの vm/src/main.rs。VM のアロケータ（`Pool`）は、bin の側の `#[global_allocator]` に置き、組み込むプログラムにも同じ 1 行を勧める（docs/HOST-ja.md）。wasm 版のクレート（vm/src のファイルを `#[path]` で使う）と transpiled VM は、作り方を変えずに作れた。
+* **ホストの関数の表**（vm/src/prim/host.rs）：決まった表（`BUILTIN`、`NATIVE`）と `feature()` を、`Machine` が持つ `Host` に替えた。`Host::new()` が `test.add`、`test.echo`、`test.fail` と、Rust 版と transpiled VM では `time.now` と機能 `"time"` を登録する（同じ API）。`test.later` と `time.sleep` は、今までどおり `__Host_start__` の中で扱う。`run_main_with` は、VM のスレッドに `Host` を渡す（`set_host` と、`Machine::new` の `take_host`）。
+* **待つ関数**：`Host::waiting` の関数は、`__Host_start__` が `Done` を付けて呼ぶ。`Done::finish` は、結果を `Mutex` の列に入れ、起こすためのパイプ（ブロックしない。`sys::make_wake_pipe`）に 1 バイト書く。スケジューラは、ステップの間で列を見て（`any_finished` の 1 回の読みだけ）、呼び出しを終える。どの VProc も動けないときは、起こすためのパイプも `poll` で待つ。列とパイプは、`Done` と共有する `Arc` が持ち、VM と最後の `Done` がなくなったときに閉じる。`finish` を呼ばずに捨てた `Done` は、`名前: the host dropped the call` のエラーで終える（`Drop`）。`__Host_call__` で待つ関数を呼ぶと、`__Host_call__: 名前 waits: call it with __Host_start__`。
+* **結果の置き場所**（M2 のレビューの 1）：結果を `Machine` の表（`HostResults`。呼び出しの Stream の serial から、結果へ）に置き、パイプは閉じるだけにした（`__Host_result__` は、パイプの終わりを見てから、表の結果を取る。表にないときは、今までどおり、wasm 版のホストが書いた JSON を読む）。`capped` と `PIPE_MAX` はなくなった。Stream が閉じられた呼び出しの結果は捨て、次に結果を置くときに、閉じた Stream の分を表から除く。
+* **設計と違うこと**：Python 版の VM も、8 KB の限り（`HOST_PIPE_MAX`）を残さず、結果を Stream に置いてパイプを閉じるだけにした（`_host_done`）。テストのログ（test/fast15 と conjs/test/step5 の 128 KB の結果）を、すべての VM で同じにするため。Python 版の VM の JSON の道（`_host_json` など）は、使わなくなったので除いた。
+* **値**：真偽と、キーが文字列の Dict を、すべての VM で受け渡せるようにした（Rust の `HostValue::Bool` と `Dict`。真偽は `boolean_choice` で見分け、返すときは `true_closure` と `false_closure`）。wasm 版のホストとは、真偽は JSON の真偽、Dict は `{"d":{...}}`（vm/wasm/conma.js の `hostDecode` と `hostEncode`。JavaScript の側は、ふつうのオブジェクトだけを返せ、`Date` などは関数のエラー）。Python 版の VM にも同じものを足した（`_HostDict`、`_host_boolean`。モジュールの関数の本体には SInfo があるので、それを飛ばして見分ける）。ConJS は、オブジェクトの自分のプロパティだけを Dict にして渡し（M2 のレビューの 4）、ホストの Dict をオブジェクトにする（conjs/include/conjs_rt.se の `Conjs_to_host`、`Conjs_from_host`）。
+* **決まらない Promise**（7 節）：vm/wasm/conma.js が、待つホストの呼び出しの数を、ほかの JavaScript の呼び出しと分けて数え（`vm.hostPending()`）、vm-node.js が `beforeExit` で、`vm-node: every VProc waits for host calls that never finish: N` を出して、終了ステータス 2 で終える（M2 のレビューの 3）。
+* **見本とテスト**：vm/examples/host_demo.rs（`demo.add`、Dict と真偽を返す `demo.info`、スレッドで終える待つ `demo.delay`、`Done` を捨てる `demo.drop`、機能 `"demo"`）と、それを呼ぶ conjs/examples/host_demo.con.js、同じ関数を JavaScript で書いた conjs/examples/host_demo.host.js。test/host-api.sh（新しい）が、`cargo build --release --example host_demo` を自分で呼び（M2 のレビューの 5）、Rust 版と wasm 版で同じログ（test/host-api/demo.log）になること、Rust の API だけのこと（test/host-api/rust.con.js：待つ関数を `host.call` で呼んだときのエラー、5 つの処理から同時に待つこと、`host.available`）、関数を足さない VM で `host.available("demo")` が偽になることを確かめる。bin/lang は、`CONMA_RUNNER` があれば、その実行ファイルでモジュールを動かす。test/fast14 と fast15（Dict と真偽、Number のキーの Dict と真偽でない Closure のエラー、128 KB の結果、wasm 版のホストが返す真偽とオブジェクトと `Date`）、conjs/test/step5（オブジェクト、クラスのインスタンス、関数と `null` を渡すエラー、128 KB の結果）を書き換え、conjs/test/step17（決まらない Promise）を足した。
+* **確かめたこと**（Apple M1）：test/ が Rust 版、Python 版、wasm 版（違いは既知の step40 だけ）、transpiled VM で通る。consh/test が Rust 版と transpiled VM で、consh/js/test、sjs/test が通る。conjs/test が Rust 版、wasm 版、Python 版で、conjs/test/compare.sh が通る。test/host-api.sh が Rust 版と wasm 版で通る。vm の `cargo test --release` が通る。bin/lang-emit-check（alpha と比べる）：SJS のプログラムが作るコードは変わらない。ConJS は、書き換えた conjs/test/step5 の場合だけ違う。
+* **M2 のレビューで直したこと**（PR shima3/conma#26）：自分を含む値（`__Dict_put__ d "self" d` の Dict、ConJS の `o.self = o`）を渡すと、Rust 版の VM は `to_host` の再帰でスタックがあふれて落ち、ConJS は `Conjs_to_host` が止まらずにメモリーを使い続けた。今たどっている Dict（Rust 版はポインター、Python 版は `id`）と、ConJS のオブジェクトと配列（`"id"`）を覚え、また出会ったら、ConMa では `onError`（`got a Dict that contains itself`）、ConJS では `TypeError`（`host.call: cannot pass an object that contains itself to the host`）にした。同じ値を 2 か所に持つだけなら、今までどおり渡せる。test/fast14 と conjs/test/step17 の case2 に足した。値が `undefined` のプロパティは、今の形（`TypeError`）のままにし、docs/HOST-ja.md に書いた。
 

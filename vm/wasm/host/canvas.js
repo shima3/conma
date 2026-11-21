@@ -1,7 +1,7 @@
 // The platform feature "canvas" (docs/dev/PLATFORM-PLAN-ja.md 3.4, stage P3): the functions of the host
 // that draw on a canvas of the browser, for the hooks hostFunctions and hostFeatures of vm/wasm/conma.js.
 // A ConMa program calls them with __Host_call__ (or __Host_start__ for canvas.frame), most simply
-// through include/platform/canvas.se.
+// through include/platform/canvas.se. How a host adds functions in general: docs/HOST-ja.md.
 //
 //   const host = ConmaCanvas(canvas, options)   // canvas: an HTMLCanvasElement or an OffscreenCanvas
 //   ConmaVM.create(module, write, { hostFunctions: host.hostFunctions, hostFeatures: host.hostFeatures })

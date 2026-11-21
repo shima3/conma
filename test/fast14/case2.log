@@ -4,5 +4,7 @@ echo: error: __Host_call__: no host function "demo.echo"
 types: error: __Host_call__: no host function "demo.types"
 throw: error: __Host_call__: no host function "demo.throw"
 boolean: error: __Host_call__: no host function "demo.bool"
+object: error: __Host_call__: no host function "demo.object"
+date: error: __Host_call__: no host function "demo.date"
 promise: error: __Host_call__: no host function "demo.promise"
 exit: 0

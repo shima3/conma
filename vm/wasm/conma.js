@@ -48,10 +48,11 @@
 // names in SInfo relative to the directory above the repository, or
 // {ok: false, message} with the first line of the error.
 // hostFunctions, if given, is an object of the functions that __Host_call__ name args calls by
-// name (docs/dev/PLATFORM-PLAN-ja.md 3.2), besides those every VM has (test.add, test.echo and
-// test.fail, vm/src/prim/host.rs). A function is called with the arguments as JavaScript values,
-// numbers, strings and arrays of them (an empty LList, null, is []), and returns such a value (null
-// and undefined are null, the empty LList), or throws: the message of what it throws goes to onError.
+// name (docs/dev/PLATFORM-PLAN-ja.md 3.2; for the users, docs/HOST-ja.md), besides those every VM has
+// (test.add, test.echo and test.fail, vm/src/prim/host.rs). A function is called with the arguments
+// as JavaScript values, numbers, strings, booleans, plain objects (a Dict) and arrays of them (an
+// empty LList, null, is []), and returns such a value (null and undefined are null, the empty LList),
+// or throws: the message of what it throws goes to onError.
 // For __Host_call__ it is called once and must not wait (a Promise is an error). __Host_start__ name
 // args (a call that waits, 3.4 of the plan) calls it too, and it may return a Promise then: when the
 // function has returned, or its Promise has settled, its result is written to the pipe of the call
@@ -1773,15 +1774,21 @@ var ConMaVM = (function () {
   }
 
   // A value of __Host_call__ from the VM as a JavaScript value: {"n":"NaN"} and the like are
-  // numbers, null in a list is [] (the empty LList)
+  // numbers, null in a list is [] (the empty LList), true and false are booleans, and {"d":{...}}
+  // is a Dict, an object (docs/dev/PLATFORM-PLAN-ja.md 4.9, stage P7)
   function hostDecode(v) {
     if (v === null) return [];
     if (Array.isArray(v)) return v.map(hostDecode);
-    if (typeof v === "object") return v.n === "-0" ? -0 : Number(v.n);
+    if (typeof v === "object") {
+      if (Object.prototype.hasOwnProperty.call(v, "d"))
+        return Object.fromEntries(Object.entries(v.d).map(([k, e]) => [k, hostDecode(e)]));
+      return v.n === "-0" ? -0 : Number(v.n);
+    }
     return v;
   }
-  // A result of a function of the host as a value for the VM: a number, a string, null (also for
-  // undefined and []) or an array of them; anything else is an error of the function name
+  // A result of a function of the host as a value for the VM: a number, a string, a boolean, null
+  // (also for undefined and []), a plain object (its own enumerable properties, a Dict) or an array
+  // of them; anything else is an error of the function name
   function hostEncode(name, v) {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") {
@@ -1791,9 +1798,15 @@ var ConMaVM = (function () {
       if (Object.is(v, -0)) return { n: "-0" };
       return v;
     }
-    if (typeof v === "string") return v;
+    if (typeof v === "string" || typeof v === "boolean") return v;
     if (Array.isArray(v)) return v.length === 0 ? null : v.map((e) => hostEncode(name, e));
-    throw new Error(name + ": returned a " + typeof v + " (only numbers, strings and arrays of them go back)");
+    if (typeof v === "object") {
+      const proto = Object.getPrototypeOf(v);
+      if (proto === Object.prototype || proto === null)
+        return { d: Object.fromEntries(Object.entries(v).map(([k, e]) => [k, hostEncode(name, e)])) };
+    }
+    const what = typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v;
+    throw new Error(name + ": returned a " + what + " (only numbers, strings, booleans, plain objects and arrays of them go back)");
   }
 
   // The functions of the host that every host of this VM has (docs/dev/PLATFORM-PLAN-ja.md 4.4, stage
@@ -1841,6 +1854,8 @@ var ConMaVM = (function () {
     let x = null;
     let vm = null;
     let jsPending = 0;
+    // the calls of __Host_start__ among them (vm-node.js reports those that never finish)
+    let hostPending = 0;
     // Run the VM again (later: this may be inside conma_run).
     const wake = () => {
       if (jsDone) Promise.resolve().then(() => jsDone(vm));
@@ -2064,10 +2079,12 @@ var ConMaVM = (function () {
           const name = str(namePtr, nameLen);
           const argsText = str(argsPtr, argsLen);
           jsPending++;
+          hostPending++;
           const done = (result) => {
             pass(utf8(result), (p, n) => x.conma_write(fd, p, n));
             x.conma_close(fd);
             jsPending--;
+            hostPending--;
             wake();
           };
           const ok = (r) => {
@@ -2152,6 +2169,8 @@ var ConMaVM = (function () {
       inputEnd: () => x.conma_input_end(),
       // The number of calls of JavaScript whose results the VM has not got yet.
       jsPending: () => jsPending,
+      // The number of calls of __Host_start__ (functions of the host that wait) among them.
+      hostPending: () => hostPending,
       // For jsRemote: a line of a call from the engine (0 or an errno, 32 when the reader has gone),
       // and the end of the call.
       jsLine: (id, line) => jsOut.line(id, line),
