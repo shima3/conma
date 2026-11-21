@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）の設計の案を、4.10 節に書いた。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -586,6 +586,52 @@ std::process::exit(conma::run_main_with(std::env::args().collect(), host));
 4. **決まらない Promise**：vm-node.js の `beforeExit` で Deadlock にすることでよいか（ブラウザでは、ページは終わらないので見つけない）。
 5. **テストの置き場所**：Rust の API のテストを、cargo の example と test/host-api.sh にすることでよいか（今の bin/vm と bin/lang-test は、決まった VM の実行ファイルを使うため）。
 
+### 4.10. 段階 P6b の設計（案、2026-11-22）
+
+P6（プラットフォームを増やす）の 2 つ目の段階として、**Node.js** をプラットフォームにする（ユーザーが 2026-11-22 に選んだ。6 節の 1 の「P6a の後の順」）。P9（ConJS のチャネル）の案は、push していないブランチ m1/platform-p9-design に置いたまま、この後に回す。
+
+* **今あるもの**：wasm 版の VM は、もう Node.js で動く（vm/wasm/vm-node.js）。ファイル（`hostFs`）、プロセス（`hostProc`）、標準入力、`time.*`、`http.fetch` は使え、`CONMA_HOST` でホストの関数を足せる（P7、docs/HOST-ja.md）。けれども、Node.js に固有で、ほかのプラットフォームにない機能は、まだ 1 つもない。3.3 節の表の「Node.js：ファイル、ネットワーク、npm のライブラリ」のうち、ファイルはどの VM にもあり、npm のライブラリは P7 の `CONMA_HOST` で使える（ホストの関数の中で `require` する。docs/HOST-ja.md に例を足す）。残るのは**ネットワークのサーバ**である。
+* **選んだ理由**：サーバは、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」（P5c、P8）の、いちばんよく知られた例でもある。Node.js の `http.createServer` は、要求ごとにコールバックを呼ぶ。要求の中で、ファイルを読む、ほかのサーバに問い合わせる、待つ、といったことをすると、コールバックの中で `async` と `await` が要り、要求をまたいだ状態（数、待ち行列）は、コールバックの外に置くことになる。ConJS では、`for (;;) { const req = server.accept(); spawn(() => handle(req)); }` と、要求を順に受け取るループで書け、1 つの要求の中は、ふつうの上から下への処理になる（Go の `net/http` や、スレッドのサーバと同じ形）。
+
+**足すもの**
+
+* **ホストの関数**（新しい vm/wasm/host/server.js。機能 `"server"`。vm-node.js が、`CONMA_HOST` の関数とともに、はじめから渡す。ブラウザには渡さない）：
+    * `server.listen` port host（待つ）：`http.createServer` で、host（既定 `"127.0.0.1"`。ほかの機械から届かないように）の port（0 なら OS が選ぶ）で待ち受けを始め、待ち受けた番号（サーバの id）と、実際の port の Dict `{id, port}` を返す。使えない port は関数のエラー（`server.listen: EADDRINUSE ...`）。
+    * `server.accept` id（待つ）：次の要求を返す。届いた要求は、受け取られるまで列にためる（受け取る処理がいなくても、Node.js の側で要求を止めない）。要求は Dict `{id, method, url, headers, body}`（id は要求の番号。headers は Node.js の `req.headers` のまま：名前は小文字、同じ名前のヘッダはまとめ、`set-cookie` だけは配列。body は、全部読んだ文字列。UTF-8）。本体は 1 MB までにし、超えた要求は列に入れずに 413 で答える（メモリーを使い切らないように。M2 のレビューの 3）。サーバが閉じられたら `null`（ConJS では `undefined`）。
+    * `server.respond` requestId status headers body（すぐ返る）：要求に答える（`res.writeHead` と `res.end`）。要求は番号だけで渡す（本体を渡し直さない。M2 のレビューの 3）。2 度目は関数のエラー。
+    * `server.close` id（すぐ返る）：Node.js の `server.close()` と同じく、新しい要求を受けなくなる（M2 のレビューの 2）。**受け取った（`accept` が返した）要求**は、`close` の後でも `respond` できる。**届いたが、まだ受け取っていない要求**（列にたまっているもの）だけを 503 で閉じる。待っている `server.accept` は `null` を受け取る。使っていない keep-alive の接続も閉じる（`server.closeIdleConnections()`。答えた後の、つながっただけの接続のために、プロセスがすぐ終わらないことがないように）。
+    * 値は P7 の Dict で受け渡す（P7 を先にしたので、要求をそのままオブジェクトで返せる）。
+* **ConJS のライブラリ**（conjs/include/conjs_lib.se。ConJS だけ。SJS には移さない）：
+    * **`http.listen(port, host)`**：サーバのオブジェクトを返す（`port` は実際の番号）。機能 `"server"` がないプラットフォームでは Error（`http.listen: this platform has no server (Node.js only)`）。
+    * サーバのオブジェクト：`accept()`（次の要求。閉じた後は `undefined`）、`close()`、`port`。
+    * 要求のオブジェクト：`method`、`url`、`headers`、`body`、`respond(status, headers, body)`（`body` は文字列。`headers` は省略できる）。`json()`（`JSON.parse(body)`）。要求の番号は、隠したキーに持つ。
+    * **終わり方**（M2 のレビューの 1）：サーバは、`close()` するか、Ctrl-C（SIGINT）で終わるまで、要求を待ち続ける。`accept` で待つ処理だけが残るのは、動いているサーバのふつうの状態なので、行き詰まりとはしない。待ち受けを `unref` もしない（Node.js の待ち受けがイベントループを生かすので、P7 の `beforeExit` の知らせも出ない）。Node.js の `http.createServer().listen()`（main の後も動き続ける）と、Rust 版の VM（join されない処理が終わるまで終わらない）と同じ。README に書く。
+    * Node.js の `http` と名前を分ける：Node.js の `http.createServer` はコールバックを取るので、同じ名前にすると、Node.js のプログラムをそのまま写せるように見えて紛らわしい。`http.listen` は ConJS だけの形（README の JavaScript との違いに書く）。
+* **見本**（conjs/examples）：
+    * **counter_server.con.js**：要求ごとに処理を `spawn` する小さなサーバ。`/count` は数を 1 つ増やして返し、`/slow` は `sleep(200)` してから答え（その間も、ほかの要求に答えること）、`/file?name=...` は P8 の `fs.readLines` で読んで行の数を返し（決まった 1 つのディレクトリの中の名前だけ。`/` と `..` を含む名前は 400。見本は書き写されるので。M2 のレビューの 3）、`/stop` で `close()` してループを抜ける。数を共有の変数に持っても、待つ所の間は割り込まれないので安全（4.1 節）。
+    * Node.js で同じことを書いた counter_server.node.js（`http.createServer` のコールバックの中で `async`、`await`、`setTimeout` の Promise、`fs.promises` と `readline`）を置き、README に並べて載せる。
+    * 2 つを比べるテスト：同じ要求の列を送って、同じ答えが返ることを確かめる（下の case2。compare.sh は、出力のファイルを比べる形なので、サーバには使わず、テストの中で確かめる）。
+* **npm のライブラリ**：docs/HOST-ja.md の Node.js の節に、`CONMA_HOST` の関数の中で `require` したライブラリを呼ぶ例を足す（例は、Node.js に入っている `node:crypto` の `createHash` にし、npm から何も入れずに動かせるようにする）。
+
+**テスト**（conjs/test の step18。wasm 版の VM（Node.js）だけが機能 `"server"` を持つので、ログは case*.wasm.log と、ほかの VM の case*.log（「no server」の 1 行）に分ける）
+
+* case1（サーバの API）：port 0 で待ち受け、別の処理から `fetch` で自分のサーバに要求を送る（GET と POST、ヘッダ、本体、JSON）。`accept` と `respond`、2 度目の `respond` のエラー、`close` の後の `accept` が `undefined`、待っている `accept` が `close` で `undefined` を受け取ること、受け取った要求に `close` の後でも答えられること（`/slow` の途中で `close` する。M2 のレビューの 2）、1 MB を超える本体の 413、使われている port のエラー。
+* case2（見本）：counter_server.con.js を port 0 で動かす小さな台本（同じプログラムの中で、サーバを `spawn` し、`/slow` と `/count` を並べて送り、`/slow` を待つ間に `/count` が先に答えることを、答えの順で確かめる。時計には頼らず、順だけをログに出す）。Node.js 版も、同じ要求の列で同じ答えになることを、step18 の中の Node.js の小さな台本（case2.node-check.js。node で動かす）で確かめる。
+* conjs/test の今の場合、sjs/test が通り、SJS が作るコードが変わらないこと（bin/lang-emit-check）。
+
+**終わりとすること**（5 節の表）：step18 が 3 つの VM で通る（wasm 版は本当に待ち受ける）。見本が Node.js で動き、Node.js で書いたものと同じ答えになる（README に並べて載せる）。docs/HOST-ja.md に npm のライブラリの例がある。SJS が作るコードが変わらない。
+
+**P6b でしないこと**（後の候補）：Rust 版の VM のサーバ（クレートを使わないので、`std::net` で HTTP を自分で読むことになる。P7 の Rust の API で、後で足せる）、HTTPS、TCP と UDP のソケット（`net`、`dgram`）、WebSocket、要求の本体を少しずつ読むこと（ストリーム）、HTTP/2、Node.js のワーカーのスレッド。WASI、デスクトップの GUI、Windows の端末（P6 の残り）。ConJS の `fetch` を Rust のホストの関数に替えること（P7 の後の候補）。
+
+**M2 のレビュー**（PR shima3/conma#27）：向き、`http.listen` と `accept()` の名前、要求を Dict で返すこと、テストの分け方と Node.js 版との比べ方に、賛成をもらった。指摘を受けて、終わり方を「`close()` か Ctrl-C まで待ち続ける」に決め（行き詰まりにも `unref` にもしない。1）、`close` を Node.js と同じく、受け取った要求には答えられる形にし（2）、`respond` に要求の番号だけを渡すこと、本体を 1 MB までにすること、ヘッダは Node.js の `req.headers` のままであること、見本の `/file` が決まったディレクトリの中だけを読むこと（3）を書き足した。
+
+**M2 に聞いたこと**
+
+1. **向き**：Node.js の段階で、ネットワークのサーバを足すことでよいか（ファイルと npm は、もう使えるので）。
+2. **API の名前**：Node.js と違う `http.listen` と `server.accept()` にすることでよいか。要求を Dict（P7）で返す形でよいか。
+3. **終わり方**：`accept` で待つ処理だけが残ったときに、行き詰まりとして終えるか、`unref` で Node.js を終わらせるか。M1 は、サーバのプログラムは `close` で終えるのがふつうなので、行き詰まりとして知らせる（書き忘れに気付ける）ほうを勧める。
+4. **テスト**：ほかの VM のログを「no server」の 1 行にし、wasm 版だけで本当に待ち受けることでよいか。Node.js 版との比べ方（step18 の中の台本）でよいか。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -600,13 +646,14 @@ std::process::exit(conma::run_main_with(std::env::args().collect(), host));
 | P5b（作った、2026-11-20。8.7 節） | ConJS が受け付ける JavaScript を広げる：`class`、`new`、`this`、`instanceof`、エラーのコンストラクタ。`JSON.parse` と配列の `sort`（SJS と共有） | conjs/test が 3 つの VM で通り、足したものの場合が Node.js と同じ出力。SJS が作るコードが変わらず、sjs/bench が遅くならない |
 | P5c（作った、2026-11-21。8.8 節） | ConJS で、ブラウザのキーとマウスの入力を待つ：ホストの関数 `input.next`、`input.poll`（機能 `"input"`）と、ConJS の `nextEvent`、`pollEvent`。見本の対話のゲーム（stars.con.js） | conjs/test の step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない |
 | P6a（作った、2026-11-21。8.9 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
+| P6b（設計の案、2026-11-22。4.10 節） | P6 の 2 つ目の段階：Node.js。ネットワークのサーバ（ホストの関数 `server.*`、機能 `"server"`、vm/wasm/host/server.js）と、ConJS の `http.listen`、`accept()`、`respond()`。見本：要求ごとに処理を `spawn` する counter_server.con.js と、Node.js で同じことを書いた counter_server.node.js。docs/HOST-ja.md に npm のライブラリの例 | conjs/test の step18 が 3 つの VM で通る（wasm 版は本当に待ち受ける）。見本が Node.js 版と同じ答えになる。SJS が作るコードが変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
 
-1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。P6 は、まず端末から始める（2026-11-21。4.7 節、段階 P6a）。その後の順は、P6a の後で決める。
+1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。P6 は、まず端末から始める（2026-11-21。4.7 節、段階 P6a）。その次は Node.js（2026-11-22。ユーザーが選んだ。4.10 節、段階 P6b）。その後の順（WASI、デスクトップの GUI、Windows の端末、モバイル）は、P6b の後で決める。
 2. **見本の言語**（決めた、2026-11-19）：P5 の見本の言語は、**代数的エフェクトとハンドラの小さな言語**（Koka や Eff のような）にする。ハンドラは、捕まえた継続を値として扱うだけ（`__Cont_get__`）で、ConMa で作りやすい。構文を自分で決められるので、SJS と違う構文で、キットが言語によらないこと（4 節）も確かめられる。
     * M1 は、初め「待つ処理を直接スタイルで書ける、JavaScript の部分集合」を見本の言語に勧めた（aae726a）。M2 の意見（docs/dev/REVIEW-ja.md の 2026-11-19（3））を受けて、名前を **ConJS** にし（「直接スタイル」は、ふつうの JavaScript もそうなので区別できない。「await なしの JS」は非同期ができないように聞こえる。ConMa、ConSh と並ぶ名前にした）、見本の言語ではなく、**SJS の次の段**として作る（4.1 節、段階 P3b）。JavaScript の構文なので、キットが構文によらないことの確かめにならないため。
     * 比べた候補：Lua のサブセット（M2 の初めの案。キットの確かめにはなるが、C の処理系がどこでも動くので、ConMa に変換する得は小さい）、小さな Lisp（S 式で、キットの字句解析と構文解析をほとんど確かめない）、Forth のようなスタックの言語、アクターやチャネルの並行言語、論理型言語の小さなもの。
