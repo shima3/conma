@@ -9,5 +9,7 @@ module.exports = {
       throw new Error("demo.throw: boom");
     },
     "demo.slow_bool": () => Promise.resolve(true),
+    "demo.slow_object": () => Promise.resolve({ a: [1, false] }),
+    "demo.slow_date": () => Promise.resolve(new Date(0)),
   },
 };

@@ -2,5 +2,6 @@ sum: 3
 slow sum: 3
 rejected: error: demo.reject: no
 throw: error: demo.throw: boom
-boolean: error: demo.slow_bool: returned a boolean (only numbers, strings and arrays of them go back)
+boolean: true
+date: error: demo.slow_date: returned a Date (only numbers, strings, booleans, plain objects and arrays of them go back)
 exit: 0

@@ -4,7 +4,8 @@ if (host.available("demo")) {
   console.log("sum:", host.call("demo.sum", 1, 2));
   console.log("slow sum:", join(t));
   try { host.wait("demo.reject"); } catch (e) { console.log(String(e)); }
-  try { host.wait("demo.slow_bool"); } catch (e) { console.log(String(e)); }
+  console.log(host.wait("demo.slow_bool"), host.wait("demo.slow_object"));
+  try { host.wait("demo.slow_date"); } catch (e) { console.log(String(e)); }
 } else {
   console.log("no demo host");
 }

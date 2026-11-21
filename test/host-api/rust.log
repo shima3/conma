@@ -1,0 +1,4 @@
+Error: __Host_call__: demo.delay waits: call it with __Host_start__
+t0 t1 t2 t3 t4
+true true false
+exit: 0

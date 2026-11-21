@@ -213,4 +213,5 @@
   wait "rejected" "demo.reject" __NULL__ ,()
   wait "throw" "demo.throw" __NULL__ ,()
   wait "boolean" "demo.slow_bool" __NULL__ ,()
+  wait "date" "demo.slow_date" __NULL__ ,()
   __NULL__)

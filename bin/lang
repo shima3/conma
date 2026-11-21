@@ -9,6 +9,8 @@
 # 同時に動く bin/lang が作りかけのモジュールを読むことはない。変換は Rust 版の VM（vm/target/release/conma）で行う。
 # --emit なら、変換した ConMa のソースを出して終える。そうでなければ、CONMA_VM の VM で動かす：なし（Rust 版）、
 # wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。transpiled は Rust 版で動かす（変換器のモジュールのため）。
+# Rust 版で動かすとき、CONMA_RUNNER があれば、vm/target/release/conma の代わりに、その実行ファイルで動かす（VM を組み込んで
+# ホストの関数を足したプログラム。test/host-api.sh。docs/HOST-ja.md）。変換とモジュール作りは、いつも vm/target/release/conma。
 # 変換したソースの include の行（ランタイム）は、フロントエンドに通すと約 1.4 秒かかるので、先にモジュールにしておく
 # （docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）：include の行だけのファイル（キャッシュの「name」-rt-ハッシュ.se）の
 # モジュール（ランタイムのモジュール）を、include の行が同じなら 1 度だけ作り、変換器のモジュールと同じく、ソースか VM が
@@ -70,6 +72,6 @@ fi
 case "$CONMA_VM" in
   wasm) "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se" "$@" ;;
   python) "$root/bin/vm" --main "$tmp/prog.module.se" "$@" ;;
-  ''|rust|transpiled) "$conma" --main "$tmp/prog.module.se" "$@" ;;
+  ''|rust|transpiled) "${CONMA_RUNNER:-$conma}" --main "$tmp/prog.module.se" "$@" ;;
   *) echo "lang: CONMA_VM must be empty, rust, transpiled, wasm or python, not \"$CONMA_VM\"" >&2; exit 2 ;;
 esac

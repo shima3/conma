@@ -1,0 +1,9 @@
+6.5
+fast
+slow
+{ name: 'abc', count: 2, short: true } true
+Error: demo.add: expected Numbers
+Error: demo.delay: expected milliseconds and a text
+Error: demo.drop: the host dropped the call
+Error: __Host_call__: no host function "demo.none"
+exit: 0

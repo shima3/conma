@@ -124,5 +124,7 @@
   try "types" "demo.types" a ,()
   try "throw" "demo.throw" __NULL__ ,()
   try "boolean" "demo.bool" __NULL__ ,()
+  try "object" "demo.object" __NULL__ ,()
+  try "date" "demo.date" __NULL__ ,()
   try "promise" "demo.promise" __NULL__ ,()
   __NULL__)

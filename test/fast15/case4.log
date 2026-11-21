@@ -3,4 +3,5 @@ slow sum: error: __Host_start__: no host function "demo.slow_sum"
 rejected: error: __Host_start__: no host function "demo.reject"
 throw: error: __Host_start__: no host function "demo.throw"
 boolean: error: __Host_start__: no host function "demo.slow_bool"
+date: error: __Host_start__: no host function "demo.slow_date"
 exit: 0
