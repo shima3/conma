@@ -1,0 +1,4 @@
+# conjs/test/compare.sh が比べる、ConJS のプログラムと Node.js のプログラムの組（段階 P8）。
+# ディレクトリ ConJS のファイル Node.js のファイル 引数...
+step16 ../../examples/merge.con.js ../../examples/merge.node.js case5_a.txt case5_b.txt
+step16 ../../examples/merge.con.js ../../examples/merge.node.js case5_b.txt case5_a.txt

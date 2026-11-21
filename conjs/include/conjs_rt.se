@@ -8,6 +8,7 @@
 (include "sjs_rt.se")
 (include "lang/sched.se")
 (include "conjs_term.se")
+(include "conjs_file.se")
 (include "conjs_lib.se")
 (include "conjs_class.se")
 

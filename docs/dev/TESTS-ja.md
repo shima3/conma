@@ -67,6 +67,14 @@ CONMA_VM=python conjs/test/run_all.sh
 * 気を付けること：wasm 版の VM を Node.js で端末から動かすと、見本は終わった後もプロセスが残る（8.9 節）。
 * M2 のレビューを受けて直した：キーの列を 2 つの LList にした（多くのキーが一度に届いても 2 乗にならない）、止めた時間切れの VProc の書き手を閉じる。alpha（c6ce993）を入れて、この見出しの衝突を直した。流したもの：conjs/test を Rust 版（16 秒）、wasm 版（15 秒）、Python 版（3 分 46 秒）で。test/fast18 を 3 つの VM で。pty で、Rust 版の VM の 3 つの終わり方。
 
+### m1/platform-p8
+
+* 段階 P8 を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.10 節）：ConJS の `fs.open`、ファイルのオブジェクト、`fs.readLines`、`fs.stdin`、`fs.stdout`（新しい conjs/include/conjs_file.se）と、プログラムの引数の `argv`（sjs/include/sjs_gen.se の `Gen_conjs_program` が main に 1 行足す。conjs/conjs と bin/lang が引数を渡す）。見本の conjs/examples（merge.con.js、merge.node.js、wordcount.con.js）。bin/lang-test が `case*.args` を引数にする。conjs/test/compare.sh が conjs/test/node-pairs.txt の組を比べる。
+* 作り直すもの：wasm 版の VM（consh/js/build.sh。ConSh のモジュールに SJS の変換器が入る）。VM は変えていない。
+* 新しいテスト：conjs/test/step16。
+* M1 が流したもの（Apple M1）：conjs/test を Rust 版（11 秒）、wasm 版（16 秒）、Python 版（4 分 16 秒）で。conjs/test/compare.sh。sjs/test（42 秒）、consh/js/test（23 秒）。`bin/lang-emit-check origin/alpha`（SJS は同じ。ConJS の 42 のプログラムは `Conjs_argv` の 1 行だけ違う）。流していないもの：consh/test（ConSh が使う SJS の変換は変えていない）、test/、transpiled VM、Python 版の VM の sjs/test、ConSh の参照版。
+* 測ったもの：大きなファイルを読む時間（8.10 節）。Full Bench の依頼はない。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

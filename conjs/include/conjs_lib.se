@@ -12,6 +12,7 @@
 ;;                        { type: "key", key } か { type: "click", x, y } で返す。ms の間に来なければ undefined。
 ;;                        機能 "input" がなければ、標準入力のキーを読む（conjs_term.se。4.7 節、段階 P6a）
 ;;   pollEvent()          ホストの関数 input.poll（すぐ返る）か、標準入力の列：同じ形のオブジェクトか undefined
+;;   fs.open、fs.readLines、fs.stdin、fs.stdout  ファイルを 1 行ずつ読む（conjs_file.se。4.8 節、段階 P8）
 
 (define Conjs_lib_builtins ,(G)
   Sjs_function G "sleep" (,(args) Sjs_arg args ,(ms rest) Conjs_ms "sleep" ms ,(ms) Conjs_sleep ms) ,(sleep)
@@ -24,6 +25,7 @@
   Sjs_object_new G ,(fs)
   Sjs_def G fs "readFile" (,(args) Conjs_fs_read args) ,()
   Sjs_def G fs "writeFile" (,(args) Conjs_fs_write args) ,()
+  Conjs_file_builtins G fs ,()
   __Dict_put__ G "fs" fs ,()
   Sjs_function G "fetch" (,(args) Conjs_fetch G args) ,(fetch)
   __Dict_put__ G "fetch" fetch ,()
@@ -305,6 +307,7 @@
 ;; 端末の道の nextEvent：受け持つ VProc に ("wait" 処理 書き手 ms) を送り、結果が届くまで、この処理だけが待つ。
 ;; キーの名前か null（時間切れ）を返す。標準入力が終わっていれば Error
 (define Conjs_term_next ,(ms)
+  Conjs_stdin_use "keys" ,()
   Conjs_term ,(T)
   __Dict_lookup_or__ T "w" __print_exit_error__ ,(tw)
   Kit_sched_state ,(S)
@@ -329,6 +332,7 @@
 
 ;; 端末の道の pollEvent：受け持つ VProc に ("poll" 書き手) を送り、答え（キーの名前か null）を受け取る
 (define Conjs_term_poll ,()
+  Conjs_stdin_use "keys" ,()
   Conjs_term ,(T)
   __Dict_lookup_or__ T "w" __print_exit_error__ ,(tw)
   Conjs_num "1" ,(one)

@@ -1,0 +1,12 @@
+all a
+all b
+all c
+after all: true
+break at a
+after break: true
+Error: stop at b
+after throw: true
+found b after return: true
+Error: File lines.txt is closed
+File { path: 'lines.txt' } [ 'path' ] {"path":"lines.txt"} function true
+exit: 0

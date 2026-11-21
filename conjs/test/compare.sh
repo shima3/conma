@@ -5,8 +5,13 @@
 #   conjs/test/compare.sh [file.con.js ...]
 # ファイルを書かなければ、各ステップの node.txt に並べた場合（2026-11-20 から。前は step10 のすべて）。変換するときの
 # エラーの場合と、JavaScript との違いの場合は、node.txt に入れない。標準エラーと終了ステータスは比べない（例外の出し方が違う）
+# ファイルを書かなければ、conjs/test/node-pairs.txt の組も比べる（段階 P8）：ConJS だけの API を使うプログラムと、同じことを
+# Node.js で書いたプログラムの組。1 行に「ディレクトリ ConJS のファイル Node.js のファイル 引数...」（conjs/test から
+# の相対パス。2 つのファイルは、そのディレクトリから見たパス）。そのディレクトリで、同じ引数で動かして比べる
 here="$(cd "$(dirname "$0")"; pwd)"
+pairs=
 if [ $# -eq 0 ]; then
+  pairs=yes
   for list in "$here"/step*/node.txt
   do
     while read -r c; do [ -n "$c" ] && set -- "$@" "${list%/node.txt}/$c"; done < "$list"
@@ -25,4 +30,16 @@ do
     status=1
   fi
 done
+if [ -n "$pairs" ] && [ -f "$here/node-pairs.txt" ]; then
+  while read -r dir cfile nfile args; do
+    case "$dir" in ''|'#'*) continue ;; esac
+    (cd "$here/$dir" && node "$nfile" $args) > "$tmp/a.out" 2> /dev/null < /dev/null
+    (cd "$here/$dir" && "$here/../conjs" "$cfile" $args) > "$tmp/b.out" 2> /dev/null < /dev/null
+    if ! diff "$tmp/a.out" "$tmp/b.out" > "$tmp/diff"; then
+      echo "== $dir: $nfile and $cfile $args (< Node.js, > ConJS)"
+      cat "$tmp/diff"
+      status=1
+    fi
+  done < "$here/node-pairs.txt"
+fi
 exit $status
