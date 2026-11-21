@@ -74,6 +74,8 @@ PR は shima3/conma#16。
 
 ### m1/str-pos
 
+PR は shima3/conma#18。
+
 * ASCII でない文字列の位置を、VM が最後に求めた位置からたどって求めるようにした（vm/src/value.rs の `StrObj` の `mark`、vm/src/prim/string.rs の `char_to_byte_at`。docs/dev/STRING-INDEX-PLAN-ja.md の 7）。結果、エラー、ステップの数は変わらない。
 * 作り直すもの：Rust 版の VM、wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh）。
 * 新しいテスト：test/step46 の case2（ASCII でない 1 つの文字列の位置を前後に動かし、1 文字ずつ前から、後ろから読む）。
