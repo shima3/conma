@@ -11,12 +11,15 @@
 // CONMA_HOST, if set, is the path of a JavaScript file (a CommonJS module) whose exports give the
 // functions of the host that __Host_call__ calls and the platform features they make available
 // ({hostFunctions: {name: f, ...}, hostFeatures: [...]}, the hooks of conma.js; docs/HOST-ja.md).
+// Every program also has the functions of a network server (host/server.js, feature "server"; docs/dev/PLATFORM-PLAN-ja.md
+// 4.10, stage P6b): a server that is listening keeps Node.js running, as http.createServer().listen() does.
 "use strict";
 const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
 const os = require("os");
 const ConMaVM = require("./conma.js");
+const { serverHost } = require("./host/server.js");
 
 const argv = process.argv.slice(2);
 const wasmFile = path.join(__dirname, "target/wasm32-unknown-unknown/release/conma_wasm.wasm");
@@ -354,9 +357,11 @@ async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
   let vm = null;
   const host = process.env.CONMA_HOST ? require(path.resolve(process.env.CONMA_HOST)) : {};
+  // The network server of Node.js (host/server.js, feature "server"; stage P6b), then those of CONMA_HOST
+  const server = serverHost();
   vm = ConMaVM.create(wasm, writeAll, {
-    hostFunctions: host.hostFunctions,
-    hostFeatures: host.hostFeatures,
+    hostFunctions: Object.assign({}, server.hostFunctions, host.hostFunctions || {}),
+    hostFeatures: server.hostFeatures.concat(Array.isArray(host.hostFeatures) ? host.hostFeatures : []),
     inputNeeded: readInput,
     jsDone: notify,
     hostFs,
