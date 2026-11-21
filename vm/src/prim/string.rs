@@ -134,17 +134,49 @@ fn count(t: &str, i: StrInfo) -> usize {
     }
 }
 
-/// char_to_byte for a text whose StrInfo is known: in an ASCII text, a position in characters is the
-/// same in bytes.
-fn char_to_byte_info(t: &str, i: usize, info: StrInfo) -> Option<usize> {
-    if info == StrInfo::Ascii {
-        if i <= t.len() {
-            Some(i)
-        } else {
-            None
-        }
+/// char_to_byte for the text t of the String value v, whose StrInfo is known: in an ASCII text, a
+/// position in characters is the same in bytes. In a String made at run time that is not all ASCII,
+/// the position is found by walking from the last position found in it (StrObj::mark), forward or
+/// back, or from the start when that is nearer, and kept as the mark: reading a long String by
+/// positions that move a little at a time (a lexer) takes time proportional to its length, not to
+/// its length squared (docs/dev/STRING-INDEX-PLAN-ja.md, section 7).
+fn char_to_byte_at(v: &Value, t: &str, i: usize, info: StrInfo) -> Option<usize> {
+    match info {
+        StrInfo::Ascii => return if i <= t.len() { Some(i) } else { None },
+        StrInfo::Chars(n) if i > n => return None,
+        _ => {}
+    }
+    let Value::Str(s) = v else { return char_to_byte(t, i) };
+    let t: &str = &s.text;
+    let (mc, mb) = s.mark.get();
+    let b = if i >= mc {
+        walk_forward(t, mb, i - mc)
+    } else if mc - i < i {
+        t[..mb].char_indices().rev().nth(mc - i - 1).map(|(o, _)| o)
     } else {
         char_to_byte(t, i)
+    };
+    if let Some(b) = b {
+        s.mark.set((i, b));
+    }
+    b
+}
+
+/// The byte offset of the code point k code points after the byte offset from of t (t.len() just
+/// after the last), or None if t has fewer.
+fn walk_forward(t: &str, from: usize, k: usize) -> Option<usize> {
+    let rest = &t[from..];
+    let mut n = 0;
+    for (o, _) in rest.char_indices() {
+        if n == k {
+            return Some(from + o);
+        }
+        n += 1;
+    }
+    if n == k {
+        Some(t.len())
+    } else {
+        None
     }
 }
 
@@ -229,13 +261,19 @@ pub fn substring(_m: &mut Machine, vp: &mut VProc) -> PResult {
     }
     let (i, j) = (idx[0], idx[1]);
     let si = info(&sv[0], &s);
-    let bj = if 0 <= i && i <= j && j <= s.len() as i128 { char_to_byte_info(&s, j as usize, si) } else { None };
-    let Some(bj) = bj else {
+    // The start first, so that the end is found by walking from it (and the mark is left at the end,
+    // where reading by positions goes on)
+    let found = if 0 <= i && i <= j && j <= s.len() as i128 {
+        char_to_byte_at(&sv[0], &s, i as usize, si)
+            .and_then(|bi| char_to_byte_at(&sv[0], &s, j as usize, si).map(|bj| (bi, bj)))
+    } else {
+        None
+    };
+    let Some((bi, bj)) = found else {
         let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} {} (length {})", name, i, j, len));
         return Ok(());
     };
-    let bi = char_to_byte_info(&s, i as usize, si).expect("i <= j");
     // A part of an ASCII String is ASCII
     let ri = if si == StrInfo::Ascii { StrInfo::Ascii } else { StrInfo::Unknown };
     vp.prim_return(vec![string_value_info(&s[bi..bj], ri)]);
@@ -259,7 +297,7 @@ pub fn find(_m: &mut Machine, vp: &mut VProc) -> PResult {
         }
     };
     let si = info(&sp[0], &s);
-    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_info(&s, i as usize, si) } else { None };
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_at(&sp[0], &s, i as usize, si) } else { None };
     let Some(b) = b else {
         let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));
@@ -293,7 +331,7 @@ pub fn find_any(_m: &mut Machine, vp: &mut VProc) -> PResult {
         }
     };
     let si = info(&sp[0], &s);
-    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_info(&s, i as usize, si) } else { None };
+    let b = if 0 <= i && i <= s.len() as i128 { char_to_byte_at(&sp[0], &s, i as usize, si) } else { None };
     let Some(b) = b else {
         let len = count(&s, si) as i128;
         vp.prim_error(on_error, &format!("{}: index out of range: {} (length {})", name, i, len));

@@ -72,6 +72,15 @@ PR は shima3/conma#16。
 
 * ConMa 版のフロントエンドの S 式の書き出し（include/ast.se の `__AST_toSexp__`）を、子の S 式を作ってから親につなぐ形から、木全体を 1 つの短い String につなげ、512 文字を超えたらかたまりにして最後に 1 度だけつなぐ形にした。vm/frontend.module.se を作り直した。出力は同じ：変える前と後の `conma build` で、conjs/test と sjs/test のすべてのケースの変換したプログラム、両方の変換器、ConSh（最適化版と参照版の include の並び）のモジュールが、バイトまで同じ（フロントエンド自身のモジュールだけが違う）。流したもの：Rust 版の VM の test/（`-j 4`）、conjs/test、sjs/test、wasm 版と Python 版の VM の test/frontend。流していないもの：wasm 版と Python 版の VM の test/ の残り、transpiled VM、consh/test
 
+### m1/str-pos
+
+PR は shima3/conma#18。
+
+* ASCII でない文字列の位置を、VM が最後に求めた位置からたどって求めるようにした（vm/src/value.rs の `StrObj` の `mark`、vm/src/prim/string.rs の `char_to_byte_at`。docs/dev/STRING-INDEX-PLAN-ja.md の 7）。結果、エラー、ステップの数は変わらない。
+* 作り直すもの：Rust 版の VM、wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh）。
+* 新しいテスト：test/step46 の case2（ASCII でない 1 つの文字列の位置を前後に動かし、1 文字ずつ前から、後ろから読む）。
+* M1 が流したもの（Apple M1）：test/ を Rust 版と wasm 版の VM で（`-j 4`。wasm 版は既知の step40 だけ）、conjs/test、sjs/test、consh/test を Rust 版の VM で。test/step46 は Python 版の VM でも。流していないもの：変換した VM、Python 版の VM の test/ の残り、ConSh の参照版、wasm 版の VM の consh/test
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
