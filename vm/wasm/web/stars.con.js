@@ -15,7 +15,7 @@ if (!host.available("canvas") || !host.available("input")) {
   console.log("stars.con.js: this platform has no input");
 } else {
   host.call("canvas.font", "16px sans-serif");
-  let seed = Date.now() % 2147483648;
+  let seed = Date.now() % 2147483646 + 1;   // 1 以上 2147483646 以下
   while (true) {
     if (!title()) break;
     const score = play();
@@ -26,10 +26,10 @@ if (!host.available("canvas") || !host.available("input")) {
         ["fill_style", "#333"], ["fill_text", "おしまい", 16, 26]]);
   console.log("stars: bye");
 
-  // 0 以上 n 未満の整数（線形合同法）
+  // 0 以上 n 未満の整数（Park と Miller の線形合同法。積は 2 の 46 乗より小さく、数の精度の中で正しく計算できる）
   function rand(n) {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return Math.floor(seed / 2147483648 * n);
+    seed = seed * 16807 % 2147483647;
+    return Math.floor(seed / 2147483647 * n);
   }
 
   function draw(cmds) { host.call("canvas.draw", cmds); }

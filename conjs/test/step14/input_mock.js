@@ -6,7 +6,8 @@
 // script[n - 1] says what happens after the n-th call of input.next, in the next task (so that the wait of that
 // call has begun): a list of steps, each ["key", name], ["click", x, y] (dispatched on the canvas, as a page would)
 // or ["advance", ms] (the clock moves ms milliseconds and the time limits that are due end, earliest first). An empty
-// list does nothing; the wait goes on until a later step. A call after the last entry of the script is an Error
+// list does nothing; the wait goes on until a later step. The clock never moves by itself: a wait with a time limit
+// (nextEvent(ms), even nextEvent(0) on an empty queue) ends only after an "advance" step. A call after the last entry of the script is an Error
 // ("input: the test has no more events"), so that a test cannot hang on a wait nobody ends.
 const ConmaInput = require("../../../vm/wasm/host/input.js");
 

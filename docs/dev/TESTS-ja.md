@@ -61,6 +61,7 @@ CONMA_VM=python conjs/test/run_all.sh
 ### m1/platform-p5c
 
 * 段階 P5c を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.8 節）：ConJS の `nextEvent` と `pollEvent`（conjs/include/conjs_lib.se）、ホストの関数 `input.next` と `input.poll`（新しい vm/wasm/host/input.js。機能 `"input"`。docs/PRIMITIVES.md）、見本の vm/wasm/web/stars.con.js と stars.html（build.sh が置く）。PR は shima3/conma#14。
+* M2 のレビューを受けて直した（見本の `rand` を、積が数の精度を超えない Park と Miller の形に。input_mock.js の先頭に、時間切れには `advance` が要ることを書いた。決まらない Promise で Node.js が黙って終わることを、計画の 7 節に置いた）。流したもの：conjs/test の step14 を Rust 版、wasm 版、Python 版で。build.sh の後、ブラウザで stars.html を始めて動かした。
 * 作り直すもの：ない（VM と conma.js は変えていない）。ページを見るなら vm/wasm/web/build.sh。
 * 新しいテスト：conjs/test/step14（case1 と case2。wasm 版の VM では case*.host.js が入力のまねを渡し、ログは case*.wasm.log。ほかの VM は case*.log）。case2 は、フロントエンドに 7 秒ほどかかる（8.8 節の「見つけたこと」）。
 * M1 が流したもの（Apple M1）：conjs/test を Rust 版（15 秒）、wasm 版（19 秒）、Python 版（3 分 30 秒）で。conjs/test/compare.sh。`bin/lang-emit-check origin/alpha`（違いはない）。アプリの中のブラウザで stars.html（8.8 節）。流していないもの：sjs/test、consh/test、consh/js/test（SJS と ConSh のファイルは変えていない）、test/、transpiled VM、ConSh の参照版。
