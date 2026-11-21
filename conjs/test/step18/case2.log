@@ -1,0 +1,2 @@
+case2.con.js:83:18: Error: http.listen: this platform has no server (Node.js only)
+exit: 2
