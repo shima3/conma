@@ -58,35 +58,13 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m1/platform-p5c
-
-* 段階 P5c を作った（docs/dev/PLATFORM-PLAN-ja.md の 8.8 節）：ConJS の `nextEvent` と `pollEvent`（conjs/include/conjs_lib.se）、ホストの関数 `input.next` と `input.poll`（新しい vm/wasm/host/input.js。機能 `"input"`。docs/PRIMITIVES.md）、見本の vm/wasm/web/stars.con.js と stars.html（build.sh が置く）。PR は shima3/conma#14。
-* M2 のレビューを受けて直した（見本の `rand` を、積が数の精度を超えない Park と Miller の形に。input_mock.js の先頭に、時間切れには `advance` が要ることを書いた。決まらない Promise で Node.js が黙って終わることを、計画の 7 節に置いた）。流したもの：conjs/test の step14 を Rust 版、wasm 版、Python 版で。build.sh の後、ブラウザで stars.html を始めて動かした。
-* 作り直すもの：ない（VM と conma.js は変えていない）。ページを見るなら vm/wasm/web/build.sh。
-* 新しいテスト：conjs/test/step14（case1 と case2。wasm 版の VM では case*.host.js が入力のまねを渡し、ログは case*.wasm.log。ほかの VM は case*.log）。case2 は、フロントエンドに 7 秒ほどかかる（8.8 節の「見つけたこと」）。
-* M1 が流したもの（Apple M1）：conjs/test を Rust 版（15 秒）、wasm 版（19 秒）、Python 版（3 分 30 秒）で。conjs/test/compare.sh。`bin/lang-emit-check origin/alpha`（違いはない）。アプリの中のブラウザで stars.html（8.8 節）。流していないもの：sjs/test、consh/test、consh/js/test（SJS と ConSh のファイルは変えていない）、test/、transpiled VM、ConSh の参照版。
-
-### m1/frontend-chain
-
-PR は shima3/conma#16。
-
-* ConMa 版のフロントエンドの S 式の書き出し（include/ast.se の `__AST_toSexp__`）を、子の S 式を作ってから親につなぐ形から、木全体を 1 つの短い String につなげ、512 文字を超えたらかたまりにして最後に 1 度だけつなぐ形にした。vm/frontend.module.se を作り直した。出力は同じ：変える前と後の `conma build` で、conjs/test と sjs/test のすべてのケースの変換したプログラム、両方の変換器、ConSh（最適化版と参照版の include の並び）のモジュールが、バイトまで同じ（フロントエンド自身のモジュールだけが違う）。流したもの：Rust 版の VM の test/（`-j 4`）、conjs/test、sjs/test、wasm 版と Python 版の VM の test/frontend。流していないもの：wasm 版と Python 版の VM の test/ の残り、transpiled VM、consh/test
-
-### m1/str-pos
-
-PR は shima3/conma#18。
-
-* ASCII でない文字列の位置を、VM が最後に求めた位置からたどって求めるようにした（vm/src/value.rs の `StrObj` の `mark`、vm/src/prim/string.rs の `char_to_byte_at`。docs/dev/STRING-INDEX-PLAN-ja.md の 7）。結果、エラー、ステップの数は変わらない。
-* 作り直すもの：Rust 版の VM、wasm 版の VM（vm/wasm/build.sh）と consh/js/web、変換した VM（bench/build.sh）。
-* 新しいテスト：test/step46 の case2（ASCII でない 1 つの文字列の位置を前後に動かし、1 文字ずつ前から、後ろから読む）。
-* M1 が流したもの（Apple M1）：test/ を Rust 版と wasm 版の VM で（`-j 4`。wasm 版は既知の step40 だけ）、conjs/test、sjs/test、consh/test を Rust 版の VM で。test/step46 は Python 版の VM でも。流していないもの：変換した VM、Python 版の VM の test/ の残り、ConSh の参照版、wasm 版の VM の consh/test
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-21 | c6ce993 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release` | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。117e4c3 と e41b39d で出た wasm 版の test/step31 は、今回は出なかった。申し送りの m1/platform-p5c（shima3/conma#14）、m1/frontend-chain（shima3/conma#16）、m1/str-pos（shima3/conma#18）の、流していなかった組み合わせ（Python 版と wasm 版の VM の test/、transpiled VM の test/ と consh/test、wasm 版の VM の consh/test、ConSh の参照版、consh/js/test、sjs/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。新しい conjs/test の step14 は Rust 版、Python 版、wasm 版の VM で、test/step46 の case2 は Python 版、Rust 版、wasm 版、transpiled VM で通った。流していないもの：conjs/test/compare.sh、ブラウザのページ。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、c6ce993 で作り直した（11 分 59 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-21 | m2/plan-file-io（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P7 の後の段階 P8（ConJS のファイルの入出力を広げ、1 行ずつ読む見本を書く）を、忘れないための行として足した。確かめたこと：リンクは変えていない。PR は shima3/conma#17 |
 | 2026-11-21 | m4/docs-notes-scope（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | 申し送りの見出しを書かないブランチを、変えたファイルがすべて Branches の 5 の文書で、ベンチマークも頼まないものに限った（docs/dev/CONTRIBUTING.md の Branches の 2 と、この文書の申し送りの説明。m1/notes-rule の「テストもベンチマークも要らないブランチ」では、作者が `.gitignore` や見本のページを、テストは要らないと考えて見出しを書かないことがありえたため。ユーザーの指示）。確かめたこと：リンクは足していないこと、Liquid の開き括弧を増やしていないこと。Jekyll は動かしていない |
 | 2026-11-21 | m2/plan-host-guide（文書だけ） | Claude（M2） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | docs/dev/PLATFORM-PLAN-ja.md の 5 節の表に、P6 の後の段階 P7（使う人がホストの関数を足すための文書をまとめることと、Rust 版の VM に、組み込む人がホストの関数を足す口を作ること）を、忘れないための行として足した。確かめたこと：行に書いたファイルがあること。PR は shima3/conma#13 |
