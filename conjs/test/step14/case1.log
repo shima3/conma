@@ -1,4 +1,3 @@
 false
-TypeError: nextEvent: this platform has no input
-TypeError: pollEvent: this platform has no input
+Error: nextEvent: the input has ended
 exit: 0

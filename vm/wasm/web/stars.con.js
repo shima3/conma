@@ -1,4 +1,6 @@
 // 入力を待つ対話の見本「星ひろい」（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）。stars.html が、wasm 版の VM で動かす。
+// canvas のない所（端末。4.7 節、段階 P6a）では、同じゲームを ANSI のエスケープの並びで端末に描き、キーを標準入力から読む
+// （conjs/conjs vm/wasm/web/stars.con.js）。
 // 矢印のキー（かクリック）で自分（四角）を 1 マスずつ動かし、星をすべて拾うと次の面に進む。おばけは、それぞれ一定の
 // 間隔で自分に 1 マス近づき、ぶつかると終わる。Escape で、どの画面からでも終える。
 //
@@ -11,20 +13,28 @@ const COLS = 15, ROWS = 10, CELL = 32, TOP = 40;
 const STAR = [[0, -1], [0.5878, -0.809], [0.9511, -0.309], [0.9511, 0.309], [0.5878, 0.809],
               [0, 1], [-0.5878, 0.809], [-0.9511, 0.309], [-0.9511, -0.309], [-0.5878, -0.809]];
 
-if (!host.available("canvas") || !host.available("input")) {
-  console.log("stars.con.js: this platform has no input");
-} else {
-  host.call("canvas.font", "16px sans-serif");
+const CANVAS = host.available("canvas");
+const ESC = "\u001b";
+{
+  if (CANVAS) host.call("canvas.font", "16px sans-serif");
   let seed = Date.now() % 2147483646 + 1;   // 1 以上 2147483646 以下
-  while (true) {
-    if (!title()) break;
-    const score = play();
-    if (score === undefined) break;
-    if (!result(score)) break;
+  try {
+    while (true) {
+      if (!title()) break;
+      const score = play();
+      if (score === undefined) break;
+      if (!result(score)) break;
+    }
+    if (CANVAS) {
+      draw([["fill_style", "#fafafa"], ["fill_rect", 0, 0, COLS * CELL, TOP + ROWS * CELL],
+            ["fill_style", "#333"], ["fill_text", "おしまい", 16, 26]]);
+    }
+    console.log("stars: bye");
+  } catch (e) {
+    // 標準入力がファイルやパイプで、尽きたとき（端末を閉じたときも）は、ふつうに終える
+    if (e.message !== "nextEvent: the input has ended") throw e;
+    console.log("stars: the input has ended");
   }
-  draw([["fill_style", "#fafafa"], ["fill_rect", 0, 0, COLS * CELL, TOP + ROWS * CELL],
-        ["fill_style", "#333"], ["fill_text", "おしまい", 16, 26]]);
-  console.log("stars: bye");
 
   // 0 以上 n 未満の整数（Park と Miller の線形合同法。積は 2 の 46 乗より小さく、数の精度の中で正しく計算できる）
   function rand(n) {
@@ -48,7 +58,14 @@ if (!host.available("canvas") || !host.available("input")) {
     }
   }
 
+  // 端末に、画面を消してから行を出す
+  function term(lines) { console.log(`${ESC}[2J${ESC}[H${lines.join("\n")}`); }
+
   function screen(lines) {
+    if (!CANVAS) {
+      term(lines.map(([text, color]) => text));
+      return;
+    }
     const cmds = [["fill_style", "#29335c"], ["fill_rect", 0, 0, COLS * CELL, TOP + ROWS * CELL]];
     lines.forEach(([text, color], i) => cmds.push(["fill_style", color], ["fill_text", text, 40, 110 + i * 32]));
     draw(cmds);
@@ -57,15 +74,15 @@ if (!host.available("canvas") || !host.available("input")) {
   function title() {
     screen([["星ひろい", "#f3a712"],
             ["矢印のキーで動いて、星をすべて拾う。", "#fafafa"],
-            ["おばけにぶつかると終わり。クリックでも動ける。", "#fafafa"],
-            ["キーかクリックで始める。Escape で終わる。", "#a8c686"]]);
+            [CANVAS ? "おばけにぶつかると終わり。クリックでも動ける。" : "おばけにぶつかると終わり。", "#fafafa"],
+            [CANVAS ? "キーかクリックで始める。Escape で終わる。" : "キーで始める。Escape で終わる。", "#a8c686"]]);
     return waitStart();
   }
 
   function result(score) {
     screen([["おばけにぶつかった", "#e4572e"],
             [`点：${score}`, "#fafafa"],
-            ["キーかクリックでタイトルへ。Escape で終わる。", "#a8c686"]]);
+            [CANVAS ? "キーかクリックでタイトルへ。Escape で終わる。" : "キーでタイトルへ。Escape で終わる。", "#a8c686"]]);
     sleep(300);   // 遊んでいた手が離れるまでのキーも捨てる
     return waitStart();
   }
@@ -115,28 +132,35 @@ if (!host.available("canvas") || !host.available("input")) {
       }
     }));
     const painter = spawn(() => {
+      let last = "";
       while (!lv.done) {
-        paint(game, lv);
-        host.wait("canvas.frame");
+        last = paint(game, lv, last);
+        if (CANVAS) host.wait("canvas.frame"); else sleep(100);
       }
     });
-    while (!lv.done) {
-      const e = nextEvent(100);   // 100 ミリ秒ごとに起きて、おばけが立てた lv.done を見る
-      if (!e) continue;
-      if (e.type === "key" && e.key === "Escape") {
-        game.quit = game.over = lv.done = true;
-      } else if (e.type === "key") {
-        const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
-        if (d) movePlayer(game, lv, d[0], d[1]);
-      } else {
-        movePlayer(game, lv, ...towards(lv.player, e.x / CELL - 0.5, (e.y - TOP) / CELL - 0.5));
+    try {
+      while (!lv.done) {
+        const e = nextEvent(100);   // 100 ミリ秒ごとに起きて、おばけが立てた lv.done を見る
+        if (!e) continue;
+        if (e.type === "key" && e.key === "Escape") {
+          game.quit = game.over = lv.done = true;
+        } else if (e.type === "key") {
+          const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+          if (d) movePlayer(game, lv, d[0], d[1]);
+        } else {
+          movePlayer(game, lv, ...towards(lv.player, e.x / CELL - 0.5, (e.y - TOP) / CELL - 0.5));
+        }
       }
+    } finally {
+      // 入力が尽きた（nextEvent の Error）ときも、おばけと描く処理を終えてから抜ける
+      if (!lv.done) game.over = game.quit = lv.done = true;
+      ghosts.forEach(join);
+      join(painter);
     }
-    ghosts.forEach(join);
-    join(painter);
-    paint(game, lv);
+    paint(game, lv, "");
     if (lv.cleared) {
-      draw([["fill_style", "#29335c"], ["fill_text", `${game.level} 面クリア`, 190, 26]]);
+      if (CANVAS) draw([["fill_style", "#29335c"], ["fill_text", `${game.level} 面クリア`, 190, 26]]);
+      else console.log(`${game.level} 面クリア`);
       sleep(800);
     }
   }
@@ -180,7 +204,9 @@ if (!host.available("canvas") || !host.available("input")) {
     hit(game, lv);
   }
 
-  function paint(game, lv) {
+  // 描く。端末では、前に描いたもの last と同じなら描かない。描いたもの（端末の文字列）を返す
+  function paint(game, lv, last) {
+    if (!CANVAS) return paintTerm(game, lv, last);
     const W = COLS * CELL;
     const cmds = [["fill_style", "#fafafa"], ["fill_rect", 0, 0, W, TOP + ROWS * CELL],
                   ["fill_style", "#333"],
@@ -196,6 +222,26 @@ if (!host.available("canvas") || !host.available("input")) {
     cmds.push(["fill_style", game.over && !game.quit ? "#e4572e" : "#669bbc"],
               ["fill_rect", p.x * CELL + 5, TOP + p.y * CELL + 5, CELL - 10, CELL - 10]);
     draw(cmds);
+  }
+
+  // 端末に描く：自分は @、星は *、おばけは G（色は、ANSI のエスケープの並び）
+  function paintTerm(game, lv, last) {
+    const color = (code, ch) => `${ESC}[${code}m${ch}${ESC}[0m`;
+    const lines = [`${game.level} 面　点 ${game.score}　残りの星 ${lv.stars.length}`];
+    for (let y = 0; y < ROWS; y++) {
+      const row = [];
+      for (let x = 0; x < COLS; x++) {
+        const p = { x, y };
+        if (same(lv.player, p)) row.push(color(game.over && !game.quit ? 31 : 36, "@"));
+        else if (lv.ghosts.some((g) => same(g, p))) row.push(color(35, "G"));
+        else if (lv.stars.some((s) => same(s, p))) row.push(color(33, "*"));
+        else row.push(".");
+      }
+      lines.push(row.join(" "));
+    }
+    const text = lines.join("\n");
+    if (text !== last) term([text]);
+    return text;
   }
 
   // 中心 (cx, cy) の 5 つの角の星。STAR は、真上から 36 度ずつの向き（cos と sin。ConJS の Math にはないので、数で書く）

@@ -1,0 +1,8 @@
+{"type":"key","key":"a"}
+{"type":"key","key":"b"}
+a b Enter Tab x Backspace ArrowUp ArrowDown ArrowRight ArrowLeft ArrowUp ArrowUp Unidentified ArrowUp Unidentified Escape
+Error: nextEvent: the input has ended
+undefined
+Error: nextEvent: the input has ended
+false
+exit: 0
