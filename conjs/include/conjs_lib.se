@@ -8,6 +8,9 @@
 ;;   fs.readFile(path)、fs.writeFile(path, text)  ConMa の __OS_open__ などで読み書きする（処理は切り替わらない）
 ;;   fetch(url, options)  ホストに http.fetch（機能 "fetch"）があればそれで、なければ curl を待つための VProc で動かす。
 ;;                        Response のようなオブジェクト（status、ok、text()、json()）を返す
+;;   nextEvent(ms)        ホストの関数 input.next（待つ呼び出し。機能 "input"。4.6 節、段階 P5c）：キーかクリックを
+;;                        { type: "key", key } か { type: "click", x, y } で返す。ms の間に来なければ undefined
+;;   pollEvent()          ホストの関数 input.poll（すぐ返る）：同じ形のオブジェクトか undefined
 
 (define Conjs_lib_builtins ,(G)
   Sjs_function G "sleep" (,(args) Sjs_arg args ,(ms rest) Conjs_ms "sleep" ms ,(ms) Conjs_sleep ms) ,(sleep)
@@ -22,7 +25,11 @@
   Sjs_def G fs "writeFile" (,(args) Conjs_fs_write args) ,()
   __Dict_put__ G "fs" fs ,()
   Sjs_function G "fetch" (,(args) Conjs_fetch G args) ,(fetch)
-  __Dict_put__ G "fetch" fetch)
+  __Dict_put__ G "fetch" fetch ,()
+  Sjs_function G "nextEvent" (,(args) Sjs_arg args ,(ms rest) Conjs_next_event G ms) ,(ne)
+  __Dict_put__ G "nextEvent" ne ,()
+  Sjs_function G "pollEvent" (,(args) Conjs_poll_event G) ,(pe)
+  __Dict_put__ G "pollEvent" pe)
 
 (define Conjs_num ,(text)
   __Number_fromString__ __print_exit_error__ text)
@@ -243,3 +250,63 @@
   Sjs_def G r "text" (,(args) __NULL__ text) ,()
   Sjs_def G r "json" (,(args) Sjs_json_parse G text) ,()
   __NULL__ r)
+
+;; ── 入力（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）：ホストの関数 input.next と input.poll（機能 "input"。
+;; ブラウザのページでは vm/wasm/host/input.js）。ホストは、キーとクリックを届いた順に列にためる ──
+
+;; 機能 "input" がなければ TypeError
+(define Conjs_input_check ,(what)
+  __Cont_get__ ,(return)
+  __Feature_available__ "input" ,(ok)
+  __if__ ok return ,()
+  __String_concat__ what ": this platform has no input" ,(m)
+  Sjs_type_error m)
+
+;; nextEvent の ms を input.next の ms にする：undefined と Infinity は -1（時間を限らない）、負の数と NaN は 0（すぐに
+;; 時間切れ。setTimeout と同じ）、数でなければ TypeError。sleep の Conjs_ms は undefined と無限を 0 にするので使わない
+(define Conjs_event_ms ,(v)
+  __Cont_get__ ,(return)
+  Conjs_num "0" ,(zero)
+  Conjs_num "-1" ,(forever)
+  Sjs_kind v ,(kind)
+  __String_equal__ kind "undefined" ,(test__) __if__ test__ (,() return forever) ,()
+  __String_equal__ kind "number" ,(ok)
+  __unless__ ok
+    (,()
+      Sjs_describe v ,(d)
+      __String_concat__ "nextEvent: expected milliseconds (a number), got " d ,(m)
+      Sjs_type_error m) ,()
+  ;; NaN と無限は v - v が 0 にならない。どちらかは、__Number_toString__ の "inf"、"-inf"、"nan" で分ける（Sjs_num_str と同じ）
+  __Number_subtract__ v v ,(z)
+  __Number_is_zero__ z ,(finite)
+  __unless__ finite
+    (,() __Number_toString__ v ,(repr) __String_equal__ repr "inf" ,(test__) __if__ test__ (,() return forever) ,() return zero) ,()
+  __Number_is_negative__ v ,(test__) __if__ test__ (,() return zero) ,()
+  __NULL__ v)
+
+(define Conjs_next_event ,(G ms)
+  Conjs_input_check "nextEvent" ,()
+  Conjs_event_ms ms ,(ms)
+  __LList_cons__ ms __NULL__ ,(l)
+  Conjs_wait_host "Error" "input.next" l ,(r)
+  Conjs_event_object G r)
+
+(define Conjs_poll_event ,(G)
+  Conjs_input_check "pollEvent" ,()
+  __Host_call__ (,(msg) Sjs_throw "Error" msg) "input.poll" __NULL__ ,(r)
+  Conjs_event_object G r)
+
+;; ホストの入力（("key" 名前) か ("click" x y)。null は時間切れか、列が空）を、ConJS のオブジェクトにする
+(define Conjs_event_object ,(G r)
+  __Cont_get__ ,(return)
+  __is_null__ r ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ r ,(type rest)
+  Sjs_object_new G ,(o)
+  Sjs_obj_set o "type" type ,()
+  __String_equal__ type "key" ,(test__) __if__ test__
+    (,() __LList_uncons__ __print_exit_error__ rest ,(key more) Sjs_obj_set o "key" key ,() return o) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(x more)
+  __LList_uncons__ __print_exit_error__ more ,(y more)
+  Sjs_obj_set o "x" x ,()
+  Sjs_obj_set o "y" y ,()
+  __NULL__ o)

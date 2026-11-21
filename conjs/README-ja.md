@@ -43,6 +43,9 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
     * **`Date.now()`**：1970 年 1 月 1 日からのミリ秒（整数）。`Date` はこれだけを持つオブジェクトで、`new Date()` は書けない（`new` は、クラスとエラーのコンストラクタだけ）。
     * **`fs.readFile(path)`、`fs.writeFile(path, text)`**：ファイル全体を文字列で読み書きする（Node.js の名前。`fs` はグローバルにある）。相対パスは、プログラムを動かしたディレクトリから。ふつうのファイルはすぐ読み書きできるので、処理は切り替わらない。読み書きできなければ `fs.readFile: ` で始まるメッセージの Error。ブラウザのページ（ホストのファイルを渡さない wasm 版の VM）では、VM のメモリの中のファイルを読み書きする（ページを閉じると消える。まだ確かめていない）。
     * **`fetch(url, options)`**：HTTP の要求。options は `method`（文字列）、`headers`（オブジェクト）、`body`（文字列）。返すのは、本体を全部読んである Response のようなオブジェクトで、`status`、`ok`（状態が 200〜299）、`text()`、`json()` を持つ（どれも待たない）。404 などは例外にせず `ok` を偽にし、つながらないときは TypeError（`fetch failed`）を投げる（JavaScript と同じ）。wasm 版の VM ではホストの `fetch`（Node.js 18 以降とブラウザ）を、Rust 版と Python 版の VM では `curl` を、待つための VProc で動かす（curl がなければ TypeError）。`json()` は `JSON.parse` と同じ読み手を使う。curl の道では、HEAD は `-X HEAD` でなく `--head` で送る（`-X HEAD` の curl は、来ない本体を待って失敗する）。
+* **入力を待つ**（段階 P5c。ブラウザのページだけ）：キーとクリックを、待つ呼び出しとして待つ。ホストの関数は `input.next` と `input.poll`（機能 `"input"`。vm/wasm/host/input.js）。ホストは、キーとクリックを届いた順に列にためるので、待っていない間に来た入力も捨てない。機能 `"input"` のない所（Rust 版と Python 版の VM、Node.js）では、どちらも TypeError（`nextEvent: this platform has no input`）。`host.available("input")` で先に確かめられる。
+    * **`nextEvent(ms)`**：列の先頭の入力を返す。列が空なら、次の入力まで、呼んだ処理だけが待つ。入力は `{ type: "key", key: "ArrowUp" }`（`key` は `KeyboardEvent.key`。押し続けたときの繰り返しも 1 つずつ）か `{ type: "click", x: 10, y: 20 }`（canvas の座標）。ms の間に入力が来なければ `undefined`。ms が `undefined`（書かない）か `Infinity` なら時間を限らず、負の数と NaN は 0、数でなければ TypeError（`sleep` と違い、書かなければ限らない）。2 つの処理が同時に待てば、先に待ったほうが先の入力を受け取る。
+    * **`pollEvent()`**：列の先頭の入力か、空なら `undefined`。待たない。画面を変えるときに `while (pollEvent()) {}` で残りを捨てると、前の画面で押したキーが次の画面に渡らない。
 * **JavaScript との違い**（クラス）：メソッドは、メンバーを読むたびに、`this` を付けた関数として作る。そのため、取り出したメソッドを後で呼んでも、`this` は元のオブジェクトのまま（JavaScript では `undefined`）で、`o.m === o.m` は偽（JavaScript では真）。プロトタイプがないので、メソッドは、メンバーを読んで自分のプロパティになかったときだけ、クラスと親から探す。`extends` のあるクラスのコンストラクタが `super(...)` を呼ばずに終わっても、エラーにしない（JavaScript では ReferenceError。親とこのクラスのフィールドは入らない）。親のコンストラクタがオブジェクトを返しても、子の `this` にはならない（JavaScript ではなる。`new` の値になるのは、`new` で書いたクラスのコンストラクタが返したものだけ）。
 * **関数の色がない**：どの関数の中でも待てる（配列の `map` に渡した関数、ジェネレータの本体、try と finally の中）。
 * **割り込まれない**：処理は、1 つの VProc の中で、待つ呼び出し（`host.wait` と `join`）の所でだけ切り替わる。2 つの待つ呼び出しの間のコードは、割り込まれずに動く。待たない長いループは、その間ほかの処理を止める（JavaScript と同じ）。
@@ -57,7 +60,7 @@ ConJS の構文は JavaScript の部分集合だが、ConJS のプログラム�
 * **conjs/include/conjs_rt.se**：SJS のランタイムとのつなぎ。処理だけの状態にする PDict の名前（`"sjs_handlers"`、`"sjs_gen"`、`"sjs_pos"`）を 1 か所にまとめ、`spawn`、`join`、`host` と、待つ呼び出しのライブラリ（conjs/include/conjs_lib.se）を置く。ライブラリの `sleep` と `Date.now` は、ホストの関数 `time.sleep` と `time.now`（機能 `"time"`。どの VM にもある）を呼び、`fetch` は `http.fetch`（機能 `"fetch"`。wasm 版の VM だけ）か curl を使う。curl は、スケジューラの `Kit_sched_wait_work`（待つための VProc で、ホストの呼び出しでない仕事をする）で動かす。
 * **conjs/include/conjs_class.se**：クラス（段階 P5b）。クラスの値は SJS の関数で、インスタンスは SJS のオブジェクトで、どちらも隠したキー `"cls"` にクラスの記録（メソッド、static のメソッド、コンストラクタ、フィールド、親）を持つ。SJS のランタイムは、メンバーを読んで自分のプロパティになかったときだけ、`"cls"` を見る（sjs/include/sjs_rt.se の `Sjs_class_member`）。SJS の値は `"cls"` を持たないので、SJS の結果は変わらない。`JSON.parse` と配列の `sort` は、プロトタイプにもホストにも触れないので、SJS のランタイムに置いて SJS と共有する。
 * **conjs/conjsc.se**：変換器の入口（言語の印を付けて、SJS の変換器を呼ぶ）。sjs_gen.se は、印があれば、文の並びを `Conjs_run` の中に置いたソースを作る。
-* **見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る。vm/wasm/web/build.sh が変換する）。
+* **見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る）と、vm/wasm/web/stars.con.js（入力を待つ対話のゲーム「星ひろい」。stars.html で遊ぶ。段階 P5c）。どちらも vm/wasm/web/build.sh が変換する。
 
 ## テスト
 
@@ -78,5 +81,6 @@ conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了�
 | step11 | クラス：コンストラクタ、メソッド、フィールド、`static` とその継承、`extends` と `super`、`instanceof`、`in`、アロー関数の `this`、`console.log` と `Object.keys`。JavaScript との違い（case3） |
 | step12 | エラーのコンストラクタと `instanceof`、`class ... extends Error`、受け手のないエラー、変換するときのエラー（`this`、計算した名前、getter）、実行時のエラー。コンストラクタが返すオブジェクト、エラーの `name` と `toString()`（case8） |
 | step13 | `JSON.parse` と配列の `sort`（sjs/test の step12 と同じもの）。キーが `constructor` のオブジェクト（case2）。JSON でない文字列（case3） |
+| step14 | 入力：`nextEvent` と `pollEvent`（case1。wasm 版の VM では、本物の vm/wasm/host/input.js を、入力のまね input_mock.js が手で進める時計で動かす。ほかの VM は機能がないことの TypeError）。見本の stars.con.js を、決まったキーで動かして終わり方を確かめる（case2）。VM ごとのログ（case*.wasm.log） |
 
 Node.js と比べる場合は、各ステップの node.txt に並べる（変換するときのエラーと、JavaScript との違いの場合は入れない）。step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。
