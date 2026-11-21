@@ -9,7 +9,9 @@
 //                                1 MB is answered with 413 and does not go to the queue (over 64 MB, the connection is
 //                                closed)
 //   server.respond requestId status headers body
-//                                answers the request (writeHead and end); a second answer is an error
+//                                answers the request (writeHead and end); a second answer is an error. A header
+//                                that is not a string, a number or an array of them, or that writeHead refuses, is an
+//                                error, and the request stays to be answered again
 //   server.close id              stops taking requests, as server.close() of Node.js: requests already accepted can
 //                                still be answered, those in the queue are answered with 503, and a waiting
 //                                server.accept gets null. Idle keep-alive connections are closed
@@ -111,15 +113,20 @@ function serverHost() {
       if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 999)
         throw new Error("server.respond: the status must be an integer from 100 to 999");
       if (typeof body !== "string") throw new Error("server.respond: the body must be a string");
-      requests.delete(id);
       const h = headers && typeof headers === "object" && !Array.isArray(headers) ? headers : {};
+      const scalar = (v) => typeof v === "string" || typeof v === "number";
+      for (const [k, v] of Object.entries(h))
+        if (!(scalar(v) || (Array.isArray(v) && v.every(scalar))))
+          throw new Error(`server.respond: the header ${k} must be a string, a number or an array of them`);
+      // writeHead throws (an invalid header) before it sends anything: the request stays, to be answered again
       try {
         if (r.server.closed) r.res.setHeader("connection", "close");
         r.res.writeHead(status, h);
-        r.res.end(body);
       } catch (e) {
         throw new Error(`server.respond: ${e.message}`);
       }
+      requests.delete(id);
+      r.res.end(body);
       return null;
     },
     "server.close": (id) => {

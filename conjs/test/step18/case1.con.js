@@ -20,6 +20,25 @@ try {
 }
 console.log("GET:", join(get));
 
+// 不正なヘッダは Error で、要求は残り、答え直せる（M1 の PR shima3/conma#28 のレビューの 1）
+const bad = spawn(() => {
+  const r = fetch(`${base}/bad`);
+  return `${r.status} ${r.text()}`;
+});
+const reqBad = server.accept();
+try {
+  reqBad.respond(200, { "x-bad": "a\nb" }, "no");
+} catch (e) {
+  console.log("bad header:", e.message);
+}
+try {
+  reqBad.respond(200, { "x-nested": { a: 1 } }, "no");
+} catch (e) {
+  console.log("nested header:", e.message);
+}
+reqBad.respond(200, { "x-good": "ok" }, "answered again");
+console.log("bad:", join(bad));
+
 const post = spawn(() => {
   const r = fetch(`${base}/json`, { method: "POST", body: '{"a":[1,"ü"]}' });
   return `${r.status} ${r.text()}`;

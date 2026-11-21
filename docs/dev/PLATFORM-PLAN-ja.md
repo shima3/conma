@@ -875,4 +875,5 @@ P6（プラットフォームを増やす）の 2 つ目の段階として、**N
 * **設計と違うこと**：
     * 本体が 1 MB を超える要求は、すぐに 413 で答えず、本体を終わりまで読んで（ためずに捨てて）から答える。送っている途中で答えて接続を閉じると、クライアント（Node.js の `fetch`）は答えを読む前に ECONNRESET になるため。64 MB を超えたら接続を閉じる。
     * 見本は、引数 `demo` で、OS が選ぶ port で答え、自分に `fetch` で要求を送って答えを出し、`/stop` で終わる。case2 は、見本へのシンボリックリンクを `demo`（case2.args）で動かす（見本をテストの中に写さない）。Node.js 版は、step18 の case2.node-check.js が `node counter_server.node.js demo` を動かし、case2.wasm.log と比べる。conjs/test/compare.sh が、各ステップの case*.node-check.js を動かすようにした。引数を `--demo` にしなかったのは、Python 版の VM の vproc_run.py が、`--` で始まるプログラムの引数をオプションとして読んで失敗するため（前からのこと）。
+* **M1 のレビューで直したこと**（PR shima3/conma#28）：`server.respond` は、要求を表から除いてから `writeHead` を呼んでいたので、不正なヘッダ（改行を含む値）で `writeHead` が投げると、要求に誰も答えられず、クライアントは待ち続け、`close()` しても Node.js のサーバが閉じ終わらなかった。要求を除くのを `writeHead` が通った後にし、答え直せるようにした。ヘッダの値が文字列、数、それらの配列でないとき（入れ子のオブジェクト。`writeHead` は投げずに `[object Object]` を送る）も、先に Error にする。step18 の case1 に足した。
 * **気付いたこと**（直していない）：ConJS の `"x".repeat(n)` は、長い文字列で遅い（Rust 版の VM で 10 万文字に 0.6 秒、wasm 版で 1,048,577 文字に 49 秒。長さの 2 乗に近い）。case1 では、1 MB の文字列を倍にしていって作る。

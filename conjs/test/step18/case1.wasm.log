@@ -3,6 +3,9 @@ GET /hello?x=1 hi ""
 [ 'method', 'url', 'headers', 'body' ]
 second respond: server.respond: the request has been answered
 GET: 200 hello
+bad header: server.respond: Invalid character in header content ["x-bad"]
+nested header: server.respond: the header x-nested must be a string, a number or an array of them
+bad: 200 answered again
 POST /json ü 13
 POST: 201 made
 big: 413
