@@ -66,6 +66,12 @@ CONMA_VM=python conjs/test/run_all.sh
 * 新しいテスト：conjs/test/step14（case1 と case2。wasm 版の VM では case*.host.js が入力のまねを渡し、ログは case*.wasm.log。ほかの VM は case*.log）。case2 は、フロントエンドに 7 秒ほどかかる（8.8 節の「見つけたこと」）。
 * M1 が流したもの（Apple M1）：conjs/test を Rust 版（15 秒）、wasm 版（19 秒）、Python 版（3 分 30 秒）で。conjs/test/compare.sh。`bin/lang-emit-check origin/alpha`（違いはない）。アプリの中のブラウザで stars.html（8.8 節）。流していないもの：sjs/test、consh/test、consh/js/test（SJS と ConSh のファイルは変えていない）、test/、transpiled VM、ConSh の参照版。
 
+### m1/frontend-chain
+
+PR は shima3/conma#16。
+
+* ConMa 版のフロントエンドの S 式の書き出し（include/ast.se の `__AST_toSexp__`）を、子の S 式を作ってから親につなぐ形から、木全体を 1 つの短い String につなげ、512 文字を超えたらかたまりにして最後に 1 度だけつなぐ形にした。vm/frontend.module.se を作り直した。出力は同じ：変える前と後の `conma build` で、conjs/test と sjs/test のすべてのケースの変換したプログラム、両方の変換器、ConSh（最適化版と参照版の include の並び）のモジュールが、バイトまで同じ（フロントエンド自身のモジュールだけが違う）。流したもの：Rust 版の VM の test/（`-j 4`）、conjs/test、sjs/test、wasm 版と Python 版の VM の test/frontend。流していないもの：wasm 版と Python 版の VM の test/ の残り、transpiled VM、consh/test
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
