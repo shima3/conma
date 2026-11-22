@@ -323,6 +323,16 @@ pub unsafe extern "C" fn conma_read(fd: i32, ptr: *mut u8, len: usize) -> i32 {
     }
 }
 
+/// The number of bytes in the pipe of the fd (a pipe end that the host was given by
+/// host_proc_spawn) that its reader has not read yet, or minus the errno.
+#[no_mangle]
+pub extern "C" fn conma_pipe_buffered(fd: i32) -> i32 {
+    match sys::pipe_buffered(fd) {
+        Ok(n) => n.min(i32::MAX as usize) as i32,
+        Err(e) => -e.raw_os_error().unwrap_or(9),
+    }
+}
+
 /// A process of the host has exited: the scheduler polls the processes again.
 #[no_mangle]
 pub extern "C" fn conma_child_event() {

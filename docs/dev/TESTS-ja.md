@@ -58,6 +58,15 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/wasm-pipe-backpressure
+
+* wasm 版の VM の Node.js のホスト（vm/wasm/vm-node.js）が、外部コマンドの出力を、上限なしに VM のパイプに積んでいた。`for i in $(yes)` のように読む側が遅いと、たまり続ける（M4 で、Ctrl-C まで 1 秒で 0.7 GB、3 秒で 1.8 GB。Rust 版の VM は 47 MB）。GitHub Actions の CI の案（shima3/conma#33）の ubuntu-latest で、consh/test の step12 の case7 と step13 の case2 が、4 GB の上限に届いて止まった。VM のパイプに 64 KiB より多くたまったら、その出力を `pause()` し、VM が読んだら `resume()` するようにした（OS のパイプが一杯になったときと同じ）。そのために、パイプにたまった量を返す `conma_pipe_buffered`（vm/wasm/src/lib.rs、sys.rs）と `vm.buffered`（vm/wasm/conma.js）を足した。
+* 作り直すもの：wasm 版の VM（`consh/js/build.sh`）。
+* 新しいテスト：なし（Linux の consh/test の step12 と step13 が、このことを確かめる）。
+* M4 が流したもの（Apple M4）：wasm 版の VM で、test/、consh/test、conjs/test、consh/js/test、test/host-api.sh（既知の違いだけ）。step12 の case7 の最大のメモリは、Ctrl-C まで 3 秒にしても 125 MB（前は 1.8 GB）。`for i in $(seq 1 200000)` と、5 MB のファイルの `$(cat …)` は、前の 1.49 秒に対して 1.53 秒。
+* 流していないもの：Linux（CI で、これが main に入った後に確かめる）。Rust 版、Python 版、transpiled VM（vm/wasm のほかは変えていない）。
+* 測ったもの：なし。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。

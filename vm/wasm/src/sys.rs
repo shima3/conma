@@ -470,6 +470,16 @@ pub fn readable(fd: c_int) -> io::Result<bool> {
     with(|os| os.readable(fd))
 }
 
+/// The number of bytes written to the pipe of the fd (either end) that its reader has not read yet.
+/// The pipes of this VM have no limit, unlike those of the OS: the host stops moving the output of a
+/// process into one while it holds much (vm-node.js), as the OS stops the process.
+pub fn pipe_buffered(fd: c_int) -> io::Result<usize> {
+    match with(|os| os.get(fd))? {
+        Fd::PipeRead(p) | Fd::PipeWrite(p) => Ok(p.buf.borrow().len()),
+        _ => Err(err(EBADF)),
+    }
+}
+
 pub fn writable(fd: c_int) -> io::Result<bool> {
     with(|os| os.get(fd).map(|_| true))
 }
