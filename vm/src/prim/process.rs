@@ -116,7 +116,8 @@ fn start_process(
     env: Vec<(String, String)>,
 ) -> PResult {
     let mut cmd = Command::new(&args[0]);
-    cmd.args(&args[1..]).env_clear().envs(env).current_dir(&vp.cwd);
+    sys::add_args(&mut cmd, &args[1..]);
+    cmd.env_clear().envs(env).current_dir(&vp.cwd);
     let mut stdio = Vec::new();
     for fd in &fds {
         stdio.push(match fd {

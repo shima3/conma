@@ -713,6 +713,43 @@ pub fn child_stdio(fd: c_int) -> io::Result<Stdio> {
     Ok(Stdio::from(unsafe { OwnedHandle::from_raw_handle(copy as *mut c_void) }))
 }
 
+/// The arguments of the process after its name. Rust leaves an argument without spaces or
+/// quotes unquoted, and the programs of MSYS (Git Bash) take a backslash outside quotes as an
+/// escape and drop it (printf 'a\nb' gave "anb"), expand * ? [ ] { } as a glob (touch 'x[1]'
+/// made x1), and take ' as a quote. An argument with one of them goes in double quotes, as the
+/// C runtime of Windows reads them: backslashes are as they are, except those before a
+/// quote, which are doubled, and the quote gets one more.
+pub fn add_args(cmd: &mut Command, args: &[String]) {
+    use std::os::windows::process::CommandExt;
+    for a in args {
+        if !a.contains(['\\', '*', '?', '[', ']', '{', '}', '\'']) {
+            cmd.arg(a);
+            continue;
+        }
+        let mut q = String::from("\"");
+        let mut backslashes = 0;
+        for c in a.chars() {
+            match c {
+                '\\' => backslashes += 1,
+                '"' => {
+                    q.extend(std::iter::repeat('\\').take(backslashes * 2 + 1));
+                    backslashes = 0;
+                }
+                _ => {
+                    q.extend(std::iter::repeat('\\').take(backslashes));
+                    backslashes = 0;
+                }
+            }
+            if c != '\\' {
+                q.push(c);
+            }
+        }
+        q.extend(std::iter::repeat('\\').take(backslashes * 2));
+        q.push('"');
+        cmd.raw_arg(q);
+    }
+}
+
 /// Start the process apart from the console's Ctrl-C (__OS_spawn_detached__; setsid on Unix).
 pub fn detach(cmd: &mut Command) {
     use std::os::windows::process::CommandExt;
@@ -792,7 +829,20 @@ pub fn sysconf_name(name: &str) -> Option<c_int> {
 /// Open path with mode "r", "w" (create, truncate) or "a" (create, append); a directory is
 /// EISDIR. Returns the fd.
 pub fn open_file(path: &str, mode: &str) -> io::Result<c_int> {
-    check_on_the_way(path)?;
+    // The devices of Unix that ConSh uses (`> /dev/null`, `> /dev/stdout`): /dev/null is the device
+    // NUL of Windows, and /dev/stdin, stdout and stderr are copies of fds 0, 1 and 2. The VM joins
+    // the path to the VProc's directory, which gives it a drive (C:/dev/null)
+    let unix = if path.starts_with('/') { Some(path) } else { path.get(1..).filter(|p| p.starts_with(":/")).map(|p| &p[1..]) };
+    match unix {
+        Some("/dev/stdin") => return dup(0),
+        Some("/dev/stdout") => return dup(1),
+        Some("/dev/stderr") => return dup(2),
+        _ => {}
+    }
+    let path = if unix == Some("/dev/null") { "NUL" } else { path };
+    if path != "NUL" {
+        check_on_the_way(path)?;
+    }
     if is_dir(path).unwrap_or(false) {
         return Err(errno_error(21)); // EISDIR
     }

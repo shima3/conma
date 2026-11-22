@@ -141,6 +141,11 @@ pub fn child_stdio(fd: c_int) -> io::Result<std::process::Stdio> {
     Ok(std::process::Stdio::from(unsafe { OwnedFd::from_raw_fd(d) }))
 }
 
+/// The arguments of the process after its name (sys/windows.rs writes some of them itself).
+pub fn add_args(cmd: &mut std::process::Command, args: &[String]) {
+    cmd.args(args);
+}
+
 /// Start the process in a new session (__OS_spawn_detached__), so that the
 /// terminal's SIGINT does not reach it.
 pub fn detach(cmd: &mut std::process::Command) {
