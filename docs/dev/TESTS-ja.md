@@ -92,6 +92,15 @@ sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/consh-build-missing
+
+* consh/bin/consh：consh-rs（ConMa 版なら VM の conma）をまだ作っていないときも、古いとき（shima3/conma#48）と同じく、対話モードで端末から起動して `cargo` があれば、今ビルドするかを聞く（shima3/conma#50 で consh.ps1 に入れたことに揃えた）。文のパスは相対パスにし、ビルドの命令も書く。consh-rs がないとき：ビルドすれば Rust 版で動き、しないか失敗すれば、これまでどおり ConMa 版で動く（VM もなければ止める）。Windows の Git Bash（`cygpath` がある）では consh-rs を作れないので聞かない。ConMa 版の VM がないとき：ビルドすれば動き、しないか失敗すれば止める（終了ステータス 2。`CONMA_VM=python` も勧める）。VM がないことの確かめを、rlwrap を通す前に動かした。rlwrap を通してもう一度起動した consh は、consh-rs がないことを出さない（前は「ずっと遅い」の文も 2 回出ていた）。聞くこととビルドすることを `offer_build` にまとめ、古いときの `stale_build` も使う。前回のビルドが 1 秒未満なら「less than 1 s」と示す。cargo の標準入力を /dev/null にした（端末から読まないように）。
+* 作り直すもの：なし（台本だけ）。
+* 新しいテスト：なし（端末から打つ suite がない）。
+* M4 が流したもの：端末なしで、consh-rs がない（ConMa 版で動く）、両方ない（止まる、2）、`CONSH_IMPL=conma` で VM がない（止まる、2。リポジトリの上と consh/include から）。`script` の疑似端末と rlwrap で、consh-rs がないときの n（ConMa 版で動く）、Enter（ビルドして Rust 版で動く）、ビルドが失敗する（cargo のエラーを出して ConMa 版で動く）。両方ないときの n（止まる、2）。`cargo` が PATH にないとき（聞かない）。`CONSH_IMPL=conma` で VM がないときの n（止まる）と Enter（ビルドして動く）。`CONMA_VM=rust consh/test/run_all.sh -j 4` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 4`。
+* 流していないもの：Windows の Git Bash（consh-rs を聞かないこと、VM がないときに聞くこと）。
+* 測ったもの：なし。
+
 ### i7/consh-ps1-stale-build（shima3/conma#49）
 
 * consh/bin/consh.ps1（consh.cmd からも動く）：shima3/conma#48 で consh/bin/consh に入れたことを、consh.ps1 にも入れた。VM の conma.exe がソースより古いときの警告のパスを、カレントディレクトリがリポジトリの中なら相対パスにし（`..\..\vm\target\release\conma.exe`）、ビルドの命令（`cargo build --release --manifest-path ..\..\vm\Cargo.toml`。cmd でも PowerShell でも動く）も書く。対話モードで、標準入力と標準エラーがコンソールで `cargo` があれば、今ビルドするかを聞く（`[Y/n]`、Enter でビルドする）。ビルドした時間は、consh/bin/consh と同じ `build-seconds.conma`（bin/cache-dir の場所）に残して示す。cargo の出力は、失敗したときだけ出す。ビルドしないか、失敗すれば、古いまま使う。答えは Read-Host で読む（`[Console]::In.ReadLine()` は、Ctrl-C で戻らなかった）。consh-rs は Windows では作れないので、確かめない。
