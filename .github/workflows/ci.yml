@@ -1,0 +1,166 @@
+# CI: the fast suites of docs/dev/TESTS-ja.md on Linux and macOS, and the build of the Rust VM on Windows,
+# for every pull request and every push of alpha (docs/dev/CONTRIBUTING.md, Tests, 2026-11-22).
+# It does not replace the Full Test: a commit is tested only by a Full Test, which also runs the Python VM,
+# the transpiled VM, the reference versions and the benchmarks' builds, none of which is here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [alpha]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push of the same branch or pull request replaces a run that has not finished
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # A hung test ends the job here, not at the 6 hours of GitHub (2026-11-22: consh/test with the wasm VM on macOS)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      # consh/js/test runs `n = 1 + 2` and expects that no command n exists, but the runner of Ubuntu has one
+      # (a version manager of Node.js, /usr/local/bin/n). Take it away, as no machine of the developers has it.
+      - name: Remove the command n
+        run: if command -v n; then sudo rm -f "$(command -v n)"; fi
+
+      # The Rust VM, then the wasm32 VM with its host and the module of ConSh (consh/js/build.sh)
+      - name: Build
+        id: build
+        run: |
+          rustup target add wasm32-unknown-unknown
+          (cd vm && cargo build --release)
+          consh/js/build.sh
+
+      - name: vm (cargo test)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cd vm && cargo test --release
+
+      # step31 sends SIGINT twice and may see it once on a busy machine (docs/dev/TESTS-ja.md, 既知の違い)
+      - name: test/ (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "step31" test/run_all.sh -j 4
+
+      - name: test/ (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=wasm .github/ci-suite.sh "step31 step40" test/run_all.sh -j 3
+
+      - name: consh/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
+
+      # step12 (case8): a late SIGINT taken as Ctrl-C at the prompt (docs/dev/TESTS-ja.md, 既知の違い)
+      - name: consh/test (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=wasm .github/ci-suite.sh "step8 step12 step17" consh/test/run_all.sh -j 3
+
+      - name: consh/js/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/ci-suite.sh "" consh/js/test/run_all.sh
+
+      - name: sjs/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/ci-suite.sh "" sjs/test/run_all.sh
+
+      - name: conjs/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: conjs/test (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=wasm .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: test/host-api.sh
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/ci-suite.sh "" bash test/host-api.sh
+
+  # Windows (Git Bash): the Rust VM, with the suites that I7 runs (docs/dev/TESTS-ja.md, Windows（I7）で流す; stage P6c,
+  # docs/dev/PLATFORM-PLAN-ja.md, sections 4.11 and 8.13). The known differences are the rows "Windows（I7）" of
+  # docs/dev/TESTS-ja.md, 既知の違い.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      # ln -s makes real symbolic links (test/step16, step23)
+      MSYS: winsymlinks:nativestrict
+      # A short temporary directory, which Git Bash takes as /tmp: under C:/Users/runneradmin/AppData/Local/Temp, the
+      # paths the VM prints are long enough to be folded onto a second line, and the logs of test/step1 differ
+      TMP: D:\t
+      TEMP: D:\t
+    steps:
+      - name: The temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force D:\t | Out-Null
+
+      # The scripts must stay LF (bash does not run CRLF ones, and the logs are LF), and the links links
+      - name: Check out with LF and symbolic links
+        run: git config --global core.autocrlf false && git config --global core.symlinks true
+
+      - uses: actions/checkout@v4
+
+      # A real Python 3 for the tools of bin/ and the tests, also as python3 (the scripts begin #!/usr/bin/env python3)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: python3
+        run: |
+          d="$(dirname "$(command -v python)")"
+          [ -e "$d/python3.exe" ] || cp "$d/python.exe" "$d/python3.exe"
+          command -v python3
+          python3 --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      # bin/lang hashes with shasum, which the Git Bash of the runner lacks (that of I7 has it): sha1sum gives the same
+      - name: shasum
+        run: |
+          mkdir -p "$HOME/bin"
+          printf '#!/bin/bash\nexec sha1sum "$@"\n' > "$HOME/bin/shasum"
+          chmod +x "$HOME/bin/shasum"
+          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        id: build
+        run: |
+          command -v shasum; echo /tmp is "$(cygpath -m /tmp)"
+          cd vm && cargo build --release
+
+      - name: vm (cargo test --lib)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cd vm && cargo test --release --lib
+
+      - name: test/ (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "step11 step13 step14 step15 step16 step21 step23 step31 step32 step33" test/run_all.sh -j 4
+
+      - name: consh/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "examples step2 step3 step4 step6 step11 step12 step13 step14 step16" consh/test/run_all.sh -j 4
+
+      - name: conjs/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: sjs/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "" sjs/test/run_all.sh
