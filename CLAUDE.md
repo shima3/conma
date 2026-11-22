@@ -21,7 +21,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 - Run the wasm VM with Node.js only.
 - The Python VM is slow (conjs/test takes 3–4 minutes): run it in the background.
 - Do not switch the checkout while tests run in the background: they read the working tree. Use a worktree to test another commit.
-- On M1, M2 and M4 the shell is macOS bash 3.2 and BSD sed (`sed -i ''`). I7 is Windows (Git Bash with GNU sed, and PowerShell): the wasm VM builds there, the Rust VM does not (vm/src/sys.rs is Unix only). Before a bulk replace with sed, check how many lines match: a pattern that ends a line in one record often ends many.
+- On M1, M2 and M4 the shell is macOS bash 3.2 and BSD sed (`sed -i ''`). I7 is Windows (Git Bash with GNU sed, and PowerShell): the wasm VM builds there, the Rust VM does not (vm/src uses Unix-only APIs: sys.rs, prim/process.rs, value.rs). Before a bulk replace with sed, check how many lines match: a pattern that ends a line in one record often ends many.
 - Benchmarks: measure the versions alternately, on the same machine.
 - Do not kill processes by a broad pattern (`pkill -f conma`): other sessions on the machine run the same commands. Stop only the processes you started.
 
