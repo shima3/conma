@@ -89,7 +89,7 @@ sjs/test/run_all.sh
 
 ### i7/console-mode（shima3/conma#43）
 
-* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。MSYS のプログラム（Git Bash の sleep、cat、grep など）は、動いている間、コンソールの入力モードの行入力、エコー、Ctrl-C の処理をオフにする（I7 で 0x1F7 が 0x2E8 になる）。ConSh がそれを Ctrl-C で止めると、元に戻らない。すると Enter が `\r` だけになり、行が終わらず、ConSh がそれから後の行を読まなくなっていた（shima3/conma#41 のレビューで見つけた）。コンソールを読むスレッドが、作られたとき（VM の起動時）の入力モードを覚え、読むたびに、違っていれば戻す。Unix は変わらない。
+* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。MSYS のプログラム（Git Bash の sleep、cat、grep など）は、動いている間、コンソールの入力モードの行入力、エコー、Ctrl-C の処理をオフにする（I7 で 0x1F7 が 0x2E8 になる）。ConSh がそれを Ctrl-C で止めると、元に戻らない。すると Enter が `\r` だけになり、行が終わらず、ConSh がそれから後の行を読まなくなっていた（shima3/conma#41 のレビューで見つけた）。コンソールを読むスレッドが、作られたとき（VM の起動時）の入力モードを覚え、読むたびに、違っていれば戻す。Unix は変わらない。M4 のレビューで挙がった、この直しの範囲の外のこと：戻すのは入力のモードだけで、出力のモード（ENABLE_VIRTUAL_TERMINAL_PROCESSING など）は戻さない。戻すのは読みを始める前だけなので、すでに始まった読みの間に変わったモードは、次の読みから戻る（標準入力を受け継ぐ子を起動する前に、VM は始まった読みを止めるので、ConSh のコマンドではこうならない）。背景のジョブ（`&`）がモードを変えて動いている間にプロンプトで読むと、そのモードも戻す（Unix のシェルは前景のジョブの後にだけ戻すが、背景のジョブは Unix でもコンソールから読まない）。
 * 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
 * 新しいテスト：なし（コンソールに打つ suite がない）。
 * I7 が流したもの（Windows 11）：隠したコンソールで、WriteConsoleInput で行を打ち、GenerateConsoleCtrlEvent で Ctrl-C を送った。consh.cmd で、`sleep 1`、Ctrl-C で止めた `sleep 10`（動いている間は 0x2E8、その後は 0x1F7）、`echo`、プロンプトでの Ctrl-C、`sh -c 'exit 130'`、Ctrl-C、`echo`、`exit`。どの行も読んで答えた（直す前は、Ctrl-C の後の行を読まなかった）。vm の `cargo test --release --lib`（14 通る）、`CONMA_VM=rust test/run_all.sh -j 6` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 6`（既知の違いだけ）。
