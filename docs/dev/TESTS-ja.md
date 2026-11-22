@@ -95,3 +95,12 @@ sjs/test/run_all.sh
 * I7 が流したもの（Windows 11、Git Bash）：`CONMA_REFERENCE=1` の test/ の selfhost6、selfhost7、frontend、fast3、fast9、step18、step20（Rust 版の VM。selfhost6 が通り、ほかは参照版の既知の違いだけ）と、参照版なしの selfhost6 と frontend。
 * 流していないもの：macOS のすべてと、ほかの suite。
 * 測ったもの：なし。
+
+### m4/case8-pty
+
+* consh/test の step12 の case8.py が、`exit` を送った後、疑似端末を 1 秒だけ読んで `os.waitpid` で待っていたのを、疑似端末が閉じる（EOF）まで読んでから待つようにした（上限は、ほかの待ちと同じ 120 秒）。読まずに待つと、consh が最後の出力を書き終えられずに終われず、互いに待ち続けることがある（macOS。疑似端末に書く子は、読まれない出力が多いと止まる）。GitHub Actions の macOS の CI で、wasm 版の VM の consh/test が 2 時間近く止まり（2026-11-22）、M4 でも `-j 3` の 4 回目に止まった。
+* 作り直すもの：なし。
+* 新しいテスト：なし。
+* M4 が流したもの（macOS）：step12 を Rust 版、wasm 版、Python 版の VM で（違いなし）。wasm 版の VM の consh/test を `-j 3` で 15 回（止まらず、既知の違いの step8、step17 だけ）。
+* 残したもの：GitHub Actions の Ubuntu の wasm 版の VM で、case8 の Ctrl-C の後に、プロンプトが 2 回出たような順序の違いが出ることがある（2026-11-22 に 2 回）。Ctrl-C で前景の sleep が終わった後に、consh が SIGINT をプロンプトでの Ctrl-C として受け取るためと思うが、確かめていない。この変更では直していない。
+* 測ったもの：なし。
