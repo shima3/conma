@@ -1,4 +1,5 @@
-# CI: the fast suites of docs/dev/TESTS-ja.md on Linux and macOS, and the build of the Rust VM on Windows,
+# CI: the fast suites of docs/dev/TESTS-ja.md on Linux and macOS, the suites of Windows (I7), and the check of the
+# documents in two languages (.github/doc-pairs.py),
 # for every pull request and every push of alpha (docs/dev/CONTRIBUTING.md, Tests, 2026-11-22).
 # It does not replace the Full Test: a commit is tested only by a Full Test, which also runs the Python VM,
 # the transpiled VM, the reference versions and the benchmarks' builds, none of which is here.
@@ -19,6 +20,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The documents for the users in English and in Japanese: each pair has its lines that switch between them
+  # and the same headings (docs/dev/CONTRIBUTING.md, Languages of the documents)
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pairs of documents
+        run: python3 .github/doc-pairs.py
+
   unix:
     strategy:
       fail-fast: false
