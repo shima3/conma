@@ -41,7 +41,8 @@
 // (__OS_trap_interrupt__): from then on, the host calls vm.interrupt() for a
 // SIGINT (a browser does it for Ctrl-C anyway).
 // The host moves the data of the pipe ends of kinds 2 and 3 with vm.read,
-// vm.write and vm.close, and calls vm.childEvent() when a process exits.
+// vm.write and vm.close (vm.buffered tells how much a pipe holds), and calls
+// vm.childEvent() when a process exits.
 // buildModule(source, cwd, core), if given, makes the module of a ConMa source file
 // for __VProc_spawn__, as conma build does (of core ConMa if core, when the
 // program runs a module of core ConMa): {ok: true, text} with the file
@@ -2198,6 +2199,10 @@ var ConMaVM = (function () {
       },
       write: (fd, bytes) => pass(bytes, (p, n) => -x.conma_write(fd, p, n)),
       close: (fd) => x.conma_close(fd),
+      // The bytes in the pipe that its reader in the VM has not read yet (or minus an errno).
+      // The pipes of the VM have no limit: a host stops moving the output of a process into one
+      // while this is large, as the OS stops a process whose pipe is full.
+      buffered: (fd) => x.conma_pipe_buffered(fd),
       // A process exited: the VM polls the processes again.
       childEvent: () => x.conma_child_event(),
       // Use the file system of the host (hostFs) instead of the virtual one.
