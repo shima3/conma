@@ -60,6 +60,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### m2/step14-case6-count
 
+* プルリクエスト shima3/conma#36。
 * consh/test/step14/case6.sh だけを変えた（パイプの数え方。ConSh と VM は変えていない）。GitHub Actions の macos-latest で、consh/test を `-j 4` で流すと出ていた `pipes: 5 -> 11` は、パイプのリークではなかった。`$(lsof -p $$ | grep -c PIPE)` で数えると、ConSh が、そのパイプラインのために作っている途中のパイプの端まで数に入っていた。lsof が一覧をファイルに書き、grep がそのファイルを数えるようにした。
 * 流したもの：consh/test の step14（Rust 版、wasm 版、Python 版の VM）。最後にジョブを 1 つ残す、case6 の写しで、違い（`2 -> 3`）が出ることも確かめた。macos-latest で consh/test を `-j 4` で 5 回流し、5 回とも通った（確かめるためのブランチ m2/ci-debug-step14-fix。消したが、実行のログは GitHub Actions に残っている）。
 * 流していないもの：consh/test のほかの step、transpiled VM、ConSh の参照版。
