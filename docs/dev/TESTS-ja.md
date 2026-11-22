@@ -96,6 +96,15 @@ sjs/test/run_all.sh
 * 流していないもの：本当の端末での打鍵（この PR の前の shima3/conma#42 がまだ alpha にないので、端末の Ctrl-C で ConSh が終わる）、参照版の consh/test、macOS のすべて（変わるファイルはない）。
 * 測ったもの：なし。
 
+### i7/console-ctrl-c（shima3/conma#42）
+
+* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。端末（Windows Terminal やエディタの端末。疑似コンソール）で対話モードの ConSh に Ctrl-C を打つと、ConSh が終了ステータス 130 で終わっていた。疑似コンソールの Ctrl-C は、読み込みを 0 バイトで、エラーなし（ERROR_OPERATION_ABORTED でなく）で止めるので、入力の終わりと見ていた（130 は、Ctrl-C で ConSh が設定した $?）。0 バイトのとき、Ctrl-C の数が増えたかを最大 100 ms（`CTRL_C_WAIT`）待って見て、増えていれば入力の終わりにしない。Windows がハンドラーを呼ぶのが 100 ms より遅れると（忙しい機械など）、前の症状（ConSh が 130 で終わる）がそのときだけ出る（M4 のレビュー）。Unix は変わらない。consh/README-ja.md と consh/bin/consh.cmd のコメントに、consh.cmd から起動して Ctrl-C を押すと、ConSh が終わったときに cmd が「バッチ ジョブを終了しますか」と聞くことを書いた（`.cmd` では避けられない）。
+* 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
+* 新しいテスト：なし（Ctrl-C を疑似コンソールに打つ suite がない）。
+* I7 が流したもの（Windows 11）：このアプリの端末のタブで、直す前の consh.cmd に Ctrl-C を送ると「バッチ ジョブを終了しますか (Y/N)?」が出て終わること、直した VM では Ctrl-C のたびに新しいプロンプトを出して続くこと（2 回）。標準入力がファイルなら、終わりで終わること。vm の `cargo test --release --lib`（14 通る）。
+* 流していないもの：Ctrl-Z と Enter（コンソールの入力の終わり）、macOS のすべて（変わるファイルはない）。
+* 測ったもの：なし。
+
 ### i7/consh-cmd（shima3/conma#40）
 
 * consh/bin/consh.cmd を足した：PowerShell の実行ポリシー（Windows の既定では台本を動かさない）によらず、cmd か PowerShell から consh.ps1 を起動する。PATH に `pwsh`（PowerShell 7）があればそれで、なければ Windows PowerShell 5.1 で動かす。`.gitattributes` に `*.cmd text eol=crlf` を足した（cmd は CRLF の台本を読む）。consh.ps1 は頭のコメントだけを変えた。Unix の suite は、どちらも使わない。
@@ -113,4 +122,13 @@ sjs/test/run_all.sh
 * 新しいテスト：なし（suite に PowerShell で流すものはない）。
 * I7 が流したもの（Windows 11、Windows PowerShell 5.1）：台本の手で、対話モード（標準入力のファイルから `echo` とパイプ）、引数のあるスクリプト、`--dump`、`CONSH_IMPL=reference`、誤った `CONSH_IMPL`、引数のない `--dump`、ないスクリプト。モジュールを空のディレクトリに作り直したもの（約 25 秒）と、consh/bin/consh が作ったものを使うもの（約 3 秒）。チェックサムが bin/cache-dir と同じになること。consh/bin/consh が空のディレクトリに作ったモジュール（約 20 秒）が、consh.ps1 が作ったものとバイトまで同じになること。PowerShell 5.1 から空の引数と `"` を含む引数を渡すと、スクリプトの `$#` が Git Bash からと違うこと（consh.ps1 の頭のコメントと README に書いた）。
 * 流していないもの：端末から打つ対話モード、`CONMA_VM=transpiled`、`CONSH_CONMA_DATA`、PowerShell 7、macOS のすべて（変わるファイルはない）。
+* 測ったもの：なし。
+
+### m4/late-sigint（shima3/conma#41）
+
+* ConSh の対話モードで、端末の Ctrl-C が前景の外部コマンドとインタプリタの両方に届き、インタプリタが気づく前に外部コマンドが終わったとき、遅れた SIGINT をプロンプトの Ctrl-C と取り違えて、改行とプロンプトを余分に出し、次の入力を捨てていた（consh/test/step12 の case8 が `^C$ echo status $?` になり、後がずれる。wasm 版の VM で多く、2026-11-22 の GitHub Actions で Ubuntu と macOS に出た）。止めていないコマンドが `$?` 130 で終わったら、止めたときと同じく改行を出して "late" を真にし、コマンドの実行中でない SIGINT が "late" の間に来たら何もしないようにした（consh/include/consh_repl.se、consh/reference/consh_repl.se、consh/rust/src/repl.rs）。"late" は、次の行を入力したときにも偽に戻す。SIGINT がシェルに届かなかったとき（`kill -INT` を外部コマンドにだけ送った、`exit 130` など）は、そのすぐ後のプロンプトで行を入力する前の Ctrl-C を 1 回だけ無視し、`exit 130` の後にも改行が出る。
+* 確かめたこと：step12 を、最適化版と参照版の Rust 版、wasm 版の VM、最適化版の Python 版の VM、ConSh の Rust 版で流して違いなし。consh/test を Rust 版の VM で 3 つの版について流して、既知の違いだけ。`CONMA_VM=wasm consh/test/run_all.sh -j 3` を 15 回流して、step12 の違いは 0 回（既知の step17 と step8 だけ）。ただし、直す前の alpha でも、この Mac（M4）では 15 回で 0 回で、この競合はここでは起きにくい。それで、疑似端末で順番を作って確かめた：`sh -c 'kill -INT $$'`（SIGINT で終わり、シェルには届かない）の後のプロンプトで、シェルのプロセスグループに SIGINT を送ると、直す前は改行とプロンプトを余分に出し、直した後は出さない（ConSh の最適化版と参照版を Rust 版と wasm 版の VM で、最適化版を Python 版の VM で、ConSh の Rust 版）。`sleep 10` を Ctrl-C で止めた後のプロンプトで、もう一度 Ctrl-C を押すと読みかけの行を捨てることも、同じ版で確かめた（Python 版の VM を除く）。
+* CI（PR #33、`.github/workflows/ci.yml`）で wasm 版の consh/test の step12 を既知の違いにしたのと、既知の違いの表の「wasm 版（ときどき）| consh/test の step12 の case8」の行は、まだ alpha にない（PR #33 は main に向けて開いている）。PR #33 が入ったら、両方を消す。
+* 作り直すもの：ConSh の Rust 版（consh/rust で `cargo build --release`）。
+* 新しいテスト：なし。
 * 測ったもの：なし。
