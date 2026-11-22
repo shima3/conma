@@ -175,6 +175,12 @@ let nextProc = 0;
 let feeds = [];
 // Output of processes not yet given to the VM (ends of pipes still open)
 let openOutputs = 0;
+// The outputs of processes stopped (stream.pause()) because their pipe in the VM holds more than
+// PIPE_LIMIT bytes, as the OS stops a process whose pipe is full: {fd, stream}. The pipes of the VM
+// have no limit, and without this `for i in $(yes)` filled the 4 GB of the VM in a second on Linux
+// (consh/test step12 case7, 2026-11-22). resumeOutputs lets them go on when the VM has read them.
+const PIPE_LIMIT = 65536;
+let pausedOutputs = [];
 
 // The file to run for name, as execvp finds it in PATH; or minus an errno.
 function findCommand(name, env) {
@@ -245,7 +251,12 @@ function makeHostProc(getVm) {
           };
           stream.on("data", (d) => {
             if (closed) return;
-            if (vm.write(s.n, d) === -32) {
+            const r = vm.write(s.n, d);
+            if (r === 0 && vm.buffered(s.n) > PIPE_LIMIT) {
+              stream.pause();
+              pausedOutputs.push({ fd: s.n, stream, isClosed: () => closed });
+            }
+            if (r === -32) {
               // The reader in the VM has gone. A process of the native VM gets SIGPIPE when it
               // writes to such a pipe; this one writes to a socket of Node.js, which would give
               // it an error instead: send it SIGPIPE.
@@ -307,6 +318,17 @@ function feedProcesses(vm) {
       }
       f.stream.write(r);
     }
+  });
+}
+
+// Let the stopped outputs go on whose pipe the VM has read (or whose reader has gone: the next
+// write gets EPIPE, and the process SIGPIPE).
+function resumeOutputs(vm) {
+  pausedOutputs = pausedOutputs.filter((o) => {
+    if (o.isClosed()) return false;
+    if (vm.buffered(o.fd) > PIPE_LIMIT && vm.write(o.fd, new Uint8Array(0)) !== -32) return true;
+    o.stream.resume();
+    return false;
   });
 }
 
@@ -403,6 +425,7 @@ async function main() {
     code = vm.run(100000);
     if (code !== ConMaVM.RUNNING && code !== ConMaVM.IDLE) return code;
     feedProcesses(vm);
+    resumeOutputs(vm);
     // A program may poll standard input instead of waiting for it: read it when it found none.
     if (vm.wantsInput()) readInputAsync(vm);
     const outside = vm.jsPending() > 0 || processesActive() || reading;
