@@ -89,21 +89,20 @@ function Get-RelPath([string]$path) {
   return $parts -join '\'
 }
 
-# If $exe is older than its sources ($sources, and the files with an extension in $exts under them; after git pull,
-# for example), warn, with the command that builds it in $dir. In the interactive mode, when standard input and
-# standard error are the console and cargo is there, ask whether to build it now (Enter builds it), showing how long
-# its last build here took: the seconds are kept in build-seconds.<name> in the directory of bin/cache-dir, the same
-# file as consh/bin/consh keeps. The output of cargo is shown only when the build fails. Without a build, or when
-# it fails, the old $exe is used. Scripts, tests and pipes are not asked (so that they do not stop)
-function Update-StaleBuild([string]$exe, [string]$dir, [string[]]$sources, [string[]]$exts) {
-  if (-not (Test-Newer $sources $exts (Get-Item -LiteralPath $exe).LastWriteTimeUtc)) { return }
-  $rexe = Get-RelPath $exe
+# The command that builds the executable of the Cargo project in $dir, from the current directory
+function Get-BuildCommand([string]$dir) {
   $rdir = Get-RelPath $dir
-  if ($rdir -eq '.') { $cmd = 'cargo build --release' }
-  else { $cmd = "cargo build --release --manifest-path $(Join-Path $rdir 'Cargo.toml')" }
-  [Console]::Error.WriteLine("consh.ps1: warning: $rexe is older than its sources; build it with: $cmd")
+  if ($rdir -eq '.') { return 'cargo build --release' }
+  return "cargo build --release --manifest-path $(Join-Path $rdir 'Cargo.toml')"
+}
+
+# In the interactive mode, when standard input and standard error are the console and cargo is there, ask whether
+# to build $exe now (Enter builds it), showing how long its last build here took: the seconds are kept in
+# build-seconds.<name> in the directory of bin/cache-dir, the same file as consh/bin/consh keeps.
+# 'yes' or 'no' as answered; 'none' when not asked (scripts, tests and pipes, so that they do not stop)
+function Read-BuildAnswer([string]$exe) {
   if (-not $interactive -or [Console]::IsInputRedirected -or [Console]::IsErrorRedirected -or
-      -not (Get-Command cargo.exe -CommandType Application -ErrorAction SilentlyContinue)) { return }
+      -not (Get-Command cargo.exe -CommandType Application -ErrorAction SilentlyContinue)) { return 'none' }
   $rec = Join-Path $cacheDir ('build-seconds.' + [IO.Path]::GetFileNameWithoutExtension($exe))
   $last = $null
   if (Test-Path -LiteralPath $rec) { $last = (Get-Content -LiteralPath $rec -TotalCount 1) }
@@ -112,12 +111,16 @@ function Update-StaleBuild([string]$exe, [string]$dir, [string[]]$sources, [stri
   # Read-Host, not [Console]::In.ReadLine(): a Ctrl-C ends the script there, but not in ReadLine, which goes on reading
   [Console]::Error.Write("consh.ps1: build it now ($last)? [Y/n] ")
   $ans = Read-Host
-  if ($null -eq $ans) { $ans = 'n' }
-  if (@('', 'y', 'yes') -notcontains $ans.Trim()) {
-    [Console]::Error.WriteLine("consh.ps1: running the old $rexe")
-    return
-  }
-  # The output of cargo (the warnings of the compiler and so on) only when the build fails
+  if ($null -eq $ans) { return 'no' }
+  if (@('', 'y', 'yes') -contains $ans.Trim()) { return 'yes' }
+  return 'no'
+}
+
+# Build $exe with cargo build --release in $dir; true if it passes. The seconds go to build-seconds.<name>
+# (Read-BuildAnswer), and the output of cargo (the warnings of the compiler and so on) is shown only when it fails
+function Invoke-Build([string]$exe, [string]$dir) {
+  $rexe = Get-RelPath $exe
+  $rec = Join-Path $cacheDir ('build-seconds.' + [IO.Path]::GetFileNameWithoutExtension($exe))
   [Console]::Error.WriteLine("consh.ps1: building $rexe ...")
   $out = [IO.Path]::GetTempFileName()
   $err = [IO.Path]::GetTempFileName()
@@ -129,13 +132,39 @@ function Update-StaleBuild([string]$exe, [string]$dir, [string[]]$sources, [stri
     if ($p.ExitCode -eq 0) {
       try { [IO.File]::WriteAllText($rec, "$secs`n") } catch { }
       [Console]::Error.WriteLine("consh.ps1: built $rexe in $secs s")
-    } else {
-      foreach ($f in @($out, $err)) { foreach ($line in [IO.File]::ReadAllLines($f)) { [Console]::Error.WriteLine($line) } }
-      [Console]::Error.WriteLine("consh.ps1: the build failed; running the old $rexe")
+      return $true
     }
+    foreach ($f in @($out, $err)) { foreach ($line in [IO.File]::ReadAllLines($f)) { [Console]::Error.WriteLine($line) } }
+    return $false
   } finally {
     Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
   }
+}
+
+# If $exe is older than its sources ($sources, and the files with an extension in $exts under them; after git pull,
+# for example), warn, with the command that builds it in $dir, and ask whether to build it now (Read-BuildAnswer).
+# Without a build, or when it fails, the old $exe is used
+function Update-StaleBuild([string]$exe, [string]$dir, [string[]]$sources, [string[]]$exts) {
+  if (-not (Test-Newer $sources $exts (Get-Item -LiteralPath $exe).LastWriteTimeUtc)) { return }
+  $rexe = Get-RelPath $exe
+  [Console]::Error.WriteLine("consh.ps1: warning: $rexe is older than its sources; build it with: $(Get-BuildCommand $dir)")
+  switch (Read-BuildAnswer $exe) {
+    'yes' { if (-not (Invoke-Build $exe $dir)) { [Console]::Error.WriteLine("consh.ps1: the build failed; running the old $rexe") } }
+    'no' { [Console]::Error.WriteLine("consh.ps1: running the old $rexe") }
+  }
+}
+
+# If $exe is not there (a new clone, for example), say so, with the command that builds it in $dir, and ask whether
+# to build it now (Read-BuildAnswer); stop if it is not built
+function Assert-Built([string]$exe, [string]$dir) {
+  if (Test-Path -LiteralPath $exe) { return }
+  $rexe = Get-RelPath $exe
+  [Console]::Error.WriteLine("consh.ps1: $rexe is not built; build it with: $(Get-BuildCommand $dir)")
+  if ((Read-BuildAnswer $exe) -eq 'yes') {
+    if (Invoke-Build $exe $dir) { return }
+    [Console]::Error.WriteLine('consh.ps1: the build failed')
+  }
+  exit 2
 }
 
 function Exit-Usage {
@@ -192,13 +221,6 @@ try {
       exit 2
     }
   }
-  $conma = Join-Path $root 'vm\target\release\conma.exe'
-  foreach ($exe in @($conma, $vm) | Select-Object -Unique) {
-    if (-not (Test-Path -LiteralPath $exe)) {
-      [Console]::Error.WriteLine("consh.ps1: $exe is not built (cargo build --release in vm)")
-      exit 2
-    }
-  }
 
   # The directory of bin/cache-dir, and that of the modules (the same, unless CONSH_MODULE_DIR is set)
   if ($env:CONMA_CACHE_DIR) { $cacheDir = $env:CONMA_CACHE_DIR }
@@ -213,6 +235,15 @@ try {
   if (-not (Test-Path -LiteralPath $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
   if ($env:CONSH_MODULE_DIR) { $dir = $env:CONSH_MODULE_DIR } else { $dir = $cacheDir }
   if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+  # conma.exe not built: say so (and in the interactive mode, ask whether to build it), and stop if it is not built.
+  # The transpiled VM is made otherwise (docs/dev/TESTS-ja.md), so that is only said
+  $conma = Join-Path $root 'vm\target\release\conma.exe'
+  Assert-Built $conma (Join-Path $root 'vm')
+  if (-not (Test-Path -LiteralPath $vm)) {
+    [Console]::Error.WriteLine("consh.ps1: $(Get-RelPath $vm) is not built")
+    exit 2
+  }
 
   $inc = Join-Path $root 'include'
   if ($impl -eq 'reference') {
