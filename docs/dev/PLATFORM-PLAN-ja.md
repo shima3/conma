@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）の設計の案を、I7 が 4.11 節に書いた（2026-11-22）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -632,6 +632,71 @@ P6（プラットフォームを増やす）の 2 つ目の段階として、**N
 3. **終わり方**：`accept` で待つ処理だけが残ったときに、行き詰まりとして終えるか、`unref` で Node.js を終わらせるか。M1 は、サーバのプログラムは `close` で終えるのがふつうなので、行き詰まりとして知らせる（書き忘れに気付ける）ほうを勧める。
 4. **テスト**：ほかの VM のログを「no server」の 1 行にし、wasm 版だけで本当に待ち受けることでよいか。Node.js 版との比べ方（step18 の中の台本）でよいか。
 
+### 4.11. 段階 P6c の設計（案、2026-11-22）
+
+P6（プラットフォームを増やす）の 3 つ目の段階として、**Windows** で Rust 版の VM と transpiled VM を作って動かす（ユーザーが 2026-11-22 に選んだ。6 節の 1 の「P6b の後の順」）。3.3 節の表の「デスクトップ（macOS、Linux、Windows）」の行の、「Windows の OS の部分（パイプ、プロセス）を作る」にあたる。書いたのは I7（Windows の機械。docs/dev/CONTRIBUTING.md の Branches の 1）。
+
+* **選んだ理由**：ConJS のプログラムが、ConMa の動くどの所でも同じに動くことが目標である（1 節の B）。今、Windows で動くのは wasm 版の VM（Node.js）だけで、I7 で `cd vm && cargo build --release` は、Unix だけの API のためにコンパイルで止まる（2026-11-22。エラーは 8 つ）。デスクトップの GUI（P6 の残り）も、Windows では、この段階の上に作ることになる。
+* **今あるもの**：
+    * OS に触れる所：vm/src/sys.rs（`pipe`、`poll`、`fcntl`、`signal`、`kill`、`setsid`、`access`、`sysconf` を `extern "C"` で呼ぶ。シグナルのハンドラ）、vm/src/prim/process.rs（`CommandExt::pre_exec` で `setsid`、`OwnedFd`）、vm/src/value.rs（`ExitStatusExt` で、シグナルで終わったプロセスの終了コードを負の数にする）。
+    * `cfg(unix)` は「ネイティブ」、`cfg(not(unix))` は「wasm32」の意味で使われている（prim/process.rs、value.rs、prim/vprocs.rs の `is_file` と `build_module`、prim/host.rs の `time.now`）。Windows では `not(unix)` の側が選ばれ、wasm 版の sys にしかない関数（`sys::spawn`、`sys::proc_poll`、`sys::build_module`）を探して止まる。
+    * wasm 版の VM は、sys だけを vm/wasm/src/sys.rs に替え、ほかのファイルは `#[path]` でそのまま使う。sys の口は、2 つの版で、もうそろっている。
+    * Stream は、OS の fd（整数）を持つ。トレースに出るのは、fd ではなく Stream の serial（vm/src/trace.rs）なので、fd の番号は OS によって違ってよい。
+    * エラーの文字列は、Python の OSError の形にそろえてある（`[Errno 2] No such file or directory`、`sys::strerror`、`sys::errno_str`）。ログにも出る（`No such file or directory` が 21 か所、`Not a directory` が 4、`Is a directory` が 2、`Permission denied` と `[Errno 32] Broken pipe` が 1 つずつ）。
+    * Python 版の VM は、パイプを `select.select` で待ち、`SIGCHLD` を使う（vm/python/vproc_step.py）。Windows の `select` はソケットしか待てないので、Windows では動かない。
+    * テストは bash の台本で、Windows では Git Bash で動かすことになる。I7 の clone には、Git for Windows の既定の設定 `core.autocrlf true` で、台本とログが CRLF で取り出されている。`core.symlinks` は false で、5 つのシンボリックリンク（conjs/test の step14、15、16、18 と test/selfhost6）は、リンク先のパスを書いたふつうのファイルになっている。
+
+**足すもの**
+
+* **`cfg` の分け方**：「ネイティブ」の意味の `cfg(unix)` を `cfg(not(target_arch = "wasm32"))` に、「wasm32」の意味の `cfg(not(unix))` を `cfg(target_arch = "wasm32")` に替え、Unix と Windows で違う所だけを `cfg(unix)` と `cfg(windows)` にする。
+    * prim/process.rs と value.rs：どちらの OS でも `std::process::Command` と `Child` を使う。`__OS_spawn_detached__` は、Unix では今のとおり `setsid`、Windows では `CREATE_NEW_PROCESS_GROUP`（`CommandExt::creation_flags`。端末の Ctrl-C が届かない、という `setsid` の目的に合わせる）。
+    * prim/vprocs.rs の `is_file` と `build_module`、prim/host.rs の `time.now`：どちらの OS でも、今の Unix の道（`std`）を使う。
+    * 依存のクレートは足さない（vm/Cargo.toml に依存がないまま）。Windows の関数（kernel32）は、今の sys.rs の `extern "C"` と同じく、`extern "system"` で宣言する。
+* **sys を 2 つに分ける**：今の vm/src/sys.rs を vm/src/sys/unix.rs に `git mv` し（CONTRIBUTING の Commit messages：移すだけのコミット）、vm/src/sys/windows.rs を足し、vm/src/sys/mod.rs（または lib.rs の `#[cfg]` と `#[path]`）で選ぶ。wasm 版のクレートは、今のとおり自分の sys を使う。Windows 版の中身：
+    * **fd の表**：Windows のハンドルは、整数の fd ではない。Windows 版の sys は、fd から中身への表を持つ。0、1、2 は標準入出力のハンドル、ほかは 3 からの、空いているいちばん小さい番号（Unix と同じ決め方）。中身は、OS のハンドル（ファイル、パイプ）か、メモリの上のパイプ（起こすためのパイプ）。`dup` は、同じ中身を指す番号を足し（OS のハンドルは `DuplicateHandle`）、`close_fd` は番号を除き、最後の番号が閉じられたら中身を閉じる。
+    * **待つこと**（`wait_fds`、`readable`、`writable`）：Windows の匿名パイプは、`poll` も `select` も使えない。そこで、読む OS のハンドルごとに、読み手のスレッドを置く。`read_fd` はバッファから取り、`wait_fds` は、どれかの fd が準備できるか時間が来るまで、1 つの `Condvar` を待つ。ファイルは、Unix の `poll` と同じく、いつでも読み書きできるとし、スレッドを置かない。
+    * **読み手のスレッドは、頼まれた分だけ読む**（M4 のレビューの 3）：スレッドは、自分から読み足さない。VM がその fd を読むか待つ（`readable`、`read_fd`、`wait_fds`）たびに、バッファが空で、出ている読み出しがなければ、`ReadFile` を 1 回だけ出す（4,096 バイトまで）。読めたもの（か、終わりやエラー）をバッファに置いて `Condvar` で知らせ、VM が取るまで次を出さない。スレッドは、初めて読むか待つときに始める（パイプの読む側を `__OS_spawn__` で子プロセスに渡すだけで、VM が読まない fd（ConSh のパイプライン）では、何も読まない）。
+    * **子プロセスに渡す前に止める**（M4 のレビューの 3）：対話の ConSh は、標準入力（fd 0）を自分で読み、`cat` のような外部のコマンドに同じ fd 0 を渡す。ConSh が 1 行を読んだ後も、次の `__OS_wait_readable__` で `ReadFile` が出ていると、ユーザーが `cat` に打った行が、`cat` でなく読み手のスレッドに入ってしまう。そこで、`__OS_spawn__` が fd を子プロセスに渡す前に、その fd に出ている `ReadFile` を `CancelSynchronousIo`（読み手のスレッドのハンドルに対して）で止める。止める前に読めて、VM がまだ取っていない分は、子プロセスに届かない（Unix では届く。ConSh がパイプから塊で読む場合は、Unix でも同じなので、今と変わらない）。
+    * **閉じる**（M4 のレビューの 4）：読み手のスレッドが `ReadFile` で止まっている間は、そのハンドルを閉じられない。`close_fd` は、出ている読み出しを `CancelSynchronousIo` で止めてから閉じる。これで、`yes | head -1` のように VM が読む側を閉じると、書く側の `yes` が `ERROR_NO_DATA`（broken pipe）で終わる。
+    * **書き手のスレッド**（M4 のレビューの 4）：書く OS のパイプにも、書き手のスレッドと、限りのあるバッファ（64 KiB。Unix のパイプの大きさ）を置き、バッファに空きがあれば書ける、とする。`write_fd` が返った時には、まだ書かれていないので、(a) `close_fd` と VM が終わるときは、バッファを書き終えるまで待つ（待たないと、子プロセスに渡す最後の分が消える）。(b) 読み手がいなくなったときの `EPIPE` は、Unix ではその書き込みで返るが、ここでは、書き手のスレッドが失敗に気付いた後の、次の `write_fd`（か `close_fd`）で返る。ConSh の終了ステータス 141 は同じになるが、何回目の書き込みで止まるかは違うことがある。
+    * **起こすためのパイプ**（`make_wake_pipe`、`install_wakeup`、`drain`）：OS のパイプではなく、メモリの上のパイプにし、書くと同じ `Condvar` で知らせる。P7 の `Done::finish` は、ほかのスレッドから書くので、表と中身は `Mutex` で守る。
+    * **プロセス**：`Command` に、fd の表のハンドルを、子に受け継がせるハンドルとして複製して渡す（`Stdio::from(OwnedHandle)`）。`SIGCHLD` の代わりに、子プロセスごとに、終わるのを待つスレッド（`WaitForSingleObject`）を置き、終わったら `SIGNALS` を増やして起こす（スケジューラの `check_waiting` は、今のまま `sys::signals()` を見る）。
+    * **`__OS_kill__`**：Windows には、ほかのプロセスに送るシグナルがない。どのシグナルの番号でも `TerminateProcess` で終わらせ、送った番号を覚えておき、`__OS_poll__` と `__OS_wait__` が返す終了コードを、Unix と同じ負の番号（`-9`、`-15`、`-2`）にする（ConSh の `$?` が、Unix と同じ 128 + 番号になるように）。`TerminateProcess` は、そのプロセスだけを終わらせ、その子プロセス（`sh -c '...'` の中のコマンドなど）は残る（M4 のレビューの答えの 3）。子孫ごと終わらせること（Job Object）は、P6c ではしない。
+    * **Ctrl-C**（`trap_sigint`、`interrupts`）：`SetConsoleCtrlHandler` で受ける。`__OS_trap_interrupt__` の後は、ハンドラが `INTERRUPTS` と `SIGNALS` を増やして起こし、Windows の既定の終わり方を止める。その前は、Windows の既定のまま（終了コードは `0xC000013A`。Unix の、SIGINT で終わるのとは違う）。
+    * **ファイル**：`open_file` は `std::fs::OpenOptions`（Unix の `mode(0o666)` はなし）。ディレクトリを開くと、Windows は `ERROR_ACCESS_DENIED` を返すので、ディレクトリなら `EISDIR` にする（今の Unix の道と同じ文字列）。`can_search` は、ディレクトリなら真。
+    * **`sysconf`**：Windows にはない。`SC_NPROCESSORS_CONF`、`SC_NPROCESSORS_ONLN`、`SC_PAGESIZE`、`SC_PAGE_SIZE` は `GetSystemInfo` から答え、ほかの名前は、知らない名前と同じエラーにする。
+    * **標準出力**：`write_std` は今のまま。読み手のいなくなったパイプに書いたとき、Rust は Windows の `ERROR_NO_DATA` も `BrokenPipe` にするので、終了ステータス 141 も同じになる。
+* **エラーの文字列**：Windows の `io::Error` は、Windows のエラーの番号と文章（`The system cannot find the file specified.`）を持つ。Windows 版の `strerror` と `errno_str` は、ログに出るものを errno に直し、macOS と Linux と同じ英語の文章を返す：`ERROR_FILE_NOT_FOUND`（2）と `ERROR_PATH_NOT_FOUND`（3）は `ENOENT`、`ERROR_ACCESS_DENIED`（5）は `EACCES`、`ERROR_INVALID_HANDLE`（6）は `EBADF`、`ERROR_FILE_EXISTS`（80）と `ERROR_ALREADY_EXISTS`（183）は `EEXIST`、`ERROR_BROKEN_PIPE`（109）と `ERROR_NO_DATA`（232）は `EPIPE`、`ERROR_DIRECTORY`（267）は `ENOTDIR`。直せない番号は、Python と同じく `[WinError N] 文章` にする。
+* **パス**：VM の中のパス（`vp.cwd`、`__OS_getcwd__`、`__OS_realpath__`、`__OS_chdir__` の結果、`root_dir`、SInfo のファイル名）は、`/` で区切った `C:/Users/...` の形にする（Windows の関数は `/` も受け付ける）。`std::fs::canonicalize` が返す `\\?\C:\...` は、`\\?\` を除いて `\` を `/` にする。`build_module` が SInfo のファイル名からリポジトリの上のディレクトリを除く所も、この形で比べる。ConMa の側では、include/includer.se の `__Includer_is_absolute__` が、絶対パスを「`/` で始まる」で見分けているので、`C:/` で始まるものも絶対パスにする（今のどの VM のパスも `/` で始まるので、Unix では変わらない）。consh/include の `__OS_getcwd__` と `__OS_realpath__` を使う所も、同じことがないか調べる。
+    * テストの台本の側（M4 のレビューの 2）：test/resolver.sh は、includer の出力の絶対パスを `sed -e 's/"\/.*\/conma/"conma/'` で `"conma…` に直してからログと比べる。`"C:/Users/.../conma/...` は `"/` で始まらないので置き換わらない。この sed を、`C:/` で始まるパスも置き換えるように直す（Unix では変わらない形で）。ほかの台本に同じ形の置き換えがないかも調べる。includer（bin/includer）は Python の台本なので、Windows の Python は `\` で区切ったパスを出すことがあり、それもこの形に直す。
+    * Git Bash は、Windows のプログラムに渡す**引数**の `/c/Users/...` や `/tmp/...` を `C:/Users/...` の形に直す（MSYS のパスの変換）が、環境変数や、ファイルの中に書いたパスは直さない。台本がパスを環境変数やファイルで VM に渡す所は、`cygpath -m` で直す。
+* **テストの手順**（docs/dev/TESTS-ja.md の 流し方 に、Windows の節を足す）：
+    * Git Bash で流す。PATH に、Git の usr/bin（ConSh のテストが使う `cat`、`ls`、`sort` など）と Node.js（wasm 版の VM）と cargo がある。
+    * clone は `core.autocrlf false` にして取り出す（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない）。シンボリックリンクは、Windows の開発者モードを入れて `core.symlinks true` にする（できなければ、その 5 つのテストを既知の違いにする）。作り直すなら `git clone -c core.autocrlf=false -c core.symlinks=true` で始めると、取り出し直しが要らない（M4 のレビューの答えの 5）。
+    * **Python 3 が要る**（M4 のレビューの 1）：Python 版の VM を使わなくても、テストの道具は Python で動く。test/ のほとんど（test/common.sh の `resolve` が test/resolver.sh を通して、bin/includer、bin/resolver、bin/to-core を動かす。どれも `#!/usr/bin/env python3`。bin/comment_remover、bin/lexer、bin/parser も）、consh/test（consh/test/common.sh が `python3 "$consh/bin/consh_parse"`）、conjs/test（step9 の server.py、step16 の case6 の `case*.feed.py`）。Windows の `python3` は、ふつうは Microsoft Store を開く小さなプログラム（アプリ実行エイリアス）なので、本当の Python 3（python.org の版）を入れ、そのエイリアスを切り、`python3` の名前で本当の Python を動かせるようにする（Python の入った所に `python3.exe` の写しを置くなど）。手順に書く。
+    * Windows の Python は、標準出力の `\n` を `\r\n` にして書く（テキストのモード）。モジュールやログが CRLF になるなら、bin/ の Python の道具の標準出力を `\n` のまま書くようにする（`sys.stdout.reconfigure(newline="\n")` など。Unix では変わらない）。作るときに確かめる。
+    * Python 版の VM は動かないので（パイプを `select` で待つため）、`CONMA_VM` を必ず付ける（bin/vm の既定は Python 版）。
+
+**テスト**
+
+* I7 で：`cd vm && cargo build --release` と `cargo test --release` が通る。test/、conjs/test、sjs/test、consh/test、test/host-api.sh が、Rust 版の VM と transpiled VM（`bench/build.sh`）と wasm 版の VM で、既知の違いのほかに通る。通らないものは、理由と一緒に docs/dev/TESTS-ja.md の 既知の違い に、I7（Windows）の行として書く。見込み：Git Bash の `kill -INT` は Windows のプログラムに SIGINT を送れないので、SIGINT を送るテスト（test/step31 など）は違う。
+* 新しいテスト：Windows に固有の所（fd の表の番号の決め方、読み手のスレッドが頼まれた分だけ読むこと、子プロセスに渡す前と閉じる前に読み出しを止めること、書き手のスレッドのバッファを閉じるときに書き終えること、エラーの文字列の直し方、パスの形）を、vm の `cargo test` に足す（Unix でも動く所は、Unix でも流す）。ConMa のテストのログは、どの OS でも同じであることが確かめになるので、OS ごとのログは作らない。
+* macOS（M1、M2、M4）で：`cfg` を替えたので、Full Test が今と同じに通り、wasm 版の VM と transpiled VM も作れる。sys.rs を移しただけで、Unix の中身は変えない（`git diff -M` で確かめられる）。
+
+**終わりとすること**（5 節の表）：I7 で、Rust 版の VM と transpiled VM が作れ、test/、conjs/test、sjs/test、consh/test が、既知の違いのほかに通る。macOS の Full Test が変わらない。docs/dev/TESTS-ja.md に、Windows で流す手順と既知の違いがある。
+
+**P6c でしないこと**（後の候補）：Windows の端末（P6a の `nextEvent` と `pollEvent` を、`stty` の代わりにコンソールの API で動かすこと）、デスクトップの GUI、Python 版の VM を Windows で動かすこと（パイプを待つ所を作り直すことになる）、ConSh で `cmd.exe` の組み込みのコマンド（`dir` など）や `.bat` を動かすこと、子プロセスに Ctrl-C を送ること（`GenerateConsoleCtrlEvent`）、`__OS_kill__` で子孫ごと終わらせること（Job Object）、ARM の Windows、ベンチマーク（Windows の時間は、表の macOS の時間と比べない。CONTRIBUTING の Benchmarks）。
+
+**M4 のレビュー**（PR shima3/conma#32）：向き（sys を分け、クレートを足さない）、`__OS_kill__` を `TerminateProcess` にして終了コードを Unix にそろえること、パスの形 `C:/...`、CRLF とシンボリックリンクを clone の設定で済ませることに、賛成をもらった。指摘を受けて、テストに Python 3 が要ること（1）、test/resolver.sh のパスの sed と、Git Bash のパスの変換が引数にしか効かないこと（2）、読み手のスレッドは頼まれた分だけ読み、子プロセスに渡す前に読み出しを止めること（対話の ConSh の標準入力。3）、閉じる前に読み出しを止めることと、書き手のスレッドのバッファを書き終えることと `EPIPE` の返る時（4）、`TerminateProcess` が孫を残すこと、`git clone -c` で始めることを書き足した。
+
+**レビューで聞いたこと**
+
+1. **向き**：sys を Unix と Windows に分け、Windows 版は fd の表と、読み書きのスレッドで `poll` の代わりをする形でよいか。依存のクレートを足さずに、Windows の関数を自分で宣言することでよいか。
+2. **読み手のスレッド**：先に 4,096 バイトまで読んでしまうので、VM が一度読むか待った fd を、後で子プロセスに渡すと、読んだ分は子プロセスに届かない（Unix では届く）。初めて読むか待つときにスレッドを始めることで、ふつうの使い方（ConSh のパイプライン）には足りると考えるが、ほかに、そうする所があるか。
+3. **`__OS_kill__`**：どのシグナルでも `TerminateProcess` にし、終了コードを Unix と同じ負の番号にすることでよいか。
+4. **パスの形**：`C:/Users/...`（`/` で区切る）にすることでよいか。Git Bash の `/c/Users/...` や、Windows のふつうの `C:\Users\...` にしない理由は、前者は Windows の関数が受け付けず、後者は `/` でつなぐ ConMa の今のコード（includer など）と混ざるため。
+5. **CRLF とシンボリックリンク**：I7 の clone の設定（`core.autocrlf false`、`core.symlinks true`）で済ませ、リポジトリに `.gitattributes` の `eol=lf` は足さないことでよいか（足すと、どの clone の取り出しにも関わる。また、CRLF のまま入っているファイルが 1 つある（test/selfhost2/inc.se。`git ls-files --eol` の `i/crlf`。docs/LEXER.md の `\r\n` を確かめるためと思われる）ので、それを除く行も要る）。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -647,13 +712,14 @@ P6（プラットフォームを増やす）の 2 つ目の段階として、**N
 | P5c（作った、2026-11-21。8.8 節） | ConJS で、ブラウザのキーとマウスの入力を待つ：ホストの関数 `input.next`、`input.poll`（機能 `"input"`）と、ConJS の `nextEvent`、`pollEvent`。見本の対話のゲーム（stars.con.js） | conjs/test の step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない |
 | P6a（作った、2026-11-21。8.9 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6b（作った、2026-11-22。8.12 節。4.10 節） | P6 の 2 つ目の段階：Node.js。ネットワークのサーバ（ホストの関数 `server.*`、機能 `"server"`、vm/wasm/host/server.js）と、ConJS の `http.listen`、`accept()`、`respond()`。見本：要求ごとに処理を `spawn` する counter_server.con.js と、Node.js で同じことを書いた counter_server.node.js。docs/HOST-ja.md に npm のライブラリの例 | conjs/test の step18 が 3 つの VM で通る（wasm 版は本当に待ち受ける）。見本が Node.js 版と同じ答えになる。SJS が作るコードが変わらない |
+| P6c（設計の案、2026-11-22。4.11 節） | P6 の 3 つ目の段階：Windows。Rust 版の VM と transpiled VM を Windows で作って動かす。sys を Unix と Windows に分け、Windows 版は fd の表、読み書きのスレッドで `poll` の代わりをすること、プロセスと `__OS_kill__`、Ctrl-C、Python の形のエラーの文字列、`C:/...` のパスを持つ。Windows（Git Bash）でテストを流す手順 | I7 で Rust 版の VM と transpiled VM が作れ、test/、conjs/test、sjs/test、consh/test が既知の違いのほかに通る。macOS の Full Test が変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 
 ## 6. 決めること
 
-1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。P6 は、まず端末から始める（2026-11-21。4.7 節、段階 P6a）。その次は Node.js（2026-11-22。ユーザーが選んだ。4.10 節、段階 P6b）。その後の順（WASI、デスクトップの GUI、Windows の端末、モバイル）は、P6b の後で決める。
+1. **プラットフォームの順**（決めた、2026-11-19）：P3 は、ブラウザの canvas から始める。手間が小さく、目に見えて確かめやすい。P6 の順は、P3 の後で決める。P6 は、まず端末から始める（2026-11-21。4.7 節、段階 P6a）。その次は Node.js（2026-11-22。ユーザーが選んだ。4.10 節、段階 P6b）。その次は Windows で Rust 版の VM を動かすこと（2026-11-22。ユーザーが選んだ。4.11 節、段階 P6c）。その後の順（WASI、デスクトップの GUI、Windows の端末、モバイル）は、P6c の後で決める。
 2. **見本の言語**（決めた、2026-11-19）：P5 の見本の言語は、**代数的エフェクトとハンドラの小さな言語**（Koka や Eff のような）にする。ハンドラは、捕まえた継続を値として扱うだけ（`__Cont_get__`）で、ConMa で作りやすい。構文を自分で決められるので、SJS と違う構文で、キットが言語によらないこと（4 節）も確かめられる。
     * M1 は、初め「待つ処理を直接スタイルで書ける、JavaScript の部分集合」を見本の言語に勧めた（aae726a）。M2 の意見（docs/dev/REVIEW-ja.md の 2026-11-19（3））を受けて、名前を **ConJS** にし（「直接スタイル」は、ふつうの JavaScript もそうなので区別できない。「await なしの JS」は非同期ができないように聞こえる。ConMa、ConSh と並ぶ名前にした）、見本の言語ではなく、**SJS の次の段**として作る（4.1 節、段階 P3b）。JavaScript の構文なので、キットが構文によらないことの確かめにならないため。
     * 比べた候補：Lua のサブセット（M2 の初めの案。キットの確かめにはなるが、C の処理系がどこでも動くので、ConMa に変換する得は小さい）、小さな Lisp（S 式で、キットの字句解析と構文解析をほとんど確かめない）、Forth のようなスタックの言語、アクターやチャネルの並行言語、論理型言語の小さなもの。
