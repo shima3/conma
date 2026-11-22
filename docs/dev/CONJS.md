@@ -1,0 +1,38 @@
+# How ConJS is made, and its tests
+
+This is for the developers of ConJS. The language and how to run it are in [conjs/README.md](../../conjs/README.md) (in English and in Japanese), for its users; the plan and the design are in sections 4.1 to 4.10 of [PLATFORM-PLAN-ja.md](PLATFORM-PLAN-ja.md) (in Japanese). This was the second half of conjs/README-ja.md until 2026-11-23.
+
+## How it is made
+
+* **include/lang/sched.se**: the scheduler. It is the part that depends neither on the syntax of ConJS nor on the names of SJS, and it moved to the kit of languages in P4. It has the queue of the continuations of the tasks (FIFO), the calls that wait (begun with `__Host_start__`; a small VProc that waits on a pipe puts the result in a channel), join and the end. The state of each task is saved and restored with the save and restore functions it is given.
+* **conjs/include/conjs_rt.se**: the link to the runtime of SJS. It gathers in one place the names in the PDict that are made per task (`"sjs_handlers"`, `"sjs_gen"`, `"sjs_pos"`), and has `spawn`, `join`, `host` and the library of calls that wait (conjs/include/conjs_lib.se). `sleep` and `Date.now` of the library call the functions of the host `time.sleep` and `time.now` (the feature `"time"`, which every VM has), and `fetch` uses `http.fetch` (the feature `"fetch"`, the wasm VM only) or curl. curl runs in `Kit_sched_wait_work` of the scheduler (a VProc that waits, doing work that is not a call of the host).
+* **conjs/include/conjs_class.se**: the classes (stage P5b). The value of a class is a function of SJS, and an instance is an object of SJS; both keep the record of the class (its methods, static methods, constructor, fields and parent) under the hidden key `"cls"`. The runtime of SJS looks at `"cls"` only when the member read is not an own property (`Sjs_class_member` of sjs/include/sjs_rt.se). Values of SJS have no `"cls"`, so the results of SJS do not change. `JSON.parse` and `sort` of arrays touch neither prototypes nor the host, so they are in the runtime of SJS and shared with it.
+* **conjs/conjsc.se**: the entry of the translator (it calls the translator of SJS with the mark of the language). With the mark, sjs_gen.se makes a source that puts the statements inside `Conjs_run`.
+* The examples (conjs/examples and vm/wasm/web) are listed in [conjs/README.md](../../conjs/README.md#examples), with the tests that check them.
+
+## Tests
+
+The tests translate and run `caseN.con.js` of conjs/test/stepN and compare its output and exit status with `caseN.log` (conjs/test/run_case.sh). What differs by VM is put in a file such as `caseN.wasm.log`, and `caseN.host.js`, when there is one, is `CONMA_HOST` of the wasm VM.
+
+| Step | What it checks |
+|---|---|
+| step1 | The order tasks run in: the FIFO of spawn, the order of the deadlines of `test.later`, other tasks running while one waits |
+| step2 | Switching cooperatively: reads and writes of a shared object do not interleave; a loop that does not wait is not interrupted |
+| step3 | Exceptions: join throws them again with their positions, the report of exceptions not joined, an exception of main ends the program at once, the handlers of try and the positions thrown from are per task |
+| step4 | Where a task waits: the callback of map, the body of a generator, try and finally; next() of a generator that is waiting |
+| step5 | Errors: deadlocks, joining the task itself, wrong uses, values and errors of the host, a function of the host that returns a Promise on the wasm VM |
+| step6 | Syntax that is not taken; `then` as an ordinary name; the three names as keys and names of members |
+| step7 | Timers and time: other tasks running during `sleep`, differences of `Date.now()`, `setTimeout` and join, exceptions not joined, wrong arguments (as the real clock is used, it checks only what load does not change) |
+| step8 | Files: `fs.writeFile` and `fs.readFile`, a file that cannot be read, wrong arguments |
+| step9 | fetch: GET, `json()`, 404, POST and PUT and headers, HEAD, two tasks waiting side by side, the TypeError when it cannot connect, wrong arguments. It uses the HTTP server of step9/server.py (127.0.0.1) |
+| step10 | Programs that use no names of ConJS only (conjs/test/compare.sh compares them with Node.js) |
+| step11 | Classes: constructors, methods, fields, `static` and its inheritance, `extends` and `super`, `instanceof`, `in`, `this` of arrow functions, `console.log` and `Object.keys`. How they differ from JavaScript (case3) |
+| step12 | The constructors of the errors and `instanceof`, `class ... extends Error`, errors that nothing catches, errors when translated (`this`, computed names, getters), errors at run time. Objects that constructors return; `name` and `toString()` of errors (case8) |
+| step13 | `JSON.parse` and `sort` of arrays (the same as step12 of sjs/test). An object with the key `constructor` (case2). A string that is not JSON (case3) |
+| step14 | Input: `nextEvent` and `pollEvent` (case1; on the wasm VM, the real vm/wasm/host/input.js runs on a clock that input_mock.js, a fake of the input, moves by hand; the other VMs give the TypeError of a missing feature). The example stars.con.js runs with fixed keys, to check how it ends (case2). Logs by VM (case*.wasm.log) |
+| step15 | Input from a terminal: keys read from a file as the standard input (case*.in) (case1). The example stars.con.js runs the terminal's way and ends with Escape (case2). When an ESC sequence is split between two reads, test/fast18 checks directly the function that cuts it into keys |
+| step16 | Reading a file line by line: `readLine`, `read`, `readLines`, and lines across the 4,096 bytes of a read (case1). Writing, closing, errors (case2). `readLines()` closing the file when it is looped to the end and on `break`, an exception and `return` (case3). `fs.stdin` and `fs.stdout`, and that the input cannot be read both as keys and as lines (case4). The example merge.con.js (case5; its arguments are in case5.args). A standard input that comes little by little (the output of case6.feed.py, through a pipe), taken by three tasks, with no line broken (case6). Arguments of the program beginning with `-` reaching `argv` without being taken for options of the VM (case7) |
+| step17 | A Promise of a function of the host that never settles (stage P7): on the wasm VM, `vm-node.js` reports the deadlock and ends with exit status 2 (case1.wasm.log; the other VMs do not have the function). Passing an object or an array that contains itself is a TypeError; one that only has the same value in two places can be passed (case2) |
+| step18 | Network servers (stage P6b): on the wasm VM (Node.js), `fetch` to its own server. GET and POST, headers, bodies, `json()`, the Error of a second `respond`, 413 for a body over 1 MB, a port in use, answering after `close()` a request taken before it, 503 for the requests in the queue, `undefined` from `accept()` after `close()` and while waiting, wrong arguments (case1). The example counter_server.con.js runs with `demo` (case2; a symbolic link to counter_server.con.js). The logs of the other VMs (case*.log) are the one line of the Error of a missing feature |
+
+The cases compared with Node.js are listed in node.txt of each step (the errors when translated, and the cases of how ConJS differs from JavaScript, are left out). step8 and step9 (the steps with `copy.txt`) are copied by run_case.sh to a temporary directory before they run (they write files, so the tests of three VMs can run at once in one work tree without mixing). step9 starts server.py where it was copied (the port is in port.txt) and stops it at the end. step9 needs python3, and curl on the Rust and Python VMs.

@@ -44,7 +44,8 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 
 1. Only files under `docs/` and `.github/` and files named `*.md`; a comment in a source file is not a document (5).
 2. Make the branch from the latest `main`; check the links and what a workflow runs; add a line with 「文書だけ」 to the record, docs/dev/TESTS-RECORD-ja.md (5).
-3. When the user says so, merge it into `main` and into `alpha` and push them, or open a pull request into `main` (5, 6).
+3. Write a new document for the developers in English. A change to a document for the users that is in English and in Japanese (`NAME.md` and `NAME-ja.md`) is made to both, in the same commit; `python3 .github/doc-pairs.py` checks their headings (Languages of the documents).
+4. When the user says so, merge it into `main` and into `alpha` and push them, or open a pull request into `main` (5, 6).
 
 ## A Full Test (the tester)
 

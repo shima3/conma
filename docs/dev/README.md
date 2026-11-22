@@ -2,13 +2,14 @@
 
 These are for those who change ConMa: its VMs, its front end and its standard library. They are read here on GitHub, in the branch `alpha`, where they are newer than in `main`; GitHub Pages publishes only the documents for the users ([docs/index.md](../index.md)). Those for the developers of ConSh are in [docs/consh/dev](../consh/dev/README.md).
 
-This list is the only list of these documents; a new one is added here.
+This list is the only list of these documents; a new one is added here. They are written in English; the plans and records below stay in Japanese ([Contributing](CONTRIBUTING.md), Languages of the documents).
 
 - [Contributing](CONTRIBUTING.md): the branches (of the work, `alpha` and `main`), the Git settings, how a change goes into `main`, and the tests
 - [Design](DESIGN.md)
 - [Primitive Implementation Roadmap](ROADMAP.md)
 - [Self-hosted Front End](SELFHOST.md)
 - [Vproc Interpreter](VPROC_STEP.md)
+- [How ConJS is made, and its tests](CONJS.md): the parts of ConJS and its scheduler, and what each step of conjs/test checks (the language is in [conjs/README.md](../../conjs/README.md))
 
 ### Plans and records (in Japanese)
 - [Core ConMa and extended ConMa](FAST-PLAN-ja.md): the plan of the two levels of ConMa

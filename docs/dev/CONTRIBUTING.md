@@ -15,7 +15,9 @@ GitHub Actions also runs the fast suites, on Linux and macOS, for every pull req
 
 ## Languages of the documents
 
-A document in English is named `NAME.md`, and one in Japanese `NAME-ja.md`. When a document is in both, the English one is the original: the Japanese one begins with 「原文は英語。古くなっていることがある」 and a link to `NAME.md`, and a change is made to the English one first.
+The documents for the developers are in English (2026-11-23). A new one is written in English. A Japanese one that is still changed as the work goes on (docs/dev/TESTS-ja.md and docs/consh/dev/DEVELOPING-ja.md) is moved to English step by step, as `NAME.md`. The plans, the reviews and the records (`*-PLAN-ja.md`, `*-REVIEW-ja.md`, `REVIEW-ja.md`, docs/dev/TESTS-RECORD-ja.md) record their own time and stay in Japanese; a new line of a record is written in the language of the record.
+
+The documents for the users are in English and in Japanese, which the reader switches between: the English one is named `NAME.md` and the Japanese one `NAME-ja.md`, in the same directory. The English one begins with the line `**English** | [日本語](NAME-ja.md)` and the Japanese one with `[English](NAME.md) | **日本語**`, which GitHub and GitHub Pages both show as a link. The two say the same and have the same headings: a change to one is made to the other in the same commit, and CI checks that each pair has both lines and the same number of headings of each level ([.github/doc-pairs.py](../../.github/doc-pairs.py)). A document for the users that is in one language only, until it is translated, is listed with "(in Japanese)" on the index pages; when one is translated, a README that mixes things for the users and for the developers is first split, and the part for the developers goes to docs/dev in English (as conjs/README.md and docs/dev/CONJS.md, 2026-11-23).
 
 ## Commit messages
 
