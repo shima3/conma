@@ -11,15 +11,15 @@ trap 'rm -f "$out"' EXIT
 # `yes | head -1` の yes が「Broken pipe」を出して終わるなど、端末で流すときと違うので、Python で元に戻してから流す
 python3 -c 'import os, signal, sys; signal.signal(signal.SIGPIPE, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' "$@" 2>&1 | tee "$out"
 status=${PIPESTATUS[0]}
-# 違いの行があるテストの名前（最初の「==」の前に出た行は「(前)」）
-names="$(awk '/^== /{n=substr($0,4); next} {print (n=="" ? "(前)" : n)}' "$out" | sort -u)"
+# 違いの行があるテストの名前（最初の「==」の前に出た行は「(前)」）。名前は 1 行ずつ読む（test/host-api.sh の
+# 「== wasm（…飛ばした）」のように、空白を含む名前があるため。既知の違いと比べるのは、最初の空白の前まで）
 bad=""
-for n in $names; do
+while IFS= read -r n; do
   case "$known" in
-    *" $n "*) echo "::notice::既知の違い：$n" ;;
-    *) bad="$bad $n" ;;
+    *" ${n%% *} "*) echo "::notice::既知の違い：$n" ;;
+    *) bad="$bad [$n]" ;;
   esac
-done
+done < <(awk '/^== /{n=substr($0,4); next} {print (n=="" ? "(前)" : n)}' "$out" | sort -u)
 if [ -n "$bad" ]; then
   echo "::error::既知でない違い：$bad"
   exit 1

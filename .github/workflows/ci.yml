@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '26'
 
       # consh/js/test runs `n = 1 + 2` and expects that no command n exists, but the runner of Ubuntu has one
       # (a version manager of Node.js, /usr/local/bin/n). Take it away, as no machine of the developers has it.
@@ -61,6 +61,10 @@ jobs:
       - name: consh/test (Rust VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
+
+      - name: consh/test (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=wasm .github/ci-suite.sh "step8 step17" consh/test/run_all.sh -j 3
 
       - name: consh/js/test
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
