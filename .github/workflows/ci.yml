@@ -97,7 +97,15 @@ jobs:
     env:
       # ln -s makes real symbolic links (test/step16, step23)
       MSYS: winsymlinks:nativestrict
+      # A short temporary directory, which Git Bash takes as /tmp: under C:/Users/runneradmin/AppData/Local/Temp, the
+      # paths the VM prints are long enough to be folded onto a second line, and the logs of test/step1 differ
+      TMP: D:\t
+      TEMP: D:\t
     steps:
+      - name: The temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force D:\t | Out-Null
+
       # The scripts must stay LF (bash does not run CRLF ones, and the logs are LF), and the links links
       - name: Check out with LF and symbolic links
         run: git config --global core.autocrlf false && git config --global core.symlinks true
@@ -119,9 +127,19 @@ jobs:
         with:
           node-version: '26'
 
+      # bin/lang hashes with shasum, which the Git Bash of the runner lacks (that of I7 has it): sha1sum gives the same
+      - name: shasum
+        run: |
+          mkdir -p "$HOME/bin"
+          printf '#!/bin/bash\nexec sha1sum "$@"\n' > "$HOME/bin/shasum"
+          chmod +x "$HOME/bin/shasum"
+          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
+
       - name: Build
         id: build
-        run: cd vm && cargo build --release
+        run: |
+          command -v shasum; echo /tmp is "$(cygpath -m /tmp)"
+          cd vm && cargo build --release
 
       - name: vm (cargo test --lib)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
