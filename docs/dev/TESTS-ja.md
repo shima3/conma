@@ -89,7 +89,7 @@ sjs/test/run_all.sh
 
 ### i7/console-ctrl-c（shima3/conma#42）
 
-* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。端末（Windows Terminal やエディタの端末。疑似コンソール）で対話モードの ConSh に Ctrl-C を打つと、ConSh が終了ステータス 130 で終わっていた。疑似コンソールの Ctrl-C は、読み込みを 0 バイトで、エラーなし（ERROR_OPERATION_ABORTED でなく）で止めるので、入力の終わりと見ていた（130 は、Ctrl-C で ConSh が設定した $?）。0 バイトのとき、Ctrl-C の数が増えたかを最大 100 ms（`CTRL_C_WAIT`）待って見て、増えていれば入力の終わりにしない。Unix は変わらない。consh/README-ja.md と consh/bin/consh.cmd のコメントに、consh.cmd から起動して Ctrl-C を押すと、ConSh が終わったときに cmd が「バッチ ジョブを終了しますか」と聞くことを書いた（`.cmd` では避けられない）。
+* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。端末（Windows Terminal やエディタの端末。疑似コンソール）で対話モードの ConSh に Ctrl-C を打つと、ConSh が終了ステータス 130 で終わっていた。疑似コンソールの Ctrl-C は、読み込みを 0 バイトで、エラーなし（ERROR_OPERATION_ABORTED でなく）で止めるので、入力の終わりと見ていた（130 は、Ctrl-C で ConSh が設定した $?）。0 バイトのとき、Ctrl-C の数が増えたかを最大 100 ms（`CTRL_C_WAIT`）待って見て、増えていれば入力の終わりにしない。Windows がハンドラーを呼ぶのが 100 ms より遅れると（忙しい機械など）、前の症状（ConSh が 130 で終わる）がそのときだけ出る（M4 のレビュー）。Unix は変わらない。consh/README-ja.md と consh/bin/consh.cmd のコメントに、consh.cmd から起動して Ctrl-C を押すと、ConSh が終わったときに cmd が「バッチ ジョブを終了しますか」と聞くことを書いた（`.cmd` では避けられない）。
 * 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
 * 新しいテスト：なし（Ctrl-C を疑似コンソールに打つ suite がない）。
 * I7 が流したもの（Windows 11）：このアプリの端末のタブで、直す前の consh.cmd に Ctrl-C を送ると「バッチ ジョブを終了しますか (Y/N)?」が出て終わること、直した VM では Ctrl-C のたびに新しいプロンプトを出して続くこと（2 回）。標準入力がファイルなら、終わりで終わること。vm の `cargo test --release --lib`（14 通る）。
