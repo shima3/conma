@@ -1,5 +1,6 @@
-# GitHub Pages: publish docs/ (made into HTML by Jekyll, as before) and the browser version of ConSh
-# (consh/js/web, with the files that consh/js/build.sh makes) at consh/web/.
+# GitHub Pages: publish docs/ (made into HTML by Jekyll, as before), the browser version of ConSh
+# (consh/js/web, with the files that consh/js/build.sh makes) at consh/web/, and the documents of ConJS and SJS
+# (conjs/README-ja.md, sjs/README-ja.md) with the pages of vm/wasm/web (made by vm/wasm/web/build.sh) at conjs/.
 # Only main is published, which gets only states that passed every suite (docs/dev/CONTRIBUTING.md).
 # The repository's Settings -> Pages -> Source must be "GitHub Actions".
 name: Pages
@@ -36,6 +37,25 @@ jobs:
       # config.json is not put there, so js and the SJS of the host stay off (consh/js/README-ja.md).
       - name: Put the browser version under docs/consh/web
         run: cp -R consh/js/web docs/consh/web
+
+      # The pages run ConJS programs, which conjs/conjs --emit translates with the Rust VM
+      - name: Build the pages of ConJS
+        run: |
+          (cd vm && cargo build --release)
+          vm/wasm/web/build.sh
+
+      # docs/conjs/index.md lists them. The links of the two READMEs are relative to conjs/ and sjs/ of the repository:
+      # those into docs/ stay on this site, and those to what is not published here go to GitHub (alpha)
+      - name: Put the documents and the pages of ConJS under docs/conjs and docs/sjs
+        run: |
+          mkdir -p docs/sjs
+          gh=https://github.com/shima3/conma/blob/alpha
+          for f in conjs sjs; do
+            sed -e "s|](\.\./docs/dev/|]($gh/docs/dev/|g" -e "s|](\.\./docs/consh/dev/|]($gh/docs/consh/dev/|g" \
+                -e "s|](\.\./docs/|](../|g" -e "s|](\.\./consh/|]($gh/consh/|g" \
+                "$f/README-ja.md" > "docs/$f/README-ja.md"
+          done
+          cp -R vm/wasm/web docs/conjs/web
 
       # Jekyll reads every page as Liquid first, and the text of ConSh has {{ and {% in it
       # (docs/consh/PLAN-ja.md, docs/dev/TESTS-RECORD-ja.md), so each of them is escaped, here only (.github/pages-escape.py)
