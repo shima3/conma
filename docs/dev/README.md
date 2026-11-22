@@ -20,5 +20,7 @@ This list is the only list of these documents; a new one is added here.
 - [LazyList in the VM](LAZYLIST-PLAN-ja.md): the plan of reading the evaluated cells of a LazyList with primitives of extended ConMa
 - [Platforms and languages translated to ConMa](PLATFORM-PLAN-ja.md): the plan of running ConMa on more platforms with their own features, and of a kit for making languages that are translated to ConMa, as SJS is
 - [Speed-ups](SPEED-ja.md): every speed-up tried, with its effect and whether it was kept
-- [Running the tests and their record](TESTS-ja.md)
+- [Checklists](CHECKLISTS.md): the steps of each task (a piece of work, a pull request, a review, a Full Test), with the rules they come from in [Contributing](CONTRIBUTING.md)
+- [Running the tests](TESTS-ja.md): what to build, how to run every suite, the known differences and the notes for the tester
+- [The record of the tests](TESTS-RECORD-ja.md): who ran every suite on which commit
 - [Reviews of ConMa](REVIEW-ja.md) (those of ConSh are in [ConSh](../consh/dev/README.md))

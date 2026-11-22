@@ -10,6 +10,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 
 ## Before you act
 
+- The steps of the task at hand (a piece of work, a pull request, a review, an answer, a merge, documents only, a Full Test): docs/dev/CHECKLISTS.md, each step with the part of CONTRIBUTING that has its rule.
 - Branches, merging, pull requests, the `wait-` labels and the signal 「PR確認」/"check your PRs"/"PRs": docs/dev/CONTRIBUTING.md, Branches 1–6.
 - Push a branch of work when you open its pull request or answer a review (Branches 6). Push `alpha` and `main` only when the user says so (Merging, Branches 5). Merge only on the user's words. Never rebase a pushed commit.
 - A change of documents only (`docs/`, `.github/`, `*.md`) goes to `main` by Branches 5. A comment in a `.se`, `.rs`, `.py` or script file is not a document: it moves positions in logs and transpiled code.
@@ -17,7 +18,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 
 ## Tests
 
-- What to build and how to run each suite: docs/dev/TESTS-ja.md (流し方, 既知の違い). Build first: `cd vm && cargo build --release`; `vm/wasm/build.sh` for `CONMA_VM=wasm`.
+- What to build and how to run each suite: docs/dev/TESTS-ja.md (流し方, 既知の違い). The record of the Full Tests is docs/dev/TESTS-RECORD-ja.md. Build first: `cd vm && cargo build --release`; `vm/wasm/build.sh` for `CONMA_VM=wasm`.
 - Run the wasm VM with Node.js only.
 - The Python VM is slow (conjs/test takes 3–4 minutes): run it in the background.
 - Do not switch the checkout while tests run in the background: they read the working tree. Use a worktree to test another commit.
