@@ -86,15 +86,58 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" bash test/host-api.sh
 
-  # Windows: the Rust VM builds there since stage P6c (docs/dev/PLATFORM-PLAN-ja.md, sections 4.11 and 8.13), and a
-  # build that fails fails the run. The suites that I7 runs (docs/dev/TESTS-ja.md, Windows（I7）で流す) are not here yet.
+  # Windows (Git Bash): the Rust VM, with the suites that I7 runs (docs/dev/TESTS-ja.md, Windows（I7）で流す; stage P6c,
+  # docs/dev/PLATFORM-PLAN-ja.md, sections 4.11 and 8.13). The known differences are the rows "Windows（I7）" of
+  # docs/dev/TESTS-ja.md, 既知の違い.
   windows:
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
+    env:
+      # ln -s makes real symbolic links (test/step16, step23)
+      MSYS: winsymlinks:nativestrict
     steps:
+      # The scripts must stay LF (bash does not run CRLF ones, and the logs are LF), and the links links
+      - name: Check out with LF and symbolic links
+        run: git config --global core.autocrlf false && git config --global core.symlinks true
+
       - uses: actions/checkout@v4
 
-      - name: Build the Rust VM
+      # A real Python 3 for the tools of bin/ and the tests, also as python3 (the scripts begin #!/usr/bin/env python3)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: python3
+        run: |
+          d="$(dirname "$(command -v python)")"
+          cp "$d/python.exe" "$d/python3.exe"
+          python3 --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      - name: Build
+        id: build
         run: cd vm && cargo build --release
+
+      - name: vm (cargo test --lib)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cd vm && cargo test --release --lib
+
+      - name: test/ (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "step11 step13 step14 step15 step16 step21 step23 step31 step32 step33" test/run_all.sh -j 4
+
+      - name: consh/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "examples step2 step3 step4 step6 step11 step12 step13 step14 step16" consh/test/run_all.sh -j 4
+
+      - name: conjs/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: sjs/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: CONMA_VM=rust .github/ci-suite.sh "" sjs/test/run_all.sh

@@ -9,7 +9,12 @@ out="$(mktemp)" || exit 1
 trap 'rm -f "$out"' EXIT
 # GitHub Actions の runner は SIGPIPE を無視させたままコマンドを始め、bash はそれを元に戻せない。そのままだと、
 # `yes | head -1` の yes が「Broken pipe」を出して終わるなど、端末で流すときと違うので、Python で元に戻してから流す
-python3 -c 'import os, signal, sys; signal.signal(signal.SIGPIPE, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' "$@" 2>&1 | tee "$out"
+# Windows（Git Bash）では、そのまま流す（Windows に SIGPIPE はなく、os.execvp は新しいプロセスを始めて自分は終わるので、
+# 終了ステータスが取れない）
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) "$@" 2>&1 | tee "$out" ;;
+  *) python3 -c 'import os, signal, sys; signal.signal(signal.SIGPIPE, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' "$@" 2>&1 | tee "$out" ;;
+esac
 status=${PIPESTATUS[0]}
 # 違いの行があるテストの名前（最初の「==」の前に出た行は「(前)」）。名前は 1 行ずつ読む（test/host-api.sh の
 # 「== wasm（…飛ばした）」のように、空白を含む名前があるため。既知の違いと比べるのは、最初の空白の前まで）
