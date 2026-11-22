@@ -68,7 +68,7 @@ case5() {
   run unbalanced $compare ast $out.parser.se $(changed conma/parser.txt 's/)$//')
   run extra-paren $compare ast $out.parser.se $(changed conma/parser.txt 's/$/)/')
   run no-file $compare ast $out.parser.se none.txt
-  run bad-mode sh -c "$compare lisp $out.parser.se conma/parser.txt 2>&1 | head -1; exit \${PIPESTATUS[0]}"
+  run bad-mode bash -c "$compare lisp $out.parser.se conma/parser.txt 2>&1 | head -1; exit \${PIPESTATUS[0]}"
 }
 
 for c in case1 case2 case3 case4 case5

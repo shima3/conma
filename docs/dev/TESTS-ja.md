@@ -68,6 +68,15 @@ CONMA_VM=python conjs/test/run_all.sh
 * 流していないもの：ほかの suite（consh/test/step12/case8.py と、この文書のほかは変えていない）、wasm 版と transpiled VM の step12、参照版。
 * 測ったもの：なし。
 
+### m4/selfhost2-bash
+
+* test/selfhost2/test.sh の case5 の `bad-mode` が、`sh -c` の中で bash の `${PIPESTATUS[0]}` を使っていたので、`bash -c` にした。/bin/sh が dash の Linux では `Bad substitution` になり、GitHub Actions の CI の案（shima3/conma#33）の ubuntu-latest で違いが出た。macOS の /bin/sh は bash なので、M1、M2、M4 では違いが出ていなかった。
+* 作り直すもの：なし。
+* 新しいテスト：なし（ログは変えていない）。
+* M4 が流したもの（Apple M4）：test/selfhost2 を、そのままと `CONMA_VM=rust` で（通った。このテストは Python の道具だけを使い、VM を使わない）。直す前と後の test.sh の `sh -c` を `dash -c` に変えて流し、直す前は `dash: 1: Bad substitution` で違い、直した後は通ることも確かめた。
+* 流していないもの：ほかの suite（test/selfhost2/test.sh と、この文書のほかは変えていない）。
+* 測ったもの：なし。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
