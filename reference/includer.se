@@ -130,6 +130,7 @@
 
 ;; ── パス ──
 
+;; path が絶対パスなら真：「/」で始まるか、Windows の VM が書く「C:/」の形（ドライブ名、「:」、「/」）で始まる
 (define __Includer_is_absolute__ ,(path)
   __String_length__ path ,(len)
   __if_then_else__ (,() __Number_is_zero__ len)
@@ -138,7 +139,27 @@
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __String_substring__ __print_exit_error__ path zero one ,(first)
-      __String_equal__ first "/"))
+      __if_then_else__ (,() __String_equal__ first "/")
+        (,() __NULL__ __TRUE__)
+        (,() __Includer_has_drive__ path len)))
+
+;; path が「C:/」の形（ASCII の英字 1 つ、「:/」）で始まれば真。Unix の相対パス「a:/x」のような、英字でない 1 文字の後に
+;; 「:/」が続くものは偽
+(define __Includer_has_drive__ ,(path len)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "3" ,(three)
+  __Number_subtract__ len three ,(rest)
+  __if_then_else__ (,() __Number_is_negative__ rest)
+    (,() __NULL__ __FALSE__)
+    (,()
+      __String_substring__ __print_exit_error__ path one three ,(colon)
+      __if_then_else__ (,() __String_equal__ colon ":/")
+        (,()
+          __String_substring__ __print_exit_error__ path zero one ,(letter)
+          __String_find__ __print_exit_error__ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" letter zero ,(found)
+          __if_then_else__ (,() __is_null__ found) (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__))
+        (,() __NULL__ __FALSE__)))
 
 ;; dir と name を "/" でつなぐ。dir が "/" で終わっていれば、そのままつなぐ
 (define __Includer_join__ ,(dir name)

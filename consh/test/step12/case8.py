@@ -22,10 +22,6 @@ def read(timeout):
             return False
         out += data
     return True
-def drain(seconds):
-    end = time.time() + seconds
-    while time.time() < end and read(0.1):
-        pass
 def until(done):
     # done() が真になるまで出力を読む（上限 LIMIT 秒）
     end = time.time() + LIMIT
@@ -69,6 +65,9 @@ prompt()
 send(b"wait\n")
 prompt()
 send(b"exit\n")
-drain(1)
+# 疑似端末が閉じる（EOF）まで読んでから待つ。読まずに待つと、consh が最後の出力を書き終えられずに終われないことがある
+# （macOS。読まれない出力が多いと、疑似端末に書く子は止まる）。wasm 版の VM は遅く、1 秒で読むのをやめていたときに
+# 止まった（GitHub Actions の macOS、2026-11-22）
+until(lambda: False)
 os.waitpid(pid, 0)
 sys.stdout.write(out.decode().replace("\r", ""))
