@@ -12,6 +12,8 @@
 # so that the file does not depend on where the repository is.
 set -e -o pipefail
 root="$(cd "$(dirname "$0")/.."; pwd -P)"
+# Git Bash (Windows): the path as the VM and the Python frontend write it (C:/Users/...), for relative below
+command -v cygpath > /dev/null && root="$(cygpath -m "$root")"
 out="${1:-$root/vm/frontend.module.se}"
 tmp="$(mktemp -d /tmp/conma-frontend.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT

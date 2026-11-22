@@ -130,6 +130,7 @@
 
 ;; ── パス ──
 
+;; path が絶対パスなら真：「/」で始まるか、Windows の VM が書く「C:/」の形（ドライブ名、「:」、「/」）で始まる
 (define __Includer_is_absolute__ ,(path)
   __String_length__ path ,(len)
   __Number_is_zero__ len ,(test__) __if_then_else__ test__
@@ -138,7 +139,20 @@
       __Number_fromString__ __print_exit_error__ "0" ,(zero)
       __Number_fromString__ __print_exit_error__ "1" ,(one)
       __String_substring__ __print_exit_error__ path zero one ,(first)
-      __String_equal__ first "/"))
+      __String_equal__ first "/" ,(test__) __if_then_else__ test__
+        (,() __NULL__ __TRUE__)
+        (,() __Includer_has_drive__ path len)))
+
+;; path が「C:/」の形で始まれば真
+(define __Includer_has_drive__ ,(path len)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_fromString__ __print_exit_error__ "3" ,(three)
+  __Number_subtract__ len three ,(rest)
+  __Number_is_negative__ rest ,(test__) __if_then_else__ test__
+    (,() __NULL__ __FALSE__)
+    (,()
+      __String_substring__ __print_exit_error__ path one three ,(colon)
+      __String_equal__ colon ":/"))
 
 ;; dir と name を "/" でつなぐ。dir が "/" で終わっていれば、そのままつなぐ
 (define __Includer_join__ ,(dir name)
