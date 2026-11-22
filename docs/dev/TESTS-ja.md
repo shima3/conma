@@ -87,6 +87,15 @@ sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### i7/consh-ps1
+
+* consh/bin/consh.ps1 を足した：Windows の PowerShell から ConSh の ConMa 版を起動する台本（consh/README-ja.md の「実行」）。consh/bin/consh と同じ引数（`--python-parser` を除く）、`CONSH_IMPL`、`CONMA_VM`（`rust` か `transpiled`）、`CONSH_CONMA_DATA`、`CONSH_MODULE_DIR` を取り、モジュールを bin/cache-dir と同じ場所（同じチェックサム）に `conma build` で作る。Unix の suite は、この台本を使わない。
+* 作り直すもの：なし。
+* 新しいテスト：なし（suite に PowerShell で流すものはない）。
+* I7 が流したもの（Windows 11、Windows PowerShell 5.1）：台本の手で、対話モード（標準入力のファイルから `echo` とパイプ）、引数のあるスクリプト、`--dump`、`CONSH_IMPL=reference`、誤った `CONSH_IMPL`、引数のない `--dump`、ないスクリプト。モジュールを空のディレクトリに作り直したもの（約 25 秒）と、consh/bin/consh が作ったものを使うもの（約 3 秒）。チェックサムが bin/cache-dir と同じになること。
+* 流していないもの：端末から打つ対話モード、`CONMA_VM=transpiled`、`CONSH_CONMA_DATA`、PowerShell 7、macOS のすべて（変わるファイルはない）。
+* 測ったもの：なし。
+
 ### i7/reference-includer（shima3/conma#37）
 
 * 標準ライブラリの参照版の reference/includer.se にも、include/includer.se と同じく、`C:/` で始まるパスを絶対パスにする `__Includer_has_drive__` を足した（段階 P6c で、include の方だけを直していた。I7 の、`CONMA_REFERENCE=1` の test/selfhost6 が、Windows の一時ディレクトリの絶対パスを include できずに失敗した）。Unix では、どのパスも `/` で始まるので変わらない。
