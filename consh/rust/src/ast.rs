@@ -28,9 +28,6 @@ impl Sexp {
             _ => "",
         }
     }
-    pub fn is_list(&self) -> bool {
-        matches!(self, Sexp::List(_))
-    }
     /// The node type (the first symbol of a list), or "".
     pub fn tag(&self) -> &str {
         match self.list().first() {
@@ -58,13 +55,6 @@ impl Sexp {
             &l[2..]
         } else {
             &l[1..]
-        }
-    }
-    /// An identity for a node, for tables keyed by node.
-    pub fn id(&self) -> usize {
-        match self {
-            Sexp::List(l) => Arc::as_ptr(l) as usize,
-            _ => 0,
         }
     }
 }
