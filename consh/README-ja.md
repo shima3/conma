@@ -84,6 +84,8 @@ ConMa 版のモジュールは、Rust 版の VM（`vm/target/release/conma`）�
 `--dump` を付けると、実行せず、ConMa 版が読んだ構文木を S 式に書き戻して出す。
 ConMa のモジュールは `consh.module.se` という名前で、`bin/cache-dir` の場所（`${XDG_CACHE_HOME:-$HOME/.cache}/conma/<リポジトリのパスのチェックサム>`。持ち主だけが読み書きでき、別のチェックアウトとは分かれる。環境変数 `CONMA_CACHE_DIR` で変えられる）に作り、`.se` のソースが変わったときだけ作り直す。ConSh のモジュールだけを置くディレクトリは、環境変数 `CONSH_MODULE_DIR` で変えられる（2026-11-15 までの既定は `/tmp` だった）。一時ファイルに作ってから置き換えるので、同時に起動しても作りかけのモジュールを読むことはない。
 
+Windows では、Git Bash から `bin/consh` を起動するほかに、PowerShell から `bin/consh.ps1` でも起動できる（引数は `bin/consh` と同じ。`--python-parser` はない）。Rust 版の `consh-rs` は Windows では作れないので、`CONSH_IMPL` がないか `rust` でも ConMa 版で実行する（`reference` なら参照版）。VM は `CONMA_VM` の `rust`（既定）か `transpiled`。モジュールは `bin/consh` と同じ場所に作るので、どちらから起動しても同じものを使う。`ls` や `grep` などは、Windows では Git Bash のプログラムなので、`ls.exe` が PATH になければ、Git の `usr\bin` を PATH の最後に足して動かす。PowerShell が台本を動かさない設定なら、`powershell -ExecutionPolicy Bypass -File consh\bin\consh.ps1` で起動する。Windows PowerShell 5.1（と 7.3 より前の PowerShell 7）は、引数をそのままプログラムに渡さない（空の引数は消え、`"` を含む引数は分かれることがある）。そのような引数では、スクリプトが受け取る `$#` と引数が Git Bash から起動したときと違うので、PowerShell 7.3 以降か、Git Bash の `bin/consh` を使う。
+
 ### できること（段階 3〜13）
 
 * 変数定義、`export`、前置の変数定義、語の展開
