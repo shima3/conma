@@ -48,6 +48,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
 
+    # HTTPServer.server_bind は socket.getfqdn で 127.0.0.1 の名前を引き、GitHub Actions の macos-latest では、
+    # run_case.sh が待つ 10 秒を越えることがあった（2026-11-22）。名前は使わないので引かない
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 server = Server(("127.0.0.1", 0), Handler)
 with open(sys.argv[1], "w") as f:
     f.write(str(server.server_address[1]))

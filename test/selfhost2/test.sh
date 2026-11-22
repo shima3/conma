@@ -68,7 +68,9 @@ case5() {
   run unbalanced $compare ast $out.parser.se $(changed conma/parser.txt 's/)$//')
   run extra-paren $compare ast $out.parser.se $(changed conma/parser.txt 's/$/)/')
   run no-file $compare ast $out.parser.se none.txt
-  run bad-mode bash -c "$compare lisp $out.parser.se conma/parser.txt 2>&1 | head -1; exit \${PIPESTATUS[0]}"
+  # 出力をファイルに書いてから 1 行目を出す（| head -1 では、Python が書き終える前に head が終わると、Python が
+  # flush できずに 120 で終わることがある。2026-11-22、GitHub Actions の macos-latest で見つけた）
+  run bad-mode bash -c "$compare lisp $out.parser.se conma/parser.txt > $out.bad-mode.txt 2>&1; s=\$?; head -1 $out.bad-mode.txt; exit \$s"
 }
 
 for c in case1 case2 case3 case4 case5

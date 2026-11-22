@@ -86,6 +86,17 @@ CONMA_VM=python conjs/test/run_all.sh
 * 流していないもの：ほかの suite と、Python 版と transpiled VM の step6（case14.sh と、この文書のほかは変えていない）。
 * 測ったもの：なし。
 
+### m4/ci-mac-tests
+
+* GitHub Actions の CI の案（shima3/conma#33）の macos-latest で出た、テストの台本の 2 つの違いを直した。ログは変えていない。
+  * test/selfhost2 の case5 の `bad-mode`：Python の出力を `| head -1` で切っていたので、Python が書き終える前に head が終わると、Python が flush できずに 120 で終わることがあった（2 でなく）。出力をファイルに書いてから 1 行目を出すようにした。
+  * conjs/test/step9/server.py：`HTTPServer` が始めるときに `socket.getfqdn` で 127.0.0.1 の名前を引き、runner では run_case.sh が待つ 10 秒を越えた。`server_bind` を上書きして引かないようにした。
+* 作り直すもの：なし。
+* 新しいテスト：なし。
+* M4 が流したもの（Apple M4）：test/selfhost2（VM を使わない）と、conjs/test の step9 を Rust 版、wasm 版、Python 版の VM で（すべて通った）。`socket.getfqdn` を 5 秒待つものに替えて server.py を動かし、直す前は 5.06 秒、直した後は 0.04 秒で終わることも確かめた。
+* 流していないもの：ほかの suite（test/selfhost2/test.sh と conjs/test/step9/server.py と、この文書のほかは変えていない）。
+* 測ったもの：なし。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
