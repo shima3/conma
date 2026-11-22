@@ -654,33 +654,42 @@ P6（プラットフォームを増やす）の 3 つ目の段階として、**W
     * 依存のクレートは足さない（vm/Cargo.toml に依存がないまま）。Windows の関数（kernel32）は、今の sys.rs の `extern "C"` と同じく、`extern "system"` で宣言する。
 * **sys を 2 つに分ける**：今の vm/src/sys.rs を vm/src/sys/unix.rs に `git mv` し（CONTRIBUTING の Commit messages：移すだけのコミット）、vm/src/sys/windows.rs を足し、vm/src/sys/mod.rs（または lib.rs の `#[cfg]` と `#[path]`）で選ぶ。wasm 版のクレートは、今のとおり自分の sys を使う。Windows 版の中身：
     * **fd の表**：Windows のハンドルは、整数の fd ではない。Windows 版の sys は、fd から中身への表を持つ。0、1、2 は標準入出力のハンドル、ほかは 3 からの、空いているいちばん小さい番号（Unix と同じ決め方）。中身は、OS のハンドル（ファイル、パイプ）か、メモリの上のパイプ（起こすためのパイプ）。`dup` は、同じ中身を指す番号を足し（OS のハンドルは `DuplicateHandle`）、`close_fd` は番号を除き、最後の番号が閉じられたら中身を閉じる。
-    * **待つこと**（`wait_fds`、`readable`、`writable`）：Windows の匿名パイプは、`poll` も `select` も使えない。そこで、読む OS のハンドルごとに、読み手のスレッドを置く。スレッドは、バッファが空のときだけ `ReadFile` で読み（4,096 バイトまで）、読めたもの（か、終わりやエラー）をバッファに置いて、1 つの `Condvar` で知らせる。`read_fd` はバッファから取り、`wait_fds` は、どれかの fd が準備できるか時間が来るまで、その `Condvar` を待つ。書く OS のハンドルも同じく、書き手のスレッドと、限りのあるバッファ（64 KiB。Unix のパイプの大きさ）を置き、バッファに空きがあれば書ける、とする。ファイルは、Unix の `poll` と同じく、いつでも読み書きできるとし、スレッドを置かない。
-    * **読み手のスレッドを始める時**：初めてその fd を読むか待つときにする。パイプの読む側を `__OS_spawn__` で子プロセスに渡すだけで、VM が読まない fd（ConSh のパイプライン）では、スレッドが先に読んで、子プロセスの読む分を取ってしまうことがないように。
+    * **待つこと**（`wait_fds`、`readable`、`writable`）：Windows の匿名パイプは、`poll` も `select` も使えない。そこで、読む OS のハンドルごとに、読み手のスレッドを置く。`read_fd` はバッファから取り、`wait_fds` は、どれかの fd が準備できるか時間が来るまで、1 つの `Condvar` を待つ。ファイルは、Unix の `poll` と同じく、いつでも読み書きできるとし、スレッドを置かない。
+    * **読み手のスレッドは、頼まれた分だけ読む**（M4 のレビューの 3）：スレッドは、自分から読み足さない。VM がその fd を読むか待つ（`readable`、`read_fd`、`wait_fds`）たびに、バッファが空で、出ている読み出しがなければ、`ReadFile` を 1 回だけ出す（4,096 バイトまで）。読めたもの（か、終わりやエラー）をバッファに置いて `Condvar` で知らせ、VM が取るまで次を出さない。スレッドは、初めて読むか待つときに始める（パイプの読む側を `__OS_spawn__` で子プロセスに渡すだけで、VM が読まない fd（ConSh のパイプライン）では、何も読まない）。
+    * **子プロセスに渡す前に止める**（M4 のレビューの 3）：対話の ConSh は、標準入力（fd 0）を自分で読み、`cat` のような外部のコマンドに同じ fd 0 を渡す。ConSh が 1 行を読んだ後も、次の `__OS_wait_readable__` で `ReadFile` が出ていると、ユーザーが `cat` に打った行が、`cat` でなく読み手のスレッドに入ってしまう。そこで、`__OS_spawn__` が fd を子プロセスに渡す前に、その fd に出ている `ReadFile` を `CancelSynchronousIo`（読み手のスレッドのハンドルに対して）で止める。止める前に読めて、VM がまだ取っていない分は、子プロセスに届かない（Unix では届く。ConSh がパイプから塊で読む場合は、Unix でも同じなので、今と変わらない）。
+    * **閉じる**（M4 のレビューの 4）：読み手のスレッドが `ReadFile` で止まっている間は、そのハンドルを閉じられない。`close_fd` は、出ている読み出しを `CancelSynchronousIo` で止めてから閉じる。これで、`yes | head -1` のように VM が読む側を閉じると、書く側の `yes` が `ERROR_NO_DATA`（broken pipe）で終わる。
+    * **書き手のスレッド**（M4 のレビューの 4）：書く OS のパイプにも、書き手のスレッドと、限りのあるバッファ（64 KiB。Unix のパイプの大きさ）を置き、バッファに空きがあれば書ける、とする。`write_fd` が返った時には、まだ書かれていないので、(a) `close_fd` と VM が終わるときは、バッファを書き終えるまで待つ（待たないと、子プロセスに渡す最後の分が消える）。(b) 読み手がいなくなったときの `EPIPE` は、Unix ではその書き込みで返るが、ここでは、書き手のスレッドが失敗に気付いた後の、次の `write_fd`（か `close_fd`）で返る。ConSh の終了ステータス 141 は同じになるが、何回目の書き込みで止まるかは違うことがある。
     * **起こすためのパイプ**（`make_wake_pipe`、`install_wakeup`、`drain`）：OS のパイプではなく、メモリの上のパイプにし、書くと同じ `Condvar` で知らせる。P7 の `Done::finish` は、ほかのスレッドから書くので、表と中身は `Mutex` で守る。
     * **プロセス**：`Command` に、fd の表のハンドルを、子に受け継がせるハンドルとして複製して渡す（`Stdio::from(OwnedHandle)`）。`SIGCHLD` の代わりに、子プロセスごとに、終わるのを待つスレッド（`WaitForSingleObject`）を置き、終わったら `SIGNALS` を増やして起こす（スケジューラの `check_waiting` は、今のまま `sys::signals()` を見る）。
-    * **`__OS_kill__`**：Windows には、ほかのプロセスに送るシグナルがない。どのシグナルの番号でも `TerminateProcess` で終わらせ、送った番号を覚えておき、`__OS_poll__` と `__OS_wait__` が返す終了コードを、Unix と同じ負の番号（`-9`、`-15`、`-2`）にする（ConSh の `$?` が、Unix と同じ 128 + 番号になるように）。
+    * **`__OS_kill__`**：Windows には、ほかのプロセスに送るシグナルがない。どのシグナルの番号でも `TerminateProcess` で終わらせ、送った番号を覚えておき、`__OS_poll__` と `__OS_wait__` が返す終了コードを、Unix と同じ負の番号（`-9`、`-15`、`-2`）にする（ConSh の `$?` が、Unix と同じ 128 + 番号になるように）。`TerminateProcess` は、そのプロセスだけを終わらせ、その子プロセス（`sh -c '...'` の中のコマンドなど）は残る（M4 のレビューの答えの 3）。子孫ごと終わらせること（Job Object）は、P6c ではしない。
     * **Ctrl-C**（`trap_sigint`、`interrupts`）：`SetConsoleCtrlHandler` で受ける。`__OS_trap_interrupt__` の後は、ハンドラが `INTERRUPTS` と `SIGNALS` を増やして起こし、Windows の既定の終わり方を止める。その前は、Windows の既定のまま（終了コードは `0xC000013A`。Unix の、SIGINT で終わるのとは違う）。
     * **ファイル**：`open_file` は `std::fs::OpenOptions`（Unix の `mode(0o666)` はなし）。ディレクトリを開くと、Windows は `ERROR_ACCESS_DENIED` を返すので、ディレクトリなら `EISDIR` にする（今の Unix の道と同じ文字列）。`can_search` は、ディレクトリなら真。
     * **`sysconf`**：Windows にはない。`SC_NPROCESSORS_CONF`、`SC_NPROCESSORS_ONLN`、`SC_PAGESIZE`、`SC_PAGE_SIZE` は `GetSystemInfo` から答え、ほかの名前は、知らない名前と同じエラーにする。
     * **標準出力**：`write_std` は今のまま。読み手のいなくなったパイプに書いたとき、Rust は Windows の `ERROR_NO_DATA` も `BrokenPipe` にするので、終了ステータス 141 も同じになる。
 * **エラーの文字列**：Windows の `io::Error` は、Windows のエラーの番号と文章（`The system cannot find the file specified.`）を持つ。Windows 版の `strerror` と `errno_str` は、ログに出るものを errno に直し、macOS と Linux と同じ英語の文章を返す：`ERROR_FILE_NOT_FOUND`（2）と `ERROR_PATH_NOT_FOUND`（3）は `ENOENT`、`ERROR_ACCESS_DENIED`（5）は `EACCES`、`ERROR_INVALID_HANDLE`（6）は `EBADF`、`ERROR_FILE_EXISTS`（80）と `ERROR_ALREADY_EXISTS`（183）は `EEXIST`、`ERROR_BROKEN_PIPE`（109）と `ERROR_NO_DATA`（232）は `EPIPE`、`ERROR_DIRECTORY`（267）は `ENOTDIR`。直せない番号は、Python と同じく `[WinError N] 文章` にする。
 * **パス**：VM の中のパス（`vp.cwd`、`__OS_getcwd__`、`__OS_realpath__`、`__OS_chdir__` の結果、`root_dir`、SInfo のファイル名）は、`/` で区切った `C:/Users/...` の形にする（Windows の関数は `/` も受け付ける）。`std::fs::canonicalize` が返す `\\?\C:\...` は、`\\?\` を除いて `\` を `/` にする。`build_module` が SInfo のファイル名からリポジトリの上のディレクトリを除く所も、この形で比べる。ConMa の側では、include/includer.se の `__Includer_is_absolute__` が、絶対パスを「`/` で始まる」で見分けているので、`C:/` で始まるものも絶対パスにする（今のどの VM のパスも `/` で始まるので、Unix では変わらない）。consh/include の `__OS_getcwd__` と `__OS_realpath__` を使う所も、同じことがないか調べる。
+    * テストの台本の側（M4 のレビューの 2）：test/resolver.sh は、includer の出力の絶対パスを `sed -e 's/"\/.*\/conma/"conma/'` で `"conma…` に直してからログと比べる。`"C:/Users/.../conma/...` は `"/` で始まらないので置き換わらない。この sed を、`C:/` で始まるパスも置き換えるように直す（Unix では変わらない形で）。ほかの台本に同じ形の置き換えがないかも調べる。includer（bin/includer）は Python の台本なので、Windows の Python は `\` で区切ったパスを出すことがあり、それもこの形に直す。
+    * Git Bash は、Windows のプログラムに渡す**引数**の `/c/Users/...` や `/tmp/...` を `C:/Users/...` の形に直す（MSYS のパスの変換）が、環境変数や、ファイルの中に書いたパスは直さない。台本がパスを環境変数やファイルで VM に渡す所は、`cygpath -m` で直す。
 * **テストの手順**（docs/dev/TESTS-ja.md の 流し方 に、Windows の節を足す）：
     * Git Bash で流す。PATH に、Git の usr/bin（ConSh のテストが使う `cat`、`ls`、`sort` など）と Node.js（wasm 版の VM）と cargo がある。
-    * clone は `core.autocrlf false` にして取り出し直す（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない）。シンボリックリンクは、Windows の開発者モードを入れて `core.symlinks true` にする（できなければ、その 5 つのテストを既知の違いにする）。
-    * `python3` は、Windows では Microsoft Store を開く小さなプログラムで、Python 版の VM は動かないので、`CONMA_VM` を必ず付ける（bin/vm の既定は Python 版）。
+    * clone は `core.autocrlf false` にして取り出す（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない）。シンボリックリンクは、Windows の開発者モードを入れて `core.symlinks true` にする（できなければ、その 5 つのテストを既知の違いにする）。作り直すなら `git clone -c core.autocrlf=false -c core.symlinks=true` で始めると、取り出し直しが要らない（M4 のレビューの答えの 5）。
+    * **Python 3 が要る**（M4 のレビューの 1）：Python 版の VM を使わなくても、テストの道具は Python で動く。test/ のほとんど（test/common.sh の `resolve` が test/resolver.sh を通して、bin/includer、bin/resolver、bin/to-core を動かす。どれも `#!/usr/bin/env python3`。bin/comment_remover、bin/lexer、bin/parser も）、consh/test（consh/test/common.sh が `python3 "$consh/bin/consh_parse"`）、conjs/test（step9 の server.py、step16 の case6 の `case*.feed.py`）。Windows の `python3` は、ふつうは Microsoft Store を開く小さなプログラム（アプリ実行エイリアス）なので、本当の Python 3（python.org の版）を入れ、そのエイリアスを切り、`python3` の名前で本当の Python を動かせるようにする（Python の入った所に `python3.exe` の写しを置くなど）。手順に書く。
+    * Windows の Python は、標準出力の `\n` を `\r\n` にして書く（テキストのモード）。モジュールやログが CRLF になるなら、bin/ の Python の道具の標準出力を `\n` のまま書くようにする（`sys.stdout.reconfigure(newline="\n")` など。Unix では変わらない）。作るときに確かめる。
+    * Python 版の VM は動かないので（パイプを `select` で待つため）、`CONMA_VM` を必ず付ける（bin/vm の既定は Python 版）。
 
 **テスト**
 
 * I7 で：`cd vm && cargo build --release` と `cargo test --release` が通る。test/、conjs/test、sjs/test、consh/test、test/host-api.sh が、Rust 版の VM と transpiled VM（`bench/build.sh`）と wasm 版の VM で、既知の違いのほかに通る。通らないものは、理由と一緒に docs/dev/TESTS-ja.md の 既知の違い に、I7（Windows）の行として書く。見込み：Git Bash の `kill -INT` は Windows のプログラムに SIGINT を送れないので、SIGINT を送るテスト（test/step31 など）は違う。
-* 新しいテスト：Windows に固有の所（fd の表の番号の決め方、読み手のスレッドを始める時、エラーの文字列の直し方、パスの形）を、vm の `cargo test` に足す（Unix でも動く所は、Unix でも流す）。ConMa のテストのログは、どの OS でも同じであることが確かめになるので、OS ごとのログは作らない。
+* 新しいテスト：Windows に固有の所（fd の表の番号の決め方、読み手のスレッドが頼まれた分だけ読むこと、子プロセスに渡す前と閉じる前に読み出しを止めること、書き手のスレッドのバッファを閉じるときに書き終えること、エラーの文字列の直し方、パスの形）を、vm の `cargo test` に足す（Unix でも動く所は、Unix でも流す）。ConMa のテストのログは、どの OS でも同じであることが確かめになるので、OS ごとのログは作らない。
 * macOS（M1、M2、M4）で：`cfg` を替えたので、Full Test が今と同じに通り、wasm 版の VM と transpiled VM も作れる。sys.rs を移しただけで、Unix の中身は変えない（`git diff -M` で確かめられる）。
 
 **終わりとすること**（5 節の表）：I7 で、Rust 版の VM と transpiled VM が作れ、test/、conjs/test、sjs/test、consh/test が、既知の違いのほかに通る。macOS の Full Test が変わらない。docs/dev/TESTS-ja.md に、Windows で流す手順と既知の違いがある。
 
-**P6c でしないこと**（後の候補）：Windows の端末（P6a の `nextEvent` と `pollEvent` を、`stty` の代わりにコンソールの API で動かすこと）、デスクトップの GUI、Python 版の VM を Windows で動かすこと（パイプを待つ所を作り直すことになる）、ConSh で `cmd.exe` の組み込みのコマンド（`dir` など）や `.bat` を動かすこと、子プロセスに Ctrl-C を送ること（`GenerateConsoleCtrlEvent`）、ARM の Windows、ベンチマーク（Windows の時間は、表の macOS の時間と比べない。CONTRIBUTING の Benchmarks）。
+**P6c でしないこと**（後の候補）：Windows の端末（P6a の `nextEvent` と `pollEvent` を、`stty` の代わりにコンソールの API で動かすこと）、デスクトップの GUI、Python 版の VM を Windows で動かすこと（パイプを待つ所を作り直すことになる）、ConSh で `cmd.exe` の組み込みのコマンド（`dir` など）や `.bat` を動かすこと、子プロセスに Ctrl-C を送ること（`GenerateConsoleCtrlEvent`）、`__OS_kill__` で子孫ごと終わらせること（Job Object）、ARM の Windows、ベンチマーク（Windows の時間は、表の macOS の時間と比べない。CONTRIBUTING の Benchmarks）。
 
-**レビューで聞きたいこと**
+**M4 のレビュー**（PR shima3/conma#32）：向き（sys を分け、クレートを足さない）、`__OS_kill__` を `TerminateProcess` にして終了コードを Unix にそろえること、パスの形 `C:/...`、CRLF とシンボリックリンクを clone の設定で済ませることに、賛成をもらった。指摘を受けて、テストに Python 3 が要ること（1）、test/resolver.sh のパスの sed と、Git Bash のパスの変換が引数にしか効かないこと（2）、読み手のスレッドは頼まれた分だけ読み、子プロセスに渡す前に読み出しを止めること（対話の ConSh の標準入力。3）、閉じる前に読み出しを止めることと、書き手のスレッドのバッファを書き終えることと `EPIPE` の返る時（4）、`TerminateProcess` が孫を残すこと、`git clone -c` で始めることを書き足した。
+
+**レビューで聞いたこと**
 
 1. **向き**：sys を Unix と Windows に分け、Windows 版は fd の表と、読み書きのスレッドで `poll` の代わりをする形でよいか。依存のクレートを足さずに、Windows の関数を自分で宣言することでよいか。
 2. **読み手のスレッド**：先に 4,096 バイトまで読んでしまうので、VM が一度読むか待った fd を、後で子プロセスに渡すと、読んだ分は子プロセスに届かない（Unix では届く）。初めて読むか待つときにスレッドを始めることで、ふつうの使い方（ConSh のパイプライン）には足りると考えるが、ほかに、そうする所があるか。
