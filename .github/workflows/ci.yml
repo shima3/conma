@@ -32,6 +32,11 @@ jobs:
         with:
           node-version: '24'
 
+      # consh/js/test runs `n = 1 + 2` and expects that no command n exists, but the runner of Ubuntu has one
+      # (a version manager of Node.js, /usr/local/bin/n). Take it away, as no machine of the developers has it.
+      - name: Remove the command n
+        run: if command -v n; then sudo rm -f "$(command -v n)"; fi
+
       # The Rust VM, then the wasm32 VM with its host and the module of ConSh (consh/js/build.sh)
       - name: Build
         id: build
