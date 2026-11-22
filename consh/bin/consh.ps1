@@ -15,6 +15,9 @@
 # Git's usr\bin is there, it is added at the end of PATH while ConSh runs (and taken out again after).
 # If PowerShell does not run scripts (the execution policy), run it as
 #   powershell -ExecutionPolicy Bypass -File consh\bin\consh.ps1 ...
+# Windows PowerShell 5.1 (and PowerShell 7 before 7.3) does not pass every argument to a program as it is: an empty
+# argument is dropped, and one with a " in it can be split. With such arguments the script gets other $# and $1 ...
+# than from Git Bash; use PowerShell 7.3 or later, or consh/bin/consh from Git Bash.
 
 $ErrorActionPreference = 'Stop'
 

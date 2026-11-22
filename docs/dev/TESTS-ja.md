@@ -90,9 +90,10 @@ sjs/test/run_all.sh
 ### i7/consh-ps1（shima3/conma#39）
 
 * consh/bin/consh.ps1 を足した：Windows の PowerShell から ConSh の ConMa 版を起動する台本（consh/README-ja.md の「実行」）。consh/bin/consh と同じ引数（`--python-parser` を除く）、`CONSH_IMPL`、`CONMA_VM`（`rust` か `transpiled`）、`CONSH_CONMA_DATA`、`CONSH_MODULE_DIR` を取り、モジュールを bin/cache-dir と同じ場所（同じチェックサム）に `conma build` で作る。Unix の suite は、この台本を使わない。
+* consh/bin/consh は、Windows の Git Bash（cygpath がある）では、モジュールのファイル名から取るリポジトリの上のディレクトリを `pwd -W`（`C:/...` の形）で作り、置き換えを perl でする（M4 のレビュー）。それまでは `/c/...` の形で、VM が書く `C:/...` と一致せず、ファイル名が絶対パスのまま残っていた。一致するようになると、1 行のモジュール（7 MB）で置き換える所が多く、Git Bash の sed は数分かかった（perl は 1 秒かからない）。Unix は sed のままで変わらない。
 * 作り直すもの：なし。
 * 新しいテスト：なし（suite に PowerShell で流すものはない）。
-* I7 が流したもの（Windows 11、Windows PowerShell 5.1）：台本の手で、対話モード（標準入力のファイルから `echo` とパイプ）、引数のあるスクリプト、`--dump`、`CONSH_IMPL=reference`、誤った `CONSH_IMPL`、引数のない `--dump`、ないスクリプト。モジュールを空のディレクトリに作り直したもの（約 25 秒）と、consh/bin/consh が作ったものを使うもの（約 3 秒）。チェックサムが bin/cache-dir と同じになること。
+* I7 が流したもの（Windows 11、Windows PowerShell 5.1）：台本の手で、対話モード（標準入力のファイルから `echo` とパイプ）、引数のあるスクリプト、`--dump`、`CONSH_IMPL=reference`、誤った `CONSH_IMPL`、引数のない `--dump`、ないスクリプト。モジュールを空のディレクトリに作り直したもの（約 25 秒）と、consh/bin/consh が作ったものを使うもの（約 3 秒）。チェックサムが bin/cache-dir と同じになること。consh/bin/consh が空のディレクトリに作ったモジュール（約 20 秒）が、consh.ps1 が作ったものとバイトまで同じになること。PowerShell 5.1 から空の引数と `"` を含む引数を渡すと、スクリプトの `$#` が Git Bash からと違うこと（consh.ps1 の頭のコメントと README に書いた）。
 * 流していないもの：端末から打つ対話モード、`CONMA_VM=transpiled`、`CONSH_CONMA_DATA`、PowerShell 7、macOS のすべて（変わるファイルはない）。
 * 測ったもの：なし。
 

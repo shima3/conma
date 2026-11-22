@@ -127,8 +127,22 @@ fi
 # モジュールは、Rust 版の VM があれば conma build（ConMa 版のフロントエンド。Python を使わない）で、なければ
 # bin/includer と bin/resolver（Python）で作る。SInfo のファイル名は、リポジトリの上のディレクトリからの相対パスにする
 conma="$root/vm/target/release/conma"
-# リポジトリの上のディレクトリ（実際のパス。フロントエンドはファイル名を実際のパスで書く）
-above="$(cd "$root/.."; pwd -P)"
+# リポジトリの上のディレクトリ（実際のパス。フロントエンドはファイル名を実際のパスで書く）。
+# Windows の Git Bash（cygpath がある）では、Windows の VM が書く「C:/...」の形にする（pwd -P は「/c/...」を書く）
+if command -v cygpath > /dev/null; then
+  above="$(cd "$root/.."; pwd -W)"
+else
+  above="$(cd "$root/.."; pwd -P)"
+fi
+# 標準入力のファイル名から「"$above/」を取る。Git Bash の sed は、1 行のモジュール（数 MB）で置き換える所が多いと
+# 数分かかるので、Git Bash では perl（Git for Windows にある）を使う
+strip_above() {
+  if command -v cygpath > /dev/null; then
+    ABOVE="$above" perl -pe 's|"\Q$ENV{ABOVE}\E/|"|g'
+  else
+    sed -e "s|\"$above/|\"|g"
+  fi
+}
 incs=()
 for d in "${dirs[@]}"; do incs+=(--include "$d"); done
 # モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
@@ -147,11 +161,11 @@ if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \)
   module_tmp=$(mktemp "$module.XXXXXX") || { rm -f "$ast_tmp"; exit 1; }
   if [ -x "$conma" ]; then
     if ! "$conma" build "${incs[@]}" "$main" \
-        | sed -e "s|\"$above/|\"|g" > "$module_tmp"
+        | strip_above > "$module_tmp"
     then rm -f "$ast_tmp" "$module_tmp"; exit 1
     fi
   elif ! "$root/bin/includer" "${incs[@]}" "$main" \
-      | sed -e "s|\"$above/|\"|g" > "$ast_tmp" ||
+      | strip_above > "$ast_tmp" ||
      ! "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   then rm -f "$ast_tmp" "$module_tmp"; exit 1
   fi
