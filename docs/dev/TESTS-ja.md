@@ -77,6 +77,15 @@ CONMA_VM=python conjs/test/run_all.sh
 * 流していないもの：ほかの suite（test/selfhost2/test.sh と、この文書のほかは変えていない）。
 * 測ったもの：なし。
 
+### m4/step6-dev-stdout
+
+* consh/test の step6 の case14 の最後の `seq 1 2 > /dev/stdout` を `>>` にした。テストは consh の出力をファイルに向けて流す。Linux では `/dev/stdout` を開くとそのファイルを開き直すので、`>` だとそれまでの 12 行が消える。GitHub Actions の CI の案（shima3/conma#33）の ubuntu-latest で見つかった。macOS では fd 1 の複製になるので、M1、M2、M4 では違いが出ていなかった。ConSh の誤りではない（Linux の dash と bash でも同じ）。ログは変えていない。
+* 作り直すもの：なし。
+* 新しいテスト：なし。
+* M4 が流したもの（Apple M4）：consh/test の step6 を、Rust 版の VM で最適化版、参照版、Rust 版の ConSh で、また wasm 版の VM で（すべて通った）。Linux（Docker の rust:1-slim-bookworm、aarch64）でも Rust 版の VM で流し、直した後は通り、直す前は case14 の 12 行が欠けることを確かめた。
+* 流していないもの：ほかの suite と、Python 版と transpiled VM の step6（case14.sh と、この文書のほかは変えていない）。
+* 測ったもの：なし。
+
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
