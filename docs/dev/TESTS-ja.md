@@ -96,7 +96,7 @@ sjs/test/run_all.sh
 * 流していないもの：macOS のすべてと、ほかの suite。
 * 測ったもの：なし。
 
-### m4/case8-pty
+### m4/case8-pty（shima3/conma#38）
 
 * consh/test の step12 の case8.py が、`exit` を送った後、疑似端末を 1 秒だけ読んで `os.waitpid` で待っていたのを、疑似端末が閉じる（EOF）まで読んでから待つようにした（上限は、ほかの待ちと同じ 120 秒）。読まずに待つと、consh が最後の出力を書き終えられずに終われず、互いに待ち続けることがある（macOS。疑似端末に書く子は、読まれない出力が多いと止まる）。GitHub Actions の macOS の CI で、wasm 版の VM の consh/test が 2 時間近く止まり（2026-11-22）、M4 でも `-j 3` の 4 回目に止まった。
 * 作り直すもの：なし。
