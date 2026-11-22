@@ -57,6 +57,35 @@ PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
+| GitHub Actions の macos-latest で、consh/test を `-j 4` で流すとき（Rust 版の VM、ConSh の最適化版） | consh/test の step14 の case6 | `pipes: no leak` のはずが、ときどき `pipes: 5 -> 11` になる。原因はまだ分からない（下の「調べ途中のこと」。CI は、macOS でだけ既知の違いにしている） |
+
+### 調べ途中のこと：macos-latest の consh/test の step14 の case6
+
+M4 が 2026-11-22 に調べ、原因を突き止められずに止めたので、引き継ぐ人のために書いておく。
+
+**症状**
+* case6（docs/consh/dev/REVIEW-ja.md の 2026-11-05 の 8 の確かめ）は、`kill` で止めたジョブ 3 つのパイプの fd が閉じることを、`lsof -p $$ | grep -c PIPE` の前後の数で確かめる。GitHub Actions の CI（.github/workflows/ci.yml）の macos-latest では、ときどき `pipes: 5 -> 11` になる。数は、出るときはいつも 5 と 11 だった。
+* 出たのは、consh/test/run_all.sh を `-j 4` で、.github/ci-suite.sh を通して流したとき（CI と同じ）だけ。Rust 版の VM、`CONSH_IMPL=conma`。
+* runner：Darwin 25.6.0（arm64 の VM）、3 コア、lsof 4.91。runner から受け継ぐパイプの fd が 2 つある（143 と 146）。
+* M4（macOS 26）では、一度も出ていない。`-j 10` で 3 回流しても、`yes` 14 本で混ませても、待ち時間を 0 にしても出なかった。
+* Linux（ubuntu-latest）では出ない。
+
+**調べたこと**（調べるためのブランチ m4/ci-debug-step14 で流した。ブランチは消したが、実行のログは GitHub Actions に残っている：https://github.com/shima3/conma/actions?query=branch%3Am4%2Fci-debug-step14 ）
+1. case6 と同じことを、各段階で lsof の一覧を出す台本で、runner で単独で流した：パイプは kill の直後に元の数に戻る。通る。
+2. step14/test.sh を単独で、また ci-suite.sh を通して流した：通る。consh/test/run_all.sh を `-j 4` で ci-suite.sh を通して流した：`5 -> 11`。そのすぐ後の lsof には、パイプは 4 本（SIGCHLD で起こすためのパイプ 2 本と、受け継いだ 143、146）しかなかった。
+3. `fds` を、lsof の出力をファイルに書いてから grep で数える形にした：3 回のうち 2 回、`5 -> 11`。
+4. run_all.sh を `-j 4` で流しながら、横で 1 の台本を 3 回流し、0.2 秒おきに 2 秒まで数えた：パイプは kill の直後に閉じ、増えなかった。
+5. case6 の `fds` に、lsof が見た一覧をファイルに書かせて、2 と同じ条件で 3 回流した：3 回とも通った（見たいときに出なかった）。
+6. `fds` を、0.2 秒おきに 5 回数えた最小の値（`for … done | sort -n | head -1`）にした：3 回のうち 2 回、それでも `5 -> 11`。
+
+**分からないこと**
+* 6 では、`| sort` のパイプが加わるので、数そのものが変わるはずなのに、元の形、3、6 のどれでも、出る数は同じ 5 と 11 だった。1 本のテストの中のタイミングでは説明できない。
+* 5 で、見張ると出なくなった。
+* 次に試すとよいこと：
+  * 失敗したときに、テストの中で `lsof -p $$` の一覧そのものを出す（5 のようにファイルに書くのでなく、出力に出して diff に載せる）。
+  * step14 と同時に流れるテスト（run_all.sh の `-j 4` の相手）を絞る。
+  * 出力に出る数が、本当に今の case6.sh のものかを確かめる（`echo` で印を足す）。
+  * ConSh の `$$` が、runner で ConSh の VM のプロセスを指しているかを確かめる。
 
 ## 申し送り
 
