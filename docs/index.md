@@ -29,3 +29,7 @@ The documents for those who change ConMa (its VMs, its front end and its standar
 ## ConSh
 
 ConSh is a shell written in ConMa (consh/ of the repository), with a Rust version that runs about as fast as Bash. Its documents, for its users and its developers, are listed in [ConSh](consh/); those who know Bash may start with [ConSh for Bash users](consh/FOR-BASH-USERS.html).
+
+## ConJS
+
+ConJS is a subset of JavaScript with lightweight threads and blocking calls, made on SJS (conjs/ and sjs/ of the repository). Its documents, and programs of it that run in your browser, are listed in [ConJS](conjs/).
