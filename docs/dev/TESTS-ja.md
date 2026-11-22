@@ -53,11 +53,20 @@ CONMA_VM=python conjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
-| Python 版（Full Test には入らない組み合わせ） | consh/test の step12 の case8 | Ctrl-C を送るテストで、case8.py が疑似端末に書く所で `OSError: [Errno 5] Input/output error` になる（2026-11-22 に M2 が PR shima3/conma#29 で気付いた。alpha の 24468d4 と a604198 でも同じ）。まだ調べていない |
 
 ## 申し送り
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+
+### m2/python-sigint（shima3/conma#30）
+
+* consh/test の step12 の case8（Ctrl-C）が Python 版の VM で失敗したのは、テストの待ち方のためで、VM や ConSh の誤りではなかった。Python 版の VM は ConSh を起動するのに約 7 秒かかる（Apple M2）が、case8.py は決まった秒数（3 秒と 1 秒ずつ）だけ待って入力と Ctrl-C を送っていた。Ctrl-C が `__OS_trap_interrupt__` の前に届くので、VM が SIGINT で止まり、次の書き込みが `OSError: [Errno 5]` になっていた。case8.py を、プロンプト（`$ `）が出てから次の行を送り、Ctrl-C は端末が返した `sleep 10` を読んで、consh の子孫に `sleep 10` のプロセス（Rust 版の ConSh では `/bin/sleep 10`）が動き出してから送るように変えた（上限は 120 秒ずつ）。端末に返した入力をまだ読まないうちに Ctrl-C を送ると、その出力が捨てられるので、それも待つ。上の既知の違いから、この行を除いた。
+* 2026-11-21 の 7db05fb の記録の、`CONSH_IMPL=rust` で `^C` の後にプロンプトが同じ行に出た 1 回も、Ctrl-C が `sleep` の起動より先に届いたためかもしれない（確かめてはいない）。この変更で、そうはならないはず。
+* 作り直すもの：なし。
+* 新しいテスト：なし（case8.py を書き換えた。case8.log は変えていない）。
+* M2 が流したもの（Apple M2）：consh/test の step12 を、最適化版で Rust 版の VM と Python 版の VM で、`CONSH_IMPL=rust` で 3 回。
+* 流していないもの：ほかの suite（consh/test/step12/case8.py と、この文書のほかは変えていない）、wasm 版と transpiled VM の step12、参照版。
+* 測ったもの：なし。
 
 ## 記録
 
