@@ -8,7 +8,7 @@ The steps of each task of a developer, in the order they are done (2026-11-22). 
 2. Commit with a summary of 50 to 70 characters, a blank line, then what changed, why, and what you ran (Commit messages). Make a move of files a commit of its own (Files that moved).
 3. When it is done, run the tests the change touches and the benchmarks it affects (2; TESTS-ja.md, 流し方).
 4. Unless every file is a document (5) and no benchmark is asked for, write the notes for the tester under a heading of the branch in TESTS-ja.md, 申し送り (2).
-5. Merge it into `alpha` when the user says so (2; CLAUDE.md), or, when the user wants a pull request or you want a review, open one (below).
+5. Merge it into `alpha` and push when the user says so (2), or, when the user wants a pull request or you want a review, open one (below).
 
 ## Opening a pull request
 
@@ -32,7 +32,7 @@ The steps of each task of a developer, in the order they are done (2026-11-22). 
 
 ## "Check your PRs"
 
-When the whole message of the user is 「PR確認」, "check your PRs" or "PRs": list the open pull requests with your label and the merged ones that still have it, do what the last comment of each asks, and say which open ones have no `wait-` label. Never merge on it (6, "Check your PRs").
+When the whole message of the user is 「PR確認」, "check your PRs" or "PRs": list the open pull requests with your label and the merged ones that still have it, do what the last comment of each asks, and say which open ones have no `wait-` label. Post the comments without showing them first, changing the label in the same step, and report afterwards what you posted. Never merge on it (6, "Check your PRs").
 
 ## Merging
 
@@ -44,11 +44,11 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 
 1. Only files under `docs/` and `.github/` and files named `*.md`; a comment in a source file is not a document (5).
 2. Make the branch from the latest `main`; check the links and what a workflow runs; add a line with 「文書だけ」 to the record, docs/dev/TESTS-RECORD-ja.md (5).
-3. Merge it into `main` and into `alpha`, or open a pull request into `main` (5, 6).
+3. When the user says so, merge it into `main` and into `alpha` and push them, or open a pull request into `main` (5, 6).
 
 ## A Full Test (the tester)
 
 1. Merge `alpha` into your branch `m2/test` (machine and `test`) and run every suite of TESTS-ja.md, 全部流す (3).
 2. If only the known differences show (TESTS-ja.md, 既知の違い): add the line of the record (docs/dev/TESTS-RECORD-ja.md) with the commit of `alpha` you tested, remove the notes of the branches that commit contains (but not a line that asks for a benchmark), and commit (3).
-3. Merge `m2/test` into `main`, then into `alpha` (3).
+3. When the user says so, merge `m2/test` into `main`, then into `alpha`, and push them, so that the record and the removed notes reach everybody (3).
 4. If something fails, tell the author, who fixes it on a new branch (3).
