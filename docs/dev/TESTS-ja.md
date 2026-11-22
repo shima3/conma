@@ -87,6 +87,15 @@ sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### i7/console-mode（shima3/conma#43）
+
+* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。MSYS のプログラム（Git Bash の sleep、cat、grep など）は、動いている間、コンソールの入力モードの行入力、エコー、Ctrl-C の処理をオフにする（I7 で 0x1F7 が 0x2E8 になる）。ConSh がそれを Ctrl-C で止めると、元に戻らない。すると Enter が `\r` だけになり、行が終わらず、ConSh がそれから後の行を読まなくなっていた（shima3/conma#41 のレビューで見つけた）。コンソールを読むスレッドが、作られたとき（VM の起動時）の入力モードを覚え、読むたびに、違っていれば戻す。Unix は変わらない。M4 のレビューで挙がった、この直しの範囲の外のこと：戻すのは入力のモードだけで、出力のモード（ENABLE_VIRTUAL_TERMINAL_PROCESSING など）は戻さない。戻すのは読みを始める前だけなので、すでに始まった読みの間に変わったモードは、次の読みから戻る（標準入力を受け継ぐ子を起動する前に、VM は始まった読みを止めるので、ConSh のコマンドではこうならない）。背景のジョブ（`&`）がモードを変えて動いている間にプロンプトで読むと、そのモードも戻す（Unix のシェルは前景のジョブの後にだけ戻すが、背景のジョブは Unix でもコンソールから読まない）。
+* 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
+* 新しいテスト：なし（コンソールに打つ suite がない）。
+* I7 が流したもの（Windows 11）：隠したコンソールで、WriteConsoleInput で行を打ち、GenerateConsoleCtrlEvent で Ctrl-C を送った。consh.cmd で、`sleep 1`、Ctrl-C で止めた `sleep 10`（動いている間は 0x2E8、その後は 0x1F7）、`echo`、プロンプトでの Ctrl-C、`sh -c 'exit 130'`、Ctrl-C、`echo`、`exit`。どの行も読んで答えた（直す前は、Ctrl-C の後の行を読まなかった）。vm の `cargo test --release --lib`（14 通る）、`CONMA_VM=rust test/run_all.sh -j 6` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 6`（既知の違いだけ）。
+* 流していないもの：本当の端末での打鍵（この PR の前の shima3/conma#42 がまだ alpha にないので、端末の Ctrl-C で ConSh が終わる）、参照版の consh/test、macOS のすべて（変わるファイルはない）。
+* 測ったもの：なし。
+
 ### i7/console-ctrl-c（shima3/conma#42）
 
 * Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。端末（Windows Terminal やエディタの端末。疑似コンソール）で対話モードの ConSh に Ctrl-C を打つと、ConSh が終了ステータス 130 で終わっていた。疑似コンソールの Ctrl-C は、読み込みを 0 バイトで、エラーなし（ERROR_OPERATION_ABORTED でなく）で止めるので、入力の終わりと見ていた（130 は、Ctrl-C で ConSh が設定した $?）。0 バイトのとき、Ctrl-C の数が増えたかを最大 100 ms（`CTRL_C_WAIT`）待って見て、増えていれば入力の終わりにしない。Windows がハンドラーを呼ぶのが 100 ms より遅れると（忙しい機械など）、前の症状（ConSh が 130 で終わる）がそのときだけ出る（M4 のレビュー）。Unix は変わらない。consh/README-ja.md と consh/bin/consh.cmd のコメントに、consh.cmd から起動して Ctrl-C を押すと、ConSh が終わったときに cmd が「バッチ ジョブを終了しますか」と聞くことを書いた（`.cmd` では避けられない）。

@@ -66,6 +66,8 @@ extern "system" {
     fn SetLastError(code: u32);
     fn GetLastError() -> u32;
     fn SetHandleInformation(h: Handle, mask: u32, flags: u32) -> Bool;
+    fn GetConsoleMode(h: Handle, mode: *mut u32) -> Bool;
+    fn SetConsoleMode(h: Handle, mode: u32) -> Bool;
 }
 
 const FILE_TYPE_DISK: u32 = 1;
@@ -132,6 +134,11 @@ struct Reader {
     owned: bool,
     /// a console or a character device: 0 bytes is the end, and "\r\n" is "\n"
     chars: bool,
+    /// of a console, its input mode when the reader was made. A program that the VM runs may
+    /// change it (a program of MSYS, as those of Git Bash, turns off line input, echo and Ctrl-C
+    /// while it runs), and one that is stopped (Ctrl-C, __OS_kill__) cannot set it back; then
+    /// Enter would give "\r" alone and no line would end. Each read of the console sets it back.
+    console_mode: Option<u32>,
     st: Mutex<ReadState>,
     cv: Condvar,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -154,7 +161,19 @@ struct ReadState {
 
 impl Reader {
     fn new(handle: Handle, owned: bool, chars: bool) -> Arc<Reader> {
-        Arc::new(Reader { handle, owned, chars, st: Mutex::new(ReadState::default()), cv: Condvar::new(), thread: Mutex::new(None) })
+        let mut mode = 0u32;
+        let console_mode = if chars && unsafe { GetConsoleMode(handle, &mut mode) } != 0 { Some(mode) } else { None };
+        Arc::new(Reader { handle, owned, chars, console_mode, st: Mutex::new(ReadState::default()), cv: Condvar::new(), thread: Mutex::new(None) })
+    }
+
+    /// Set the input mode of the console back to the one it had when the reader was made.
+    fn restore_console_mode(&self) {
+        if let Some(saved) = self.console_mode {
+            let mut now = 0u32;
+            if unsafe { GetConsoleMode(self.handle, &mut now) } != 0 && now != saved {
+                unsafe { SetConsoleMode(self.handle, saved) };
+            }
+        }
     }
 
     /// Ask for one ReadFile if nothing is there and none is in progress.
@@ -184,6 +203,7 @@ impl Reader {
             st.want = false;
             st.pending = true;
             drop(st);
+            self.restore_console_mode();
             let mut n = 0u32;
             let interrupts_before = INTERRUPTS.load(Ordering::SeqCst);
             unsafe { SetLastError(0) };
