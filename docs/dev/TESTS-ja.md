@@ -97,7 +97,7 @@ sjs/test/run_all.sh
 * consh/rust（consh-rs）：使っていないメソッド `Sexp::is_list`、`Sexp::id`（ast.rs）と `Value::is_string`（value.rs）を消した。cargo が dead_code の警告を出していた（shima3/conma#52 で VM の警告を消したのと同じ）。expand.rs の `is_list` は別の型のもので、使っているので残した。振る舞いは変わらない。
 * 作り直すもの：consh-rs（consh/rust で `cargo build --release`）。
 * 新しいテスト：なし。
-* M4 が流したもの：consh/rust の `cargo build --release` と `cargo test --release`（警告なし）、`CONMA_VM=rust consh/test/run_all.sh -j 4`。
+* M4 が流したもの：consh/rust の `cargo build --release` と `cargo test --release`（警告なし）、`CONMA_VM=rust consh/test/run_all.sh -j 4`（ConMa 版）。M2 がレビューで `CONMA_VM=rust CONSH_IMPL=rust consh/test/run_all.sh -j 4`（Rust 版。既知の違いの examples の nbody.sh だけ）。
 * 流していないもの：Windows（consh-rs を作れない）。
 * 測ったもの：なし。
 
