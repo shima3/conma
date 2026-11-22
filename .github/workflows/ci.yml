@@ -25,6 +25,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # A hung test ends the job here, not at the 6 hours of GitHub (2026-11-22: consh/test with the wasm VM on macOS)
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +93,7 @@ jobs:
   # docs/dev/TESTS-ja.md, 既知の違い.
   windows:
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
