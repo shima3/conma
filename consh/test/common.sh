@@ -1,11 +1,16 @@
 # ConSh のテストで共通に使うパスと関数。各 test.sh から source する。
 # 一時ディレクトリ $tmp を作る（テストが終わると消す）。ログはそこに作るので、別のテストを同時に実行しても壊しあわない
+# Git Bash（Windows）：pwd とパスを VM が書く形（C:/Users/...）にする（test/common.sh と同じ）
+if command -v cygpath > /dev/null; then
+  pwd() { builtin pwd -W; }
+fi
 consh="$(cd ${BASH_SOURCE[0]%/*}/..; pwd)"
 root="${consh%/*}"
 # テストするのは、CONSH_IMPL がなければ ConMa 版の最適化版（reference なら参照版、rust なら Rust 版。bin/consh の既定は Rust 版）。
 # 中で起動する consh にも渡るように export する
 export CONSH_IMPL="${CONSH_IMPL:-conma}"
 tmp="$(mktemp -d /tmp/consh-test.XXXXXX)" || exit 1
+command -v cygpath > /dev/null && tmp="$(cygpath -m "$tmp")"
 trap 'rm -rf "$tmp"' EXIT
 
 # caseN.sh を consh_parse に渡し、出力と終了ステータスを caseN.log と比べる。

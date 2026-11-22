@@ -30,6 +30,8 @@ Output format:
 """
 
 import sys
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 SYMBOL_CHARS = frozenset(
     'abcdefghijklmnopqrstuvwxyz'

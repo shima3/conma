@@ -16,6 +16,8 @@ import argparse
 import os
 import subprocess
 import sys
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +73,14 @@ def resolve_file(name, base_dir, include_dirs):
     for directory in include_dirs + [base_dir]:
         candidate = os.path.join(directory, name)
         if os.path.isfile(candidate):
-            return os.path.realpath(candidate)
+            return realpath(candidate)
     return None
+
+
+def realpath(path):
+    """os.path.realpath, with "/" between the names on Windows too (C:/Users/...),
+    as the file names in SInfo are on the other systems."""
+    return os.path.realpath(path).replace(os.sep, '/')
 
 
 # ---------------------------------------------------------------------------
@@ -86,19 +94,19 @@ def run_pipeline(file_abs, lexer, comment_remover, parser):
     Exits with error if any process fails.
     """
     p1 = subprocess.Popen(
-        [lexer, file_abs],
+        [sys.executable, lexer, file_abs],
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
     )
     p2 = subprocess.Popen(
-        [comment_remover],
+        [sys.executable, comment_remover],
         stdin=p1.stdout,
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
     )
     p1.stdout.close()  # allow p1 to receive SIGPIPE if p2 exits
     p3 = subprocess.Popen(
-        [parser, '--file', file_abs],
+        [sys.executable, parser, '--file', file_abs],
         stdin=p2.stdout,
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
@@ -180,7 +188,7 @@ def main():
     args = parse_args()
 
     # --- Resolve bin directory --------------------------------------------
-    bin_dir = os.path.realpath(args.bin) if args.bin else os.path.dirname(os.path.realpath(__file__))
+    bin_dir = realpath(args.bin) if args.bin else os.path.dirname(realpath(__file__))
     if not os.path.isdir(bin_dir):
         print(f"Error: --bin directory not found: {bin_dir!r}", file=sys.stderr)
         sys.exit(1)
@@ -192,7 +200,7 @@ def main():
     # --- Resolve include directories --------------------------------------
     include_dirs = []
     for d in args.include:
-        real = os.path.realpath(d)
+        real = realpath(d)
         if not os.path.isdir(real):
             print(f"Error: --include directory not found: {d!r}", file=sys.stderr)
             sys.exit(1)
@@ -201,9 +209,9 @@ def main():
     # --- Resolve initial source file -------------------------------------
     source_name = args.source
     if os.path.isabs(source_name):
-        source_abs = os.path.realpath(source_name)
+        source_abs = realpath(source_name)
     else:
-        source_abs = os.path.realpath(os.path.join(os.getcwd(), source_name))
+        source_abs = realpath(os.path.join(os.getcwd(), source_name))
 
     if not os.path.isfile(source_abs):
         print(f"Error: source file not found: {source_name!r}", file=sys.stderr)
@@ -224,7 +232,7 @@ def main():
         base_dir = os.path.dirname(file_abs)
         for inc_name in extract_includer_names(ast_text):
             if os.path.isabs(inc_name):
-                inc_abs = os.path.realpath(inc_name)
+                inc_abs = realpath(inc_name)
                 if not os.path.isfile(inc_abs):
                     print(f"Error: included file not found: {inc_name!r}"
                           f" (from {file_abs!r})", file=sys.stderr)

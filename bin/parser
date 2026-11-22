@@ -20,6 +20,8 @@ Usage:
 import sys
 import re
 import argparse
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 
 # ---------------------------------------------------------------------------
