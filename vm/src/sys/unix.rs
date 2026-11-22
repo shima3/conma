@@ -27,7 +27,7 @@ extern "C" {
     fn poll(fds: *mut PollFd, n: NfdsT, timeout: c_int) -> c_int;
     fn signal(sig: c_int, handler: usize) -> usize;
     fn kill(pid: c_int, sig: c_int) -> c_int;
-    pub fn setsid() -> c_int;
+    fn setsid() -> c_int;
     fn access(path: *const std::os::raw::c_char, mode: c_int) -> c_int;
     fn sysconf(name: c_int) -> c_long;
 }
@@ -130,8 +130,46 @@ pub fn writable(fd: c_int) -> io::Result<bool> {
     Ok(!wait_fds(&[], &[fd], Some(0))?.is_empty())
 }
 
-pub fn send_signal(pid: c_int, sig: c_int) -> io::Result<()> {
+fn send_signal(pid: c_int, sig: c_int) -> io::Result<()> {
     check(unsafe { kill(pid, sig) }).map(|_| ())
+}
+
+/// The standard stream of a child process from fd: a copy of the fd.
+pub fn child_stdio(fd: c_int) -> io::Result<std::process::Stdio> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    let d = dup(fd)?;
+    Ok(std::process::Stdio::from(unsafe { OwnedFd::from_raw_fd(d) }))
+}
+
+/// Start the process in a new session (__OS_spawn_detached__), so that the
+/// terminal's SIGINT does not reach it.
+pub fn detach(cmd: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        cmd.pre_exec(|| {
+            setsid();
+            Ok(())
+        });
+    }
+}
+
+/// Wake the scheduler when the child exits: SIGCHLD does it (install_wakeup).
+pub fn watch_process(_child: &std::process::Child) {}
+
+/// __OS_kill__: send the signal sig to the child.
+pub fn kill_process(child: &std::process::Child, sig: c_int) -> io::Result<()> {
+    send_signal(child.id() as c_int, sig)
+}
+
+/// The exit code, or a negative signal number if a signal ended the process.
+pub fn exit_code(st: std::process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    st.code().unwrap_or_else(|| -st.signal().unwrap_or(0))
+}
+
+/// A path as the VM writes it.
+pub fn path_text(p: &std::path::Path) -> String {
+    p.to_string_lossy().into_owned()
 }
 
 pub fn can_search(path: &str) -> bool {

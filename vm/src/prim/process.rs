@@ -7,13 +7,9 @@ use crate::sys;
 use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::VProc;
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 use std::cell::{Cell, RefCell};
-#[cfg(unix)]
-use std::os::fd::{FromRawFd, OwnedFd};
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 
@@ -21,7 +17,8 @@ pub fn spawn(m: &mut Machine, vp: &mut VProc) -> PResult {
     do_spawn(m, vp, "__OS_spawn__", false)
 }
 
-/// Like __OS_spawn__, but the process starts in a new session (setsid).
+/// Like __OS_spawn__, but the process starts in a new session (setsid; on Windows a new
+/// process group), out of the reach of the terminal's Ctrl-C.
 pub fn spawn_detached(m: &mut Machine, vp: &mut VProc) -> PResult {
     do_spawn(m, vp, "__OS_spawn_detached__", true)
 }
@@ -82,7 +79,7 @@ fn do_spawn(m: &mut Machine, vp: &mut VProc, name: &str, detached: bool) -> PRes
 }
 
 /// The VM for wasm32: the host starts the process (sys::spawn), if it can.
-#[cfg(not(unix))]
+#[cfg(target_arch = "wasm32")]
 #[allow(clippy::too_many_arguments)]
 fn start_process(
     m: &mut Machine,
@@ -105,7 +102,8 @@ fn start_process(
     Ok(())
 }
 
-#[cfg(unix)]
+/// The native VM, on Unix and on Windows (sys::child_stdio, sys::detach, sys::watch_process).
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::too_many_arguments)]
 fn start_process(
     m: &mut Machine,
@@ -123,8 +121,8 @@ fn start_process(
     for fd in &fds {
         stdio.push(match fd {
             None => Stdio::inherit(),
-            Some(fd) => match sys::dup(*fd) {
-                Ok(d) => Stdio::from(unsafe { OwnedFd::from_raw_fd(d) }),
+            Some(fd) => match sys::child_stdio(*fd) {
+                Ok(s) => s,
                 Err(e) => {
                     vp.prim_error(on_error, &format!("{}: {}: {}", name, sys::strerror(&e), args[0]));
                     return Ok(());
@@ -135,15 +133,11 @@ fn start_process(
     let mut it = stdio.into_iter();
     cmd.stdin(it.next().unwrap()).stdout(it.next().unwrap()).stderr(it.next().unwrap());
     if detached {
-        unsafe {
-            cmd.pre_exec(|| {
-                sys::setsid();
-                Ok(())
-            });
-        }
+        sys::detach(&mut cmd);
     }
     match cmd.spawn() {
         Ok(child) => {
+            sys::watch_process(&child);
             m.serials.osprocs += 1;
             let p = OSProcObj { serial: m.serials.osprocs, child: RefCell::new(child), code: Cell::new(None) };
             vp.prim_return(vec![Value::OSProc(Rc::new(p))]);
@@ -226,9 +220,9 @@ pub fn kill(_m: &mut Machine, vp: &mut VProc) -> PResult {
     // Nothing happens if the process has already been waited for (Popen.send_signal).
     let r = match p.poll() {
         Ok(Some(_)) => Ok(()),
-        #[cfg(unix)]
-        _ => sys::send_signal(p.child.borrow().id() as i32, sig),
-        #[cfg(not(unix))]
+        #[cfg(not(target_arch = "wasm32"))]
+        _ => sys::kill_process(&p.child.borrow(), sig),
+        #[cfg(target_arch = "wasm32")]
         _ => sys::proc_kill(p.host, sig),
     };
     match r {

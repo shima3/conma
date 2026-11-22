@@ -821,6 +821,11 @@ pub fn is_dir(path: &str) -> io::Result<bool> {
     })
 }
 
+/// A path as the VM writes it (the paths of the VM for wasm32 are already so).
+pub fn path_text(p: &std::path::Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
 pub fn canonicalize(path: &str) -> io::Result<String> {
     if host_fs() {
         if path.is_empty() {
