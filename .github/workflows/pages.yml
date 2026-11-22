@@ -54,10 +54,13 @@ jobs:
         run: |
           mkdir -p docs/sjs
           gh=https://github.com/shima3/conma/blob/alpha
+          # A README.md without front matter is not made into a page (jekyll-optional-front-matter leaves README
+          # files alone; the site served conjs/README.md as it is, 2026-11-23), so each copy gets a title
           for f in conjs/README.md conjs/README-ja.md sjs/README-ja.md; do
+            printf -- '---\ntitle: %s\n---\n' "$(dirname "$f" | sed -e 's/conjs/ConJS/' -e 's/sjs/SJS/')" > "docs/$f"
             sed -e "s|](\.\./docs/dev/|]($gh/docs/dev/|g" -e "s|](\.\./docs/consh/dev/|]($gh/docs/consh/dev/|g" \
                 -e "s|](\.\./docs/|](../|g" -e "s|](\.\./consh/|]($gh/consh/|g" \
-                "$f" > "docs/$f"
+                "$f" >> "docs/$f"
           done
           cp -R vm/wasm/web docs/conjs/web
 
