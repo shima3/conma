@@ -97,3 +97,11 @@ sjs/test/run_all.sh
 * I7 が流したもの（Windows 11、Git Bash）：上の「Windows（I7）で流す」の、Rust 版の VM の test/、consh/test、conjs/test、sjs/test と、vm の `cargo test --release --lib sys::`。既知の違いのほかに違いはなかった。transpiled VM を test/transpiled のモジュールだけで作り（`CONMA2RUST_COMPACT=1`）、test/ を流すと、Rust 版の VM と同じ違いだけだった。bench/build.sh ですべて入れて作るのは、1 時間で終わらず止めた。wasm 版の VM（Node.js）の test/ は、Node.js のホストが Windows のパスとエラーを直さないため、多くが違う（PLATFORM-PLAN-ja.md の 8.13 節の「残したこと」）。
 * 流していないもの：macOS のすべて（`cfg` と sys を替えたので、Full Test で確かめてほしい。unix.rs は `git diff -M` で、移した後の足したものだけが見える）。Windows の Python 版の VM（動かない）、test/host-api.sh、ブラウザのページ、ベンチマーク。
 * 測ったもの：なし。
+
+### m2/step14-case6-count
+
+* プルリクエスト shima3/conma#36。
+* consh/test/step14/case6.sh だけを変えた（パイプの数え方。ConSh と VM は変えていない）。GitHub Actions の macos-latest で、consh/test を `-j 4` で流すと出ていた `pipes: 5 -> 11` は、パイプのリークではなかった。`$(lsof -p $$ | grep -c PIPE)` で数えると、ConSh が、その間に作っている途中のパイプの端（パイプラインと `$( )` のもの）まで数に入っていた。lsof を、パイプラインや `$( )` の中でなく文として動かして一覧をファイルに書き、grep がそのファイルを数えるようにした（ファイルに書く形でも、関数を `$( )` の中で呼ぶと出たことを、M4 が #33 で確かめている）。
+* 流したもの：consh/test の step14（Rust 版、wasm 版、Python 版の VM）。最後にジョブを 1 つ残す、case6 の写しで、違い（`2 -> 3`）が出ることも確かめた。macos-latest で consh/test を `-j 4` で 5 回流し、5 回とも通った（確かめるためのブランチ m2/ci-debug-step14-fix。消したが、実行のログは GitHub Actions に残っている）。
+* 流していないもの：consh/test のほかの step、transpiled VM、ConSh の参照版。
+* shima3/conma#33 の ci.yml で、macOS でだけ step14 を既知の違いにしている所と、TESTS-ja.md の「調べ途中のこと」の節は、これが `main` に入れば外せる。
