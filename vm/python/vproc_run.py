@@ -128,6 +128,8 @@ def run(module_file, func_name, trace=False, program_args=None):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+    sys.stderr.reconfigure(newline="\n")
     parser = argparse.ArgumentParser(
         description="Run a ConMa VProc to completion.",
         add_help=True,

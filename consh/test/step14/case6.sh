@@ -1,7 +1,14 @@
 # レビュー 8：kill で止めたジョブのパイプの fd は閉じ、SIGTERM を送った外部コマンドはゾンビにならない
+# パイプの数は、lsof を文として動かし（終わるまで ConSh は待つだけ）、ファイルに書いた一覧から数える。lsof を
+# パイプラインや $( ) の中で動かすと、ConSh がその間に作っている途中のパイプの端（どこまで作ったかは、機械の速さで
+# 変わる）も数に入る（GitHub Actions の macos-latest で、違いのない 4 本に対して 5、11、12 などになった。ファイルに
+# 書く形でも、関数を $( ) の中で呼ぶと出た。2026-11-22、shima3/conma#33、#36）。SIGCHLD で起こすためのパイプは
+# 最初の外部コマンドを待つときにできるので、前もって 1 つ動かしておく
+d=$1
 function f () { stdin > /dev/null; }
-function fds () { lsof -p $$ 2> /dev/null | grep -c PIPE; }
-before=$(fds)
+/usr/bin/true
+lsof -p $$ > $d/case6.before 2> /dev/null
+before=$(grep -c PIPE $d/case6.before)
 for i in 1 2 3
 do
   /bin/sleep 31 | f &
@@ -11,7 +18,8 @@ do
   wait $j
 done
 sleep 1
-after=$(fds)
+lsof -p $$ > $d/case6.after 2> /dev/null
+after=$(grep -c PIPE $d/case6.after)
 if test "$before" = "$after"; then echo "pipes: no leak"; else echo "pipes: $before -> $after"; fi
 zombies=$(ps -axo ppid=,stat= | awk -v p=$$ '$1 == p && $2 ~ /Z/' | wc -l | tr -d ' ')
 echo "zombies: $zombies"

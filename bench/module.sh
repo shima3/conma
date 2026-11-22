@@ -4,4 +4,4 @@
 # transpiled code built from it (build.sh) is used. The modules are of extended ConMa (include/ext before include).
 set -o pipefail
 root="$(cd "$(dirname "$0")/.."; pwd)"
-"$root/bin/includer" --include "$root/include/ext" --include "$root/include" "$1" | sed -e 's/"\/.*\/conma/"conma/' | "$root/bin/resolver" > "$2"
+"$root/bin/includer" --include "$root/include/ext" --include "$root/include" "$1" | sed -e 's/"\([A-Za-z]:\)\{0,1\}\/.*\/conma/"conma/' | "$root/bin/resolver" > "$2"

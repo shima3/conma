@@ -677,7 +677,7 @@
   __Dict_put__ files code file ,()
   Sjs_translate_module code file ,(source)
   __PDict_put__ "sjs_fail" saved ,()
-  ;; ファイル：$TMPDIR（なければ /tmp）の consh-sjs-ハッシュ-長さ.se。ハッシュはコードのもの（上の ch）で、長さはソースの
+  ;; ファイル：$TMPDIR（なければ $TEMP、$TMP、/tmp の順。Windows には TMPDIR がないことが多い）の consh-sjs-ハッシュ-長さ.se。ハッシュはコードのもの（上の ch）で、長さはソースの
   ;; 文字の数。同じ式は、別のプロセスでも同じファイルになる（ConMa にはファイルを消すプリミティブがないので、ファイルの数を、
   ;; 変換したことのある式の数に抑える）。ファイルは、プロセスごとに初めて使うときに書くので、ソースはハッシュしない
   ;; （ソースはコードの何倍も長く、1 文字ずつのハッシュが、(( )) の時間の半分ほどだった）。長さは、変換器の違う版が
@@ -686,7 +686,7 @@
   __Number_toString__ slen ,(ls)
   Kit_code_cat3 ch "-" ls ,(hash)
   __OS_get_envDict__ ,(env)
-  __Dict_lookup_or__ env "TMPDIR" (,(k) __NULL__ "/tmp") ,(dir)
+  __Dict_lookup_or__ env "TMPDIR" (,(k) __Dict_lookup_or__ env "TEMP" (,(k) __Dict_lookup_or__ env "TMP" (,(k) __NULL__ "/tmp"))) ,(dir)
   Str_ends dir "/" ,(slash)
   __if_then_else__ slash (,() __NULL__ dir) (,() __String_concat__ dir "/") ,(dir)
   __String_concat__ dir "consh-sjs-" ,(path)

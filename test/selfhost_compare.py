@@ -22,6 +22,8 @@ Exit codes:
 """
 
 import re, sys
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 class FormatError(Exception): pass
 

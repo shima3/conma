@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import sys
 import re
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 # The features of extended ConMa and the primitives of each (docs/dev/FAST-PLAN-ja.md 3.4): a module that uses one of
 # them as a global without a definition gets (Uses "feature") after its (F ...) (include/resolver.se does the same)
