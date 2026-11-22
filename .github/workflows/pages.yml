@@ -2,12 +2,15 @@
 # (consh/js/web, with the files that consh/js/build.sh makes) at consh/web/, and the documents of ConJS and SJS
 # (conjs/README-ja.md, sjs/README-ja.md) with the pages of vm/wasm/web (made by vm/wasm/web/build.sh) at conjs/.
 # Only main is published, which gets only states that passed every suite (docs/dev/CONTRIBUTING.md).
+# A pull request runs the build only (Jekyll of GitHub included), so that a page that stops it is seen before the merge,
+# with no Jekyll on the machines of the developers (2026-11-23).
 # The repository's Settings -> Pages -> Source must be "GitHub Actions".
 name: Pages
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -15,10 +18,11 @@ permissions:
   pages: write
   id-token: write
 
-# One deployment at a time; a newer push of main replaces one that is waiting
+# One deployment at a time; a newer push of main replaces one that is waiting.
+# A pull request has a group of its own, and its newer push cancels the build that runs.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -70,11 +74,13 @@ jobs:
           destination: _site
 
       - uses: actions/upload-pages-artifact@v3
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           path: _site
 
   deploy:
     needs: build
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
