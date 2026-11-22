@@ -25,4 +25,6 @@ wait
 echo "p=$p r=$r"
 # パイプとファイル
 seq 1 3 | for i in $(stdin); do echo "i=$i"; done
-seq 1 2 > /dev/stdout
+# >> で開く。テストは出力をファイルに向けて流し、Linux では /dev/stdout を開くとそのファイルを開き直すので、> では
+# それまでの出力が消える（macOS では fd 1 の複製になる。2026-11-22、GitHub Actions の ubuntu-latest で見つけた）
+seq 1 2 >> /dev/stdout
