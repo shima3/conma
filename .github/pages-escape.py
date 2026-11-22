@@ -2,7 +2,7 @@
 """Keep Jekyll from reading the Markdown of docs/ as Liquid (.github/workflows/pages.yml).
 
 GitHub Pages runs Liquid on every page before Markdown, so a {{ or {% in the text, such as the syntax of
-ConSh or the records of docs/dev/TESTS-ja.md, is taken as a tag and stops the build. This replaces, on the
+ConSh or the records of docs/dev/TESTS-RECORD-ja.md, is taken as a tag and stops the build. This replaces, on the
 runner only, every {{ in the Markdown files under the directory given (docs) with {{ '{{' }} and every {%
 with {{ '{%' }}: Liquid outputs each as the two characters, and Markdown then sees the text as it is in the
 repository (in code too). The front matter, if any, is left as it is.

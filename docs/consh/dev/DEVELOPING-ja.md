@@ -1,6 +1,6 @@
 # ConSh の開発
 
-ConSh を変える人（ConSh の開発者）向けの決まりである。ConSh を変えても ConMa の VM を変えなければ、ConMa については利用者である。Git の設定と運用、コミットメッセージの書き方、移したファイルの参照の直し方は、ConMa と共通で [docs/dev/CONTRIBUTING.md](../../dev/CONTRIBUTING.md) にある。テストを全部流す手順と記録は [docs/dev/TESTS-ja.md](../../dev/TESTS-ja.md) にある。
+ConSh を変える人（ConSh の開発者）向けの決まりである。ConSh を変えても ConMa の VM を変えなければ、ConMa については利用者である。Git の設定と運用、コミットメッセージの書き方、移したファイルの参照の直し方は、ConMa と共通で [docs/dev/CONTRIBUTING.md](../../dev/CONTRIBUTING.md) にある。テストを全部流す手順は [docs/dev/TESTS-ja.md](../../dev/TESTS-ja.md) に、その記録は [docs/dev/TESTS-RECORD-ja.md](../../dev/TESTS-RECORD-ja.md) にある。
 
 ## ファイルの置き場所と名前
 
