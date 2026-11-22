@@ -34,44 +34,53 @@ jobs:
 
       # The Rust VM, then the wasm32 VM with its host and the module of ConSh (consh/js/build.sh)
       - name: Build
+        id: build
         run: |
           rustup target add wasm32-unknown-unknown
           (cd vm && cargo build --release)
           consh/js/build.sh
 
       - name: vm (cargo test)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: cd vm && cargo test --release
 
       # step31 sends SIGINT twice and may see it once on a busy machine (docs/dev/TESTS-ja.md, 既知の違い)
       - name: test/ (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=rust .github/ci-suite.sh "step31" test/run_all.sh -j 4
 
       - name: test/ (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=wasm .github/ci-suite.sh "step31 step40" test/run_all.sh -j 3
 
       - name: consh/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
 
       - name: consh/js/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" consh/js/test/run_all.sh
 
       - name: sjs/test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" sjs/test/run_all.sh
 
       - name: conjs/test (Rust VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" conjs/test/run_all.sh
 
       - name: conjs/test (wasm VM)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=wasm .github/ci-suite.sh "" conjs/test/run_all.sh
 
       - name: test/host-api.sh
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" bash test/host-api.sh
 
   # The Rust VM does not build on Windows until stage P6c (docs/dev/PLATFORM-PLAN-ja.md, section 4.11): until then a failure
-  # here does not fail the run. When P6c is done, remove continue-on-error and add the suites I7 can run.
+  # of the step does not fail the job (a warning is shown on it). When P6c is done, remove continue-on-error and add the suites I7 can run.
   windows:
     runs-on: windows-latest
-    continue-on-error: true
     defaults:
       run:
         shell: bash
@@ -79,4 +88,5 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the Rust VM
+        continue-on-error: true
         run: cd vm && cargo build --release
