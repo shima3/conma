@@ -5,7 +5,7 @@
 # 環境変数 CONSH_IMPL で版を選ぶ。
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
-#                 作っていなければ、そう出して（ずっと遅いことも）ConMa 版で実行する。ConMa 版の VM もなければ、Rust 版を作るように出して止める。ソースより古ければ、警告を出してから、それで実行する
+#                 作っていなければ、そう出して（ずっと遅いことも）ConMa 版で実行する。ConMa 版の VM もなければ、Rust 版を作るように出して止める。ソースより古ければ、警告を出してから（対話モードで端末から起動したなら、ビルドするかを聞いてから）、それで実行する
 #   conma         ConMa 版の最適化版（consh/include、SJS の sjs/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ（bin/vm。python なら Python 版、rust なら Rust 版、
 #                 transpiled なら変換したコードを組み込んだ Rust 版、wasm なら wasm 版）。CONMA_VM がなければ Rust 版の VM
@@ -71,10 +71,82 @@ if [ $impl = rust ] && [ ! -x "$rust" ]; then
   echo "consh: $rust is not built (cargo build --release in consh/rust, Rust 1.87 or later); running the ConMa version on the ${CONMA_VM:-rust} VM, which is much slower" >&2
   impl=conma
 fi
-# 実行ファイルがソースより古ければ（git pull の後など）、警告してから、それを使う
+# リポジトリの中のパス $1 を、カレントディレクトリがリポジトリの中なら、そこからの相対パスにして書く（外なら、そのまま）
+relpath() {
+  local rootp here p rest c up=
+  rootp="$(cd "$root" && pwd -P)"
+  here="$(pwd -P)"
+  p="${1#"$root"/}"
+  [ "$p" = "$1" ] && p="${1#"$rootp"/}"
+  if [ "$p" = "$1" ]; then printf '%s\n' "$1"; return; fi
+  case "$here/" in
+    "$rootp"/*) rest="${here#"$rootp"}"; rest="${rest#/}" ;;
+    *) printf '%s\n' "$1"; return ;;
+  esac
+  # 共通の頭を除き、残りのディレクトリの数だけ ../ を付ける
+  while [ -n "$rest" ]; do
+    c="${rest%%/*}"
+    case "$p" in "$c"/*) p="${p#"$c"/}" ;; "$c") p=. ;; *) break ;; esac
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest= ;; esac
+  done
+  while [ -n "$rest" ]; do
+    up="../$up"
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest= ;; esac
+  done
+  [ "$p" = . ] && [ -n "$up" ] && p= && up="${up%/}"
+  printf '%s\n' "$up$p"
+}
+# 実行ファイル $1 がソース（ディレクトリ $2 で cargo build --release して作る。残りの引数は、ソースを探す find の引数）より
+# 古ければ（git pull の後など）、警告する。対話モードで、標準入力と標準エラーが端末で、cargo があれば、今ビルドするかを聞く
+# （Enter はビルドする。前にここでビルドした時間を、bin/cache-dir の場所の build-seconds.<名前> に残して示す）。
+# ビルドしないか、ビルドが失敗すれば、古いまま使う。テストやパイプでは聞かない（止まらないように）。
+# rlwrap を通してもう一度起動した consh（CONSH_RLWRAPPED）は、確かめない（通す前に確かめてある）
+stale_build() {
+  local bin="$1" dir="$2" rbin rdir cmd ans t0 secs rec= last=
+  shift 2
+  [ -n "$CONSH_RLWRAPPED" ] && return 0
+  [ -n "$(find "$@" -newer "$bin" 2>/dev/null)" ] || return 0
+  rbin="$(relpath "$bin")"
+  rdir="$(relpath "$dir")"
+  if [ "$rdir" = . ]; then cmd="cargo build --release"; else cmd="(cd $rdir && cargo build --release)"; fi
+  echo "consh: warning: $rbin is older than its sources; build it with: $cmd" >&2
+  if [ -z "$interactive" ] || [ ! -t 0 ] || [ ! -t 2 ] || ! command -v cargo > /dev/null; then
+    return 0
+  fi
+  rec="$("$root/bin/cache-dir" 2>/dev/null)/build-seconds.${bin##*/}" || rec=
+  [ -n "$rec" ] && [ -s "$rec" ] && last="$(cat "$rec")"
+  if [ -n "$last" ]; then
+    last="it took $last s the last time"
+  else
+    last="usually some seconds; longer on a slow machine or the first time"
+  fi
+  printf 'consh: build it now (%s)? [Y/n] ' "$last" >&2
+  read -r ans || ans=n
+  case "$ans" in
+    ''|y|Y|yes|Yes) ;;
+    *) echo "consh: running the old $rbin" >&2; return 0 ;;
+  esac
+  t0=$SECONDS
+  if (cd "$dir" && cargo build --release); then
+    secs=$((SECONDS - t0))
+    [ -n "$rec" ] && printf '%s\n' "$secs" > "$rec"
+    echo "consh: built $rbin in $secs s" >&2
+  else
+    echo "consh: the build failed; running the old $rbin" >&2
+  fi
+}
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ $impl = rust ] && [ -n "$(find "$consh/rust/src" "$consh/rust/Cargo.toml" "$consh/rust/Cargo.lock" \( -name '*.rs' -o -name 'Cargo.*' -o -type d \) -newer "$rust" 2>/dev/null)" ]; then
-  echo "consh: warning: $rust is older than its sources (cargo build --release in consh/rust)" >&2
+if [ $impl = rust ]; then
+  stale_build "$rust" "$consh/rust" "$consh/rust/src" "$consh/rust/Cargo.toml" "$consh/rust/Cargo.lock" \
+    \( -name '*.rs' -o -name 'Cargo.*' -o -type d \)
+fi
+# ConMa 版：conma がソースより古ければ、同じく警告する（ビルドするかも聞く）。古い conma は、後から足したサブコマンド
+# （build など）を知らず、分かりにくいエラーになる（frontend.module.se は conma に埋め込まれている）。
+# 対話モードで rlwrap を通す前に確かめるので、ここで確かめる
+conma="$root/vm/target/release/conma"
+if [ $impl != rust ] && [ -x "$conma" ]; then
+  stale_build "$conma" "$root/vm" "$root/vm/src" "$root/vm/Cargo.toml" "$root/vm/Cargo.lock" "$root/vm/frontend.module.se" \
+    \( -name '*.rs' -o -name 'Cargo.*' -o -name '*.se' -o -type d \)
 fi
 [ $impl = rust ] || rust=
 if [ -n "$rust" ] && [ -z "$interactive" ]; then
@@ -148,11 +220,6 @@ for d in "${dirs[@]}"; do incs+=(--include "$d"); done
 # モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
 # （フロントエンドが変わると、同じソースから違うモジュールができる。インクルードディレクトリを探す順など）
 if [ -x "$conma" ]; then frontend=("$conma"); else frontend=("$root/bin"); fi
-# conma がソースより古ければ（git pull の後など）、警告してから、それを使う。古い conma は、後から足したサブコマンド
-# （build など）を知らず、分かりにくいエラーになる（frontend.module.se は conma に埋め込まれている）
-if [ -x "$conma" ] && [ -n "$(find "$root/vm/src" "$root/vm/Cargo.toml" "$root/vm/Cargo.lock" "$root/vm/frontend.module.se" \( -name '*.rs' -o -name 'Cargo.*' -o -name '*.se' -o -type d \) -newer "$conma" 2>/dev/null)" ]; then
-  echo "consh: warning: $conma is older than its sources (cargo build --release in vm)" >&2
-fi
 # ソースかフロントエンドがモジュールより新しければ、作り直す
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
