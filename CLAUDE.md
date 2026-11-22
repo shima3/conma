@@ -14,6 +14,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 - Branches, merging, pull requests, the `wait-` labels and the signal 「PR確認」/"check your PRs"/"PRs": docs/dev/CONTRIBUTING.md, Branches 1–6.
 - Push a branch of work when you open its pull request or answer a review (Branches 6). Push `alpha` and `main` only when the user says so (Merging, Branches 5). Merge only on the user's words. Never rebase a pushed commit.
 - A change of documents only (`docs/`, `.github/`, `*.md`) goes to `main` by Branches 5. A comment in a `.se`, `.rs`, `.py` or script file is not a document: it moves positions in logs and transpiled code.
+- Write documents for developers in English. A document for users in two languages (`NAME.md`, `NAME-ja.md`) is changed in both in the same commit; `python3 .github/doc-pairs.py` checks the pair (CONTRIBUTING, Languages of the documents).
 - Commit messages: a summary of 50–70 characters, a blank line, then what changed, why, and what you ran.
 
 ## Tests
@@ -28,7 +29,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 
 ## ConJS and SJS (not JavaScript)
 
-Read conjs/README-ja.md (言語, JavaScript との違い) before writing ConJS. Agents have tripped on:
+Read conjs/README.md (Language, how it differs from JavaScript) before writing ConJS. Agents have tripped on:
 
 - No `async`, `await`, `for await` or `Promise`: a call that waits is an ordinary call (`f.readLine()`, `sleep(ms)`); `spawn` and `join` run tasks.
 - `+` joins numbers only: join strings with template literals (`${a}${b}`).
