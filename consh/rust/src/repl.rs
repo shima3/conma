@@ -15,6 +15,14 @@
 //!     the command (its external command gets SIGTERM, and its pipelines and
 //!     $( ) are stopped; not its jobs), $? is 130 and the next prompt comes.
 //!     At a prompt, it drops the part of a command read so far.
+//!     A Ctrl-C at a terminal reaches both the foreground external command
+//!     and the shell, and the command may end before the shell sees it. So a
+//!     command that was not stopped but ends with $? 130 prints the newline
+//!     too and sets `late`: a Ctrl-C that comes while no command runs and
+//!     `late` is set is that command's, and does nothing (it clears `late`).
+//!     The next line read clears `late` as well, so if the SIGINT never
+//!     reaches the shell, only a Ctrl-C at the prompt right after it, before
+//!     a line is entered, is ignored, once.
 //!
 //! Each command runs in a thread of its own, so that Ctrl-C can stop it. It
 //! shares the variables, functions and jobs with the shell; its current
@@ -40,13 +48,16 @@ struct State {
     running: Option<Running>,
     /// Ctrl-C at a prompt: drop the command read so far.
     discard: bool,
+    /// The last command was not stopped but ended with 130: its SIGINT
+    /// may still come.
+    late: bool,
 }
 
 type Shared = Arc<(Mutex<State>, Condvar)>;
 
 pub fn repl_run(args: Vec<String>) -> i32 {
     let sh = Ctx::top_with("stdin", args, true);
-    let state: Shared = Arc::new((Mutex::new(State { running: None, discard: false }), Condvar::new()));
+    let state: Shared = Arc::new((Mutex::new(State { running: None, discard: false, late: false }), Condvar::new()));
     let interrupts = os::trap_interrupt();
     {
         let sh = sh.clone();
@@ -67,6 +78,11 @@ fn watch(sh: &Ctx, state: &Shared, mut interrupts: std::fs::File) {
     let mut b = [0u8; 1];
     while let Ok(1) = interrupts.read(&mut b) {
         let mut g = state.0.lock().unwrap();
+        // The late SIGINT of a command that ended with 130.
+        if g.running.is_none() && g.late {
+            g.late = false;
+            continue;
+        }
         match &mut g.running {
             None => {
                 g.discard = true;
@@ -198,6 +214,8 @@ fn read_line(sh: &Ctx) -> Option<String> {
 /// Run the command lines in another thread and wait for them. If Ctrl-C
 /// stopped them, $? is 130; otherwise the shell moves to their directory.
 fn run(sh: &Ctx, state: &Shared, lines: Vec<Sexp>) {
+    // A line was entered: no longer wait for the late SIGINT.
+    state.0.lock().unwrap().late = false;
     if lines.is_empty() {
         return;
     }
@@ -233,6 +251,9 @@ fn run(sh: &Ctx, state: &Shared, lines: Vec<Sexp>) {
         g = state.1.wait(g).unwrap();
     }
     let r = g.running.take().unwrap();
+    // Under the same lock, so that watch never sees no command and no `late`.
+    let sigint = !r.killed && sh.status() == "130";
+    g.late = sigint;
     drop(g);
     if r.killed {
         sh.set_status("130");
@@ -247,4 +268,8 @@ fn run(sh: &Ctx, state: &Shared, lines: Vec<Sexp>) {
         let _ = std::env::set_current_dir(&cwd);
     }
     *sh.cwd.lock().unwrap() = cwd;
+    // The external command ended by SIGINT: a newline, as when it is stopped.
+    if sigint {
+        os::print_error("\n");
+    }
 }
