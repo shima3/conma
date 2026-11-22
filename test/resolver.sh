@@ -20,11 +20,11 @@ else
   incs=(--include "$root/include/core" --include "$root/include")
 fi
 if [ -n "$CONMA_EXT" ]; then
-  $bin/includer "${incs[@]}" "$1" | sed -e 's/"\/.*\/conma/"conma/' > "$ast" &&
+  $bin/includer "${incs[@]}" "$1" | sed -e 's/"\([A-Za-z]:\)\{0,1\}\/.*\/conma/"conma/' > "$ast" &&
   $bin/resolver < "$ast" > "$out/${base}.module.se"
 else
   # コア ConMa：include/core にない名前（ファイルが pure.se を include しないときの __if__ など）を組み込みとして使うと、
   # フロントエンドが (Uses ...) を書くので、bin/to-core で代わりの定義を入れて、コア ConMa のモジュールにする
-  $bin/includer "${incs[@]}" "$1" | sed -e 's/"\/.*\/conma/"conma/' > "$ast" &&
+  $bin/includer "${incs[@]}" "$1" | sed -e 's/"\([A-Za-z]:\)\{0,1\}\/.*\/conma/"conma/' > "$ast" &&
   $bin/resolver < "$ast" | $bin/to-core > "$out/${base}.module.se"
 fi

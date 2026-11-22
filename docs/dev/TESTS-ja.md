@@ -41,6 +41,25 @@ CONMA_VM=python conjs/test/run_all.sh
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
 * consh/test は、`CONSH_IMPL` がなければ ConMa 版の最適化版を試す（consh/test/common.sh）。`CONMA_VM` がなければ、ConSh は Rust 版の VM を使う（作っていなければエラー。Python 版の VM で流すときは `CONMA_VM=python`）。
 
+### Windows（I7）で流す
+
+2026-11-22 から（段階 P6c。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節と 8.13 節）。Git Bash で流す。
+
+* clone は `git clone -c core.autocrlf=false -c core.symlinks=true` で作る（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない。シンボリックリンクには Windows の開発者モードが要る）。今ある clone なら、`git config core.autocrlf false`、`git config core.symlinks true` の後に `git rm -q --cached -r . && git reset -q --hard` で取り出し直す。
+* 本当の Python 3 が要る（Python 版の VM を使わなくても、bin/includer などの道具が Python で動く）。python.org の版を入れ、その python.exe を同じディレクトリに python3.exe として写し、そのディレクトリを PATH の先頭に置く（PATH の `python3` は、ふつうは Microsoft Store を開くアプリ実行エイリアス）。
+* PATH に cargo（`$HOME/.cargo/bin`）と Node.js も置く。`MSYS=winsymlinks:nativestrict` を付ける（test/step16 と step23 の `ln -s` が、本当のシンボリックリンクを作るように）。
+* `CONMA_VM` を必ず付ける（bin/vm の既定は Python 版の VM で、Windows では動かない。パイプを `select` で待つため）。Python 版の VM の列は流さない。
+* 台本は、`cygpath` があれば（Git Bash）、`pwd` と一時ディレクトリを VM が書く形（`C:/Users/...`）にする（test/common.sh、consh/test/common.sh）。
+
+```
+export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSYS=winsymlinks:nativestrict
+(cd vm && cargo build --release && cargo test --release --lib)
+CONMA_VM=rust test/run_all.sh -j 8
+CONMA_VM=rust consh/test/run_all.sh -j 6
+conjs/test/run_all.sh
+sjs/test/run_all.sh
+```
+
 ## 既知の違い
 
 これらは前からある違いで、変更の誤りではない。これ以外の違いが出たら、誤りを疑う。
@@ -53,7 +72,28 @@ CONMA_VM=python conjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
+| Windows（I7）のネイティブの VM | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c） |
+| Windows（I7）のネイティブの VM | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
+| Windows（I7） | test/step21 の case5 と case6 | memcheck.py が Python 版の VM を使う（Windows では動かない） |
+| Windows（I7） | test/step31、test/step33 の case4、consh/test/step12 の case7 と case8 | Git Bash の `kill -INT` は Windows のプログラムに届かず、Python に pty がない。流さず、その旨を 1 行出す |
+| Windows（I7） | test/step32 | Git Bash の `ps` に `-o` がない。`another group` でなく `same group` |
+| Windows（I7） | consh/test の step2 | `words` はシバンで始まる台本で、Windows はそれを直接起動できない。MSYS の `sh` がシグナルで終わると、終了コードは 143 でなく 3840 |
+| Windows（I7） | consh/test の step3、step4、step11 | 外部のコマンドの `pwd`（Git Bash）が `/c/...` の形を書き、`cd /` の後は `/c`。step11 は、その形のパスの glob が一致しない |
+| Windows（I7） | consh/test の step6 | `/dev/nul?` の glob が一致しない（Windows に /dev はない） |
+| Windows（I7） | consh/test の step13 と step14 | lsof がない（台本がその旨を出す） |
+| Windows（I7） | （テストにはない） | MSYS（Git Bash）のプログラムは、引用符の中の `\\` を 1 つの `\` に読むので、ConMa が渡す引数の 2 つ続く `\` は 1 つで届く（Windows の C ランタイムと MSYS の両方に合う書き方がない。vm/src/sys/windows.rs の `add_args`） |
 
 ## 申し送り
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+
+### i7/platform-p6c（shima3/conma#35）
+
+* 段階 P6c（docs/dev/PLATFORM-PLAN-ja.md の 4.11 節と 8.13 節）：Windows で Rust 版の VM と transpiled VM を動かす。vm/src/sys.rs を vm/src/sys/unix.rs に移し、vm/src/sys/windows.rs を足した。ネイティブと wasm32 を分ける `cfg` を替え、prim/process.rs、value.rs、prim/vprocs.rs、prim/host.rs、prim/stream.rs、lib.rs も変えた。unix.rs には、関数を足した（`child_stdio`、`detach`、`watch_process`、`kill_process`、`exit_code`、`path_text`、`add_args`）が、ほかの中身は変えていない。
+* ConMa の側：include/includer.se（`C:/` で始まるパスも絶対パス）と vm/frontend.module.se、consh/include/consh_jsstmt.se（SJS のモジュールを `$TEMP` と `$TMP` にも書ける）、conjs/include/conjs_lib.se（curl の HEAD に `-o /dev/null` を使わない）。
+* 道具と台本：bin/ の Python の道具、consh/bin/consh_parse、vm/python の vproc_step.py と vproc_run.py、test/selfhost_compare.py（標準出力を `\n` のまま書く）、bin/includer、bin/update-frontend、test/common.sh、consh/test/common.sh、test/resolver.sh、bench/module.sh、consh/js/build.sh、test/fast18/test.sh、test/step31、test/step33、consh/test/step12（Windows のときだけ変わる）。
+* 作り直すもの：transpiled VM（vm/src を変えた）、wasm 版の VM（`cfg` と `path_text`）。I7 の vm/target-transpiled は、test/transpiled だけで作ったもの。ConSh のモジュール（consh_jsstmt.se）と、ConJS のランタイムのモジュール（conjs_lib.se）は、変えたので自動で作り直される。
+* 新しいテスト：vm の `cargo test --release --lib` の sys::windows の 11（Windows だけで動く。M4 のレビューで、書き手のスレッドを待つ上限の 1 つを足した）。
+* I7 が流したもの（Windows 11、Git Bash）：上の「Windows（I7）で流す」の、Rust 版の VM の test/、consh/test、conjs/test、sjs/test と、vm の `cargo test --release --lib sys::`。既知の違いのほかに違いはなかった。transpiled VM を test/transpiled のモジュールだけで作り（`CONMA2RUST_COMPACT=1`）、test/ を流すと、Rust 版の VM と同じ違いだけだった。bench/build.sh ですべて入れて作るのは、1 時間で終わらず止めた。wasm 版の VM（Node.js）の test/ は、Node.js のホストが Windows のパスとエラーを直さないため、多くが違う（PLATFORM-PLAN-ja.md の 8.13 節の「残したこと」）。
+* 流していないもの：macOS のすべて（`cfg` と sys を替えたので、Full Test で確かめてほしい。unix.rs は `git diff -M` で、移した後の足したものだけが見える）。Windows の Python 版の VM（動かない）、test/host-api.sh、ブラウザのページ、ベンチマーク。
+* 測ったもの：なし。

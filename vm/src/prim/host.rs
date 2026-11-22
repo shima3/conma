@@ -148,7 +148,7 @@ impl Host {
         h.function("test.add", test_add);
         h.function("test.echo", |args: &[HostValue]| Ok(HostValue::List(args.to_vec())));
         h.function("test.fail", |_: &[HostValue]| Err("test.fail: failed".to_string()));
-        #[cfg(unix)]
+        #[cfg(not(target_arch = "wasm32"))]
         {
             h.function("time.now", time_now);
             h.feature("time");
@@ -240,7 +240,7 @@ fn test_add(args: &[HostValue]) -> Result<HostValue, String> {
 }
 
 /// time.now: the time in milliseconds since 1970-01-01 00:00 UTC.
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 fn time_now(_args: &[HostValue]) -> Result<HostValue, String> {
     let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "time.now: the clock is before 1970")?;
     Ok(HostValue::Num(d.as_secs_f64() * 1000.0))
@@ -542,7 +542,7 @@ fn start_with(m: &mut Machine, vp: &mut VProc, prim: &str, tracked: bool) -> PRe
     };
     let Some((fname, args)) = name_args(vp, prim, &on_error, &name, &args) else { return Ok(()) };
     let later = fname == "test.later";
-    let sleep = cfg!(unix) && fname == SLEEP;
+    let sleep = cfg!(not(target_arch = "wasm32")) && fname == SLEEP;
     if sleep {
         match args.first() {
             Some(HostValue::Num(n)) if *n >= 0.0 => {}

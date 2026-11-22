@@ -196,7 +196,7 @@ fn vproc_path(vp: &VProc, path: &str) -> String {
     if path.is_empty() {
         String::new()
     } else {
-        std::path::Path::new(&vp.cwd).join(path).to_string_lossy().into_owned()
+        sys::path_text(&std::path::Path::new(&vp.cwd).join(path))
     }
 }
 
@@ -213,7 +213,11 @@ fn path_args(vp: &mut VProc, name: &str, what: &str) -> Result<Option<(Value, St
     Ok(Some((on_error, text)))
 }
 
+/// The error of an errno (on Windows, whose error numbers are others, sys::errno_error).
 fn io_error(errno: i32) -> std::io::Error {
+    #[cfg(windows)]
+    return sys::errno_error(errno);
+    #[cfg(not(windows))]
     std::io::Error::from_raw_os_error(errno)
 }
 

@@ -8,7 +8,7 @@ use crate::trace::value_to_display;
 use crate::value::*;
 use crate::vproc::{State, VProc, VProcRef};
 use std::path::{Path, PathBuf};
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 
@@ -143,7 +143,7 @@ pub fn spawn(m: &mut Machine, vp: &mut VProc) -> PResult {
 /// The repository: the directory above vm/target/release/conma.
 pub fn root_dir() -> PathBuf {
     let exe = std::env::current_exe().and_then(|p| p.canonicalize()).unwrap_or_default();
-    exe.ancestors().nth(4).map(Path::to_path_buf).unwrap_or_default()
+    exe.ancestors().nth(4).map(|p| PathBuf::from(crate::sys::path_text(p))).unwrap_or_default()
 }
 
 /// The directory of the standard library (include/): CONMA_INCLUDE, or the
@@ -183,10 +183,10 @@ pub fn include_args() -> Vec<String> {
     let mut a = Vec::new();
     if first.is_dir() {
         a.push("--include".to_string());
-        a.push(first.to_string_lossy().into_owned());
+        a.push(crate::sys::path_text(&first));
     }
     a.push("--include".to_string());
-    a.push(inc.to_string_lossy().into_owned());
+    a.push(crate::sys::path_text(&inc));
     a
 }
 
@@ -204,20 +204,20 @@ pub fn load_program(source_file: &str, cwd: &str) -> Result<(Sexp, Rc<GVEnv>), S
     Ok((module, gvenv))
 }
 
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 fn is_file(path: &Path) -> bool {
     path.is_file()
 }
 
 /// The VM for wasm32 has no std::fs: ask its virtual OS (or the host's files).
-#[cfg(not(unix))]
+#[cfg(target_arch = "wasm32")]
 fn is_file(path: &Path) -> bool {
     matches!(crate::sys::is_dir(&path.to_string_lossy()), Ok(false))
 }
 
 /// The module text of source_file (relative to cwd), from conma build in
 /// another process of this executable, or the first line of its error.
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
     let root = root_dir();
     let exe = std::env::current_exe().map_err(|e| format!("cannot run the frontend: {}", crate::sys::errno_str(&e)))?;
@@ -238,7 +238,7 @@ fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
         return Err(format!("includer failed: {}", first));
     }
     // File names in SInfo relative to the directory above the repository.
-    let parent = root.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let parent = root.parent().map(crate::sys::path_text).unwrap_or_default();
     Ok(String::from_utf8_lossy(&res.stdout).replace(&format!("\"{}/", parent), "\""))
 }
 
@@ -246,7 +246,7 @@ fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
 /// (vm/wasm), and gives the module text with the file names in SInfo
 /// relative to the directory above the repository, or the first line of its
 /// error.
-#[cfg(not(unix))]
+#[cfg(target_arch = "wasm32")]
 fn build_module(source_file: &str, cwd: &str) -> Result<String, String> {
     crate::sys::build_module(source_file, cwd).map_err(|e| format!("includer failed: {}", e))
 }

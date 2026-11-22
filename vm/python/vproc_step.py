@@ -3197,6 +3197,8 @@ PRIMITIVES = {
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+    sys.stderr.reconfigure(newline="\n")
     if len(sys.argv) != 2:
         print("usage: vproc_step.py <module_file>", file=sys.stderr); sys.exit(1)
     gvenv = load_module(parse_sexp(open(sys.argv[1]).read()))

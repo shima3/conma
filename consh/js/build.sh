@@ -22,7 +22,7 @@ if [ ! -s "$module" ] || [ -n "$(find "$root/include" "$consh/include" "$root/sj
   module_tmp=$(mktemp "$module.XXXXXX")
   trap 'rm -f "$ast_tmp" "$module_tmp"' EXIT
   "$root/bin/includer" --include "$consh/include" --include "$root/sjs/include" --include "$root/include/ext" --include "$root/include" "$main" \
-    | sed -e 's/"\/.*\/conma/"conma/' > "$ast_tmp"
+    | sed -e 's/"\([A-Za-z]:\)\{0,1\}\/.*\/conma/"conma/' > "$ast_tmp"
   "$root/bin/resolver" < "$ast_tmp" > "$module_tmp"
   # mktemp は持ち主だけが読める（600）ファイルを作る。ウェブのサーバーや、GitHub Pages のワークフロー
   # （root で動く Jekyll が写したものを、別の利用者の tar が読む）が読めるように、ほかのファイルと同じく 644 にする
