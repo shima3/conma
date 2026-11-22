@@ -99,6 +99,14 @@ sjs/test/run_all.sh
 * 新しいテスト：なし（端末から打つ suite がない）。
 * M4 が流したもの：端末なしで、consh-rs がない（ConMa 版で動く）、両方ない（止まる、2）、`CONSH_IMPL=conma` で VM がない（止まる、2。リポジトリの上と consh/include から）。`script` の疑似端末と rlwrap で、consh-rs がないときの n（ConMa 版で動く）、Enter（ビルドして Rust 版で動く）、ビルドが失敗する（cargo のエラーを出して ConMa 版で動く）。両方ないときの n（止まる、2）。`cargo` が PATH にないとき（聞かない）。`CONSH_IMPL=conma` で VM がないときの n（止まる）と Enter（ビルドして動く）。`CONMA_VM=rust consh/test/run_all.sh -j 4` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 4`。
 * 流していないもの：Windows の Git Bash（consh-rs を聞かないこと、VM がないときに聞くこと）。
+
+### i7/consh-ps1-build-missing（shima3/conma#50）
+
+* consh/bin/consh.ps1（consh.cmd からも動く）：VM の conma.exe をまだ作っていないとき（クローンしたばかりなど）、`is not built (cargo build --release in vm)` と出して止めていた。今は、パスをカレントディレクトリからの相対パスにし、ビルドの命令（`cargo build --release --manifest-path ..\..\vm\Cargo.toml`）も書き、対話モードで、標準入力と標準エラーがコンソールで `cargo` があれば、古いときと同じく今ビルドするかを聞く（Enter でビルドする）。ビルドすれば、そのまま ConSh を起動する。ビルドしないか、失敗すれば、止める（終了ステータス 2）。聞くこととビルドすることは、古いときと同じ関数（Read-BuildAnswer、Invoke-Build）にまとめた。cache-dir の場所は、聞くときに要るので、VM を確かめる前に決めるようにした。transpiled VM がないときは、作り方が違うので、聞かずに止める。
+* 作り直すもの：なし（台本だけ）。
+* 新しいテスト：なし（コンソールに打つ suite がない）。
+* I7 が流したもの（Windows 11）：conma.exe を脇に移して、アプリの端末のタブで、consh/include から `..\bin\consh.cmd` を起動し、WriteConsoleInput で答えた。n（止まる。終了ステータス 2）、Enter（ビルドして、ConSh が動く）、vm/src/main.rs にエラーを入れて Enter（cargo のエラーを出して止まる）。パイプで、consh/include とリポジトリの上から起動した、作っていないときと古いときの文。
+* 流していないもの：PowerShell 7（I7 にない）、Unix のすべて（consh.ps1 は Windows だけ）、consh/bin/consh（Bash 版は変えていない。作っていないときは、今までどおり止める）。
 * 測ったもの：なし。
 
 ### i7/consh-ps1-stale-build（shima3/conma#49）
