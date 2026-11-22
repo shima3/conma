@@ -141,6 +141,12 @@ pub fn child_stdio(fd: c_int) -> io::Result<std::process::Stdio> {
     Ok(std::process::Stdio::from(unsafe { OwnedFd::from_raw_fd(d) }))
 }
 
+/// The standard stream n of a child process that gets the VM's own (sys/windows.rs stops its
+/// console reader first).
+pub fn inherited_stdio(_n: usize) -> std::process::Stdio {
+    std::process::Stdio::inherit()
+}
+
 /// The arguments of the process after its name (sys/windows.rs writes some of them itself).
 pub fn add_args(cmd: &mut std::process::Command, args: &[String]) {
     cmd.args(args);

@@ -63,6 +63,9 @@ extern "system" {
     fn SetConsoleCtrlHandler(f: Option<unsafe extern "system" fn(u32) -> Bool>, add: Bool) -> Bool;
     fn GetSystemInfo(info: *mut SystemInfo);
     fn PeekNamedPipe(h: Handle, buf: *mut u8, n: u32, read: *mut u32, avail: *mut u32, left: *mut u32) -> Bool;
+    fn SetLastError(code: u32);
+    fn GetLastError() -> u32;
+    fn SetHandleInformation(h: Handle, mask: u32, flags: u32) -> Bool;
 }
 
 const FILE_TYPE_DISK: u32 = 1;
@@ -86,6 +89,9 @@ const WRITE_BUFFER: usize = 65536;
 /// How long a write to a pipe whose writer thread is idle waits for its bytes to reach the pipe
 /// (they do at once unless the pipe is full; long enough for a loaded machine).
 const WRITE_THROUGH: Duration = Duration::from_millis(200);
+/// When the VM ends, how long a writer thread may write nothing before the VM stops waiting for
+/// it (the reader has stopped reading).
+const FLUSH_STALL: Duration = Duration::from_secs(1);
 /// How often wait_fds looks at a pipe that it waits to read.
 const PEEK_EVERY: Duration = Duration::from_millis(2);
 /// How much a reader thread reads at once.
@@ -137,6 +143,8 @@ struct ReadState {
     pending: bool,
     /// the fd has been closed: the thread ends
     quit: bool,
+    /// a console read ended with "\r": dropped if the next one begins with "\n"
+    cr: bool,
 }
 
 impl Reader {
@@ -172,20 +180,31 @@ impl Reader {
             st.pending = true;
             drop(st);
             let mut n = 0u32;
+            unsafe { SetLastError(0) };
             let ok = unsafe { ReadFile(self.handle, chunk.as_mut_ptr(), READ_CHUNK as u32, &mut n, std::ptr::null_mut()) } != 0;
-            let code = if ok { 0 } else { last_error().raw_os_error().unwrap_or(0) };
+            let code = if ok { unsafe { GetLastError() as i32 } } else { last_error().raw_os_error().unwrap_or(0) };
             let mut st = lock(&self.st);
             st.pending = false;
             if ok {
                 if n == 0 {
-                    // a pipe gives 0 bytes for a write of 0 bytes, and ERROR_BROKEN_PIPE at the end
-                    if self.chars {
+                    // a pipe gives 0 bytes for a write of 0 bytes, and ERROR_BROKEN_PIPE at the end.
+                    // A console gives 0 bytes at the end, and also when Ctrl-C stops the read
+                    // while the handler is in (ERROR_OPERATION_ABORTED): nothing was read
+                    if self.chars && code != ERROR_OPERATION_ABORTED {
+                        if std::mem::take(&mut st.cr) {
+                            st.buf.push_back(b'\r');
+                        }
                         st.eof = true;
                     }
                 } else if self.chars {
-                    let data = &chunk[..n as usize];
-                    for (i, &b) in data.iter().enumerate() {
-                        if !(b == b'\r' && data.get(i + 1) == Some(&b'\n')) {
+                    // "\r\n" is "\n", also when the two come in two reads
+                    for &b in &chunk[..n as usize] {
+                        if std::mem::take(&mut st.cr) && b != b'\n' {
+                            st.buf.push_back(b'\r');
+                        }
+                        if b == b'\r' {
+                            st.cr = true;
+                        } else {
                             st.buf.push_back(b);
                         }
                     }
@@ -283,6 +302,8 @@ struct WriteState {
     closing: bool,
     /// the handle has been closed
     done: bool,
+    /// the number of pieces written: flush sees whether the thread still gets on
+    written: u64,
 }
 
 /// The writers whose fds are open or that still write; flush_writers waits for them.
@@ -310,7 +331,16 @@ impl Writer {
             // the buffer has room again while the chunk is written
             self.cv.notify_all();
             notify();
-            let r = write_handle(self.handle, &chunk);
+            // in pieces, so that flush sees the thread get on while the reader takes them
+            let mut r = Ok(());
+            for piece in chunk.chunks(READ_CHUNK) {
+                r = write_handle(self.handle, piece);
+                if r.is_err() {
+                    break;
+                }
+                lock(&self.st).written += 1;
+                self.cv.notify_all();
+            }
             let mut st = lock(&self.st);
             st.busy = false;
             if let Err(e) = r {
@@ -376,11 +406,26 @@ impl Writer {
         }
     }
 
-    /// Wait until what was written has reached the pipe (or failed).
-    fn flush(&self) {
+    /// Wait until what was written has reached the pipe (or failed), but not longer than limit,
+    /// nor longer than stall without a piece written: the reader may be a VProc of this VM, which
+    /// does not run while the VM's thread waits here, or a process that does not read.
+    fn flush(&self, limit: Option<Duration>, stall: Duration) {
+        let start = Instant::now();
         let mut st = lock(&self.st);
+        let mut seen = (st.written, Instant::now());
         while (!st.buf.is_empty() || st.busy) && st.err.is_none() && !st.done {
-            st = self.cv.wait(st).unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            if st.written != seen.0 {
+                seen = (st.written, now);
+            }
+            let mut until = seen.1 + stall;
+            if let Some(l) = limit {
+                until = until.min(start + l);
+            }
+            if now >= until {
+                break;
+            }
+            st = self.cv.wait_timeout(st, until - now).unwrap_or_else(|e| e.into_inner()).0;
         }
     }
 
@@ -420,12 +465,31 @@ fn write_handle(h: Handle, mut data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// Wait until the writer threads have written out what the VM wrote (when the VM ends: the
-/// writes of a process that exits on Unix are in the pipe already).
+/// When the VM ends, let the writer threads write out what the VM wrote (the writes of a process
+/// that exits on Unix are in the pipe already). First close the read ends that the VM has, so
+/// that writes to a pipe that only a VProc of this VM read fail at once; then wait while each
+/// thread gets on, but not for a reader that has stopped reading (a child that never reads:
+/// on Unix the process ends and leaves the bytes in the pipe).
 pub fn flush_writers() {
+    let reads: Vec<Arc<Entry>> = {
+        let mut t = table();
+        let mut reads: Vec<Arc<Entry>> = Vec::new();
+        for slot in t.slots.iter_mut() {
+            if slot.as_ref().is_some_and(|e| matches!(**e, Entry::Pipe { owned: true, .. })) {
+                let e = slot.take().unwrap();
+                if !reads.iter().any(|r| Arc::ptr_eq(r, &e)) {
+                    reads.push(e); // an fd and its dup share one entry: close it once
+                }
+            }
+        }
+        reads
+    };
+    for e in reads {
+        e.close();
+    }
     let ws: Vec<Arc<Writer>> = lock(&WRITERS).clone();
     for w in ws {
-        w.flush();
+        w.flush(None, FLUSH_STALL);
     }
 }
 
@@ -499,6 +563,18 @@ static TABLE: OnceLock<Mutex<Table>> = OnceLock::new();
 
 fn table() -> MutexGuard<'static, Table> {
     lock(TABLE.get_or_init(|| {
+        // The standard handles that the VM got may be inheritable, and std starts every process
+        // with the inheritable handles: then a child would hold the VM's standard output too,
+        // and the reader of a $( ) would wait for it (on Unix, the child's fd 1 replaces it).
+        // Stdio::inherit() makes its own inheritable copy, so the children that are to have
+        // them still do.
+        const HANDLE_FLAG_INHERIT: u32 = 1;
+        for n in 0..3 {
+            let h = unsafe { GetStdHandle((-10 - n) as u32) };
+            if h != 0 && h != -1 {
+                unsafe { SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0) };
+            }
+        }
         let slots = (0..3).map(std_entry).collect();
         Mutex::new(Table { slots })
     }))
@@ -700,7 +776,9 @@ pub fn child_stdio(fd: c_int) -> io::Result<Stdio> {
             r.handle
         }
         Entry::Writer(w) => {
-            w.flush();
+            // not longer than a write waits: the reader may be a VProc of this VM, which runs
+            // only after this (the bytes left then reach the pipe after the child's may)
+            w.flush(Some(WRITE_THROUGH), WRITE_THROUGH);
             w.handle
         }
         _ => return Err(bad_fd()),
@@ -713,16 +791,33 @@ pub fn child_stdio(fd: c_int) -> io::Result<Stdio> {
     Ok(Stdio::from(unsafe { OwnedHandle::from_raw_handle(copy as *mut c_void) }))
 }
 
+/// The standard stream n (0, 1 or 2) of a child process that gets the VM's own. Standard input
+/// goes to the child as it is, so stop a console read that a VProc started on fd 0, as
+/// child_stdio does: else the reader thread and the child take the user's lines in turn.
+pub fn inherited_stdio(n: usize) -> Stdio {
+    if n == 0 {
+        if let Ok(e) = entry(0) {
+            if let Entry::Reader(r) = &*e {
+                r.cancel(false);
+            }
+        }
+    }
+    Stdio::inherit()
+}
+
 /// The arguments of the process after its name. Rust leaves an argument without spaces or
 /// quotes unquoted, and the programs of MSYS (Git Bash) take a backslash outside quotes as an
 /// escape and drop it (printf 'a\nb' gave "anb"), expand * ? [ ] { } as a glob (touch 'x[1]'
-/// made x1), and take ' as a quote. An argument with one of them goes in double quotes, as the
-/// C runtime of Windows reads them: backslashes are as they are, except those before a
-/// quote, which are doubled, and the quote gets one more.
+/// made x1), take ' as a quote, and expand a ~ at the start. An argument with one of them goes
+/// in double quotes, as the C runtime of Windows reads them: backslashes are as they are,
+/// except those before a quote, which are doubled, and the quote gets one more. MSYS reads
+/// "\\" in quotes as one backslash, which no form of the argument gives to both runtimes:
+/// a ConMa argument with two backslashes in a row reaches an MSYS program with one (a known
+/// difference of Windows in docs/dev/TESTS-ja.md).
 pub fn add_args(cmd: &mut Command, args: &[String]) {
     use std::os::windows::process::CommandExt;
     for a in args {
-        if !a.contains(['\\', '*', '?', '[', ']', '{', '}', '\'']) {
+        if !a.contains(['\\', '*', '?', '[', ']', '{', '}', '\'', '~']) {
             cmd.arg(a);
             continue;
         }
@@ -887,6 +982,10 @@ fn check_on_the_way(path: &str) -> io::Result<()> {
 /// A path of Windows as the VM writes it: C:/Users/..., without the \\?\ of canonicalize.
 pub fn path_text(p: &std::path::Path) -> String {
     let s = p.to_string_lossy();
+    // \\?\UNC\srv\share (from canonicalize) is //srv/share
+    if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
+        return format!("//{}", unc.replace('\\', "/"));
+    }
     let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
     s.replace('\\', "/")
 }
@@ -1208,6 +1307,42 @@ mod tests {
     }
 
     #[test]
+    fn flush_stops_waiting_for_a_reader_that_does_not_read() {
+        // more than the pipe and the writer's buffer hold: the writer thread stays in WriteFile
+        let _g = lock(&SERIAL);
+        let (r, w) = make_pipe().unwrap();
+        let data = vec![b'x'; WRITE_BUFFER];
+        let mut sent = 0;
+        while sent < 3 * WRITE_BUFFER {
+            sent += write_fd(w, &data).unwrap();
+        }
+        let start = Instant::now();
+        // the limit of child_stdio
+        if let Entry::Writer(wr) = &*entry(w).unwrap() {
+            wr.flush(Some(WRITE_THROUGH), WRITE_THROUGH);
+            assert!(start.elapsed() < Duration::from_secs(1));
+            // the stall of flush_writers, while the reader reads a piece now and then
+            let start = Instant::now();
+            let reader = std::thread::spawn(move || {
+                let mut buf = vec![0u8; READ_CHUNK];
+                for _ in 0..5 {
+                    std::thread::sleep(Duration::from_millis(50));
+                    read_fd(r, &mut buf).unwrap();
+                }
+                r
+            });
+            wr.flush(None, Duration::from_millis(150));
+            let r = reader.join().unwrap();
+            let t = start.elapsed();
+            assert!(t >= Duration::from_millis(250) && t < Duration::from_secs(2), "{t:?}");
+            close_fd(r).unwrap();
+        } else {
+            panic!("not a writer");
+        }
+        close_fd(w).unwrap();
+    }
+
+    #[test]
     fn writing_to_a_pipe_without_a_reader_is_epipe() {
         let _g = lock(&SERIAL);
         let (r, w) = make_pipe().unwrap();
@@ -1248,6 +1383,7 @@ mod tests {
     fn paths_are_written_with_slashes() {
         assert_eq!(path_text(std::path::Path::new(r"\\?\C:\Users\a b\conma")), "C:/Users/a b/conma");
         assert_eq!(path_text(&std::path::Path::new("C:/x").join("y")), "C:/x/y");
+        assert_eq!(path_text(std::path::Path::new(r"\\?\UNC\srv\share\a")), "//srv/share/a");
         let dir = std::env::temp_dir();
         assert!(!canonicalize(&dir.to_string_lossy()).unwrap().contains('\\'));
         let p = path_text(&dir);

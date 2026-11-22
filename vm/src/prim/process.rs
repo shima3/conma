@@ -10,7 +10,7 @@ use crate::vproc::VProc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::cell::{Cell, RefCell};
 #[cfg(not(target_arch = "wasm32"))]
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::rc::Rc;
 
 pub fn spawn(m: &mut Machine, vp: &mut VProc) -> PResult {
@@ -119,9 +119,9 @@ fn start_process(
     sys::add_args(&mut cmd, &args[1..]);
     cmd.env_clear().envs(env).current_dir(&vp.cwd);
     let mut stdio = Vec::new();
-    for fd in &fds {
+    for (n, fd) in fds.iter().enumerate() {
         stdio.push(match fd {
-            None => Stdio::inherit(),
+            None => sys::inherited_stdio(n),
             Some(fd) => match sys::child_stdio(*fd) {
                 Ok(s) => s,
                 Err(e) => {
