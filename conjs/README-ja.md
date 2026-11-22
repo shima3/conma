@@ -1,6 +1,8 @@
+[English](README.md) | **日本語**
+
 # ConJS：軽量スレッドとブロッキング呼び出しを持つ JavaScript の部分集合
 
-ConJS は、JavaScript の部分集合で、協調的に切り替わる軽量スレッド（以下「処理」）と、その処理だけを止めるブロッキング呼び出しを持つ。待つ呼び出し（ホストの関数、アニメーションの 1 コマ）を、`await` を書かずに、ふつうの呼び出しとして書ける。待っている間は、その処理だけが止まり、ほかの処理は動く。今は SJS（[../sjs/README-ja.md](../sjs/README-ja.md)。JavaScript の安全な部分集合）の変換器とランタイムを使って作っているが、SJS とは別の言語で、これから受け付ける JavaScript を広げていく。計画と設計は [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md) の 4.1 節と 4.2 節、作ったものは 8.4 節（段階 P3b、2026-11-19）。
+ConJS は、JavaScript の部分集合で、協調的に切り替わる軽量スレッド（以下「処理」）と、その処理だけを止めるブロッキング呼び出しを持つ。待つ呼び出し（ホストの関数、アニメーションの 1 コマ）を、`await` を書かずに、ふつうの呼び出しとして書ける。待っている間は、その処理だけが止まり、ほかの処理は動く。今は SJS（[../sjs/README-ja.md](../sjs/README-ja.md)。JavaScript の安全な部分集合）の変換器とランタイムを使って作っているが、SJS とは別の言語で、これから受け付ける JavaScript を広げていく。計画と設計は [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md) の 4.1 節と 4.2 節、作ったものは 8.4 節（段階 P3b、2026-11-19）。作りとテストは、開発者向けの [docs/dev/CONJS.md](../docs/dev/CONJS.md)（英語）にある。
 
 ```js
 const t = spawn(() => host.wait("test.later", 2, "slow"));   // 新しい処理。呼んだ側は動き続ける
@@ -70,40 +72,9 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
 
 ConJS の構文は JavaScript の部分集合だが、ConJS のプログラムは JavaScript のプログラムではない（`spawn`、`join`、`host` は JavaScript になく、JavaScript では待つ呼び出しが Promise を返す）。そのため、多くの場合は sjs/test のように Node.js と出力を比べない。それらと待つ呼び出しのライブラリを使わないプログラムは JavaScript のプログラムでもあるので、conjs/test/compare.sh が Node.js と標準出力を比べる（各ステップの node.txt に並べた場合。2026-11-20 までは step10 だけ）。ConJS と SJS の両方が受け付ける、待つ呼び出しを使わないプログラムは、どちらでも同じ結果になる（同じ変換器とランタイムで動くため）。ConJS を広げるときは、まず ConJS に足し、そのうち安全なものを SJS に移して共有する（docs/dev/PLATFORM-PLAN-ja.md の 4.1 節）。
 
-## 作り
+## 見本
 
-* **include/lang/sched.se**：スケジューラ。ConJS の構文にも SJS の名前にもよらない部分で、P4 で言語キットに移す。処理の継続の列（FIFO）、待つ呼び出し（`__Host_start__` で始め、待つための小さな VProc がパイプを待って、結果をチャネルに入れる）、join、終わり。処理だけの状態は、受け取った save と restore の関数で保存して戻す。
-* **conjs/include/conjs_rt.se**：SJS のランタイムとのつなぎ。処理だけの状態にする PDict の名前（`"sjs_handlers"`、`"sjs_gen"`、`"sjs_pos"`）を 1 か所にまとめ、`spawn`、`join`、`host` と、待つ呼び出しのライブラリ（conjs/include/conjs_lib.se）を置く。ライブラリの `sleep` と `Date.now` は、ホストの関数 `time.sleep` と `time.now`（機能 `"time"`。どの VM にもある）を呼び、`fetch` は `http.fetch`（機能 `"fetch"`。wasm 版の VM だけ）か curl を使う。curl は、スケジューラの `Kit_sched_wait_work`（待つための VProc で、ホストの呼び出しでない仕事をする）で動かす。
-* **conjs/include/conjs_class.se**：クラス（段階 P5b）。クラスの値は SJS の関数で、インスタンスは SJS のオブジェクトで、どちらも隠したキー `"cls"` にクラスの記録（メソッド、static のメソッド、コンストラクタ、フィールド、親）を持つ。SJS のランタイムは、メンバーを読んで自分のプロパティになかったときだけ、`"cls"` を見る（sjs/include/sjs_rt.se の `Sjs_class_member`）。SJS の値は `"cls"` を持たないので、SJS の結果は変わらない。`JSON.parse` と配列の `sort` は、プロトタイプにもホストにも触れないので、SJS のランタイムに置いて SJS と共有する。
-* **conjs/conjsc.se**：変換器の入口（言語の印を付けて、SJS の変換器を呼ぶ）。sjs_gen.se は、印があれば、文の並びを `Conjs_run` の中に置いたソースを作る。
 * **ファイルの見本**（段階 P8。conjs/examples）：merge.con.js は、ソートした 2 つのファイルを 1 行ずつ読み比べ、片方だけにある行と両方にある行を出す（Unix の `comm` と同じ。`-` は標準入力）。2 つの `readLine` を、比べた結果で交互に進めるだけで書ける。同じことを Node.js で書いた merge.node.js では、`readline` の Interface を 2 つ作り、`for await` が使えないので、2 つの非同期のイテレータの `next()` を `await` で呼び、関数を `async` にし、`try`／`finally` で閉じる。2 つが同じ出力になることを、conjs/test/compare.sh が確かめる（conjs/test/node-pairs.txt）。wordcount.con.js は、`fs.readLines` で語を数える、いちばん短い使い方の例。
 * **サーバの見本**（段階 P6b。conjs/examples）：counter_server.con.js は、要求ごとに処理を `spawn` する小さなサーバ（`/count`、`/slow`、`/file?name=...`、`/stop`）。`/slow` が `sleep(200)` で待つ間も、ほかの要求に答える。数は共有の変数に持つが、読んでから書くまでに待つ所がないので、ほかの処理に割り込まれない。`demo` を引数にすると、OS が選ぶ port で答え、自分に要求を送って答えを出し、`/stop` で終わる。同じことを Node.js で書いた counter_server.node.js では、`http.createServer` のコールバックを `async` にし、`setTimeout` の Promise と、`fs.promises` と `readline` の `for await` を使う。2 つが `demo` で同じ出力になることを、conjs/test/step18 の case2.node-check.js が確かめる（conjs/test/compare.sh が動かす）。
 * **ホストの関数の見本**（段階 P7。conjs/examples）：host_demo.con.js は、ホストの関数 `demo.*` を呼ぶ。同じ関数を、Rust の vm/examples/host_demo.rs と、JavaScript の host_demo.host.js（wasm 版の VM の `CONMA_HOST`）で書いてあり、test/host-api.sh が、2 つで同じログになることを確かめる（[docs/HOST-ja.md](../docs/HOST-ja.md)）。
-* **見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る）と、vm/wasm/web/stars.con.js（入力を待つ対話のゲーム「星ひろい」。stars.html で遊ぶ。段階 P5c。端末でも `conjs/conjs vm/wasm/web/stars.con.js` で遊べる。段階 P6a）。ページの分は、vm/wasm/web/build.sh が変換する。
-
-## テスト
-
-conjs/test/stepN の `caseN.con.js` を変換して動かし、出力と終了ステータスを `caseN.log` と比べる（conjs/test/run_case.sh）。VM ごとに違うものは `caseN.wasm.log` のように置き、`caseN.host.js` があれば、wasm 版の VM の `CONMA_HOST` にする。
-
-| ステップ | 確かめること |
-|---|---|
-| step1 | 動かす順：spawn の FIFO、`test.later` の締め切りの順、待っている間にほかの処理が動くこと |
-| step2 | 協調的に切り替わること：共有のオブジェクトの読み書きが入り混じらない、待たないループに割り込まれない |
-| step3 | 例外：join が位置ごと投げ直す、join されない例外の報告、main の例外ですぐ終わる、try の受け手と投げた位置が処理ごとに分かれる |
-| step4 | 待つ所：map のコールバック、ジェネレータの本体、try と finally。待っている途中のジェネレータの next() |
-| step5 | エラー：行き詰まり、自分自身の join、使い方の誤り、ホストの値とエラー、wasm 版の VM で Promise を返すホストの関数 |
-| step6 | 受け付けない構文と、`then` をふつうの名前に、3 つの名前をキーとメンバーの名前に使えること |
-| step7 | タイマーと時刻：`sleep` の間にほかの処理が動く、`Date.now()` の差、`setTimeout` と join、join されない例外、引数のエラー（本当の時計を使うので、負荷で揺れないことだけを確かめる） |
-| step8 | ファイル：`fs.writeFile` と `fs.readFile`、読めないファイル、引数のエラー |
-| step9 | fetch：GET、`json()`、404、POST と PUT とヘッダ、HEAD、2 つの処理で並べて待つ、つながらない所の TypeError、引数のエラー。step9/server.py の HTTP のサーバ（127.0.0.1）を使う |
-| step10 | ConJS だけの名前を使わないプログラム（conjs/test/compare.sh が Node.js と比べる） |
-| step11 | クラス：コンストラクタ、メソッド、フィールド、`static` とその継承、`extends` と `super`、`instanceof`、`in`、アロー関数の `this`、`console.log` と `Object.keys`。JavaScript との違い（case3） |
-| step12 | エラーのコンストラクタと `instanceof`、`class ... extends Error`、受け手のないエラー、変換するときのエラー（`this`、計算した名前、getter）、実行時のエラー。コンストラクタが返すオブジェクト、エラーの `name` と `toString()`（case8） |
-| step13 | `JSON.parse` と配列の `sort`（sjs/test の step12 と同じもの）。キーが `constructor` のオブジェクト（case2）。JSON でない文字列（case3） |
-| step14 | 入力：`nextEvent` と `pollEvent`（case1。wasm 版の VM では、本物の vm/wasm/host/input.js を、入力のまね input_mock.js が手で進める時計で動かす。ほかの VM は機能がないことの TypeError）。見本の stars.con.js を、決まったキーで動かして終わり方を確かめる（case2）。VM ごとのログ（case*.wasm.log） |
-| step15 | 端末の入力：標準入力のファイル（case*.in）からキーを読む（case1）。見本の stars.con.js を端末の道で動かし、Escape で終わる（case2）。ESC の並びが 2 回の読みに分かれる場合は、test/fast18 がキーに分ける関数を直に確かめる |
-| step16 | ファイルを 1 行ずつ読む：`readLine`、`read`、`readLines` と、4,096 バイトの読みの区切りをまたぐ場合（case1）。書く、閉じる、エラー（case2）。`readLines()` を回し切る、`break`、例外、`return` で閉じること（case3）。`fs.stdin` と `fs.stdout`、キーと行の両方で読めないこと（case4）。見本の merge.con.js（case5。引数は case5.args）。少しずつ届く標準入力（case6.feed.py の出力をパイプで渡す）を、3 つの処理で取り合っても行が壊れないこと（case6）。`-` で始まるプログラムの引数が、VM のオプションと取り違えられずに `argv` に届くこと（case7） |
-| step17 | ホストの関数の決まらない Promise（段階 P7）：wasm 版の VM で、`vm-node.js` が行き詰まりを知らせて終了ステータス 2 で終わること（case1.wasm.log。ほかの VM には、その関数がない）。自分を含むオブジェクトと配列を渡すと TypeError、同じ値を 2 か所に持つだけなら渡せること（case2） |
-| step18 | ネットワークのサーバ（段階 P6b）：wasm 版の VM（Node.js）で、自分のサーバに `fetch` で送る。GET と POST、ヘッダ、本体、`json()`、2 度目の `respond` の Error、1 MB を超える本体の 413、使われている port、受け取った要求に `close()` の後で答えること、列の要求の 503、`close()` の後と、待っている `accept()` の `undefined`、引数の誤り（case1）。見本の counter_server.con.js を `demo` で動かす（case2。counter_server.con.js へのシンボリックリンク）。ほかの VM のログ（case*.log）は、機能がないことの Error の 1 行 |
-
-Node.js と比べる場合は、各ステップの node.txt に並べる（変換するときのエラーと、JavaScript との違いの場合は入れない）。step8 と step9（`copy.txt` のあるステップ）は、run_case.sh が一時ディレクトリに写してから動かす（ファイルを書くので、同じワークツリーで 3 つの VM のテストを同時に流しても混ざらない）。step9 は、写した所で server.py を立て（ポートは port.txt）、終わったら止める。step9 には python3 が、Rust 版と Python 版の VM では curl も要る。
+* **ページの見本**：vm/wasm/web/canvas_demo.con.js（canvas の跳ねる玉。`canvas.html?conjs` で見る）と、vm/wasm/web/stars.con.js（入力を待つ対話のゲーム「星ひろい」。stars.html で遊ぶ。段階 P5c。端末でも `conjs/conjs vm/wasm/web/stars.con.js` で遊べる。段階 P6a）。ページの分は、vm/wasm/web/build.sh が変換する。
