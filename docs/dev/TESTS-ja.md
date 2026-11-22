@@ -92,6 +92,15 @@ sjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### i7/consh-ps1-stale-build
+
+* consh/bin/consh.ps1（consh.cmd からも動く）：shima3/conma#48 で consh/bin/consh に入れたことを、consh.ps1 にも入れた。VM の conma.exe がソースより古いときの警告のパスを、カレントディレクトリがリポジトリの中なら相対パスにし（`..\..\vm\target\release\conma.exe`）、ビルドの命令（`cargo build --release --manifest-path ..\..\vm\Cargo.toml`。cmd でも PowerShell でも動く）も書く。対話モードで、標準入力と標準エラーがコンソールで `cargo` があれば、今ビルドするかを聞く（`[Y/n]`、Enter でビルドする）。ビルドした時間は、consh/bin/consh と同じ `build-seconds.conma`（bin/cache-dir の場所）に残して示す。cargo の出力は、失敗したときだけ出す。ビルドしないか、失敗すれば、古いまま使う。答えは Read-Host で読む（`[Console]::In.ReadLine()` は、Ctrl-C で戻らなかった）。consh-rs は Windows では作れないので、確かめない。
+* 作り直すもの：なし（台本だけ）。
+* 新しいテスト：なし（コンソールに打つ suite がない）。
+* I7 が流したもの（Windows 11）：アプリの端末のタブで、consh/include から `..\bin\consh.cmd` を起動し、WriteConsoleInput で答えた。n（古いまま使う）、Enter（2 秒でビルドし、2 行だけ出す）、vm/src/main.rs にエラーを入れて Enter（cargo のエラーを出して、古いまま使う）。聞いているときの Ctrl-C（consh.ps1 が終わり、cmd がいつものように聞く）。パイプで、consh/include、リポジトリの上、リポジトリの外から起動した警告のパス（外なら絶対パス）。`CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 6`（既知の違いだけ）。
+* 流していないもの：PowerShell 7（I7 にない）、Unix のすべて（consh.ps1 は Windows だけ）。
+* 測ったもの：なし。
+
 ### m4/consh-stale-build（shima3/conma#48）
 
 * consh/bin/consh：consh-rs（ConMa 版なら VM の conma）がソースより古いときの警告を直した。対話モードで rlwrap を通すと、もう一度起動した consh も警告して、2 回出ていた。今は rlwrap を通す前の 1 回だけにした（ConMa 版の VM の警告も、通す前に確かめるように動かした）。パスは、カレントディレクトリがリポジトリの中なら、そこからの相対パスにし、ビルドの命令（`(cd consh/rust && cargo build --release)`）も書く。対話モードで、標準入力と標準エラーが端末で `cargo` があれば、今ビルドするかを聞く（`[Y/n]`、Enter でビルドする）。ビルドした時間を bin/cache-dir の場所の `build-seconds.consh-rs`（`build-seconds.conma`）に残し、次に聞くときに「前回は何秒」と示す。ビルドしないか、失敗すれば、古いまま使う。cargo の出力（コンパイラの警告など）は、失敗したときだけ出す（I7 のレビュー）。スクリプト、テスト、パイプでは聞かない。

@@ -11,6 +11,9 @@
 # The module is kept in the directory that bin/cache-dir writes (the same checksum of the path of the repository,
 # as Git Bash writes it), so this script and consh/bin/consh share it. It is made again with conma build when a .se
 # file or a directory under the include directories, or conma.exe, is newer than it.
+# If conma.exe is older than its sources (after git pull, for example), it warns once, with the path from the current
+# directory, and runs it; in the interactive mode with a console and cargo, it first asks whether to build it now,
+# as consh/bin/consh does (Update-StaleBuild).
 # Commands such as ls, cat and grep are programs of Git Bash on Windows: when ls.exe is not on PATH and
 # Git's usr\bin is there, it is added at the end of PATH while ConSh runs (and taken out again after).
 # If PowerShell does not run scripts (the execution policy; the default of Windows), start it with consh.cmd beside
@@ -66,6 +69,73 @@ function Test-Newer([string[]]$paths, [string[]]$exts, [datetime]$time) {
     }
   }
   return $false
+}
+
+# The path $path under the repository, written from the current directory when that is in the repository
+# (..\..\vm\target\release\conma.exe); else $path as it is. As consh/bin/consh writes it, with backslashes
+function Get-RelPath([string]$path) {
+  $here = (Get-Location).ProviderPath.TrimEnd('\')
+  $top = $root.TrimEnd('\')
+  if (-not ($here -ieq $top -or $here.StartsWith("$top\", [StringComparison]::OrdinalIgnoreCase))) { return $path }
+  if (-not $path.StartsWith("$top\", [StringComparison]::OrdinalIgnoreCase)) { return $path }
+  $from = @($here.Split('\'))
+  $to = @($path.Split('\'))
+  $n = 0
+  while ($n -lt $from.Count -and $n -lt $to.Count -and $from[$n] -ieq $to[$n]) { $n++ }
+  $parts = @()
+  for ($i = $n; $i -lt $from.Count; $i++) { $parts += '..' }
+  for ($i = $n; $i -lt $to.Count; $i++) { $parts += $to[$i] }
+  if ($parts.Count -eq 0) { return '.' }
+  return $parts -join '\'
+}
+
+# If $exe is older than its sources ($sources, and the files with an extension in $exts under them; after git pull,
+# for example), warn, with the command that builds it in $dir. In the interactive mode, when standard input and
+# standard error are the console and cargo is there, ask whether to build it now (Enter builds it), showing how long
+# its last build here took: the seconds are kept in build-seconds.<name> in the directory of bin/cache-dir, the same
+# file as consh/bin/consh keeps. The output of cargo is shown only when the build fails. Without a build, or when
+# it fails, the old $exe is used. Scripts, tests and pipes are not asked (so that they do not stop)
+function Update-StaleBuild([string]$exe, [string]$dir, [string[]]$sources, [string[]]$exts) {
+  if (-not (Test-Newer $sources $exts (Get-Item -LiteralPath $exe).LastWriteTimeUtc)) { return }
+  $rexe = Get-RelPath $exe
+  $rdir = Get-RelPath $dir
+  if ($rdir -eq '.') { $cmd = 'cargo build --release' }
+  else { $cmd = "cargo build --release --manifest-path $(Join-Path $rdir 'Cargo.toml')" }
+  [Console]::Error.WriteLine("consh.ps1: warning: $rexe is older than its sources; build it with: $cmd")
+  if (-not $interactive -or [Console]::IsInputRedirected -or [Console]::IsErrorRedirected -or
+      -not (Get-Command cargo.exe -CommandType Application -ErrorAction SilentlyContinue)) { return }
+  $rec = Join-Path $cacheDir ('build-seconds.' + [IO.Path]::GetFileNameWithoutExtension($exe))
+  $last = $null
+  if (Test-Path -LiteralPath $rec) { $last = (Get-Content -LiteralPath $rec -TotalCount 1) }
+  if ($last) { $last = "it took $last s the last time" }
+  else { $last = 'usually some seconds; longer on a slow machine or the first time' }
+  # Read-Host, not [Console]::In.ReadLine(): a Ctrl-C ends the script there, but not in ReadLine, which goes on reading
+  [Console]::Error.Write("consh.ps1: build it now ($last)? [Y/n] ")
+  $ans = Read-Host
+  if ($null -eq $ans) { $ans = 'n' }
+  if (@('', 'y', 'yes') -notcontains $ans.Trim()) {
+    [Console]::Error.WriteLine("consh.ps1: running the old $rexe")
+    return
+  }
+  # The output of cargo (the warnings of the compiler and so on) only when the build fails
+  [Console]::Error.WriteLine("consh.ps1: building $rexe ...")
+  $out = [IO.Path]::GetTempFileName()
+  $err = [IO.Path]::GetTempFileName()
+  try {
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $p = Start-Process -FilePath cargo.exe -ArgumentList 'build', '--release' -WorkingDirectory $dir -NoNewWindow -Wait -PassThru `
+      -RedirectStandardOutput $out -RedirectStandardError $err
+    $secs = [int][Math]::Floor($watch.Elapsed.TotalSeconds)
+    if ($p.ExitCode -eq 0) {
+      try { [IO.File]::WriteAllText($rec, "$secs`n") } catch { }
+      [Console]::Error.WriteLine("consh.ps1: built $rexe in $secs s")
+    } else {
+      foreach ($f in @($out, $err)) { foreach ($line in [IO.File]::ReadAllLines($f)) { [Console]::Error.WriteLine($line) } }
+      [Console]::Error.WriteLine("consh.ps1: the build failed; running the old $rexe")
+    }
+  } finally {
+    Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Exit-Usage {
@@ -130,17 +200,18 @@ try {
     }
   }
 
-  # The directory of the modules: that of bin/cache-dir
-  if ($env:CONSH_MODULE_DIR) { $dir = $env:CONSH_MODULE_DIR }
-  elseif ($env:CONMA_CACHE_DIR) { $dir = $env:CONMA_CACHE_DIR }
+  # The directory of bin/cache-dir, and that of the modules (the same, unless CONSH_MODULE_DIR is set)
+  if ($env:CONMA_CACHE_DIR) { $cacheDir = $env:CONMA_CACHE_DIR }
   else {
     if ($env:XDG_CACHE_HOME) { $base = $env:XDG_CACHE_HOME }
     elseif ($env:HOME) { $base = Join-Path $env:HOME '.cache' }
     else { $base = Join-Path $env:USERPROFILE '.cache' }
     $msys = '/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
     $sum = Get-Cksum ([Text.Encoding]::UTF8.GetBytes($msys))
-    $dir = Join-Path (Join-Path $base 'conma') $sum
+    $cacheDir = Join-Path (Join-Path $base 'conma') $sum
   }
+  if (-not (Test-Path -LiteralPath $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
+  if ($env:CONSH_MODULE_DIR) { $dir = $env:CONSH_MODULE_DIR } else { $dir = $cacheDir }
   if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
 
   $inc = Join-Path $root 'include'
@@ -167,12 +238,11 @@ try {
     }
   }
 
-  # conma.exe older than its sources: warn, and use it
+  # conma.exe older than its sources: warn (and in the interactive mode, ask whether to build it), and use it.
+  # An old conma.exe does not know the subcommands added later (build and so on): frontend.module.se is in it
   $vmSrc = @((Join-Path $root 'vm\src'), (Join-Path $root 'vm\Cargo.toml'), (Join-Path $root 'vm\Cargo.lock'),
     (Join-Path $root 'vm\frontend.module.se'))
-  if (Test-Newer $vmSrc @('.rs', '.toml', '.lock', '.se') (Get-Item -LiteralPath $conma).LastWriteTimeUtc) {
-    [Console]::Error.WriteLine("consh.ps1: warning: $conma is older than its sources (cargo build --release in vm)")
-  }
+  Update-StaleBuild $conma (Join-Path $root 'vm') $vmSrc @('.rs', '.toml', '.lock', '.se')
 
   # Make the module again if a source or conma.exe is newer than it. The names of the files in it are written
   # from the directory above the repository, as consh/bin/consh writes them
