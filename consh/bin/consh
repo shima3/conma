@@ -98,11 +98,12 @@ relpath() {
 }
 # 実行ファイル $1 がソース（ディレクトリ $2 で cargo build --release して作る。残りの引数は、ソースを探す find の引数）より
 # 古ければ（git pull の後など）、警告する。対話モードで、標準入力と標準エラーが端末で、cargo があれば、今ビルドするかを聞く
-# （Enter はビルドする。前にここでビルドした時間を、bin/cache-dir の場所の build-seconds.<名前> に残して示す）。
+# （Enter はビルドする。前にここでビルドした時間を、bin/cache-dir の場所の build-seconds.<名前> に残して示す。
+# cargo の出力は、失敗したときだけ出す）。
 # ビルドしないか、ビルドが失敗すれば、古いまま使う。テストやパイプでは聞かない（止まらないように）。
 # rlwrap を通してもう一度起動した consh（CONSH_RLWRAPPED）は、確かめない（通す前に確かめてある）
 stale_build() {
-  local bin="$1" dir="$2" rbin rdir cmd ans t0 secs rec= last=
+  local bin="$1" dir="$2" rbin rdir cmd ans t0 secs log rec= last=
   shift 2
   [ -n "$CONSH_RLWRAPPED" ] && return 0
   [ -n "$(find "$@" -newer "$bin" 2>/dev/null)" ] || return 0
@@ -126,14 +127,19 @@ stale_build() {
     ''|y|Y|yes|Yes) ;;
     *) echo "consh: running the old $rbin" >&2; return 0 ;;
   esac
+  # cargo の出力（コンパイラの警告など）は、ビルドが失敗したときだけ出す（通ったときの警告は、使う人には要らない）
+  echo "consh: building $rbin ..." >&2
+  log="$(mktemp "${TMPDIR:-/tmp}/consh-build.XXXXXX")" || return 0
   t0=$SECONDS
-  if (cd "$dir" && cargo build --release); then
+  if (cd "$dir" && cargo build --release) > "$log" 2>&1; then
     secs=$((SECONDS - t0))
     [ -n "$rec" ] && printf '%s\n' "$secs" > "$rec"
     echo "consh: built $rbin in $secs s" >&2
   else
+    cat "$log" >&2
     echo "consh: the build failed; running the old $rbin" >&2
   fi
+  rm -f "$log"
 }
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ $impl = rust ]; then

@@ -94,11 +94,11 @@ sjs/test/run_all.sh
 
 ### m4/consh-stale-build（shima3/conma#48）
 
-* consh/bin/consh：consh-rs（ConMa 版なら VM の conma）がソースより古いときの警告を直した。対話モードで rlwrap を通すと、もう一度起動した consh も警告して、2 回出ていた。今は rlwrap を通す前の 1 回だけにした（ConMa 版の VM の警告も、通す前に確かめるように動かした）。パスは、カレントディレクトリがリポジトリの中なら、そこからの相対パスにし、ビルドの命令（`(cd consh/rust && cargo build --release)`）も書く。対話モードで、標準入力と標準エラーが端末で `cargo` があれば、今ビルドするかを聞く（`[Y/n]`、Enter でビルドする）。ビルドした時間を bin/cache-dir の場所の `build-seconds.consh-rs`（`build-seconds.conma`）に残し、次に聞くときに「前回は何秒」と示す。ビルドしないか、失敗すれば、古いまま使う。スクリプト、テスト、パイプでは聞かない。
+* consh/bin/consh：consh-rs（ConMa 版なら VM の conma）がソースより古いときの警告を直した。対話モードで rlwrap を通すと、もう一度起動した consh も警告して、2 回出ていた。今は rlwrap を通す前の 1 回だけにした（ConMa 版の VM の警告も、通す前に確かめるように動かした）。パスは、カレントディレクトリがリポジトリの中なら、そこからの相対パスにし、ビルドの命令（`(cd consh/rust && cargo build --release)`）も書く。対話モードで、標準入力と標準エラーが端末で `cargo` があれば、今ビルドするかを聞く（`[Y/n]`、Enter でビルドする）。ビルドした時間を bin/cache-dir の場所の `build-seconds.consh-rs`（`build-seconds.conma`）に残し、次に聞くときに「前回は何秒」と示す。ビルドしないか、失敗すれば、古いまま使う。cargo の出力（コンパイラの警告など）は、失敗したときだけ出す（I7 のレビュー）。スクリプト、テスト、パイプでは聞かない。
 * 作り直すもの：なし（台本だけ）。
 * 新しいテスト：なし（端末から打つ suite がない）。
-* M4 が流したもの：`script` の疑似端末と rlwrap で、n（古いまま使う）、Enter（約 2 秒でビルド）、2 回目（前回の時間を示す）、新しい consh-rs（聞かない）、`CONSH_IMPL=conma` で VM が古いとき。スクリプトをリポジトリの上、consh/rust、consh/include、リポジトリの外から起動した警告のパス。パイプの対話モード（聞かない）。`CONMA_VM=rust consh/test/run_all.sh -j 4` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 4`。
-* 流していないもの：Windows（consh.ps1 の警告は変えていない）、ビルドが失敗するとき。
+* M4 が流したもの：`script` の疑似端末と rlwrap で、n（古いまま使う）、Enter（約 2 秒でビルド）、2 回目（前回の時間を示す）、新しい consh-rs（聞かない）、`CONSH_IMPL=conma` で VM が古いとき。スクリプトをリポジトリの上、consh/rust、consh/include、リポジトリの外から起動した警告のパス。パイプの対話モード（聞かない）。ビルドが失敗するとき（cargo のエラーを出して、古いまま使う）。`CONMA_VM=rust consh/test/run_all.sh -j 4` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 4`。
+* 流していないもの：Windows（consh.ps1 の警告は変えていない）。
 * 測ったもの：なし。
 
 ### i7/console-mode（shima3/conma#43）
