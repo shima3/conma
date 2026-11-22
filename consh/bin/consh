@@ -150,29 +150,31 @@ stale_build() {
   return 0
 }
 conma="$root/vm/target/release/conma"
-# Rust 版を作っていなければ、そう出して、今ビルドするかを聞く（offer_build）。作らなければ、ConMa 版で実行する。ConMa 版は
-# ループなどが Rust 版よりずっと遅いので、そう出す。ConMa 版の VM（CONMA_VM がなければ Rust 版の VM）もなければ、止める。
-# rlwrap を通してもう一度起動した consh は、聞きも出しもしない（通す前に済んでいる）
+# Rust 版を作っていなければ、そう出して、今ビルドするかを聞く（offer_build）。作らなければ、ConMa 版で実行する（下で VM を
+# 確かめてから、ループなどが Rust 版よりずっと遅いことを出す）。Windows（Git Bash。cygpath がある）では consh-rs を作れない
+# （Unix だけの API を使う）ので、作り方を出さず、聞かない。rlwrap を通してもう一度起動した consh は、聞きも出しもしない
+# （通す前に済んでいる）
+fallback=
 if [ $impl = rust ] && [ ! -x "$rust" ]; then
-  built=
-  if [ -z "$CONSH_RLWRAPPED" ]; then
-    echo "consh: $(relpath "$rust") is not built (Rust 1.87 or later); build it with: $(build_cmd "$consh/rust")" >&2
-    # Windows（Git Bash。cygpath がある）では Rust 版の consh-rs を作れない（Unix だけの API を使う）ので、聞かない
-    if command -v cygpath > /dev/null; then false; else offer_build "$rust" "$consh/rust"; fi
-    case $? in
-      0) built=yes ;;
-      2) echo "consh: the build failed" >&2 ;;
-    esac
+  if command -v cygpath > /dev/null; then
+    fallback=windows
+  else
+    fallback=yes
+    if [ -z "$CONSH_RLWRAPPED" ]; then
+      echo "consh: $(relpath "$rust") is not built (Rust 1.87 or later); build it with: $(build_cmd "$consh/rust")" >&2
+      offer_build "$rust" "$consh/rust"
+      case $? in
+        0) fallback= ;;
+        2) echo "consh: the build failed" >&2 ;;
+      esac
+    fi
   fi
-  if [ -z "$built" ]; then
-    [ -z "$CONMA_VM" ] && [ ! -x "$conma" ] && exit 2
-    [ -z "$CONSH_RLWRAPPED" ] && echo "consh: running the ConMa version on the ${CONMA_VM:-rust} VM, which is much slower" >&2
-    impl=conma
-  fi
+  [ -n "$fallback" ] && impl=conma
 fi
 # ConMa 版の VM：CONMA_VM があれば、それを bin/vm で使う。なければ Rust 版の VM で、作っていなければ、そう出して、今ビルド
 # するかを聞く（offer_build）。作らなければ止める（テストやベンチマークを、気付かずに遅い Python 版の VM で動かさないため。
-# Python 版は CONMA_VM=python で選ぶ）。対話モードで rlwrap を通す前に確かめるので、ここで確かめる
+# Python 版は CONMA_VM=python で選ぶ）。consh-rs を作らなかったときも、ここで VM を聞く。対話モードで rlwrap を通す前に
+# 確かめるので、ここで確かめる
 if [ $impl != rust ] && [ -z "$CONMA_VM" ]; then
   if [ ! -x "$conma" ]; then
     [ -n "$CONSH_RLWRAPPED" ] && exit 2
@@ -185,6 +187,12 @@ if [ $impl != rust ] && [ -z "$CONMA_VM" ]; then
     esac
   fi
   export CONMA_VM=rust
+fi
+if [ -z "$CONSH_RLWRAPPED" ]; then
+  case "$fallback" in
+    yes) echo "consh: running the ConMa version on the $CONMA_VM VM, which is much slower" >&2 ;;
+    windows) echo "consh: running the ConMa version on the $CONMA_VM VM (consh-rs is not built on Windows)" >&2 ;;
+  esac
 fi
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ $impl = rust ]; then
