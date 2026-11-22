@@ -41,6 +41,10 @@ CONMA_VM=python conjs/test/run_all.sh
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
 * consh/test は、`CONSH_IMPL` がなければ ConMa 版の最適化版を試す（consh/test/common.sh）。`CONMA_VM` がなければ、ConSh は Rust 版の VM を使う（作っていなければエラー。Python 版の VM で流すときは `CONMA_VM=python`）。
 
+### CI（GitHub Actions）
+
+PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版の VM の consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、ここには記録しない。Windows では、段階 P6c（docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）までは Rust VM を作るだけで、作れなくても全体を失敗にしない。
+
 ## 既知の違い
 
 これらは前からある違いで、変更の誤りではない。これ以外の違いが出たら、誤りを疑う。
@@ -65,6 +69,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-22 | m4/ci-actions（文書だけ） | Claude（M4） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | GitHub Actions の CI（.github/workflows/ci.yml と .github/ci-suite.sh）を足した。確かめたこと：macOS（M4）で、.github/ci-suite.sh で wasm 版の VM の test/ を流し、既知の step40 を既知に入れると成功し、入れないと失敗すること。Linux と macOS と Windows での動きは、PR の checks で確かめる |
 | 2026-11-22 | i7/machine-i7（文書だけ） | Claude（I7） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | ユーザーの指示で、Windows の機械 I7（ブランチは `i7/…`、`git config user.name` は `i7 Shima`、ラベルは `wait-i7`）を、CLAUDE.md と docs/dev/CONTRIBUTING.md の Branches の 1 と 6 に足した。CLAUDE.md のシェルの行に、I7 は Windows（Git Bash と PowerShell）で、wasm 版の VM は作れるが、Rust 版の VM は vm/src が Unix だけの API（sys.rs、prim/process.rs、value.rs）を使うため作れないことを足した。GitHub に `wait-i7` のラベルを作った。確かめたこと：変えた所に、ほかの文書へのリンクはない |
 | 2026-11-22 | e77af02 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/platform-p6b と m2/python-argv の、流していなかった組み合わせ（Rust 版、Python 版、transpiled VM の test/ と consh/test、wasm 版の VM の test/ と consh/test（m2/python-argv）、consh/js/test、ConSh の参照版、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。新しい conjs/test の step18 と step16 の case7 は、Rust 版、Python 版、wasm 版の VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、03602b4 で作ったものを使い直した（03602b4 からの差分は vm/python と vm/wasm の JavaScript だけ。`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-22 | 03602b4 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。wasm 版の test/step31 と `CONSH_IMPL=rust` の consh/test の step12 は、今回は出なかった。申し送りの m1/platform-p7（shima3/conma#26）の、流していなかった組み合わせ（ConSh の参照版、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、`CONMA2RUST_COMPACT` なしで作った transpiled VM の test/ と consh/test）も通った。test/host-api.sh は Rust 版と wasm 版で、新しい conjs/test の step17 と書き換えた test/fast14、fast15、conjs/test/step5 は、それぞれのすべての VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、03602b4 で作り直した（11 分 52 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |

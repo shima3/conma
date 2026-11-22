@@ -1,0 +1,82 @@
+# CI: the fast suites of docs/dev/TESTS-ja.md on Linux and macOS, and the build of the Rust VM on Windows,
+# for every pull request and every push of alpha (docs/dev/CONTRIBUTING.md, Tests, 2026-11-22).
+# It does not replace the Full Test: a commit is tested only by a Full Test, which also runs the Python VM,
+# the transpiled VM, the reference versions and the benchmarks' builds, none of which is here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [alpha]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push of the same branch or pull request replaces a run that has not finished
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # The Rust VM, then the wasm32 VM with its host and the module of ConSh (consh/js/build.sh)
+      - name: Build
+        run: |
+          rustup target add wasm32-unknown-unknown
+          (cd vm && cargo build --release)
+          consh/js/build.sh
+
+      - name: vm (cargo test)
+        run: cd vm && cargo test --release
+
+      # step31 sends SIGINT twice and may see it once on a busy machine (docs/dev/TESTS-ja.md, 既知の違い)
+      - name: test/ (Rust VM)
+        run: CONMA_VM=rust .github/ci-suite.sh "step31" test/run_all.sh -j 4
+
+      - name: test/ (wasm VM)
+        run: CONMA_VM=wasm .github/ci-suite.sh "step31 step40" test/run_all.sh -j 3
+
+      - name: consh/test (Rust VM)
+        run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
+
+      - name: consh/js/test
+        run: .github/ci-suite.sh "" consh/js/test/run_all.sh
+
+      - name: sjs/test
+        run: .github/ci-suite.sh "" sjs/test/run_all.sh
+
+      - name: conjs/test (Rust VM)
+        run: .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: conjs/test (wasm VM)
+        run: CONMA_VM=wasm .github/ci-suite.sh "" conjs/test/run_all.sh
+
+      - name: test/host-api.sh
+        run: .github/ci-suite.sh "" bash test/host-api.sh
+
+  # The Rust VM does not build on Windows until stage P6c (docs/dev/PLATFORM-PLAN-ja.md, section 4.11): until then a failure
+  # here does not fail the run. When P6c is done, remove continue-on-error and add the suites I7 can run.
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the Rust VM
+        run: cd vm && cargo build --release
