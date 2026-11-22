@@ -51,6 +51,8 @@ import os
 import re
 import subprocess
 import sys
+sys.stdout.reconfigure(newline="\n")  # "\n", not "\r\n", on Windows too
+sys.stderr.reconfigure(newline="\n")
 
 # The features of extended ConMa this translator rewrites (as EXT_FEATURES of
 # vm/src/module.rs), and the file of the replacement definitions of each

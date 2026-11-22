@@ -1,7 +1,13 @@
 #!/bin/bash
 . "$(dirname "$0")/../common.sh"
 resolve test.se
-for c in case1 case2 case3 case4
+cases="case1 case2 case3 case4"
+# Git Bash（Windows）の kill -INT は、Windows のプログラム（VM）に届かず、case4 は待ち続ける（docs/dev/TESTS-ja.md の既知の違い）
+if command -v cygpath > /dev/null; then
+  echo "step33: case4 not run on Windows: kill -INT does not reach the VM"
+  cases="case1 case2 case3"
+fi
+for c in $cases
 do
   STEP33_DIR="$tmp" PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null 2>&1 > $tmp/$c.log
   echo "exit: ${PIPESTATUS[0]}" >> $tmp/$c.log
