@@ -58,31 +58,13 @@ CONMA_VM=python conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
-### m2/python-sigint（shima3/conma#30）
-
-* consh/test の step12 の case8（Ctrl-C）が Python 版の VM で失敗したのは、テストの待ち方のためで、VM や ConSh の誤りではなかった。Python 版の VM は ConSh を起動するのに約 7 秒かかる（Apple M2）が、case8.py は決まった秒数（3 秒と 1 秒ずつ）だけ待って入力と Ctrl-C を送っていた。Ctrl-C が `__OS_trap_interrupt__` の前に届くので、VM が SIGINT で止まり、次の書き込みが `OSError: [Errno 5]` になっていた。case8.py を、プロンプト（`$ `）が出てから次の行を送り、Ctrl-C は端末が返した `sleep 10` を読んで、consh の子孫に `sleep 10` のプロセス（Rust 版の ConSh では `/bin/sleep 10`）が動き出してから送るように変えた（上限は 120 秒ずつ）。端末に返した入力をまだ読まないうちに Ctrl-C を送ると、その出力が捨てられるので、それも待つ。上の既知の違いから、この行を除いた。
-* 2026-11-21 の 7db05fb の記録の、`CONSH_IMPL=rust` で `^C` の後にプロンプトが同じ行に出た 1 回も、Ctrl-C が `sleep` の起動より先に届いたためかもしれない（確かめてはいない）。この変更で、そうはならないはず。
-* 作り直すもの：なし。
-* 新しいテスト：なし（case8.py を書き換えた。case8.log は変えていない）。
-* M2 が流したもの（Apple M2）：consh/test の step12 を、最適化版で Rust 版の VM と Python 版の VM で、`CONSH_IMPL=rust` で 3 回。
-* 流していないもの：ほかの suite（consh/test/step12/case8.py と、この文書のほかは変えていない）、wasm 版と transpiled VM の step12、参照版。
-* 測ったもの：なし。
-
-### m4/selfhost2-bash
-
-* test/selfhost2/test.sh の case5 の `bad-mode` が、`sh -c` の中で bash の `${PIPESTATUS[0]}` を使っていたので、`bash -c` にした。/bin/sh が dash の Linux では `Bad substitution` になり、GitHub Actions の CI の案（shima3/conma#33）の ubuntu-latest で違いが出た。macOS の /bin/sh は bash なので、M1、M2、M4 では違いが出ていなかった。
-* 作り直すもの：なし。
-* 新しいテスト：なし（ログは変えていない）。
-* M4 が流したもの（Apple M4）：test/selfhost2 を、そのままと `CONMA_VM=rust` で（通った。このテストは Python の道具だけを使い、VM を使わない）。直す前と後の test.sh の `sh -c` を `dash -c` に変えて流し、直す前は `dash: 1: Bad substitution` で違い、直した後は通ることも確かめた。
-* 流していないもの：ほかの suite（test/selfhost2/test.sh と、この文書のほかは変えていない）。
-* 測ったもの：なし。
-
 ## 記録
 
 新しいものを上に足す。「全部」は「全部流す」のすべてで、既知の違いのほかに違いがなかったことを表す。2026-11-15 までは一部だけを流したものも記録していたので、その行は「全部」でない。
 
 | 日付 | コミット | 流した人 | 流したもの | 結果 |
 |---|---|---|---|---|
+| 2026-11-22 | f364c02 | Claude（M1、m1/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh、conjs/test/compare.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ（step18、step20、step21、fast3、fast9）、Rust 版の ConSh の examples）。申し送りの m2/python-sigint（shima3/conma#30）で書き換えた consh/test の step12 の case8 は、Rust 版、wasm 版、transpiled VM の VM と、ConSh の参照版、`CONSH_IMPL=rust` で通った（Python 版の VM の step12 は、M1 が PR のレビューで流して通った）。m4/selfhost2-bash の test/selfhost2 は、Python 版、Rust 版、wasm 版、transpiled VM の test/ で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、ブラウザのページ。transpiled VM は、f364c02 で `CONMA2RUST_COMPACT=1 bench/build.sh` で作り直したもの（18 分 46 秒。Rust VM の consh/test で ConSh のモジュールを作り直してから。`transpiled code: used`。ベンチマークには使わない）。テストの担当は M4 だが、ユーザーの指示で M1 が流した。Apple M1、rustc 1.100.0、Node.js v26.13.1、CPython 3.12.3 |
 | 2026-11-22 | i7/machine-i7（文書だけ） | Claude（I7） | 流していない（文書だけ。docs/dev/CONTRIBUTING.md の Branches の 5） | ユーザーの指示で、Windows の機械 I7（ブランチは `i7/…`、`git config user.name` は `i7 Shima`、ラベルは `wait-i7`）を、CLAUDE.md と docs/dev/CONTRIBUTING.md の Branches の 1 と 6 に足した。CLAUDE.md のシェルの行に、I7 は Windows（Git Bash と PowerShell）で、wasm 版の VM は作れるが、Rust 版の VM は vm/src が Unix だけの API（sys.rs、prim/process.rs、value.rs）を使うため作れないことを足した。GitHub に `wait-i7` のラベルを作った。確かめたこと：変えた所に、ほかの文書へのリンクはない |
 | 2026-11-22 | e77af02 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。申し送りの m2/platform-p6b と m2/python-argv の、流していなかった組み合わせ（Rust 版、Python 版、transpiled VM の test/ と consh/test、wasm 版の VM の test/ と consh/test（m2/python-argv）、consh/js/test、ConSh の参照版、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test）も通った。新しい conjs/test の step18 と step16 の case7 は、Rust 版、Python 版、wasm 版の VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、03602b4 で作ったものを使い直した（03602b4 からの差分は vm/python と vm/wasm の JavaScript だけ。`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
 | 2026-11-22 | 03602b4 | Claude（M4、m4/test） | Full Test と、`CONMA_REFERENCE=1` の test/（Rust VM）、`CONSH_IMPL=rust` の consh/test、vm の `cargo test --release`、test/host-api.sh | 既知の違いだけ（wasm 版の test/step40 と consh/test の step8、step17、参照版の 5 つ、Rust 版の ConSh の examples）。wasm 版の test/step31 と `CONSH_IMPL=rust` の consh/test の step12 は、今回は出なかった。申し送りの m1/platform-p7（shima3/conma#26）の、流していなかった組み合わせ（ConSh の参照版、wasm 版の VM の consh/test、`CONMA_REFERENCE=1` の test/、`CONSH_IMPL=rust` の consh/test、`CONMA2RUST_COMPACT` なしで作った transpiled VM の test/ と consh/test）も通った。test/host-api.sh は Rust 版と wasm 版で、新しい conjs/test の step17 と書き換えた test/fast14、fast15、conjs/test/step5 は、それぞれのすべての VM で通った。流していないもの：Python 版の VM の sjs/test と consh/test（Full Test に入らない）、conjs/test/compare.sh、ブラウザのページ。transpiled VM は、Rust VM の consh/test で ConSh のモジュールを作り直してから、03602b4 で作り直した（11 分 52 秒、`transpiled code: used`）。Apple M4、rustc 1.99.1、Node.js v26.13.0、CPython 3.9.6 |
