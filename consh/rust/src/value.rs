@@ -45,9 +45,6 @@ impl Value {
             _ => None,
         }
     }
-    pub fn is_string(&self) -> bool {
-        matches!(self, Value::Str(_))
-    }
 }
 
 type Thunk = Box<dyn FnOnce() -> R<Option<(Value, LazyList)>> + Send>;

@@ -244,7 +244,7 @@ fn load_if(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv
             let lcont = match &body.lcont {
                 None => Value::Null,
                 Some(CLCont::F(f)) => make_closure(f, lvenv, Some(gvenv)),
-                Some(CLCont::V(_)) => return None,
+                Some(CLCont::V) => return None,
             };
             vp.sinfo = body.sinfo.clone();
             vp.dict_site = None;
@@ -265,7 +265,7 @@ fn load_if(m: &mut Machine, vp: &mut VProc, body: &BodyDef, lvenv: &LVEnv, gvenv
     let lcont = match &body.lcont {
         None => None,
         Some(CLCont::F(lf)) => Some(make_closure(lf, lvenv, Some(gvenv))),
-        Some(CLCont::V(_)) => return None,
+        Some(CLCont::V) => return None,
     };
     vp.sinfo = body.sinfo.clone();
     if let Some(lc) = lcont {
@@ -301,7 +301,7 @@ pub fn load_body_interp(vp: &mut VProc, body: &BodyDef, lvenv: LVEnv, gvenv: &Rc
     let lcont = match &body.lcont {
         None => None,
         Some(CLCont::F(f)) => Some(make_closure(f, &lvenv, Some(gvenv))),
-        Some(CLCont::V(_)) => return err("an LCont written as a __Closure__ value is not supported"),
+        Some(CLCont::V) => return err("an LCont written as a __Closure__ value is not supported"),
     };
     vp.sinfo = body.sinfo.clone();
     vp.dict_site = body.dict_site.clone();

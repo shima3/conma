@@ -100,6 +100,23 @@ sjs/test/run_all.sh
 * M4 が流したもの：端末なしで、consh-rs がない（ConMa 版で動く）、両方ない（止まる、2）、`CONSH_IMPL=conma` で VM がない（止まる、2。リポジトリの上と consh/include から）。`script` の疑似端末と rlwrap で、consh-rs がないときの n（ConMa 版で動く）、Enter（ビルドして Rust 版で動く）、ビルドが失敗する（cargo のエラーを出して ConMa 版で動く）。両方ないときの n と n（止まる、2）、n と Enter（VM をビルドして ConMa 版で動く）。`cygpath` を関数で偽って、VM があるとき（Windows の 1 行だけ）とないとき（VM を聞く道）。`CONMA_VM=python` で consh-rs がないとき。`cargo` が PATH にないとき（聞かない）。`CONSH_IMPL=conma` で VM がないときの n（止まる）と Enter（ビルドして動く）。`CONMA_VM=rust consh/test/run_all.sh -j 4`（ConMa 版）と `CONMA_VM=rust CONSH_IMPL=rust consh/test/run_all.sh -j 4`（Rust 版。既知の違いの examples の nbody.sh だけ）。
 * 流していないもの：Windows の Git Bash（consh-rs を聞かないこと、VM がないときに聞くこと）。
 
+### m4/consh-rs-dead-code（shima3/conma#53）
+
+* consh/rust（consh-rs）：使っていないメソッド `Sexp::is_list`、`Sexp::id`（ast.rs）と `Value::is_string`（value.rs）を消した。cargo が dead_code の警告を出していた（shima3/conma#52 で VM の警告を消したのと同じ）。expand.rs の `is_list` は別の型のもので、使っているので残した。振る舞いは変わらない。
+* 作り直すもの：consh-rs（consh/rust で `cargo build --release`）。
+* 新しいテスト：なし。
+* M4 が流したもの：consh/rust の `cargo build --release` と `cargo test --release`（警告なし）、`CONMA_VM=rust consh/test/run_all.sh -j 4`（ConMa 版）。M2 がレビューで `CONMA_VM=rust CONSH_IMPL=rust consh/test/run_all.sh -j 4`（Rust 版。既知の違いの examples の nbody.sh だけ）。
+* 流していないもの：Windows（consh-rs を作れない）。
+
+### i7/vm-dead-code（shima3/conma#52）
+
+* vm/src/module.rs と step.rs：VM をビルドするたびに cargo が出していた警告（`field `0` is never read`、module.rs の `CLCont::V(Sexp)`）を消した。`__Closure__` と書いた LCont はどこでも使えないので、その節を持たない `CLCont::V` にした。振る舞いは変わらない（使えば、今までどおり `an LCont written as a __Closure__ value is not supported`）。
+* 作り直すもの：Rust 版の VM、transpiled VM、wasm 版の VM（vm/src を変えた）。
+* 新しいテスト：なし。
+* I7 が流したもの（Windows 11）：`cargo build --release`（警告なし）、`vm/wasm/build.sh`、vm の `cargo test --release --lib`、`CONMA_VM=rust test/run_all.sh -j 6`、`CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 6`。
+* 流していないもの：transpiled VM、macOS のすべて、consh-rs（Windows では作れない。consh-rs の警告はこのブランチの外）。
+* 測ったもの：なし。
+
 ### i7/consh-ps1-build-missing（shima3/conma#50）
 
 * consh/bin/consh.ps1（consh.cmd からも動く）：VM の conma.exe をまだ作っていないとき（クローンしたばかりなど）、`is not built (cargo build --release in vm)` と出して止めていた。今は、パスをカレントディレクトリからの相対パスにし、ビルドの命令（`cargo build --release --manifest-path ..\..\vm\Cargo.toml`）も書き、対話モードで、標準入力と標準エラーがコンソールで `cargo` があれば、古いときと同じく今ビルドするかを聞く（Enter でビルドする）。ビルドすれば、そのまま ConSh を起動する。ビルドしないか、失敗すれば、止める（終了ステータス 2）。聞くこととビルドすることは、古いときと同じ関数（Read-BuildAnswer、Invoke-Build）にまとめた。cache-dir の場所は、聞くときに要るので、VM を確かめる前に決めるようにした。transpiled VM がないときは、作り方が違うので、聞かずに止める。
