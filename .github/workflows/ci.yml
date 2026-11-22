@@ -64,9 +64,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
 
+      # step12 (case8): a late SIGINT taken as Ctrl-C at the prompt (docs/dev/TESTS-ja.md, 既知の違い)
       - name: consh/test (wasm VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: CONMA_VM=wasm .github/ci-suite.sh "step8 step17" consh/test/run_all.sh -j 3
+        run: CONMA_VM=wasm .github/ci-suite.sh "step8 step12 step17" consh/test/run_all.sh -j 3
 
       - name: consh/js/test
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
