@@ -165,10 +165,10 @@ impl Drop for WasmObj {
 
 pub struct OSProcObj {
     pub serial: usize,
-    #[cfg(unix)]
+    #[cfg(not(target_arch = "wasm32"))]
     pub child: RefCell<std::process::Child>,
     /// The number of the process in the host (the VM for wasm32, vm/wasm).
-    #[cfg(not(unix))]
+    #[cfg(target_arch = "wasm32")]
     pub host: i32,
     /// The exit code, once the process has been waited for.
     pub code: std::cell::Cell<Option<i32>>,
@@ -181,13 +181,9 @@ impl OSProcObj {
         if let Some(c) = self.code.get() {
             return Ok(Some(c));
         }
-        #[cfg(unix)]
-        let code = {
-            use std::os::unix::process::ExitStatusExt;
-            let st = self.child.borrow_mut().try_wait()?;
-            st.map(|s| s.code().unwrap_or_else(|| -s.signal().unwrap_or(0)))
-        };
-        #[cfg(not(unix))]
+        #[cfg(not(target_arch = "wasm32"))]
+        let code = self.child.borrow_mut().try_wait()?.map(crate::sys::exit_code);
+        #[cfg(target_arch = "wasm32")]
         let code = crate::sys::proc_poll(self.host)?;
         self.code.set(code);
         Ok(code)

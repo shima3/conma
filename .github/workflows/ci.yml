@@ -58,11 +58,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=wasm .github/ci-suite.sh "step31 step40" test/run_all.sh -j 3
 
-      # step14 (case6) differs at times on macos-latest only; its cause is not found yet
-      # (docs/dev/TESTS-ja.md, 調べ途中のこと)
       - name: consh/test (Rust VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: CONMA_VM=rust .github/ci-suite.sh "${{ runner.os == 'macOS' && 'step14' || '' }}" consh/test/run_all.sh -j 4
+        run: CONMA_VM=rust .github/ci-suite.sh "" consh/test/run_all.sh -j 4
 
       - name: consh/test (wasm VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -88,8 +86,8 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" bash test/host-api.sh
 
-  # The Rust VM does not build on Windows until stage P6c (docs/dev/PLATFORM-PLAN-ja.md, section 4.11): until then a failure
-  # of the step does not fail the job (a warning is shown on it). When P6c is done, remove continue-on-error and add the suites I7 can run.
+  # Windows: the Rust VM builds there since stage P6c (docs/dev/PLATFORM-PLAN-ja.md, sections 4.11 and 8.13), and a
+  # build that fails fails the run. The suites that I7 runs (docs/dev/TESTS-ja.md, Windows（I7）で流す) are not here yet.
   windows:
     runs-on: windows-latest
     defaults:
@@ -99,5 +97,4 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the Rust VM
-        continue-on-error: true
         run: cd vm && cargo build --release

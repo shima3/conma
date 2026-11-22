@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript の部分集合 ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）の設計の案を、I7 が 4.11 節に書いた（2026-11-22）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）を、4.11 節の設計（PR shima3/conma#32 で M4 がレビューした）で、I7 が作った（8.13 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 ## 1. 目的
 
@@ -632,7 +632,7 @@ P6（プラットフォームを増やす）の 2 つ目の段階として、**N
 3. **終わり方**：`accept` で待つ処理だけが残ったときに、行き詰まりとして終えるか、`unref` で Node.js を終わらせるか。M1 は、サーバのプログラムは `close` で終えるのがふつうなので、行き詰まりとして知らせる（書き忘れに気付ける）ほうを勧める。
 4. **テスト**：ほかの VM のログを「no server」の 1 行にし、wasm 版だけで本当に待ち受けることでよいか。Node.js 版との比べ方（step18 の中の台本）でよいか。
 
-### 4.11. 段階 P6c の設計（案、2026-11-22）
+### 4.11. 段階 P6c の設計（決めた、2026-11-22。M4 のレビューは PR shima3/conma#32）
 
 P6（プラットフォームを増やす）の 3 つ目の段階として、**Windows** で Rust 版の VM と transpiled VM を作って動かす（ユーザーが 2026-11-22 に選んだ。6 節の 1 の「P6b の後の順」）。3.3 節の表の「デスクトップ（macOS、Linux、Windows）」の行の、「Windows の OS の部分（パイプ、プロセス）を作る」にあたる。書いたのは I7（Windows の機械。docs/dev/CONTRIBUTING.md の Branches の 1）。
 
@@ -712,7 +712,7 @@ P6（プラットフォームを増やす）の 3 つ目の段階として、**W
 | P5c（作った、2026-11-21。8.8 節） | ConJS で、ブラウザのキーとマウスの入力を待つ：ホストの関数 `input.next`、`input.poll`（機能 `"input"`）と、ConJS の `nextEvent`、`pollEvent`。見本の対話のゲーム（stars.con.js） | conjs/test の step14 が 3 つの VM で通る（VM ごとのログ）。見本がブラウザで遊べる。SJS が作るコードが変わらない |
 | P6a（作った、2026-11-21。8.9 節） | P6 の最初の段階：端末（macOS と Linux）。ConJS の `nextEvent` と `pollEvent` を、標準入力のキーでも使えるようにする（ConJS のライブラリで書き、VM は変えない）。見本「星ひろい」を端末でも遊べるようにする | conjs/test の step15 が 3 つの VM で同じログで通る。見本が Rust 版の VM の端末で遊べ、どの終わり方でも端末が元に戻る。SJS が作るコードが変わらない |
 | P6b（作った、2026-11-22。8.12 節。4.10 節） | P6 の 2 つ目の段階：Node.js。ネットワークのサーバ（ホストの関数 `server.*`、機能 `"server"`、vm/wasm/host/server.js）と、ConJS の `http.listen`、`accept()`、`respond()`。見本：要求ごとに処理を `spawn` する counter_server.con.js と、Node.js で同じことを書いた counter_server.node.js。docs/HOST-ja.md に npm のライブラリの例 | conjs/test の step18 が 3 つの VM で通る（wasm 版は本当に待ち受ける）。見本が Node.js 版と同じ答えになる。SJS が作るコードが変わらない |
-| P6c（設計の案、2026-11-22。4.11 節） | P6 の 3 つ目の段階：Windows。Rust 版の VM と transpiled VM を Windows で作って動かす。sys を Unix と Windows に分け、Windows 版は fd の表、読み書きのスレッドで `poll` の代わりをすること、プロセスと `__OS_kill__`、Ctrl-C、Python の形のエラーの文字列、`C:/...` のパスを持つ。Windows（Git Bash）でテストを流す手順 | I7 で Rust 版の VM と transpiled VM が作れ、test/、conjs/test、sjs/test、consh/test が既知の違いのほかに通る。macOS の Full Test が変わらない |
+| P6c（作った、2026-11-22。8.13 節。4.11 節） | P6 の 3 つ目の段階：Windows。Rust 版の VM と transpiled VM を Windows で作って動かす。sys を Unix と Windows に分け、Windows 版は fd の表、読み書きのスレッドで `poll` の代わりをすること、プロセスと `__OS_kill__`、Ctrl-C、Python の形のエラーの文字列、`C:/...` のパスを持つ。Windows（Git Bash）でテストを流す手順 | I7 で Rust 版の VM と transpiled VM が作れ、test/、conjs/test、sjs/test、consh/test が既知の違いのほかに通る。macOS の Full Test が変わらない |
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
@@ -943,3 +943,41 @@ P6（プラットフォームを増やす）の 3 つ目の段階として、**W
     * 見本は、引数 `demo` で、OS が選ぶ port で答え、自分に `fetch` で要求を送って答えを出し、`/stop` で終わる。case2 は、見本へのシンボリックリンクを `demo`（case2.args）で動かす（見本をテストの中に写さない）。Node.js 版は、step18 の case2.node-check.js が `node counter_server.node.js demo` を動かし、case2.wasm.log と比べる。conjs/test/compare.sh が、各ステップの case*.node-check.js を動かすようにした。引数を `--demo` にしなかったのは、Python 版の VM の vproc_run.py が、`--` で始まるプログラムの引数をオプションとして読んで失敗するため（前からのこと）。
 * **M1 のレビューで直したこと**（PR shima3/conma#28）：`server.respond` は、要求を表から除いてから `writeHead` を呼んでいたので、不正なヘッダ（改行を含む値）で `writeHead` が投げると、要求に誰も答えられず、クライアントは待ち続け、`close()` しても Node.js のサーバが閉じ終わらなかった。要求を除くのを `writeHead` が通った後にし、答え直せるようにした。ヘッダの値が文字列、数、それらの配列でないとき（入れ子のオブジェクト。`writeHead` は投げずに `[object Object]` を送る）も、先に Error にする。step18 の case1 に足した。
 * **気付いたこと**（直していない）：ConJS の `"x".repeat(n)` は、長い文字列で遅い（Rust 版の VM で 10 万文字に 0.6 秒、wasm 版で 1,048,577 文字に 49 秒。長さの 2 乗に近い）。case1 では、1 MB の文字列を倍にしていって作る。
+
+### 8.13. 段階 P6c（2026-11-22）
+
+4.11 節の設計（PR shima3/conma#32 で M4 がレビューした）で、I7 が作った。Windows で流す手順と既知の違いは、docs/dev/TESTS-ja.md の「Windows（I7）で流す」と「既知の違い」にある。
+
+* **sys を分けた**：vm/src/sys.rs を vm/src/sys/unix.rs に移し（移すだけのコミット）、vm/src/sys/mod.rs が `cfg(unix)` と `cfg(windows)` で選ぶ。新しい vm/src/sys/windows.rs（依存のクレートは足さず、kernel32 の関数を `extern "system"` で宣言する）。「ネイティブ」の意味の `cfg(unix)` は `cfg(not(target_arch = "wasm32"))` に、「wasm32」の意味の `cfg(not(unix))` は `cfg(target_arch = "wasm32")` にした。
+* **OS で違う所を sys に寄せた**：子プロセスの標準入出力（`child_stdio`）、`__OS_spawn_detached__`（`detach`。Unix は `setsid`、Windows は `CREATE_NEW_PROCESS_GROUP`）、終わるのを見張ること（`watch_process`。Unix は何もしない）、`__OS_kill__`（`kill_process`）、終了コード（`exit_code`）、パスの形（`path_text`）、引数（`add_args`）。prim/process.rs の `start_process` は、ネイティブで 1 つになった。
+* **Windows の sys**：
+    * fd の表（空いているいちばん小さい番号）。0、1、2 は標準入出力のハンドル。
+    * 読む OS のパイプは、`PeekNamedPipe` で、読めるか（バイトがあるか、書き手がいなくなったか）を見る。`wait_fds` は、パイプがあれば 2 ms ごとに見直す。スレッドを置かず、先に読まない。コンソールや文字のデバイス（パイプでもファイルでもない標準入力）だけに、頼まれた分だけ読む読み手のスレッドを置き、子プロセスに渡す前と閉じる前に `CancelSynchronousIo` で止める。
+    * 書く OS のパイプには、書き手のスレッドと 64 KiB のバッファ。
+    * 起こすためのパイプはメモリの上で、表と同じ `Mutex` と `Condvar` を使う。
+    * 子プロセスごとに、終わるのを待つスレッドが `SIGNALS` を増やして起こす。`__OS_kill__` は `TerminateProcess` で、終了コードを `0x4B494C00` + シグナルの番号にし、`exit_code` が負の番号に戻す。`0xC000013A`（Ctrl-C で終わった）は `-2`。
+    * Ctrl-C は `SetConsoleCtrlHandler`。
+    * エラーは Python の errno の文字列に直す（直せないものは `[WinError N] 文章`）。
+    * `sysconf`：`SC_PAGESIZE`、`SC_PAGE_SIZE`、`SC_NPROCESSORS_CONF`、`SC_NPROCESSORS_ONLN`（`GetSystemInfo`）、`SC_ARG_MAX`（32767）、`SC_OPEN_MAX`（8192）。
+* **パス**：VM の中のパスは `C:/Users/...`。include/includer.se の `__Includer_is_absolute__` は、`C:/` で始まるものも絶対パスにする（vm/frontend.module.se を作り直した。bin/update-frontend は、Git Bash では `cygpath -m` でリポジトリのパスを直す）。
+* **道具と台本**：bin/ の Python の道具（lexer、comment_remover、parser、includer、resolver、to-core）、consh/bin/consh_parse、vm/python の vproc_step.py と vproc_run.py、test/selfhost_compare.py は、標準出力と標準エラーを `\n` のまま書く。bin/includer は、道具を `sys.executable` で動かし（Windows はシバンで動かせない）、パスの `\` を `/` にする。パスを `"conma…` に直す sed（test/resolver.sh、bench/module.sh、consh/js/build.sh、test/fast18/test.sh）は、`"C:/` で始まるものも直す。test/common.sh と consh/test/common.sh は、`cygpath` があれば、`pwd` と一時ディレクトリを `C:/...` の形にする。
+* **設計と違うこと**：
+    * 読む OS のパイプに、読み手のスレッドを置かなかった（上）。スレッドでは、test/step9 の case1 で、書いてすぐ読むと、まだスレッドが読んでいなかった。`PeekNamedPipe` なら、読める分を VM の外に持たないので、子プロセスに渡しても失わない（設計のレビューで聞いた 2 は、起きない）。
+    * 書き手のスレッドが暇なら、`write_fd` は、書き終えるまで 200 ms まで待つ（設計では待たない）。待たないと、書いてすぐ読む側が何も読めず（test/step9）、`EPIPE` が次の書き込みまで遅れた（test/step25 が `-j 8` で揺れた。10 ms では足りなかった）。`close_fd` も、スレッドがハンドルを閉じるまで 200 ms まで待つ（読む側がすぐ終わりを見るように）。VM が終わるときは、すべてのバッファを書き終える（`flush_writers`）。
+    * 途中の名前が無いかファイルなら、Unix と同じ `ENOENT` と `ENOTDIR` にする（`check_on_the_way`。Windows は、どちらも `ERROR_PATH_NOT_FOUND` で、`name/..` は name を見ない）。
+    * `/dev/null` は `NUL` で、`/dev/stdin`、`/dev/stdout`、`/dev/stderr` は fd 0、1、2 の写しで開く（ConSh のリダイレクト）。
+    * 外部のプログラムの引数で、`\ * ? [ ] { } '` を含むものは、二重引用符で囲む（`add_args`）。Rust は空白のない引数を囲まず、Git Bash（MSYS）のプログラムは、囲まれていない `\` を除き（`printf 'p\nq\n'` が `pnqn` を書いた）、glob を広げ、`'` を引用符にした。
+    * consh/include/consh_jsstmt.se の SJS のモジュールは、`$TMPDIR`、なければ `$TEMP`、`$TMP`、`/tmp` に書く（Git Bash は TMPDIR を渡さない）。
+    * conjs/include/conjs_lib.se の curl の HEAD は、`-o /dev/null` をやめ、curl が書いたヘッダを捨てる（Windows の curl は /dev/null を開けない）。
+    * SIGINT を送るテスト（test/step31、test/step33 の case4、consh/test/step12 の case7）と、疑似端末を使う consh/test/step12 の case8 は、Windows では流さず、その旨を 1 行出す（流すと止まらない）。
+* **テスト**：vm の `cargo test --release --lib` に、Windows の sys の 10 のテストを足した（fd の番号、パイプの終わり、書いてすぐ読めること、後から来たバイトで起きること、先に読まないこと、`EPIPE`、起こすためのパイプ、エラーの文字列、パスの形、`__OS_kill__` の終了コード）。I7 で、Rust 版の VM の test/、consh/test、conjs/test、sjs/test は、既知の違いのほかに通った。transpiled VM は、test/transpiled のモジュールだけで作ると（1 分 34 秒）、test/transpiled は変換したコードで通り（`transpiled code: used`）、test/ は Rust 版の VM と同じ違いだけだった。bench/build.sh ですべて（ConSh も）入れて作ると、rustc が 1 時間で終わらず、止めた（Apple M1 では約 15 分。エラーはなかった）。
+* **M4 の PR のレビューで直したこと**（PR shima3/conma#35）：
+    * 書き手のスレッドのバッファを書き終えるのを待つ所に、上限を設けた。子プロセスにパイプを渡すときは 200 ms まで（読み手が同じ VM の VProc なら、VM のスレッドが待つ間は読まれず、どちらも進まなかった。残りは、子プロセスの書いたものの後に届くことがある）。VM が終わるときは、VM の持つ読む側のパイプを先に閉じ、書き手のスレッドが 1 秒何も書けなければ待つのをやめる（読まない子プロセスに渡したパイプで、終わらなかった）。書き手のスレッドは、進んだことが分かるように 4,096 バイトずつ書く。
+    * 子プロセスが VM の標準入力をそのまま受け継ぐとき（`__OS_spawn__` の標準入力が null）も、fd 0 のコンソールの読み出しを止める（`inherited_stdio`）。
+    * コンソールの `ReadFile` が、Ctrl-C で 0 バイトと `ERROR_OPERATION_ABORTED` を返したときは、入力の終わりにしない。2 回の読み出しに分かれた `\r\n` も `\n` にする。
+    * VM の標準のハンドルを、子プロセスに受け継がれないようにする（`SetHandleInformation`。受け継がれると、`$( )` が、VM の標準出力を持つ子プロセスの終わりまで待つ）。
+    * 引数の先頭の `~` も、MSYS が広げないように引用符に入れる。MSYS は、引用符の中の `\\` を 1 つの `\` にするので、2 つ続く `\` は MSYS のプログラムに 1 つで届く（既知の違いにした）。
+    * include/includer.se の `__Includer_has_drive__` は、1 文字目が ASCII の英字であることも見る（Unix の相対パス `a:/x` を絶対パスにしていた。vm/frontend.module.se を作り直した）。
+    * `path_text` は、`\\?\UNC\srv\share` を `//srv/share` にする。
+* **残したこと**（後の段階の候補）：wasm 版の VM（Node.js）は I7 で作れるが、test/ の多くが違う。Node.js のホスト（vm/wasm/host）が、Windows のパス（`process.cwd()` の `C:\Users\...`）をそのまま渡し、Node.js のエラーの番号（`os error 4058`）を errno の文字列に直さず、`sh` や `sleep` を起動できない。Rust 版の VM の sys/windows.rs と同じことを、JavaScript の側でする必要がある。transpiled VM を bench/build.sh で作り切る時間も、まだ測っていない。
+* **macOS で確かめること**（M4 に頼む）：`cfg` を替え、unix.rs に関数を足したので、Full Test と、wasm 版の VM、transpiled VM が作れることを確かめる。

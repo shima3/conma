@@ -43,7 +43,26 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### CI（GitHub Actions）
 
-PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、段階 P6c（docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）までは Rust VM を作るだけで、作れなくても全体を失敗にしない。
+PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、Rust VM を作るだけで（段階 P6c から作れる。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）、作れなければ全体を失敗にする。下の「Windows（I7）で流す」の suite は、まだ流さない。
+
+### Windows（I7）で流す
+
+2026-11-22 から（段階 P6c。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節と 8.13 節）。Git Bash で流す。
+
+* clone は `git clone -c core.autocrlf=false -c core.symlinks=true` で作る（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない。シンボリックリンクには Windows の開発者モードが要る）。今ある clone なら、`git config core.autocrlf false`、`git config core.symlinks true` の後に `git rm -q --cached -r . && git reset -q --hard` で取り出し直す。
+* 本当の Python 3 が要る（Python 版の VM を使わなくても、bin/includer などの道具が Python で動く）。python.org の版を入れ、その python.exe を同じディレクトリに python3.exe として写し、そのディレクトリを PATH の先頭に置く（PATH の `python3` は、ふつうは Microsoft Store を開くアプリ実行エイリアス）。
+* PATH に cargo（`$HOME/.cargo/bin`）と Node.js も置く。`MSYS=winsymlinks:nativestrict` を付ける（test/step16 と step23 の `ln -s` が、本当のシンボリックリンクを作るように）。
+* `CONMA_VM` を必ず付ける（bin/vm の既定は Python 版の VM で、Windows では動かない。パイプを `select` で待つため）。Python 版の VM の列は流さない。
+* 台本は、`cygpath` があれば（Git Bash）、`pwd` と一時ディレクトリを VM が書く形（`C:/Users/...`）にする（test/common.sh、consh/test/common.sh）。
+
+```
+export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSYS=winsymlinks:nativestrict
+(cd vm && cargo build --release && cargo test --release --lib)
+CONMA_VM=rust test/run_all.sh -j 8
+CONMA_VM=rust consh/test/run_all.sh -j 6
+conjs/test/run_all.sh
+sjs/test/run_all.sh
+```
 
 ## 既知の違い
 
@@ -57,35 +76,16 @@ PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
-| GitHub Actions の macos-latest で、consh/test を `-j 4` で流すとき（Rust 版の VM、ConSh の最適化版） | consh/test の step14 の case6 | `pipes: no leak` のはずが、ときどき `pipes: 5 -> 11` になる。原因はまだ分からない（下の「調べ途中のこと」。CI は、macOS でだけ既知の違いにしている） |
-
-### 調べ途中のこと：macos-latest の consh/test の step14 の case6
-
-M4 が 2026-11-22 に調べ、原因を突き止められずに止めたので、引き継ぐ人のために書いておく。
-
-**症状**
-* case6（docs/consh/dev/REVIEW-ja.md の 2026-11-05 の 8 の確かめ）は、`kill` で止めたジョブ 3 つのパイプの fd が閉じることを、`lsof -p $$ | grep -c PIPE` の前後の数で確かめる。GitHub Actions の CI（.github/workflows/ci.yml）の macos-latest では、ときどき `pipes: 5 -> 11` になる。数は、出るときはいつも 5 と 11 だった。
-* 出たのは、consh/test/run_all.sh を `-j 4` で、.github/ci-suite.sh を通して流したとき（CI と同じ）だけ。Rust 版の VM、`CONSH_IMPL=conma`。
-* runner：Darwin 25.6.0（arm64 の VM）、3 コア、lsof 4.91。runner から受け継ぐパイプの fd が 2 つある（143 と 146）。
-* M4（macOS 26）では、一度も出ていない。`-j 10` で 3 回流しても、`yes` 14 本で混ませても、待ち時間を 0 にしても出なかった。
-* Linux（ubuntu-latest）では出ない。
-
-**調べたこと**（調べるためのブランチ m4/ci-debug-step14 で流した。ブランチは消したが、実行のログは GitHub Actions に残っている：https://github.com/shima3/conma/actions?query=branch%3Am4%2Fci-debug-step14 ）
-1. case6 と同じことを、各段階で lsof の一覧を出す台本で、runner で単独で流した：パイプは kill の直後に元の数に戻る。通る。
-2. step14/test.sh を単独で、また ci-suite.sh を通して流した：通る。consh/test/run_all.sh を `-j 4` で ci-suite.sh を通して流した：`5 -> 11`。そのすぐ後の lsof には、パイプは 4 本（SIGCHLD で起こすためのパイプ 2 本と、受け継いだ 143、146）しかなかった。
-3. `fds` を、lsof の出力をファイルに書いてから grep で数える形にした：3 回のうち 2 回、`5 -> 11`。
-4. run_all.sh を `-j 4` で流しながら、横で 1 の台本を 3 回流し、0.2 秒おきに 2 秒まで数えた：パイプは kill の直後に閉じ、増えなかった。
-5. case6 の `fds` に、lsof が見た一覧をファイルに書かせて、2 と同じ条件で 3 回流した：3 回とも通った（見たいときに出なかった）。
-6. `fds` を、0.2 秒おきに 5 回数えた最小の値（`for … done | sort -n | head -1`）にした：3 回のうち 2 回、それでも `5 -> 11`。
-
-**分からないこと**
-* 6 では、`| sort` のパイプが加わるので、数そのものが変わるはずなのに、元の形、3、6 のどれでも、出る数は同じ 5 と 11 だった。1 本のテストの中のタイミングでは説明できない。
-* 5 で、見張ると出なくなった。
-* 次に試すとよいこと：
-  * 失敗したときに、テストの中で `lsof -p $$` の一覧そのものを出す（5 のようにファイルに書くのでなく、出力に出して diff に載せる）。
-  * step14 と同時に流れるテスト（run_all.sh の `-j 4` の相手）を絞る。
-  * 出力に出る数が、本当に今の case6.sh のものかを確かめる（`echo` で印を足す）。
-  * ConSh の `$$` が、runner で ConSh の VM のプロセスを指しているかを確かめる。
+| Windows（I7）のネイティブの VM | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c） |
+| Windows（I7）のネイティブの VM | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
+| Windows（I7） | test/step21 の case5 と case6 | memcheck.py が Python 版の VM を使う（Windows では動かない） |
+| Windows（I7） | test/step31、test/step33 の case4、consh/test/step12 の case7 と case8 | Git Bash の `kill -INT` は Windows のプログラムに届かず、Python に pty がない。流さず、その旨を 1 行出す |
+| Windows（I7） | test/step32 | Git Bash の `ps` に `-o` がない。`another group` でなく `same group` |
+| Windows（I7） | consh/test の step2 | `words` はシバンで始まる台本で、Windows はそれを直接起動できない。MSYS の `sh` がシグナルで終わると、終了コードは 143 でなく 3840 |
+| Windows（I7） | consh/test の step3、step4、step11 | 外部のコマンドの `pwd`（Git Bash）が `/c/...` の形を書き、`cd /` の後は `/c`。step11 は、その形のパスの glob が一致しない |
+| Windows（I7） | consh/test の step6 | `/dev/nul?` の glob が一致しない（Windows に /dev はない） |
+| Windows（I7） | consh/test の step13 と step14 | lsof がない（台本がその旨を出す） |
+| Windows（I7） | （テストにはない） | MSYS（Git Bash）のプログラムは、引用符の中の `\\` を 1 つの `\` に読むので、ConMa が渡す引数の 2 つ続く `\` は 1 つで届く（Windows の C ランタイムと MSYS の両方に合う書き方がない。vm/src/sys/windows.rs の `add_args`） |
 
 ## 申し送り
 

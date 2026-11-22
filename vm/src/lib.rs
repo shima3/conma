@@ -261,7 +261,7 @@ fn run_text(text: String, module_file: &str, func_name: String, program_args: Op
         m.use_prim_booleans();
     }
     m.transpiled_on = !trace && m.profile.is_none() && std::env::var_os("CONMA_TRANSPILED_OFF").is_none();
-    let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let cwd = std::env::current_dir().map(|p| sys::path_text(&p)).unwrap_or_default();
     let vp = m.make_vproc(closure, olist, Some(module_file), gvenv, cwd);
     m.add(vp.clone());
     if trace {
@@ -301,5 +301,9 @@ pub fn run_main_with(args: impl IntoIterator<Item = String>, host: Host) -> i32 
             run(args)
         })
         .expect("cannot start the VM thread");
-    child.join().unwrap_or(1)
+    let code = child.join().unwrap_or(1);
+    // On Windows, what the VM wrote to pipes may still be in their writer threads.
+    #[cfg(windows)]
+    sys::flush_writers();
+    code
 }
