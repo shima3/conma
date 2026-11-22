@@ -81,6 +81,7 @@ sjs/test/run_all.sh
 | Windows（I7） | consh/test の step3、step4、step11 | 外部のコマンドの `pwd`（Git Bash）が `/c/...` の形を書き、`cd /` の後は `/c`。step11 は、その形のパスの glob が一致しない |
 | Windows（I7） | consh/test の step6 | `/dev/nul?` の glob が一致しない（Windows に /dev はない） |
 | Windows（I7） | consh/test の step13 と step14 | lsof がない（台本がその旨を出す） |
+| Windows（I7） | （テストにはない） | MSYS（Git Bash）のプログラムは、引用符の中の `\\` を 1 つの `\` に読むので、ConMa が渡す引数の 2 つ続く `\` は 1 つで届く（Windows の C ランタイムと MSYS の両方に合う書き方がない。vm/src/sys/windows.rs の `add_args`） |
 
 ## 申し送り
 
@@ -92,7 +93,7 @@ sjs/test/run_all.sh
 * ConMa の側：include/includer.se（`C:/` で始まるパスも絶対パス）と vm/frontend.module.se、consh/include/consh_jsstmt.se（SJS のモジュールを `$TEMP` と `$TMP` にも書ける）、conjs/include/conjs_lib.se（curl の HEAD に `-o /dev/null` を使わない）。
 * 道具と台本：bin/ の Python の道具、consh/bin/consh_parse、vm/python の vproc_step.py と vproc_run.py、test/selfhost_compare.py（標準出力を `\n` のまま書く）、bin/includer、bin/update-frontend、test/common.sh、consh/test/common.sh、test/resolver.sh、bench/module.sh、consh/js/build.sh、test/fast18/test.sh、test/step31、test/step33、consh/test/step12（Windows のときだけ変わる）。
 * 作り直すもの：transpiled VM（vm/src を変えた）、wasm 版の VM（`cfg` と `path_text`）。I7 の vm/target-transpiled は、test/transpiled だけで作ったもの。ConSh のモジュール（consh_jsstmt.se）と、ConJS のランタイムのモジュール（conjs_lib.se）は、変えたので自動で作り直される。
-* 新しいテスト：vm の `cargo test --release --lib` の sys::windows の 10（Windows だけで動く）。
+* 新しいテスト：vm の `cargo test --release --lib` の sys::windows の 11（Windows だけで動く。M4 のレビューで、書き手のスレッドを待つ上限の 1 つを足した）。
 * I7 が流したもの（Windows 11、Git Bash）：上の「Windows（I7）で流す」の、Rust 版の VM の test/、consh/test、conjs/test、sjs/test と、vm の `cargo test --release --lib sys::`。既知の違いのほかに違いはなかった。transpiled VM を test/transpiled のモジュールだけで作り（`CONMA2RUST_COMPACT=1`）、test/ を流すと、Rust 版の VM と同じ違いだけだった。bench/build.sh ですべて入れて作るのは、1 時間で終わらず止めた。wasm 版の VM（Node.js）の test/ は、Node.js のホストが Windows のパスとエラーを直さないため、多くが違う（PLATFORM-PLAN-ja.md の 8.13 節の「残したこと」）。
 * 流していないもの：macOS のすべて（`cfg` と sys を替えたので、Full Test で確かめてほしい。unix.rs は `git diff -M` で、移した後の足したものだけが見える）。Windows の Python 版の VM（動かない）、test/host-api.sh、ブラウザのページ、ベンチマーク。
 * 測ったもの：なし。

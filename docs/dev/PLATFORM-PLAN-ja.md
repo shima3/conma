@@ -971,5 +971,13 @@ P6（プラットフォームを増やす）の 3 つ目の段階として、**W
     * conjs/include/conjs_lib.se の curl の HEAD は、`-o /dev/null` をやめ、curl が書いたヘッダを捨てる（Windows の curl は /dev/null を開けない）。
     * SIGINT を送るテスト（test/step31、test/step33 の case4、consh/test/step12 の case7）と、疑似端末を使う consh/test/step12 の case8 は、Windows では流さず、その旨を 1 行出す（流すと止まらない）。
 * **テスト**：vm の `cargo test --release --lib` に、Windows の sys の 10 のテストを足した（fd の番号、パイプの終わり、書いてすぐ読めること、後から来たバイトで起きること、先に読まないこと、`EPIPE`、起こすためのパイプ、エラーの文字列、パスの形、`__OS_kill__` の終了コード）。I7 で、Rust 版の VM の test/、consh/test、conjs/test、sjs/test は、既知の違いのほかに通った。transpiled VM は、test/transpiled のモジュールだけで作ると（1 分 34 秒）、test/transpiled は変換したコードで通り（`transpiled code: used`）、test/ は Rust 版の VM と同じ違いだけだった。bench/build.sh ですべて（ConSh も）入れて作ると、rustc が 1 時間で終わらず、止めた（Apple M1 では約 15 分。エラーはなかった）。
+* **M4 の PR のレビューで直したこと**（PR shima3/conma#35）：
+    * 書き手のスレッドのバッファを書き終えるのを待つ所に、上限を設けた。子プロセスにパイプを渡すときは 200 ms まで（読み手が同じ VM の VProc なら、VM のスレッドが待つ間は読まれず、どちらも進まなかった。残りは、子プロセスの書いたものの後に届くことがある）。VM が終わるときは、VM の持つ読む側のパイプを先に閉じ、書き手のスレッドが 1 秒何も書けなければ待つのをやめる（読まない子プロセスに渡したパイプで、終わらなかった）。書き手のスレッドは、進んだことが分かるように 4,096 バイトずつ書く。
+    * 子プロセスが VM の標準入力をそのまま受け継ぐとき（`__OS_spawn__` の標準入力が null）も、fd 0 のコンソールの読み出しを止める（`inherited_stdio`）。
+    * コンソールの `ReadFile` が、Ctrl-C で 0 バイトと `ERROR_OPERATION_ABORTED` を返したときは、入力の終わりにしない。2 回の読み出しに分かれた `\r\n` も `\n` にする。
+    * VM の標準のハンドルを、子プロセスに受け継がれないようにする（`SetHandleInformation`。受け継がれると、`$( )` が、VM の標準出力を持つ子プロセスの終わりまで待つ）。
+    * 引数の先頭の `~` も、MSYS が広げないように引用符に入れる。MSYS は、引用符の中の `\\` を 1 つの `\` にするので、2 つ続く `\` は MSYS のプログラムに 1 つで届く（既知の違いにした）。
+    * include/includer.se の `__Includer_has_drive__` は、1 文字目が ASCII の英字であることも見る（Unix の相対パス `a:/x` を絶対パスにしていた。vm/frontend.module.se を作り直した）。
+    * `path_text` は、`\\?\UNC\srv\share` を `//srv/share` にする。
 * **残したこと**（後の段階の候補）：wasm 版の VM（Node.js）は I7 で作れるが、test/ の多くが違う。Node.js のホスト（vm/wasm/host）が、Windows のパス（`process.cwd()` の `C:\Users\...`）をそのまま渡し、Node.js のエラーの番号（`os error 4058`）を errno の文字列に直さず、`sh` や `sleep` を起動できない。Rust 版の VM の sys/windows.rs と同じことを、JavaScript の側でする必要がある。transpiled VM を bench/build.sh で作り切る時間も、まだ測っていない。
 * **macOS で確かめること**（M4 に頼む）：`cfg` を替え、unix.rs に関数を足したので、Full Test と、wasm 版の VM、transpiled VM が作れることを確かめる。
