@@ -21,6 +21,7 @@ CONMA_VM=wasm conjs/conjs f.con.js    # wasm 版の VM（Node.js）で動かす�
 CONMA_VM=python conjs/conjs f.con.js  # Python 版の VM で動かす
 conjs/test/run_all.sh             # テスト（CONMA_VM で VM を選ぶ）
 conjs/test/compare.sh             # step10 の場合を Node.js と比べる
+conjs/conjs --prepare             # 変換器とランタイムのモジュールを作っておく（初めての実行が速くなる。2026-11-23 から）
 ```
 
 変換は Rust 版の VM で行い、変換したプログラムを選んだ VM で動かす。Rust 版の VM を作っていなければ、変換も動かすのも wasm 版の VM（vm/wasm/build.sh で作る。Node.js）で行う（2026-11-23 から。vm-node.js の `build` と `link`）。どちらで変換しても、できるモジュールは 1 バイトも同じ。環境変数 `CONMA_TRANSLATE_VM=wasm` で、Rust 版の VM があっても wasm 版で変換する。変換器は SJS のもの（sjs/include）に、言語の印（PDict の `"sjs_lang"` を `"conjs"`）を付けて使う。変換器のモジュールは、bin/cache-dir の場所に conjsc.module.se として作っておく（sjs/sjs と同じ）。ランタイム（変換したソースが include する conjs_rt.se など）のモジュールも、同じ所に conjs-rt-ハッシュ.module.se として 1 度だけ作っておき、変換したソースは include の行を除いてモジュールにしてから、`conma link` で合わせる（bin/lang。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。`console.log("hi")` だけのプログラムは、Rust 版の VM で約 0.1 秒で動く（前は、毎回ランタイムをフロントエンドに通して約 1.45 秒）。

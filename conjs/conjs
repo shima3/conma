@@ -6,6 +6,20 @@
 # 変換したプログラムは CONMA_VM の VM で動かす：なし（Rust 版）、wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。
 # Rust 版の VM がなければ、変換も動かすのも wasm 版の VM で行う（2026-11-23 から。bin/lang）。
 # 2026-11-20 から、言語キットの bin/lang（4.3 節）を呼ぶだけにした（設定は conjs/lang.conf）
+# --prepare：変換器とランタイムのモジュールを、キャッシュ（bin/cache-dir）に作っておく（2026-11-23 から）。初めての実行は、
+# この 2 つを作るのに数十秒かかるので、クイックスタートでは、ビルドの続きとして、ここで待ってもらう。空のプログラムを一度
+# 変換して動かすだけなので、bin/lang は変えない。作ってあれば、すぐ終わる
+if [ "$1" = --prepare ]; then
+  [ $# -eq 1 ] || { echo "usage: conjs --prepare" >&2; exit 2; }
+  conjs="$(cd "$(dirname "$0")"; pwd)"
+  t="$(mktemp -d "${TMPDIR:-/tmp}/conjs-prepare.XXXXXX")" || exit 1
+  : > "$t/prepare.con.js"
+  "${conjs%/*}/bin/lang" "$conjs" "$t/prepare.con.js" < /dev/null
+  status=$?
+  rm -rf "$t"
+  [ $status -eq 0 ] && echo "conjs: ready (the translator and the runtime are built)"
+  exit $status
+fi
 if [ "$1" = --emit ]; then [ $# -eq 2 ] || { echo "usage: conjs [--emit] file.con.js [argument ...]" >&2; exit 2; }
   conjs="$(cd "$(dirname "$0")"; pwd)"
   exec "${conjs%/*}/bin/lang" --emit "$conjs" "$2"

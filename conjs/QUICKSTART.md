@@ -86,12 +86,14 @@ A ConJS program is translated into the language ConMa and run on a VM (virtual m
 ```
 $ (cd vm && cargo build --release)
 $ vm/wasm/build.sh
+$ conjs/conjs --prepare
 ```
 
 * The first is the VM that runs directly on your computer (the Rust VM). It also translates ConJS.
 * The second is the VM in WebAssembly (the wasm VM). It runs on Node.js, and the web server below runs on it.
+* The third makes the translator of ConJS and its runtime (the parts that ConJS programs use) in advance.
 
-The first build takes from tens of seconds to a few minutes, by the computer. `Finished` means it worked.
+The first build takes from tens of seconds to a few minutes, by the computer. `Finished` (the first two) and `conjs: ready` (the third) mean it worked. The third may print nothing for about 30 seconds (longer on some computers). Wait, and do not press Ctrl-C, even if it seems to have stopped.
 
 ## 4. Run your first program
 
@@ -108,7 +110,7 @@ $ conjs/conjs hello.con.js
 Hello, ConJS
 ```
 
-The first run takes from a few seconds to about 30 seconds (longer on some computers) to prepare the translator and the runtime. Wait, and do not press Ctrl-C, even if it seems to have stopped. From the second, it starts at once.
+It starts at once, as `conjs/conjs --prepare` in step 3 has made the translator and the runtime. (Without it, the first run alone takes about 30 seconds here.)
 
 ## 5. Run the web server
 

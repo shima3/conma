@@ -107,3 +107,12 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * M4 が流したもの：変換器（conjsc.se）、ランタイム、変換したソースの `build` と、変換、`link` の出力が、Rust 版の VM のものと 1 バイトも同じであること。Rust 版の VM がある所で `conjs/test/run_all.sh`（Rust 版、wasm 版）と `sjs/test/run_all.sh`（前と同じ）。Rust 版の VM のない worktree（vm/target がない）と空のキャッシュで、`conjs/conjs hello.con.js`（初めて約 7 秒、2 回目 0.3 秒）、CONMA_VM なしのサーバの見本、`CONMA_VM=wasm conjs/test/run_all.sh`、`CONMA_VM=wasm sjs/test/run_all.sh`（step11 だけが違う。この test.sh は bin/lang を使わず、Rust 版の VM を自分で呼ぶため）、`conjs/test/compare.sh`。
 * 流していないもの：Windows（I7）、consh/test（bin/lang を使わない）、wasm 版の VM を配る形（まだ、作るのに Rust が要る）。
 * 測ったもの：なし。
+
+### i7/conjs-prepare（shima3/conma#65）
+
+* conjs/conjs に `--prepare` を足した：空のプログラムを一度 bin/lang で変換して動かし、変換器とランタイムのモジュールをキャッシュ（bin/cache-dir）に作っておく。初めての実行は、この 2 つを作るのに I7 で約 18 秒（Rust 版の VM。wasm 版の VM なら約 29 秒）かかるので、クイックスタート（conjs/QUICKSTART-ja.md と QUICKSTART.md）の「3. ビルドする」で、ビルドの続きとして待ってもらう。bin/lang は変えない（shima3/conma#64 とぶつからないように）。README の 2 つにも足した。
+* 作り直すもの：なし（台本だけ）。
+* 新しいテスト：なし。
+* I7 が流したもの（Windows 11）：空のキャッシュ（`CONMA_CACHE_DIR`）で `conjs/conjs --prepare`（18.6 秒、`conjs: ready`）、その後の初めての hello（1.3 秒）、作ってあるときの `--prepare`（1.4 秒）、`--prepare x`（使い方を出して 2）、`conjs/test/run_all.sh` と `CONMA_VM=wasm conjs/test/run_all.sh`、`conjs/test/compare.sh`（違いなし）、`.github/doc-pairs.py`。
+* 流していないもの：macOS のすべて、Rust 版の VM のない所（#64 が入った後なら、bin/lang が wasm 版の VM で作る）。
+* 測ったもの：上の時間。
