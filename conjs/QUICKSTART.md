@@ -16,7 +16,7 @@ This document uses a terminal, the window where you type commands.
 * **macOS**: the Terminal (Applications → Utilities).
 * **Windows**: **Git Bash**, which comes with Git for Windows (step 1). Type the commands in Git Bash, not in PowerShell or the Command Prompt: they are for bash.
 
-Copy the commands in a box, paste them into the terminal, and press Enter. A box of several lines may be pasted at once (they run from the top). Paste with ⌘V in the Terminal of macOS, and with Shift+Insert in Git Bash (Ctrl+V does not paste there). You may type them too. A box after "Output" shows what a command prints (not something to type).
+Copy the commands in a box, paste them into the terminal, and press Enter. A box of several lines may be pasted at once (when you press Enter, they run from the top). Paste with ⌘V in the Terminal of macOS, and with Ctrl+V or Shift+Insert in Git Bash (if Ctrl+V does not paste, use Shift+Insert or "Paste" in the menu of the right click). You may type them too. A box after "Output" shows what a command prints (not something to type).
 
 ## 1. Install the tools
 
