@@ -1,9 +1,9 @@
 // 「星ひろい」を端末で遊ぶ版（docs/dev/PLATFORM-PLAN-ja.md の 4.7 節、段階 P6a）：ANSI のエスケープの並びで端末に描き、
 // キーを標準入力から読む。
-//   conjs/conjs conjs/web/stars-term.con.js
-// 画面の順とゲームの決まり（play）は、ブラウザ用の stars.con.js から import し、ここには描き方だけを書く（2026-11-23 に
+//   conjs/conjs conjs/examples/stars-term.con.js
+// 画面の順とゲームの決まり（play）は、ブラウザ用の conjs/web/stars.con.js から import し、ここには描き方だけを書く（2026-11-23 に
 // 分けた。段階 P9 の import の見本、4.12 節）。自分は @、星は *、おばけは G。
-import { play, same, COLS, ROWS } from "./stars.con.js";
+import { play, same, COLS, ROWS } from "../web/stars.con.js";
 
 const ESC = "\u001b";
 

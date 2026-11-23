@@ -8,7 +8,7 @@
 // ほかの処理が game を見ることはない。JavaScript で書くなら、画面ごとの状態の変数と keydown の受け手の中の分岐、
 // おばけの setInterval と clearInterval になる（stars-events.js。compare.html で比べられる）
 //
-// このファイルはブラウザ用で、canvas に描く分だけを持つ。端末で遊ぶ版（stars-term.con.js。4.7 節、段階 P6a）は、
+// このファイルはブラウザ用で、canvas に描く分だけを持つ。端末で遊ぶ版（conjs/examples/stars-term.con.js。4.7 節、段階 P6a）は、
 // このファイルから、画面の順とゲームの決まり（play）と盤の大きさを import し、描き方だけを自分で書く（2026-11-23 に
 // 分けた。段階 P9 の import の見本、4.12 節）。canvas のない所で読み込まれたときは、export するだけで動き始めない。
 export const COLS = 15, ROWS = 10;
@@ -19,7 +19,7 @@ let seed = Date.now() % 2147483646 + 1;   // 1 以上 2147483646 以下
 
 if (host.available("canvas")) play(canvasUi());
 
-// 遊ぶ。描き方は ui（canvasUi か、stars-term.con.js の端末の ui）が持つ：
+// 遊ぶ。描き方は ui（canvasUi か、conjs/examples/stars-term.con.js の端末の ui）が持つ：
 //   click                   クリックで動けるか（タイトルの文に出す）
 //   screen(lines)           タイトルと結果の画面（[文, 色] の並び）
 //   paint(game, lv, first)  盤を描く（first は、面の最初のコマと最後の形）
