@@ -6,9 +6,13 @@
 # include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）を「名前=値」の行で書く（# で始まる行は飛ばす。
 # シェルとしては読まない）。変換器のモジュールは、ソースか VM（フロントエンドを持つ）が新しくなったときだけ作り直し、
 # bin/cache-dir の場所に「name」c.module.se として置く（作るのに数秒かかる）。一時ファイルに作ってから mv で置き換えるので、
-# 同時に動く bin/lang が作りかけのモジュールを読むことはない。変換は Rust 版の VM（vm/target/release/conma）で行う。
+# 同時に動く bin/lang が作りかけのモジュールを読むことはない。変換は Rust 版の VM（vm/target/release/conma）で行い、それが
+# なければ wasm 版の VM（vm/wasm/build.sh で作る。Node.js の vm-node.js の build と link。2026-11-23 から）で行う。
+# 環境変数 CONMA_TRANSLATE_VM を wasm にすると、Rust 版の VM があっても wasm 版で変換する（確かめるため）。
+# どちらで作っても、モジュールは 1 バイトも同じになる。
 # --emit なら、変換した ConMa のソースを出して終える。そうでなければ、CONMA_VM の VM で動かす：なし（Rust 版）、
 # wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。transpiled は Rust 版で動かす（変換器のモジュールのため）。
+# CONMA_VM がなく、Rust 版の VM もなければ、wasm 版で動かす（Rust を入れずに、Node.js だけで動かせるように）。
 # Rust 版で動かすとき、CONMA_RUNNER があれば、vm/target/release/conma の代わりに、その実行ファイルで動かす（VM を組み込んで
 # ホストの関数を足したプログラム。test/host-api.sh。docs/HOST-ja.md）。変換とモジュール作りは、いつも vm/target/release/conma。
 # 変換したソースの include の行（ランタイム）は、フロントエンドに通すと約 1.4 秒かかるので、先にモジュールにしておく
@@ -19,6 +23,18 @@
 # 順のほかは同じで、同じステップ数で動く
 root="$(cd "$(dirname "$0")/.."; pwd)"
 conma="$root/vm/target/release/conma"
+wasm="$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm"
+# 変換とモジュール作りをする VM（tr）と、それが新しくなったらモジュールを作り直す印のファイル（stamps）
+if [ -x "$conma" ] && [ "$CONMA_TRANSLATE_VM" != wasm ]; then
+  tr=("$conma") stamps=("$conma")
+elif [ -f "$wasm" ]; then
+  tr=("$root/vm/wasm/vm-wasm.sh") stamps=("$wasm" "$root/vm/frontend.module.se")
+else
+  echo "lang: no VM to translate with: build the Rust VM (cd vm && cargo build --release) or the wasm VM (vm/wasm/build.sh)" >&2
+  exit 2
+fi
+# 印のファイルのどれかが $1 より新しいか
+stale() { local s; for s in "${stamps[@]}"; do [ "$s" -nt "$1" ] && return 0; done; return 1; }
 emit=
 if [ "$1" = --emit ]; then emit=yes; shift; fi
 if [ $# -lt 2 ]; then echo "usage: lang [--emit] language-directory file [argument ...]" >&2; exit 2; fi
@@ -43,12 +59,12 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 module="$("$root/bin/cache-dir")/${name}c.module.se" || exit 1
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" "$dir/$translator" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
-   [ "$conma" -nt "$module" ]; then
+   stale "$module"; then
   module_tmp=$(mktemp "$module.XXXXXX") || exit 1
-  if ! "$conma" build "${inc[@]}" "$dir/$translator" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
+  if ! "${tr[@]}" build "${inc[@]}" "$dir/$translator" > "$module_tmp"; then rm -f "$module_tmp"; exit 1; fi
   mv -f "$module_tmp" "$module" || { rm -f "$module_tmp"; exit 1; }
 fi
-"$conma" --main "$module" "$file" > "$tmp/prog.se" || exit $?
+"${tr[@]}" --main "$module" "$file" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
 # ランタイムのモジュール（作りかけを読まないように、一時ファイルに作ってから mv で置き換える）
 grep '^(include ' "$tmp/prog.se" > "$tmp/rt.se"
@@ -57,19 +73,21 @@ cache="$(dirname "$module")"
 rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | shasum | cut -c1-12)"
 rtsrc="$cache/${name}-rt-$rthash.se" rtmod="$cache/${name}-rt-$rthash.module.se"
 if [ ! -s "$rtmod" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" \( -name '*.se' -o -type d \) -newer "$rtmod")" ] ||
-   [ "$conma" -nt "$rtmod" ]; then
+   stale "$rtmod"; then
   # ソースも、一時ファイルに書いてから mv で置く（同時に動く bin/lang が、書きかけのソースからモジュールを作らないように）
   if [ ! -f "$rtsrc" ] || ! cmp -s "$tmp/rt.se" "$rtsrc"; then
     src_tmp=$(mktemp "$rtsrc.XXXXXX") || exit 1
     cp "$tmp/rt.se" "$src_tmp" && mv -f "$src_tmp" "$rtsrc" || { rm -f "$src_tmp"; exit 1; }
   fi
   rt_tmp=$(mktemp "$rtmod.XXXXXX") || exit 1
-  if ! "$conma" build "${inc[@]}" "$rtsrc" > "$rt_tmp"; then rm -f "$rt_tmp"; exit 1; fi
+  if ! "${tr[@]}" build "${inc[@]}" "$rtsrc" > "$rt_tmp"; then rm -f "$rt_tmp"; exit 1; fi
   mv -f "$rt_tmp" "$rtmod" || { rm -f "$rt_tmp"; exit 1; }
 fi
-"$conma" build "${inc[@]}" "$tmp/alone.se" > "$tmp/alone.module.se" || exit $?
-"$conma" link "$rtmod" "$tmp/alone.module.se" > "$tmp/prog.module.se" || exit $?
-case "$CONMA_VM" in
+"${tr[@]}" build "${inc[@]}" "$tmp/alone.se" > "$tmp/alone.module.se" || exit $?
+"${tr[@]}" link "$rtmod" "$tmp/alone.module.se" > "$tmp/prog.module.se" || exit $?
+vm="$CONMA_VM"
+[ -z "$vm" ] && [ ! -x "$conma" ] && vm=wasm
+case "$vm" in
   wasm) "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se" "$@" ;;
   python) "$root/bin/vm" --main "$tmp/prog.module.se" "$@" ;;
   ''|rust|transpiled) "${CONMA_RUNNER:-$conma}" --main "$tmp/prog.module.se" "$@" ;;

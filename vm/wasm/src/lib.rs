@@ -26,6 +26,8 @@
 mod alloc;
 #[path = "../../src/gc.rs"]
 mod gc;
+#[path = "../../src/link.rs"]
+mod link;
 #[path = "../../src/module.rs"]
 mod module;
 #[path = "../../src/prim/mod.rs"]
@@ -423,6 +425,23 @@ pub unsafe extern "C" fn conma_get_file(ptr: *const u8, len: usize) -> i32 {
         }
         None => -1,
     }
+}
+
+/// conma link (vm/src/link.rs): the module that joins the program module to the runtime module, put
+/// at conma_result_ptr. Returns its length, or minus the length of the error message put there
+/// (vm-node.js runs bin/lang's translation on the wasm VM with it, 2026-11-23).
+///
+/// # Safety
+/// The pointers must point to len bytes each.
+#[no_mangle]
+pub unsafe extern "C" fn conma_link(rt_ptr: *const u8, rt_len: usize, prog_ptr: *const u8, prog_len: usize) -> i32 {
+    let (r, sign) = match link::link(&text(rt_ptr, rt_len), &text(prog_ptr, prog_len)) {
+        Ok(m) => (m, 1),
+        Err(e) => (e, -1),
+    };
+    let n = r.len() as i32;
+    RESULT.with(|res| *res.borrow_mut() = r.into_bytes());
+    sign * n
 }
 
 #[no_mangle]

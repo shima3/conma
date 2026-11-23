@@ -3,6 +3,7 @@
 #   sjs/sjs [--emit] file.safe.js
 # --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm で cargo build --release しておく）で行い、
 # 変換したプログラムは CONMA_VM の VM で動かす（なし：Rust 版、wasm：wasm 版の VM。数の関数は WebAssembly で動く、python）。
+# Rust 版の VM がなければ、変換も動かすのも wasm 版の VM で行う（2026-11-23 から。bin/lang）。
 # 2026-11-20 から、言語キットの bin/lang（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節）を呼ぶだけにした（設定は sjs/lang.conf）
 if [ "$1" = --emit ]; then [ $# -eq 2 ] || { echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; }
 elif [ $# -ne 1 ]; then echo "usage: sjs [--emit] file.safe.js" >&2; exit 2; fi
