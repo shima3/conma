@@ -54,6 +54,7 @@ PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を
 * PATH に cargo（`$HOME/.cargo/bin`）と Node.js も置く。`MSYS=winsymlinks:nativestrict` を付ける（test/step16 と step23 の `ln -s` が、本当のシンボリックリンクを作るように）。
 * `CONMA_VM` を必ず付ける（bin/vm の既定は Python 版の VM で、Windows では動かない。パイプを `select` で待つため）。Python 版の VM の列は流さない。
 * 台本は、`cygpath` があれば（Git Bash）、`pwd` と一時ディレクトリを VM が書く形（`C:/Users/...`）にする（test/common.sh、consh/test/common.sh）。
+* wasm 版の VM のホスト（vm/wasm/vm-node.js）は、Windows では、パスを VM が書く形にして渡し、Node.js の errno を Unix の番号にし、コマンドを PATH（`;` で区切る）から `.exe` を付けて探し、引数をネイティブの VM と同じく引用する（2026-11-23 から）。
 
 ```
 export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSYS=winsymlinks:nativestrict
@@ -62,6 +63,10 @@ CONMA_VM=rust test/run_all.sh -j 8
 CONMA_VM=rust consh/test/run_all.sh -j 6
 conjs/test/run_all.sh
 sjs/test/run_all.sh
+vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から。CI の windows ジョブは流さない）
+CONMA_VM=wasm test/run_all.sh -j 4
+CONMA_VM=wasm consh/test/run_all.sh -j 4
+CONMA_VM=wasm conjs/test/run_all.sh
 ```
 
 ## 既知の違い
@@ -77,10 +82,11 @@ sjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
-| Windows（I7）のネイティブの VM | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c） |
-| Windows（I7）のネイティブの VM | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
+| Windows（I7）のネイティブの VM と wasm 版 | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c。wasm 版は 2026-11-23 から） |
+| Windows（I7）のネイティブの VM と wasm 版 | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
 | Windows（I7） | test/step21 の case5 と case6 | memcheck.py が Python 版の VM を使う（Windows では動かない） |
 | Windows（I7） | test/step31、test/step33 の case4、consh/test/step12 の case7 と case8 | Git Bash の `kill -INT` は Windows のプログラムに届かず、Python に pty がない。流さず、その旨を 1 行出す |
+| Windows（I7）の wasm 版 | test/fast7 の case7 と case14 | Git Bash の `kill -INT` は Windows のプログラムに届かず、wasm 版は終わらない関数を呼び続ける。流さず、その旨を 1 行ずつ出す（ネイティブの VM は WebAssembly がないので、すぐ終わり、ログのとおり） |
 | Windows（I7） | test/step32 | Git Bash の `ps` に `-o` がない。`another group` でなく `same group` |
 | Windows（I7） | consh/test の step2 | `words` はシバンで始まる台本で、Windows はそれを直接起動できない。MSYS の `sh` がシグナルで終わると、終了コードは 143 でなく 3840 |
 | Windows（I7） | consh/test の step3、step4、step11 | 外部のコマンドの `pwd`（Git Bash）が `/c/...` の形を書き、`cd /` の後は `/c`。step11 は、その形のパスの glob が一致しない |

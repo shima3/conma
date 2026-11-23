@@ -151,8 +151,8 @@ pub enum CExpr {
 
 pub enum CLCont {
     F(Rc<FuncDef>),
-    /// An LCont written as a value (`__Closure__`); not supported.
-    V(Sexp),
+    /// An LCont written as a value (`__Closure__`); not supported, so nothing of it is kept.
+    V,
 }
 
 /// A Body AST, compiled. The node is kept for traces.
@@ -464,7 +464,7 @@ fn compile_body_of(node: &Sexp, func_id: Option<usize>, scope: &Scope) -> Rc<Bod
                     let lc = &c[2];
                     lcont = match lc.tag() {
                         Some("Function") => Some(CLCont::F(compile_function_in(lc, scope))),
-                        Some("__Closure__") => Some(CLCont::V(lc.clone())),
+                        Some("__Closure__") => Some(CLCont::V),
                         _ => None,
                     };
                 }
@@ -597,7 +597,7 @@ fn subst_body(b: &BodyDef, off: usize, v: &Value, scope: &Scope) -> Option<Rc<Bo
     let olist = b.olist.iter().map(|e| subst_expr(e, off, v, scope)).collect::<Option<Vec<_>>>()?;
     let lcont = match &b.lcont {
         Some(CLCont::F(f)) => Some(CLCont::F(subst_func(f, off, v, scope)?)),
-        Some(CLCont::V(_)) => return None,
+        Some(CLCont::V) => return None,
         None => None,
     };
     Some(new_body(b.node.clone(), None, b.sinfo.clone(), operator, olist, lcont, scope.clone()))

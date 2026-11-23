@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stars: ConJS and JavaScript</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .col { min-width: 0; }
+  select { font-size: 1em; }
+  .count { color: #555; margin: 6px 0; }
+  pre { background: #f4f4f4; padding: 8px; margin: 0; overflow-x: auto; font-size: 12px; line-height: 1.45; tab-size: 2; }
+  .ln { color: #999; user-select: none; display: inline-block; width: 3.5em; text-align: right; margin-right: 1em; }
+  .cm { color: #6a737d; }
+  .wait { background: #fff3c4; }
+</style>
+</head>
+<body>
+<h1>星ひろい：ConJS と JavaScript</h1>
+<p>同じゲーム「星ひろい」を、3 つの書き方で書いたもの。2 つを選んで並べる。
+黄色の行は、待つ所（ConJS の nextEvent、sleep、host.wait、spawn と join。JavaScript の await、Promise、setTimeout、setInterval、
+requestAnimationFrame と、その止め方）。</p>
+<ul>
+  <li><a href="stars.html">ConJS</a>（stars.con.js）：画面の順はふつうのループ、おばけは spawn した処理。待つ呼び出しは、ふつうの呼び出し。
+    端末で遊ぶための分（端末に描く paintTerm など）も入っている。</li>
+  <li><a href="stars-events.html">JavaScript、イベント駆動</a>（stars-events.js）：画面ごとの状態の変数と、キーの受け手の中の分岐。
+    おばけの setInterval と clearInterval。</li>
+  <li><a href="stars-async.html">JavaScript、async/await</a>（stars-async.js）：ConJS 版と同じ形。待つ所すべてに await が要り、
+    それを呼ぶ関数はみな async になる。キーを待つ Promise は自分で作る。</li>
+</ul>
+<div class="cols">
+  <div class="col"><select id="left"></select><div class="count" id="left-count"></div><pre id="left-code"></pre></div>
+  <div class="col"><select id="right"></select><div class="count" id="right-count"></div><pre id="right-code"></pre></div>
+</div>
+<script>
+"use strict";
+(() => {
+  const FILES = [
+    ["stars.con.js", "ConJS（stars.con.js）"],
+    ["stars-events.js", "JavaScript、イベント駆動（stars-events.js）"],
+    ["stars-async.js", "JavaScript、async/await（stars-async.js）"],
+  ];
+  // 待つ所の印。名前で探すので目安。文字列と行の終わりのコメントを除いた所で探し、配列の join（.join）は数えない
+  const WAIT = /\b(nextEvent|sleep|spawn|await|async|Promise|setTimeout|setInterval|clearInterval|requestAnimationFrame|cancelAnimationFrame)\b|(?<![.\w])join\b|host\.wait/;
+  const codeOf = (line) => line.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""').replace(/\/\/.*$/, "");
+  const waits = (line) => !isComment(line) && WAIT.test(codeOf(line));
+  const texts = {};
+  const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const isComment = (line) => /^\s*\/\//.test(line);
+
+  function show(side) {
+    const file = document.getElementById(side).value;
+    const text = texts[file];
+    const lines = text.replace(/\n$/, "").split("\n");
+    const code = lines.filter((l) => l.trim() !== "" && !isComment(l)).length;
+    const waitCount = lines.filter(waits).length;
+    document.getElementById(side + "-count").textContent =
+      `${lines.length} 行（コメントと空の行を除くと ${code} 行。待つ所の行 ${waitCount}）`;
+    document.getElementById(side + "-code").innerHTML = lines.map((l, i) => {
+      const cls = isComment(l) ? "cm" : waits(l) ? "wait" : "";
+      return `<span class="ln">${i + 1}</span><span class="${cls}">${escape(l)}</span>`;
+    }).join("\n");
+  }
+
+  for (const [side, first] of [["left", 0], ["right", 1]]) {
+    const select = document.getElementById(side);
+    FILES.forEach(([file, label], i) => select.add(new Option(label, file, false, i === first)));
+    select.addEventListener("change", () => show(side));
+  }
+  Promise.all(FILES.map(([file]) => fetch(file).then((r) => {
+    if (!r.ok) throw new Error(`${file}: ${r.status}`);
+    return r.text();
+  }).then((t) => (texts[file] = t)))).then(() => {
+    show("left");
+    show("right");
+  }).catch((e) => {
+    document.getElementById("left-count").textContent = "読めなかった：" + e.message;
+  });
+})();
+</script>
+</body>
+</html>

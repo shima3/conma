@@ -5,7 +5,7 @@
 # 環境変数 CONSH_IMPL で版を選ぶ。
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
-#                 作っていなければ、そう出して（ずっと遅いことも）ConMa 版で実行する。ConMa 版の VM もなければ、Rust 版を作るように出して止める。ソースより古ければ、警告を出してから、それで実行する
+#                 作っていなければ、そう出して（対話モードで端末から起動したなら、今ビルドするかを聞いて）、作らなければ（ずっと遅いことも出して）ConMa 版で実行する。ConMa 版の VM もなければ止める。ソースより古ければ、警告を出してから（対話モードで端末から起動したなら、ビルドするかを聞いてから）、それで実行する。ConMa 版の VM も、作っていないときと古いときは同じく聞く
 #   conma         ConMa 版の最適化版（consh/include、SJS の sjs/include と、標準ライブラリの include）。スクリプトは ConMa 版の構文解析
 #                 （consh_parser.se）で読む。VM は環境変数 CONMA_VM で選ぶ（bin/vm。python なら Python 版、rust なら Rust 版、
 #                 transpiled なら変換したコードを組み込んだ Rust 版、wasm なら wasm 版）。CONMA_VM がなければ Rust 版の VM
@@ -61,20 +61,150 @@ rust="$consh/rust/target/release/consh-rs"
 if [ $impl = rust ] && { [ -n "$parser" ] || [ -n "$CONSH_CONMA_DATA" ]; }; then
   impl=conma
 fi
-# Rust 版を作っていなければ、ConMa 版で実行する。ConMa 版はループなどが Rust 版よりずっと遅いので、そう出す。
-# ConMa 版の VM（CONMA_VM がなければ Rust 版の VM）もなければ、ConMa 版の VM ではなく、Rust 版を作るように出して止める
-if [ $impl = rust ] && [ ! -x "$rust" ]; then
-  if [ -z "$CONMA_VM" ] && [ ! -x "$root/vm/target/release/conma" ]; then
-    echo "consh: $rust is not built; build it with cargo build --release in consh/rust (Rust 1.87 or later)" >&2
-    exit 2
+# リポジトリの中のパス $1 を、カレントディレクトリがリポジトリの中なら、そこからの相対パスにして書く（外なら、そのまま）
+relpath() {
+  local rootp here p rest c up=
+  rootp="$(cd "$root" && pwd -P)"
+  here="$(pwd -P)"
+  p="${1#"$root"/}"
+  [ "$p" = "$1" ] && p="${1#"$rootp"/}"
+  if [ "$p" = "$1" ]; then printf '%s\n' "$1"; return; fi
+  case "$here/" in
+    "$rootp"/*) rest="${here#"$rootp"}"; rest="${rest#/}" ;;
+    *) printf '%s\n' "$1"; return ;;
+  esac
+  # 共通の頭を除き、残りのディレクトリの数だけ ../ を付ける
+  while [ -n "$rest" ]; do
+    c="${rest%%/*}"
+    case "$p" in "$c"/*) p="${p#"$c"/}" ;; "$c") p=. ;; *) break ;; esac
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest= ;; esac
+  done
+  while [ -n "$rest" ]; do
+    up="../$up"
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest= ;; esac
+  done
+  [ "$p" = . ] && [ -n "$up" ] && p= && up="${up%/}"
+  printf '%s\n' "$up$p"
+}
+# ディレクトリ $1 の Cargo のプロジェクトをビルドする命令（カレントディレクトリから）
+build_cmd() {
+  local rdir
+  rdir="$(relpath "$1")"
+  if [ "$rdir" = . ]; then echo "cargo build --release"; else echo "(cd $rdir && cargo build --release)"; fi
+}
+# 実行ファイル $1 を、ディレクトリ $2 で cargo build --release して、今作るかを聞く。聞くのは、対話モードで、標準入力と
+# 標準エラーが端末で、cargo があるときだけ（テストやパイプでは聞かない。止まらないように）。Enter はビルドする。
+# 前にここでビルドした時間を、bin/cache-dir の場所の build-seconds.<名前> に残して示す。cargo の出力（コンパイラの警告など）は、
+# 失敗したときだけ出す（通ったときの警告は、使う人には要らない）。
+# 返す値：0 ビルドした、1 ビルドしないと答えた、2 ビルドが失敗した、3 聞かなかった
+offer_build() {
+  local bin="$1" dir="$2" rbin ans t0 secs log rec= last=
+  if [ -z "$interactive" ] || [ ! -t 0 ] || [ ! -t 2 ] || ! command -v cargo > /dev/null; then
+    return 3
   fi
-  echo "consh: $rust is not built (cargo build --release in consh/rust, Rust 1.87 or later); running the ConMa version on the ${CONMA_VM:-rust} VM, which is much slower" >&2
-  impl=conma
+  rbin="$(relpath "$bin")"
+  rec="$("$root/bin/cache-dir" 2>/dev/null)/build-seconds.${bin##*/}" || rec=
+  [ -n "$rec" ] && [ -s "$rec" ] && last="$(cat "$rec")"
+  if [ "$last" = 0 ]; then
+    last="it took less than 1 s the last time"
+  elif [ -n "$last" ]; then
+    last="it took $last s the last time"
+  else
+    last="usually some seconds; longer on a slow machine or the first time"
+  fi
+  printf 'consh: build it now (%s)? [Y/n] ' "$last" >&2
+  read -r ans || ans=n
+  case "$ans" in
+    ''|y|Y|yes|Yes) ;;
+    *) return 1 ;;
+  esac
+  echo "consh: building $rbin ..." >&2
+  log="$(mktemp "${TMPDIR:-/tmp}/consh-build.XXXXXX")" || return 2
+  t0=$SECONDS
+  if (cd "$dir" && cargo build --release) < /dev/null > "$log" 2>&1; then
+    secs=$((SECONDS - t0))
+    [ -n "$rec" ] && printf '%s\n' "$secs" > "$rec"
+    echo "consh: built $rbin in $secs s" >&2
+    rm -f "$log"
+    return 0
+  fi
+  cat "$log" >&2
+  rm -f "$log"
+  return 2
+}
+# 実行ファイル $1 がソース（ディレクトリ $2 で cargo build --release して作る。残りの引数は、ソースを探す find の引数）より
+# 古ければ（git pull の後など）、警告して、今ビルドするかを聞く（offer_build）。ビルドしないか、失敗すれば、古いまま使う。
+# rlwrap を通してもう一度起動した consh（CONSH_RLWRAPPED）は、確かめない（通す前に確かめてある）
+stale_build() {
+  local bin="$1" dir="$2" rbin
+  shift 2
+  [ -n "$CONSH_RLWRAPPED" ] && return 0
+  [ -n "$(find "$@" -newer "$bin" 2>/dev/null)" ] || return 0
+  rbin="$(relpath "$bin")"
+  echo "consh: warning: $rbin is older than its sources; build it with: $(build_cmd "$dir")" >&2
+  offer_build "$bin" "$dir"
+  case $? in
+    1) echo "consh: running the old $rbin" >&2 ;;
+    2) echo "consh: the build failed; running the old $rbin" >&2 ;;
+  esac
+  return 0
+}
+conma="$root/vm/target/release/conma"
+# Rust 版を作っていなければ、そう出して、今ビルドするかを聞く（offer_build）。作らなければ、ConMa 版で実行する（下で VM を
+# 確かめてから、ループなどが Rust 版よりずっと遅いことを出す）。Windows（Git Bash。cygpath がある）では consh-rs を作れない
+# （Unix だけの API を使う）ので、作り方を出さず、聞かない。rlwrap を通してもう一度起動した consh は、聞きも出しもしない
+# （通す前に済んでいる）
+fallback=
+if [ $impl = rust ] && [ ! -x "$rust" ]; then
+  if command -v cygpath > /dev/null; then
+    fallback=windows
+  else
+    fallback=yes
+    if [ -z "$CONSH_RLWRAPPED" ]; then
+      echo "consh: $(relpath "$rust") is not built (Rust 1.87 or later); build it with: $(build_cmd "$consh/rust")" >&2
+      offer_build "$rust" "$consh/rust"
+      case $? in
+        0) fallback= ;;
+        2) echo "consh: the build failed" >&2 ;;
+      esac
+    fi
+  fi
+  [ -n "$fallback" ] && impl=conma
 fi
-# 実行ファイルがソースより古ければ（git pull の後など）、警告してから、それを使う
+# ConMa 版の VM：CONMA_VM があれば、それを bin/vm で使う。なければ Rust 版の VM で、作っていなければ、そう出して、今ビルド
+# するかを聞く（offer_build）。作らなければ止める（テストやベンチマークを、気付かずに遅い Python 版の VM で動かさないため。
+# Python 版は CONMA_VM=python で選ぶ）。consh-rs を作らなかったときも、ここで VM を聞く。対話モードで rlwrap を通す前に
+# 確かめるので、ここで確かめる
+if [ $impl != rust ] && [ -z "$CONMA_VM" ]; then
+  if [ ! -x "$conma" ]; then
+    [ -n "$CONSH_RLWRAPPED" ] && exit 2
+    echo "consh: $(relpath "$conma") is not built; build it with: $(build_cmd "$root/vm"), or set CONMA_VM=python to use the Python VM" >&2
+    offer_build "$conma" "$root/vm"
+    case $? in
+      0) ;;
+      2) echo "consh: the build failed" >&2; exit 2 ;;
+      *) exit 2 ;;
+    esac
+  fi
+  export CONMA_VM=rust
+fi
+if [ -z "$CONSH_RLWRAPPED" ]; then
+  case "$fallback" in
+    yes) echo "consh: running the ConMa version on the $CONMA_VM VM, which is much slower" >&2 ;;
+    windows) echo "consh: running the ConMa version on the $CONMA_VM VM (consh-rs is not built on Windows)" >&2 ;;
+  esac
+fi
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
-if [ $impl = rust ] && [ -n "$(find "$consh/rust/src" "$consh/rust/Cargo.toml" "$consh/rust/Cargo.lock" \( -name '*.rs' -o -name 'Cargo.*' -o -type d \) -newer "$rust" 2>/dev/null)" ]; then
-  echo "consh: warning: $rust is older than its sources (cargo build --release in consh/rust)" >&2
+if [ $impl = rust ]; then
+  stale_build "$rust" "$consh/rust" "$consh/rust/src" "$consh/rust/Cargo.toml" "$consh/rust/Cargo.lock" \
+    \( -name '*.rs' -o -name 'Cargo.*' -o -type d \)
+fi
+# ConMa 版：conma がソースより古ければ、同じく警告する（ビルドするかも聞く）。古い conma は、後から足したサブコマンド
+# （build など）を知らず、分かりにくいエラーになる（frontend.module.se は conma に埋め込まれている）。
+# 対話モードで rlwrap を通す前に確かめるので、ここで確かめる
+if [ $impl != rust ] && [ -x "$conma" ]; then
+  stale_build "$conma" "$root/vm" "$root/vm/src" "$root/vm/Cargo.toml" "$root/vm/Cargo.lock" "$root/vm/frontend.module.se" \
+    \( -name '*.rs' -o -name 'Cargo.*' -o -name '*.se' -o -type d \)
 fi
 [ $impl = rust ] || rust=
 if [ -n "$rust" ] && [ -z "$interactive" ]; then
@@ -88,15 +218,6 @@ if [ -n "$interactive" ] && [ -z "$CONSH_NO_RLWRAP" ] && [ -z "$CONSH_RLWRAPPED"
 fi
 if [ -n "$interactive" ] && [ -n "$rust" ]; then
   exec "$rust" interactive
-fi
-# ConMa 版の VM：CONMA_VM があれば、それを bin/vm で使う。なければ Rust 版の VM で、作っていなければエラーにする
-# （テストやベンチマークを、気付かずに遅い Python 版の VM で動かさないため。Python 版は CONMA_VM=python で選ぶ）
-if [ -z "$CONMA_VM" ]; then
-  if [ ! -x "$root/vm/target/release/conma" ]; then
-    echo "consh: $root/vm/target/release/conma is not built (cargo build --release in vm); set CONMA_VM=python to use the Python VM" >&2
-    exit 2
-  fi
-  export CONMA_VM=rust
 fi
 # ConMa のモジュールは、ソースかフロントエンドが変わったときだけ作り直す。作るディレクトリは環境変数 CONSH_MODULE_DIR（既定は
 # bin/cache-dir の場所。持ち主だけが読み書きできる）。
@@ -148,11 +269,6 @@ for d in "${dirs[@]}"; do incs+=(--include "$d"); done
 # モジュールを作るもの（conma か、bin/ の Python 版のフロントエンド）。これが新しくなっても作り直す
 # （フロントエンドが変わると、同じソースから違うモジュールができる。インクルードディレクトリを探す順など）
 if [ -x "$conma" ]; then frontend=("$conma"); else frontend=("$root/bin"); fi
-# conma がソースより古ければ（git pull の後など）、警告してから、それを使う。古い conma は、後から足したサブコマンド
-# （build など）を知らず、分かりにくいエラーになる（frontend.module.se は conma に埋め込まれている）
-if [ -x "$conma" ] && [ -n "$(find "$root/vm/src" "$root/vm/Cargo.toml" "$root/vm/Cargo.lock" "$root/vm/frontend.module.se" \( -name '*.rs' -o -name 'Cargo.*' -o -name '*.se' -o -type d \) -newer "$conma" 2>/dev/null)" ]; then
-  echo "consh: warning: $conma is older than its sources (cargo build --release in vm)" >&2
-fi
 # ソースかフロントエンドがモジュールより新しければ、作り直す
 # （フォルダも見るのは、ファイルを足したり消したり移したりすると、フォルダの時刻が変わるから）
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" \( -name '*.se' -o -type d \) -newer "$module")" ] ||

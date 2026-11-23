@@ -3,49 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ConJS stars</title>
+<title>ConJS canvas</title>
 <style>
   body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
-  canvas { border: 1px solid #ccc; max-width: 100%; touch-action: none; }
-  canvas:focus { outline: 2px solid #669bbc; }
+  canvas { border: 1px solid #ccc; max-width: 100%; }
   pre { background: #f4f4f4; padding: 8px; min-height: 1.5em; white-space: pre-wrap; }
 </style>
 </head>
 <body>
-<h1>星ひろい</h1>
-<p>入力を待つ対話の見本（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）。stars.con.js を wasm 版の ConMa の VM で動かす。
-画面の順はふつうのループで、おばけは 1 匹ごとに spawn した処理で書き、キーは nextEvent() で await なしに待つ。
-<a href="canvas.html">canvas の見本</a>。</p>
-<canvas id="canvas" width="480" height="360" tabindex="0"></canvas>
+<h1>ConJS canvas</h1>
+<p>wasm 版の ConMa の VM が、ConJS のプログラム canvas_demo.con.js を動かして描く（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節、段階 P3b）。
+1 コマごとに描き、host.wait("canvas.frame")（requestAnimationFrame）で次のコマを、await なしで待つ。
+同じ絵を ConMa で書いたもの（canvas_demo.se、段階 P3）は、vm/wasm/web/canvas.html にある（2026-11-23 に分けた）。</p>
+<canvas id="canvas" width="480" height="320"></canvas>
 <p id="status">読み込み中…</p>
 <pre id="out"></pre>
 <script src="conma.js"></script>
 <script src="canvas.js"></script>
-<script src="input.js"></script>
 <script>
 "use strict";
-// The page runs the VM in its own thread: conma.js, canvas.js and input.js (vm/wasm/host), as build.sh puts them here
+// The page runs the VM in its own thread: conma.js and canvas.js (vm/wasm/host), as build.sh puts them here
 (async () => {
   const out = document.getElementById("out");
   const status = document.getElementById("status");
-  const canvas = document.getElementById("canvas");
   const decoder = new TextDecoder();
   const write = (fd, bytes) => {
     out.textContent += decoder.decode(bytes, { stream: true });
   };
   try {
-    const file = "stars_conjs.module.se";
+    // main は引数を受け取るので、-m で __start__ から呼ぶ
+    const file = "canvas_demo_conjs.module.se";
     const [wasmBytes, moduleText] = await Promise.all([
       fetch("conma.wasm").then((r) => r.arrayBuffer()),
       fetch(file).then((r) => r.text()),
     ]);
-    const draw = ConmaCanvas(canvas);
-    const input = ConmaInput(canvas);
+    const host = ConmaCanvas(document.getElementById("canvas"));
     let wake = null;
     const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), write, {
-      hostFunctions: Object.assign({}, draw.hostFunctions, input.hostFunctions),
-      hostFeatures: draw.hostFeatures.concat(input.hostFeatures),
-      // A call of the host (canvas.frame, input.next, time.sleep) has finished: run the VM again
+      hostFunctions: host.hostFunctions,
+      hostFeatures: host.hostFeatures,
+      // A call of the host (canvas.frame) has finished: run the VM again
       jsDone: () => {
         if (wake) {
           const w = wake;
@@ -54,11 +51,9 @@
         }
       },
     });
-    canvas.focus();
-    // main は引数を受け取るので、-m で __start__ から呼ぶ
     let code = vm.start(moduleText, ["-m", file]);
     if (code !== 0) throw new Error("the VM did not start (" + code + ")");
-    status.textContent = "動いている（canvas をクリックすると、キーを受け取る）";
+    status.textContent = "動いている";
     for (;;) {
       code = vm.run(100000);
       if (code === ConMaVM.RUNNING) {

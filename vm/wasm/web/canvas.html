@@ -14,8 +14,7 @@
 <h1>ConMa canvas</h1>
 <p>wasm 版の ConMa の VM が、canvas_demo.se を動かして描く（docs/dev/PLATFORM-PLAN-ja.md の 3.4、段階 P3）。
 1 コマごとに Canvas_draw でまとめて描き、Canvas_frame（requestAnimationFrame）で次のコマを待つ。
-<a href="?conjs">ConJS 版</a>（canvas_demo.con.js。4.2 節、段階 P3b）は、同じ絵を ConJS で書き、host.wait("canvas.frame") を await なしで待つ。
-<a href="?">ConMa 版</a>。</p>
+同じ絵を ConJS で書いたもの（4.2 節、段階 P3b）は、conjs/web/canvas.html にある（2026-11-23 に分けた）。</p>
 <canvas id="canvas" width="480" height="320"></canvas>
 <p id="status">読み込み中…</p>
 <pre id="out"></pre>
@@ -32,9 +31,7 @@
     out.textContent += decoder.decode(bytes, { stream: true });
   };
   try {
-    // ?conjs なら ConJS 版（main は引数を受け取るので、-m で __start__ から呼ぶ）
-    const conjs = new URLSearchParams(location.search).has("conjs");
-    const file = conjs ? "canvas_demo_conjs.module.se" : "canvas_demo.module.se";
+    const file = "canvas_demo.module.se";
     const [wasmBytes, moduleText] = await Promise.all([
       fetch("conma.wasm").then((r) => r.arrayBuffer()),
       fetch(file).then((r) => r.text()),
@@ -53,9 +50,9 @@
         }
       },
     });
-    let code = vm.start(moduleText, conjs ? ["-m", file] : [file, "main"]);
+    let code = vm.start(moduleText, [file, "main"]);
     if (code !== 0) throw new Error("the VM did not start (" + code + ")");
-    status.textContent = (conjs ? "ConJS 版が" : "ConMa 版が") + "動いている";
+    status.textContent = "動いている";
     for (;;) {
       code = vm.run(100000);
       if (code === ConMaVM.RUNNING) {
