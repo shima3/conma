@@ -1,6 +1,6 @@
 // 入力を待つ対話の見本「星ひろい」（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）。stars.html が、wasm 版の VM で動かす。
 // canvas のない所（端末。4.7 節、段階 P6a）では、同じゲームを ANSI のエスケープの並びで端末に描き、キーを標準入力から読む
-// （conjs/conjs vm/wasm/web/stars.con.js）。
+// （conjs/conjs conjs/web/stars.con.js）。
 // 矢印のキー（かクリック）で自分（四角）を 1 マスずつ動かし、星をすべて拾うと次の面に進む。おばけは、それぞれ一定の
 // 間隔で自分に 1 マス近づき、ぶつかると終わる。Escape で、どの画面からでも終える。
 //

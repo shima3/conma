@@ -1,6 +1,6 @@
 # GitHub Pages: publish docs/ (made into HTML by Jekyll, as before), the browser version of ConSh
 # (consh/js/web, with the files that consh/js/build.sh makes) at consh/web/, and the documents of ConJS and SJS
-# (conjs/README.md and README-ja.md, sjs/README-ja.md) with the pages of vm/wasm/web (made by vm/wasm/web/build.sh) at conjs/.
+# (conjs/README.md and README-ja.md, sjs/README-ja.md) with the pages of conjs/web (made by conjs/web/build.sh) at conjs/.
 # Only main is published, which gets only states that passed every suite (docs/dev/CONTRIBUTING.md).
 # A pull request runs the build only (Jekyll of GitHub included), so that a page that stops it is seen before the merge,
 # with no Jekyll on the machines of the developers (2026-11-23).
@@ -46,7 +46,7 @@ jobs:
       - name: Build the pages of ConJS
         run: |
           (cd vm && cargo build --release)
-          vm/wasm/web/build.sh
+          conjs/web/build.sh
 
       # docs/conjs/index.md lists them. The links of the READMEs are relative to conjs/ and sjs/ of the repository:
       # those into docs/ stay on this site, and those to what is not published here go to GitHub (alpha)
@@ -62,7 +62,7 @@ jobs:
                 -e "s|](\.\./docs/|](../|g" -e "s|](\.\./consh/|]($gh/consh/|g" \
                 "$f" >> "docs/$f"
           done
-          cp -R vm/wasm/web docs/conjs/web
+          cp -R conjs/web docs/conjs/web
 
       # Jekyll reads every page as Liquid first, and the text of ConSh has {{ and {% in it
       # (docs/consh/PLAN-ja.md, docs/dev/TESTS-RECORD-ja.md), so each of them is escaped, here only (.github/pages-escape.py)

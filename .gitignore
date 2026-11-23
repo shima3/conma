@@ -15,6 +15,9 @@ vm/wasm/web/conma.wasm
 vm/wasm/web/conma.js
 vm/wasm/web/canvas.js
 vm/wasm/web/canvas_demo.module.se
-vm/wasm/web/canvas_demo_conjs.module.se
-vm/wasm/web/input.js
-vm/wasm/web/stars_conjs.module.se
+conjs/web/conma.wasm
+conjs/web/conma.js
+conjs/web/canvas.js
+conjs/web/input.js
+conjs/web/canvas_demo_conjs.module.se
+conjs/web/stars_conjs.module.se

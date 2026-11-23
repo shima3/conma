@@ -101,6 +101,32 @@ sjs/test/run_all.sh
 * 流していないもの：macOS のすべて（変わる行は Windows でしか動かない）。wasm 版の VM の test/ と consh/test は、I7 では多くのステップが違う（Windows のパスの扱いなど。直す前から同じで、この直しの外。I7 の既知の違いの表にはまだない）。
 * 測ったもの：なし。
 
+### m4/conjs-web（shima3/conma#56）
+
+* ConJS のブラウザの見本を、vm/wasm/web から conjs/web に移した（ConSh の consh/js/web と揃える）。移したのは stars.html、stars.con.js、canvas_demo.con.js（移すだけのコミットを分けた。conjs/test の step14 と step15 の case2.con.js のシンボリックリンクも、そのコミットで conjs/web/stars.con.js を指すようにした）。canvas.html は、ConMa 版（vm/wasm/web に残る）と ConJS 版（conjs/web/canvas.html。`?conjs` はもう要らない）に分けた。build.sh も分け、conjs/web/build.sh が ConJS の 2 つを変換してモジュールにし、vm/wasm/web/build.sh は ConMa の canvas_demo.se だけを作る。pages.yml は conjs/web を docs/conjs/web にコピーするので、星ひろいと canvas の URL は変わらない（ConMa 版の canvas のページは、Pages から外した）。bin/lang-emit-check、.gitignore、.claude/launch.json（conjs-web、8768）、conjs/README の 2 つ、docs/conjs/index.md、docs/dev/CONJS.md、docs/HOST-ja.md を直し、docs/dev/PLATFORM-PLAN-ja.md に移した日付の一言を足した（ほかの所は、その段階の記録として残した）。
+* 作り直すもの：ページを見るなら conjs/web/build.sh と vm/wasm/web/build.sh。前に vm/wasm/web/build.sh が作った vm/wasm/web の input.js、canvas_demo_conjs.module.se、stars_conjs.module.se は、もう .gitignore にないので、ワークツリーに残っていれば消してよい。
+* 新しいテスト：なし。
+* M4 が流したもの：`conjs/test/run_all.sh`（Rust 版）と `CONMA_VM=wasm conjs/test/run_all.sh`、`conjs/test/compare.sh`、`bin/lang-emit-check HEAD`（conjs/web の .con.js を読む）、`test/fast16/test.sh`。conjs/web/build.sh と vm/wasm/web/build.sh。2 つの canvas のページが動かすモジュールを、ページと同じ引数で、何も描かない canvas の上で Node.js から 60 コマ動かした（ConJS 版と ConMa 版）。
+* 流していないもの：本当のブラウザ（ページの HTML は、読むモジュールの名前と起動の引数のほかは変えていない）、Jekyll（Pages の build は PR の CI で動く）、Windows。
+* 測ったもの：なし。
+
+### m2/step1-module（shima3/conma#55）
+
+* consh/test/step1：後半（dump-sexp と、壊れた構文木の case2 から case5）は、ConMa 版の最適化版のモジュール（consh.module.se、`CONSH_CONMA_DATA` なら consh.data.module.se）を直に読む。`CONSH_IMPL` が rust か reference の consh は、そのモジュールを作らないので、新しいクローンや worktree で、ConMa 版を流す前に `CONSH_IMPL=rust` で流すと、22 の場合が「No such file or directory … consh.module.se」で違いになっていた（shima3/conma#51 のレビューで M2 が見つけた。alpha でも同じ）。`CONSH_IMPL` が conma でなければ、step1 が始めに ConMa 版の consh を 1 度動かして、モジュールを作る（ソースより古ければ作り直す）。
+* 作り直すもの：なし。
+* 新しいテスト：なし（step1 の中の準備だけ）。
+* M2 が流したもの：空の `CONSH_MODULE_DIR` で、`CONMA_VM=rust` の step1 を、`CONSH_IMPL` が rust、reference、conma のとき、と rust に `CONSH_CONMA_DATA=1` を付けたときに流し、どれも違いなし（直す前は、rust で 22 の違い）。
+* 流していないもの：step1 のほかのステップ、ほかの VM、Windows。
+* 測ったもの：なし。
+
+### m4/consh-rs-dead-code（shima3/conma#53）
+
+* consh/rust（consh-rs）：使っていないメソッド `Sexp::is_list`、`Sexp::id`（ast.rs）と `Value::is_string`（value.rs）を消した。cargo が dead_code の警告を出していた（shima3/conma#52 で VM の警告を消したのと同じ）。expand.rs の `is_list` は別の型のもので、使っているので残した。振る舞いは変わらない。
+* 作り直すもの：consh-rs（consh/rust で `cargo build --release`）。
+* 新しいテスト：なし。
+* M4 が流したもの：consh/rust の `cargo build --release` と `cargo test --release`（警告なし）、`CONMA_VM=rust consh/test/run_all.sh -j 4`（ConMa 版）。M2 がレビューで `CONMA_VM=rust CONSH_IMPL=rust consh/test/run_all.sh -j 4`（Rust 版。既知の違いの examples の nbody.sh だけ）。
+* 流していないもの：Windows（consh-rs を作れない）。
+
 ### i7/vm-dead-code（shima3/conma#52）
 
 * vm/src/module.rs と step.rs：VM をビルドするたびに cargo が出していた警告（`field `0` is never read`、module.rs の `CLCont::V(Sexp)`）を消した。`__Closure__` と書いた LCont はどこでも使えないので、その節を持たない `CLCont::V` にした。振る舞いは変わらない（使えば、今までどおり `an LCont written as a __Closure__ value is not supported`）。
@@ -135,50 +161,4 @@ sjs/test/run_all.sh
 * 新しいテスト：なし（端末から打つ suite がない）。
 * M4 が流したもの：`script` の疑似端末と rlwrap で、n（古いまま使う）、Enter（約 2 秒でビルド）、2 回目（前回の時間を示す）、新しい consh-rs（聞かない）、`CONSH_IMPL=conma` で VM が古いとき。スクリプトをリポジトリの上、consh/rust、consh/include、リポジトリの外から起動した警告のパス。パイプの対話モード（聞かない）。ビルドが失敗するとき（cargo のエラーを出して、古いまま使う）。`CONMA_VM=rust consh/test/run_all.sh -j 4` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 4`。
 * 流していないもの：Windows（consh.ps1 の警告は変えていない）。
-* 測ったもの：なし。
-
-### i7/console-mode（shima3/conma#43）
-
-* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。MSYS のプログラム（Git Bash の sleep、cat、grep など）は、動いている間、コンソールの入力モードの行入力、エコー、Ctrl-C の処理をオフにする（I7 で 0x1F7 が 0x2E8 になる）。ConSh がそれを Ctrl-C で止めると、元に戻らない。すると Enter が `\r` だけになり、行が終わらず、ConSh がそれから後の行を読まなくなっていた（shima3/conma#41 のレビューで見つけた）。コンソールを読むスレッドが、作られたとき（VM の起動時）の入力モードを覚え、読むたびに、違っていれば戻す。Unix は変わらない。M4 のレビューで挙がった、この直しの範囲の外のこと：戻すのは入力のモードだけで、出力のモード（ENABLE_VIRTUAL_TERMINAL_PROCESSING など）は戻さない。戻すのは読みを始める前だけなので、すでに始まった読みの間に変わったモードは、次の読みから戻る（標準入力を受け継ぐ子を起動する前に、VM は始まった読みを止めるので、ConSh のコマンドではこうならない）。背景のジョブ（`&`）がモードを変えて動いている間にプロンプトで読むと、そのモードも戻す（Unix のシェルは前景のジョブの後にだけ戻すが、背景のジョブは Unix でもコンソールから読まない）。
-* 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
-* 新しいテスト：なし（コンソールに打つ suite がない）。
-* I7 が流したもの（Windows 11）：隠したコンソールで、WriteConsoleInput で行を打ち、GenerateConsoleCtrlEvent で Ctrl-C を送った。consh.cmd で、`sleep 1`、Ctrl-C で止めた `sleep 10`（動いている間は 0x2E8、その後は 0x1F7）、`echo`、プロンプトでの Ctrl-C、`sh -c 'exit 130'`、Ctrl-C、`echo`、`exit`。どの行も読んで答えた（直す前は、Ctrl-C の後の行を読まなかった）。vm の `cargo test --release --lib`（14 通る）、`CONMA_VM=rust test/run_all.sh -j 6` と `CONMA_VM=rust CONSH_IMPL=conma consh/test/run_all.sh -j 6`（既知の違いだけ）。
-* 流していないもの：本当の端末での打鍵（この PR の前の shima3/conma#42 がまだ alpha にないので、端末の Ctrl-C で ConSh が終わる）、参照版の consh/test、macOS のすべて（変わるファイルはない）。
-* 測ったもの：なし。
-
-### i7/console-ctrl-c（shima3/conma#42）
-
-* Windows の VM（vm/src/sys/windows.rs）の、コンソールを読むスレッドを直した。端末（Windows Terminal やエディタの端末。疑似コンソール）で対話モードの ConSh に Ctrl-C を打つと、ConSh が終了ステータス 130 で終わっていた。疑似コンソールの Ctrl-C は、読み込みを 0 バイトで、エラーなし（ERROR_OPERATION_ABORTED でなく）で止めるので、入力の終わりと見ていた（130 は、Ctrl-C で ConSh が設定した $?）。0 バイトのとき、Ctrl-C の数が増えたかを最大 100 ms（`CTRL_C_WAIT`）待って見て、増えていれば入力の終わりにしない。Windows がハンドラーを呼ぶのが 100 ms より遅れると（忙しい機械など）、前の症状（ConSh が 130 で終わる）がそのときだけ出る（M4 のレビュー）。Unix は変わらない。consh/README-ja.md と consh/bin/consh.cmd のコメントに、consh.cmd から起動して Ctrl-C を押すと、ConSh が終わったときに cmd が「バッチ ジョブを終了しますか」と聞くことを書いた（`.cmd` では避けられない）。
-* 作り直すもの：Windows の Rust 版の VM と transpiled VM（vm/src を変えた）。
-* 新しいテスト：なし（Ctrl-C を疑似コンソールに打つ suite がない）。
-* I7 が流したもの（Windows 11）：このアプリの端末のタブで、直す前の consh.cmd に Ctrl-C を送ると「バッチ ジョブを終了しますか (Y/N)?」が出て終わること、直した VM では Ctrl-C のたびに新しいプロンプトを出して続くこと（2 回）。標準入力がファイルなら、終わりで終わること。vm の `cargo test --release --lib`（14 通る）。
-* 流していないもの：Ctrl-Z と Enter（コンソールの入力の終わり）、macOS のすべて（変わるファイルはない）。
-* 測ったもの：なし。
-
-### i7/consh-cmd（shima3/conma#40）
-
-* consh/bin/consh.cmd を足した：PowerShell の実行ポリシー（Windows の既定では台本を動かさない）によらず、cmd か PowerShell から consh.ps1 を起動する。PATH に `pwsh`（PowerShell 7）があればそれで、なければ Windows PowerShell 5.1 で動かす。`.gitattributes` に `*.cmd text eol=crlf` を足した（cmd は CRLF の台本を読む）。consh.ps1 は頭のコメントだけを変えた。Unix の suite は、どちらも使わない。
-* 作り直すもの：なし。
-* 新しいテスト：なし。
-* I7 が流したもの（Windows 11）：cmd から対話モード（標準入力のファイルから `echo` とパイプ）とスクリプトのない `--dump`（使い方、exit 1）。PowerShell から、引数のあるスクリプト、ないスクリプト（exit 1）、別のカレントディレクトリからの起動。実行ポリシーが Restricted（`PSExecutionPolicyPreference` を消した）で、consh.ps1 は直接には動かず、consh.cmd からは動くこと。
-* 流していないもの：`pwsh` の側（I7 に PowerShell 7 がない）、端末からの Ctrl-C、macOS のすべて（変わるファイルはない）。
-* 測ったもの：なし。
-
-### i7/consh-ps1（shima3/conma#39）
-
-* consh/bin/consh.ps1 を足した：Windows の PowerShell から ConSh の ConMa 版を起動する台本（consh/README-ja.md の「実行」）。consh/bin/consh と同じ引数（`--python-parser` を除く）、`CONSH_IMPL`、`CONMA_VM`（`rust` か `transpiled`）、`CONSH_CONMA_DATA`、`CONSH_MODULE_DIR` を取り、モジュールを bin/cache-dir と同じ場所（同じチェックサム）に `conma build` で作る。Unix の suite は、この台本を使わない。
-* consh/bin/consh は、Windows の Git Bash（cygpath がある）では、モジュールのファイル名から取るリポジトリの上のディレクトリを `pwd -W`（`C:/...` の形）で作り、置き換えを perl でする（M4 のレビュー）。それまでは `/c/...` の形で、VM が書く `C:/...` と一致せず、ファイル名が絶対パスのまま残っていた。一致するようになると、1 行のモジュール（7 MB）で置き換える所が多く、Git Bash の sed は数分かかった（perl は 1 秒かからない）。Unix は sed のままで変わらない。
-* 作り直すもの：なし。
-* 新しいテスト：なし（suite に PowerShell で流すものはない）。
-* I7 が流したもの（Windows 11、Windows PowerShell 5.1）：台本の手で、対話モード（標準入力のファイルから `echo` とパイプ）、引数のあるスクリプト、`--dump`、`CONSH_IMPL=reference`、誤った `CONSH_IMPL`、引数のない `--dump`、ないスクリプト。モジュールを空のディレクトリに作り直したもの（約 25 秒）と、consh/bin/consh が作ったものを使うもの（約 3 秒）。チェックサムが bin/cache-dir と同じになること。consh/bin/consh が空のディレクトリに作ったモジュール（約 20 秒）が、consh.ps1 が作ったものとバイトまで同じになること。PowerShell 5.1 から空の引数と `"` を含む引数を渡すと、スクリプトの `$#` が Git Bash からと違うこと（consh.ps1 の頭のコメントと README に書いた）。
-* 流していないもの：端末から打つ対話モード、`CONMA_VM=transpiled`、`CONSH_CONMA_DATA`、PowerShell 7、macOS のすべて（変わるファイルはない）。
-* 測ったもの：なし。
-
-### m4/late-sigint（shima3/conma#41）
-
-* ConSh の対話モードで、端末の Ctrl-C が前景の外部コマンドとインタプリタの両方に届き、インタプリタが気づく前に外部コマンドが終わったとき、遅れた SIGINT をプロンプトの Ctrl-C と取り違えて、改行とプロンプトを余分に出し、次の入力を捨てていた（consh/test/step12 の case8 が `^C$ echo status $?` になり、後がずれる。wasm 版の VM で多く、2026-11-22 の GitHub Actions で Ubuntu と macOS に出た）。止めていないコマンドが `$?` 130 で終わったら、止めたときと同じく改行を出して "late" を真にし、コマンドの実行中でない SIGINT が "late" の間に来たら何もしないようにした（consh/include/consh_repl.se、consh/reference/consh_repl.se、consh/rust/src/repl.rs）。"late" は、次の行を入力したときにも偽に戻す。SIGINT がシェルに届かなかったとき（`kill -INT` を外部コマンドにだけ送った、`exit 130` など）は、そのすぐ後のプロンプトで行を入力する前の Ctrl-C を 1 回だけ無視し、`exit 130` の後にも改行が出る。
-* 確かめたこと：step12 を、最適化版と参照版の Rust 版、wasm 版の VM、最適化版の Python 版の VM、ConSh の Rust 版で流して違いなし。consh/test を Rust 版の VM で 3 つの版について流して、既知の違いだけ。`CONMA_VM=wasm consh/test/run_all.sh -j 3` を 15 回流して、step12 の違いは 0 回（既知の step17 と step8 だけ）。ただし、直す前の alpha でも、この Mac（M4）では 15 回で 0 回で、この競合はここでは起きにくい。それで、疑似端末で順番を作って確かめた：`sh -c 'kill -INT $$'`（SIGINT で終わり、シェルには届かない）の後のプロンプトで、シェルのプロセスグループに SIGINT を送ると、直す前は改行とプロンプトを余分に出し、直した後は出さない（ConSh の最適化版と参照版を Rust 版と wasm 版の VM で、最適化版を Python 版の VM で、ConSh の Rust 版）。`sleep 10` を Ctrl-C で止めた後のプロンプトで、もう一度 Ctrl-C を押すと読みかけの行を捨てることも、同じ版で確かめた（Python 版の VM を除く）。
-* CI（PR #33、`.github/workflows/ci.yml`）で wasm 版の consh/test の step12 を既知の違いにしたのと、既知の違いの表の「wasm 版（ときどき）| consh/test の step12 の case8」の行は、まだ alpha にない（PR #33 は main に向けて開いている）。PR #33 が入ったら、両方を消す。
-* 作り直すもの：ConSh の Rust 版（consh/rust で `cargo build --release`）。
-* 新しいテスト：なし。
 * 測ったもの：なし。
