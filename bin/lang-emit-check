@@ -3,7 +3,7 @@
 # 作る ConMa のコードが変わらないことを確かめる。
 #   bin/lang-emit-check [--steps] BASE
 # BASE（コミット）の木と、今のワークツリーの、それぞれの変換器（sjs/sjsc.se、conjs/conjsc.se と、その木の sjs/include、
-# include）で、sjs/test、sjs/bench、conjs/test、vm/wasm/web のすべての .safe.js と .con.js を変換し、出力（標準出力、
+# include）で、sjs/test、sjs/bench、conjs/test、conjs/web のすべての .safe.js と .con.js を変換し、出力（標準出力、
 # 標準エラー、終了ステータス）が 1 文字も違わないことを diff で確かめる。違いがなければ何も出さず、0 で終わる。
 # --steps を付けると、変換のステップ数（Rust 版の VM の CONMA_PROFILE。すべてのファイルの合計）も、2 つの木で数えて出す
 # （4.3 節の「変換の速さ」。数えると VM が遅くなるので、ふだんは数えない）。
@@ -53,7 +53,7 @@ emit_tree() {
 cd "$root"
 files=()
 while IFS= read -r f; do files+=("$f"); done < <(
-  { ls sjs/test/*/*.safe.js sjs/bench/*.safe.js conjs/test/*/*.con.js vm/wasm/web/*.con.js 2>/dev/null; } | sort)
+  { ls sjs/test/*/*.safe.js sjs/bench/*.safe.js conjs/test/*/*.con.js conjs/web/*.con.js 2>/dev/null; } | sort)
 emit_tree "$tmp/base" "$tmp/out-base"
 emit_tree "$root" "$tmp/out-now"
 status=0

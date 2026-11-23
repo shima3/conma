@@ -113,6 +113,24 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 気をつけること：test/ と consh/test のログは、リポジトリのディレクトリの名前が `conma` であることを前提にしている（`conma/test/step1/test.se`）。worktree（`.claude/worktrees/NAME`）で流すと、ほとんどのステップが違う。名前が `conma` のディレクトリに worktree を作って流した。
 * 測ったもの：なし。
 
+### m4/conjs-web（shima3/conma#56）
+
+* ConJS のブラウザの見本を、vm/wasm/web から conjs/web に移した（ConSh の consh/js/web と揃える）。移したのは stars.html、stars.con.js、canvas_demo.con.js（移すだけのコミットを分けた。conjs/test の step14 と step15 の case2.con.js のシンボリックリンクも、そのコミットで conjs/web/stars.con.js を指すようにした）。canvas.html は、ConMa 版（vm/wasm/web に残る）と ConJS 版（conjs/web/canvas.html。`?conjs` はもう要らない）に分けた。build.sh も分け、conjs/web/build.sh が ConJS の 2 つを変換してモジュールにし、vm/wasm/web/build.sh は ConMa の canvas_demo.se だけを作る。pages.yml は conjs/web を docs/conjs/web にコピーするので、星ひろいと canvas の URL は変わらない（ConMa 版の canvas のページは、Pages から外した）。bin/lang-emit-check、.gitignore、.claude/launch.json（conjs-web、8768）、conjs/README の 2 つ、docs/conjs/index.md、docs/dev/CONJS.md、docs/HOST-ja.md を直し、docs/dev/PLATFORM-PLAN-ja.md に移した日付の一言を足した（ほかの所は、その段階の記録として残した）。
+* 作り直すもの：ページを見るなら conjs/web/build.sh と vm/wasm/web/build.sh。前に vm/wasm/web/build.sh が作った vm/wasm/web の input.js、canvas_demo_conjs.module.se、stars_conjs.module.se は、もう .gitignore にないので、ワークツリーに残っていれば消してよい。
+* 新しいテスト：なし。
+* M4 が流したもの：`conjs/test/run_all.sh`（Rust 版）と `CONMA_VM=wasm conjs/test/run_all.sh`、`conjs/test/compare.sh`、`bin/lang-emit-check HEAD`（conjs/web の .con.js を読む）、`test/fast16/test.sh`。conjs/web/build.sh と vm/wasm/web/build.sh。2 つの canvas のページが動かすモジュールを、ページと同じ引数で、何も描かない canvas の上で Node.js から 60 コマ動かした（ConJS 版と ConMa 版）。
+* 流していないもの：本当のブラウザ（ページの HTML は、読むモジュールの名前と起動の引数のほかは変えていない）、Jekyll（Pages の build は PR の CI で動く）、Windows。
+* 測ったもの：なし。
+
+### m2/step1-module（shima3/conma#55）
+
+* consh/test/step1：後半（dump-sexp と、壊れた構文木の case2 から case5）は、ConMa 版の最適化版のモジュール（consh.module.se、`CONSH_CONMA_DATA` なら consh.data.module.se）を直に読む。`CONSH_IMPL` が rust か reference の consh は、そのモジュールを作らないので、新しいクローンや worktree で、ConMa 版を流す前に `CONSH_IMPL=rust` で流すと、22 の場合が「No such file or directory … consh.module.se」で違いになっていた（shima3/conma#51 のレビューで M2 が見つけた。alpha でも同じ）。`CONSH_IMPL` が conma でなければ、step1 が始めに ConMa 版の consh を 1 度動かして、モジュールを作る（ソースより古ければ作り直す）。
+* 作り直すもの：なし。
+* 新しいテスト：なし（step1 の中の準備だけ）。
+* M2 が流したもの：空の `CONSH_MODULE_DIR` で、`CONMA_VM=rust` の step1 を、`CONSH_IMPL` が rust、reference、conma のとき、と rust に `CONSH_CONMA_DATA=1` を付けたときに流し、どれも違いなし（直す前は、rust で 22 の違い）。
+* 流していないもの：step1 のほかのステップ、ほかの VM、Windows。
+* 測ったもの：なし。
+
 ### m4/consh-rs-dead-code（shima3/conma#53）
 
 * consh/rust（consh-rs）：使っていないメソッド `Sexp::is_list`、`Sexp::id`（ast.rs）と `Value::is_string`（value.rs）を消した。cargo が dead_code の警告を出していた（shima3/conma#52 で VM の警告を消したのと同じ）。expand.rs の `is_list` は別の型のもので、使っているので残した。振る舞いは変わらない。
