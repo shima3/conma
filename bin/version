@@ -1,0 +1,24 @@
+#!/bin/bash
+# bin/version: ConMa の版を出す（2026-11-24。bin/lang、conjs/conjs、consh/bin/consh の --version が呼ぶ）。
+#   bin/version
+# 版の番号は、リポジトリのルートの VERSION にある（セマンティック バージョニング。1.0 までは互換性を約束しない）。
+# その後に、Git のクローンなら、今のコミットとその日付を書き、作業ツリーに commit していない変更があれば -dirty を付ける：
+#   ConMa 0.1.0 (facfb87 2026-11-24)
+# GitHub の Download ZIP（git archive）で手に入れたものには Git の履歴がないので、下の archived の行に、git archive が
+# 書き込んだコミットと日付を使う（.gitattributes の export-subst）。どちらもなければ番号だけを出す。
+# consh/bin/consh.ps1 は、この archived の行を読んで、同じものを出す
+archived='$Format:%h %cs$'
+root="$(cd "$(dirname "$0")/.."; pwd)"
+version="$(tr -d ' \r\n' < "$root/VERSION")" || exit 1
+commit=
+if [ -e "$root/.git" ] && command -v git > /dev/null 2>&1; then
+  commit="$(git -C "$root" log -1 --format='%h %cs' 2> /dev/null)"
+  if [ -n "$commit" ] && [ -n "$(git -C "$root" status --porcelain --untracked-files=no 2> /dev/null)" ]; then
+    commit="${commit%% *}-dirty ${commit#* }"
+  fi
+fi
+case "$archived" in
+  '$Format'*) ;;
+  *) [ -n "$commit" ] || commit="$archived" ;;
+esac
+if [ -n "$commit" ]; then echo "ConMa $version ($commit)"; else echo "ConMa $version"; fi

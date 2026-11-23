@@ -34,6 +34,16 @@ test/run_all.sh -j 8
 CONMA_VM=rust test/run_all.sh -j 8
 ```
 
+## Version
+
+The version of ConMa is in [VERSION](VERSION) (0.1.0 from 2026-11-24). It follows semantic versioning; until 1.0, a new version may break what worked before. `bin/version` prints it, and so do `bin/lang --version`, `conjs/conjs --version` and `consh/bin/consh --version` (`consh.ps1 --version` and `consh.cmd --version` on Windows). In a clone of Git it adds the commit and its date, and `-dirty` when files differ from the commit; in a ZIP from GitHub (Download ZIP), the commit it was made from:
+
+```
+ConMa 0.1.0 (facfb87 2026-11-24)
+```
+
+Give this line when you report a problem.
+
 ## For developers
 
 Those who change ConMa (its VMs, its front end and its standard library) or ConSh read [docs/dev/CONTRIBUTING.md](docs/dev/CONTRIBUTING.md): the branches of the work, `alpha` and `main`, the Git settings of each clone, how a change goes through the tester into `main`, how the tests are run and recorded, how commit messages are written, how English and Japanese documents are named and kept in step, and how a text refers to a file that has moved. Those who only run ConMa programs, ConSh among them, are its users, and need not read docs/dev.

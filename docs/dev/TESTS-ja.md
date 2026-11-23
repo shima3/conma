@@ -96,12 +96,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 ## 申し送り
 
-次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
 
 ### m4/wasm-translate（shima3/conma#64）
 
 * bin/lang（conjs/conjs と sjs/sjs）：変換とモジュール作り（`conma build`、変換器の実行、`conma link`）を、Rust 版の VM がなければ wasm 版の VM で行う。CONMA_VM がなく Rust 版の VM もなければ、変換したプログラムも wasm 版で動かす。Rust を入れずに、Node.js と、作ってある wasm 版の VM だけで ConJS を動かせるようにするため（ユーザーの指示）。`CONMA_TRANSLATE_VM=wasm` で、Rust 版の VM があっても wasm 版で変換する。wasm 版の VM で作ったモジュールの古さは、conma_wasm.wasm と vm/frontend.module.se の時刻で見る。
 * vm/wasm/vm-node.js に `build [--include dir ...] source`（フロントエンドを動かす。conma build と同じく、標準ライブラリの include を後に足す）と `link runtime program` を足した。vm/wasm/src/lib.rs に `conma_link`（vm/src/link.rs をそのまま使う。vm/src は変えていない）を、vm/wasm/conma.js に `vm.link` を足した。
+* 種類：機能（Rust 版の VM がなくても、wasm 版の VM で変換する）。
 * 作り直すもの：wasm 版の VM（vm/wasm/build.sh）。consh/js/build.sh の作るブラウザ版も、wasm を作り直す。
 * 新しいテスト：なし（Rust 版の VM のない worktree で、下のとおり流した）。
 * M4 が流したもの：変換器（conjsc.se）、ランタイム、変換したソースの `build` と、変換、`link` の出力が、Rust 版の VM のものと 1 バイトも同じであること。Rust 版の VM がある所で `conjs/test/run_all.sh`（Rust 版、wasm 版）と `sjs/test/run_all.sh`（前と同じ）。Rust 版の VM のない worktree（vm/target がない）と空のキャッシュで、`conjs/conjs hello.con.js`（初めて約 7 秒、2 回目 0.3 秒）、CONMA_VM なしのサーバの見本、`CONMA_VM=wasm conjs/test/run_all.sh`、`CONMA_VM=wasm sjs/test/run_all.sh`（step11 だけが違う。この test.sh は bin/lang を使わず、Rust 版の VM を自分で呼ぶため）、`conjs/test/compare.sh`。
@@ -111,6 +112,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 ### i7/conjs-prepare（shima3/conma#65）
 
 * conjs/conjs に `--prepare` を足した：空のプログラムを一度 bin/lang で変換して動かし、変換器とランタイムのモジュールをキャッシュ（bin/cache-dir）に作っておく。初めての実行は、この 2 つを作るのに I7 で約 18 秒（Rust 版の VM。wasm 版の VM なら約 29 秒）かかるので、クイックスタート（conjs/QUICKSTART-ja.md と QUICKSTART.md）の「3. ビルドする」で、ビルドの続きとして待ってもらう。bin/lang は変えない（shima3/conma#64 とぶつからないように）。README の 2 つにも足した。
+* 種類：機能（`conjs/conjs --prepare`）。
 * 作り直すもの：なし（台本だけ）。
 * 新しいテスト：なし。
 * I7 が流したもの（Windows 11）：空のキャッシュ（`CONMA_CACHE_DIR`）で `conjs/conjs --prepare`（18.6 秒、`conjs: ready`）、その後の初めての hello（1.3 秒）、作ってあるときの `--prepare`（1.4 秒）、`--prepare x`（使い方を出して 2）、`conjs/test/run_all.sh` と `CONMA_VM=wasm conjs/test/run_all.sh`、`conjs/test/compare.sh`（違いなし）、`.github/doc-pairs.py`。
@@ -120,8 +122,21 @@ CONMA_VM=wasm conjs/test/run_all.sh
 ### m4/at-replace（shima3/conma#69）
 
 * sjs/include/sjs_rt.se に、配列と文字列の `at` と、文字列の `replace`、`replaceAll` を足した（ユーザーの指示。文字列の `at` は M2 のレビューの後。SJS と ConJS で共有する）。探すものは文字列だけ。置き換えるものは文字列（`$$`、`$&`、`` $` ``、`$'`）か関数。sjs/README-ja.md の「配列と文字列の at と、文字列の replace、replaceAll」と、conjs/TUTORIAL の 2 つも直した。
+* 種類：機能（配列と文字列の `at`、文字列の `replace`、`replaceAll`）。
 * 作り直すもの：なし（ランタイムのモジュールは、bin/lang がハッシュで作り直す）。
 * 新しいテスト：sjs/test/step12 の case4（Node.js の結果と比べた）。
 * M4 が流したもの：case4 の Rust 版と wasm 版、ConJS での同じプログラム（Node.js と同じ出力）、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh`（ConSh の最適化版。consh_jsstmt.se が sjs_rt.se を include する）、`consh/js/test/run_all.sh`。どれも違いなし。
 * 流していないもの：Python 版の VM、transpiled VM、ConSh の参照版と wasm 版、Windows（I7）。
+* 測ったもの：なし。
+
+### m4/version（shima3/conma#70）
+
+* 版の表示を足した（ユーザーの指示。0.1.0 から）。リポジトリのルートの VERSION に番号を置き、bin/version が「ConMa 0.1.0 (コミット 日付)」を出す（作業ツリーに変更があれば、コミットに -dirty を付ける）。`bin/lang --version`、`conjs/conjs --version`、`consh/bin/consh --version` は bin/version を呼ぶ。consh/bin/consh.ps1 の `--version` は、同じものを PowerShell で出す。
+* GitHub の Download ZIP（git archive）には Git の履歴がないので、bin/version の archived の行に git archive がコミットと日付を書き込む（.gitattributes の export-subst）。
+* 文書：README.md の Version、docs/dev/CONTRIBUTING.md の Versions（VERSION を変えるのはユーザーの指示のとき）、conjs/README の 2 つと consh/README-ja.md の使い方。
+* 種類：機能（`--version`）。
+* 作り直すもの：なし。
+* M4 が流したもの：4 つのコマンドの `--version`（Git のクローン、変更あり・なし）、`git archive` で作ったディレクトリでの bin/version、`conjs/test/run_all.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
+* I7 が流したもの（PR のレビュー、ee14129）：consh.ps1 と consh.cmd の `--version`（Windows PowerShell 5.1）。I7 の見つけた 2 つ（bin/version を UTF-8 で読むこと、git が失敗しても止まらないこと）は、3e3219f で直し、I7 が 3e3219f で確かめた（4 つの状態で bin/version と同じ）。
+* 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。

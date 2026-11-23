@@ -7,7 +7,7 @@ The steps of each task of a developer, in the order they are done (2026-11-22). 
 1. Make a branch from the latest `alpha`, named after your machine and the work: `m2/foo` (1). For a change of documents only, see below.
 2. Commit with a summary of 50 to 70 characters, a blank line, then what changed, why, and what you ran (Commit messages). Make a move of files a commit of its own (Files that moved).
 3. When it is done, run the tests the change touches and the benchmarks it affects (2; TESTS-ja.md, 流し方).
-4. Unless every file is a document (5) and no benchmark is asked for, write the notes for the tester under a heading of the branch in TESTS-ja.md, 申し送り (2).
+4. Unless every file is a document (5) and no benchmark is asked for, write the notes for the tester under a heading of the branch in TESTS-ja.md, 申し送り, with a line 「種類：」 (機能, 直し, 両方 or なし) for the version (2; Versions).
 5. Merge it into `alpha` and push when the user says so (2), or, when the user wants a pull request or you want a review, open one (below).
 
 ## Opening a pull request
@@ -50,8 +50,8 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 ## A Full Test (the tester)
 
 1. Merge `alpha` into your branch `m2/test` (machine and `test`) and run every suite of TESTS-ja.md, 全部流す (3).
-2. If only the known differences show (TESTS-ja.md, 既知の違い): add the line of the record (docs/dev/TESTS-RECORD-ja.md) with the commit of `alpha` you tested, remove the notes of the branches that commit contains (but not a line that asks for a benchmark), and commit (3).
-3. When the user says so, merge `m2/test` into `main`, then into `alpha`, and push them, so that the record and the removed notes reach everybody (3).
+2. If only the known differences show (TESTS-ja.md, 既知の違い): add the line of the record (docs/dev/TESTS-RECORD-ja.md) with the commit of `alpha` you tested, remove the notes of the branches that commit contains (but not a line that asks for a benchmark), raise `VERSION` as their 「種類：」 lines say (MINOR for any 機能 or 両方, else PATCH for any 直し; the record names the version), and commit (3; Versions).
+3. When the user says so, merge `m2/test` into `main`, then into `alpha`, and push them, so that the record and the removed notes reach everybody; with a new version, tag the merge into `main` (`git tag -a v0.2.0 -m "ConMa 0.2.0"`) and push the tag (3; Versions).
 4. If something fails, tell the author, who fixes it on a new branch (3).
 
 ## A Windows Test (I7)

@@ -62,7 +62,10 @@ ConSh を変える人向けの決まり（ファイルの置き場所と名前�
 ```
 bin/consh [--conma-parser | --python-parser] [--dump] スクリプト [引数 ...]
 bin/consh
+bin/consh --version
 ```
+
+`--version` は ConMa の版を出す（2026-11-24 から。リポジトリのルートの README.md の Version）。
 
 ConSh には Rust 版と ConMa 版があり、ConMa 版には参照版と最適化版がある。環境変数 `CONSH_IMPL` で選ぶ。版、VM、構文解析、動かす場所の選び方と、版ごとの機能の差は、[RUNNING-ja.md](../docs/consh/RUNNING-ja.md) にまとめてある。
 

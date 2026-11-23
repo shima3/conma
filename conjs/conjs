@@ -1,6 +1,7 @@
 #!/bin/bash
 # ConJS のファイルを ConMa に変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）。
 #   conjs/conjs [--emit] file.con.js [引数 ...]
+#   conjs/conjs --version     ConMa の版を出す（bin/version。2026-11-24）
 # ファイルの後の引数は、プログラムの argv になる（段階 P8）。
 # --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm/target/release/conma）で行い、
 # 変換したプログラムは CONMA_VM の VM で動かす：なし（Rust 版）、wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。
@@ -9,6 +10,10 @@
 # --prepare：変換器とランタイムのモジュールを、キャッシュ（bin/cache-dir）に作っておく（2026-11-23 から）。初めての実行は、
 # この 2 つを作るのに数十秒かかるので、クイックスタートでは、ビルドの続きとして、ここで待ってもらう。空のプログラムを一度
 # 変換して動かすだけなので、bin/lang は変えない。作ってあれば、すぐ終わる
+if [ "$1" = --version ]; then
+  conjs="$(cd "$(dirname "$0")"; pwd)"
+  exec "${conjs%/*}/bin/version"
+fi
 if [ "$1" = --prepare ]; then
   [ $# -eq 1 ] || { echo "usage: conjs --prepare" >&2; exit 2; }
   conjs="$(cd "$(dirname "$0")"; pwd)"
