@@ -25,6 +25,10 @@ case "$host" in
     ulimit -s "$want" 2>/dev/null
     have=$(ulimit -s)
     [ "$have" = unlimited ] && have=1048576
+    # Windows（Git Bash。cygpath がある）の ulimit は、node.exe のスタックを変えない（上げたと言うだけ）。node.exe の
+    # 主スレッドのスタックは、実行ファイルに書かれた 8 MB なので、それより小さくする（大きいと、深い再帰で Node.js が
+    # 何も出さずに 127 で終わる。sjs/test/step10 の case2）
+    if command -v cygpath > /dev/null && [ "$have" -gt 8192 ]; then have=8192; fi
     exec node --stack-size=$((have * 9 / 10)) "$dir/vm-node.js" "$@" ;;
   jsc) ;;
   *) echo "vm-wasm.sh: CONMA_WASM_HOST must be node or jsc, not \"$host\"" >&2; exit 2 ;;
