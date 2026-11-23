@@ -1,5 +1,5 @@
 // canvas の見本の ConJS 版（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節、段階 P3b）：canvas_demo.se と同じ、跳ねる玉。
-// canvas.html?conjs が、wasm 版の VM で動かす。待つ呼び出し（host.wait("canvas.frame")）を await なしで、ふつうの
+// canvas.html（conjs/web）が、wasm 版の VM で動かす。待つ呼び出し（host.wait("canvas.frame")）を await なしで、ふつうの
 // ループの中に書ける。もう 1 つの処理（spawn）が、30 コマごとに見出しの文字を変える。2 つの処理は、待つ所でだけ切り替わる
 if (!host.available("canvas")) {
   console.log("canvas_demo.con.js: this platform has no canvas");
