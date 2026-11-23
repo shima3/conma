@@ -47,7 +47,7 @@ PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を
 
 ### Windows（I7）で流す
 
-2026-11-22 から（段階 P6c。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節と 8.13 節）。Git Bash で流す。
+2026-11-22 から（段階 P6c。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節と 8.13 節）。Git Bash で流す。ここの suite を、ここに書いたどの VM でもすべて流すことを、**Windows Test** と呼ぶ（2026-11-23。docs/dev/CONTRIBUTING.md の Tests）。I7 が i7/test で流し、記録（docs/dev/TESTS-RECORD-ja.md）に行を足す。Full Test とは違い、申し送りは消さず、main にもマージしない。
 
 * clone は `git clone -c core.autocrlf=false -c core.symlinks=true` で作る（CRLF の台本は bash で動かず、CRLF のログは VM の出力と合わない。シンボリックリンクには Windows の開発者モードが要る）。今ある clone なら、`git config core.autocrlf false`、`git config core.symlinks true` の後に `git rm -q --cached -r . && git reset -q --hard` で取り出し直す。
 * 本当の Python 3 が要る（Python 版の VM を使わなくても、bin/includer などの道具が Python で動く）。python.org の版を入れ、その python.exe を同じディレクトリに python3.exe として写し、そのディレクトリを PATH の先頭に置く（PATH の `python3` は、ふつうは Microsoft Store を開くアプリ実行エイリアス）。

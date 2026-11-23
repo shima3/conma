@@ -53,3 +53,10 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 2. If only the known differences show (TESTS-ja.md, 既知の違い): add the line of the record (docs/dev/TESTS-RECORD-ja.md) with the commit of `alpha` you tested, remove the notes of the branches that commit contains (but not a line that asks for a benchmark), and commit (3).
 3. When the user says so, merge `m2/test` into `main`, then into `alpha`, and push them, so that the record and the removed notes reach everybody (3).
 4. If something fails, tell the author, who fixes it on a new branch (3).
+
+## A Windows Test (I7)
+
+1. Merge `alpha` into `i7/test` and run every suite of TESTS-ja.md, Windows（I7）で流す, with each VM it lists (Tests).
+2. Add the line of the record (docs/dev/TESTS-RECORD-ja.md): 「Windows Test」, the commit of `alpha` you ran, and any difference besides the rows 「Windows（I7）」 of 既知の違い; remove no notes, and commit (Tests).
+3. When the user says so, merge `i7/test` into `alpha` only, never into `main`, and push it (Tests).
+4. If something fails that is not a known difference, tell the author of the change, or the user when it is not clear whose it is.
