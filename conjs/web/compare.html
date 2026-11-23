@@ -42,8 +42,10 @@ requestAnimationFrame と、その止め方）。</p>
     ["stars-events.js", "JavaScript、イベント駆動（stars-events.js）"],
     ["stars-async.js", "JavaScript、async/await（stars-async.js）"],
   ];
-  // 待つ所の印（コメントの行は除く）
-  const WAIT = /\b(nextEvent|sleep|spawn|join|await|async|Promise|setTimeout|setInterval|clearInterval|requestAnimationFrame|cancelAnimationFrame)\b|host\.wait/;
+  // 待つ所の印。名前で探すので目安。文字列と行の終わりのコメントを除いた所で探し、配列の join（.join）は数えない
+  const WAIT = /\b(nextEvent|sleep|spawn|await|async|Promise|setTimeout|setInterval|clearInterval|requestAnimationFrame|cancelAnimationFrame)\b|(?<![.\w])join\b|host\.wait/;
+  const codeOf = (line) => line.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""').replace(/\/\/.*$/, "");
+  const waits = (line) => !isComment(line) && WAIT.test(codeOf(line));
   const texts = {};
   const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const isComment = (line) => /^\s*\/\//.test(line);
@@ -53,11 +55,11 @@ requestAnimationFrame と、その止め方）。</p>
     const text = texts[file];
     const lines = text.replace(/\n$/, "").split("\n");
     const code = lines.filter((l) => l.trim() !== "" && !isComment(l)).length;
-    const waits = lines.filter((l) => !isComment(l) && WAIT.test(l)).length;
+    const waitCount = lines.filter(waits).length;
     document.getElementById(side + "-count").textContent =
-      `${lines.length} 行（コメントと空の行を除くと ${code} 行。待つ所の行 ${waits}）`;
+      `${lines.length} 行（コメントと空の行を除くと ${code} 行。待つ所の行 ${waitCount}）`;
     document.getElementById(side + "-code").innerHTML = lines.map((l, i) => {
-      const cls = isComment(l) ? "cm" : WAIT.test(l) ? "wait" : "";
+      const cls = isComment(l) ? "cm" : waits(l) ? "wait" : "";
       return `<span class="ln">${i + 1}</span><span class="${cls}">${escape(l)}</span>`;
     }).join("\n");
   }

@@ -97,7 +97,7 @@ sjs/test/run_all.sh
 * conjs/web：「星ひろい」（stars.con.js）を、ふつうのブラウザの JavaScript で 2 通りに書いたものを足した。stars-events.js（イベント駆動：画面を表す変数 state とキーの受け手の中の分岐、おばけの setInterval と clearInterval、描くのは requestAnimationFrame）と stars-async.js（async/await：ConJS 版と同じ形のループで、nextEvent、sleep、1 コマを待つことを Promise で自分で作る）。遊ぶページ stars-events.html と stars-async.html、3 つのうち 2 つを並べて見せる compare.html（行の数、コメントと空の行を除いた行の数、待つ所の行の数を出し、待つ所の行を黄色にする）。stars.html と docs/conjs/index.md にリンクを、conjs/README の 2 つに説明を足した。どちらも ConMa の VM を使わないので、build.sh は変えていない。決まり（盤、色、乱数、おばけの数と間隔、画面の順、結果の画面の 300 ミリ秒、面クリアの 800 ミリ秒）は ConJS 版と同じ。
 * 作り直すもの：なし。
 * 新しいテスト：なし（DOM を使うので、suite で比べられない）。
-* M4 が流したもの：`node --check`。2 つの JS 版を、何も描かない canvas の代わりと、手で送る keydown と pointerdown の上で、Node.js から遊ばせた（描いたものから星と自分の位置を読み、近い星へキーとクリックで動く）。タイトル（Shift では始まらない）、1 面のクリアと「1 面クリア」の後の 2 面、おばけにぶつかった後の結果の画面、その直後のキーを捨てること、300 ミリ秒の後のキーでタイトル、Escape で「おしまい」。compare.html のスクリプトも、ファイルを読む fetch の代わりの上で動かし、数を確かめた（stars.con.js 263 行・214 行・待つ所 14、stars-events.js 251・206・7、stars-async.js 280・234・28）。
+* M4 が流したもの：`node --check`。2 つの JS 版を、何も描かない canvas の代わりと、手で送る keydown と pointerdown の上で、Node.js から遊ばせた（描いたものから星と自分の位置を読み、近い星へキーとクリックで動く）。タイトル（Shift では始まらない）、1 面のクリアと「1 面クリア」の後の 2 面、おばけにぶつかった後の結果の画面、その直後のキーを捨てること、300 ミリ秒の後のキーでタイトル、Escape で「おしまい」。compare.html のスクリプトも、ファイルを読む fetch の代わりの上で動かし、数を確かめた（stars.con.js 263 行・214 行・待つ所 10、stars-events.js 251・206・5、stars-async.js 280・234・27。M2 のレビューの後、文字列、行の終わりのコメント、配列の .join を数えないようにした）。
 * 流していないもの：本当のブラウザ（このセッションのブラウザは、M4 の clone のページを出せなかった）。
 * 測ったもの：なし。
 
