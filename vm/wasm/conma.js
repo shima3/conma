@@ -2211,6 +2211,14 @@ var ConMaVM = (function () {
       putUnread: (path) => pass(path, x.conma_put_unread),
       setCwd: (path) => pass(path, x.conma_set_cwd),
       setenv: (key, value) => pass2(key, value, x.conma_setenv),
+      // conma link (vm/src/link.rs): the module (a string) that joins the program module to the runtime
+      // module (strings or bytes); throws an Error with the message of link when they cannot be joined
+      link: (runtime, program) => {
+        const n = pass2(runtime, program, x.conma_link);
+        const s = text(bytesAt(x.conma_result_ptr(), Math.abs(n)).slice());
+        if (n < 0) throw new Error(s);
+        return s;
+      },
       // The bytes of a file of the virtual file system, or null.
       getFile: (path) => {
         const n = pass(path, x.conma_get_file);

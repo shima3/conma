@@ -15,15 +15,16 @@ console.log(join(t));                                        // waits for t to e
 ## Usage
 
 ```
-conjs/conjs file.con.js           # translate it and run it on the Rust VM (run cargo build --release in vm first)
+conjs/conjs file.con.js           # translate it and run it on the Rust VM (run cargo build --release in vm first; without it, the wasm VM)
 conjs/conjs --emit file.con.js    # print the ConMa source it is translated to
 CONMA_VM=wasm conjs/conjs f.con.js    # run it on the wasm VM (Node.js); CONMA_HOST gives functions of the host
 CONMA_VM=python conjs/conjs f.con.js  # run it on the Python VM
 conjs/test/run_all.sh             # the tests (CONMA_VM chooses the VM)
 conjs/test/compare.sh             # compare the cases of step10 with Node.js
+conjs/conjs --prepare             # make the modules of the translator and the runtime in advance (the first run is then fast; from 2026-11-23)
 ```
 
-The translation always runs on the Rust VM, and the translated program runs on the VM chosen. The translator is that of SJS (sjs/include), with the mark of the language (`"sjs_lang"` of the PDict set to `"conjs"`). Its module is made once, as conjsc.module.se, in the place of bin/cache-dir (as for sjs/sjs). The module of the runtime (conjs_rt.se and the others that the translated source includes) is also made once there, as conjs-rt-HASH.module.se; the translated source is made into a module without its include lines and joined to it with `conma link` (bin/lang; section 4.4 of docs/dev/PLATFORM-PLAN-ja.md, stage P5). A program of only `console.log("hi")` runs in about 0.1 seconds on the Rust VM (before, the runtime went through the front end every time, in about 1.45 seconds).
+The translation runs on the Rust VM, and the translated program runs on the VM chosen. Without the Rust VM, both run on the wasm VM (made by vm/wasm/build.sh; Node.js), from 2026-11-23 (`build` and `link` of vm-node.js); the modules are the same to the byte either way. `CONMA_TRANSLATE_VM=wasm` translates on the wasm VM even when the Rust VM is there. The translator is that of SJS (sjs/include), with the mark of the language (`"sjs_lang"` of the PDict set to `"conjs"`). Its module is made once, as conjsc.module.se, in the place of bin/cache-dir (as for sjs/sjs). The module of the runtime (conjs_rt.se and the others that the translated source includes) is also made once there, as conjs-rt-HASH.module.se; the translated source is made into a module without its include lines and joined to it with `conma link` (bin/lang; section 4.4 of docs/dev/PLATFORM-PLAN-ja.md, stage P5). A program of only `console.log("hi")` runs in about 0.1 seconds on the Rust VM (before, the runtime went through the front end every time, in about 1.45 seconds).
 
 ## Language
 

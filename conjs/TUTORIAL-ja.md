@@ -102,7 +102,7 @@ Hanako は 3 年生
 {"name":"Hanako","year":3,"courses":["数学","英語"]}
 ```
 
-* 配列の `push`、`map`、`filter`、`reduce`、`slice`、`sort`、`join`、`includes`、`indexOf` や、`for ... of` は JavaScript と同じです。
+* 配列の `push`、`map`、`filter`、`reduce`、`slice`、`sort`、`join`、`includes`、`indexOf`、`at` や、`for ... of` は JavaScript と同じです。
 * `[...scores]` はスプレッド（中身を広げて新しい配列を作る）、`const { name, year } = student` は分割代入です。
 * `JSON.stringify` と `JSON.parse` も使えます。
 * JavaScript の新しいメソッドの中には、まだないものがあります（たとえば配列の `at`）。ないメソッドを呼ぶと、動かしたときに `TypeError: ... is not a function` になります。
@@ -223,7 +223,7 @@ console.log(1 < "2");
 
 | 書き方 | ConJS では |
 |---|---|
-| 正規表現（`/-/g`） | `conjs: not in ConJS: a regular expression`。文字列のメソッド（`split`、`join`、`includes`、`indexOf`、`slice` など）を使う。置き換えは `s.split("-").join("+")` のように書ける（`replace` と `replaceAll` は、まだない） |
+| 正規表現（`/-/g`） | `conjs: not in ConJS: a regular expression`。文字列のメソッド（`split`、`join`、`includes`、`indexOf`、`slice` など）を使う。置き換えは、文字列で探す `replace` と `replaceAll`（`s.replaceAll("-", "+")`） |
 | `Set`、`Map` | `ReferenceError: Set is not defined`。オブジェクトや配列を使う |
 | `this`（クラスの外） | `conjs: this outside a class`。`this` はクラスの中だけで使える |
 | `Math.sin` など | 一部の `Math` の関数はまだない |
@@ -240,7 +240,7 @@ console.log("ConJS".length, "日本語".length, "😀".length);
 5 3 1
 ```
 
-JavaScript（Node.js）では `5 3 2` です。JavaScript は UTF-16 の単位で数えるので、絵文字は 2 になりますが、ConJS は文字の数で数えます。
+JavaScript（Node.js）では `5 3 2` です。JavaScript は UTF-16 の単位で数えるので、絵文字は 2 になりますが、ConJS は文字の数で数えます。文字列の位置（添字、`at`、`charAt`、`slice`、`indexOf` など）も、文字で数えます。
 
 ## 8. JavaScript と違うところ：待つ処理
 
