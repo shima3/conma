@@ -6,9 +6,11 @@ title: ConJS
 
 ConJS is a subset of JavaScript with lightweight threads that switch cooperatively and with blocking calls (conjs/ of the repository): a call that waits, such as a function of the host or a frame of an animation, is written as an ordinary call, with no `await`. It is made with the translator and the runtime of SJS, a safe subset of JavaScript (sjs/ of the repository), which ConSh uses too. The documents of ConMa are in [the index of the documents](../).
 
-The documents of ConJS for its users are listed only here; a new one is added here. They are copied from the repository when the site is built: conjs/README.md, conjs/README-ja.md and sjs/README-ja.md.
+The documents of ConJS for its users are listed only here; a new one is added here. They are copied from the repository when the site is built: conjs/README.md, conjs/README-ja.md, conjs/QUICKSTART.md, conjs/QUICKSTART-ja.md, conjs/TUTORIAL.md, conjs/TUTORIAL-ja.md and sjs/README-ja.md.
 
 ## Docs
+- Quick start ([English](QUICKSTART.html), [日本語](QUICKSTART-ja.html)): install the tools, clone, build, and run a web server written in ConJS on Node.js
+- Tutorial ([English](TUTORIAL.html), [日本語](TUTORIAL-ja.html)): the JavaScript that ConJS takes, and where it differs from JavaScript, by examples
 - ConJS ([English](README.html), [日本語](README-ja.html)): how to run it, the language and how it differs from JavaScript, the examples
 - [SJS](../sjs/README-ja.html) (in Japanese): the safe subset of JavaScript that ConJS and ConSh are built on
 - [Functions of the host](../HOST-ja.html) (in Japanese): how to add functions of the host, which a program calls through `host`
