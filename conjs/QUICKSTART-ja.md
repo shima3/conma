@@ -34,7 +34,7 @@ ConJS は、JavaScript のサブセット（一部分）です。JavaScript で�
    ```
    $ xcode-select --install
    ```
-2. **Node.js**：https://nodejs.org/ から LTS 版（22 以降）のインストーラをダウンロードして入れます。
+2. **Node.js**：<https://nodejs.org/> から LTS 版（22 以降）のインストーラをダウンロードして入れます。
 3. **Rust**：ターミナルで次を打ち、聞かれたら Enter（既定のまま）を押します。
    ```
    $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -43,9 +43,9 @@ ConJS は、JavaScript のサブセット（一部分）です。JavaScript で�
 
 ### Windows
 
-1. **Git**：https://git-scm.com/ から Git for Windows のインストーラをダウンロードして入れます。途中の設定は既定のままで構いません。これで Git Bash も入ります。
-2. **Node.js**：https://nodejs.org/ から LTS 版（22 以降）のインストーラをダウンロードして入れます。
-3. **Rust**：https://rustup.rs/ から `rustup-init.exe` をダウンロードして動かします。Visual Studio の C++ のビルドツールを入れるか聞かれたら、入れてください（Rust が Windows でプログラムを作るのに使います）。そのほかは既定のままで構いません。
+1. **Git**：<https://git-scm.com/> から Git for Windows のインストーラをダウンロードして入れます。途中の設定は既定のままで構いません。これで Git Bash も入ります。
+2. **Node.js**：<https://nodejs.org/> から LTS 版（22 以降）のインストーラをダウンロードして入れます。
+3. **Rust**：<https://rustup.rs/> から `rustup-init.exe` をダウンロードして動かします。Visual Studio の C++ のビルドツールを入れるか聞かれたら、入れてください（Rust が Windows でプログラムを作るのに使います）。そのほかは既定のままで構いません。
 
 終わったら、Git Bash を開き直します。
 
@@ -125,10 +125,10 @@ listening on http://127.0.0.1:8000/
 
 | アドレス | 答え |
 |---|---|
-| http://127.0.0.1:8000/count | 開くたびに 1、2、3 と数が増える |
-| http://127.0.0.1:8000/slow | 0.2 秒待ってから `slow` と答える（その間も、ほかの要求に答える） |
-| http://127.0.0.1:8000/file?name=README.md | `conma` フォルダの README.md の行の数を答える |
-| http://127.0.0.1:8000/stop | `bye` と答えて、サーバが止まる |
+| <http://127.0.0.1:8000/count> | 開くたびに 1、2、3 と数が増える |
+| <http://127.0.0.1:8000/slow> | 0.2 秒待ってから `slow` と答える（その間も、ほかの要求に答える） |
+| <http://127.0.0.1:8000/file?name=README.md> | `conma` フォルダの README.md の行の数を答える |
+| <http://127.0.0.1:8000/stop> | `bye` と答えて、サーバが止まる |
 
 サーバを止めるには、`/stop` を開くか、ターミナルで Ctrl-C を押します。
 
@@ -183,4 +183,4 @@ $ node conjs/examples/counter_server.node.js
 
 * [チュートリアル](TUTORIAL-ja.md)：ConJS で書ける JavaScript の書き方と、JavaScript と違うところ
 * [ConJS の README](README-ja.md)：ConJS の言語とライブラリのすべて
-* ブラウザで動く ConJS の見本（ゲーム「星ひろい」など）：https://shima3.github.io/conma/conjs/
+* ブラウザで動く ConJS の見本（ゲーム「星ひろい」など）：<https://shima3.github.io/conma/conjs/>
