@@ -32,7 +32,7 @@ Type what follows `$` and press Enter (do not type the `$`).
    ```
    $ xcode-select --install
    ```
-2. **Node.js**: download the installer of the LTS version (22 or later) from https://nodejs.org/ and install it.
+2. **Node.js**: download the installer of the LTS version (22 or later) from <https://nodejs.org/> and install it.
 3. **Rust**: type the following, and press Enter (the default) when asked.
    ```
    $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -41,9 +41,9 @@ Type what follows `$` and press Enter (do not type the `$`).
 
 ### Windows
 
-1. **Git**: download Git for Windows from https://git-scm.com/ and install it. The default settings are fine. This installs Git Bash too.
-2. **Node.js**: download the installer of the LTS version (22 or later) from https://nodejs.org/ and install it.
-3. **Rust**: download `rustup-init.exe` from https://rustup.rs/ and run it. If it asks whether to install the C++ build tools of Visual Studio, install them (Rust uses them to make programs on Windows). Leave the rest as it is.
+1. **Git**: download Git for Windows from <https://git-scm.com/> and install it. The default settings are fine. This installs Git Bash too.
+2. **Node.js**: download the installer of the LTS version (22 or later) from <https://nodejs.org/> and install it.
+3. **Rust**: download `rustup-init.exe` from <https://rustup.rs/> and run it. If it asks whether to install the C++ build tools of Visual Studio, install them (Rust uses them to make programs on Windows). Leave the rest as it is.
 
 Then open Git Bash again.
 
@@ -123,10 +123,10 @@ When it says `listening on ...`, the server is running. Open these addresses in 
 
 | Address | Answer |
 |---|---|
-| http://127.0.0.1:8000/count | 1, 2, 3, … one more each time you open it |
-| http://127.0.0.1:8000/slow | `slow`, after 0.2 seconds (it answers the other requests meanwhile) |
-| http://127.0.0.1:8000/file?name=README.md | the number of lines of README.md in the folder `conma` |
-| http://127.0.0.1:8000/stop | `bye`, and the server stops |
+| <http://127.0.0.1:8000/count> | 1, 2, 3, … one more each time you open it |
+| <http://127.0.0.1:8000/slow> | `slow`, after 0.2 seconds (it answers the other requests meanwhile) |
+| <http://127.0.0.1:8000/file?name=README.md> | the number of lines of README.md in the folder `conma` |
+| <http://127.0.0.1:8000/stop> | `bye`, and the server stops |
 
 To stop the server, open `/stop` or press Ctrl-C in the terminal.
 
@@ -181,4 +181,4 @@ Read the two side by side: ConJS needs no `async` and no `await`.
 
 * [The tutorial](TUTORIAL.md): the JavaScript that ConJS takes, and where it differs from JavaScript
 * [The README of ConJS](README.md): all of the language and its library
-* Samples of ConJS in the browser (the game Stars and others): https://shima3.github.io/conma/conjs/
+* Samples of ConJS in the browser (the game Stars and others): <https://shima3.github.io/conma/conjs/>

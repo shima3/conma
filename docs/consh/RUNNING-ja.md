@@ -21,7 +21,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | 構文解析 | オプション | `--conma-parser` ★ | ConMa 版の構文解析（`consh_parser.se`）。ConMa 版の既定で、付けても明示するだけ |
 | | | `--python-parser` | Python の `consh_parse --pos` が作った構文木を読む |
 | 動かす場所 | 起動のしかた | ターミナル ★ | `consh/bin/consh スクリプト [引数 ...]`、引数なしで対話モード |
-| | | ブラウザ | `consh/js/serve.py` で `consh/js/web` を出し、http://localhost:8765/ を開く。対話モードだけ |
+| | | ブラウザ | `consh/js/serve.py` で `consh/js/web` を出し、<http://localhost:8765/> を開く。対話モードだけ |
 | | | Node.js | `CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh ...` |
 
 * `--python-parser`、`--conma-parser`、`CONSH_CONMA_DATA` は ConMa 版にしかないので、付ければ `CONSH_IMPL` が `rust`（既定）でも ConMa 版（最適化版）で動く。
@@ -39,7 +39,7 @@ ConSh には、実装、VM、構文解析、動かす場所の 4 つの選び方
 | ConMa 版を基準の VM で動かす | `CONSH_IMPL=conma CONMA_VM=python consh/bin/consh script.sh` |
 | 参照版で動かす | `CONSH_IMPL=reference consh/bin/consh script.sh` |
 | `js` を使う（Node.js） | `CONSH_ENABLE_JS=js CONMA_VM=wasm CONSH_IMPL=conma consh/bin/consh script.sh` |
-| ブラウザで使う | `consh/js/build.sh` の後に `consh/js/serve.py`、http://localhost:8765/ を開く |
+| ブラウザで使う | `consh/js/build.sh` の後に `consh/js/serve.py`、<http://localhost:8765/> を開く |
 | 構文木を見る | `consh/bin/consh --dump script.sh`（Rust 版）、`CONSH_IMPL=conma consh/bin/consh --dump script.sh`（ConMa 版） |
 
 ## 版ごとの機能の差
