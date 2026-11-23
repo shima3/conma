@@ -129,7 +129,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM、transpiled VM、ConSh の参照版と wasm 版、Windows（I7）。
 * 測ったもの：なし。
 
-### m4/version
+### m4/version（shima3/conma#70）
 
 * 版の表示を足した（ユーザーの指示。0.1.0 から）。リポジトリのルートの VERSION に番号を置き、bin/version が「ConMa 0.1.0 (コミット 日付)」を出す（作業ツリーに変更があれば、コミットに -dirty を付ける）。`bin/lang --version`、`conjs/conjs --version`、`consh/bin/consh --version` は bin/version を呼ぶ。consh/bin/consh.ps1 の `--version` は、同じものを PowerShell で出す。
 * GitHub の Download ZIP（git archive）には Git の履歴がないので、bin/version の archived の行に git archive がコミットと日付を書き込む（.gitattributes の export-subst）。
