@@ -66,7 +66,7 @@ const vm = ConMaVM.create(wasmModule, write, {
 
 * 関数は、値を返すか、例外を投げる。例外のメッセージが、呼んだ側のエラーになる。
 * **Promise を返す関数**は、待つ関数になる。`host.wait`（`__Host_start__`）で呼ぶ。`host.call` で呼ぶとエラー。
-* 見本：vm/wasm/host/canvas.js（機能 `"canvas"`）、vm/wasm/host/input.js（機能 `"input"`）と、それを使うページ vm/wasm/web。
+* 見本：vm/wasm/host/canvas.js（機能 `"canvas"`）、vm/wasm/host/input.js（機能 `"input"`）と、それを使うページ（ConMa の vm/wasm/web と、ConJS の conjs/web。2026-11-23 に分けた）。
 * どのホストにも、`time.now`、`time.sleep`、`http.fetch`（`fetch` があれば）がある。同じ名前を `hostFunctions` に入れると、そちらが使われる。
 
 ### 3.2. Node.js（wasm 版の VM）

@@ -1,1 +1,1 @@
-../../../vm/wasm/web/stars.con.js
+../../web/stars.con.js
