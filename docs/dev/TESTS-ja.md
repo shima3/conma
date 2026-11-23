@@ -137,5 +137,6 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 種類：機能（`--version`）。
 * 作り直すもの：なし。
 * M4 が流したもの：4 つのコマンドの `--version`（Git のクローン、変更あり・なし）、`git archive` で作ったディレクトリでの bin/version、`conjs/test/run_all.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
-* 流していないもの：consh.ps1 と consh.cmd の `--version`（Windows。M4 には pwsh がない）、Python 版の VM と transpiled VM（VM は変えていない）。
+* I7 が流したもの（PR のレビュー、ee14129）：consh.ps1 と consh.cmd の `--version`（Windows PowerShell 5.1）。I7 の見つけた 2 つ（bin/version を UTF-8 で読むこと、git が失敗しても止まらないこと）は、その後のコミットで直した。
+* 流していないもの：直した後の consh.ps1 と consh.cmd の `--version`（Windows。M4 には pwsh がない）、Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。

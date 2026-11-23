@@ -181,15 +181,24 @@ $rest = @($args)
 if ($rest.Count -gt 0 -and $rest[0] -eq '--version') {
   $version = (Get-Content -LiteralPath (Join-Path $root 'VERSION') -Raw).Trim()
   $commit = ''
+  # Windows PowerShell 5.1 makes a message of git on standard error a stopping error under
+  # $ErrorActionPreference = 'Stop', even with 2>$null: a git that fails (not a repository, dubious ownership)
+  # leaves $commit empty instead, as in bin/version
   if ((Test-Path -LiteralPath (Join-Path $root '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
-    $commit = (& git -C $root log -1 --format='%h %cs' 2>$null | Out-String).Trim()
-    if ($commit -and (& git -C $root status --porcelain --untracked-files=no 2>$null | Out-String).Trim()) {
-      $parts = $commit -split ' ', 2
-      $commit = "$($parts[0])-dirty $($parts[1])"
-    }
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $commit = (& git -C $root log -1 --format='%h %cs' 2>$null | Out-String).Trim()
+      if ($LASTEXITCODE -ne 0) { $commit = '' }
+      if ($commit -and (& git -C $root status --porcelain --untracked-files=no 2>$null | Out-String).Trim()) {
+        $parts = $commit -split ' ', 2
+        $commit = "$($parts[0])-dirty $($parts[1])"
+      }
+    } catch { $commit = '' } finally { $ErrorActionPreference = $saved }
   }
   if (-not $commit) {
-    $line = Get-Content -LiteralPath (Join-Path $root 'bin\version') | Where-Object { $_ -like 'archived=*' } | Select-Object -First 1
+    # bin/version is UTF-8 without a BOM, which Windows PowerShell 5.1 reads in the code page of the system
+    $line = Get-Content -Encoding UTF8 -LiteralPath (Join-Path $root 'bin\version') | Where-Object { $_ -like 'archived=*' } | Select-Object -First 1
     if ($line -and $line -notlike '*$Format*') { $commit = $line.Substring(10).TrimEnd("'") }
   }
   if ($commit) { Write-Output "ConMa $version ($commit)" } else { Write-Output "ConMa $version" }
