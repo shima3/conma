@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stars in JavaScript (async)</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  canvas { border: 1px solid #ccc; max-width: 100%; touch-action: none; }
+  canvas:focus { outline: 2px solid #669bbc; }
+</style>
+</head>
+<body>
+<h1>星ひろい（JavaScript、async）</h1>
+<p><a href="stars.html">ConJS 版の星ひろい</a>と同じゲームを、ふつうのブラウザの JavaScript で、async/await（ConJS 版と同じ形のループだが、待つ所に await が要り、キーを待つ Promise を自分で作る） で書いたもの（stars-async.js）。
+ConMa の VM は使わない。<a href="compare.html">コードを比べる</a>。canvas をクリックすると、キーを受け取る。</p>
+<canvas id="canvas" width="480" height="360" tabindex="0"></canvas>
+<script src="stars-async.js"></script>
+</body>
+</html>
