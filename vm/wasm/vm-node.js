@@ -68,13 +68,83 @@ function readInput(vm) {
   }
 }
 
+// Windows (2026-11-23): the VM has the paths of Windows as the native VM for Windows writes them,
+// C:/Users/... (vm/src/sys/windows.rs, path_text), and Node.js gives them with backslashes.
+const windows = process.platform === "win32";
+// A path of Node.js as the VM has it.
+function vmPath(p) {
+  if (!windows) return p;
+  if (p.startsWith("\\\\?\\UNC\\")) p = "\\\\" + p.slice(8);
+  else if (p.startsWith("\\\\?\\")) p = p.slice(4);
+  return p.replace(/\\/g, "/");
+}
+// A path of the VM for Node.js. A backslash is a separator, as on Windows. The VM for wasm32 joins
+// paths as Unix does, so that a path of Windows after the current directory stays after it
+// (C:/a/C:/b, or C:/a/C:\b from TEMP): it starts at the last drive. /dev/null is the device NUL,
+// as in the native VM (open_file); Node.js opens "NUL" as a file of that name in the current
+// directory, and \\.\NUL as the device.
+const NUL = "\\\\.\\NUL";
+function hostPath(p) {
+  if (!windows) return p;
+  p = p.replace(/\\/g, "/");
+  // the last drive: a greedy .* takes all but the last one
+  const m = /^(?:.*\/)?([A-Za-z]:(?:\/.*)?)$/.exec(p);
+  if (m && /^[A-Za-z]:/.test(p)) p = m[1];
+  return unixDevice(p) === "/dev/null" ? NUL : p;
+}
+// The path of Unix that p is on Windows (/dev/null for C:/dev/null), or null.
+function unixDevice(p) {
+  return p.startsWith("/") ? p : /^[A-Za-z]:\//.test(p) ? p.slice(2) : null;
+}
+// Windows: /dev/stdin, /dev/stdout and /dev/stderr are copies of fds 0, 1 and 2, as in the native
+// VM (open_file). Node.js cannot copy an fd: the copy is a number of its own (from STD_COPY) for
+// the fd, which read and write use, and which close forgets.
+const STD_COPY = 0x40000000;
+const stdCopies = new Map();
+let nextStdCopy = STD_COPY;
+const realFd = (fd) => (stdCopies.has(fd) ? stdCopies.get(fd) : fd);
+
 // The file system of this process, for the VM (hostFs of conma.js): a negative
-// result is minus the errno.
-const errno = (e) => (typeof e.errno === "number" && e.errno < 0 ? e.errno : -5); // EIO
+// result is minus the errno. The errno of Node.js on Windows is that of libuv (ENOENT is -4058):
+// it is given as the errno of Unix of the same name, which the VM for wasm32 knows (vm/wasm/src/sys.rs).
+const unixErrno = { EPERM: 1, ENOENT: 2, ESRCH: 3, EIO: 5, E2BIG: 7, EBADF: 9, ECHILD: 10, EACCES: 13,
+  EEXIST: 17, ENOTDIR: 20, EISDIR: 21, EINVAL: 22, EPIPE: 32, EAGAIN: 35, ENOSYS: 38 };
+const errno = (e) => {
+  if (windows) return -(unixErrno[e.code] || 5);
+  return typeof e.errno === "number" && e.errno < 0 ? e.errno : -5; // EIO
+};
+// Windows: the errors of Unix for the names on the way to the last one of p, as the native VM
+// gives them (check_on_the_way of vm/src/sys/windows.rs): ENOENT if one does not exist, ENOTDIR
+// if one is a file (Windows says ENOENT for both, and goes over "name/.." without looking at name).
+// Gives the path for Node.js.
+function checkedPath(p) {
+  p = hostPath(p);
+  if (!windows || p === NUL) return p;
+  const parts = p.split("/");
+  let onTheWay = parts[0];
+  for (let i = 1; i < parts.length - 1; i++) {
+    onTheWay += "/" + parts[i];
+    if (parts[i] === "" || parts[i] === "." || parts[i] === "..") continue;
+    let st;
+    try {
+      st = fs.statSync(onTheWay);
+    } catch (e) {
+      throw Object.assign(new Error(p), { code: "ENOENT" });
+    }
+    if (!st.isDirectory()) throw Object.assign(new Error(p), { code: "ENOTDIR" });
+  }
+  return p;
+}
+
 const hostFs = {
   open(p, mode) {
+    const std = windows ? ["/dev/stdin", "/dev/stdout", "/dev/stderr"].indexOf(unixDevice(hostPath(p))) : -1;
+    if (std >= 0) {
+      stdCopies.set(nextStdCopy, std);
+      return nextStdCopy++;
+    }
     try {
-      const fd = fs.openSync(p, mode, 0o666);
+      const fd = fs.openSync(checkedPath(p), mode, 0o666);
       if (fs.fstatSync(fd).isDirectory()) {
         fs.closeSync(fd);
         return -21; // EISDIR, as the native VM finds it
@@ -87,19 +157,20 @@ const hostFs = {
   read(fd, len) {
     const buf = Buffer.alloc(len);
     try {
-      return buf.subarray(0, retry(() => fs.readSync(fd, buf, 0, len, null)));
+      return buf.subarray(0, retry(() => fs.readSync(realFd(fd), buf, 0, len, null)));
     } catch (e) {
       return errno(e);
     }
   },
   write(fd, bytes) {
     try {
-      return retry(() => fs.writeSync(fd, bytes));
+      return retry(() => fs.writeSync(realFd(fd), bytes));
     } catch (e) {
       return errno(e);
     }
   },
   close(fd) {
+    if (stdCopies.delete(fd)) return 0;
     try {
       fs.closeSync(fd);
       return 0;
@@ -109,21 +180,21 @@ const hostFs = {
   },
   stat(p) {
     try {
-      return fs.statSync(p).isDirectory() ? 1 : 2;
+      return fs.statSync(checkedPath(p)).isDirectory() ? 1 : 2;
     } catch (e) {
       return errno(e);
     }
   },
   realpath(p) {
     try {
-      return fs.realpathSync.native(p);
+      return vmPath(fs.realpathSync.native(checkedPath(p)));
     } catch (e) {
       return errno(e);
     }
   },
   readdir(p) {
     try {
-      return fs.readdirSync(p);
+      return fs.readdirSync(hostPath(p));
     } catch (e) {
       return errno(e);
     }
@@ -193,18 +264,47 @@ function findCommand(name, env) {
       return e.code === "EACCES" ? -13 : -2;
     }
   };
-  if (name.includes("/")) {
-    const r = check(name);
-    return r === 0 ? name : r;
+  // Windows: as Command of Rust finds it for the native VM: PATH is split at ";", and a name
+  // without an extension is name.exe (or, given with its directory, the name itself).
+  const names = (p) => (windows && path.extname(p) === "" ? [p + ".exe", p] : [p]);
+  if (name.includes("/") || (windows && name.includes("\\"))) {
+    let r = -2;
+    for (const p of names(name)) {
+      r = check(hostPath(p));
+      if (r === 0) return hostPath(p);
+    }
+    return r;
   }
   let found = -2;
-  for (const dir of (env.PATH || "").split(":")) {
-    const p = path.join(dir || ".", name);
-    const r = check(p);
-    if (r === 0) return p;
-    if (r === -13) found = -13;
+  const env_path = windows ? env.PATH || env.Path || "" : env.PATH || "";
+  for (const dir of env_path.split(windows ? ";" : ":")) {
+    for (const p of names(name).slice(0, 1)) {
+      const file = path.join(dir || ".", p);
+      const r = check(file);
+      if (r === 0) return file;
+      if (r === -13) found = -13;
+    }
   }
   return found;
+}
+
+// Windows: the command line of the process, as the native VM writes it (vm/src/sys/windows.rs,
+// add_args, and Command of Rust): an argument goes in double quotes, as the C runtime of Windows
+// reads them, when it is empty or has a space, a tab, or a character that the programs of MSYS
+// (Git Bash) would take otherwise (a backslash, * ? [ ] { } ' ~); a quote gets a backslash.
+function windowsArg(a) {
+  const quote = a === "" || /[ \t\\*?[\]{}'~]/.test(a);
+  let q = quote ? '"' : "";
+  let backslashes = 0;
+  for (const c of a) {
+    if (c === "\\") {
+      backslashes++;
+      continue;
+    }
+    q += "\\".repeat(c === '"' ? backslashes * 2 + 1 : backslashes) + c;
+    backslashes = 0;
+  }
+  return q + "\\".repeat(quote ? backslashes * 2 : backslashes) + (quote ? '"' : "");
 }
 
 function makeHostProc(getVm) {
@@ -213,12 +313,21 @@ function makeHostProc(getVm) {
       const vm = getVm();
       const file = findCommand(argv[0], env);
       if (typeof file === "number") return file;
-      const spec = stdio.map((s) => (s.kind === 0 || s.kind === 1 ? s.n : s.kind === 4 ? "ignore" : "pipe"));
+      const spec = stdio.map((s) => (s.kind === 0 || s.kind === 1 ? realFd(s.n) : s.kind === 4 ? "ignore" : "pipe"));
       let child;
       try {
-        child = childProcess.spawn(file, argv.slice(1), { argv0: argv[0], cwd, env, stdio: spec, detached });
+        child = windows
+          ? childProcess.spawn(file, argv.slice(1).map(windowsArg), {
+              argv0: windowsArg(argv[0]),
+              cwd: hostPath(cwd),
+              env,
+              stdio: spec,
+              detached,
+              windowsVerbatimArguments: true,
+            })
+          : childProcess.spawn(file, argv.slice(1), { argv0: argv[0], cwd, env, stdio: spec, detached });
       } catch (e) {
-        return typeof e.errno === "number" && e.errno < 0 ? e.errno : -5;
+        return errno(e);
       }
       const id = ++nextProc;
       const rec = { child, code: null };
@@ -229,7 +338,12 @@ function makeHostProc(getVm) {
         notify();
       });
       child.on("exit", (code, signal) => {
-        rec.code = code !== null ? code : -(os.constants.signals[signal] || 0);
+        // Windows has no signals: a process that kill ended has the number of its signal (as
+        // the native VM gives it, exit_code of vm/src/sys/windows.rs), and one that Ctrl-C ended
+        // (STATUS_CONTROL_C_EXIT) has SIGINT
+        if (windows && rec.signal) rec.code = -rec.signal;
+        else if (windows && code === 0xc000013a) rec.code = -2;
+        else rec.code = code !== null ? code : -(os.constants.signals[signal] || 0);
         vm.childEvent();
         notify();
       });
@@ -260,7 +374,8 @@ function makeHostProc(getVm) {
               // The reader in the VM has gone. A process of the native VM gets SIGPIPE when it
               // writes to such a pipe; this one writes to a socket of Node.js, which would give
               // it an error instead: send it SIGPIPE.
-              if (rec.code === null) {
+              // On Windows, the process gets an error when it writes, as from the native VM.
+              if (rec.code === null && !windows) {
                 try {
                   child.kill("SIGPIPE");
                 } catch (e) {
@@ -287,10 +402,15 @@ function makeHostProc(getVm) {
       const rec = procs.get(id);
       if (!rec || rec.code !== null) return 0;
       try {
-        rec.child.kill(sig);
+        if (windows) {
+          // Node.js sends only some signals on Windows; every one ends the process
+          // (TerminateProcess), as kill_process of the native VM does.
+          rec.signal = sig;
+          rec.child.kill("SIGKILL");
+        } else rec.child.kill(sig);
         return 0;
       } catch (e) {
-        return typeof e.errno === "number" && e.errno < 0 ? e.errno : -3;
+        return windows ? errno(e) : typeof e.errno === "number" && e.errno < 0 ? e.errno : -3;
       }
     },
   };
@@ -356,8 +476,8 @@ function buildModule(wasm, source, cwd, core) {
   sub.setCwd(cwd);
   for (const [k, v] of Object.entries(process.env)) sub.setenv(k, v);
   sub.inputEnd();
-  const include = process.env.CONMA_INCLUDE || path.join(root, "include");
-  const first = path.join(include, core ? "core" : "ext");
+  const include = process.env.CONMA_INCLUDE || vmPath(path.join(root, "include"));
+  const first = vmPath(path.join(include, core ? "core" : "ext"));
   const dirs = fs.existsSync(first) ? ["--include", first, "--include", include] : ["--include", include];
   let code = sub.start(frontendBytes, ["--main", "conma/vm/frontend.module.se", ...dirs, source]);
   if (code === 0) {
@@ -368,7 +488,7 @@ function buildModule(wasm, source, cwd, core) {
     const text = Buffer.concat(err).toString().trim();
     return { ok: false, message: code === ConMaVM.IDLE ? "the frontend waits" : (text.split("\n")[0] || "").trim() };
   }
-  const prefix = '"' + path.dirname(root) + "/";
+  const prefix = '"' + vmPath(path.dirname(root)) + "/";
   return { ok: true, text: Buffer.concat(out).toString().split(prefix).join('"') };
 }
 
@@ -401,7 +521,7 @@ async function main() {
   });
   liveVM = vm;
   vm.useHostFs();
-  vm.setCwd(process.cwd());
+  vm.setCwd(vmPath(process.cwd()));
   for (const [k, v] of Object.entries(process.env)) vm.setenv(k, v);
   // The module file named in argv, read here as the native VM reads it.
   let i = 0;
