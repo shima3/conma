@@ -1,13 +1,14 @@
 ;; ConJS の変換器（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節。段階 P3b）：ConJS のファイルを読み、ConMa のソースを標準出力に出す。
 ;;   main の引数: ConJS のファイル名
 ;; 変換は SJS の変換器（sjs/include の sjs_lex.se、sjs_parse.se、sjs_gen.se）に、言語の印（PDict の "sjs_lang" を "conjs"）を
-;; 付けて使う。作ったソースは conjs_rt.se（conjs/include）を include する
+;; 付けて使う。作ったソースは conjs_rt.se（conjs/include）を include する。import と export は conjs_modules.se（段階 P9）
 (include "util.se")
 (include "sjs_rt.se")
 (include "sjs_lex.se")
 (include "sjs_parse.se")
 (include "sjs_gen.se")
 (include "sjs_wasm.se")
+(include "conjs_modules.se")
 
 (define main ,(args)
   __Seq_get__ (,() __print_exit_error__ "usage: conjsc.se <file.con.js>\n") args ,(path rest)

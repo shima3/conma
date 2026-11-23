@@ -1,0 +1,2 @@
+conjs: SyntaxError: Cannot import 'fs': only a path that begins with './' or '../' can be imported in ConJS
+exit: 2

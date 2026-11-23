@@ -27,7 +27,13 @@ conjs/test/compare.sh             # step10 の場合を Node.js と比べる
 
 SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、下を除き、下を足したもの。
 
-* **除くもの**（変換するときに `conjs: not in ConJS: async` のようなエラー、終了ステータス 2）：`async`、`await`（`for await` も）、名前 `Promise`。SJS の範囲の外のもの（`import`、`with` など）も、「not in ConJS」と書く。`then` は、ふつうの名前として使える。3 つの名前も、オブジェクトのキー（`{ async: 1 }`）とメンバーの名前（`o.await`）には使える（省略形の `{ async }` は変数なので、エラー）。
+* **除くもの**（変換するときに `conjs: not in ConJS: async` のようなエラー、終了ステータス 2）：`async`、`await`（`for await` も）、名前 `Promise`。SJS の範囲の外のもの（`with` など）も、「not in ConJS」と書く。`then` は、ふつうの名前として使える。3 つの名前も、オブジェクトのキー（`{ async: 1 }`）とメンバーの名前（`o.await`）には使える（省略形の `{ async }` は変数なので、エラー）。
+* **`import` と `export`**（段階 P9、2026-11-23。docs/dev/PLATFORM-PLAN-ja.md の 4.12 節。conjs/include/conjs_modules.se）：JavaScript の ES Modules と同じく、プログラムをファイルに分けて書ける。SJS は除く。
+    * **受け付ける形**：`import { a, b as c } from "./lib.con.js"`、`export const`、`export let`、`export var`、`export function`、`export class`、`export { a, b as c }`。ファイルの最上位にだけ書ける。パスは `./` か `../` で始まる、読み込む側のファイル（シンボリックリンクなら、その先の本物のファイル）からの相対パスで、拡張子まで書く（Node.js と同じ）。
+    * **意味**（JavaScript と同じ）：読み込まれるファイルは、読み込む側より先に、ES Modules と同じ深さ優先の順で 1 度だけ動く。名前はファイルごとに分かれる。import した名前はライブバインディングで（出した側が後で変えた `let` の値が見える）、代入できない。同じファイルを指す 2 つのパス（`./a/../lib.con.js`、シンボリックリンク）は、同じファイルになる。読み込まれるファイルの最上位でも待てる（`sleep`、`join`。JavaScript の最上位の `await` と同じ振る舞い）。
+    * **変換するときのエラー**（終了ステータス 2）：ないファイル、export していない名前、2 度の export、循環（`import cycle: a.con.js -> b.con.js -> a.con.js`）、import した名前への代入、最上位でない所の `import` と `export`。
+    * **まだ受け付けないもの**（「not in ConJS」）：`export default` と `import x from`、`import * as m`、`export ... from` と `export *`、名前のない `import "x"`、`import()` と `import.meta`。パスでない名前（`"fs"`）はエラー（ConJS のライブラリは、今のまま大域の名前）。
+    * conjs/test/step19 のプログラムは、Node.js 22 以降でも同じに動く（`package.json` がなくても、`.js` の中の `import` を読む）。
 * **クラス**（段階 P5b。docs/dev/PLATFORM-PLAN-ja.md の 4.5 節。conjs/include/conjs_class.se）：SJS は除くが、ConJS は受け付ける。
     * **`class`**（宣言と式）：`constructor`、メソッド、`static` のメソッド（親から継承する。`this` は、メソッドを読んだクラス）、インスタンスのフィールド（`x = 1;`。書いた順に、コンストラクタの前に入れる。初期化の式で `this` を使える）、`extends`（クラスか、組み込みのエラーのコンストラクタ）、`super(...)`、`super.m(...)`、ジェネレータのメソッド。`extends` のあるクラスでコンストラクタを書かなければ、引数をそのまま親に渡す。
     * **`new C(...)`**：C はクラスか、`Error`、`TypeError`、`RangeError`、`SyntaxError`、`ReferenceError`。ふつうの関数の `new` と、クラスの `new` なしの呼び出しは TypeError。エラーのコンストラクタは、`new` なしでも呼べる（JavaScript と同じ）。コンストラクタがオブジェクトを返せば、それが `new` の値になる（JavaScript と同じ）。
