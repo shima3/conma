@@ -171,7 +171,8 @@ Read the two side by side: ConJS needs no `async` and no `await`.
 | `cargo: command not found` | Open the terminal again. If it still says so, install Rust again (step 1) |
 | `vm-wasm.sh: ... is not built` | Run `vm/wasm/build.sh` (step 3) |
 | `vm/wasm/build.sh` stops with an error that `wasm32-unknown-unknown` is not installed | Type `rustup target add wasm32-unknown-unknown` (the end of step 1) |
-| "The term 'conjs/conjs' is not recognized as the name of a cmdlet, function, script file, or operable program" (Windows) | You typed it in PowerShell. Open Git Bash and type it there (step 0) |
+| Nothing is printed, or you are asked which app should open the file (PowerShell on Windows) | You typed it in PowerShell. Open Git Bash and type it there (step 0) |
+| `'conjs' is not recognized as an internal or external command, operable program or batch file.` (the Command Prompt on Windows) | You typed it in the Command Prompt. Open Git Bash and type it there (step 0) |
 | `$'\r': command not found` (Windows) | The line ends were changed in the clone. Delete the folder `conma` and clone again with `-c core.autocrlf=false` (step 2) |
 | `EADDRINUSE` | Port 8000 is taken. Add another number, as in step 5 |
 | `http.listen: this platform has no server` | `CONMA_VM=wasm` is missing |
