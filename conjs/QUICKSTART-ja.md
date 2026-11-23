@@ -16,7 +16,7 @@ ConJS は、JavaScript のサブセット（一部分）です。JavaScript で�
 * **macOS**：「ターミナル」（アプリケーション → ユーティリティ）を使います。
 * **Windows**：次の 1 で入れる Git for Windows に付いてくる **Git Bash** を使います。PowerShell やコマンドプロンプトではなく、Git Bash で打ってください（この文書のコマンドは bash 用です）。
 
-コマンドは、`$` の後ろの部分を打って Enter を押します（`$` は打ちません）。
+枠の中のコマンドは、そのままコピーしてターミナルに貼り付け、Enter を押せば動きます。枠に何行もあるときは、まとめて貼り付けて構いません（Enter を押すと、上から順に動きます）。貼り付けは、macOS のターミナルでは ⌘V、Git Bash では Ctrl+V か Shift+Insert です（Ctrl+V が効かないときは、Shift+Insert か、右クリックのメニューの「Paste」（日本語のメニューでは「ペースト」））。手で打っても構いません。「出力」の枠は、コマンドが出す文字です（打つものではありません）。
 
 ## 1. ツールを入れる
 
@@ -32,12 +32,12 @@ ConJS は、JavaScript のサブセット（一部分）です。JavaScript で�
 
 1. **Git**：ターミナルで次を打ちます。開発者ツールを入れるか聞かれたら「インストール」を押します。すでに入っていれば、何も起きません。
    ```
-   $ xcode-select --install
+   xcode-select --install
    ```
 2. **Node.js**：<https://nodejs.org/> から LTS 版（22 以降）のインストーラをダウンロードして入れます。
 3. **Rust**：ターミナルで次を打ち、聞かれたら Enter（既定のまま）を押します。
    ```
-   $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
    終わったら、ターミナルを一度閉じて開き直します（`cargo` コマンドを使えるようにするため）。
 
@@ -54,9 +54,9 @@ ConJS は、JavaScript のサブセット（一部分）です。JavaScript で�
 ターミナル（Windows は Git Bash）で、次の 3 つを打ちます。どれも版の番号が出れば大丈夫です。
 
 ```
-$ git --version
-$ node --version
-$ cargo --version
+git --version
+node --version
+cargo --version
 ```
 
 `node --version` は `v22` 以上である必要があります。`command not found` と出たら、ターミナルを開き直してから、もう一度打ってみてください。
@@ -64,7 +64,7 @@ $ cargo --version
 最後に、Rust に WebAssembly 用の部品を足します（Node.js で ConJS を動かすのに使います）。
 
 ```
-$ rustup target add wasm32-unknown-unknown
+rustup target add wasm32-unknown-unknown
 ```
 
 ## 2. GitHub からソースを取ってくる（クローン）
@@ -72,9 +72,9 @@ $ rustup target add wasm32-unknown-unknown
 作業用のフォルダに移ってから、ソースを取ってきます。ここでは、ホームフォルダの下にそのまま置きます。
 
 ```
-$ cd ~
-$ git clone -c core.autocrlf=false https://github.com/shima3/conma.git
-$ cd conma
+cd ~
+git clone -c core.autocrlf=false https://github.com/shima3/conma.git
+cd conma
 ```
 
 `-c core.autocrlf=false` は、Windows で改行の形を変えずに取ってくるための設定です（変えてしまうと、スクリプトが動きません）。macOS では付けても付けなくても同じです。
@@ -86,9 +86,9 @@ $ cd conma
 ConJS のプログラムは、ConMa という言語に変換してから、ConMa の VM（仮想機械）で動かします。その VM を 2 つビルドします。
 
 ```
-$ (cd vm && cargo build --release)
-$ vm/wasm/build.sh
-$ conjs/conjs --prepare
+(cd vm && cargo build --release)
+vm/wasm/build.sh
+conjs/conjs --prepare
 ```
 
 * 1 つ目は、パソコンの上で直接動く VM（Rust 版の VM）です。ConJS の変換にも使います。
@@ -102,13 +102,18 @@ $ conjs/conjs --prepare
 `hello.con.js` というファイルを作ります。エディタ（VS Code など）で作っても、次のコマンドで作っても構いません。
 
 ```
-$ echo 'console.log("こんにちは、ConJS");' > hello.con.js
+echo 'console.log("こんにちは、ConJS");' > hello.con.js
 ```
 
 ConJS のファイルの名前は `.con.js` で終わるようにします（この文書とチュートリアルで作るファイルは、`git status` に「Untracked」と出ますが、害はありません。いらなくなったら消して構いません）。動かします。
 
 ```
-$ conjs/conjs hello.con.js
+conjs/conjs hello.con.js
+```
+
+出力：
+
+```
 こんにちは、ConJS
 ```
 
@@ -119,7 +124,12 @@ $ conjs/conjs hello.con.js
 ConJS で書いた小さな Web サーバの見本（`conjs/examples/counter_server.con.js`）を、Node.js の上で動かします。Web サーバは Node.js の上でだけ動くので、`CONMA_VM=wasm` を付けて、wasm 版の VM を使います。
 
 ```
-$ CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+```
+
+出力：
+
+```
 listening on http://127.0.0.1:8000/
 ```
 
@@ -141,7 +151,7 @@ listening on http://127.0.0.1:8000/
 サーバのコードを、エディタで開いてみましょう（`conjs/examples/counter_server.con.js`）。ターミナルで見るなら、次のようにします。
 
 ```
-$ less conjs/examples/counter_server.con.js
+less conjs/examples/counter_server.con.js
 ```
 
 （`less` は q で終わります。）
@@ -163,7 +173,7 @@ function serve(server, dir) {
 同じサーバを、ふつうの Node.js の JavaScript で書いたものが `conjs/examples/counter_server.node.js` にあります。こちらは、Node.js でそのまま動きます。
 
 ```
-$ node conjs/examples/counter_server.node.js
+node conjs/examples/counter_server.node.js
 ```
 
 2 つを並べて読むと、ConJS では `async` と `await` を書かずに済むことが分かります。

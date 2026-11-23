@@ -16,7 +16,7 @@ This document uses a terminal, the window where you type commands.
 * **macOS**: the Terminal (Applications → Utilities).
 * **Windows**: **Git Bash**, which comes with Git for Windows (step 1). Type the commands in Git Bash, not in PowerShell or the Command Prompt: they are for bash.
 
-Type what follows `$` and press Enter (do not type the `$`).
+Copy the commands in a box, paste them into the terminal, and press Enter. A box of several lines may be pasted at once (when you press Enter, they run from the top). Paste with ⌘V in the Terminal of macOS, and with Ctrl+V or Shift+Insert in Git Bash (if Ctrl+V does not paste, use Shift+Insert or "Paste" in the menu of the right click). You may type them too. A box after "Output" shows what a command prints (not something to type).
 
 ## 1. Install the tools
 
@@ -30,12 +30,12 @@ Type what follows `$` and press Enter (do not type the `$`).
 
 1. **Git**: type the following in the Terminal. If you are asked whether to install the developer tools, choose Install. If they are there already, nothing happens.
    ```
-   $ xcode-select --install
+   xcode-select --install
    ```
 2. **Node.js**: download the installer of the LTS version (22 or later) from <https://nodejs.org/> and install it.
 3. **Rust**: type the following, and press Enter (the default) when asked.
    ```
-   $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
    Then close the Terminal and open it again, so that the command `cargo` can be found.
 
@@ -52,9 +52,9 @@ Then open Git Bash again.
 Type these three in the terminal (Git Bash on Windows). Each should print a version number.
 
 ```
-$ git --version
-$ node --version
-$ cargo --version
+git --version
+node --version
+cargo --version
 ```
 
 `node --version` must be `v22` or later. If you see `command not found`, open the terminal again and retry.
@@ -62,7 +62,7 @@ $ cargo --version
 Last, add the part of Rust for WebAssembly (used to run ConJS on Node.js):
 
 ```
-$ rustup target add wasm32-unknown-unknown
+rustup target add wasm32-unknown-unknown
 ```
 
 ## 2. Get the source from GitHub (clone)
@@ -70,9 +70,9 @@ $ rustup target add wasm32-unknown-unknown
 Go to the folder you work in and get the source. Here it goes in your home folder.
 
 ```
-$ cd ~
-$ git clone -c core.autocrlf=false https://github.com/shima3/conma.git
-$ cd conma
+cd ~
+git clone -c core.autocrlf=false https://github.com/shima3/conma.git
+cd conma
 ```
 
 `-c core.autocrlf=false` keeps the line ends as they are on Windows (if they were changed, the scripts would not run). On macOS it makes no difference.
@@ -84,9 +84,9 @@ You now have a folder `conma` and are in it. Type every command below in this fo
 A ConJS program is translated into the language ConMa and run on a VM (virtual machine) of ConMa. Build two VMs:
 
 ```
-$ (cd vm && cargo build --release)
-$ vm/wasm/build.sh
-$ conjs/conjs --prepare
+(cd vm && cargo build --release)
+vm/wasm/build.sh
+conjs/conjs --prepare
 ```
 
 * The first is the VM that runs directly on your computer (the Rust VM). It also translates ConJS.
@@ -100,13 +100,18 @@ The first build takes from tens of seconds to a few minutes, by the computer. `F
 Make a file `hello.con.js`, in an editor (such as VS Code) or with this command:
 
 ```
-$ echo 'console.log("Hello, ConJS");' > hello.con.js
+echo 'console.log("Hello, ConJS");' > hello.con.js
 ```
 
 The name of a ConJS file ends with `.con.js`. (The files you make in this document and in the tutorial show as "Untracked" in `git status`; that does no harm, and you may delete them when you no longer need them.) Run it:
 
 ```
-$ conjs/conjs hello.con.js
+conjs/conjs hello.con.js
+```
+
+Output:
+
+```
 Hello, ConJS
 ```
 
@@ -117,7 +122,12 @@ It starts at once, as `conjs/conjs --prepare` in step 3 has made the translator 
 Run the small web server written in ConJS (`conjs/examples/counter_server.con.js`) on Node.js. A web server runs only on Node.js, so add `CONMA_VM=wasm` to use the wasm VM.
 
 ```
-$ CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+```
+
+Output:
+
+```
 listening on http://127.0.0.1:8000/
 ```
 
@@ -139,7 +149,7 @@ If port 8000 is taken and you see `EADDRINUSE`, add another number at the end (`
 Open the code of the server in your editor (`conjs/examples/counter_server.con.js`), or in the terminal:
 
 ```
-$ less conjs/examples/counter_server.con.js
+less conjs/examples/counter_server.con.js
 ```
 
 (`less` ends with q.)
@@ -161,7 +171,7 @@ function serve(server, dir) {
 The same server written in plain JavaScript for Node.js is `conjs/examples/counter_server.node.js`. It runs on Node.js as it is:
 
 ```
-$ node conjs/examples/counter_server.node.js
+node conjs/examples/counter_server.node.js
 ```
 
 Read the two side by side: ConJS needs no `async` and no `await`.
