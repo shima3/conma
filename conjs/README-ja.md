@@ -1,8 +1,8 @@
 [English](README.md) | **日本語**
 
-# ConJS：軽量スレッドとブロッキング呼び出しを持つ JavaScript の部分集合
+# ConJS：軽量スレッドとブロッキング呼び出しを持つ JavaScript のサブセット
 
-ConJS は、JavaScript の部分集合で、協調的に切り替わる軽量スレッド（以下「処理」）と、その処理だけを止めるブロッキング呼び出しを持つ。待つ呼び出し（ホストの関数、アニメーションの 1 コマ）を、`await` を書かずに、ふつうの呼び出しとして書ける。待っている間は、その処理だけが止まり、ほかの処理は動く。今は SJS（[../sjs/README-ja.md](../sjs/README-ja.md)。JavaScript の安全な部分集合）の変換器とランタイムを使って作っているが、SJS とは別の言語で、これから受け付ける JavaScript を広げていく。計画と設計は [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md) の 4.1 節と 4.2 節、作ったものは 8.4 節（段階 P3b、2026-11-19）。作りとテストは、開発者向けの [docs/dev/CONJS.md](../docs/dev/CONJS.md)（英語）にある。
+ConJS は、JavaScript のサブセットで、協調的に切り替わる軽量スレッド（以下「処理」）と、その処理だけを止めるブロッキング呼び出しを持つ。待つ呼び出し（ホストの関数、アニメーションの 1 コマ）を、`await` を書かずに、ふつうの呼び出しとして書ける。待っている間は、その処理だけが止まり、ほかの処理は動く。今は SJS（[../sjs/README-ja.md](../sjs/README-ja.md)。JavaScript の安全なサブセット）の変換器とランタイムを使って作っているが、SJS とは別の言語で、これから受け付ける JavaScript を広げていく。計画と設計は [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md) の 4.1 節と 4.2 節、作ったものは 8.4 節（段階 P3b、2026-11-19）。作りとテストは、開発者向けの [docs/dev/CONJS.md](../docs/dev/CONJS.md)（英語）にある。
 
 ```js
 const t = spawn(() => host.wait("test.later", 2, "slow"));   // 新しい処理。呼んだ側は動き続ける
@@ -70,7 +70,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
 * **動かす順**：動かせる処理の列は FIFO。待つ呼び出しの結果が届いた処理も、列の最後に入る。結果は、動かせる処理がなくなったときに 1 つずつ受け取るので、spawn し続けて列が空にならないプログラムには、ホストの結果が届かない（Node.js でマイクロタスクを積み続けたときと同じ）。
 * **終わり**：main（ファイルの文の並び）が受け手のない例外で終われば、ほかの処理を待たずに、すぐに終える（終了ステータス 2）。main が終わっても、残っている処理は動かし続ける。すべてが終わったら、join されないまま例外で終わった処理を、終わった順に `ファイル:行:桁: Uncaught (in task) メッセージ` で出し、終了ステータス 2 にする。join で待つ処理だけが残ったら、`conjs: Deadlock: tasks waiting in join: N` を出し、終了ステータス 2 にする。
 
-ConJS の構文は JavaScript の部分集合だが、ConJS のプログラムは JavaScript のプログラムではない（`spawn`、`join`、`host` は JavaScript になく、JavaScript では待つ呼び出しが Promise を返す）。そのため、多くの場合は sjs/test のように Node.js と出力を比べない。それらと待つ呼び出しのライブラリを使わないプログラムは JavaScript のプログラムでもあるので、conjs/test/compare.sh が Node.js と標準出力を比べる（各ステップの node.txt に並べた場合。2026-11-20 までは step10 だけ）。ConJS と SJS の両方が受け付ける、待つ呼び出しを使わないプログラムは、どちらでも同じ結果になる（同じ変換器とランタイムで動くため）。ConJS を広げるときは、まず ConJS に足し、そのうち安全なものを SJS に移して共有する（docs/dev/PLATFORM-PLAN-ja.md の 4.1 節）。
+ConJS の構文は JavaScript のサブセットだが、ConJS のプログラムは JavaScript のプログラムではない（`spawn`、`join`、`host` は JavaScript になく、JavaScript では待つ呼び出しが Promise を返す）。そのため、多くの場合は sjs/test のように Node.js と出力を比べない。それらと待つ呼び出しのライブラリを使わないプログラムは JavaScript のプログラムでもあるので、conjs/test/compare.sh が Node.js と標準出力を比べる（各ステップの node.txt に並べた場合。2026-11-20 までは step10 だけ）。ConJS と SJS の両方が受け付ける、待つ呼び出しを使わないプログラムは、どちらでも同じ結果になる（同じ変換器とランタイムで動くため）。ConJS を広げるときは、まず ConJS に足し、そのうち安全なものを SJS に移して共有する（docs/dev/PLATFORM-PLAN-ja.md の 4.1 節）。
 
 ## 見本
 
