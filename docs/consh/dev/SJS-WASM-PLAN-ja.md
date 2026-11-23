@@ -109,7 +109,7 @@ docs/dev/BITWISE-PLAN-ja.md と同じく、拡張 ConMa（docs/dev/FAST-PLAN-ja.
 * **受け付けるモジュール**（5.3.1）：import、メモリ、テーブル、大域の変数、start 関数を持たないモジュールだけを受け付ける。引数と戻り値は f64 だけで、戻り値はちょうど 1 つ。そのため、export された関数は、どれも、引数だけで戻り値が決まる関数（状態がない）になる。手で書いた WAT でも、2 の「やり直せる」が成り立ち、5.5 の燃料とやり直しを使える。
 * **燃料はアセンブラが入れる**：関数の入口と、各 `loop` の始めで燃料を減らすコードを（docs/consh/dev/SJS-WASM-ARRAY-PLAN-ja.md の段階 F3 から、入口で減らすのは呼び出しのグラフの輪に入る関数だけ）、アセンブラが入れる（5.5）。手で書いた WAT にも入るので、終わらないループを書いても VM は止まらない。燃料の大域の変数は、アセンブラが足すもので、WAT には書けない。
 
-* `__Wasm_compile__ onError wat ,(module)`：WAT の String からモジュールを作る。WAT は、5.3.1 の部分集合だけを受け付ける。
+* `__Wasm_compile__ onError wat ,(module)`：WAT の String からモジュールを作る。WAT は、5.3.1 のサブセットだけを受け付ける。
 * `__Wasm_call__ onError module name args fuel ,(status value)`：export された関数 `name` を、`args`（Number の LList。数は関数の引数の数と同じ）で呼ぶ。`fuel` は燃料（Number）。`status` は `"ok"`（`value` が戻り値）、`"fuel"`（燃料が切れた）、`"trap"`（スタックがあふれたなど。`value` は null）。
 * **値**（2026-11-14 に、足すと決めた）：`Value` に `Wasm(Rc<WasmObj>)` を足す（`__type_name__` は `"Wasm"`）。`WasmObj` は、ホストのモジュールの番号を持ち、最後の参照がなくなったとき（`Drop`）にホストに消させる（`host_wasm_free`）。GC（vm/src/gc.rs）では、ほかの値を参照しない葉の値として扱う。
 * **VM ごとの動き**
@@ -120,7 +120,7 @@ docs/dev/BITWISE-PLAN-ja.md と同じく、拡張 ConMa（docs/dev/FAST-PLAN-ja.
 
 #### 5.3.1. アセンブラ
 
-WAT をバイナリにするアセンブラを、Rust で vm/src に書く（wasm 版の VM とネイティブの VM で同じコードを使う）。一般の WAT は読まず、次の部分集合だけを受け付ける。手で書く WAT も同じである。
+WAT をバイナリにするアセンブラを、Rust で vm/src に書く（wasm 版の VM とネイティブの VM で同じコードを使う）。一般の WAT は読まず、次のサブセットだけを受け付ける。手で書く WAT も同じである。
 
 * `(module (func $名前 (export "名前") (param f64 ...) (result f64) (local f64 i32 i64 ...) 命令...) ...)` だけ。`import`、`memory`、`table`、`global`、`start`、`data`、`elem` は書けない。燃料の大域の変数は、アセンブラが足す（5.5）。
 * 命令：`local.get`、`local.set`、`local.tee`、`f64.const`、`i32.const`、`i64.const`、f64 の算術と比較、`f64.floor` など、i32 と i64 の変換と整数の演算（ビット演算の分）、`select`、`block`、`loop`、`br`、`br_if`、`if`/`else`、`call`、`return`、`unreachable`。
@@ -200,7 +200,7 @@ nbody のような計算は、配列を使うので、3 の数の関数では速
 
 1. **燃料とやり直し**（5.5）：この方式にする。「wasm 版は区切らない（終わるまで VM が止まる）」方式は、終わらないループで Ctrl-C が効かなくなるので採らない。
 2. **値の形**（5.3）：`Value::Wasm` を足す。ホストのモジュールの番号を Number で持つ方式は、いつ消すかが決まらない（JS の値と同じ問題。SAFEJS-PLAN-ja.md の 7）ので採らない。
-3. **プリミティブを誰に見せるか**（5.3）：`__Wasm_compile__` と `__Wasm_call__` を、docs/PRIMITIVES.md に書く拡張 ConMa のプリミティブにし、ConMa のプログラムから使えるようにする（インラインアセンブラの代わり）。受け付ける WAT は 5.3.1 の部分集合だけにし、燃料はアセンブラが入れる。
+3. **プリミティブを誰に見せるか**（5.3）：`__Wasm_compile__` と `__Wasm_call__` を、docs/PRIMITIVES.md に書く拡張 ConMa のプリミティブにし、ConMa のプログラムから使えるようにする（インラインアセンブラの代わり）。受け付ける WAT は 5.3.1 のサブセットだけにし、燃料はアセンブラが入れる。
 4. **配列**（9）：対象にする。段階 5 の後に始める（2026-11-14 に決めた）。
 5. **wasm 版を選ぶ時期**（5.2）：どのモードでも、呼ぶときに選ぶ（2026-11-14 に決めた）。
 6. **`-0`**（11）：SJS を JavaScript に合わせる（2026-11-14 に決めた）。
