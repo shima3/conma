@@ -24,6 +24,13 @@
 (define Sjs_translate_file ,(text file)
   __Cont_get__ ,(return)
   Sjs_parse text ,(program)
+  ;; ConJS の import と export（4.12 節。段階 P9。conjs/include/conjs_modules.se を conjs/conjsc.se が include する）：最上位に
+  ;; あれば、読み込むファイルごとに関数を作る。なければ、今までと 1 文字も同じコードを作る
+  Sjs_is_conjs ,(conjs)
+  __if__ conjs
+    (,()
+      Kit_parse_get program "body" ,(top)
+      Gen_has_modules top ,(test__) __if__ test__ (,() Gen_conjs_modules program file ,(s) return s) ,()) ,()
   ;; 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の段階 2。sjs_wasm.se）：モジュールの WAT と、数の関数の fn の印
   Wasm_prepare program ,(wat)
   Gen_state program ,(g)
@@ -303,6 +310,9 @@
   __String_equal__ t "expr" ,(test__) __if__ test__
     (,() Kit_parse_get s "expr" ,(e) Gen_expr g scope e ,(code val) return code) ,()
   __String_equal__ t "empty" ,(test__) __if__ test__ (,() return "") ,()
+  ;; import と export は、ファイルの最上位にだけ書ける（最上位のものは、Gen_unit が先に取り除く。4.12 節）
+  Kit_lex_in_words t "import export exportlist" ,(test__) __if__ test__
+    (,() Gen_error "'import' and 'export' may only appear at the top level of a file") ,()
   __String_equal__ t "block" ,(test__) __if__ test__
     (,()
       __Dict_new__ ,(dict)

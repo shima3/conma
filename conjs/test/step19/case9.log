@@ -1,0 +1,2 @@
+conjs: SyntaxError: import cycle: mods/cycle1.con.js -> mods/cycle2.con.js -> mods/cycle1.con.js
+exit: 2

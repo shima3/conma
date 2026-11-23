@@ -101,8 +101,8 @@
     (,()
       Kit_lex_in_words name "async await Promise" ,(test__)
       __if__ test__ (,() __String_concat__ "not in ConJS: " name ,(msg) Sjs_not_in msg) ,()
-      ;; ConJS のクラス（4.5 節。段階 P5b）の名前は通す
-      Kit_lex_in_words name "this new class super" ,(test__)
+      ;; ConJS のクラス（4.5 節。段階 P5b）の名前と、import と export（4.12 節。段階 P9。P_import、P_export）は通す
+      Kit_lex_in_words name "this new class super import export" ,(test__)
       __if__ test__ return ,()) ,()
   P_check_name_sjs name)
 
@@ -288,6 +288,9 @@
       __String_equal__ word "switch" ,(test__) __if__ test__ (,() P_switch p ,(n) return n) ,()
       ;; class 宣言（ConJS だけ。SJS は、字句の名前の検査で先に止まる）
       __String_equal__ word "class" ,(test__) __if__ test__ (,() P_class_decl p ,(n) return n) ,()
+      ;; import と export（ConJS だけ。4.12 節。段階 P9。SJS は、字句の名前の検査で先に止まる）
+      __String_equal__ word "import" ,(test__) __if__ test__ (,() P_import p ,(n) return n) ,()
+      __String_equal__ word "export" ,(test__) __if__ test__ (,() P_export p ,(n) return n) ,()
       __String_equal__ word "break" ,(isBreak)
       __String_equal__ word "continue" ,(isContinue)
       __or__ isBreak isContinue ,(test__) __if__ test__
@@ -1063,6 +1066,9 @@
       ;; ConJS だけ（4.5 節）：class 式、this、super
       __String_equal__ text "class" ,(test__) __if__ test__ (,() P_class p ,(n) return n) ,()
       Kit_lex_in_words text "this super" ,(test__) __if__ test__ (,() Kit_parse_next p ,(t) Kit_parse_node text ,(n) return n) ,()
+      ;; 式の中の import（import()、import.meta）と export は、ConJS でも受け付けない（4.12 節）
+      Kit_lex_in_words text "import export" ,(test__) __if__ test__
+        (,() __String_concat__ "not in SJS: " text ,(m) Sjs_not_in m) ,()
       P_check_name text ,()
       P_name p ,(name)
       Kit_parse_node "id" ,(n)
@@ -1515,6 +1521,132 @@
   __Dict_put__ n "kind" "let" ,()
   __Dict_put__ n "decls" decls ,()
   __NULL__ n)
+
+;; ── import と export（ConJS だけ。docs/dev/PLATFORM-PLAN-ja.md の 4.12 節。段階 P9）──
+;; import { 名前 [as 名前], ... } from "指定"。節は import（"specs" は "imported" と "local" を持つ Dict の LList、"from" は指定）。
+;; ほかの形（import x from、import * as m、import "x"、import()、import.meta）は「not in ConJS」
+(define P_import ,(p)
+  __Cont_get__ ,(return)
+  Kit_parse_next p ,(t)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_kind tok ,(kind)
+  Kit_lex_tok_text tok ,(text)
+  Kit_lex_in_words text "( ." ,(test__) __if__ test__ (,() P_import_not "import() and import.meta") ,()
+  __String_equal__ kind "str" ,(test__) __if__ test__ (,() P_import_not "import without names (import \"...\")") ,()
+  __String_equal__ text "*" ,(test__) __if__ test__ (,() P_import_not "import * as") ,()
+  Tok_is_name tok ,(test__) __if__ test__ (,() P_import_not "a default import (import x from)") ,()
+  Kit_parse_expect p "{" ,()
+  P_import_specs p __NULL__ ,(specs)
+  P_from p ,(from)
+  P_semi p ,()
+  Kit_parse_node "import" ,(n)
+  __Dict_put__ n "specs" specs ,()
+  __Dict_put__ n "from" from ,()
+  return n)
+
+(define P_import_not ,(what)
+  __String_concat__ "not in SJS: " what ,(m)
+  Sjs_not_in m)
+
+;; { の後の、名前 [as 名前] の並びと }
+(define P_import_specs ,(p acc)
+  __Cont_get__ ,(return)
+  Kit_parse_eat p "}" ,(test__) __if__ test__ (,() Kit_lex_reverse acc ,(l) return l) ,()
+  P_name p ,(imported)
+  P_as p imported ,(local)
+  Kit_parse_node "spec" ,(s)
+  __Dict_put__ s "imported" imported ,()
+  __Dict_put__ s "local" local ,()
+  __LList_cons__ s acc ,(acc)
+  Kit_parse_eat p "," ,(more)
+  __unless__ more (,() Kit_parse_expect p "}" ,() Kit_lex_reverse acc ,(l) return l) ,()
+  P_import_specs p acc)
+
+;; [as 名前]。なければ name
+(define P_as ,(p name)
+  __Cont_get__ ,(return)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_kind tok ,(kind)
+  Kit_lex_tok_text tok ,(text)
+  __String_equal__ kind "id" ,(isId)
+  __String_equal__ text "as" ,(isAs)
+  __and__ isId isAs ,(test__) __unless__ test__ (,() return name) ,()
+  Kit_parse_next p ,(t)
+  P_name p)
+
+;; from "指定"。指定の文字列を返す
+(define P_from ,(p)
+  __Cont_get__ ,(return)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_kind tok ,(kind)
+  Kit_lex_tok_text tok ,(text)
+  __String_equal__ kind "id" ,(isId)
+  __String_equal__ text "from" ,(isFrom)
+  __and__ isId isFrom ,(test__) __unless__ test__ (,() Kit_parse_fail p) ,()
+  Kit_parse_next p ,(t)
+  Kit_parse_peek p ,(s)
+  Kit_lex_tok_kind s ,(skind)
+  __String_equal__ skind "str" ,(test__) __unless__ test__ (,() Kit_parse_fail p) ,()
+  Kit_parse_next p ,(t)
+  Kit_lex_tok_text s)
+
+;; export const/let/var 宣言、export function、export class（節は export。"decl" に宣言の節）、
+;; export { 名前 [as 名前], ... }（節は exportlist。"specs" は "local" と "exported" を持つ Dict の LList）。
+;; ほかの形（export default、export *、export { } from）は「not in ConJS」
+(define P_export ,(p)
+  __Cont_get__ ,(return)
+  Kit_parse_next p ,(t)
+  Kit_parse_peek p ,(tok)
+  Kit_lex_tok_text tok ,(text)
+  Kit_lex_tok_line tok ,(line)
+  Kit_lex_tok_col tok ,(col)
+  __String_equal__ text "default" ,(test__) __if__ test__ (,() P_import_not "export default") ,()
+  __String_equal__ text "*" ,(test__) __if__ test__ (,() P_import_not "export *") ,()
+  __String_equal__ text "{" ,(test__) __if__ test__
+    (,()
+      Kit_parse_next p ,(t)
+      P_export_specs p __NULL__ ,(specs)
+      Kit_parse_peek p ,(next)
+      Kit_lex_tok_text next ,(ntext)
+      __String_equal__ ntext "from" ,(test__) __if__ test__ (,() P_import_not "export ... from") ,()
+      P_semi p ,()
+      Kit_parse_node "exportlist" ,(n)
+      __Dict_put__ n "specs" specs ,()
+      return n) ,()
+  Kit_lex_in_words text "let const var" ,(isDecl)
+  __String_equal__ text "function" ,(isFn)
+  __String_equal__ text "class" ,(isClass)
+  __if_then_else__ isDecl (,() P_decl p ,(d) P_semi p ,() __NULL__ d)
+    (,()
+      __if_then_else__ isClass (,() P_class_decl p)
+        (,()
+          __unless__ isFn (,() Kit_parse_fail p) ,()
+          P_function_as p __FALSE__ ,(fn)
+          Kit_parse_get fn "name" ,(name)
+          __String_equal__ name "" ,(test__) __if__ test__ (,() Kit_parse_fail p) ,()
+          Kit_parse_node "funcdecl" ,(d)
+          __Dict_put__ d "name" name ,()
+          __Dict_put__ d "fn" fn ,()
+          __NULL__ d)) ,(decl)
+  __Dict_put__ decl "line" line ,()
+  __Dict_put__ decl "col" col ,()
+  Kit_parse_node "export" ,(n)
+  __Dict_put__ n "decl" decl ,()
+  return n)
+
+;; { の後の、名前 [as 名前] の並びと }
+(define P_export_specs ,(p acc)
+  __Cont_get__ ,(return)
+  Kit_parse_eat p "}" ,(test__) __if__ test__ (,() Kit_lex_reverse acc ,(l) return l) ,()
+  P_name p ,(local)
+  P_as p local ,(exported)
+  Kit_parse_node "spec" ,(s)
+  __Dict_put__ s "local" local ,()
+  __Dict_put__ s "exported" exported ,()
+  __LList_cons__ s acc ,(acc)
+  Kit_parse_eat p "," ,(more)
+  __unless__ more (,() Kit_parse_expect p "}" ,() Kit_lex_reverse acc ,(l) return l) ,()
+  P_export_specs p acc)
 
 ;; class [名前] [extends 式] { メンバー }。節は class（"name"（なければ ""）、"parent"（なければ null）、"members"）。
 ;; メンバーは member（"kind" は "method"、"static"、"ctor"、"field"。"key" は名前。メソッドは "fn"（function の節で、

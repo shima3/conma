@@ -1,0 +1,2 @@
+conjs: SyntaxError: Assignment to constant variable.
+exit: 2

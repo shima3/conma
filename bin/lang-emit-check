@@ -29,8 +29,9 @@ git -C "$root" worktree add --quiet --detach "$tmp/base" "$base"
 emit_tree() {
   local tree="$1" out="$2" f module lang
   mkdir -p "$out"
+  # ConJS の変換器は、conjs/include の conjs_modules.se も読む（import と export。段階 P9）。前の木にあっても、読まなければ同じ
   for lang in sjs conjs; do
-    "$conma" build --include "$tree/include" --include "$tree/sjs/include" "$tree/$lang/${lang}c.se" > "$out/$lang.module.se"
+    "$conma" build --include "$tree/include" --include "$tree/sjs/include" --include "$tree/conjs/include" "$tree/$lang/${lang}c.se" > "$out/$lang.module.se"
   done
   : > "$out/steps"
   for f in "${files[@]}"; do

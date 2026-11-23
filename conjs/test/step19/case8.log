@@ -1,0 +1,2 @@
+conjs: SyntaxError: Duplicate export of 'a'
+exit: 2

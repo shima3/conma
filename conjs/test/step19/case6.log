@@ -1,0 +1,2 @@
+conjs: SyntaxError: Cannot find module './mods/nope.con.js' imported from case6.con.js
+exit: 2
