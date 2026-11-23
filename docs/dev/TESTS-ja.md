@@ -122,6 +122,15 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 気をつけること：test/ と consh/test のログは、リポジトリのディレクトリの名前が `conma` であることを前提にしている（`conma/test/step1/test.se`）。worktree（`.claude/worktrees/NAME`）で流すと、ほとんどのステップが違う。名前が `conma` のディレクトリに worktree を作って流した。
 * 測ったもの：なし。
 
+### i7/wasm-windows-stack（shima3/conma#54）
+
+* vm/wasm/vm-wasm.sh：Windows（Git Bash。`cygpath` がある）で、Node.js に渡すスタック（`--stack-size`）を node.exe の主スレッドのスタック（実行ファイルに書かれた 8 MB）より小さくした。Git Bash の `ulimit -s` は上げたと言うだけで、node.exe のスタックは変わらないので、`--stack-size` が 943718 KB になり、深い再帰で Node.js が何も出さずに 127 で終わっていた（sjs/test/step10 の case2。wasm 版の VM を作ってあるときだけ動くテスト）。Unix は変わらない。
+* 作り直すもの：なし（台本だけ）。
+* 新しいテスト：なし（sjs/test/step10 の case2 が、I7 で通るようになった）。
+* I7 が流したもの（Windows 11、Node.js 26）：`sjs/test/run_all.sh`（違いなし。直す前は step10 の case2 が違った）、`--stack-size` を 900、1828、4000、7000 KB にした case2（どれも通る）、直す前と後の `CONMA_VM=wasm test/run_all.sh -j 4` と `CONMA_VM=wasm consh/test/run_all.sh -j 4`（違うステップも出力も同じ。一時ディレクトリの名前だけが違う）、`CONMA_VM=wasm conjs/test/run_all.sh`（違いなし）。
+* 流していないもの：macOS のすべて（変わる行は Windows でしか動かない）。wasm 版の VM の test/ と consh/test で、I7 で多くのステップが違っていたのは、このブランチの外で、shima3/conma#58（i7/wasm-windows）が直した。
+* 測ったもの：なし。
+
 ### m4/conjs-web（shima3/conma#56）
 
 * ConJS のブラウザの見本を、vm/wasm/web から conjs/web に移した（ConSh の consh/js/web と揃える）。移したのは stars.html、stars.con.js、canvas_demo.con.js（移すだけのコミットを分けた。conjs/test の step14 と step15 の case2.con.js のシンボリックリンクも、そのコミットで conjs/web/stars.con.js を指すようにした）。canvas.html は、ConMa 版（vm/wasm/web に残る）と ConJS 版（conjs/web/canvas.html。`?conjs` はもう要らない）に分けた。build.sh も分け、conjs/web/build.sh が ConJS の 2 つを変換してモジュールにし、vm/wasm/web/build.sh は ConMa の canvas_demo.se だけを作る。pages.yml は conjs/web を docs/conjs/web にコピーするので、星ひろいと canvas の URL は変わらない（ConMa 版の canvas のページは、Pages から外した）。bin/lang-emit-check、.gitignore、.claude/launch.json（conjs-web、8768）、conjs/README の 2 つ、docs/conjs/index.md、docs/dev/CONJS.md、docs/HOST-ja.md を直し、docs/dev/PLATFORM-PLAN-ja.md に移した日付の一言を足した（ほかの所は、その段階の記録として残した）。
