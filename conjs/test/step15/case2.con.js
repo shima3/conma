@@ -1,1 +1,1 @@
-../../web/stars-term.con.js
+../../examples/stars-term.con.js
