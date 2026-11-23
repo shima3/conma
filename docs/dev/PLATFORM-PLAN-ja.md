@@ -4,6 +4,8 @@ ConMa を、いろいろなプラットフォームで、そのプラットフ�
 
 **状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）を、4.11 節の設計（PR shima3/conma#32 で M4 がレビューした）で、I7 が作った（8.13 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
+**場所**：ConJS のページの見本（stars.html と stars.con.js、canvas_demo.con.js と、その ConJS 版の canvas.html）は、2026-11-23 に vm/wasm/web から conjs/web に移した（作るのは conjs/web/build.sh）。この文書が vm/wasm/web と書く ConJS の見本は、その日までの場所。ConMa の見本（canvas_demo.se と canvas.html）と測定（measure.*）は vm/wasm/web に残る。
+
 ## 1. 目的
 
 * **A. プラットフォーム**：同じ ConMa のプログラムが、どの VM とプラットフォームでも同じに動く（今のコア ConMa と拡張 ConMa）うえに、プラットフォームに固有の機能も使える。使えない所では、プログラムがそれを知って、別の道を選べる。
