@@ -699,7 +699,7 @@ P6（プラットフォームを増やす）の 3 つ目の段階として、**W
 4. **パスの形**：`C:/Users/...`（`/` で区切る）にすることでよいか。Git Bash の `/c/Users/...` や、Windows のふつうの `C:\Users\...` にしない理由は、前者は Windows の関数が受け付けず、後者は `/` でつなぐ ConMa の今のコード（includer など）と混ざるため。
 5. **CRLF とシンボリックリンク**：I7 の clone の設定（`core.autocrlf false`、`core.symlinks true`）で済ませ、リポジトリに `.gitattributes` の `eol=lf` は足さないことでよいか（足すと、どの clone の取り出しにも関わる。また、CRLF のまま入っているファイルが 1 つある（test/selfhost2/inc.se。`git ls-files --eol` の `i/crlf`。docs/LEXER.md の `\r\n` を確かめるためと思われる）ので、それを除く行も要る）。
 
-### 4.12. 段階 P9 の設計（案、2026-11-23。レビューを待つ）
+### 4.12. 段階 P9 の設計（決めた、2026-11-23。M4 のレビューは PR shima3/conma#60）
 
 ConJS に `import` と `export` を足し、プログラムを複数のファイルに分けて書けるようにする（ユーザーが 2026-11-23 に頼んだ）。今は、sjs_parse.se が `import` と `export` を範囲の外の語として断り（`not in ConJS`）、プログラムは 1 つのファイルに書くしかない。
 
@@ -771,6 +771,8 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 3. 読み込むのを変換器にすること（bin/lang でたどるのではなく）。変換器がファイルを読むので、変換のステップ数は、読み込むファイルの数に比例して増える。
 4. 読み込む先を、拡張子まで書いた相対パスだけにすること。
 
+**M4 のレビュー**（PR shima3/conma#60）：決めることの 4 つは、どれも賛成だった。指摘の 1（同じファイルを realpath で見分ける）と 2（SInfo に書く名前の形）を、上に入れた。テスト 4 を Node.js で確かめるなら、`await new Promise(...)` を使う `*.node.js` を別に置く形があること、星ひろいを分けるときは stars.html と shima3/conma#57 の compare.html（stars.con.js 1 つを読む）に気を付けることも、意見としてもらった。
+
 ## 5. 段階
 
 | 段階 | すること | 終わりとすること |
@@ -790,7 +792,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
-| P9（案、2026-11-23。4.12 節。ユーザーが 2026-11-23 に頼んだ） | ConJS に `import` と `export` を足す：名前付きの import と export、ファイルごとの名前、1 度だけ深さ優先で動かすこと、ライブバインディング。読み込むファイルは変換器がたどる。SJS は今のまま断る | conjs/test の新しいステップが 3 つの VM で通り、Node.js と比べられる場合が同じ出力。`import` のないプログラムの作るコードが変わらない （`bin/lang-emit-check`）。sjs/test が通る |
+| P9（決めた、2026-11-23。4.12 節。ユーザーが 2026-11-23 に頼んだ） | ConJS に `import` と `export` を足す：名前付きの import と export、ファイルごとの名前、1 度だけ深さ優先で動かすこと、ライブバインディング。読み込むファイルは変換器がたどる。SJS は今のまま断る | conjs/test の新しいステップが 3 つの VM で通り、Node.js と比べられる場合が同じ出力。`import` のないプログラムの作るコードが変わらない （`bin/lang-emit-check`）。sjs/test が通る |
 
 ## 6. 決めること
 
