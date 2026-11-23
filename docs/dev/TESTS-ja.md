@@ -102,7 +102,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 * ConJS に `import` と `export` を足した（段階 P9。docs/dev/PLATFORM-PLAN-ja.md の 4.12 節と 8.14 節）。sjs/include/sjs_parse.se（ConJS のときだけ `import` と `export` を文として読む）、sjs/include/sjs_gen.se（最上位に import か export があれば、conjs/include/conjs_modules.se の `Gen_conjs_modules` を呼ぶ。ほかは変えない）、新しい conjs/include/conjs_modules.se（conjs/conjsc.se だけが include する）。`import` のないプログラムの作るコードは、1 文字も変わらない（`bin/lang-emit-check HEAD`）。bin/lang-emit-check は、ConJS の変換器を作るときに conjs/include も探すようにした。
 * 作り直すもの：なし（変換器のモジュールは bin/lang が作り直す）。sjs_gen.se と sjs_parse.se を変えたので、ConSh のモジュールと transpiled VM の変換したコードは変わる（ConSh は (( )) で sjs/include を使う）。
-* 新しいテスト：conjs/test/step19（case1〜14。読み込まれるファイルは step19/mods）。case1〜3 は node.txt に入れ、conjs/test/compare.sh で Node.js と比べる（Node.js 22 以降）。
+* 新しいテスト：conjs/test/step19（case1〜15。読み込まれるファイルは step19/mods。case15.con.js はシンボリックリンク）。case1〜3 と case15 は node.txt に入れ、conjs/test/compare.sh で Node.js と比べる（Node.js 22 以降）。
 * I7 が流したもの（Windows 11、Node.js 26）：`bin/lang-emit-check HEAD`（違いなし）、`conjs/test/run_all.sh` と `CONMA_VM=wasm conjs/test/run_all.sh`（違いなし）、`conjs/test/compare.sh`（違いなし）、`CONMA_VM=python` の step19（case4 だけ違う。Windows の Python 版の VM は待てない。ほかの 13 は通る）、`sjs/test/run_all.sh`（違いなし）、`CONMA_VM=rust consh/test/run_all.sh -j 6` と `CONMA_VM=rust test/run_all.sh -j 8`（I7 の既知の違いだけ）。
 * 流していないもの：macOS のすべて（Python 版の VM の step19 の case4 も）、transpiled VM、参照版の ConSh、sjs/bench（作るコードが変わらないので）。
 * 測ったもの：なし。

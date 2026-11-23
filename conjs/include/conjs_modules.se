@@ -8,7 +8,7 @@
 ;; * 名前はファイルごと：最上位の名前は、今の変換器でも Ref（関数の中の変数）なので、ファイルごとの関数にすれば分かれる。
 ;; * ライブバインディング：export は名前の Ref そのものを出し、import した名前は同じ Ref を指す。出した側が後で値を変えると、
 ;;   読み込んだ側にも見える。import した名前は const（代入すると、変換するときの「Assignment to constant variable.」）。
-;; * 同じファイル：指定を読み込む側のディレクトリにつないだパスの realpath（__OS_realpath__）で見分ける。SInfo に書く名前は、
+;; * 同じファイル：指定を読み込む側の realpath のディレクトリにつないだパスの realpath（__OS_realpath__）で見分ける。SInfo に書く名前は、
 ;;   main のファイルの名前のディレクトリに、たどった指定をつないだもの（realpath ではない）で、最初にたどった指定のもの。
 ;; * 循環、ないファイル、ない名前、2 度の export は、変換するときのエラー。
 
@@ -58,24 +58,26 @@
   __LList_cons__ name stack ,(stack2)
   __Ref_set__ path stack2 ,()
   Kit_parse_get program "body" ,(stmts)
-  Gen_mod_imports m stmts name ,()
+  Gen_mod_imports m stmts name real ,()
   __Dict_put__ visiting real __NULL__ ,()
   __Ref_set__ path stack ,()
   __nop__)
 
-(define Gen_mod_imports ,(m stmts name)
+(define Gen_mod_imports ,(m stmts name real)
   __Cont_get__ ,(return)
   __is_null__ stmts ,(test__) __if__ test__ return ,()
   __LList_uncons__ __print_exit_error__ stmts ,(s rest)
   Kit_parse_get s "t" ,(t)
-  __String_equal__ t "import" ,(test__) __unless__ test__ (,() Gen_mod_imports m rest name ,() return) ,()
+  __String_equal__ t "import" ,(test__) __unless__ test__ (,() Gen_mod_imports m rest name real ,() return) ,()
   Kit_parse_get s "from" ,(spec)
-  Gen_mod_find m spec name ,(rec)
+  Gen_mod_find m spec name real ,(rec)
   __Dict_put__ s "rec" rec ,()
-  Gen_mod_imports m rest name)
+  Gen_mod_imports m rest name real)
 
-;; name のファイルの import の指定 spec が指すファイルの記録（なければ読んで、たどってから作る）
-(define Gen_mod_find ,(m spec name)
+;; name のファイル（realpath は base）の import の指定 spec が指すファイルの記録（なければ読んで、たどってから作る）。
+;; 指定は、読み込む側の realpath のディレクトリにつないで探す（Node.js の ES Modules と同じ。読み込む側がシンボリックリンクでも、
+;; 本物の隣のファイルを読む。M4 の shima3/conma#61 のレビューの 1）。SInfo に書く名前 target は、name のディレクトリにつないだもの
+(define Gen_mod_find ,(m spec name base)
   __Cont_get__ ,(return)
   Kit_lex_starts_with spec "./" ,(a)
   Kit_lex_starts_with spec "../" ,(b)
@@ -83,8 +85,10 @@
     (,() Kit_code_cat3 "Cannot import '" spec "': only a path that begins with './' or '../' can be imported in ConJS" ,(msg) Gen_error msg) ,()
   Gen_dirname name ,(dir)
   Gen_path_join dir spec ,(target)
+  Gen_dirname base ,(rdir)
+  Gen_path_join rdir spec ,(path)
   Kit_code_cat4 "Cannot find module '" spec "' imported from " name ,(missing)
-  __OS_realpath__ (,(msg) Gen_error missing) target ,(real)
+  __OS_realpath__ (,(msg) Gen_error missing) path ,(real)
   __Dict_lookup_or__ m "visiting" __print_exit_error__ ,(visiting)
   __Dict_lookup_or__ visiting real (,(k) __NULL__ __NULL__) ,(cyc)
   __is_null__ cyc ,(test__) __unless__ test__
@@ -99,7 +103,7 @@
   __Dict_lookup_or__ m "mods" __print_exit_error__ ,(mods)
   __Dict_lookup_or__ mods real (,(k) __NULL__ __NULL__) ,(known)
   __is_null__ known ,(test__) __unless__ test__ (,() return known) ,()
-  Gen_read_file target (,(msg) Gen_error missing) ,(text)
+  Gen_read_file real (,(msg) Gen_error missing) ,(text)
   Sjs_parse text ,(program)
   Gen_mod_visit m program target real ,()
   __Dict_lookup_or__ m "count" __print_exit_error__ ,(count)
