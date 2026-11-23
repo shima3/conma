@@ -74,6 +74,10 @@ git config branch.alpha.rebase false
 * If you commit to `main` or `alpha` by mistake and have not pushed it, move the commit to a branch of the work (`git branch m4/fix` there, then `git reset --keep HEAD~1` on `main` or `alpha`); if you have pushed it, tell the others before you change that branch again.
 * `pull.ff true` is there to override a global `pull.ff only` (`git config --global`), which would stop `git pull` before it could rebase or merge; a setting of the clone comes before a global one (`git config --show-origin --get-regexp '^(merge|pull|branch)\.'` shows which applies).
 
+## Versions
+
+The version of ConMa is the line of `VERSION` at the root (0.1.0 from 2026-11-24; semantic versioning, with no promise of compatibility before 1.0), and `bin/version` prints it with the commit (README.md, Version). Change `VERSION` only when the user says so, in a piece of work of its own: when the number goes up and whether `main` gets a tag such as `v0.1.0` are the user's to decide. `consh/bin/consh.ps1` prints the same line as `bin/version` in its own code: change both together.
+
 ## Benchmarks
 
 The benchmarks are in bench/ (ConMa programs against CPython), consh/bench (ConSh scripts against Bash and the Rust version of ConSh) and sjs/bench (SJS programs against Node.js and CPython, and in sjs/bench/consh the same computations as ConSh scripts whose work is all in `(( ))`, which only the wasm VM runs in about a second; until 2026-11-19 they were consh/bench 19 to 21). The tables of their results are in bench/README.md, consh/bench/README-ja.md and sjs/README-ja.md, called the READMEs of the benchmarks below. They are measured as follows.

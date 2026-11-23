@@ -1,6 +1,7 @@
 #!/bin/bash
 # bin/lang: ConMa に変換する言語のプログラムを、変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4。言語キット）。
 #   bin/lang [--emit] 言語のディレクトリ ファイル [引数 ...]
+#   bin/lang --version     ConMa の版を出す（bin/version。2026-11-24）
 # ファイルの後の引数は、変換したプログラムの main に渡す（ConJS の argv。docs/dev/PLATFORM-PLAN-ja.md の 4.8 節、段階 P8）。
 # 言語のディレクトリ（sjs、conjs など）の lang.conf に、言語の名前（name）、変換器（translator。ディレクトリからの相対パス）、
 # include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）を「名前=値」の行で書く（# で始まる行は飛ばす。
@@ -22,6 +23,7 @@
 # 大域変数の名前で合わせる。できるモジュールは、include の行ごとフロントエンドに通したものと、大域変数の番号とファイルの
 # 順のほかは同じで、同じステップ数で動く
 root="$(cd "$(dirname "$0")/.."; pwd)"
+if [ "$1" = --version ]; then exec "$root/bin/version"; fi
 conma="$root/vm/target/release/conma"
 wasm="$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm"
 # 変換とモジュール作りをする VM（tr）と、それが新しくなったらモジュールを作り直す印のファイル（stamps）

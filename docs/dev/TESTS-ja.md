@@ -125,3 +125,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * M4 が流したもの：case4 の Rust 版と wasm 版、ConJS での同じプログラム（Node.js と同じ出力）、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh`（ConSh の最適化版。consh_jsstmt.se が sjs_rt.se を include する）、`consh/js/test/run_all.sh`。どれも違いなし。
 * 流していないもの：Python 版の VM、transpiled VM、ConSh の参照版と wasm 版、Windows（I7）。
 * 測ったもの：なし。
+
+### m4/version
+
+* 版の表示を足した（ユーザーの指示。0.1.0 から）。リポジトリのルートの VERSION に番号を置き、bin/version が「ConMa 0.1.0 (コミット 日付)」を出す（作業ツリーに変更があれば、コミットに -dirty を付ける）。`bin/lang --version`、`conjs/conjs --version`、`consh/bin/consh --version` は bin/version を呼ぶ。consh/bin/consh.ps1 の `--version` は、同じものを PowerShell で出す。
+* GitHub の Download ZIP（git archive）には Git の履歴がないので、bin/version の archived の行に git archive がコミットと日付を書き込む（.gitattributes の export-subst）。
+* 文書：README.md の Version、docs/dev/CONTRIBUTING.md の Versions（VERSION を変えるのはユーザーの指示のとき）、conjs/README の 2 つと consh/README-ja.md の使い方。
+* 作り直すもの：なし。
+* M4 が流したもの：4 つのコマンドの `--version`（Git のクローン、変更あり・なし）、`git archive` で作ったディレクトリでの bin/version、`conjs/test/run_all.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
+* 流していないもの：consh.ps1 と consh.cmd の `--version`（Windows。M4 には pwsh がない）、Python 版の VM と transpiled VM（VM は変えていない）。
+* 測ったもの：なし。
