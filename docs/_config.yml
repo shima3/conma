@@ -1,4 +1,7 @@
-theme: jekyll-theme-time-machine
+# primer: the look of GitHub, with wide code blocks and no numbers of lines (2026-11-23). time-machine before it
+# had narrow code blocks and numbered their lines by a script that counted a long line as wrapped, so the
+# numbers fell behind the code
+theme: jekyll-theme-primer
 timezone: Asia/Tokyo
 title: ConMa
 description: ConMa is an intermediate language that provides higher-order functions and continuations for functional programming.
