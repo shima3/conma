@@ -56,8 +56,15 @@ jobs:
           gh=https://github.com/shima3/conma/blob/alpha
           # A README.md without front matter is not made into a page (jekyll-optional-front-matter leaves README
           # files alone; the site served conjs/README.md as it is, 2026-11-23), so each copy gets a title
-          for f in conjs/README.md conjs/README-ja.md sjs/README-ja.md; do
-            printf -- '---\ntitle: %s\n---\n' "$(dirname "$f" | sed -e 's/conjs/ConJS/' -e 's/sjs/SJS/')" > "docs/$f"
+          # The quick start and the tutorial of ConJS (2026-11-23) are copied too, with titles of their own
+          for f in conjs/README.md conjs/README-ja.md sjs/README-ja.md \
+                   conjs/QUICKSTART.md conjs/QUICKSTART-ja.md conjs/TUTORIAL.md conjs/TUTORIAL-ja.md; do
+            case "$f" in
+              */QUICKSTART*) title="ConJS Quick Start" ;;
+              */TUTORIAL*) title="ConJS Tutorial" ;;
+              *) title="$(dirname "$f" | sed -e 's/conjs/ConJS/' -e 's/sjs/SJS/')" ;;
+            esac
+            printf -- '---\ntitle: %s\n---\n' "$title" > "docs/$f"
             sed -e "s|](\.\./docs/dev/|]($gh/docs/dev/|g" -e "s|](\.\./docs/consh/dev/|]($gh/docs/consh/dev/|g" \
                 -e "s|](\.\./docs/|](../|g" -e "s|](\.\./consh/|]($gh/consh/|g" \
                 "$f" >> "docs/$f"

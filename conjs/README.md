@@ -2,6 +2,8 @@
 
 # ConJS: a subset of JavaScript with lightweight threads and blocking calls
 
+To begin: the [quick start](QUICKSTART.md) (install, build, and run a server written in ConJS) and the [tutorial](TUTORIAL.md) (the language by examples).
+
 ConJS is a subset of JavaScript with lightweight threads that switch cooperatively (called "tasks" below) and blocking calls that stop only the task that makes them. A call that waits (a function of the host, a frame of an animation) is written as an ordinary call, with no `await`. While it waits, only that task stops, and the others run. It is made now with the translator and the runtime of SJS ([../sjs/README-ja.md](../sjs/README-ja.md), a safe subset of JavaScript), but it is a language of its own, and the JavaScript it takes will grow. The plan and the design are in sections 4.1 and 4.2 of [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md), and what was made in section 8.4 (stage P3b, 2026-11-19). How it is made and its tests are in [docs/dev/CONJS.md](../docs/dev/CONJS.md), for the developers.
 
 ```js
