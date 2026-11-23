@@ -117,7 +117,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：macOS のすべて、Rust 版の VM のない所（#64 が入った後なら、bin/lang が wasm 版の VM で作る）。
 * 測ったもの：上の時間。
 
-### m4/at-replace
+### m4/at-replace（shima3/conma#69）
 
 * sjs/include/sjs_rt.se に、配列の `at` と、文字列の `replace`、`replaceAll` を足した（ユーザーの指示。SJS と ConJS で共有する）。探すものは文字列だけ。置き換えるものは文字列（`$$`、`$&`、`` $` ``、`$'`）か関数。sjs/README-ja.md の「配列の at と、文字列の replace、replaceAll」と、conjs/TUTORIAL の 2 つも直した。
 * 作り直すもの：なし（ランタイムのモジュールは、bin/lang がハッシュで作り直す）。
