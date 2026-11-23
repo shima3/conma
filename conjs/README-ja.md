@@ -2,6 +2,8 @@
 
 # ConJS：軽量スレッドとブロッキング呼び出しを持つ JavaScript のサブセット
 
+はじめに読むもの：[クイックスタート](QUICKSTART-ja.md)（ツールを入れ、ビルドし、ConJS で書いたサーバを動かす）と[チュートリアル](TUTORIAL-ja.md)（言語を例で）。
+
 ConJS は、JavaScript のサブセットで、協調的に切り替わる軽量スレッド（以下「処理」）と、その処理だけを止めるブロッキング呼び出しを持つ。待つ呼び出し（ホストの関数、アニメーションの 1 コマ）を、`await` を書かずに、ふつうの呼び出しとして書ける。待っている間は、その処理だけが止まり、ほかの処理は動く。今は SJS（[../sjs/README-ja.md](../sjs/README-ja.md)。JavaScript の安全なサブセット）の変換器とランタイムを使って作っているが、SJS とは別の言語で、これから受け付ける JavaScript を広げていく。計画と設計は [docs/dev/PLATFORM-PLAN-ja.md](../docs/dev/PLATFORM-PLAN-ja.md) の 4.1 節と 4.2 節、作ったものは 8.4 節（段階 P3b、2026-11-19）。作りとテストは、開発者向けの [docs/dev/CONJS.md](../docs/dev/CONJS.md)（英語）にある。
 
 ```js
