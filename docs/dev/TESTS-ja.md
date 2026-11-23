@@ -98,6 +98,15 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/stars-js（shima3/conma#57）
+
+* conjs/web：「星ひろい」（stars.con.js）を、ふつうのブラウザの JavaScript で 2 通りに書いたものを足した。stars-events.js（イベント駆動：画面を表す変数 state とキーの受け手の中の分岐、おばけの setInterval と clearInterval、描くのは requestAnimationFrame）と stars-async.js（async/await：ConJS 版と同じ形のループで、nextEvent、sleep、1 コマを待つことを Promise で自分で作る）。遊ぶページ stars-events.html と stars-async.html、3 つのうち 2 つを並べて見せる compare.html（行の数、コメントと空の行を除いた行の数、待つ所の行の数を出し、待つ所の行を黄色にする）。stars.html と docs/conjs/index.md にリンクを、conjs/README の 2 つに説明を足した。どちらも ConMa の VM を使わないので、build.sh は変えていない。決まり（盤、色、乱数、おばけの数と間隔、画面の順、結果の画面の 300 ミリ秒、面クリアの 800 ミリ秒）は ConJS 版と同じ。
+* 作り直すもの：なし。
+* 新しいテスト：なし（DOM を使うので、suite で比べられない）。
+* M4 が流したもの：`node --check`。2 つの JS 版を、何も描かない canvas の代わりと、手で送る keydown と pointerdown の上で、Node.js から遊ばせた（描いたものから星と自分の位置を読み、近い星へキーとクリックで動く）。タイトル（Shift では始まらない）、1 面のクリアと「1 面クリア」の後の 2 面、おばけにぶつかった後の結果の画面、その直後のキーを捨てること、300 ミリ秒の後のキーでタイトル、Escape で「おしまい」。compare.html のスクリプトも、ファイルを読む fetch の代わりの上で動かし、数を確かめた（stars.con.js 263 行・214 行・待つ所 10、stars-events.js 251・206・5、stars-async.js 280・234・27。M2 のレビューの後、文字列、行の終わりのコメント、配列の .join を数えないようにした）。
+* 流していないもの：本当のブラウザ（このセッションのブラウザは、M4 の clone のページを出せなかった）。
+* 測ったもの：なし。
+
 ### i7/wasm-windows（shima3/conma#58）
 
 * vm/wasm/vm-node.js（wasm 版の VM のホスト）：Windows（I7、Git Bash）で動くようにした。どれも `process.platform` が `win32` のときだけで、Unix は変わらない。

@@ -15,7 +15,9 @@
 <h1>星ひろい</h1>
 <p>入力を待つ対話の見本（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）。stars.con.js を wasm 版の ConMa の VM で動かす。
 画面の順はふつうのループで、おばけは 1 匹ごとに spawn した処理で書き、キーは nextEvent() で await なしに待つ。
-<a href="canvas.html">canvas の見本</a>。</p>
+<a href="canvas.html">canvas の見本</a>。
+同じゲームを JavaScript で書いたもの：<a href="stars-events.html">イベント駆動</a>、<a href="stars-async.html">async/await</a>。
+<a href="compare.html">コードを比べる</a>。</p>
 <canvas id="canvas" width="480" height="360" tabindex="0"></canvas>
 <p id="status">読み込み中…</p>
 <pre id="out"></pre>
