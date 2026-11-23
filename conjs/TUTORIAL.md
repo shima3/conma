@@ -102,7 +102,7 @@ Hanako is in year 3
 {"name":"Hanako","year":3,"courses":["math","English"]}
 ```
 
-* `push`, `map`, `filter`, `reduce`, `slice`, `sort`, `join`, `includes` and `indexOf` of arrays, and `for ... of`, are as in JavaScript.
+* `push`, `map`, `filter`, `reduce`, `slice`, `sort`, `join`, `includes`, `indexOf` and `at` of arrays, and `for ... of`, are as in JavaScript.
 * `[...scores]` is a spread (a new array with the same elements), and `const { name, year } = student` a destructuring.
 * `JSON.stringify` and `JSON.parse` are there too.
 * Some newer methods of JavaScript are not there yet (such as `at` of arrays). Calling a missing method gives `TypeError: ... is not a function` when it runs.
@@ -223,7 +223,7 @@ example.con.js:1:13: TypeError: < compares two numbers or two strings, not the n
 
 | JavaScript | In ConJS |
 |---|---|
-| Regular expressions (`/-/g`) | `conjs: not in ConJS: a regular expression`. Use the methods of strings (`split`, `join`, `includes`, `indexOf`, `slice` and others); a replacement can be written `s.split("-").join("+")` (`replace` and `replaceAll` are not there yet) |
+| Regular expressions (`/-/g`) | `conjs: not in ConJS: a regular expression`. Use the methods of strings (`split`, `join`, `includes`, `indexOf`, `slice` and others); to replace, `replace` and `replaceAll` with a string to look for (`s.replaceAll("-", "+")`) |
 | `Set`, `Map` | `ReferenceError: Set is not defined`. Use objects and arrays |
 | `this` outside a class | `conjs: this outside a class`. `this` is only for classes |
 | `Math.sin` and others | Some functions of `Math` are not there yet |
