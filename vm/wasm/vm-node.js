@@ -81,14 +81,16 @@ function vmPath(p) {
 // A path of the VM for Node.js. A backslash is a separator, as on Windows. The VM for wasm32 joins
 // paths as Unix does, so that a path of Windows after the current directory stays after it
 // (C:/a/C:/b, or C:/a/C:\b from TEMP): it starts at the last drive. /dev/null is the device NUL,
-// as in the native VM (open_file).
+// as in the native VM (open_file); Node.js opens "NUL" as a file of that name in the current
+// directory, and \\.\NUL as the device.
+const NUL = "\\\\.\\NUL";
 function hostPath(p) {
   if (!windows) return p;
   p = p.replace(/\\/g, "/");
   // the last drive: a greedy .* takes all but the last one
   const m = /^(?:.*\/)?([A-Za-z]:(?:\/.*)?)$/.exec(p);
   if (m && /^[A-Za-z]:/.test(p)) p = m[1];
-  return unixDevice(p) === "/dev/null" ? "NUL" : p;
+  return unixDevice(p) === "/dev/null" ? NUL : p;
 }
 // The path of Unix that p is on Windows (/dev/null for C:/dev/null), or null.
 function unixDevice(p) {
@@ -117,7 +119,7 @@ const errno = (e) => {
 // Gives the path for Node.js.
 function checkedPath(p) {
   p = hostPath(p);
-  if (!windows || p === "NUL") return p;
+  if (!windows || p === NUL) return p;
   const parts = p.split("/");
   let onTheWay = parts[0];
   for (let i = 1; i < parts.length - 1; i++) {
