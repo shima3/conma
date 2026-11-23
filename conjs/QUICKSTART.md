@@ -101,14 +101,14 @@ Make a file `hello.con.js`, in an editor (such as VS Code) or with this command:
 $ echo 'console.log("Hello, ConJS");' > hello.con.js
 ```
 
-The name of a ConJS file ends with `.con.js`. Run it:
+The name of a ConJS file ends with `.con.js`. (The files you make in this document and in the tutorial show as "Untracked" in `git status`; that does no harm, and you may delete them when you no longer need them.) Run it:
 
 ```
 $ conjs/conjs hello.con.js
 Hello, ConJS
 ```
 
-The first run takes a few seconds to prepare the translator. From the second, it starts at once.
+The first run takes from a few seconds to about 30 seconds (longer on some computers) to prepare the translator and the runtime. Wait, and do not press Ctrl-C, even if it seems to have stopped. From the second, it starts at once.
 
 ## 5. Run the web server
 
@@ -171,6 +171,7 @@ Read the two side by side: ConJS needs no `async` and no `await`.
 | `cargo: command not found` | Open the terminal again. If it still says so, install Rust again (step 1) |
 | `vm-wasm.sh: ... is not built` | Run `vm/wasm/build.sh` (step 3) |
 | `vm/wasm/build.sh` stops with an error that `wasm32-unknown-unknown` is not installed | Type `rustup target add wasm32-unknown-unknown` (the end of step 1) |
+| "The term 'conjs/conjs' is not recognized as the name of a cmdlet, function, script file, or operable program" (Windows) | You typed it in PowerShell. Open Git Bash and type it there (step 0) |
 | `$'\r': command not found` (Windows) | The line ends were changed in the clone. Delete the folder `conma` and clone again with `-c core.autocrlf=false` (step 2) |
 | `EADDRINUSE` | Port 8000 is taken. Add another number, as in step 5 |
 | `http.listen: this platform has no server` | `CONMA_VM=wasm` is missing |

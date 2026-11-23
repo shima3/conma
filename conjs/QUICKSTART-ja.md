@@ -103,14 +103,14 @@ $ vm/wasm/build.sh
 $ echo 'console.log("こんにちは、ConJS");' > hello.con.js
 ```
 
-ConJS のファイルの名前は `.con.js` で終わるようにします。動かします。
+ConJS のファイルの名前は `.con.js` で終わるようにします（この文書とチュートリアルで作るファイルは、`git status` に「Untracked」と出ますが、害はありません。いらなくなったら消して構いません）。動かします。
 
 ```
 $ conjs/conjs hello.con.js
 こんにちは、ConJS
 ```
 
-初めて動かすときは、変換の準備に数秒かかります。2 回目からは、すぐに動きます。
+初めて動かすときは、変換の準備（変換器とランタイムを作ること）に、数秒から 30 秒くらいかかります（パソコンによっては、もっとかかります）。止まったように見えても、Ctrl-C を押さずに待ってください。2 回目からは、すぐに動きます。
 
 ## 5. Web サーバを動かす
 
@@ -173,6 +173,7 @@ $ node conjs/examples/counter_server.node.js
 | `cargo: command not found` | ターミナルを開き直す。それでも出るときは、1 の Rust を入れ直す |
 | `vm-wasm.sh: ... is not built` | 3 の `vm/wasm/build.sh` を動かす |
 | `vm/wasm/build.sh` が、`wasm32-unknown-unknown` が入っていないというエラーで止まる | 1 の最後の `rustup target add wasm32-unknown-unknown` を打つ |
+| 「`conjs/conjs` は、コマンドレット、関数、スクリプト ファイル、または操作可能なプログラムの名前として認識されません」（Windows） | PowerShell で打っている。Git Bash を開いて打ち直す（0） |
 | `$'\r': command not found`（Windows） | 改行の形が変わってクローンされている。`conma` フォルダを消して、2 の `-c core.autocrlf=false` を付けてクローンし直す |
 | `EADDRINUSE` | 8000 番が使われている。5 のとおり、別の番号を付ける |
 | `http.listen: this platform has no server` | `CONMA_VM=wasm` を付け忘れている |

@@ -10,7 +10,7 @@ Write each example in a file (`example.con.js`) in the folder `conma`, and run i
 $ conjs/conjs example.con.js
 ```
 
-What follows `Output` under an example is what it prints.
+What follows `Output` under an example is what it prints. You may delete the files the examples make (`example.con.js`, `memo.txt`, `lib/` and others) when you no longer need them.
 
 ## 1. What ConJS is
 

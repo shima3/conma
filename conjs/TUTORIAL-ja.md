@@ -10,7 +10,7 @@ ConJS で書ける JavaScript の基本的な書き方と、JavaScript と違う
 $ conjs/conjs 例.con.js
 ```
 
-例の下の `出力` が、出てくる文字です。
+例の下の `出力` が、出てくる文字です。例で作るファイル（`例.con.js`、`memo.txt`、`lib/` など）は、いらなくなったら消して構いません。
 
 ## 1. ConJS とは
 
