@@ -1935,6 +1935,12 @@
     Sjs_array_new G ,(out)
     Sjs_array_copy_into out a from to zero ,()
     __NULL__ out) ,()
+  ;; at（2026-11-24）：添字を charAt と同じく整数にし、負の数は後ろからの位置にする。範囲の外は undefined
+  method "at" (,(args)
+    Sjs_array_length a ,(n)
+    Sjs_at_index args n ,(k)
+    __is_null__ k ,(none)
+    __if_then_else__ none (,() __NULL__ __NULL__) (,() Sjs_array_get a k)) ,()
   method "indexOf" (,(args)
     Sjs_arg args ,(x rest)
     Sjs_array_present a ,(idx)
@@ -2174,6 +2180,19 @@
     Sjs_arg args ,(n rest)
     Sjs_to_number n ,(n)
     Sjs_repeat s n "") ,()
+  ;; at（2026-11-24）：添字は配列の at と同じ。範囲の外は undefined（charAt は ""）
+  method "at" (,(args)
+    Sjs_at_index args len ,(k)
+    __is_null__ k ,(none)
+    __if_then_else__ none (,() __NULL__ __NULL__) (,() Sjs_char_at s k)) ,()
+  ;; replace と replaceAll（2026-11-24）：探すものは文字列だけ（正規表現はない）。置き換えるものは、文字列（$$、$&、$`、$'
+  ;; を JavaScript と同じく置き換える）か、関数（見つけた文字列、位置、元の文字列で呼び、返した値を文字列にする）
+  method "replace" (,(args)
+    Sjs_args2 args ,(p r)
+    Sjs_replace s p r __FALSE__) ,()
+  method "replaceAll" (,(args)
+    Sjs_args2 args ,(p r)
+    Sjs_replace s p r __TRUE__) ,()
   ;; JavaScript と同じく、添字を整数にして（undefined と NaN は 0、0 の方へ切り捨て）、負の数と長さ以上は ""。
   ;; 2026-11-16 までは slice と同じ Sjs_rel_index で、負の数を後ろからの位置にしていた（"héllo".charAt(-1) が "o"）
   method "charAt" (,(args)
@@ -2245,6 +2264,107 @@
   __String_concat__ acc s ,(acc)
   Sjs_dec n ,(n)
   Sjs_repeat s n acc)
+
+;; at の添字（2026-11-24）：args の初めの値を、charAt と同じく整数にし（undefined と NaN は 0、0 の方へ切り捨て）、
+;; 負の数には長さ len を足す。0 から len - 1 の外なら null
+(define Sjs_at_index ,(args len)
+  __Cont_get__ ,(return)
+  Sjs_arg args ,(i rest)
+  __is_null__ i ,(none)
+  __if_then_else__ none (,() Sjs_zero) (,() Sjs_to_number i) ,(n)
+  Sjs_is_nan n ,(nan)
+  __if_then_else__ nan (,() Sjs_zero) (,() Sjs_trunc n) ,(n)
+  __Number_is_negative__ n ,(neg)
+  __if_then_else__ neg (,() __Number_add__ n len) (,() __NULL__ n) ,(k)
+  __Number_is_negative__ k ,(below)
+  __if__ below (,() return __NULL__) ,()
+  __Number_subtract__ len k ,(room)
+  __Number_is_positive__ room ,(inside)
+  __if_then_else__ inside (,() __NULL__ k) (,() __NULL__ __NULL__))
+
+;; s の中の p を r で置き換える。all が偽なら初めの 1 つだけ（replace）、真ならすべて（replaceAll）。p は文字列にする。
+;; r は関数でなければ文字列にする
+(define Sjs_replace ,(s p r all)
+  Sjs_to_string p ,(p)
+  Sjs_kind r ,(kind)
+  __String_equal__ kind "function" ,(isFn)
+  __if_then_else__ isFn (,() __NULL__ r) (,() Sjs_to_string r) ,(r)
+  Sjs_zero ,(zero)
+  Sjs_replace_from s p r isFn all zero zero "")
+
+;; start：p を探し始める位置。from：s のうち、まだ acc に入れていない所の初め
+(define Sjs_replace_from ,(s p r isFn all start from acc)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __String_find__ __print_exit_error__ s p start ,(at)
+  __is_null__ at ,(test__) __if__ test__
+    (,() __String_substring__ __print_exit_error__ s from len ,(t) __String_concat__ acc t ,(acc) return acc) ,()
+  __String_substring__ __print_exit_error__ s from at ,(t)
+  __String_concat__ acc t ,(acc)
+  Sjs_replacement s p r isFn at ,(t)
+  __String_concat__ acc t ,(acc)
+  __String_length__ p ,(pl)
+  __Number_add__ at pl ,(next)
+  __Number_subtract__ len next ,(left)
+  __Number_is_positive__ left ,(more)
+  __and__ all more ,(again)
+  __unless__ again
+    (,() __String_substring__ __print_exit_error__ s next len ,(t) __String_concat__ acc t ,(acc) return acc) ,()
+  ;; 空の p は、次の文字の後から探す（"abc".replaceAll("", "-") は "-a-b-c-"）
+  __Number_is_zero__ pl ,(empty)
+  __if_then_else__ empty (,() Sjs_inc next) (,() __NULL__ next) ,(start)
+  Sjs_replace_from s p r isFn all start next acc)
+
+;; s の at の位置で見つけた p の、置き換えた後の文字列
+(define Sjs_replacement ,(s p r isFn at)
+  __Cont_get__ ,(return)
+  __if__ isFn (,()
+    __LList_cons__ s __NULL__ ,(args)
+    __LList_cons__ at args ,(args)
+    __LList_cons__ p args ,(args)
+    Sjs_call r args ,(v)
+    Sjs_to_string v ,(t)
+    return t) ,()
+  Sjs_zero ,(zero)
+  __String_find__ __print_exit_error__ r "$" zero ,(d)
+  __is_null__ d ,(test__) __if__ test__ (,() return r) ,()
+  Sjs_expand r s p at zero "")
+
+;; 置き換える文字列 r の $$（$）、$&（p）、$`（s の at より前）、$'（s の p より後）。ほかの $ はそのまま
+;; （$1 なども。JavaScript でも、探すものが文字列なら、そのまま）
+(define Sjs_expand ,(r s p at from acc)
+  __Cont_get__ ,(return)
+  __String_length__ r ,(rl)
+  __String_find__ __print_exit_error__ r "$" from ,(d)
+  __is_null__ d ,(test__) __if__ test__
+    (,() __String_substring__ __print_exit_error__ r from rl ,(t) __String_concat__ acc t ,(acc) return acc) ,()
+  __String_substring__ __print_exit_error__ r from d ,(t)
+  __String_concat__ acc t ,(acc)
+  Sjs_inc d ,(d1)
+  Sjs_inc d1 ,(d2)
+  Sjs_char_at r d1 ,(c)
+  __is_null__ c ,(test__) __if__ test__ (,() __String_concat__ acc "$" ,(acc) return acc) ,()
+  Sjs_expand_part s p at c ,(t)
+  __is_null__ t ,(plain)
+  __if__ plain (,() __String_concat__ acc "$" ,(acc) Sjs_expand r s p at d1 acc ,(x) return x) ,()
+  __String_concat__ acc t ,(acc)
+  Sjs_expand r s p at d2 acc)
+
+;; $ の次の文字 c が表すもの。表さなければ null
+(define Sjs_expand_part ,(s p at c)
+  __Cont_get__ ,(return)
+  __String_equal__ c "$" ,(test__) __if__ test__ (,() return "$") ,()
+  __String_equal__ c "&" ,(test__) __if__ test__ (,() return p) ,()
+  __String_equal__ c "`" ,(test__) __if__ test__
+    (,() Sjs_zero ,(zero) __String_substring__ __print_exit_error__ s zero at ,(t) return t) ,()
+  __String_equal__ c "'" ,(test__) __if__ test__
+    (,()
+      __String_length__ p ,(pl)
+      __Number_add__ at pl ,(e)
+      __String_length__ s ,(len)
+      __String_substring__ __print_exit_error__ s e len ,(t)
+      return t) ,()
+  __NULL__ __NULL__)
 
 ;; ── JSON.stringify ──
 

@@ -116,3 +116,12 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * I7 が流したもの（Windows 11）：空のキャッシュ（`CONMA_CACHE_DIR`）で `conjs/conjs --prepare`（18.6 秒、`conjs: ready`）、その後の初めての hello（1.3 秒）、作ってあるときの `--prepare`（1.4 秒）、`--prepare x`（使い方を出して 2）、`conjs/test/run_all.sh` と `CONMA_VM=wasm conjs/test/run_all.sh`、`conjs/test/compare.sh`（違いなし）、`.github/doc-pairs.py`。
 * 流していないもの：macOS のすべて、Rust 版の VM のない所（#64 が入った後なら、bin/lang が wasm 版の VM で作る）。
 * 測ったもの：上の時間。
+
+### m4/at-replace（shima3/conma#69）
+
+* sjs/include/sjs_rt.se に、配列と文字列の `at` と、文字列の `replace`、`replaceAll` を足した（ユーザーの指示。文字列の `at` は M2 のレビューの後。SJS と ConJS で共有する）。探すものは文字列だけ。置き換えるものは文字列（`$$`、`$&`、`` $` ``、`$'`）か関数。sjs/README-ja.md の「配列と文字列の at と、文字列の replace、replaceAll」と、conjs/TUTORIAL の 2 つも直した。
+* 作り直すもの：なし（ランタイムのモジュールは、bin/lang がハッシュで作り直す）。
+* 新しいテスト：sjs/test/step12 の case4（Node.js の結果と比べた）。
+* M4 が流したもの：case4 の Rust 版と wasm 版、ConJS での同じプログラム（Node.js と同じ出力）、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh`（ConSh の最適化版。consh_jsstmt.se が sjs_rt.se を include する）、`consh/js/test/run_all.sh`。どれも違いなし。
+* 流していないもの：Python 版の VM、transpiled VM、ConSh の参照版と wasm 版、Windows（I7）。
+* 測ったもの：なし。
