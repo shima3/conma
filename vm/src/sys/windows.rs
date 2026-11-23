@@ -66,6 +66,8 @@ extern "system" {
     fn SetLastError(code: u32);
     fn GetLastError() -> u32;
     fn SetHandleInformation(h: Handle, mask: u32, flags: u32) -> Bool;
+    fn GetConsoleMode(h: Handle, mode: *mut u32) -> Bool;
+    fn SetConsoleMode(h: Handle, mode: u32) -> Bool;
 }
 
 const FILE_TYPE_DISK: u32 = 1;
@@ -94,6 +96,11 @@ const WRITE_THROUGH: Duration = Duration::from_millis(200);
 const FLUSH_STALL: Duration = Duration::from_secs(1);
 /// How often wait_fds looks at a pipe that it waits to read.
 const PEEK_EVERY: Duration = Duration::from_millis(2);
+/// After a read of a console gives 0 bytes, how long the reader waits for a Ctrl-C to be counted
+/// before it takes the 0 bytes for the end of the input. A Ctrl-C typed in a pseudo console (as in
+/// a terminal of Windows Terminal or of an editor) stops the read with 0 bytes and no error, and
+/// the system calls the handler on a thread of its own, which can count it a little later.
+const CTRL_C_WAIT: Duration = Duration::from_millis(100);
 /// How much a reader thread reads at once.
 const READ_CHUNK: usize = 4096;
 
@@ -127,6 +134,11 @@ struct Reader {
     owned: bool,
     /// a console or a character device: 0 bytes is the end, and "\r\n" is "\n"
     chars: bool,
+    /// of a console, its input mode when the reader was made. A program that the VM runs may
+    /// change it (a program of MSYS, as those of Git Bash, turns off line input, echo and Ctrl-C
+    /// while it runs), and one that is stopped (Ctrl-C, __OS_kill__) cannot set it back; then
+    /// Enter would give "\r" alone and no line would end. Each read of the console sets it back.
+    console_mode: Option<u32>,
     st: Mutex<ReadState>,
     cv: Condvar,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -149,7 +161,19 @@ struct ReadState {
 
 impl Reader {
     fn new(handle: Handle, owned: bool, chars: bool) -> Arc<Reader> {
-        Arc::new(Reader { handle, owned, chars, st: Mutex::new(ReadState::default()), cv: Condvar::new(), thread: Mutex::new(None) })
+        let mut mode = 0u32;
+        let console_mode = if chars && unsafe { GetConsoleMode(handle, &mut mode) } != 0 { Some(mode) } else { None };
+        Arc::new(Reader { handle, owned, chars, console_mode, st: Mutex::new(ReadState::default()), cv: Condvar::new(), thread: Mutex::new(None) })
+    }
+
+    /// Set the input mode of the console back to the one it had when the reader was made.
+    fn restore_console_mode(&self) {
+        if let Some(saved) = self.console_mode {
+            let mut now = 0u32;
+            if unsafe { GetConsoleMode(self.handle, &mut now) } != 0 && now != saved {
+                unsafe { SetConsoleMode(self.handle, saved) };
+            }
+        }
     }
 
     /// Ask for one ReadFile if nothing is there and none is in progress.
@@ -179,18 +203,23 @@ impl Reader {
             st.want = false;
             st.pending = true;
             drop(st);
+            self.restore_console_mode();
             let mut n = 0u32;
+            let interrupts_before = INTERRUPTS.load(Ordering::SeqCst);
             unsafe { SetLastError(0) };
             let ok = unsafe { ReadFile(self.handle, chunk.as_mut_ptr(), READ_CHUNK as u32, &mut n, std::ptr::null_mut()) } != 0;
             let code = if ok { unsafe { GetLastError() as i32 } } else { last_error().raw_os_error().unwrap_or(0) };
+            // A console gives 0 bytes at the end, and also when Ctrl-C stops the read: with
+            // ERROR_OPERATION_ABORTED while the handler is in, or with no error from a pseudo
+            // console, where only the count of Ctrl-Cs tells them apart
+            let ended = ok && n == 0 && self.chars && code != ERROR_OPERATION_ABORTED && !ctrl_c_since(interrupts_before);
             let mut st = lock(&self.st);
             st.pending = false;
             if ok {
                 if n == 0 {
                     // a pipe gives 0 bytes for a write of 0 bytes, and ERROR_BROKEN_PIPE at the end.
-                    // A console gives 0 bytes at the end, and also when Ctrl-C stops the read
-                    // while the handler is in (ERROR_OPERATION_ABORTED): nothing was read
-                    if self.chars && code != ERROR_OPERATION_ABORTED {
+                    // A console: nothing was read, and the input has ended unless a Ctrl-C stopped the read
+                    if ended {
                         if std::mem::take(&mut st.cr) {
                             st.buf.push_back(b'\r');
                         }
@@ -1134,6 +1163,20 @@ pub fn trap_sigint() {
 
 pub fn interrupts() -> u64 {
     INTERRUPTS.load(Ordering::SeqCst)
+}
+
+/// True if a Ctrl-C has been counted since the count was before, waiting up to CTRL_C_WAIT for one.
+fn ctrl_c_since(before: u64) -> bool {
+    let until = Instant::now() + CTRL_C_WAIT;
+    loop {
+        if INTERRUPTS.load(Ordering::SeqCst) != before {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(PEEK_EVERY);
+    }
 }
 
 /// The number of exits of children and Ctrl-Cs so far.

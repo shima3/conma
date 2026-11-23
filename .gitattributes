@@ -1,1 +1,2 @@
 vm/frontend.module.se -diff linguist-generated=true
+*.cmd text eol=crlf
