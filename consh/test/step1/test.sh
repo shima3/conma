@@ -6,6 +6,13 @@ cd ${0%/*}
 if [ -n "$CONSH_MODULE_DIR" ]; then dir="$CONSH_MODULE_DIR"; else dir="$("$root/bin/cache-dir")" || exit 1; fi
 module="$dir/consh.module.se"
 [ -n "$CONSH_CONMA_DATA" ] && module="$dir/consh.data.module.se"
+# 下の dump-sexp と case2 から case5 は、このモジュールを直に読む。CONSH_IMPL が rust（モジュールを作らない）か reference
+# （consh.reference.module.se を作る）なら、consh はこれを作らないので、ConMa 版の最適化版の consh を 1 度動かして、ここで作る
+# （ソースより古ければ作り直す）。作らないと、新しいクローンや worktree で、ConMa 版を流す前に CONSH_IMPL=rust だけで流したとき、
+# モジュールがないエラーで違いになる（2026-11-23、shima3/conma#51 のレビュー）
+if [ "$CONSH_IMPL" != conma ]; then
+  CONSH_IMPL=conma "$consh/bin/consh" --dump ../parse1/case1.sh > /dev/null 2>&1 || echo "step1: could not make $module"
+fi
 # consh_parse --pos の構文木を ConMa 版で読み、書き戻した結果が元と同じになるか。
 # parse1、parse2、expand1 のスクリプトのうち、構文エラーのないものすべてで確かめる。違えば diff を出す
 for f in ../parse1/case*.sh ../parse2/case*.sh ../expand1/case*.sh
