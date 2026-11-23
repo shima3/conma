@@ -98,6 +98,15 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
 
+### m4/stars-split
+
+* conjs/web：「星ひろい」の ConJS 版を、ブラウザ用の stars.con.js と端末用の stars-term.con.js に分けた（ユーザーの指示。段階 P9 の import の見本、docs/dev/PLATFORM-PLAN-ja.md の 4.12 節）。stars.con.js は、画面の順とゲームの決まりを `play(ui)` にまとめて export し（ほかに `same`、`COLS`、`ROWS`）、canvas に描く ui だけを持つ。端末の分（ANSI のエスケープ、端末に描く盤）はない。canvas があるときだけ自分で動き始め、ないとき（端末から import されたとき）は export するだけ。stars-term.con.js は、それを import して、端末に描く ui を渡す。conjs/test の step15 の case2.con.js（シンボリックリンク）は stars-term.con.js を指すようにした（shima3/conma#61 の、本物の隣から読み込むことが働く）。step14 の case2 は stars.con.js のままで、canvas のない VM（Rust 版、Python 版）のログは `exit: 0` だけになった（前は端末のタイトルを出し、入力の終わりで終えていた）。wasm 版のログは変わらない。compare.html の説明、conjs/README の 2 つ、docs/dev/CONJS.md、conjs/web/build.sh のコメントも直した。
+* 作り直すもの：ページを見るなら conjs/web/build.sh。
+* 新しいテスト：なし（step14 と step15 の case2 が、2 つのファイルを動かす）。
+* M4 が流したもの：`conjs/test/run_all.sh`（Rust 版）、`CONMA_VM=wasm conjs/test/run_all.sh`、Python 版の VM の step14、step15、step19、`conjs/test/compare.sh`。conjs/web/build.sh。`bin/lang-emit-check HEAD` は、stars.con.js そのものが変わったので、そのファイルと、それを指す step14、step15 の case2 で違う（変換器は変えていない）。
+* 流していないもの：本当のブラウザ（wasm 版の step14 の case2 が、canvas と入力の代わりの上で、ブラウザの道を通る）、Windows。
+* 測ったもの：なし。
+
 ### i7/conjs-import（shima3/conma#61）
 
 * ConJS に `import` と `export` を足した（段階 P9。docs/dev/PLATFORM-PLAN-ja.md の 4.12 節と 8.14 節）。sjs/include/sjs_parse.se（ConJS のときだけ `import` と `export` を文として読む）、sjs/include/sjs_gen.se（最上位に import か export があれば、conjs/include/conjs_modules.se の `Gen_conjs_modules` を呼ぶ。ほかは変えない）、新しい conjs/include/conjs_modules.se（conjs/conjsc.se だけが include する）。`import` のないプログラムの作るコードは、1 文字も変わらない（`bin/lang-emit-check HEAD`）。bin/lang-emit-check は、ConJS の変換器を作るときに conjs/include も探すようにした。
