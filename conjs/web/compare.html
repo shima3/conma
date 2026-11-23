@@ -24,7 +24,7 @@
 requestAnimationFrame と、その止め方）。</p>
 <ul>
   <li><a href="stars.html">ConJS</a>（stars.con.js）：画面の順はふつうのループ、おばけは spawn した処理。待つ呼び出しは、ふつうの呼び出し。
-    端末で遊ぶための分（端末に描く paintTerm など）も入っている。</li>
+    描き方は ui にまとめ、端末で遊ぶ版（conjs/examples/stars-term.con.js）が、それを import して使う。</li>
   <li><a href="stars-events.html">JavaScript、イベント駆動</a>（stars-events.js）：画面ごとの状態の変数と、キーの受け手の中の分岐。
     おばけの setInterval と clearInterval。</li>
   <li><a href="stars-async.html">JavaScript、async/await</a>（stars-async.js）：ConJS 版と同じ形。待つ所すべてに await が要り、

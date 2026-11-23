@@ -1,7 +1,7 @@
 #!/bin/bash
 # ConJS のブラウザの見本のページ（canvas.html と stars.html）に要るファイルを、ここに置く：wasm 版の VM（vm/wasm/build.sh で
 # ビルドする）とホストの conma.js、canvas と入力のホストの関数（vm/wasm/host の canvas.js と input.js）、見本の ConJS の
-# プログラム（canvas_demo.con.js。docs/dev/PLATFORM-PLAN-ja.md の 4.2 節、段階 P3b。stars.con.js。4.6 節、段階 P5c）を
+# プログラム（canvas_demo.con.js。docs/dev/PLATFORM-PLAN-ja.md の 4.2 節、段階 P3b。stars.con.js。4.6 節、段階 P5c。端末用は conjs/examples/stars-term.con.js）を
 # 変換したモジュール（canvas_demo_conjs.module.se、stars_conjs.module.se。変換に Rust 版の VM を使う）。
 # 2026-11-23 までは vm/wasm/web にあった（ConMa の見本 canvas_demo.se は、そこに残る）。置いたら、ここをサーバで見る：
 #   conjs/web/build.sh && python3 -m http.server -d conjs/web -b 127.0.0.1 8768
