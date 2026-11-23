@@ -57,6 +57,6 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 ## A Windows Test (I7)
 
 1. Merge `alpha` into `i7/test` and run every suite of TESTS-ja.md, Windows（I7）で流す, with each VM it lists (Tests).
-2. Add the line of the record (docs/dev/TESTS-RECORD-ja.md): 「Windows Test」, the commit of `alpha` you ran, and any difference besides the rows 「Windows（I7）」 of 既知の違い; remove no notes, and commit (Tests).
+2. Add the line of the record (docs/dev/TESTS-RECORD-ja.md): 「Windows Test」, the commit of `alpha` you ran, and any difference besides the known ones of I7 and of the VM that ran (the rows 「Windows（I7）」 of 既知の違い, and 「wasm 版」 for the wasm VM); remove no notes, and commit (Tests).
 3. When the user says so, merge `i7/test` into `alpha` only, never into `main`, and push it (Tests).
-4. If something fails that is not a known difference, tell the author of the change, or the user when it is not clear whose it is.
+4. If something fails that is not a known difference, tell the author of the change, or the user when it is not clear whose it is (Tests; 3).
