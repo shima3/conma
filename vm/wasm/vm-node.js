@@ -1,5 +1,6 @@
 // Run the ConMa VM for wasm32 in Node.js, as conma (vm/src/main.rs) runs:
 //   node vm-node.js [-t] [-m] <module_file> <func_name | arg ...>
+//   node vm-node.js build [--include dir ...] <source>     node vm-node.js link <runtime_module> <program_module>
 // vm-wasm.sh uses it when node is found. The VM starts in the current directory, with the environment
 // variables of the process, and uses the files of this process (hostFs, conma_use_host_fs): it reads
 // and writes them as the native VM does. __OS_spawn__ starts processes (hostProc, child_process): a
@@ -492,11 +493,69 @@ function buildModule(wasm, source, cwd, core) {
   return { ok: true, text: Buffer.concat(out).toString().split(prefix).join('"') };
 }
 
+// conma build and conma link (vm/src/lib.rs), so that bin/lang can translate a program with the wasm VM alone,
+// without the native VM (2026-11-23):
+//   node vm-node.js build [--include dir ...] source   the module of source (on standard output), made by the
+//                                                       frontend with the include directories given, then those
+//                                                       of the standard library, as conma build makes it
+//   node vm-node.js link runtime_module program_module  the two joined by the names of their globals (link.rs)
+function buildCommand(wasm, args) {
+  if (args.length === 0 || args[args.length - 1].startsWith("--")) {
+    writeAll(2, ConMaVM.utf8("usage: conma build [--include dir ...] source\n"));
+    return 2;
+  }
+  if (frontendBytes === null) frontendBytes = fs.readFileSync(frontendFile);
+  const sub = ConMaVM.create(wasm, writeAll, { hostFs });
+  sub.useHostFs();
+  sub.setCwd(vmPath(process.cwd()));
+  for (const [k, v] of Object.entries(process.env)) sub.setenv(k, v);
+  sub.inputEnd();
+  const include = process.env.CONMA_INCLUDE || vmPath(path.join(root, "include"));
+  const first = vmPath(path.join(include, "ext"));
+  const std = fs.existsSync(first) ? ["--include", first, "--include", include] : ["--include", include];
+  const source = args[args.length - 1];
+  let code = sub.start(frontendBytes, ["--main", "conma/vm/frontend.module.se", ...args.slice(0, -1), ...std, source]);
+  if (code === 0) {
+    do code = sub.run(1000000);
+    while (code === ConMaVM.RUNNING);
+  }
+  if (code === ConMaVM.IDLE) {
+    writeAll(2, ConMaVM.utf8("Error: the frontend waits\n"));
+    return 1;
+  }
+  return code;
+}
+
+function linkCommand(wasm, args) {
+  if (args.length !== 2) {
+    writeAll(2, ConMaVM.utf8("usage: conma link <runtime_module> <program_module>\n"));
+    return 2;
+  }
+  const texts = [];
+  for (const f of args) {
+    try {
+      texts.push(fs.readFileSync(f));
+    } catch (e) {
+      writeAll(2, ConMaVM.utf8(`Error: [Errno ${-errno(e)}] No such file or directory: '${f}'\n`));
+      return 1;
+    }
+  }
+  try {
+    writeAll(1, ConMaVM.utf8(ConMaVM.create(wasm, writeAll, {}).link(texts[0], texts[1])));
+    return 0;
+  } catch (e) {
+    writeAll(2, ConMaVM.utf8(`Error: ${e.message}\n`));
+    return 1;
+  }
+}
+
 // The VM of main, for the report of process.on("beforeExit") below.
 let liveVM = null;
 
 async function main() {
   const wasm = new WebAssembly.Module(fs.readFileSync(wasmFile));
+  if (argv[0] === "build") return buildCommand(wasm, argv.slice(1));
+  if (argv[0] === "link") return linkCommand(wasm, argv.slice(1));
   let vm = null;
   const host = process.env.CONMA_HOST ? require(path.resolve(process.env.CONMA_HOST)) : {};
   // The network server of Node.js (host/server.js, feature "server"; stage P6b), then those of CONMA_HOST

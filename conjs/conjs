@@ -4,6 +4,7 @@
 # ファイルの後の引数は、プログラムの argv になる（段階 P8）。
 # --emit を付けると、動かさずに、変換した ConMa のソースを出す。変換は Rust 版の VM（vm/target/release/conma）で行い、
 # 変換したプログラムは CONMA_VM の VM で動かす：なし（Rust 版）、wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。
+# Rust 版の VM がなければ、変換も動かすのも wasm 版の VM で行う（2026-11-23 から。bin/lang）。
 # 2026-11-20 から、言語キットの bin/lang（4.3 節）を呼ぶだけにした（設定は conjs/lang.conf）
 # --prepare：変換器とランタイムのモジュールを、キャッシュ（bin/cache-dir）に作っておく（2026-11-23 から）。初めての実行は、
 # この 2 つを作るのに数十秒かかるので、クイックスタートでは、ビルドの続きとして、ここで待ってもらう。空のプログラムを一度
