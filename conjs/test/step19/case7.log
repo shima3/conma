@@ -1,0 +1,2 @@
+conjs: SyntaxError: The requested module './mods/shapes.con.js' does not provide an export named 'secret'
+exit: 2

@@ -1,0 +1,5 @@
+log.con.js runs
+a.con.js runs
+b.con.js runs
+case2 runs A B after A a,b
+exit: 0

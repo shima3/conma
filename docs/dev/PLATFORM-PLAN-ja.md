@@ -792,7 +792,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 | P6 | プラットフォームを増やす（6 節の順に） | そのプラットフォームでテストが通る |
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
-| P9（決めた、2026-11-23。4.12 節。ユーザーが 2026-11-23 に頼んだ） | ConJS に `import` と `export` を足す：名前付きの import と export、ファイルごとの名前、1 度だけ深さ優先で動かすこと、ライブバインディング。読み込むファイルは変換器がたどる。SJS は今のまま断る | conjs/test の新しいステップが 3 つの VM で通り、Node.js と比べられる場合が同じ出力。`import` のないプログラムの作るコードが変わらない （`bin/lang-emit-check`）。sjs/test が通る |
+| P9（作った、2026-11-23。8.14 節。4.12 節。ユーザーが 2026-11-23 に頼んだ） | ConJS に `import` と `export` を足す：名前付きの import と export、ファイルごとの名前、1 度だけ深さ優先で動かすこと、ライブバインディング。読み込むファイルは変換器がたどる。SJS は今のまま断る | conjs/test の新しいステップが 3 つの VM で通り、Node.js と比べられる場合が同じ出力。`import` のないプログラムの作るコードが変わらない （`bin/lang-emit-check`）。sjs/test が通る |
 
 ## 6. 決めること
 
@@ -1058,3 +1058,17 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
     * `path_text` は、`\\?\UNC\srv\share` を `//srv/share` にする。
 * **残したこと**（後の段階の候補）：wasm 版の VM（Node.js）は I7 で作れるが、test/ の多くが違う。Node.js のホスト（vm/wasm/host）が、Windows のパス（`process.cwd()` の `C:\Users\...`）をそのまま渡し、Node.js のエラーの番号（`os error 4058`）を errno の文字列に直さず、`sh` や `sleep` を起動できない。Rust 版の VM の sys/windows.rs と同じことを、JavaScript の側でする必要がある。transpiled VM を bench/build.sh で作り切る時間も、まだ測っていない。
 * **macOS で確かめること**（M4 に頼む）：`cfg` を替え、unix.rs に関数を足したので、Full Test と、wasm 版の VM、transpiled VM が作れることを確かめる。
+
+### 8.14. 段階 P9（2026-11-23）
+
+4.12 節の設計（PR shima3/conma#60 で M4 がレビューした）で、I7 が作った。使い方は conjs/README-ja.md の「言語」にある。
+
+* **構文**（sjs/include/sjs_parse.se）：ConJS のときだけ、`import` と `export` を文として読む（`P_import`、`P_export`。節は `import`、`export`、`exportlist`）。SJS は、今までどおり字句の名前の検査で止まる。受け付けない形（`export default`、`import x from`、`import * as`、`export ... from`、`export *`、`import "x"`、`import()`、`import.meta`）は「not in ConJS」。
+* **作るもの**（conjs/include/conjs_modules.se。ConJS の変換器 conjs/conjsc.se だけが include する）：sjs_gen.se の `Sjs_translate_file` は、ConJS のファイルの最上位に `import` か `export` があれば `Gen_conjs_modules` を呼ぶ。読み込まれるファイルごとに `(define Conjs_mod_番号 ,(G Xm番号 ...) ...)` を作り、main は、それを帰りがけの順に呼んでから、main のファイルの文を動かす。ファイルごとの手順は、今の変換器と同じ（`Wasm_prepare`、`Gen_state`、`Gen_block_code_refs`）で、import した名前は引数の Dict から Ref を取り、const にする。export する名前は、Ref のない const（`Gen_plain_marks`）にしない。
+* **同じファイルと名前**：4.12 節のとおり、realpath で見分け、SInfo には main の名前のディレクトリにつないだ名前（最初にたどった指定のもの）を書く。`.` と `..` は文字の上で除く（`Gen_path_join`）。
+* **作るコードが変わらないこと**：`import` も `export` もないファイルは、今までと 1 文字も同じコードになる（`bin/lang-emit-check HEAD` が違いを出さない）。bin/lang-emit-check は、ConJS の変換器を作るときに conjs/include も探すようにした。
+* **テスト**：conjs/test/step19（case1〜14）。名前付きの import と export、`as`、`export { }`、関数とクラス（case1）、1 度だけ帰りがけの順に動くことと、違う書き方の指定（case2）、ライブバインディング（case3）、読み込まれるファイルの最上位の `sleep`、`spawn`、`join`（case4）、読み込まれるファイルで投げた例外の位置（case5）、エラー（case6〜14）。case1〜3 は node.txt に入れ、Node.js と比べる。読み込まれるファイルは step19/mods に置く。
+* **設計と違うこと**：
+    * 変換するときのエラーは、ファイルと位置を付けず `conjs: SyntaxError: ...` で出す（今の変換器のほかのエラーと同じ。4.12 節は「`ファイル:行:桁: ...`」と書いていた）。どのファイルのことかは、メッセージに名前を入れた（`Cannot find module './x.con.js' imported from case6.con.js` など）。
+    * `export var` も受け付けた（4.12 節の「受け付ける形」になかったが、JavaScript では書け、`let` と同じ道で作れるため）。
+    * 見本（星ひろいを分けた形）は、まだ作っていない。

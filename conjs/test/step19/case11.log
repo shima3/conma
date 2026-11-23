@@ -1,0 +1,2 @@
+conjs: SyntaxError: 'import' and 'export' may only appear at the top level of a file
+exit: 2
