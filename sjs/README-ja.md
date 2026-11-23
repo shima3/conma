@@ -446,14 +446,15 @@ ConJS にクラスを足す段階 P5b（docs/dev/PLATFORM-PLAN-ja.md の 4.5 節
 * `sort(compare)`：安定な並べ替え（マージソート）。`compare` がなければ文字列にして、SJS の `<` と同じく文字の番号で比べる（JavaScript は UTF-16 の単位で比べるので、基本多言語面の外の文字だけ順が違うことがある）。`undefined` は `compare` を呼ばずに最後に、穴はその後に置く（JavaScript と同じ）。
 * sjs/test/step12 が、Node.js の結果と比べる（case1）。case2 は、キーが `constructor` のオブジェクト。case3 は、JSON でない文字列（`+1`、`01`、`1.`、`.5`、文字列の中の生の制御文字）が SyntaxError になること（M2 のレビューで、数の形と制御文字を確かめるようにした。Node.js と同じ）。
 * ConJS のクラスのために、sjs_rt.se の `Sjs_get_member`（オブジェクトの 2 つの道と関数の道）と `Sjs_in_op` は、メンバーが自分のプロパティになかったとき、隠したキー `"cls"` を見る（`Sjs_class_member`）。SJS の値は `"cls"` を持たないので、結果は変わらない。sjs_inspect.se も、オブジェクトと関数を出すときに `"cls"` を見る。メッセージが空のエラーの `String(e)` は、名前だけにした（JavaScript と同じ。SJS のランタイムのエラーは、いつもメッセージがある）。
-### 配列の at と、文字列の replace、replaceAll（2026-11-24）
+### 配列と文字列の at と、文字列の replace、replaceAll（2026-11-24）
 
-ユーザーの指示で足し、sort と同じく SJS と ConJS で共有した（sjs_rt.se）。
+ユーザーの指示で足し、sort と同じく SJS と ConJS で共有した（sjs_rt.se）。文字列の `at` は、M2 のレビュー（shima3/conma#69）の後、ユーザーの指示で足した。
 
 * `at(i)`（配列）：添字を `charAt` と同じく整数にし（undefined と NaN は 0、0 の方へ切り捨て）、負の数は後ろからの位置にする（`a.at(-1)` は最後の要素）。範囲の外は `undefined`。
+* `at(i)`（文字列）：添字は配列の `at` と同じ。その位置の文字を返し、範囲の外は `undefined`（`charAt` は `""`）。
 * `replace(p, r)` と `replaceAll(p, r)`（文字列）：探すもの `p` は文字列にする（正規表現は SJS にも ConJS にもない）。`replace` は初めの 1 つだけ、`replaceAll` はすべてを、重ならないように前から置き換える。空の `p` は、`replace` なら頭に、`replaceAll` なら文字の間と両端に入れる（`"abc".replaceAll("", "-")` は `"-a-b-c-"`）。
   * `r` が関数なら、見つけた文字列、その位置、元の文字列で呼び、返した値を文字列にして入れる。
   * 関数でなければ文字列にする。`$$` は `$`、`$&` は見つけた文字列、`` $` `` はその前、`$'` はその後になる。ほかの `$`（`$1`、`$<name>` など）は、そのまま残す（JavaScript でも、探すものが文字列なら同じ）。
 * 位置は、ほかの文字列のメソッドと同じく文字（コードポイント）で数える。JavaScript は UTF-16 の単位で数えるので、基本多言語面の外の文字の後では、関数に渡す位置が違う。
-* sjs/test/step12 の case4 が、Node.js の結果と比べる（境目の添字、空の `p`、重なる `p`、`$` の形、関数、日本語）。
+* sjs/test/step12 の case4 が、Node.js の結果と比べる（境目の添字、空の文字列、空の `p`、重なる `p`、`$` の形、関数、日本語）。
 

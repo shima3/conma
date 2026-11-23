@@ -240,7 +240,7 @@ Output (ConJS):
 5 3 1
 ```
 
-JavaScript (Node.js) gives `5 3 2`: it counts units of UTF-16, two for the emoji, while ConJS counts characters.
+JavaScript (Node.js) gives `5 3 2`: it counts units of UTF-16, two for the emoji, while ConJS counts characters. The positions in a string (indexes, `at`, `charAt`, `slice`, `indexOf` and others) count characters too.
 
 ## 8. Where ConJS differs: calls that wait
 

@@ -2180,6 +2180,11 @@
     Sjs_arg args ,(n rest)
     Sjs_to_number n ,(n)
     Sjs_repeat s n "") ,()
+  ;; at（2026-11-24）：添字は配列の at と同じ。範囲の外は undefined（charAt は ""）
+  method "at" (,(args)
+    Sjs_at_index args len ,(k)
+    __is_null__ k ,(none)
+    __if_then_else__ none (,() __NULL__ __NULL__) (,() Sjs_char_at s k)) ,()
   ;; replace と replaceAll（2026-11-24）：探すものは文字列だけ（正規表現はない）。置き換えるものは、文字列（$$、$&、$`、$'
   ;; を JavaScript と同じく置き換える）か、関数（見つけた文字列、位置、元の文字列で呼び、返した値を文字列にする）
   method "replace" (,(args)

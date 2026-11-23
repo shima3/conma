@@ -240,7 +240,7 @@ console.log("ConJS".length, "日本語".length, "😀".length);
 5 3 1
 ```
 
-JavaScript（Node.js）では `5 3 2` です。JavaScript は UTF-16 の単位で数えるので、絵文字は 2 になりますが、ConJS は文字の数で数えます。
+JavaScript（Node.js）では `5 3 2` です。JavaScript は UTF-16 の単位で数えるので、絵文字は 2 になりますが、ConJS は文字の数で数えます。文字列の位置（添字、`at`、`charAt`、`slice`、`indexOf` など）も、文字で数えます。
 
 ## 8. JavaScript と違うところ：待つ処理
 
