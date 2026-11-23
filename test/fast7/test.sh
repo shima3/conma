@@ -24,6 +24,12 @@ vm="${CONMA_VM:-python}"
 [ "$vm" = transpiled ] && vm=rust
 for c in case1 case2 case3 case4 case5 case6 case7 case8 case9 case10 case11 case12 case13 case14 case15
 do
+  # Git Bash（Windows）の kill -INT は、Windows のプログラム（VM）に届かず、wasm 版の VM は case7 と case14 で、
+  # 終わらない関数を呼び続ける（ネイティブの VM は WebAssembly がないので、すぐ終わる。docs/dev/TESTS-ja.md の既知の違い）
+  if [ "$vm" = wasm ] && { [ $c = case7 ] || [ $c = case14 ]; } && command -v cygpath > /dev/null; then
+    echo "fast7: $c not run on Windows: kill -INT does not reach the VM"
+    continue
+  fi
   log=$c.$vm.log
   [ -f $log ] || log=$c.log
   PYTHONUNBUFFERED=1 ../../bin/vm $tmp/test.module.se $c < /dev/null > $tmp/$c.log 2>&1

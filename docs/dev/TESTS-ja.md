@@ -54,6 +54,7 @@ PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を
 * PATH に cargo（`$HOME/.cargo/bin`）と Node.js も置く。`MSYS=winsymlinks:nativestrict` を付ける（test/step16 と step23 の `ln -s` が、本当のシンボリックリンクを作るように）。
 * `CONMA_VM` を必ず付ける（bin/vm の既定は Python 版の VM で、Windows では動かない。パイプを `select` で待つため）。Python 版の VM の列は流さない。
 * 台本は、`cygpath` があれば（Git Bash）、`pwd` と一時ディレクトリを VM が書く形（`C:/Users/...`）にする（test/common.sh、consh/test/common.sh）。
+* wasm 版の VM のホスト（vm/wasm/vm-node.js）は、Windows では、パスを VM が書く形にして渡し、Node.js の errno を Unix の番号にし、コマンドを PATH（`;` で区切る）から `.exe` を付けて探し、引数をネイティブの VM と同じく引用する（2026-11-23 から）。
 
 ```
 export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSYS=winsymlinks:nativestrict
@@ -62,6 +63,10 @@ CONMA_VM=rust test/run_all.sh -j 8
 CONMA_VM=rust consh/test/run_all.sh -j 6
 conjs/test/run_all.sh
 sjs/test/run_all.sh
+vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から。CI の windows ジョブは流さない）
+CONMA_VM=wasm test/run_all.sh -j 4
+CONMA_VM=wasm consh/test/run_all.sh -j 4
+CONMA_VM=wasm conjs/test/run_all.sh
 ```
 
 ## 既知の違い
@@ -77,10 +82,11 @@ sjs/test/run_all.sh
 | どの VM でも、機械が混んでいるとき | test/step31 | SIGINT を 2 回送るテストで、混んでいると 2 回が 1 回にまとまることがある。単独で流せば通る（`-j 8` の wasm 版で見られた） |
 | 標準ライブラリの参照版（`CONMA_REFERENCE=1`） | test/step18 の case12、step20 の case15、step21 の case6、fast3、fast9 | util.se そのものに依るログ：エラーの位置が reference/util.se の行になる、数える時点のステップがずれる、印を付けた Body の数や大域の番号が違う（reference/README-ja.md） |
 | ConSh の Rust 版（`CONSH_IMPL=rust`） | consh/test の examples | Rust 版は `(( ))` を読めず、consh/examples/nbody.sh が `expected a command, but found '('` で止まる（nbody.sh を足した 2026-11-15 から） |
-| Windows（I7）のネイティブの VM | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c） |
-| Windows（I7）のネイティブの VM | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
+| Windows（I7）のネイティブの VM と wasm 版 | test/ の step11、13、14、15、16、23、consh/test の examples と step16 | Unix の絶対パス（`/bin/sh`、`/bin/cat`、`/bin/echo`、`/usr/bin/env`、`/usr/bin/true`、`/usr/bin/grep` など）でプログラムを起動する。Windows にそのパスはない（2026-11-22 から。段階 P6c。wasm 版は 2026-11-23 から） |
+| Windows（I7）のネイティブの VM と wasm 版 | test/step11 の `/etc/hosts`、test/step16 の `realpath /` | `Permission denied` でなく `No such file or directory`（Windows に /etc/hosts はない）。`/` の realpath は `C:/` |
 | Windows（I7） | test/step21 の case5 と case6 | memcheck.py が Python 版の VM を使う（Windows では動かない） |
 | Windows（I7） | test/step31、test/step33 の case4、consh/test/step12 の case7 と case8 | Git Bash の `kill -INT` は Windows のプログラムに届かず、Python に pty がない。流さず、その旨を 1 行出す |
+| Windows（I7）の wasm 版 | test/fast7 の case7 と case14 | Git Bash の `kill -INT` は Windows のプログラムに届かず、wasm 版は終わらない関数を呼び続ける。流さず、その旨を 1 行ずつ出す（ネイティブの VM は WebAssembly がないので、すぐ終わり、ログのとおり） |
 | Windows（I7） | test/step32 | Git Bash の `ps` に `-o` がない。`another group` でなく `same group` |
 | Windows（I7） | consh/test の step2 | `words` はシバンで始まる台本で、Windows はそれを直接起動できない。MSYS の `sh` がシグナルで終わると、終了コードは 143 でなく 3840 |
 | Windows（I7） | consh/test の step3、step4、step11 | 外部のコマンドの `pwd`（Git Bash）が `/c/...` の形を書き、`cd /` の後は `/c`。step11 は、その形のパスの glob が一致しない |
@@ -91,6 +97,21 @@ sjs/test/run_all.sh
 ## 申し送り
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、3 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。
+
+### i7/wasm-windows
+
+* vm/wasm/vm-node.js（wasm 版の VM のホスト）：Windows（I7、Git Bash）で動くようにした。どれも `process.platform` が `win32` のときだけで、Unix は変わらない。
+  * パス：VM に渡すパス（今のディレクトリ、realpath、`--include`、モジュールのファイル名から除く上のディレクトリ）を、ネイティブの VM と同じ `C:/Users/...` の形にした（前は `C:\Users\...` で、test/step10 などが `--include directory not found` で止まっていた）。VM から来るパスは、`\` を区切りとし、wasm 版の VM が Unix のように今のディレクトリの後につないだ Windows のパス（`C:/a/C:/b`、TEMP からの `C:/a/C:\b`）を、最後のドライブから取る。`/dev/null` は NUL、`/dev/stdin`、`/dev/stdout`、`/dev/stderr` は fd 0、1、2 の写し（ネイティブの VM の open_file と同じ）。途中の名前がないときは ENOENT、ファイルなら ENOTDIR（check_on_the_way と同じ）。
+  * errno：Node.js の errno は Windows では libuv の番号（ENOENT が -4058）で、VM が `operation successful (os error N)` と書いていた。名前（`e.code`）から Unix の番号にした。
+  * プロセス：コマンドを PATH（`;` で区切る）から、拡張子がなければ `.exe` を付けて探す（Rust の Command と同じ）。引数は、ネイティブの VM の add_args と同じく、MSYS のプログラムが別に読む文字があれば引用する（`windowsVerbatimArguments`）。`__OS_kill__` はどのシグナルでもプロセスを終わらせ、終了コードはそのシグナルの番号の負（ネイティブの VM の kill_process と exit_code と同じ）、Ctrl-C で終わったプロセスは -2。読み手のいないパイプに書くプロセスに SIGPIPE を送らない（Windows にない。書くとエラーになる）。
+* test/fast7/test.sh：Windows（`cygpath` がある）の wasm 版の VM では、case7 と case14 を流さず、その旨を 1 行ずつ出す。Git Bash の `kill -INT` が VM に届かず、終わらない関数を呼び続けて止まらない（ネイティブの VM は WebAssembly がないので、すぐ終わる）。既知の違いの表に足した。
+* docs/dev/TESTS-ja.md：既知の違いの、Unix の絶対パスと `/etc/hosts`、`realpath /` の 2 行は、wasm 版にも当てはまる。「Windows（I7）で流す」に wasm 版の VM の suite を足した（CI の windows ジョブは、まだ流さない）。
+* 作り直すもの：なし（vm-node.js と台本だけ。wasm の VM は変えていない）。
+* 新しいテスト：なし。
+* I7 が流したもの（Windows 11、Node.js 26、alpha 29c28d6 から）：`CONMA_VM=wasm test/run_all.sh -j 4`（I7 の既知の違いと wasm 版の step40、fast7 の 2 行だけ。直す前は 23 のステップが違った）、`CONMA_VM=wasm consh/test/run_all.sh -j 4`（I7 の既知の違いと wasm 版の step17 だけ）、`CONMA_VM=wasm conjs/test/run_all.sh`（違いなし）、`sjs/test/run_all.sh`（step10 の case2 だけ。shima3/conma#54 で直る、このブランチにない Windows のスタックの違い）。同じ機械の `CONMA_VM=rust` の test/ と consh/test と、違うステップと出力を比べた（wasm 版の既知の違いのほかは同じ）。
+* 流していないもの：Unix のすべて（変えた行は、Windows でなければ前と同じ。CI が Linux と macOS で wasm 版を流す）。
+* 気をつけること：test/ と consh/test のログは、リポジトリのディレクトリの名前が `conma` であることを前提にしている（`conma/test/step1/test.se`）。worktree（`.claude/worktrees/NAME`）で流すと、ほとんどのステップが違う。名前が `conma` のディレクトリに worktree を作って流した。
+* 測ったもの：なし。
 
 ### m4/consh-rs-dead-code（shima3/conma#53）
 
