@@ -21,6 +21,7 @@ CONMA_VM=wasm conjs/conjs f.con.js    # wasm 版の VM（Node.js）で動かす�
 CONMA_VM=python conjs/conjs f.con.js  # Python 版の VM で動かす
 conjs/test/run_all.sh             # テスト（CONMA_VM で VM を選ぶ）
 conjs/test/compare.sh             # step10 の場合を Node.js と比べる
+conjs/bench/run.sh 名前           # ベンチマークを Node.js と比べる（2026-11-24 から。表は conjs/bench/README-ja.md）
 conjs/conjs --prepare             # 変換器とランタイムのモジュールを作っておく（初めての実行が速くなる。2026-11-23 から）
 conjs/conjs --version             # ConMa の版を出す（2026-11-24 から。ConMa の README の Version）
 ```
