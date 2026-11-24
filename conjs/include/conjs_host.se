@@ -70,16 +70,51 @@
   __LList_cons__ ids hargs ,(hargs)
   __Dict_lookup_or__ H "m" __print_exit_error__ ,(m)
   __JS_fn_call__ (,(e) Conjs_hostfn_escaped name e ,() f args ,(v) return v) m name hargs ,(status r)
+  ;; 待つホストの関数（段階 H4c の B3）：最初の yield の前の escape は、ほかの関数と同じく ConMa 版で
+  __String_equal__ status "yield" ,(test__) __if__ test__ (,() Conjs_hostfn_wait G name status r ,(v) return v) ,()
   __String_equal__ status "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_escaped name r ,() f args ,(v) return v) ,()
+  Conjs_hostfn_done G name r)
+
+;; 待つホストの関数の頼みを、この VProc で動かして（待ってよい）、ジェネレータを続ける。yield の後は、やり直せない（ほかの処理が、
+;; ホストの変更を見た）ので、escape と error は止める
+(define Conjs_hostfn_wait ,(G name status r)
+  __Cont_get__ ,(return)
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() Conjs_hostfn_done G name r ,(v) return v) ,()
+  __String_equal__ status "yield" ,(test__) __unless__ test__ (,() Conjs_hostfn_stop name r) ,()
+  __LList_uncons__ __print_exit_error__ r ,(g rest)
+  __LList_uncons__ __print_exit_error__ rest ,(req rest2)
+  ;; 頼み：(位置 op 引数 console.log の行)
+  __LList_uncons__ __print_exit_error__ req ,(pos req)
+  __LList_uncons__ __print_exit_error__ req ,(op req)
+  __LList_uncons__ __print_exit_error__ req ,(margs req)
+  __LList_uncons__ __print_exit_error__ req ,(lines req)
+  Conjs_hostfn_vm_run G lines pos op margs ,(answer)
+  __JS_fn_resume__ (,(e) Conjs_hostfn_stop name e) g "next" answer ,(status2 r2)
+  Conjs_hostfn_wait G name status2 r2)
+
+(define Conjs_hostfn_stop ,(name why)
+  __type_name__ why ,(t)
+  __String_equal__ t "String" ,(isText)
+  __if_then_else__ isText (,() __NULL__ why) (,() __NULL__ "(not a message)") ,(why)
+  __PDict_put__ "sjs_pos" __NULL__ ,()
+  Cat3s "the host function " name " could not go on after waiting: " ,(msg)
+  __String_concat__ msg why ,(msg)
+  Sjs_uncaught msg)
+
+;; ホストの版が終わったときの答え r（{ v, out }、{ thrown, tpos, out }、{ fatal, out }）
+(define Conjs_hostfn_done ,(G name r)
+  __Cont_get__ ,(return)
   Conjs_hostfn_report name ,()
   __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
   Conjs_hostfn_print G lines ,()
-  ;; 呼び返しの後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める
+  ;; 呼び返しか待った後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める。after は、そのわけ
   __Dict_lookup_or__ r "fatal" (,(k) __NULL__ __NULL__) ,(fatal)
   __is_null__ fatal ,(test__) __unless__ test__
     (,()
       __PDict_put__ "sjs_pos" __NULL__ ,()
-      Cat3s "the host function " name " could not go on after calling back: " ,(msg)
+      __Dict_lookup_or__ r "after" (,(k) __NULL__ "calling back") ,(after)
+      Cat3s "the host function " name " could not go on after " ,(msg)
+      Cat3s msg after ": " ,(msg)
       __String_concat__ msg fatal ,(msg)
       Sjs_uncaught msg) ,()
   ;; 呼び返しの後に、ホストの版の外へ出た例外：ここで投げ直す（tpos は、ホストの throw の位置。VM から来た例外は、位置を持つ）
@@ -102,6 +137,11 @@
 (define Conjs_hostfn_vm_run ,(G lines pos op args)
   __Cont_get__ ,(return)
   Conjs_hostfn_print G lines ,()
+  ;; 組み込みの関数（callg）は、呼んだ所の位置で動かす（ConMa 版と同じ）
+  __String_equal__ op "callg" ,(isG)
+  __is_null__ pos ,(noPos)
+  __not__ noPos ,(hasPos)
+  __and__ isG hasPos ,(test__) __if__ test__ (,() __PDict_put__ "sjs_pos" pos) ,()
   __Ref_new__ __NULL__ ,(out)
   Sjs_try (,() Conjs_hostfn_op G op args ,(v) __Ref_set__ out v)
     (,(exc)
@@ -119,6 +159,20 @@
   __String_equal__ op "call" ,(c1)
   __String_equal__ op "callm" ,(c2)
   __or__ c1 c2 ,(test__) __if__ test__ return ,()
+  ;; 組み込みの関数（callg）：ここで作った例外（sleep の TypeError。位置は、スタックの ConJS の枠、つまりホストの関数を
+  ;; 呼んだ所になる）だけを、呼んだ所の位置にする。join が投げ直す例外は、処理の中で投げた所を持つので、そのまま
+  __String_equal__ op "callg" ,(isG)
+  __if__ isG
+    (,()
+      Kit_err_pos ":sjs" ,(here)
+      __type_name__ exc ,(type)
+      __String_equal__ type "Dict" ,(test__) __unless__ test__ return ,()
+      __Dict_lookup_or__ exc "pos" (,(k) return) ,(made)
+      __is_null__ here ,(test__) __if__ test__ return ,()
+      __String_equal__ made here ,(test__) __unless__ test__ return ,()
+      __PDict_put__ "sjs_pos" pos ,()
+      __Dict_put__ exc "pos" pos ,()
+      return) ,()
   __PDict_put__ "sjs_pos" pos ,()
   __type_name__ exc ,(type)
   __String_equal__ type "Dict" ,(test__) __unless__ test__ return ,()
@@ -154,6 +208,11 @@
   __String_equal__ op "method" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
   __String_equal__ op "callm" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
   __String_equal__ op "call" ,(test__) __if__ test__ (,() Sjs_call a b ,(v) return v) ,()
+  __String_equal__ op "callg" ,(test__) __if__ test__ (,() Sjs_global G a ,(fn) Sjs_call fn b ,(v) return v) ,()
+  ;; Math と Object.keys の、ホストが確かめられない引数（呼び返しか待った後）
+  __String_equal__ op "math" ,(test__) __if__ test__ (,() Sjs_global G "Math" ,(M) Sjs_call_member G M a b ,(v) return v) ,()
+  __String_equal__ op "keys" ,(test__) __if__ test__
+    (,() Sjs_global G "Object" ,(O) __LList_cons__ a __NULL__ ,(l) Sjs_call_member G O "keys" l ,(v) return v) ,()
   __String_equal__ op "iter_open" ,(test__) __if__ test__ (,() Sjs_iter_open a ,(v) return v) ,()
   __String_equal__ op "iter_more" ,(test__) __if__ test__ (,() Sjs_iter_more a ,(v) return v) ,()
   __String_equal__ op "iter_take" ,(test__) __if__ test__ (,() Sjs_iter_take a ,(v) return v) ,()

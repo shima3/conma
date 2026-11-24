@@ -1,0 +1,21 @@
+a 0
+b 0
+a 1
+b 1
+a 2
+b 2
+a0,a1,a2 b0,b1,b2
+3 0,x,1
+c 0
+c 0
+2
+42
+caught boom
+41
+2,3
+[ 'é', 'b' ] 6 [ 1, 2, 3 ] a!bc
+[ 'é', 'b' ]
+2 4 0 the number 5 is not iterable
+before
+case8.con.js:93:3: TypeError: sleep: expected milliseconds (a number), got the string "x"
+exit: 2

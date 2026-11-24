@@ -28,7 +28,7 @@ conjs/conjs --version             # ConMa の版を出す（2026-11-24 から。
 
 変換は Rust 版の VM で行い、変換したプログラムを選んだ VM で動かす。Rust 版の VM を作っていなければ、変換も動かすのも wasm 版の VM（vm/wasm/build.sh で作る。Node.js）で行う（2026-11-23 から。vm-node.js の `build` と `link`）。どちらで変換しても、できるモジュールは 1 バイトも同じ。環境変数 `CONMA_TRANSLATE_VM=wasm` で、Rust 版の VM があっても wasm 版で変換する。変換器は SJS のもの（sjs/include）に、言語の印（PDict の `"sjs_lang"` を `"conjs"`）を付けて使う。変換器のモジュールは、bin/cache-dir の場所に conjsc.module.se として作っておく（sjs/sjs と同じ）。ランタイム（変換したソースが include する conjs_rt.se など）のモジュールも、同じ所に conjs-rt-ハッシュ.module.se として 1 度だけ作っておき、変換したソースは include の行を除いてモジュールにしてから、`conma link` で合わせる（bin/lang。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。`console.log("hi")` だけのプログラムは、Rust 版の VM で約 0.1 秒で動く（前は、毎回ランタイムをフロントエンドに通して約 1.45 秒）。
 
-wasm 版の VM では、待たず、外の変数に触れない関数を、ホストの JavaScript で動かす。結果は同じで、速い（2026-11-24 から。docs/dev/CONJS-HOST-PLAN.md）。そのような関数が、ConMa の関数を呼び返した後に、ホストにできないことに出会うと、プログラムは `conjs: the host function NAME could not go on after calling back: ...` と出して止まる（status 2）。そのときは、すべての関数を ConMa で動かす `CONMA_NO_HOSTJS=1` を付けて流し直し、そのプログラムを知らせてほしい。`CONJS_HOST_REPORT=1` を付けると、どの関数がなぜ ConMa に戻ったかを出す。
+wasm 版の VM では、外の変数に触れない関数を、ホストの JavaScript で動かす。結果は同じで、速い（2026-11-24 から。docs/dev/CONJS-HOST-PLAN.md）。待つ呼び出しのうち、そのような関数が呼べるのは、`sleep`、`join`、`nextEvent` と、ほかのそのような関数で、ConMa と同じく、その処理で待つ。そのような関数が、ConMa の関数を呼び返した後や、待った後に、ホストにできないことに出会うと、プログラムは `conjs: the host function NAME could not go on after calling back: ...` か `... after waiting: ...` と出して止まる（status 2）。そのときは、すべての関数を ConMa で動かす `CONMA_NO_HOSTJS=1` を付けて流し直し、そのプログラムを知らせてほしい。`CONJS_HOST_REPORT=1` を付けると、どの関数がなぜ ConMa に戻ったかを出す。
 
 ## 言語
 

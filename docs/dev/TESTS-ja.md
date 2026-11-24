@@ -137,3 +137,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：transpiled VM（作り直していない）、Windows。
 * 測ったもの：計画の 15 節〜19 節（19 節：呼び返しは 1 回 31 µs で、ConMa の 15 µs より遅い）。
 
+### m4/conjs-host-b3（shima3/conma#76）
+
+* 種類：機能（待つ関数も、wasm 版の VM のとき、ホストの JavaScript で動かす）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H4c の B3（20 節）。sleep、join、nextEvent か、待つホストの関数を呼ぶ一番外の関数を、JavaScript のジェネレータにして、待つ所で VM に yield し、Conjs_hostfn がその処理（VProc）で頼みを動かして（待ってよい）、__JS_fn_resume__ で続ける（sjs/include/sjs_host.se、conjs/include/conjs_host.se）。conjs/README の 2 つに、待つ関数のことを足した。
+* 作り直すもの：なし（VM は変えていない。変換器のモジュールは、bin/cache-dir の所で作り直される）。
+* 新しいテスト：conjs/test/step20/case8（どの VM でも同じログ。case8.host.txt）。
+* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、doc-pairs.py。
+* 流していないもの：consh/test と test/（ConJS の変換器とランタイムしか変えていない）、Windows。
+* 測ったもの：待つ 1 回の費用と、待つ間に仕事のある繰り返し（計画の 20 節）。
+* M1 のレビュー（650b45f）の指摘で、待った後（呼び返しの後も）に、ホストが確かめられない組み込み（ASCII でない文字列のメソッド、初めの値のない reduce、比べる関数のない sort、Math、Object.keys、配列でない値の for...of）を VM で動かすようにし、止まるときのメッセージにわけ（after waiting か after calling back）を出す。case8 に足した。M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、compare.sh、sjs/test（Rust 版と wasm 版）。
