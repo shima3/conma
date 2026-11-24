@@ -35,8 +35,9 @@ let c = 0
 for (let i = 1; i <= 3; i++) c = c + cube(i)
 console.log("cubes", c)
 
-// a loop that would call ConMa back (f is a function of ConMa, given to map): the host gives up before it goes to the
-// VM, drops the lines it kept, and ConMa runs the loop from the start, so each line comes out once
+// a loop that calls ConMa back (f is a function of ConMa, given to map): since stage H6c it stays on the host, which
+// gives the VM the top-level variables at each call back; the lines come out once each, in order (a number logged after
+// a call back was lost before, as $log read the buffer before it formatted the line)
 const f = (x) => x + 100
 let out = []
 for (let i = 0; i < 2; i++) {

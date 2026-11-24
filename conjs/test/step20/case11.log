@@ -1,0 +1,8 @@
+after sleep 0 10 101
+after sleep 1 20 102
+after sleep 2 30 103
+seen [ 10, 20, 30 ] shared 103
+total 6
+outs [ 1001, 2002, 3003 ]
+got [ 0, 1, 2 ] flips 3
+exit: 0

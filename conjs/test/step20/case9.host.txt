@@ -2,3 +2,4 @@ conjs: host: $s1
 conjs: host: $s2
 conjs: host: $s3
 conjs: host: $s4
+conjs: host: $s6

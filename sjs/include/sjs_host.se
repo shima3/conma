@@ -311,11 +311,11 @@
   __LList_cons__ name o ,(o)
   __Ref_set__ order o)
 
-;; ── 一番外の文（段階 H6a。docs/dev/CONJS-HOST-PLAN.md の 26 節）──
+;; ── 一番外の文（段階 H6a、H6c。docs/dev/CONJS-HOST-PLAN.md の 26 節と 28 節）──
 ;; 一番外のループ（for、for...of、while、do...while）で、ホストに書けるものを「文の関数」にする。前に let、const、var で宣言した
-;; 一番外の変数を、読むなら引数 g_名前 にし、書くなら、終わりに配列で返す（sjs_gen.se が、ConMa で代入する）。文の関数は、VM へ
-;; 渡れない（$runS の $noCross）：渡れば escape して、ConMa 版の文を始めから動かす。ConMa の関数が、書き戻す前の一番外の変数を
-;; 読まないため（文がホストで呼べるのは、ほかのホストの関数と組み込みだけで、それらは一番外の変数を読み書きしない）
+;; 一番外の変数を、読むなら引数 g_名前 にし、書くなら、終わりに配列で返す（sjs_gen.se が、ConMa で代入する）。VM へ渡るとき
+;; （呼び返し、遅い道、待つ頼み）は、$gio で、書いた変数を VM に送り、戻ったら使う変数を読み直す（ConMa の関数や、待つ間に動いた
+;; ほかの処理が、一番外の変数を読み書きするため。段階 H6c）。sleep、join、nextEvent を呼ぶ文は、ジェネレータにする
 
 ;; 一番外の文を順に見て、ループを候補にし、宣言した名前を before（名前 → const か）に足す
 (define Hx_stmt_candidates ,(E H order before stmtN stmts)
@@ -400,7 +400,14 @@
   __Ref_new__ __FALSE__ ,(opsUsed)
   __Dict_put__ cx "opsUsed" opsUsed ,()
   __Dict_put__ cx "closure" __FALSE__ ,()
-  __Dict_put__ cx "gen" __FALSE__ ,()
+  ;; 待つ文（段階 H6c）：前に書いたとき待った文は、ジェネレータとして書く（Hx_wait_loop）
+  __Ref_new__ __FALSE__ ,(waitsRef)
+  __Dict_put__ cx "waits" waitsRef ,()
+  Kit_parse_get info "name" ,(sname)
+  __Dict_lookup_or__ H "#waits" (,(k) __NULL__ __NULL__) ,(waits0)
+  __is_null__ waits0 ,(noWaits)
+  __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits0 sname (,(k) __NULL__ __FALSE__)) ,(gen)
+  __Dict_put__ cx "gen" gen ,()
   __Dict_put__ cx "method" __FALSE__ ,()
   Kit_parse_get info "outer" ,(outer)
   __Dict_put__ cx "outer" outer ,()
@@ -426,7 +433,15 @@
   Hx_prefixed reads "" ,(ps)
   Hx_prefixed writes "" ,(ws)
   Kit_parse_get info "fname" ,(fname)
-  Kit_code_cat5 "function " fname "(" ps ") {" ,(js)
+  __Ref_get__ waitsRef ,(waits)
+  __Dict_put__ info "waits" waits ,()
+  __if_then_else__ waits (,() __NULL__ "function* ") (,() __NULL__ "function ") ,(head)
+  Kit_code_cat5 head fname "(" ps ") {" ,(js)
+  ;; 一番外の変数を VM と合わせる $gio（使う変数があるとき）
+  __String_equal__ ps "" ,(noVars)
+  __if_then_else__ noVars (,() __NULL__ "")
+    (,() Kit_code_cat4 "$gio = { get: () => [" ws "], set: ($v) => { [" ps ,(g) __String_concat__ g "] = $v; } }; ") ,(gio)
+  __String_concat__ js gio ,(js)
   Kit_code_cat4 js code "return [" ws ,(js)
   __String_concat__ js "];}\n" ,(js)
   __Ref_get__ callees ,(cs)
@@ -634,7 +649,9 @@
       __Dict_put__ node "hostWrites" ws ,()
       Sjs_json_string nm ,(q)
       Kit_parse_get info "fname" ,(fname)
-      Kit_code_cat5 table q ": $runS(" fname "), " ,(table)
+      __Dict_lookup_or__ info "waits" (,(k) __NULL__ __FALSE__) ,(w)
+      __if_then_else__ w (,() __NULL__ ": $runG(") (,() __NULL__ ": $run(") ,(runner)
+      Kit_code_cat5 table q runner fname "), " ,(table)
       Hx_funcs H rest acc table ,(a t) return a t) ,()
   __and__ ok notMethod ,(x) __and__ x plainFn ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
   Kit_parse_get info "js" ,(js)
@@ -1933,7 +1950,9 @@
     "const $M_abs = (x, p) => typeof x === 'number' ? Math.abs(x) : $slow(p, 'math', 'abs', [x]), $M_sqrt = (x, p) => typeof x === 'number' ? Math.sqrt(x) : $slow(p, 'math', 'sqrt', [x]), $M_sign = (x, p) => typeof x === 'number' ? Math.sign(x) : $slow(p, 'math', 'sign', [x]);"
     "const $text = (x, p) => x === null ? 'null' : typeof x === 'string' ? x : $committed ? $vm('console', p, x) : $S(x, p);"
     "let $out = [];"
-    "const $log = (p, ...a) => { $out.push(a.map((x) => $text(x, p)).join(' ')); };"
+    ;; 行を作ってから足す（$text が VM に頼むと、$vm がためた行を渡して $out を新しくするので、先に $out を読むと、渡した後の古い
+    ;; 配列に足してしまう）
+    "const $log = (p, ...a) => { const line = a.map((x) => $text(x, p)).join(' '); $out.push(line); };"
     "const $join = (a, sep, p) => a.map((x) => x === undefined || x === null ? '' : $S(x, p)).join(sep === undefined ? ',' : $str(sep));"
     ;; 併合ソート：sjs_rt.se の Sjs_msort と同じ手順（同じ順で比べる関数を呼ぶ）。undefined は後ろ
     "const $msort = (l, after) => { if (l.length < 2) return l; const h = Math.floor(l.length / 2); const a = $msort(l.slice(0, h), after), b = $msort(l.slice(h), after); const r = []; let i = 0, j = 0; while (i < a.length && j < b.length) { if (after(a[i], b[j])) r.push(b[j++]); else r.push(a[i++]); } while (i < a.length) r.push(a[i++]); while (j < b.length) r.push(b[j++]); return r; };"
@@ -2021,20 +2040,23 @@
     "const $refresh = () => { for (const [x, b] of [...$back]) { if (Array.isArray(x)) { $fromArray(b.m, x); b.snap = x.slice(); } else { $fromObject(b.m, x); b.snap = Object.entries(x); } } };"
     ;; VM に op を頼む（Conjs_hostfn_vm）：ためた console.log の行を先に出させ、値を写しにして渡し、変わったものを読み直す。
     ;; 呼び返し（call、callm）の後は、やり直せない（$committed）。VM で投げられた例外は、$Thrown にして投げる
-    ;; 一番外の文（段階 H6a）：VM へ渡れない
-    "let $noCross = false;"
-    "const $runS = (f) => (ids, tramp, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; const st = $fresh(ids, tramp, $withClasses ? rest[0] : null); st.noCross = true; return $go(st, () => ({ done: true, value: f(...args.map($in)) })); };"
+    ;; 一番外の文（段階 H6c）：$gio は、文の関数が置く { get: 書いた一番外の変数の値の配列, set: 使う一番外の変数に新しい値を
+    ;; 入れる関数 }。VM へ渡るたびに、書いた変数を VM に送り（ConMa が代入する）、戻ったら、使う変数を読み直す（その間にほかの処理や
+    ;; ConMa の関数が変えたもの）
+    "let $gio = null;"
+    "const $gout = () => $gio === null ? null : $gio.get().map($outv);"
+    "const $gin = (r) => { if ($gio !== null && r.length > 2) $gio.set(r[2].map($in)); };"
     "const $vm = (op, p, ...args) => {"
-    "  if ($noCross) throw new rt.Escape('a statement of the top level does not go to the VM');"
     "  $cr++; const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
     "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = [];"
     "  let r;"
-    "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs); }"
+    "  const gl = $gout();"
+    "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs, gl); }"
     "  catch (e) { if (e instanceof rt.Escape && (calls || $committed)) throw new $Fatal(`a call back could not finish: ${e.message}`); throw e; }"
     "  if (calls) $committed = $committed || 'calling back';"
-    "  $refresh();"
+    "  $refresh(); $gin(r);"
     "  const v = $in(r[1]);"
     "  if (r[0] === 'threw') throw new $Thrown(v, null, true);"
     "  return v;"
@@ -2046,12 +2068,12 @@
     "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
     ;; 呼び返しの中から、またホストの関数が呼ばれることがあり、待つホストの関数（ジェネレータ）は、待つ間に、ほかの処理がホストの
     ;; 関数を呼ぶので、状態は呼び出しごとに st に持ち、動かす間だけ大域の変数に置く（$go）
-    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0, noCross: false });"
+    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0, gio: null });"
     ;; body を st で動かす。body は、イテレータの next の答え（{ done, value }）を返す。done でなければ、value（VM への頼み）を返す。
     ;; done なら、値か、外へ出た例外か、止めるわけ（呼び返しの後）を、console.log の行と返す。呼び返しの前の rt.Escape は投げる
     "const $go = (st, body) => {"
-    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross];"
-    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr, st.noCross];"
+    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio];"
+    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr, st.gio];"
     "  try {"
     "    let r, thrown = null;"
     "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
@@ -2061,8 +2083,8 @@
     "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), after: $committed || 'calling back', out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
     "  } finally {"
-    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr, noCross: $noCross });"
-    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross] = saved;"
+    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr, gio: $gio });"
+    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio] = saved;"
     "  }"
     "};"
     "const $enter = (ids, tramp, cls, body) => $go($fresh(ids, tramp, cls), () => ({ done: true, value: body() }));"
@@ -2082,10 +2104,10 @@
     "const $Yq = (p, op, ...args) => {"
     "  $cr++; $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = []; $committed = $committed || 'waiting';"
-    "  return [p === null || p === undefined ? null : $P[p], op, margs, lines];"
+    "  return [p === null || p === undefined ? null : $P[p], op, margs, lines, $gout()];"
     "};"
     ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる
-    "const $Yr = (r) => { $refresh(); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
+    "const $Yr = (r) => { $refresh(); $gin(r); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
     ;; ジェネレータの中の呼び出し：ホストの関数はその場で、VM の関数とメソッドは VProc で（待ってよい）
     "const $callG = function* (f, p, ...a) { if (typeof f === 'function') return f(...a); return $Yr(yield $Yq(p, 'call', f, a)); };"
     "const $mcallG = function* (o, k, p, ...a) { if ($isObj(o)) return $mcall(o, k, p, ...a); return $Yr(yield $Yq(p, 'callm', o, k, a)); };"

@@ -94,7 +94,10 @@
   __LList_uncons__ __print_exit_error__ req ,(op req)
   __LList_uncons__ __print_exit_error__ req ,(margs req)
   __LList_uncons__ __print_exit_error__ req ,(lines req)
-  Conjs_hostfn_vm_run G lines pos op margs ,(answer)
+  ;; 一番外の文の書いた変数の値（段階 H6c。ないときは null）
+  __is_null__ req ,(noGl)
+  __if_then_else__ noGl (,() __NULL__ __NULL__) (,() __LList_uncons__ __print_exit_error__ req ,(gl more) __NULL__ gl) ,(gl)
+  Conjs_hostfn_vm_run G lines pos op margs gl ,(answer)
   __JS_fn_resume__ (,(e) Conjs_hostfn_stop name e) g "next" answer ,(status2 r2)
   Conjs_hostfn_wait G H name status2 r2)
 
@@ -140,11 +143,14 @@
 ;; （Conjs_hostfn_vm_run は、例外のとき継続 return で戻る。入れ子の実行の一番外の継続に値を渡すと、VM はその値を落とすので
 ;; （vm/src/step.rs の Cont）、ふつうに返す枠を 1 つはさむ）
 (define Conjs_hostfn_vm ,(G)
-  __NULL__ (,(lines pos op args) Conjs_hostfn_vm_run G lines pos op args ,(r) __NULL__ r))
+  __NULL__ (,(lines pos op args gl) Conjs_hostfn_vm_run G lines pos op args gl ,(r) __NULL__ r))
 
-(define Conjs_hostfn_vm_run ,(G lines pos op args)
+;; gl は、一番外の文がホストで動いているとき、その文が書いた一番外の変数の値の LList（段階 H6c。なければ null）：op の前に代入し、
+;; 後で、文の使う一番外の変数の値を読んで、答えの 3 つ目にする（Conjs_hoststmt が PDict の "conjs_host_io" に置く手順で）
+(define Conjs_hostfn_vm_run ,(G lines pos op args gl)
   __Cont_get__ ,(return)
   Conjs_hostfn_print G lines ,()
+  Conjs_hostfn_set_globals gl ,()
   ;; 組み込みの関数（callg）は、呼んだ所の位置で動かす（ConMa 版と同じ）
   __String_equal__ op "callg" ,(isG)
   __is_null__ pos ,(noPos)
@@ -154,12 +160,31 @@
   Sjs_try (,() Conjs_hostfn_op G op args ,(v) __Ref_set__ out v)
     (,(exc)
       Conjs_hostfn_vm_pos op pos exc ,()
-      __LList_cons__ exc __NULL__ ,(l)
+      Conjs_hostfn_get_globals gl ,(fresh)
+      __LList_cons__ exc fresh ,(l)
       __LList_cons__ "threw" l ,(r)
       return r) ,()
   __Ref_get__ out ,(v)
-  __LList_cons__ v __NULL__ ,(l)
+  Conjs_hostfn_get_globals gl ,(fresh)
+  __LList_cons__ v fresh ,(l)
   __LList_cons__ "ok" l)
+
+;; 一番外の文の書いた変数の値 gl を代入する（gl が null なら何もしない）
+(define Conjs_hostfn_set_globals ,(gl)
+  __Cont_get__ ,(return)
+  __is_null__ gl ,(test__) __if__ test__ return ,()
+  __PDict_lookup_or__ "conjs_host_io" (,(k) return) ,(io)
+  __Dict_lookup_or__ io "set" __print_exit_error__ ,(set)
+  set gl)
+
+;; gl が null でなければ、文の使う変数の今の値の LList を 1 つ入れた LList（答えの 3 つ目）、null なら null
+(define Conjs_hostfn_get_globals ,(gl)
+  __Cont_get__ ,(return)
+  __is_null__ gl ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __PDict_lookup_or__ "conjs_host_io" (,(k) return __NULL__) ,(io)
+  __Dict_lookup_or__ io "get" __print_exit_error__ ,(get)
+  get ,(vals)
+  __LList_cons__ vals __NULL__)
 
 (define Conjs_hostfn_vm_pos ,(op pos exc)
   __Cont_get__ ,(return)
@@ -348,11 +373,18 @@
 
 ;; ── 一番外の文（段階 H6a。docs/dev/CONJS-HOST-PLAN.md の 26 節）──
 ;; 文の関数 name を、読む一番外の変数の値の LList args で呼ぶ。ホストで終われば、真と、書いた変数の新しい値の LList（sjs_gen.se の
-;; Gen_host_stmt が、順に代入する）。ホストで動かなければ（モジュールがない、escape）、ConMa 版の文 f を動かして、偽
-(define Conjs_hoststmt ,(G H name args f)
+;; Gen_host_stmt が、順に代入する）。ホストで動かなければ（モジュールがない、escape）、ConMa 版の文 f を動かして、偽。
+;; get（使う変数の今の値の LList を返す）と set（書いた変数に値の LList を代入する）は、文が VM へ渡るたびに使う（段階 H6c）。
+;; 一番外の文は、main の処理が 1 つずつ動かすので、PDict に 1 組だけ置く
+(define Conjs_hoststmt ,(G H name args get set f)
   __Cont_get__ ,(return)
   __Ref_new__ __FALSE__ ,(fell)
+  __Dict_new__ ,(io)
+  __Dict_put__ io "get" get ,()
+  __Dict_put__ io "set" set ,()
+  __PDict_put__ "conjs_host_io" io ,()
   Conjs_hostfn_call_with G H name (,(a) __Ref_set__ fell __TRUE__ ,() f ,() __NULL__ __NULL__) args args ,(r)
+  __PDict_put__ "conjs_host_io" __NULL__ ,()
   __Ref_get__ fell ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
   Sjs_get_member G r "length" ,(n)
   Conjs_hoststmt_items G r n __NULL__ ,(vals)

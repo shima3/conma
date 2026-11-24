@@ -8,5 +8,5 @@ cubes 36
 visit 0
 visit 1
 out [ 100, 101 ]
-case9.con.js:52:16: Error: stop at 3
+case9.con.js:53:16: Error: stop at 3
 exit: 2

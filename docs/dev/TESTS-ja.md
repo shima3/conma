@@ -162,7 +162,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 種類：機能（一番外のループも、wasm 版の VM のとき、ホストの JavaScript で動かす）。m4/conjs-host-h5 の上に積んだブランチ。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H6a（26 節）。一番外のループで、ホストに書けて、待たないものを「文の関数」にし、前に宣言した一番外の変数を引数で渡し、代入したものを返す（sjs/include/sjs_host.se）。sjs/include/sjs_gen.se の Gen_host_stmt が、Conjs_hoststmt（conjs/include/conjs_host.se）を呼び、ホストで終われば代入し、終わらなければ ConMa 版の文を動かす。文の関数は VM へ渡れない（渡れば escape して ConMa 版）。
 * 作り直すもの：transpiled VM（sjs_gen.se が変わって、ConSh のモジュールが変わる）。
-* 新しいテスト：conjs/test/step20/case9（どの VM でも同じログ。case9.host.txt）。段階 H6b（27 節）で、import と export のあるプログラムでも、ファイルごとにホストの関数を作る（conjs/include/conjs_modules.se の Gen_unit）：case10（読み込むファイル h6lib.con.js。case ではない）。
+* 新しいテスト：conjs/test/step20/case9（どの VM でも同じログ。case9.host.txt）。段階 H6b（27 節）で、import と export のあるプログラムでも、ファイルごとにホストの関数を作る（conjs/include/conjs_modules.se の Gen_unit）：case10（読み込むファイル h6lib.con.js。case ではない）。段階 H6c（28 節）で、一番外のループが待ったり ConMa を呼び返したりしてもホストで動き、VM へ渡るたびに一番外の変数を両方で合わせる：case11。あわせて、呼び返しの後に数を console.log すると行が消える誤り（#75 から）を直した。
 * M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、conjs/bench の 8 つ（小さな大きさで、Node.js と同じ出力）、doc-pairs.py。
 * 流していないもの：test/、Windows。（`CONMA_VM=rust consh/test/run_all.sh -j 6` は流した。違いなし）
 * 測ったもの：hof、strings、dict（計画の 26 節）。
