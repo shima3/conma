@@ -474,6 +474,12 @@
   __Dict_put__ cx "loops" loops ,()
   __Ref_new__ __NULL__ ,(callees)
   __Dict_put__ cx "callees" callees ,()
+  ;; その場に書く読み書きの一時の変数（段階 H5b。Hx_temp）
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
+  Wx_num "0" ,(zeroT)
+  __Ref_new__ zeroT ,(tempN)
+  __Dict_put__ cx "tempN" tempN ,()
   ;; 待つか（Hx_call が、待つ呼び出しで真にする）と、ジェネレータとして書くか（前に書いたとき待った関数。Hx_wait_loop）
   __Ref_new__ __FALSE__ ,(waitsRef)
   __Dict_put__ cx "waits" waitsRef ,()
@@ -506,6 +512,8 @@
   __unless__ pok (,() Hx_fail cx) ,()
   Kit_parse_get body "body" ,(stmts)
   __if_then_else__ isCtor (,() Hx_ctor_body cx info stmts) (,() Hx_stmts cx stmts "") ,(code)
+  Hx_temp_decl temps ,(decl)
+  __String_concat__ decl code ,(code)
   Kit_parse_get info "name" ,(name)
   ;; 待つのは、一番外の関数だけ（メソッドとコンストラクタは、待てばホストの関数にしない）
   __Ref_get__ waitsRef ,(waits)
@@ -978,16 +986,21 @@
   Wx_t e ,(t)
   __String_equal__ t "update" ,(isUpdate)
   __if_then_else__ isUpdate (,() __NULL__ "update") (,() Kit_parse_get e "op") ,(op)
+  __Dict_lookup_or__ target "name" (,(k) __NULL__ "") ,(tname)
   __String_equal__ op "=" ,(test__) __if__ test__
-    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc pend ,(c) return c) ,()
+    (,()
+      Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc)
+      __if__ named0 (,() Hx_write_named cx oc tname vc p ,(c) return c) ,()
+      Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc pend ,(c) return c) ,()
   ;; 複合の代入と ++、--：オブジェクトと添字は、名前かリテラル
   Hx_simple object ,(so)
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(named)
   __if_then_else__ named (,() __NULL__ __TRUE__) (,() Hx_simple key) ,(sk)
   __and__ so sk ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  Kit_code_cat4 getf oc ", " kc ,(cur)
-  __String_concat__ cur pend ,(cur)
+  __if_then_else__ named0
+    (,() Hx_read_named cx oc tname p)
+    (,() Kit_code_cat4 getf oc ", " kc ,(cur) __String_concat__ cur pend) ,(cur)
   __if_then_else__ isUpdate
     (,()
       Kit_parse_get e "op" ,(uop)
@@ -1004,8 +1017,104 @@
       Kit_parse_get e "value" ,(value)
       Hx_expr cx value ,(vc)
       Hx_op_call cx bop cur vc e) ,(nv)
+  __if__ named0 (,() Hx_write_named cx oc tname nv p ,(c) return c) ,()
   Kit_code_cat5 putf oc ", " kc ", " ,(c)
   Kit_code_cat3 c nv pend)
+
+;; ── その場に書く読み書き（段階 H5b）──
+;; 共通の補助の関数（$getn など）は名前を変数で受けるので、エンジンが名前ごとの速い読み方を使えない。名前の決まったメンバーの
+;; 読み書きとメソッドの呼び出しは、ホストのオブジェクト（$K が真）の自分のプロパティなら、その場で読み書きし、ほかは補助の関数に
+;; 任せる（意味は同じ）。値は一時の変数（関数と関数式ごと。Hx_temp）に置き、式を 2 度動かさない
+
+;; 新しい一時の変数の名前。一時の変数を持たない所（フィールドの関数）なら偽
+(define Hx_temp ,(cx)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "temps" (,(k) return __FALSE__ "") ,(temps)
+  __is_null__ temps ,(test__) __if__ test__ (,() return __FALSE__ "") ,()
+  __Dict_lookup_or__ cx "tempN" (,(k) return __FALSE__ "") ,(tempN)
+  __Ref_get__ tempN ,(n)
+  Wx_num "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Ref_set__ tempN n ,()
+  Wx_str n ,(ns)
+  __String_concat__ "$t" ns ,(name)
+  __Ref_get__ temps ,(l)
+  __LList_cons__ name l ,(l)
+  __Ref_set__ temps l ,()
+  __NULL__ __TRUE__ name)
+
+;; 一時の変数の宣言（なければ ""）
+(define Hx_temp_decl ,(temps)
+  __Cont_get__ ,(return)
+  __Ref_get__ temps ,(l)
+  __is_null__ l ,(test__) __if__ test__ (,() return "") ,()
+  Hx_join_names l "" ,(names)
+  Kit_code_cat3 "let " names "; ")
+
+(define Hx_join_names ,(l acc)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ l ,(h t)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ h) (,() Kit_code_cat3 acc ", " h) ,(acc)
+  Hx_join_names t acc)
+
+;; その場に書いてよい名前か（__proto__ は、プロトタイプを読み書きするので、補助の関数で）
+(define Hx_inline_name ,(name)
+  __String_equal__ name "__proto__" ,(proto)
+  __not__ proto)
+
+;; o.name を読む：ホストのオブジェクトの、関数でも undefined でもない値ならその場で、ほかは $getn
+(define Hx_read_named ,(cx oc name p)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 v)
+  __and__ ok1 ok2 ,(x) __and__ x inl ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$getn(" oc ", " q ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true && (" ,(c)
+  Kit_code_cat5 c v " = " t "." ,(c)
+  Kit_code_cat4 c name ") !== undefined && typeof " v ,(c)
+  Kit_code_cat4 c " !== 'function' ? " v " : $getn(" ,(c)
+  Kit_code_cat5 c t ", " q ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.name = vc：ホストのオブジェクトならその場で、ほかは $putn（vc は、どちらか一方でだけ動く）
+(define Hx_write_named ,(cx oc name vc p)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok t)
+  __and__ ok inl ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$putn(" oc ", " q ", " ,(c) Kit_code_cat5 c vc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true ? (" ,(c)
+  Kit_code_cat5 c t "." name " = " ,(c)
+  Kit_code_cat5 c vc ") : $putn(" t ", " ,(c)
+  Kit_code_cat5 c q ", " vc ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.name(args)（rest は ", 引数" か ""）：ホストのオブジェクトのメソッドか関数のプロパティならその場で呼び、ほかは $mcall。
+;; 偽なら、その場に書かない（Hx_call が $mc か $mcall で）
+(define Hx_call_named ,(cx oc name p rest)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 v)
+  __and__ ok1 ok2 ,(x) __and__ x inl ,(test__)
+  __unless__ test__ (,() return __FALSE__ "") ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true && typeof (" ,(c)
+  Kit_code_cat5 c v " = " t "." ,(c)
+  Kit_code_cat4 c name ") === 'function' && " v ,(c)
+  Kit_code_cat4 c " !== $nom ? " v ".call(" ,(c)
+  Kit_code_cat4 c t rest ") : $mcall(" ,(c)
+  Kit_code_cat5 c t ", " q ", " ,(c)
+  Kit_code_cat4 c p rest "))" ,(c)
+  __NULL__ __TRUE__ c)
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
@@ -1127,9 +1236,7 @@
       Kit_parse_get e "name" ,(name)
       Hx_pos cx e ,(p)
       __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
-      Sjs_json_string name ,(q)
-      Kit_code_cat5 "$getn(" oc ", " q ", " ,(c)
-      Kit_code_cat3 c p ")" ,(c)
+      Hx_read_named cx oc name p ,(c)
       return c) ,()
   __String_equal__ t "array" ,(test__) __if__ test__
     (,()
@@ -1220,13 +1327,21 @@
   ;; 関数式はジェネレータにしないので、中で待てない（Hx_call）
   __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(outerClosure)
   __Dict_put__ cx "closure" __TRUE__ ,()
+  ;; 一時の変数は、関数式ごと（再帰しても、呼び出しごとに別）
+  __Dict_lookup_or__ cx "temps" (,(k) __NULL__ __NULL__) ,(outerTemps)
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
   __Dict_lookup_or__ e "body" (,(k) __NULL__ __NULL__) ,(body)
   __is_null__ body ,(concise)
   __if_then_else__ concise
-    (,() Kit_parse_get e "expr" ,(x) Hx_expr cx x ,(xc) Kit_code_cat3 "(" xc ")")
-    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Kit_code_cat3 "{" bc "}") ,(bc)
+    (,() Kit_parse_get e "expr" ,(x) Hx_expr cx x ,(xc)
+        Hx_temp_decl temps ,(decl)
+        __String_equal__ decl "" ,(noDecl)
+        __if_then_else__ noDecl (,() Kit_code_cat3 "(" xc ")") (,() Kit_code_cat5 "{" decl "return (" xc "); }"))
+    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Hx_temp_decl temps ,(decl) Kit_code_cat4 "{" decl bc "}") ,(bc)
   __Ref_set__ loops outer ,()
   __Dict_put__ cx "closure" outerClosure ,()
+  __Dict_put__ cx "temps" outerTemps ,()
   Kit_code_cat5 "((" ps ") => " bc ")")
 
 ;; 数 v の JavaScript の字句（ConMa の __Number_toString__ の字句を JavaScript が同じ値に読む。-0、NaN、無限大は式にする）
@@ -1374,6 +1489,8 @@
           Hx_genmode cx ,(gm)
           __if__ gm
             (,() Kit_code_cat5 "(yield* $mcallG(" oc ", " nq ", " ,(c) Kit_code_cat3 c p rest ,(c) __String_concat__ c "))" ,(c) return c) ,()
+          Hx_call_named cx oc name p rest ,(ok c)
+          __if__ ok (,() return c) ,()
           Hx_simple object ,(simple)
           __if__ simple
             (,() Kit_code_cat5 "$mc(" oc ", " nq ", " ,(c) Kit_code_cat3 c p ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
