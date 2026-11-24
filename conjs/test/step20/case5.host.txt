@@ -1,0 +1,11 @@
+conjs: host: Counter.get
+conjs: host: Counter.hit
+conjs: host: Vec.add
+conjs: host: Vec.len2
+conjs: host: Vec.shout
+conjs: host: Vec.show
+conjs: host: Vec.sumWith
+conjs: host: Vec.twice
+conjs: host: Vec3.len2
+conjs: host: Vec3.pairs
+conjs: host: Vec3.root

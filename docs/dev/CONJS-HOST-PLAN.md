@@ -2,7 +2,7 @@
 
 The plan of running the functions of a ConJS program on the JavaScript engine of the host (Node.js or a browser) when the program runs on the wasm VM, calling back into the VM for what the host cannot do. Written on 2026-11-24 at the user's request, after the ConJS benchmarks (conjs/bench/README-ja.md, shima3/conma#71). The first version, the same day, ran only the functions that never wait and undid a call that met anything else; the user then asked that the host call ConJS back instead, and this version does that (3.1), keeping the undoing only as the last resort.
 
-**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done (section 11), stage H1 (the nested run of the VM) is built (section 12), and so is stage H2, in two halves: H2a (the copying of values and the primitives; section 13) and H2b (generators, and keeping the copies the same at a call back and a yield; section 14). Stage H3 is built in two parts: H3a (the translator writes functions of values; section 15) and H3b (arrays, objects, closures and `console.log`; section 16). The rest is not. Section 10 lists what the user is to decide.
+**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done (section 11), stage H1 (the nested run of the VM) is built (section 12), and so is stage H2, in two halves: H2a (the copying of values and the primitives; section 13) and H2b (generators, and keeping the copies the same at a call back and a yield; section 14). Stage H3 is built in two parts: H3a (the translator writes functions of values; section 15) and H3b (arrays, objects, closures and `console.log`; section 16). Of stage H4, H4a (the methods of classes; section 17) is built. The rest is not. Section 10 lists what the user is to decide.
 
 ## 1. Why
 
@@ -107,7 +107,10 @@ What ConJS does differently from JavaScript (conjs/README.md, Language, and sjs/
 * **H3 — the translator, numbers and strings.** The two kinds of section 2 and the JavaScript for functions of numbers, strings, booleans, arrays and plain objects, with the calls of `rt` for section 5; `console.log` into the buffer. In parts (2026-11-24):
     * **H3a**: functions of values only (numbers, strings, Booleans, `undefined`), which change nothing and can be run again in ConMa (section 15).
     * **H3b**: arrays and plain objects, copied as in 3.2 into the forms of SJS (`items`, `length`, `props`, `keys`), and `console.log` into the buffer.
-* **H4 — classes, exceptions and waiting.** Classes and methods (3.3), `throw`, `try`, `catch`, `finally`, `instanceof`, the positions of exceptions; waiting host functions with `yield rt.wait(...)`, and `spawn`.
+* **H4 — classes, exceptions and waiting.** Classes and methods (3.3), `throw`, `try`, `catch`, `finally`, `instanceof`, the positions of exceptions; waiting host functions with `yield rt.wait(...)`, and `spawn`. In parts (2026-11-24):
+    * **H4a**: the methods of classes, on instances that come from the VM, with `Math` (section 17).
+    * **H4b**: `new` on the host, exceptions and `instanceof`.
+    * **H4c**: calling ConMa back (callbacks passed in from ConMa code), and waiting host functions.
 * **H5 — fuel, then measure and tune.** Section 6; the benchmarks of conjs/bench and sjs/bench; the rules that stop using the host for a function (3.2); the choice between WebAssembly and the host for the numeric functions (both work for them; keep the faster).
 * **H6 — the top level.** Running the top level of a file on the host, as a waiting host function.
 * **H7 — the browser.** conjs/web/build.sh and the pages (8).
@@ -216,4 +219,19 @@ The functions of section 15 may now use arrays, plain objects, closures and `con
     * called 3,000 times from a loop at the top level: 0.325 s on the host, about 62 µs a round, against 5.8 ms a round in ConMa (300 rounds in 1.888 s): about 94 times faster; Node.js runs the 3,000 rounds in 0.057 s;
     * 30,000 rounds inside one host function: 0.434 s, 9.8 µs a round, about 3 times Node.js (0.136 s).
 * **Not done**: classes and their methods, exceptions (`throw`, `try`), `Math`, calling ConMa back from a host function (H4), the loops at the top level (H6), fuel (H5).
+
+## 17. Results of H4a (2026-11-24)
+
+The methods of classes run on the host, on instances made in ConMa.
+
+* **Which classes** (sjs/include/sjs_host.se, `Hx_classes`): the declarations `class C [extends P] { ... }` at the top level (the parser makes them `let C = class C ...`), where `C` is declared once and never assigned, no other class in the program has the name `C` (the host finds the class of an instance by the name in its record), and `P` is none or such a class declared before. For each, the module makes a prototype `P_C` (with `P_P` or `null` as its own prototype), and puts on it the methods that are not `static`: a method whose body the translator can write is a JavaScript function that uses `this`; any other method is `$nom`, which escapes when called, so that a call never finds a method of a parent or nothing where ConJS would find one. Constructors and fields are not written: `new` stays in ConMa (H4b).
+* **Instances** (3.3): `$in` makes an instance of SJS (an object with the hidden key `cls`) whose class it knows into an object with `P_C` as its prototype and the instance's own properties, so reading a member finds an own property first and then a method, as `Sjs_obj_member` does. Reading a method without calling it (`const f = o.m`) escapes, as ConJS binds `this` when reading. An instance of a class it does not know, or of an error class, is opaque.
+* **Calls from ConMa**: the translator wraps the function of such a method with `Conjs_hostfn_method G Hsjs "C.m" self` (conjs/include/conjs_host.se), which passes `this` before the arguments; the module's entry `$runm(P_C, "m")` calls the method with it.
+* **Calls on the host**: `o.m(...)` is `$mc(o, "m").call(o, ...)` when `o` is a name or `this` (the checks once, and no array of arguments), else `$mcall`.
+* **Also now taken**: `Math.floor`, `ceil`, `round`, `trunc`, `abs`, `sqrt`, `sign`, `max`, `min` and `Math.PI` (when `Math` is used only in that form and never written, as for the numeric functions); array patterns of names in `let`, `const` and `for...of` (`for (const [a, b] of pairs)`); compound assignments and `++`, `--` to members of `this`.
+* **Cheaper checks**: every object and every prototype of the host has a hidden mark (a symbol), so the checks of a member read are one property read; named members are read and written by `$getn` and `$putn`, without the checks a computed key needs. On nbody_class this took a step from 7.6 µs to 1.74 µs.
+* **The test**: conjs/test/step20/case5 (methods that read and write `this`, return `this`, call other methods, take instances as arguments, iterate over instances and over pairs, print; a subclass that overrides a method; a method that uses `new`, which falls back; `Math`; a counter; a method read as a value, which falls back). The log is the same on the Rust, wasm and Python VMs; 11 methods return from the host (case5.host.txt).
+* **What it gives** (the M4, the wasm VM, user + sys): conjs/bench/nbody_class.con.js, whose `advance` and `energy` now run on the host (`pull` and `move` are called from `advance` on the host):
+    * 27,000 steps (the size of the slow columns of conjs/bench): 0.47 s, against 27.1 s before (conjs/bench/README-ja.md);
+    * 20,000,000 steps (the size of Node.js): 33.8 s, 1.7 µs a step, against 1.08 s in Node.js: 31 times Node.js, where ConMa was 18,500 times. H0 measured 60 ns a step for JavaScript written by hand without these checks; H5 is to bring the checks down.
 

@@ -2069,6 +2069,27 @@
       return c v) ,()
   ;; ConJS のホストの関数（sjs_host.se が印を付けたもの）：ConMa 版を Conjs_hostfn で包む（引数がどれも値なら、ランタイムが
   ;; ホストの版を呼ぶ。conjs/include/conjs_rt.se）
+  ;; ConJS のクラスのメソッドで、ホストの版のあるもの（sjs_host.se の "hostMethod"）：this（メソッドの節の外の dict の "this"、
+  ;; "@self..."）をホストに渡す Conjs_hostfn_method で包む
+  __Dict_lookup_or__ e "hostMethod" (,(k) __NULL__ "") ,(mname)
+  __String_equal__ mname "" ,(test__) __unless__ test__
+    (,()
+      __LList_uncons__ __print_exit_error__ scope ,(sd srest)
+      __Dict_lookup_or__ sd "this" __print_exit_error__ ,(thisAlias)
+      __String_length__ thisAlias ,(tl)
+      __Number_fromString__ __print_exit_error__ "1" ,(one1)
+      __String_substring__ __print_exit_error__ thisAlias one1 tl ,(selfVar)
+      Kit_code_quote mname ,(mq)
+      Kit_code_temp g "w" ,(wf)
+      Kit_code_cat4 "\tConjs_hostfn_method G Hsjs " mq " " selfVar ,(c)
+      Kit_code_cat3 c " (,(" args ,(c)
+      __String_concat__ c ") __Cont_get__ ,(return) " ,(c)
+      Kit_code_cat4 c bind bodyCode "return __NULL__) ,(" ,(c)
+      Kit_code_cat3 c wf ") " ,(c)
+      Kit_code_cat5 c "\tSjs_function G " qn " " wf ,(c)
+      Kit_code_cat3 c " ,(" v ,(c)
+      __String_concat__ c ") " ,(c)
+      return c v) ,()
   __Dict_lookup_or__ e "host" (,(k) __NULL__ "") ,(hname)
   __String_equal__ hname "" ,(test__) __unless__ test__
     (,()

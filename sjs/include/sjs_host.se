@@ -38,11 +38,121 @@
   __Dict_new__ ,(H)
   __Ref_new__ __NULL__ ,(order)
   Hx_candidates E H order stmts ,()
+  ;; クラス（段階 H4a）：一番外の class 宣言のメソッドも、名前 "クラス.メソッド" で候補にする
+  __Ref_new__ __NULL__ ,(classes)
+  Hx_classes E H order classes program stmts ,()
   __Ref_get__ order ,(rev)
   Wx_reverse rev __NULL__ ,(names)
   Hx_compile_all E H names ,()
   Hx_fixpoint H names ,()
-  Hx_module H names)
+  __Ref_get__ classes ,(crev)
+  Wx_reverse crev __NULL__ ,(cs)
+  Hx_module H names cs)
+
+;; ── クラス（段階 H4a）──
+;; 一番外の let C = class C [extends P] { ... }（class 宣言は、P_class_decl が、この形の let にする）で、C が一番外で 1 回だけ
+;; 宣言され、代入されず、プログラムの中に同じ名前のクラスがほかにないもの。親は、なしか、前に宣言した同じ形のクラス。
+;; ホストでは、プロトタイプ P_C（親の P_ か null を親にする）を作り、static でないメソッドを P_C に置く（ホストに書けない
+;; メソッドは、呼ぶと rt.Escape を投げる $nom）。ホストでは new しないので、コンストラクタとフィールドは書かない。
+;; インスタンスは、ホストで $in が、クラスの記録の名前から P_C を探して、それをプロトタイプにしたオブジェクトにする。
+;; ConMa からメソッドを呼ぶと、メソッドの関数（Conjs_hostfn_method が包む）が、this をホストに渡す
+(define Hx_classes ,(E H order classes program stmts)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Hx_class_decl E s ,(ok name cls)
+  __if__ ok (,() Hx_class E H order classes program name cls) ,()
+  Hx_classes E H order classes program rest)
+
+;; s が let C = class C ... の宣言なら、真と名前とクラスの節
+(define Hx_class_decl ,(E s)
+  __Cont_get__ ,(return)
+  Wx_t s ,(t)
+  __String_equal__ t "decl" ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  Kit_parse_get s "decls" ,(ds)
+  __LList_uncons__ (,(e) return __FALSE__ "" __NULL__) ds ,(d rest)
+  __is_null__ rest ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  Kit_parse_get d "target" ,(target)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  Kit_parse_get target "name" ,(name)
+  __Dict_lookup_or__ d "init" (,(k) __NULL__ __NULL__) ,(init)
+  __is_null__ init ,(test__) __if__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  Wx_t init ,(it)
+  __String_equal__ it "class" ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  __Dict_lookup_or__ init "name" (,(k) __NULL__ "") ,(own)
+  __String_equal__ own name ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  Wx_once E name ,(test__) __unless__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
+  __Dict_lookup_or__ assigned name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() return __FALSE__ "" __NULL__) ,()
+  __NULL__ __TRUE__ name init)
+
+(define Hx_class ,(E H order classes program name cls)
+  __Cont_get__ ,(return)
+  ;; プログラムの中で、この名前のクラスは 1 つだけ（インスタンスのクラスを名前で探すので）
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(count)
+  Wx_walk program (,(n) Wx_t n ,(t) __String_equal__ t "class" ,(isClass) __if__ isClass (,() __Dict_lookup_or__ n "name" (,(k) __NULL__ "") ,(nm) __String_equal__ nm name ,(same) __if__ same (,() Wx_inc count) ,()) ,()) ,()
+  __Ref_get__ count ,(c)
+  Wx_num "1" ,(one)
+  __Number_subtract__ c one ,(d)
+  __Number_is_zero__ d ,(test__) __unless__ test__ return ,()
+  ;; 親：なしか、前に受け付けたクラスの名前
+  Kit_parse_get cls "parent" ,(parent)
+  __is_null__ parent ,(base)
+  __Ref_get__ classes ,(known)
+  __if_then_else__ base (,() __NULL__ "") (,()
+    Wx_t parent ,(pt)
+    __String_equal__ pt "id" ,(test__) __unless__ test__ return ,()
+    Kit_parse_get parent "name" ,(pn)
+    Hx_class_known known pn ,(test__) __unless__ test__ return ,()
+    __NULL__ pn) ,(parentName)
+  __Dict_new__ ,(cinfo)
+  __Dict_put__ cinfo "name" name ,()
+  __Dict_put__ cinfo "parent" parentName ,()
+  Kit_parse_get cls "members" ,(members)
+  Hx_class_methods H order name members __NULL__ ,(methods)
+  __Dict_put__ cinfo "methods" methods ,()
+  __LList_cons__ cinfo known ,(known)
+  __Ref_set__ classes known)
+
+(define Hx_class_known ,(known name)
+  __Cont_get__ ,(return)
+  __is_null__ known ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __LList_uncons__ __print_exit_error__ known ,(c rest)
+  Kit_parse_get c "name" ,(nm)
+  __String_equal__ nm name ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Hx_class_known rest name)
+
+;; static でないメソッドの名前の LList（書いた順）。ジェネレータでも async でもなく、引数が名前だけのものを、候補 "C.m" にする
+(define Hx_class_methods ,(H order cname members acc)
+  __Cont_get__ ,(return)
+  __is_null__ members ,(test__) __if__ test__ (,() Wx_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  Kit_parse_get m "kind" ,(kind)
+  __String_equal__ kind "method" ,(test__) __unless__ test__ (,() Hx_class_methods H order cname rest acc ,(l) return l) ,()
+  Kit_parse_get m "key" ,(key)
+  Kit_parse_get m "fn" ,(fn)
+  Kit_code_cat3 cname "." key ,(full)
+  __LList_cons__ key acc ,(acc)
+  __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
+  __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
+  __or__ gen async ,(test__) __if__ test__ (,() Hx_class_methods H order cname rest acc ,(l) return l) ,()
+  Kit_parse_get fn "params" ,(params)
+  Wx_param_names params __NULL__ ,(ok names)
+  __unless__ ok (,() Hx_class_methods H order cname rest acc ,(l) return l) ,()
+  __Dict_new__ ,(info)
+  __Dict_put__ info "name" full ,()
+  __Dict_put__ info "fn" fn ,()
+  __Dict_put__ info "params" names ,()
+  __Dict_put__ info "ok" __FALSE__ ,()
+  __Dict_put__ info "class" cname ,()
+  __Dict_put__ info "method" key ,()
+  __Dict_put__ H full info ,()
+  __Ref_get__ order ,(o)
+  __LList_cons__ full o ,(o)
+  __Ref_set__ order o ,()
+  Hx_class_methods H order cname rest acc)
 
 (define Hx_candidates ,(E H order stmts)
   __Cont_get__ ,(return)
@@ -120,11 +230,55 @@
   Hx_all_ok H rest)
 
 ;; JavaScript の文：補助の関数、ホストの関数、名前から関数への表を返す文。ホストの関数がなければ ""
-(define Hx_module ,(H names)
+(define Hx_module ,(H names classes)
   Hx_funcs H names "" "" ,(fs table)
-  __String_equal__ fs "" ,(none)
+  Hx_class_code H classes "" table ,(cs table)
+  __String_equal__ table "" ,(none)
   __if_then_else__ none (,() __NULL__ "")
-    (,() Hx_helpers ,(h) Kit_code_cat5 h fs "return {" table "};"))
+    (,() Hx_helpers ,(h) Kit_code_cat5 h cs fs "return {" table ,(m) __String_concat__ m "};"))
+
+;; クラスのプロトタイプとメソッドの JavaScript、と表に足す "C.m": $runm(P_C, "m")
+(define Hx_class_code ,(H classes acc table)
+  __Cont_get__ ,(return)
+  __is_null__ classes ,(test__) __if__ test__ (,() return acc table) ,()
+  __LList_uncons__ __print_exit_error__ classes ,(c rest)
+  Kit_parse_get c "name" ,(cname)
+  Kit_parse_get c "parent" ,(pn)
+  __String_equal__ pn "" ,(base)
+  __if_then_else__ base (,() __NULL__ "null") (,() __String_concat__ "P_" pn) ,(pp)
+  Sjs_json_string cname ,(cq)
+  Kit_code_cat5 "const P_" cname " = Object.create(" pp ");\n" ,(h)
+  Kit_code_cat5 h "P_" cname "[$K] = true; $protos.add(P_" cname ,(h)
+  Kit_code_cat5 h "); $classes.set(" cq ", P_" cname ,(h)
+  __String_concat__ h ");\n" ,(h)
+  __String_concat__ acc h ,(acc)
+  Kit_parse_get c "methods" ,(ms)
+  Hx_method_code H cname ms acc table ,(acc table)
+  Hx_class_code H rest acc table)
+
+(define Hx_method_code ,(H cname ms acc table)
+  __Cont_get__ ,(return)
+  __is_null__ ms ,(test__) __if__ test__ (,() return acc table) ,()
+  __LList_uncons__ __print_exit_error__ ms ,(key rest)
+  Kit_code_cat3 cname "." key ,(full)
+  Sjs_json_string key ,(kq)
+  __Dict_lookup_or__ H full (,(k) __NULL__ __NULL__) ,(info)
+  __is_null__ info ,(none)
+  __if_then_else__ none (,() __NULL__ __FALSE__) (,() Kit_parse_get info "ok") ,(ok)
+  __unless__ ok
+    (,()
+      Kit_code_cat5 acc "P_" cname "[" kq ,(acc)
+      __String_concat__ acc "] = $nom;\n" ,(acc)
+      Hx_method_code H cname rest acc table ,(a t)
+      return a t) ,()
+  Kit_parse_get info "js" ,(js)
+  __String_concat__ acc js ,(acc)
+  Kit_parse_get info "fn" ,(fn)
+  __Dict_put__ fn "hostMethod" full ,()
+  Sjs_json_string full ,(fq)
+  Kit_code_cat5 table fq ": $runm(P_" cname ", " ,(table)
+  Kit_code_cat3 table kq "), " ,(table)
+  Hx_method_code H cname rest acc table)
 
 (define Hx_funcs ,(H names acc table)
   __Cont_get__ ,(return)
@@ -132,7 +286,9 @@
   __LList_uncons__ __print_exit_error__ names ,(nm rest)
   __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
   Kit_parse_get info "ok" ,(ok)
-  __unless__ ok (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
+  __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey)
+  __String_equal__ mkey "" ,(notMethod)
+  __and__ ok notMethod ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
   Kit_parse_get info "js" ,(js)
   __String_concat__ acc js ,(acc)
   Kit_parse_get info "fn" ,(fn)
@@ -167,11 +323,18 @@
   Kit_parse_get fn "body" ,(body)
   Hx_collect_locals cx body ,()
   Hx_param_list params "" ,(ps)
+  __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey)
+  __String_equal__ mkey "" ,(notMethod)
+  __not__ notMethod ,(isMethod)
+  __Dict_put__ cx "method" isMethod ,()
   Kit_parse_get body "body" ,(stmts)
   Hx_stmts cx stmts "" ,(code)
   Kit_parse_get info "name" ,(name)
-  Kit_code_cat5 "function f_" name "(" ps ") {" ,(js)
-  Kit_code_cat3 js code "}\n" ,(js)
+  __if_then_else__ notMethod
+    (,() Kit_code_cat5 "function f_" name "(" ps ") {")
+    (,() Kit_parse_get info "class" ,(cname) Sjs_json_string mkey ,(mq) Kit_code_cat5 "P_" cname "[" mq "] = function (" ,(h) Kit_code_cat3 h ps ") {") ,(js)
+  __if_then_else__ notMethod (,() __NULL__ "}\n") (,() __NULL__ "};\n") ,(tail)
+  Kit_code_cat3 js code tail ,(js)
   __Ref_get__ callees ,(cs)
   __NULL__ __TRUE__ js cs)
 
@@ -218,6 +381,8 @@
         __is_null__ kind ,(test__) __if__ test__ (,() Hx_fail cx) ,()
         Kit_lex_in_words kind "let const" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
         Kit_parse_get n "target" ,(target)
+        Hx_pattern_names target ,(isPat pnames)
+        __if__ isPat (,() Hx_put_names locals pnames ,() return) ,()
         Wx_t target ,(tt)
         __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
         Kit_parse_get target "name" ,(nm)
@@ -234,6 +399,8 @@
   __is_null__ ds ,(test__) __if__ test__ return ,()
   __LList_uncons__ __print_exit_error__ ds ,(d rest)
   Kit_parse_get d "target" ,(target)
+  Hx_pattern_names target ,(isPat pnames)
+  __if__ isPat (,() Hx_put_names locals pnames ,() Hx_decl_targets cx locals rest ,() return) ,()
   Wx_t target ,(tt)
   __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
   Kit_parse_get target "name" ,(nm)
@@ -332,11 +499,18 @@
       __String_equal__ of "of" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       Kit_parse_get s "kind" ,(kind)
       Kit_parse_get s "target" ,(target)
-      Kit_parse_get target "name" ,(nm)
       Kit_parse_get s "right" ,(right)
       Hx_expr cx right ,(rc)
       Kit_parse_get s "body" ,(body)
       Hx_loop_body cx body ,(bc)
+      Hx_pattern_names target ,(isPat pnames)
+      __if__ isPat
+        (,()
+          Hx_pattern_code pnames ,(pc)
+          Kit_code_cat5 "for (const $e of $iter(" rc ")) { " kind " " ,(c)
+          Kit_code_cat5 c pc " = $arr($e); " bc " }" ,(c)
+          return c) ,()
+      Kit_parse_get target "name" ,(nm)
       Kit_code_cat5 "for (" kind " v_" nm " of $iter(" ,(c)
       Kit_code_cat4 c rc ")) " bc ,(c)
       return c) ,()
@@ -373,12 +547,22 @@
   __is_null__ ds ,(test__) __if__ test__ (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ ds ,(d rest)
   Kit_parse_get d "target" ,(target)
-  Kit_parse_get target "name" ,(nm)
   __Dict_lookup_or__ d "init" (,(k) __NULL__ __NULL__) ,(init)
   __is_null__ init ,(noInit)
-  __if_then_else__ noInit (,() __NULL__ "") (,() Hx_expr cx init ,(ic) __String_concat__ " = " ic) ,(ic)
   __String_equal__ acc "" ,(first)
   __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Hx_pattern_names target ,(isPat pnames)
+  __if__ isPat
+    (,()
+      __if__ noInit (,() Hx_fail cx) ,()
+      Hx_expr cx init ,(ic)
+      Hx_pattern_code pnames ,(pc)
+      Kit_code_cat5 acc sep pc " = $arr(" ic ,(acc)
+      __String_concat__ acc ")" ,(acc)
+      Hx_declarators cx rest acc ,(a)
+      return a) ,()
+  Kit_parse_get target "name" ,(nm)
+  __if_then_else__ noInit (,() __NULL__ "") (,() Hx_expr cx init ,(ic) __String_concat__ " = " ic) ,(ic)
   Kit_code_cat5 acc sep "v_" nm ic ,(acc)
   Hx_declarators cx rest acc)
 
@@ -430,18 +614,21 @@
   Kit_parse_get target "object" ,(object)
   Hx_expr cx object ,(oc)
   Hx_key cx target ,(kc)
+  __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key0)
+  __is_null__ key0 ,(named0)
+  __if_then_else__ named0 (,() __NULL__ "$putn(" "$getn(") (,() __NULL__ "$put(" "$get(") ,(putf getf)
   Wx_t e ,(t)
   __String_equal__ t "update" ,(isUpdate)
-  __if_then_else__ isUpdate (,() __NULL__ "=") (,() Kit_parse_get e "op") ,(op)
+  __if_then_else__ isUpdate (,() __NULL__ "update") (,() Kit_parse_get e "op") ,(op)
   __String_equal__ op "=" ,(test__) __if__ test__
-    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 "$put(" oc ", " kc ", " ,(c) Kit_code_cat3 c vc ")" ,(c) return c) ,()
+    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc ")" ,(c) return c) ,()
   ;; 複合の代入と ++、--：オブジェクトと添字は、名前かリテラル
   Hx_simple object ,(so)
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(named)
   __if_then_else__ named (,() __NULL__ __TRUE__) (,() Hx_simple key) ,(sk)
   __and__ so sk ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  Kit_code_cat5 "$get(" oc ", " kc ")" ,(cur)
+  Kit_code_cat5 getf oc ", " kc ")" ,(cur)
   __if_then_else__ isUpdate
     (,()
       Kit_parse_get e "op" ,(uop)
@@ -459,13 +646,37 @@
       Hx_expr cx value ,(vc)
       Kit_code_cat5 "($n(" cur ") " bop " $n(" ,(x)
       Kit_code_cat3 x vc "))") ,(nv)
-  Kit_code_cat5 "$put(" oc ", " kc ", " ,(c)
+  Kit_code_cat5 putf oc ", " kc ", " ,(c)
   Kit_code_cat3 c nv ")")
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
   Wx_t e ,(t)
-  Kit_lex_in_words t "id num str")
+  Kit_lex_in_words t "id num str this")
+
+;; 名前の配列の分割代入（[a, b]。穴、既定値、残りのないもの）なら、真と名前の LList（書いた順）
+(define Hx_pattern_names ,(pat)
+  __Cont_get__ ,(return)
+  Wx_t pat ,(t)
+  __String_equal__ t "arrayPattern" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  Kit_parse_get pat "items" ,(items)
+  Hx_pattern_items items __NULL__)
+
+(define Hx_pattern_items ,(items acc)
+  __Cont_get__ ,(return)
+  __is_null__ items ,(test__) __if__ test__ (,() Wx_reverse acc __NULL__ ,(l) return __TRUE__ l) ,()
+  __LList_uncons__ __print_exit_error__ items ,(x rest)
+  __is_null__ x ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  Wx_t x ,(t)
+  __String_equal__ t "id" ,(test__) __unless__ test__ (,() return __FALSE__ __NULL__) ,()
+  Kit_parse_get x "name" ,(nm)
+  __LList_cons__ nm acc ,(acc)
+  Hx_pattern_items rest acc)
+
+;; 名前の配列の分割代入の JavaScript（[v_a, v_b]）
+(define Hx_pattern_code ,(names)
+  Hx_param_list names "" ,(ps)
+  Kit_code_cat3 "[" ps "]")
 
 ;; メンバーの節の名前（.名前 なら文字列のリテラル）か、要素の添字の式
 (define Hx_key ,(cx m)
@@ -540,6 +751,16 @@
       __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(opt)
       __if__ opt (,() Hx_fail cx) ,()
       Kit_parse_get e "object" ,(object)
+      ;; Math.PI（Math が Math.名前 の形でしか使われず、書き換えられないとき。sjs_wasm.se の Wx_env）
+      Hx_builtin cx object "Math" ,(isMath0)
+      __if__ isMath0
+        (,()
+          __Dict_lookup_or__ e "name" (,(k) __NULL__ "") ,(mn)
+          __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
+          __Dict_lookup_or__ E "math" __print_exit_error__ ,(mathOk)
+          __String_equal__ mn "PI" ,(isPi)
+          __and__ mathOk isPi ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+          return "Math.PI") ,()
       Hx_expr cx object ,(oc)
       __Dict_lookup_or__ e "key" (,(k) __NULL__ __NULL__) ,(key)
       __is_null__ key ,(test__) __unless__ test__
@@ -547,7 +768,7 @@
       Kit_parse_get e "name" ,(name)
       __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat3 "$len(" oc ")" ,(c) return c) ,()
       Sjs_json_string name ,(q)
-      Kit_code_cat5 "$get(" oc ", " q ")" ,(c)
+      Kit_code_cat5 "$getn(" oc ", " q ")" ,(c)
       return c) ,()
   __String_equal__ t "array" ,(test__) __if__ test__
     (,()
@@ -562,6 +783,8 @@
       Kit_code_cat3 "$o([" c "])" ,(c)
       return c) ,()
   Kit_lex_in_words t "function arrow" ,(test__) __if__ test__ (,() Hx_closure cx e ,(c) return c) ,()
+  __String_equal__ t "this" ,(test__) __if__ test__
+    (,() __Dict_lookup_or__ cx "method" (,(k) __NULL__ __FALSE__) ,(m) __unless__ m (,() Hx_fail cx) ,() return "this") ,()
   Hx_fail cx)
 
 ;; 配列のリテラルの要素（穴とスプレッドは扱わない）
@@ -705,12 +928,32 @@
       Hx_builtin cx object "console" ,(isConsole)
       __String_equal__ name "log" ,(isLog)
       __and__ isConsole isLog ,(test__) __if__ test__ (,() Kit_code_cat3 "$log(" ac ")" ,(c) return c) ,()
+      Hx_builtin cx object "Math" ,(isMath0)
+      __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
+      __Dict_lookup_or__ E "math" __print_exit_error__ ,(mathOk)
+      __and__ isMath0 mathOk ,(isMath)
+      Kit_lex_in_words name "floor ceil round trunc abs sqrt sign max min" ,(mathFn)
+      __and__ isMath mathFn ,(test__) __if__ test__
+        (,() Hx_num_args cx args "" ,(nc) Kit_code_cat5 "Math." name "(" nc ")" ,(c) return c) ,()
+      __if__ isMath0 (,() Hx_fail cx) ,()
       Hx_builtin cx object "Object" ,(isObject)
       __String_equal__ name "keys" ,(isKeys)
       __and__ isObject isKeys ,(test__) __if__ test__ (,() Kit_code_cat3 "$keys(" ac ")" ,(c) return c) ,()
       Hx_methods ,(methods)
       Kit_lex_in_words name methods ,(test__)
-      __unless__ test__ (,() Hx_fail cx) ,()
+      __unless__ test__
+        (,()
+          Hx_expr cx object ,(oc)
+          Sjs_json_string name ,(nq)
+          __String_equal__ ac "" ,(noArgs)
+          __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
+          ;; 受け手が名前か this なら、$mc で関数を確かめて .call で呼ぶ（引数を配列にしないので速い）
+          Hx_simple object ,(simple)
+          __if__ simple
+            (,() Kit_code_cat5 "$mc(" oc ", " nq ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
+          Kit_code_cat5 "$mcall(" oc ", " nq rest ,(c)
+          __String_concat__ c ")" ,(c)
+          return c) ,()
       Hx_expr cx object ,(oc)
       __String_equal__ ac "" ,(noArgs)
       __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
@@ -750,6 +993,20 @@
 (define Hx_methods ,()
   __NULL__ "charAt at indexOf includes startsWith endsWith slice trim toUpperCase toLowerCase repeat replace replaceAll split push pop join map filter forEach some every find findIndex reduce concat reverse sort")
 
+;; Math の関数の引数：どれも数（$n）
+(define Hx_num_args ,(cx args acc)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ args ,(a rest)
+  Wx_t a ,(t)
+  __String_equal__ t "spread" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  Hx_expr cx a ,(c)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat4 acc sep "$n(" c ,(acc)
+  __String_concat__ acc ")" ,(acc)
+  Hx_num_args cx rest acc)
+
 (define Hx_args ,(cx args acc)
   __Cont_get__ ,(return)
   __is_null__ args ,(test__) __if__ test__ (,() return acc) ,()
@@ -777,16 +1034,31 @@
     "const $ascii = (s) => { $str(s); for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) $no(); return s; };"
     "const $opt = (x) => x === undefined || typeof x === 'number' ? x : $no();"
     "const $int = (k) => /^(0|[1-9][0-9]*)$/.test(k);"
-    "const $isObj = (o) => typeof o === 'object' && o !== null && Object.getPrototypeOf(o) === null;"
+    "const $protos = new Set(), $classes = new Map();"
+    ;; $K：ホストのオブジェクトとインスタンスの印（オブジェクトの自分の、クラスならプロトタイプの、記号のキー。Object.keys には出ない）
+    "const $K = Symbol('conjs');"
+    "const $isObj = (o) => typeof o === 'object' && o !== null && o[$K] === true;"
+    "const $plain = () => { const o = Object.create(null); o[$K] = true; return o; };"
+    "const $own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);"
+    "const $nom = function () { $no(); };"
     "const $S = (x) => typeof x === 'string' ? x : typeof x === 'boolean' ? String(x) : x === undefined ? 'undefined' : typeof x === 'number' && Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21 ? String(x) : $no();"
     "const $len = (s) => { if (Array.isArray(s)) return s.length; $str(s); let n = 0; for (const c of s) n++; return n; };"
-    "const $idx = (s, i) => { if (Array.isArray(s)) { if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; } if ($isObj(s)) { $str(i); return s[i]; } $ascii(s); if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; };"
-    "const $get = (o, k) => { if ($isObj(o)) { $str(k); return o[k]; } if (Array.isArray(o)) { if (!Number.isInteger(k) || k < 0) $no(); return k < o.length ? o[k] : undefined; } return $no(); };"
+    "const $member = (o, k) => { $str(k); if ($own(o, k)) return o[k]; if (k in o) $no(); return undefined; };"
+    ;; .名前 を読む（名前は文字列のリテラル）
+    "const $getn = (o, k) => { if (typeof o === 'object' && o !== null && o[$K] === true) { if (Object.hasOwn(o, k)) return o[k]; if (k in o) $no(); return undefined; } return $get(o, k); };"
+    ;; o.k(...) の関数（自分のプロパティの関数か、クラスのメソッド。呼ぶ側が .call(o, ...) で呼ぶ）
+    ;; .名前 に書く（名前は整数のようでない文字列のリテラル）
+    "const $putn = (o, k, v) => { if (typeof o === 'object' && o !== null && o[$K] === true) { o[k] = v; return v; } return $put(o, k, v); };"
+    "const $mc = (o, k) => { if (typeof o === 'object' && o !== null && o[$K] === true) { const f = o[k]; if (typeof f === 'function' && (Object.hasOwn(o, k) || f !== $nom)) return f; } return $no(); };"
+    "const $idx = (s, i) => { if (Array.isArray(s)) { if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; } if ($isObj(s)) return $member(s, i); $ascii(s); if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; };"
+    "const $get = (o, k) => { if ($isObj(o)) return $member(o, k); if (Array.isArray(o)) { if (!Number.isInteger(k) || k < 0) $no(); return k < o.length ? o[k] : undefined; } return $no(); };"
+    "const $mcall = (o, k, ...a) => { if (!$isObj(o)) $no(); if ($own(o, k)) return $call(o[k], ...a); if (k in o) return o[k].call(o, ...a); return $no(); };"
     "const $put = (o, k, v) => { if ($isObj(o)) { if ($int($str(k))) $no(); o[k] = v; return v; } if (Array.isArray(o)) { if (!Number.isInteger(k) || k < 0 || k > o.length) $no(); o[k] = v; return v; } return $no(); };"
-    "const $o = (kv) => { const o = Object.create(null); for (let i = 0; i < kv.length; i += 2) { if ($int(kv[i])) $no(); o[kv[i]] = kv[i + 1]; } return o; };"
+    "const $o = (kv) => { const o = $plain(); for (let i = 0; i < kv.length; i += 2) { if ($int(kv[i])) $no(); o[kv[i]] = kv[i + 1]; } return o; };"
     "const $call = (f, ...a) => typeof f === 'function' ? f(...a) : $no();"
     "const $fn = (f) => typeof f === 'function' ? f : $no();"
     "const $iter = (a) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : $no();"
+    "const $arr = (a) => Array.isArray(a) ? a : $no();"
     "const $keys = (o) => $isObj(o) ? Object.keys(o) : $no();"
     "const $text = (x) => x === null ? 'null' : $S(x);"
     "let $out = [];"
@@ -815,7 +1087,7 @@
     "  replaceAll: (s, p, r) => $ascii(s).replaceAll($ascii(p), $ascii(r).includes('$') ? $no() : r),"
     "  split: (s, sep, ...more) => { if (more.length > 0) $no(); return $ascii(s).split($ascii(sep)); },"
     "};"
-    "const $m = (name) => (r, ...a) => { const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : $no(); const f = t[name] || $no(); return f(r, ...a); };"
+    "const $m = (name) => (r, ...a) => { const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : null; if (t === null) return $mcall(r, name, ...a); const f = t[name] || $no(); return f(r, ...a); };"
     "const $m_charAt = $m('charAt'), $m_at = $m('at'), $m_indexOf = $m('indexOf'), $m_includes = $m('includes'), $m_startsWith = $m('startsWith'), $m_endsWith = $m('endsWith'), $m_slice = $m('slice'), $m_trim = $m('trim'), $m_toUpperCase = $m('toUpperCase'), $m_toLowerCase = $m('toLowerCase'), $m_repeat = $m('repeat'), $m_replace = $m('replace'), $m_replaceAll = $m('replaceAll'), $m_split = $m('split');"
     "const $m_push = $m('push'), $m_pop = $m('pop'), $m_join = $m('join'), $m_map = $m('map'), $m_filter = $m('filter'), $m_forEach = $m('forEach'), $m_some = $m('some'), $m_every = $m('every'), $m_find = $m('find'), $m_findIndex = $m('findIndex'), $m_reduce = $m('reduce'), $m_concat = $m('concat'), $m_reverse = $m('reverse'), $m_sort = $m('sort');"
     ;; VM の値の写しと JavaScript の値
@@ -833,8 +1105,9 @@
     "    for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); }"
     "    $back.set(a, { m: v, snap: a.slice() }); return a;"
     "  }"
-    "  if (v.t === 'object' && !('cls' in v)) {"
-    "    const o = Object.create(null); $memo.set(v, o);"
+    "  const proto = v.t !== 'object' ? undefined : !('cls' in v) ? null : $classes.get(v.cls.name);"
+    "  if (proto !== undefined && !(proto !== null && 'builtin' in v.cls)) {"
+    "    const o = proto === null ? $plain() : Object.create(proto); $memo.set(v, o);"
     "    const names = (v.keys.value || []).slice().reverse(); const own = Object.keys(v.props);"
     "    if (names.length !== own.length) $no();"
     "    for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); }"
@@ -856,9 +1129,12 @@
     "};"
     "const $sync = () => { for (const [x, b] of [...$back]) { if (b.snap === null) continue; if (Array.isArray(x)) { if (x.length !== b.snap.length || x.some((v, i) => v !== b.snap[i])) $fillArray(b.m, x); } else { const now = Object.entries(x); if (now.length !== b.snap.length || now.some(([k, v], i) => k !== b.snap[i][0] || v !== b.snap[i][1])) $fillObject(b.m, x); } } };"
     ;; ホストの関数の入口：引数を JavaScript の値にして呼び、値と console.log の行を返す。どの例外も rt.Escape にする
-    "const $run = (f) => (ids, ...args) => {"
+    "const $run = (f) => (ids, ...args) => $enter(ids, () => f(...args.map($in)));"
+    ;; メソッド：Conjs_hostfn_method が、this を引数の前に渡す
+    "const $runm = (P, k) => (ids, self, ...args) => $enter(ids, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); });"
+    "const $enter = (ids, body) => {"
     "  $ids = ids; $nullRef = null; $memo.clear(); $back.clear(); $out = [];"
-    "  try { const r = f(...args.map($in)); const v = $outv(r); $sync(); return { v: v, out: $out }; }"
+    "  try { const r = body(); const v = $outv(r); $sync(); return { v: v, out: $out }; }"
     "  catch (e) { throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e)); }"
     "  finally { $memo.clear(); $back.clear(); }"
     "};"

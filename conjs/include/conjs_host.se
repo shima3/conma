@@ -34,11 +34,19 @@
   __NULL__ (,(args) Conjs_hostfn_call G H name f args))
 
 (define Conjs_hostfn_call ,(G H name f args)
+  Conjs_hostfn_call_with G H name f args args)
+
+;; メソッド name（"クラス.メソッド"）の、引数の LList を受け取る Closure：ホストに this（self）を引数の前に渡す（段階 H4a）
+(define Conjs_hostfn_method ,(G H name self f)
+  __NULL__ (,(args) __LList_cons__ self args ,(hargs) Conjs_hostfn_call_with G H name f args hargs))
+
+;; ConMa 版には args を、ホストの版には hargs を渡す
+(define Conjs_hostfn_call_with ,(G H name f args hargs)
   __Cont_get__ ,(return)
   __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
-  Conjs_hostfn_values args ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
+  Conjs_hostfn_values hargs ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
   __Dict_lookup_or__ G "" __print_exit_error__ ,(ids)
-  __LList_cons__ ids args ,(hargs)
+  __LList_cons__ ids hargs ,(hargs)
   __JS_fn_call__ (,(e) f args ,(v) return v) H name hargs ,(status r)
   __String_equal__ status "ok" ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
   Conjs_hostfn_report name ,()
