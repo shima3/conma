@@ -36,7 +36,7 @@
   ;; ConJS のホストの関数（docs/dev/CONJS-HOST-PLAN.md の段階 H3a。sjs_host.se。conjs/conjsc.se だけが include する）：
   ;; ホストの JavaScript の文と、ホストの関数の fn の印
   Sjs_is_conjs ,(conjsHost)
-  __if_then_else__ conjsHost (,() Host_prepare program) (,() __NULL__ "") ,(hostJs)
+  __if_then_else__ conjsHost (,() Host_prepare program file) (,() __NULL__ "") ,(hostJs)
   Gen_state program ,(g)
   Kit_code_quote file ,(fq)
   __Dict_put__ g "file" fq ,()

@@ -32,10 +32,15 @@
 ;; プログラムの JavaScript（ホストの関数がなければ ""）。ホストの関数の fn の節に "host" を付ける。数の関数（"wasm" の印。
 ;; Wasm_prepare の後に呼ぶ）もホストの版を作り、"hostAlso" を付ける：wasm 版が先で、引数が数でなく wasm 版が動かないとき
 ;; （文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）、ConMa 版の前にホストの版を試す
-(define Host_prepare ,(program)
+(define Host_prepare ,(program file)
   Kit_parse_get program "body" ,(stmts)
   Wx_env stmts ,(E)
   __Dict_new__ ,(H)
+  __Dict_put__ H "#file" file ,()
+  __Dict_new__ ,(posIndex)
+  __Dict_put__ H "#posIndex" posIndex ,()
+  __Ref_new__ __NULL__ ,(posList)
+  __Dict_put__ H "#posList" posList ,()
   __Ref_new__ __NULL__ ,(order)
   Hx_candidates E H order stmts ,()
   ;; クラス（段階 H4a）：一番外の class 宣言のメソッドも、名前 "クラス.メソッド" で候補にする
@@ -165,6 +170,16 @@
   __Dict_put__ H iname ii ,()
   Hx_push order iname ,()
   __not__ noCtor)
+
+;; 文字列の LList の JavaScript の配列の中身
+(define Hx_json_list ,(list acc)
+  __Cont_get__ ,(return)
+  __is_null__ list ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ list ,(x rest)
+  Sjs_json_string x ,(q)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ q) (,() Kit_code_cat3 acc ", " q) ,(acc)
+  Hx_json_list rest acc)
 
 (define Hx_push ,(order name)
   __Ref_get__ order ,(o)
@@ -316,6 +331,12 @@
   ;; new を使う関数があれば、ホストの関数は、値の番号の Ref の次に、クラスの記録の表を受け取る（Conjs_hostfn_call_with）
   __Dict_lookup_or__ H "#new" (,(k) __NULL__ __FALSE__) ,(usesNew)
   __if_then_else__ usesNew (,() __NULL__ "const $withClasses = true;\n") (,() __NULL__ "const $withClasses = false;\n") ,(wc)
+  ;; 位置の表 $P
+  __Dict_lookup_or__ H "#posList" __print_exit_error__ ,(posRef)
+  __Ref_get__ posRef ,(prev)
+  Wx_reverse prev __NULL__ ,(ps)
+  Hx_json_list ps "" ,(pj)
+  Kit_code_cat4 wc "const $P = [" pj "];\n" ,(wc)
   __if_then_else__ none (,() __NULL__ "")
     (,() Hx_helpers ,(h) Kit_code_cat5 h wc cs fs "return {" ,(m) Kit_code_cat3 m table "};"))
 
@@ -523,9 +544,60 @@
   __is_null__ value ,(none)
   __if_then_else__ none (,() __NULL__ "undefined") (,() Hx_expr cx value) ,(vc)
   Sjs_json_string key ,(kq)
+  Hx_pos cx m ,(p)
   Kit_code_cat5 acc "$putn(this, " kq ", " vc ,(acc)
+  Kit_code_cat3 acc ", " p ,(acc)
   __String_concat__ acc ");" ,(acc)
   Hx_field_code cx rest acc)
+
+;; 節 node の位置の番号（$P の添字。文字列）："ファイル:行:桁"。node に位置がなければ、今の文の位置
+(define Hx_pos ,(cx node)
+  __Cont_get__ ,(return)
+  __type_name__ node ,(type)
+  __String_equal__ type "Dict" ,(isDict)
+  __if_then_else__ isDict (,() __Dict_lookup_or__ node "line" (,(k) __NULL__ __NULL__)) (,() __NULL__ __NULL__) ,(line)
+  __if_then_else__ isDict (,() __Dict_lookup_or__ node "col" (,(k) __NULL__ __NULL__)) (,() __NULL__ __NULL__) ,(col)
+  __is_null__ line ,(noLine)
+  __if_then_else__ noLine (,() __Dict_lookup_or__ cx "line" (,(k) __NULL__ "0")) (,() __NULL__ line) ,(line)
+  __if_then_else__ noLine (,() __Dict_lookup_or__ cx "col" (,(k) __NULL__ "0")) (,() __NULL__ col) ,(col)
+  __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
+  __Dict_lookup_or__ H "#file" (,(k) __NULL__ "") ,(file)
+  Kit_code_cat5 file ":" line ":" col ,(text)
+  __Dict_lookup_or__ H "#posIndex" __print_exit_error__ ,(index)
+  __Dict_lookup_or__ index text (,(k) __NULL__ __NULL__) ,(known)
+  __is_null__ known ,(test__) __unless__ test__ (,() return known) ,()
+  __Dict_lookup_or__ H "#posList" __print_exit_error__ ,(listRef)
+  __Ref_get__ listRef ,(list)
+  Wx_num "0" ,(zero)
+  Wx_length list zero ,(n)
+  Wx_str n ,(ns)
+  __Dict_put__ index text ns ,()
+  __LList_cons__ text list ,(list)
+  __Ref_set__ listRef list ,()
+  __NULL__ ns)
+
+;; 2 項の演算子の補助の関数の名前（$add など）。なければ ""
+(define Hx_op_helper ,(op)
+  __Cont_get__ ,(return)
+  __String_equal__ op "+" ,(test__) __if__ test__ (,() return "$add") ,()
+  __String_equal__ op "-" ,(test__) __if__ test__ (,() return "$sub") ,()
+  __String_equal__ op "*" ,(test__) __if__ test__ (,() return "$mul") ,()
+  __String_equal__ op "/" ,(test__) __if__ test__ (,() return "$div") ,()
+  __String_equal__ op "%" ,(test__) __if__ test__ (,() return "$mod") ,()
+  __String_equal__ op "<" ,(test__) __if__ test__ (,() return "$lt") ,()
+  __String_equal__ op "<=" ,(test__) __if__ test__ (,() return "$le") ,()
+  __String_equal__ op ">" ,(test__) __if__ test__ (,() return "$gt") ,()
+  __String_equal__ op ">=" ,(test__) __if__ test__ (,() return "$ge") ,()
+  __NULL__ "")
+
+;; $add(a, b, p) などの呼び出し
+(define Hx_op_call ,(cx op a b node)
+  Hx_op_helper op ,(f)
+  __String_equal__ f "" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  Hx_pos cx node ,(p)
+  Kit_code_cat5 f "(" a ", " b ,(c)
+  Kit_code_cat3 c ", " p ,(c)
+  __String_concat__ c ")")
 
 (define Hx_fail ,(cx)
   __Dict_lookup_or__ cx "fail" __print_exit_error__ ,(fail)
@@ -633,6 +705,9 @@
 (define Hx_stmt ,(cx s)
   __Cont_get__ ,(return)
   __is_null__ s ,(test__) __if__ test__ (,() return ";") ,()
+  __Dict_lookup_or__ s "line" (,(k) __NULL__ __NULL__) ,(sline)
+  __is_null__ sline ,(test__) __unless__ test__
+    (,() __Dict_put__ cx "line" sline ,() __Dict_lookup_or__ s "col" (,(k) __NULL__ "0") ,(scol) __Dict_put__ cx "col" scol) ,()
   Wx_t s ,(t)
   __String_equal__ t "empty" ,(test__) __if__ test__ (,() return ";") ,()
   __String_equal__ t "block" ,(test__) __if__ test__
@@ -705,18 +780,23 @@
       __if__ isPat
         (,()
           Hx_pattern_code pnames ,(pc)
-          Kit_code_cat5 "for (const $e of $iter(" rc ")) { " kind " " ,(c)
+          Hx_pos cx s ,(p)
+          Kit_code_cat4 "for (const $e of $iter(" rc ", " p ,(c)
+          Kit_code_cat3 c ")) { " kind ,(c)
+          __String_concat__ c " " ,(c)
           Kit_code_cat5 c pc " = $arr($e); " bc " }" ,(c)
           return c) ,()
       Kit_parse_get target "name" ,(nm)
+      Hx_pos cx s ,(p)
       Kit_code_cat5 "for (" kind " v_" nm " of $iter(" ,(c)
-      Kit_code_cat4 c rc ")) " bc ,(c)
+      Kit_code_cat5 c rc ", " p ")) " ,(c)
+      __String_concat__ c bc ,(c)
       return c) ,()
   ;; throw と try（段階 H4b）：投げる値を $Thrown に包む。catch は $Thrown だけを受け、ほかの例外（rt.Escape、JavaScript の
   ;; エラー）は、そのまま外へ出す（ホストの版をやめる）。finally に return、break、continue があれば、それが rt.Escape を
   ;; 止めてしまうので、扱わない
   __String_equal__ t "throw" ,(test__) __if__ test__
-    (,() Kit_parse_get s "value" ,(v) Hx_expr cx v ,(vc) Kit_code_cat3 "throw new $Thrown(" vc ");" ,(c) return c) ,()
+    (,() Kit_parse_get s "value" ,(v) Hx_expr cx v ,(vc) Hx_pos cx s ,(p) Kit_code_cat5 "throw new $Thrown(" vc ", " p ", false);" ,(c) return c) ,()
   __String_equal__ t "try" ,(test__) __if__ test__
     (,()
       Kit_parse_get s "body" ,(body)
@@ -816,9 +896,8 @@
       __Number_subtract__ len one ,(m)
       Wx_num "0" ,(zero)
       __String_substring__ __print_exit_error__ op zero m ,(bop)
-      Kit_code_cat5 l " = ($n(" l ") " bop ,(c)
-      Kit_code_cat3 c " $n(" vc ,(c)
-      __String_concat__ c "))" ,(c)
+      Hx_op_call cx bop l vc e ,(oc)
+      Kit_code_cat3 l " = " oc ,(c)
       return c) ,()
   __String_equal__ t "update" ,(test__) __if__ test__
     (,()
@@ -828,8 +907,11 @@
       Hx_local cx target ,(l)
       Kit_parse_get e "op" ,(op)
       __String_equal__ op "++" ,(inc)
-      __if_then_else__ inc (,() __NULL__ " + 1") (,() __NULL__ " - 1") ,(d)
-      Kit_code_cat5 l " = $n(" l ")" d ,(c)
+      __if_then_else__ inc (,() __NULL__ "1") (,() __NULL__ "-1") ,(d)
+      Hx_pos cx e ,(p)
+      Kit_code_cat5 l " = $step(" l ", " d ,(c)
+      Kit_code_cat3 c ", " p ,(c)
+      __String_concat__ c ")" ,(c)
       return c) ,()
   Hx_expr cx e)
 
@@ -846,24 +928,27 @@
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key0)
   __is_null__ key0 ,(named0)
   __if_then_else__ named0 (,() __NULL__ "$putn(" "$getn(") (,() __NULL__ "$put(" "$get(") ,(putf getf)
+  Hx_pos cx target ,(p)
+  Kit_code_cat3 ", " p ")" ,(pend)
   Wx_t e ,(t)
   __String_equal__ t "update" ,(isUpdate)
   __if_then_else__ isUpdate (,() __NULL__ "update") (,() Kit_parse_get e "op") ,(op)
   __String_equal__ op "=" ,(test__) __if__ test__
-    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc ")" ,(c) return c) ,()
+    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc pend ,(c) return c) ,()
   ;; 複合の代入と ++、--：オブジェクトと添字は、名前かリテラル
   Hx_simple object ,(so)
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(named)
   __if_then_else__ named (,() __NULL__ __TRUE__) (,() Hx_simple key) ,(sk)
   __and__ so sk ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  Kit_code_cat5 getf oc ", " kc ")" ,(cur)
+  Kit_code_cat4 getf oc ", " kc ,(cur)
+  __String_concat__ cur pend ,(cur)
   __if_then_else__ isUpdate
     (,()
       Kit_parse_get e "op" ,(uop)
       __String_equal__ uop "++" ,(inc)
       __if_then_else__ inc (,() __NULL__ "1") (,() __NULL__ "-1") ,(d)
-      Kit_code_cat5 "($n(" cur ") + " d ")")
+      Kit_code_cat5 "$step(" cur ", " d pend)
     (,()
       Kit_lex_in_words op "+= -= *= /= %=" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       __String_length__ op ,(len)
@@ -873,10 +958,9 @@
       __String_substring__ __print_exit_error__ op zero m ,(bop)
       Kit_parse_get e "value" ,(value)
       Hx_expr cx value ,(vc)
-      Kit_code_cat5 "($n(" cur ") " bop " $n(" ,(x)
-      Kit_code_cat3 x vc "))") ,(nv)
+      Hx_op_call cx bop cur vc e) ,(nv)
   Kit_code_cat5 putf oc ", " kc ", " ,(c)
-  Kit_code_cat3 c nv ")")
+  Kit_code_cat3 c nv pend)
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
@@ -960,8 +1044,9 @@
       Kit_parse_get e "arg" ,(arg)
       Hx_expr cx arg ,(ac)
       __String_equal__ op "!" ,(test__) __if__ test__ (,() Kit_code_cat3 "(!" ac ")" ,(c) return c) ,()
-      __String_equal__ op "-" ,(test__) __if__ test__ (,() Kit_code_cat3 "(-$n(" ac "))" ,(c) return c) ,()
-      __String_equal__ op "+" ,(test__) __if__ test__ (,() Kit_code_cat3 "$n(" ac ")" ,(c) return c) ,()
+      Hx_pos cx e ,(p)
+      __String_equal__ op "-" ,(test__) __if__ test__ (,() Kit_code_cat5 "$neg(" ac ", " p ")" ,(c) return c) ,()
+      __String_equal__ op "+" ,(test__) __if__ test__ (,() Kit_code_cat5 "$pos(" ac ", " p ")" ,(c) return c) ,()
       Hx_fail cx) ,()
   __String_equal__ t "cond" ,(test__) __if__ test__
     (,()
@@ -993,11 +1078,13 @@
       Hx_expr cx object ,(oc)
       __Dict_lookup_or__ e "key" (,(k) __NULL__ __NULL__) ,(key)
       __is_null__ key ,(test__) __unless__ test__
-        (,() Hx_expr cx key ,(kc) Kit_code_cat5 "$idx(" oc ", " kc ")" ,(c) return c) ,()
+        (,() Hx_expr cx key ,(kc) Hx_pos cx e ,(p) Kit_code_cat5 "$idx(" oc ", " kc ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
       Kit_parse_get e "name" ,(name)
-      __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat3 "$len(" oc ")" ,(c) return c) ,()
+      Hx_pos cx e ,(p)
+      __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
       Sjs_json_string name ,(q)
-      Kit_code_cat5 "$getn(" oc ", " q ")" ,(c)
+      Kit_code_cat5 "$getn(" oc ", " q ", " ,(c)
+      Kit_code_cat3 c p ")" ,(c)
       return c) ,()
   __String_equal__ t "array" ,(test__) __if__ test__
     (,()
@@ -1111,7 +1198,9 @@
   __is_null__ exprs ,(test__) __if__ test__ (,() return acc) ,()
   __LList_uncons__ __print_exit_error__ exprs ,(x xs)
   Hx_expr cx x ,(xc)
-  Kit_code_cat4 acc " + $S(" xc ") + " ,(acc)
+  Hx_pos cx x ,(p)
+  Kit_code_cat5 acc " + $S(" xc ", " p ,(acc)
+  __String_concat__ acc ") + " ,(acc)
   Hx_template cx rest xs acc)
 
 (define Hx_id ,(cx e)
@@ -1167,14 +1256,15 @@
       Kit_parse_get right "name" ,(cname)
       Hx_class_name cx cname ,(ok)
       __unless__ ok (,() Hx_fail cx) ,()
-      Kit_code_cat5 "$instof(" lc ", P_" cname ")" ,(c)
+      Hx_pos cx e ,(p)
+      Sjs_json_string cname ,(cq)
+      Kit_code_cat5 "$instof(" lc ", P_" cname ", " ,(c)
+      Kit_code_cat5 c cq ", " p ")" ,(c)
       return c) ,()
   Kit_lex_in_words op "&& || === !==" ,(test__) __if__ test__
     (,() Kit_code_cat5 "(" lc " " op " " ,(c) Kit_code_cat3 c rc ")" ,(c) return c) ,()
   Kit_lex_in_words op "+ - * / % < > <= >=" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  Kit_code_cat5 "($n(" lc ") " op " $n(" ,(c)
-  Kit_code_cat3 c rc "))" ,(c)
-  __NULL__ c)
+  Hx_op_call cx op lc rc e)
 
 ;; 呼び出し：ほかのホストの関数（名前で）か、文字列のメソッド
 (define Hx_call ,(cx e)
@@ -1196,7 +1286,10 @@
       ;; console.log と Object.keys（console と Object が一番外で宣言されず、代入されないとき）
       Hx_builtin cx object "console" ,(isConsole)
       __String_equal__ name "log" ,(isLog)
-      __and__ isConsole isLog ,(test__) __if__ test__ (,() Kit_code_cat3 "$log(" ac ")" ,(c) return c) ,()
+      Hx_pos cx e ,(p)
+      __String_equal__ ac "" ,(noArgs0)
+      __if_then_else__ noArgs0 (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest0)
+      __and__ isConsole isLog ,(test__) __if__ test__ (,() Kit_code_cat4 "$log(" p rest0 ")" ,(c) return c) ,()
       Hx_builtin cx object "Math" ,(isMath0)
       __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
       __Dict_lookup_or__ E "math" __print_exit_error__ ,(mathOk)
@@ -1219,14 +1312,16 @@
           ;; 受け手が名前か this なら、$mc で関数を確かめて .call で呼ぶ（引数を配列にしないので速い）
           Hx_simple object ,(simple)
           __if__ simple
-            (,() Kit_code_cat5 "$mc(" oc ", " nq ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
-          Kit_code_cat5 "$mcall(" oc ", " nq rest ,(c)
+            (,() Kit_code_cat5 "$mc(" oc ", " nq ", " ,(c) Kit_code_cat3 c p ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
+          Kit_code_cat5 "$mcall(" oc ", " nq ", " ,(c)
+          Kit_code_cat3 c p rest ,(c)
           __String_concat__ c ")" ,(c)
           return c) ,()
       Hx_expr cx object ,(oc)
       __String_equal__ ac "" ,(noArgs)
       __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
-      Kit_code_cat5 "$m_" name "(" oc rest ,(c)
+      Kit_code_cat5 "$m_" name "(" p ", " ,(c)
+      Kit_code_cat3 c oc rest ,(c)
       __String_concat__ c ")" ,(c)
       return c) ,()
   __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
@@ -1235,7 +1330,7 @@
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
   __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__
     (,() __String_equal__ ac "" ,(noArgs) __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
-        Kit_code_cat4 "$call(v_" nm rest ")" ,(c) return c) ,()
+        Hx_pos cx e ,(p) Kit_code_cat5 "$call(v_" nm ", " p rest ,(c) __String_concat__ c ")" ,(c) return c) ,()
   __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
   __Dict_lookup_or__ H nm (,(k) __NULL__ __NULL__) ,(info)
   __is_null__ info ,(test__) __if__ test__ (,() Hx_fail cx) ,()
@@ -1289,64 +1384,89 @@
   Kit_code_cat3 acc sep c ,(acc)
   Hx_args cx rest acc)
 
-;; 補助の関数。どれも、ConJS と同じになると確かめられないときは rt.Escape を投げる（呼んだ Conjs_hostfn が ConMa 版に替える）。
+;; 補助の関数。ConJS と同じになると確かめられない所では、呼び返しの前なら rt.Escape を投げ（呼んだ Conjs_hostfn が ConMa 版を始めから
+;; 動かす）、呼び返しの後なら、その 1 つの演算を VM に頼む（$slow、$vm。段階 H4c）。呼び返しの後は、ConMa 版でやり直すと、呼び返した
+;; 関数のしたことが 2 度起きるため。VM に頼めない所（$no）は、呼び返しの後なら、プログラムを止める（$Fatal）。
 ;; 値の受け渡し（段階 H3b）：__JS_fn_call__ が渡す VM の値の写し（rt.dict のオブジェクトと rt.VmRef。vm/wasm/conma.js）を、$in が
 ;; JavaScript の値にする（SJS の配列は配列、オブジェクトはプロトタイプのないオブジェクト、null の Ref は null、ほかの Dict は
 ;; $Opaque。同じものは同じ値）。終わったら、$outv が返す値を、$sync が変わった配列とオブジェクトを、VM の形に戻す（新しい配列と
-;; オブジェクトの "id" は、Conjs_hostfn が最初の引数に渡す、値の番号を数える Ref で数える。sjs_rt.se の Sjs_new_id と同じ）
+;; オブジェクトの "id" は、Conjs_hostfn が最初の引数に渡す、値の番号を数える Ref で数える。sjs_rt.se の Sjs_new_id と同じ）。
+;; VM に頼むときは、前に $sync でホストの変更を写しに書き、後で $refresh で VM の変更を JavaScript の値に読み直す。
+;; $P は、演算の位置（"ファイル:行:桁"）の表で、変換器が作る（Hx_pos）。p はその番号
 (define Hx_helpers ,()
   __String_join_lines__
     "'use strict';"
-    "const $no = () => { throw new rt.Escape('not on the host'); };"
+    "class $Fatal extends Error {}"
+    "let $committed = false, $tramp = null;"
+    "const $no = () => { throw $committed ? new $Fatal('not on the host after a call back') : new rt.Escape('not on the host'); };"
+    "const $slow = (p, op, ...a) => $committed ? $vm(op, p, ...a) : $no();"
     "const $n = (x) => typeof x === 'number' ? x : $no();"
     "const $str = (s) => typeof s === 'string' ? s : $no();"
-    "const $ascii = (s) => { $str(s); for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) $no(); return s; };"
+    "const $isAscii = (s) => { for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) return false; return true; };"
+    "const $ascii = (s) => typeof s === 'string' && $isAscii(s) ? s : $no();"
     "const $opt = (x) => x === undefined || typeof x === 'number' ? x : $no();"
     "const $int = (k) => /^(0|[1-9][0-9]*)$/.test(k);"
+    ;; 算術と比べること：数どうしはその場で、ほかは VM（Sjs_add など。ConJS の TypeError も）
+    "const $add = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a + b : $slow(p, 'add', a, b);"
+    "const $sub = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a - b : $slow(p, 'sub', a, b);"
+    "const $mul = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a * b : $slow(p, 'mul', a, b);"
+    "const $div = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a / b : $slow(p, 'div', a, b);"
+    "const $mod = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a % b : $slow(p, 'mod', a, b);"
+    "const $lt = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a < b : $slow(p, 'lt', a, b);"
+    "const $le = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a <= b : $slow(p, 'le', a, b);"
+    "const $gt = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a > b : $slow(p, 'gt', a, b);"
+    "const $ge = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? a >= b : $slow(p, 'ge', a, b);"
+    "const $neg = (a, p) => typeof a === 'number' ? -a : $slow(p, 'neg', a);"
+    "const $pos = (a, p) => typeof a === 'number' ? a : $slow(p, 'pos', a);"
+    "const $step = (a, d, p) => typeof a === 'number' ? a + d : $slow(p, 'step', a, d);"
     "const $protos = new Set(), $classes = new Map();"
     ;; $K：ホストのオブジェクトとインスタンスの印（オブジェクトの自分の、クラスならプロトタイプの、記号のキー。Object.keys には出ない）
     "const $K = Symbol('conjs'), $N = Symbol('class');"
-    "class $Thrown { constructor(v) { this.v = v; } }"
+    ;; throw した値。p は throw の位置（呼び返しの後、外へ出たとき、VM がそこで投げ直す）。vm は VM から来た例外（位置を持つ）
+    "class $Thrown { constructor(v, p, vm) { this.v = v; this.p = p; this.vm = vm; } }"
     "let $clsR = null;"
     "const $new = (name, I, a) => { const o = Object.create($classes.get(name)); const r = I(o, a); return (typeof r === 'object' && r !== null) || typeof r === 'function' ? r : o; };"
-    "const $instof = (x, P) => { if (x instanceof $Opaque) $no(); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
+    "const $instof = (x, P, name, p) => { if (x instanceof $Opaque) return $slow(p, 'instof', x, name); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
     "const $isObj = (o) => typeof o === 'object' && o !== null && o[$K] === true;"
     "const $plain = () => { const o = Object.create(null); o[$K] = true; return o; };"
     "const $own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);"
     "const $nom = function () { $no(); };"
-    "const $S = (x) => typeof x === 'string' ? x : typeof x === 'boolean' ? String(x) : x === undefined ? 'undefined' : typeof x === 'number' && Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21 ? String(x) : $no();"
-    "const $len = (s) => { if (Array.isArray(s)) return s.length; $str(s); let n = 0; for (const c of s) n++; return n; };"
-    "const $member = (o, k) => { $str(k); if ($own(o, k)) return o[k]; if (k in o) $no(); return undefined; };"
-    ;; .名前 を読む（名前は文字列のリテラル）
-    "const $getn = (o, k) => { if (typeof o === 'object' && o !== null && o[$K] === true) { if (Object.hasOwn(o, k)) return o[k]; if (k in o) $no(); return undefined; } return $get(o, k); };"
-    ;; o.k(...) の関数（自分のプロパティの関数か、クラスのメソッド。呼ぶ側が .call(o, ...) で呼ぶ）
-    ;; .名前 に書く（名前は整数のようでない文字列のリテラル）
-    "const $putn = (o, k, v) => { if (typeof o === 'object' && o !== null && o[$K] === true) { o[k] = v; return v; } return $put(o, k, v); };"
-    "const $mc = (o, k) => { if (typeof o === 'object' && o !== null && o[$K] === true) { const f = o[k]; if (typeof f === 'function' && (Object.hasOwn(o, k) || f !== $nom)) return f; } return $no(); };"
-    "const $idx = (s, i) => { if (Array.isArray(s)) { if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; } if ($isObj(s)) return $member(s, i); $ascii(s); if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; };"
-    "const $get = (o, k) => { if ($isObj(o)) return $member(o, k); if (Array.isArray(o)) { if (!Number.isInteger(k) || k < 0) $no(); return k < o.length ? o[k] : undefined; } return $no(); };"
-    "const $mcall = (o, k, ...a) => { if (!$isObj(o)) $no(); if ($own(o, k)) return $call(o[k], ...a); if (k in o) return o[k].call(o, ...a); return $no(); };"
-    "const $put = (o, k, v) => { if ($isObj(o)) { if ($int($str(k))) $no(); o[k] = v; return v; } if (Array.isArray(o)) { if (!Number.isInteger(k) || k < 0 || k > o.length) $no(); o[k] = v; return v; } return $no(); };"
     "const $o = (kv) => { const o = $plain(); for (let i = 0; i < kv.length; i += 2) { if ($int(kv[i])) $no(); o[kv[i]] = kv[i + 1]; } return o; };"
-    "const $call = (f, ...a) => typeof f === 'function' ? f(...a) : $no();"
-    "const $fn = (f) => typeof f === 'function' ? f : $no();"
-    "const $iter = (a) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : $no();"
+    "const $S = (x, p) => typeof x === 'string' ? x : typeof x === 'boolean' ? String(x) : x === undefined ? 'undefined' : typeof x === 'number' && Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21 ? String(x) : $slow(p, 'str', x);"
+    "const $len = (s, p) => { if (Array.isArray(s)) return s.length; if (typeof s !== 'string') return $slow(p, 'get', s, 'length'); let n = 0; for (const c of s) n++; return n; };"
+    ;; メンバーを読む：自分のプロパティか undefined（メソッドを値として読むのは、this を結ぶ ConJS と違うので VM）
+    "const $getn = (o, k, p) => { if (typeof o === 'object' && o !== null && o[$K] === true) { if (Object.hasOwn(o, k)) return o[k]; if (!(k in o)) return undefined; } return $get(o, k, p); };"
+    "const $get = (o, k, p) => { if ($isObj(o) && typeof k === 'string') { if ($own(o, k)) return o[k]; if (!(k in o)) return undefined; } else if (Array.isArray(o) && Number.isInteger(k) && k >= 0) return k < o.length ? o[k] : undefined; else if (typeof o === 'string' && Number.isInteger(k) && k >= 0 && $isAscii(o)) return k < o.length ? o[k] : undefined; return $slow(p, 'get', o, k); };"
+    "const $idx = $get;"
+    ;; メンバーに書く
+    "const $putn = (o, k, v, p) => { if (typeof o === 'object' && o !== null && o[$K] === true) { o[k] = v; return v; } return $put(o, k, v, p); };"
+    "const $put = (o, k, v, p) => { if ($isObj(o) && typeof k === 'string' && !$int(k)) { o[k] = v; return v; } if (Array.isArray(o) && Number.isInteger(k) && k >= 0 && k <= o.length) { o[k] = v; return v; } return $slow(p, 'set', o, k, v); };"
+    ;; o.k(...)：$mc は、呼ぶ関数（自分のプロパティの関数か、クラスのメソッド）を返し、呼ぶ側が .call(o, ...) で呼ぶ。ほかは VM で呼ぶ
+    "const $mc = (o, k, p) => { if (typeof o === 'object' && o !== null && o[$K] === true) { const f = o[k]; if (typeof f === 'function' && (Object.hasOwn(o, k) || f !== $nom)) return f; } return function (...a) { return $mcall(o, k, p, ...a); }; };"
+    "const $mcall = (o, k, p, ...a) => { if ($isObj(o)) { if ($own(o, k) && typeof o[k] === 'function') return o[k](...a); if (k in o && o[k] !== $nom) return o[k].call(o, ...a); } return $vm('callm', p, o, k, a); };"
+    "const $call = (f, p, ...a) => typeof f === 'function' ? f(...a) : $vm('call', p, f, a);"
+    ;; 配列のメソッドに渡す関数：VM の関数（$Opaque）なら、VM を呼び返す JavaScript の関数にする
+    "const $fn = (f, p) => typeof f === 'function' ? f : f instanceof $Opaque ? (...a) => $vm('call', p, f, a) : $no();"
+    ;; for...of：配列は写し、文字列はそのまま、VM の値（ジェネレータ、ファイルの readLines など）は、VM の手順（Sjs_iter_open、more、
+    ;; take、close。ConMa 版の for...of と同じ）を 1 つずつ VM に頼む。途中で抜ければ、JavaScript が return を呼ぶ（close）
+    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : a instanceof $Opaque ? $vmIter(a, p) : $no();"
+    "const $vmIter = (a, p) => { const it = $vm('iter_open', p, a); return { [Symbol.iterator]() { return this; }, next() { return $vm('iter_more', p, it) ? { value: $vm('iter_take', p, it), done: false } : { value: undefined, done: true }; }, return() { $vm('iter_close', p, it); return { value: undefined, done: true }; } }; };"
     "const $arr = (a) => Array.isArray(a) ? a : $no();"
     "const $keys = (o) => $isObj(o) ? Object.keys(o) : $no();"
-    "const $text = (x) => x === null ? 'null' : $S(x);"
+    "const $text = (x, p) => x === null ? 'null' : typeof x === 'string' ? x : $committed ? $vm('console', p, x) : $S(x, p);"
     "let $out = [];"
-    "const $log = (...a) => { $out.push(a.map($text).join(' ')); };"
-    "const $join = (a, sep) => a.map((x) => x === undefined || x === null ? '' : $S(x)).join(sep === undefined ? ',' : $str(sep));"
+    "const $log = (p, ...a) => { $out.push(a.map((x) => $text(x, p)).join(' ')); };"
+    "const $join = (a, sep, p) => a.map((x) => x === undefined || x === null ? '' : $S(x, p)).join(sep === undefined ? ',' : $str(sep));"
     ;; 併合ソート：sjs_rt.se の Sjs_msort と同じ手順（同じ順で比べる関数を呼ぶ）。undefined は後ろ
     "const $msort = (l, after) => { if (l.length < 2) return l; const h = Math.floor(l.length / 2); const a = $msort(l.slice(0, h), after), b = $msort(l.slice(h), after); const r = []; let i = 0, j = 0; while (i < a.length && j < b.length) { if (after(a[i], b[j])) r.push(b[j++]); else r.push(a[i++]); } while (i < a.length) r.push(a[i++]); while (j < b.length) r.push(b[j++]); return r; };"
-    "const $sort = (a, f) => { $fn(f); const vals = a.filter((x) => x !== undefined), undefs = a.filter((x) => x === undefined); const s = $msort(vals, (x, y) => $n(f(x, y)) > 0).concat(undefs); for (let i = 0; i < s.length; i++) a[i] = s[i]; return a; };"
+    "const $sort = (a, f) => { if (typeof f !== 'function') $no(); const vals = a.filter((x) => x !== undefined), undefs = a.filter((x) => x === undefined); const s = $msort(vals, (x, y) => $n(f(x, y)) > 0).concat(undefs); for (let i = 0; i < s.length; i++) a[i] = s[i]; return a; };"
     "const $A = {"
-    "  push: (a, ...x) => a.push(...x), pop: (a) => a.pop(), join: $join,"
+    "  push: (a, ...x) => a.push(...x), pop: (a) => a.pop(), join: (a, sep) => $join(a, sep, $p0),"
     "  slice: (a, s, e) => a.slice($opt(s), $opt(e)), at: (a, i) => a.at($opt(i)),"
     "  indexOf: (a, x) => a.indexOf(x), includes: (a, x) => a.includes(x),"
-    "  map: (a, f) => a.map($fn(f)), filter: (a, f) => a.filter($fn(f)), forEach: (a, f) => { a.forEach($fn(f)); },"
-    "  some: (a, f) => a.some($fn(f)), every: (a, f) => a.every($fn(f)), find: (a, f) => a.find($fn(f)), findIndex: (a, f) => a.findIndex($fn(f)),"
-    "  reduce: (a, f, ...init) => { if (init.length !== 1) $no(); return a.reduce($fn(f), init[0]); },"
+    "  map: (a, f) => a.map(f), filter: (a, f) => a.filter(f), forEach: (a, f) => { a.forEach(f); },"
+    "  some: (a, f) => a.some(f), every: (a, f) => a.every(f), find: (a, f) => a.find(f), findIndex: (a, f) => a.findIndex(f),"
+    "  reduce: (a, f, ...init) => { if (init.length !== 1) $no(); return a.reduce(f, init[0]); },"
     "  concat: (a, ...x) => { for (const y of x) if (!Array.isArray(y)) $no(); return a.concat(...x); },"
     "  reverse: (a) => a.reverse(), sort: (a, f) => $sort(a, f),"
     "};"
@@ -1360,30 +1480,39 @@
     "  replaceAll: (s, p, r) => $ascii(s).replaceAll($ascii(p), $ascii(r).includes('$') ? $no() : r),"
     "  split: (s, sep, ...more) => { if (more.length > 0) $no(); return $ascii(s).split($ascii(sep)); },"
     "};"
-    "const $m = (name) => (r, ...a) => { const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : null; if (t === null) return $mcall(r, name, ...a); const f = t[name] || $no(); return f(r, ...a); };"
+    ;; r.name(...a)：配列と文字列はホストで（関数の引数は $fn で JavaScript の関数にして）、確かめに通らなければ VM（Sjs_call_member）。
+    ;; ほかの値は $mcall
+    "let $p0 = null;"
+    "const $m = (name) => (p, r, ...a) => {"
+    "  const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : null;"
+    "  if (t === null) return $mcall(r, name, p, ...a);"
+    "  const f = t[name]; if (f === undefined) return $vm('method', p, r, name, a);"
+    "  const args = t === $A ? a.map((x) => typeof x === 'function' || x instanceof $Opaque ? $fn(x, p) : x) : a;"
+    "  const saved = $p0; $p0 = p;"
+    "  try { return f(r, ...args); }"
+    "  catch (e) { if (!(e instanceof rt.Escape) || !$committed || args.some((x) => typeof x === 'function')) throw e; return $vm('method', p, r, name, a); }"
+    "  finally { $p0 = saved; }"
+    "};"
     "const $m_charAt = $m('charAt'), $m_at = $m('at'), $m_indexOf = $m('indexOf'), $m_includes = $m('includes'), $m_startsWith = $m('startsWith'), $m_endsWith = $m('endsWith'), $m_slice = $m('slice'), $m_trim = $m('trim'), $m_toUpperCase = $m('toUpperCase'), $m_toLowerCase = $m('toLowerCase'), $m_repeat = $m('repeat'), $m_replace = $m('replace'), $m_replaceAll = $m('replaceAll'), $m_split = $m('split');"
     "const $m_push = $m('push'), $m_pop = $m('pop'), $m_join = $m('join'), $m_map = $m('map'), $m_filter = $m('filter'), $m_forEach = $m('forEach'), $m_some = $m('some'), $m_every = $m('every'), $m_find = $m('find'), $m_findIndex = $m('findIndex'), $m_reduce = $m('reduce'), $m_concat = $m('concat'), $m_reverse = $m('reverse'), $m_sort = $m('sort');"
     ;; VM の値の写しと JavaScript の値
     "class $Opaque { constructor(m) { this.m = m; } }"
     "let $ids = null, $nullRef = null;"
-    "const $memo = new Map(), $back = new Map();"
+    "let $memo = new Map(), $back = new Map();"
     "const $newId = () => { $ids.value = $ids.value + 1; return $ids.value; };"
+    "const $fromArray = (v, a) => { a.length = 0; const n = v.length.value; for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); } };"
+    "const $fromObject = (v, o) => { for (const k of Object.keys(o)) delete o[k]; const names = (v.keys.value || []).slice().reverse(); if (names.length !== Object.keys(v.props).length) $no(); for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); } };"
     "const $in = (v) => {"
     "  if (v === null || v === undefined || typeof v !== 'object') return v;"
     "  if (v instanceof rt.VmRef) { if ($nullRef === null) $nullRef = v; return null; }"
     "  if (Array.isArray(v) || v instanceof rt.VmHandle) $no();"
     "  if ($memo.has(v)) return $memo.get(v);"
     "  if (v.t === 'array' && !('holes' in v) && !('frozen' in v) && !('cls' in v)) {"
-    "    const a = []; $memo.set(v, a); const n = v.length.value;"
-    "    for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); }"
-    "    $back.set(a, { m: v, snap: a.slice() }); return a;"
+    "    const a = []; $memo.set(v, a); $fromArray(v, a); $back.set(a, { m: v, snap: a.slice() }); return a;"
     "  }"
     "  const proto = v.t !== 'object' ? undefined : !('cls' in v) ? null : $classes.get(v.cls.name);"
     "  if (proto !== undefined && !(proto !== null && 'builtin' in v.cls)) {"
-    "    const o = proto === null ? $plain() : Object.create(proto); $memo.set(v, o);"
-    "    const names = (v.keys.value || []).slice().reverse(); const own = Object.keys(v.props);"
-    "    if (names.length !== own.length) $no();"
-    "    for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); }"
+    "    const o = proto === null ? $plain() : Object.create(proto); $memo.set(v, o); $fromObject(v, o);"
     "    $back.set(o, { m: v, snap: Object.entries(o) }); return o;"
     "  }"
     "  const op = new $Opaque(v); $memo.set(v, op); return op;"
@@ -1404,16 +1533,44 @@
     "  }"
     "  return $no();"
     "};"
-    "const $sync = () => { for (const [x, b] of [...$back]) { if (b.snap === null) continue; if (Array.isArray(x)) { if (x.length !== b.snap.length || x.some((v, i) => v !== b.snap[i])) $fillArray(b.m, x); } else { const now = Object.entries(x); if (now.length !== b.snap.length || now.some(([k, v], i) => k !== b.snap[i][0] || v !== b.snap[i][1])) $fillObject(b.m, x); } } };"
-    ;; ホストの関数の入口：引数を JavaScript の値にして呼び、値と console.log の行を返す。どの例外も rt.Escape にする
-    "const $run = (f) => (ids, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; return $enter(ids, $withClasses ? rest[0] : null, () => f(...args.map($in))); };"
+    ;; ホストの配列とオブジェクトのうち、変わったものを写しに書く（後で比べるために、今の中身を覚える）
+    "const $sync = () => { for (const [x, b] of [...$back]) { if (Array.isArray(x)) { if (b.snap === null || x.length !== b.snap.length || x.some((v, i) => v !== b.snap[i])) $fillArray(b.m, x); b.snap = x.slice(); } else { const now = Object.entries(x); if (b.snap === null || now.length !== b.snap.length || now.some(([k, v], i) => k !== b.snap[i][0] || v !== b.snap[i][1])) $fillObject(b.m, x); b.snap = Object.entries(x); } } };"
+    ;; 写しを、ホストの配列とオブジェクトに読み直す（VM が変えたもの）
+    "const $refresh = () => { for (const [x, b] of [...$back]) { if (Array.isArray(x)) { $fromArray(b.m, x); b.snap = x.slice(); } else { $fromObject(b.m, x); b.snap = Object.entries(x); } } };"
+    ;; VM に op を頼む（Conjs_hostfn_vm）：ためた console.log の行を先に出させ、値を写しにして渡し、変わったものを読み直す。
+    ;; 呼び返し（call、callm）の後は、やり直せない（$committed）。VM で投げられた例外は、$Thrown にして投げる
+    "const $vm = (op, p, ...args) => {"
+    "  const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
+    "  if (!calls && !$committed) $no();"
+    "  $sync(); const margs = args.map((x) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method') && args.indexOf(x) === args.length - 1 ? x.map($outv) : $outv(x));"
+    "  const lines = $out; $out = [];"
+    "  let r;"
+    "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs); }"
+    "  catch (e) { if (e instanceof rt.Escape && (calls || $committed)) throw new $Fatal(`a call back could not finish: ${e.message}`); throw e; }"
+    "  if (calls) $committed = true;"
+    "  $refresh();"
+    "  const v = $in(r[1]);"
+    "  if (r[0] === 'threw') throw new $Thrown(v, null, true);"
+    "  return v;"
+    "};"
+    ;; ホストの関数の入口：引数を JavaScript の値にして呼び、値と console.log の行を返す。Conjs_hostfn が、値の番号の Ref、VM に頼む
+    ;; Closure、（new を使うなら）クラスの記録の表を、引数の前に渡す
+    "const $run = (f) => (ids, tramp, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; return $enter(ids, tramp, $withClasses ? rest[0] : null, () => f(...args.map($in))); };"
     ;; メソッド：Conjs_hostfn_method が、this を引数の前に渡す
-    "const $runm = (P, k) => (ids, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
-    "const $enter = (ids, cls, body) => {"
-    "  $ids = ids; $clsR = cls === undefined ? null : cls; $nullRef = null; $memo.clear(); $back.clear(); $out = [];"
-    "  try { const r = body(); const v = $outv(r); $sync(); return { v: v, out: $out }; }"
-    "  catch (e) { throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e)); }"
-    "  finally { $memo.clear(); $back.clear(); }"
+    "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
+    ;; 呼び返しの中から、またホストの関数が呼ばれることがあるので、状態は呼び出しごとに保って戻す
+    "const $enter = (ids, tramp, cls, body) => {"
+    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0];"
+    "  $ids = ids; $tramp = tramp; $clsR = cls === undefined ? null : cls; $nullRef = null; $memo = new Map(); $back = new Map(); $out = []; $committed = false; $p0 = null;"
+    "  try {"
+    "    let r, thrown = null;"
+    "    try { r = body(); } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
+    "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out }; }"
+    "    const v = $outv(r); $sync(); return { v: v, out: $out };"
+    "  } catch (e) {"
+    "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), out: $out };"
+    "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
+    "  } finally { [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = saved; }"
     "};"
     ,(h)
   __String_concat__ h "\n")
