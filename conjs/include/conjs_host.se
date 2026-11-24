@@ -9,15 +9,32 @@
 ;; 値を得た関数の名前を（関数ごとに 1 度）、標準エラーに出す（テストで、変換器の作った JavaScript を確かめるため）
 
 ;; js のモジュール。作れなければ null
-(define Conjs_hostfn_module ,(js)
+(define Conjs_hostfn_module ,(js withClasses)
   __Cont_get__ ,(return)
   __OS_get_envDict__ ,(env)
   __Dict_lookup_or__ env "CONMA_NO_HOSTJS" (,(k) __NULL__ __NULL__) ,(off)
   __is_null__ off ,(test__) __unless__ test__ (,() return __NULL__) ,()
   __Dict_lookup_or__ env "CONJS_HOST_REPORT" (,(k) __NULL__ __NULL__) ,(report)
   __is_null__ report ,(test__) __unless__ test__ (,() __Dict_new__ ,(seen) __PDict_put__ "conjs_host_seen" seen) ,()
-  __JS_fn_compile__ (,(msg) Conjs_hostfn_strict env msg ,() return __NULL__) js ,(H)
+  __JS_fn_compile__ (,(msg) Conjs_hostfn_strict env msg ,() return __NULL__) js ,(m)
+  ;; H：モジュール（"m"）と、クラスの記録の表を渡すか（"cls"。new を使うホストの関数があるとき）
+  __Dict_new__ ,(H)
+  __Dict_put__ H "m" m ,()
+  __Dict_put__ H "cls" withClasses ,()
   __NULL__ H)
+
+;; ホストで new するクラスの記録を、名前で覚える（変換器が、受け付けたクラスごとに、クラスを作ったところで呼ぶ）
+(define Conjs_hostfn_class ,(name R)
+  Conjs_hostfn_classes ,(t)
+  __Dict_put__ t name R)
+
+(define Conjs_hostfn_classes ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_classes" (,(k) __NULL__ __NULL__) ,(t)
+  __is_null__ t ,(test__) __unless__ test__ (,() return t) ,()
+  __Dict_new__ ,(t)
+  __PDict_put__ "conjs_host_classes" t ,()
+  __NULL__ t)
 
 (define Conjs_hostfn_strict ,(env msg)
   __Cont_get__ ,(return)
@@ -46,9 +63,12 @@
   __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
   Conjs_hostfn_values hargs ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
   __Dict_lookup_or__ G "" __print_exit_error__ ,(ids)
+  __Dict_lookup_or__ H "cls" __print_exit_error__ ,(withClasses)
+  __if_then_else__ withClasses (,() Conjs_hostfn_classes ,(t) __LList_cons__ t hargs) (,() __NULL__ hargs) ,(hargs)
   __LList_cons__ ids hargs ,(hargs)
-  __JS_fn_call__ (,(e) f args ,(v) return v) H name hargs ,(status r)
-  __String_equal__ status "ok" ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
+  __Dict_lookup_or__ H "m" __print_exit_error__ ,(m)
+  __JS_fn_call__ (,(e) Conjs_hostfn_escaped name e ,() f args ,(v) return v) m name hargs ,(status r)
+  __String_equal__ status "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_escaped name r ,() f args ,(v) return v) ,()
   Conjs_hostfn_report name ,()
   __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
   Conjs_hostfn_print G lines ,()
@@ -90,6 +110,19 @@
   __String_find__ __print_exit_error__ w x zero ,(at)
   __is_null__ at ,(none)
   __not__ none)
+
+;; CONJS_HOST_REPORT のとき、ホストの版で値を得られなかったわけ（rt.Escape のメッセージ）を、毎回出す
+(define Conjs_hostfn_escaped ,(name why)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_seen" (,(k) return) ,(seen)
+  __type_name__ why ,(t)
+  __String_equal__ t "String" ,(isText)
+  __if_then_else__ isText (,() __NULL__ why) (,() __NULL__ "(not a message)") ,(why)
+  __String_concat__ "conjs: escape: " name ,(line)
+  __String_concat__ line ": " ,(line)
+  __String_concat__ line why ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
 
 ;; CONJS_HOST_REPORT のとき、ホストの版で値を得た関数の名前を、関数ごとに 1 度出す
 (define Conjs_hostfn_report ,(name)

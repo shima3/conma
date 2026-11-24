@@ -113,8 +113,82 @@
   Kit_parse_get cls "members" ,(members)
   Hx_class_methods H order name members __NULL__ ,(methods)
   __Dict_put__ cinfo "methods" methods ,()
+  Hx_class_init H order name parentName members ,(hasCtor)
+  __Dict_put__ cinfo "ctor" hasCtor ,()
+  __Dict_put__ cls "hostClass" name ,()
   __LList_cons__ cinfo known ,(known)
   __Ref_set__ classes known)
+
+;; new のための候補（段階 H4b）："C:fields"（フィールドを入れる関数 F_C）、"C:ctor"（コンストラクタ C_ctor_C。書いたときだけ）、
+;; "C:init"（JavaScript を持たない、作り方の印：F_C、C_ctor_C、親の "P:init" がどれもホストに書けたときだけ ok）。
+;; コンストラクタがあるか
+(define Hx_class_init ,(H order cname parentName members)
+  Hx_class_fields members __NULL__ ,(fields)
+  Hx_class_ctor members ,(ctor)
+  __String_equal__ parentName "" ,(base)
+  __Dict_new__ ,(fi)
+  Kit_code_cat3 cname ":" "fields" ,(fname)
+  __Dict_put__ fi "name" fname ,()
+  __Dict_put__ fi "kind" "fields" ,()
+  __Dict_put__ fi "class" cname ,()
+  __Dict_put__ fi "fields" fields ,()
+  __Dict_put__ fi "ok" __FALSE__ ,()
+  __Dict_put__ H fname fi ,()
+  Hx_push order fname ,()
+  __is_null__ ctor ,(noCtor)
+  Kit_code_cat3 cname ":" "ctor" ,(cn)
+  __unless__ noCtor
+    (,()
+      __Dict_new__ ,(ci)
+      __Dict_put__ ci "name" cn ,()
+      __Dict_put__ ci "kind" "ctor" ,()
+      __Dict_put__ ci "class" cname ,()
+      __Dict_put__ ci "parent" parentName ,()
+      __Dict_put__ ci "fn" ctor ,()
+      Kit_parse_get ctor "params" ,(params)
+      Wx_param_names params __NULL__ ,(pok names)
+      __Dict_put__ ci "params" names ,()
+      __Dict_put__ ci "ok" __FALSE__ ,()
+      __Dict_put__ ci "badParams" pok ,()
+      __Dict_put__ H cn ci ,()
+      Hx_push order cn) ,()
+  ;; 作り方の印
+  __Dict_new__ ,(ii)
+  Kit_code_cat3 cname ":" "init" ,(iname)
+  __Dict_put__ ii "name" iname ,()
+  __Dict_put__ ii "kind" "pseudo" ,()
+  __LList_cons__ fname __NULL__ ,(cs)
+  __if_then_else__ noCtor (,() __NULL__ cs) (,() __LList_cons__ cn cs) ,(cs)
+  __if_then_else__ base (,() __NULL__ cs) (,() Kit_code_cat3 parentName ":" "init" ,(pi) __LList_cons__ pi cs) ,(cs)
+  __Dict_put__ ii "callees" cs ,()
+  __Dict_put__ ii "ok" __FALSE__ ,()
+  __Dict_put__ H iname ii ,()
+  Hx_push order iname ,()
+  __not__ noCtor)
+
+(define Hx_push ,(order name)
+  __Ref_get__ order ,(o)
+  __LList_cons__ name o ,(o)
+  __Ref_set__ order o)
+
+;; フィールドのメンバー（書いた順）
+(define Hx_class_fields ,(members acc)
+  __Cont_get__ ,(return)
+  __is_null__ members ,(test__) __if__ test__ (,() Wx_reverse acc __NULL__ ,(l) return l) ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  Kit_parse_get m "kind" ,(kind)
+  __String_equal__ kind "field" ,(isField)
+  __if_then_else__ isField (,() __LList_cons__ m acc) (,() __NULL__ acc) ,(acc)
+  Hx_class_fields rest acc)
+
+;; コンストラクタの function の節（なければ null）
+(define Hx_class_ctor ,(members)
+  __Cont_get__ ,(return)
+  __is_null__ members ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ members ,(m rest)
+  Kit_parse_get m "kind" ,(kind)
+  __String_equal__ kind "ctor" ,(test__) __if__ test__ (,() Kit_parse_get m "fn" ,(fn) return fn) ,()
+  Hx_class_ctor rest)
 
 (define Hx_class_known ,(known name)
   __Cont_get__ ,(return)
@@ -194,7 +268,12 @@
   __is_null__ names ,(test__) __if__ test__ return ,()
   __LList_uncons__ __print_exit_error__ names ,(nm rest)
   __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
-  Hx_func E H info ,(ok js callees)
+  __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
+  __String_equal__ kind "pseudo" ,(isPseudo)
+  __String_equal__ kind "fields" ,(isFields)
+  __if_then_else__ isPseudo
+    (,() Kit_parse_get info "callees" ,(cs) __NULL__ __TRUE__ "" cs)
+    (,() __if_then_else__ isFields (,() Hx_fields_func E H info) (,() Hx_func E H info)) ,(ok js callees)
   __Dict_put__ info "ok" ok ,()
   __Dict_put__ info "js" js ,()
   __Dict_put__ info "callees" callees ,()
@@ -234,8 +313,11 @@
   Hx_funcs H names "" "" ,(fs table)
   Hx_class_code H classes "" table ,(cs table)
   __String_equal__ table "" ,(none)
+  ;; new を使う関数があれば、ホストの関数は、値の番号の Ref の次に、クラスの記録の表を受け取る（Conjs_hostfn_call_with）
+  __Dict_lookup_or__ H "#new" (,(k) __NULL__ __FALSE__) ,(usesNew)
+  __if_then_else__ usesNew (,() __NULL__ "const $withClasses = true;\n") (,() __NULL__ "const $withClasses = false;\n") ,(wc)
   __if_then_else__ none (,() __NULL__ "")
-    (,() Hx_helpers ,(h) Kit_code_cat5 h cs fs "return {" table ,(m) __String_concat__ m "};"))
+    (,() Hx_helpers ,(h) Kit_code_cat5 h wc cs fs "return {" ,(m) Kit_code_cat3 m table "};"))
 
 ;; クラスのプロトタイプとメソッドの JavaScript、と表に足す "C.m": $runm(P_C, "m")
 (define Hx_class_code ,(H classes acc table)
@@ -254,7 +336,34 @@
   __String_concat__ acc h ,(acc)
   Kit_parse_get c "methods" ,(ms)
   Hx_method_code H cname ms acc table ,(acc table)
+  Kit_code_cat5 acc "P_" cname "[$N] = " cq ,(acc)
+  __String_concat__ acc ";\n" ,(acc)
+  Hx_init_code H cname pn base acc ,(acc)
   Hx_class_code H rest acc table)
+
+;; F_C、C_ctor_C と、作り方 I_C（o を、引数の配列 a で初めにする。conjs_class.se の Conjs_init と同じ順。返すのはコンストラクタの値）
+(define Hx_init_code ,(H cname pn base acc)
+  __Cont_get__ ,(return)
+  Kit_code_cat3 cname ":" "init" ,(iname)
+  __Dict_lookup_or__ H iname __print_exit_error__ ,(ii)
+  Kit_parse_get ii "ok" ,(ok)
+  __unless__ ok (,() return acc) ,()
+  Kit_code_cat3 cname ":" "fields" ,(fname)
+  __Dict_lookup_or__ H fname __print_exit_error__ ,(fi)
+  Kit_parse_get fi "js" ,(fjs)
+  __String_concat__ acc fjs ,(acc)
+  Kit_code_cat3 cname ":" "ctor" ,(cn)
+  __Dict_lookup_or__ H cn (,(k) __NULL__ __NULL__) ,(ci)
+  __is_null__ ci ,(noCtor)
+  __if_then_else__ noCtor (,() __NULL__ acc) (,() Kit_parse_get ci "js" ,(cjs) __String_concat__ acc cjs) ,(acc)
+  Kit_code_cat3 "return C_ctor_" cname ".call(o, ...a);" ,(callCtor)
+  __if_then_else__ base
+    (,() Kit_code_cat3 "F_" cname ".call(o); " ,(f) __if_then_else__ noCtor (,() __String_concat__ f "return null;") (,() __String_concat__ f callCtor))
+    (,() __if_then_else__ noCtor
+      (,() Kit_code_cat5 "I_" pn "(o, a); F_" cname ".call(o); return null;")
+      (,() __NULL__ callCtor)) ,(body)
+  Kit_code_cat5 acc "function I_" cname "(o, a) { " body ,(acc)
+  __String_concat__ acc " }\n")
 
 (define Hx_method_code ,(H cname ms acc table)
   __Cont_get__ ,(return)
@@ -288,7 +397,9 @@
   Kit_parse_get info "ok" ,(ok)
   __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey)
   __String_equal__ mkey "" ,(notMethod)
-  __and__ ok notMethod ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
+  __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
+  __String_equal__ kind "" ,(plainFn)
+  __and__ ok notMethod ,(x) __and__ x plainFn ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
   Kit_parse_get info "js" ,(js)
   __String_concat__ acc js ,(acc)
   Kit_parse_get info "fn" ,(fn)
@@ -325,18 +436,96 @@
   Hx_param_list params "" ,(ps)
   __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey)
   __String_equal__ mkey "" ,(notMethod)
+  __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
+  __String_equal__ kind "ctor" ,(isCtor)
   __not__ notMethod ,(isMethod)
-  __Dict_put__ cx "method" isMethod ,()
+  __or__ isMethod isCtor ,(usesThis)
+  __Dict_put__ cx "method" usesThis ,()
+  __Dict_lookup_or__ info "badParams" (,(k) __NULL__ __TRUE__) ,(pok)
+  __unless__ pok (,() Hx_fail cx) ,()
   Kit_parse_get body "body" ,(stmts)
-  Hx_stmts cx stmts "" ,(code)
+  __if_then_else__ isCtor (,() Hx_ctor_body cx info stmts) (,() Hx_stmts cx stmts "") ,(code)
   Kit_parse_get info "name" ,(name)
-  __if_then_else__ notMethod
-    (,() Kit_code_cat5 "function f_" name "(" ps ") {")
-    (,() Kit_parse_get info "class" ,(cname) Sjs_json_string mkey ,(mq) Kit_code_cat5 "P_" cname "[" mq "] = function (" ,(h) Kit_code_cat3 h ps ") {") ,(js)
-  __if_then_else__ notMethod (,() __NULL__ "}\n") (,() __NULL__ "};\n") ,(tail)
+  __if_then_else__ isCtor
+    (,() Kit_parse_get info "class" ,(cname) Kit_code_cat5 "function C_ctor_" cname "(" ps ") {")
+    (,() __if_then_else__ notMethod
+      (,() Kit_code_cat5 "function f_" name "(" ps ") {")
+      (,() Kit_parse_get info "class" ,(cname) Sjs_json_string mkey ,(mq) Kit_code_cat5 "P_" cname "[" mq "] = function (" ,(h) Kit_code_cat3 h ps ") {")) ,(js)
+  __and__ isMethod notMethod ,(never)
+  __if_then_else__ isMethod (,() __NULL__ "};\n") (,() __NULL__ "}\n") ,(tail)
   Kit_code_cat3 js code tail ,(js)
   __Ref_get__ callees ,(cs)
   __NULL__ __TRUE__ js cs)
+
+;; コンストラクタの本体。親のあるクラスは、最初の文が super(...) で、ほかに super がないものだけ：super(...) は、親の作り方 I_P と、
+;; このクラスのフィールド F_C にする（conjs_class.se の Conjs_super_call と同じ順）
+(define Hx_ctor_body ,(cx info stmts)
+  __Cont_get__ ,(return)
+  Kit_parse_get info "parent" ,(pn)
+  Kit_parse_get info "class" ,(cname)
+  __String_equal__ pn "" ,(base)
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(supers)
+  Wx_walk stmts (,(n) Wx_t n ,(t) __String_equal__ t "super" ,(s) __if__ s (,() Wx_inc supers) ,()) ,()
+  __Ref_get__ supers ,(ns)
+  __if__ base (,() __Number_is_zero__ ns ,(none) __unless__ none (,() Hx_fail cx) ,() Hx_stmts cx stmts "" ,(c) return c) ,()
+  Wx_num "1" ,(one)
+  __Number_subtract__ ns one ,(d)
+  __Number_is_zero__ d ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  __LList_uncons__ (,(e) Hx_fail cx) stmts ,(first rest)
+  Wx_t first ,(ft)
+  __String_equal__ ft "expr" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get first "expr" ,(call)
+  Wx_t call ,(ct)
+  __String_equal__ ct "call" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get call "callee" ,(callee)
+  Wx_t callee ,(cet)
+  __String_equal__ cet "super" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get call "args" ,(args)
+  Hx_args cx args "" ,(ac)
+  Kit_code_cat5 "I_" pn "(this, [" ac "]); F_" ,(c)
+  Kit_code_cat3 c cname ".call(this);" ,(c)
+  Hx_stmts cx rest c)
+
+;; フィールドを入れる関数 F_C（this に、書いた順に入れる。値のないフィールドは undefined）
+(define Hx_fields_func ,(E H info)
+  __Cont_get__ ,(fail)
+  __Dict_new__ ,(cx)
+  __Dict_put__ cx "fail" fail ,()
+  __Dict_put__ cx "E" E ,()
+  __Dict_put__ cx "H" H ,()
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(loops)
+  __Dict_put__ cx "loops" loops ,()
+  __Ref_new__ __NULL__ ,(callees)
+  __Dict_put__ cx "callees" callees ,()
+  __Dict_new__ ,(locals)
+  __Dict_put__ cx "locals" locals ,()
+  __Dict_put__ cx "method" __TRUE__ ,()
+  Kit_parse_get info "fields" ,(fields)
+  Wx_walk fields (,(n) Wx_t n ,(t) Kit_lex_in_words t "function arrow" ,(f) __if__ f (,() Kit_parse_get n "params" ,(ps) Wx_param_names ps __NULL__ ,(ok names) __if__ ok (,() Hx_put_names locals names) ,()) ,()) ,()
+  Hx_field_code cx fields "" ,(code)
+  Kit_parse_get info "class" ,(cname)
+  Kit_code_cat5 "function F_" cname "() {" code "}\n" ,(js)
+  __Ref_get__ callees ,(cs)
+  __NULL__ __TRUE__ js cs)
+
+(define Hx_field_code ,(cx fields acc)
+  __Cont_get__ ,(return)
+  __is_null__ fields ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ fields ,(m rest)
+  Kit_parse_get m "key" ,(key)
+  Wx_num "0" ,(zero)
+  Wx_num "1" ,(one)
+  __String_substring__ (,(x) Hx_fail cx) key zero one ,(c0)
+  Kit_lex_in_words c0 "0 1 2 3 4 5 6 7 8 9 ." ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ m "value" (,(k) __NULL__ __NULL__) ,(value)
+  __is_null__ value ,(none)
+  __if_then_else__ none (,() __NULL__ "undefined") (,() Hx_expr cx value) ,(vc)
+  Sjs_json_string key ,(kq)
+  Kit_code_cat5 acc "$putn(this, " kq ", " vc ,(acc)
+  __String_concat__ acc ");" ,(acc)
+  Hx_field_code cx rest acc)
 
 (define Hx_fail ,(cx)
   __Dict_lookup_or__ cx "fail" __print_exit_error__ ,(fail)
@@ -387,6 +576,15 @@
         __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
         Kit_parse_get target "name" ,(nm)
         __Dict_put__ locals nm __TRUE__ ,()
+        return) ,()
+    __String_equal__ t "try" ,(test__) __if__ test__
+      (,()
+        __Dict_lookup_or__ n "param" (,(k) __NULL__ __NULL__) ,(param)
+        __is_null__ param ,(test__) __if__ test__ return ,()
+        Wx_t param ,(pt)
+        __String_equal__ pt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+        Kit_parse_get param "name" ,(pn)
+        __Dict_put__ locals pn __TRUE__ ,()
         return) ,()
     __String_equal__ t "decl" ,(test__) __unless__ test__ return ,()
     Kit_parse_get n "kind" ,(kind)
@@ -513,6 +711,37 @@
       Kit_parse_get target "name" ,(nm)
       Kit_code_cat5 "for (" kind " v_" nm " of $iter(" ,(c)
       Kit_code_cat4 c rc ")) " bc ,(c)
+      return c) ,()
+  ;; throw と try（段階 H4b）：投げる値を $Thrown に包む。catch は $Thrown だけを受け、ほかの例外（rt.Escape、JavaScript の
+  ;; エラー）は、そのまま外へ出す（ホストの版をやめる）。finally に return、break、continue があれば、それが rt.Escape を
+  ;; 止めてしまうので、扱わない
+  __String_equal__ t "throw" ,(test__) __if__ test__
+    (,() Kit_parse_get s "value" ,(v) Hx_expr cx v ,(vc) Kit_code_cat3 "throw new $Thrown(" vc ");" ,(c) return c) ,()
+  __String_equal__ t "try" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get s "body" ,(body)
+      Hx_stmt cx body ,(bc)
+      __Dict_lookup_or__ s "handler" (,(k) __NULL__ __NULL__) ,(handler)
+      __Dict_lookup_or__ s "param" (,(k) __NULL__ __NULL__) ,(param)
+      __Dict_lookup_or__ s "finalizer" (,(k) __NULL__ __NULL__) ,(fin)
+      __is_null__ handler ,(noCatch)
+      __if_then_else__ noCatch (,() __NULL__ "")
+        (,()
+          Hx_stmt cx handler ,(hc)
+          __is_null__ param ,(noParam)
+          __if_then_else__ noParam (,() __NULL__ "") (,() Kit_parse_get param "name" ,(pn) Kit_code_cat3 "let v_" pn " = $x.v; ") ,(pc)
+          Kit_code_cat4 " catch ($x) { if (!($x instanceof $Thrown)) throw $x; " pc hc " }") ,(cc)
+      __is_null__ fin ,(noFin)
+      __if_then_else__ noFin (,() __NULL__ "")
+        (,()
+          Wx_num "0" ,(zero)
+          __Ref_new__ zero ,(jumps)
+          Wx_walk fin (,(n) Wx_t n ,(nt) Kit_lex_in_words nt "return break continue" ,(j) __if__ j (,() Wx_inc jumps) ,()) ,()
+          __Ref_get__ jumps ,(nj)
+          __Number_is_zero__ nj ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+          Hx_stmt cx fin ,(fc)
+          __String_concat__ " finally " fc) ,(fc)
+      Kit_code_cat4 "try " bc cc fc ,(c)
       return c) ,()
   Kit_lex_in_words t "break continue" ,(test__) __if__ test__
     (,()
@@ -783,6 +1012,25 @@
       Kit_code_cat3 "$o([" c "])" ,(c)
       return c) ,()
   Kit_lex_in_words t "function arrow" ,(test__) __if__ test__ (,() Hx_closure cx e ,(c) return c) ,()
+  __String_equal__ t "new" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "callee" ,(callee)
+      Wx_t callee ,(ct)
+      __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      Kit_parse_get callee "name" ,(cname)
+      Hx_class_name cx cname ,(ok)
+      __unless__ ok (,() Hx_fail cx) ,()
+      Kit_code_cat3 cname ":" "init" ,(iname)
+      __Dict_lookup_or__ cx "callees" __print_exit_error__ ,(callees)
+      __Ref_get__ callees ,(cs) __LList_cons__ iname cs ,(cs) __Ref_set__ callees cs ,()
+      __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
+      __Dict_put__ H "#new" __TRUE__ ,()
+      Kit_parse_get e "args" ,(args)
+      Hx_args cx args "" ,(ac)
+      Sjs_json_string cname ,(cq)
+      Kit_code_cat5 "$new(" cq ", I_" cname ", [" ,(c)
+      Kit_code_cat3 c ac "])" ,(c)
+      return c) ,()
   __String_equal__ t "this" ,(test__) __if__ test__
     (,() __Dict_lookup_or__ cx "method" (,(k) __NULL__ __FALSE__) ,(m) __unless__ m (,() Hx_fail cx) ,() return "this") ,()
   Hx_fail cx)
@@ -893,13 +1141,34 @@
   Kit_lex_in_words nm "NaN Infinity undefined" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
   __NULL__ nm)
 
+;; name が、ホストのクラス（Hx_classes が受け付けたもの）の名前で、局所の変数の名前でないか
+(define Hx_class_name ,(cx name)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  __Dict_lookup_or__ locals name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
+  Kit_code_cat3 name ":" "fields" ,(fname)
+  __Dict_lookup_or__ H fname (,(k) __NULL__ __NULL__) ,(info)
+  __is_null__ info ,(none)
+  __not__ none)
+
 (define Hx_binary ,(cx e)
   __Cont_get__ ,(return)
   Kit_parse_get e "op" ,(op)
   Kit_parse_get e "left" ,(left)
   Kit_parse_get e "right" ,(right)
   Hx_expr cx left ,(lc)
-  Hx_expr cx right ,(rc)
+  __String_equal__ op "instanceof" ,(isInst)
+  __if_then_else__ isInst (,() __NULL__ "") (,() Hx_expr cx right) ,(rc)
+  __String_equal__ op "instanceof" ,(test__) __if__ test__
+    (,()
+      Wx_t right ,(rt)
+      __String_equal__ rt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      Kit_parse_get right "name" ,(cname)
+      Hx_class_name cx cname ,(ok)
+      __unless__ ok (,() Hx_fail cx) ,()
+      Kit_code_cat5 "$instof(" lc ", P_" cname ")" ,(c)
+      return c) ,()
   Kit_lex_in_words op "&& || === !==" ,(test__) __if__ test__
     (,() Kit_code_cat5 "(" lc " " op " " ,(c) Kit_code_cat3 c rc ")" ,(c) return c) ,()
   Kit_lex_in_words op "+ - * / % < > <= >=" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
@@ -1036,7 +1305,11 @@
     "const $int = (k) => /^(0|[1-9][0-9]*)$/.test(k);"
     "const $protos = new Set(), $classes = new Map();"
     ;; $K：ホストのオブジェクトとインスタンスの印（オブジェクトの自分の、クラスならプロトタイプの、記号のキー。Object.keys には出ない）
-    "const $K = Symbol('conjs');"
+    "const $K = Symbol('conjs'), $N = Symbol('class');"
+    "class $Thrown { constructor(v) { this.v = v; } }"
+    "let $clsR = null;"
+    "const $new = (name, I, a) => { const o = Object.create($classes.get(name)); const r = I(o, a); return (typeof r === 'object' && r !== null) || typeof r === 'function' ? r : o; };"
+    "const $instof = (x, P) => { if (x instanceof $Opaque) $no(); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
     "const $isObj = (o) => typeof o === 'object' && o !== null && o[$K] === true;"
     "const $plain = () => { const o = Object.create(null); o[$K] = true; return o; };"
     "const $own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);"
@@ -1124,16 +1397,20 @@
     "  if (x instanceof $Opaque) return x.m;"
     "  const b = $back.get(x); if (b) return b.m;"
     "  if (Array.isArray(x)) { const m = rt.dict({ t: 'array', id: $newId(), items: rt.dict(), length: rt.ref(0) }); $back.set(x, { m, snap: null }); $fillArray(m, x); return m; }"
-    "  if ($isObj(x)) { const m = rt.dict({ t: 'object', id: $newId(), props: rt.dict(), keys: rt.ref([]) }); $back.set(x, { m, snap: null }); $fillObject(m, x); return m; }"
+    "  if ($isObj(x)) {"
+    "    const pr = Object.getPrototypeOf(x);"
+    "    if (pr !== null) { const R = $clsR === null ? undefined : $clsR[pr[$N]]; if (R === undefined) $no(); const m = rt.dict({ t: 'object', id: $newId(), props: rt.dict(), keys: rt.ref([]), cls: R }); $back.set(x, { m, snap: null }); $fillObject(m, x); return m; }"
+    "    const m = rt.dict({ t: 'object', id: $newId(), props: rt.dict(), keys: rt.ref([]) }); $back.set(x, { m, snap: null }); $fillObject(m, x); return m;"
+    "  }"
     "  return $no();"
     "};"
     "const $sync = () => { for (const [x, b] of [...$back]) { if (b.snap === null) continue; if (Array.isArray(x)) { if (x.length !== b.snap.length || x.some((v, i) => v !== b.snap[i])) $fillArray(b.m, x); } else { const now = Object.entries(x); if (now.length !== b.snap.length || now.some(([k, v], i) => k !== b.snap[i][0] || v !== b.snap[i][1])) $fillObject(b.m, x); } } };"
     ;; ホストの関数の入口：引数を JavaScript の値にして呼び、値と console.log の行を返す。どの例外も rt.Escape にする
-    "const $run = (f) => (ids, ...args) => $enter(ids, () => f(...args.map($in)));"
+    "const $run = (f) => (ids, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; return $enter(ids, $withClasses ? rest[0] : null, () => f(...args.map($in))); };"
     ;; メソッド：Conjs_hostfn_method が、this を引数の前に渡す
-    "const $runm = (P, k) => (ids, self, ...args) => $enter(ids, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); });"
-    "const $enter = (ids, body) => {"
-    "  $ids = ids; $nullRef = null; $memo.clear(); $back.clear(); $out = [];"
+    "const $runm = (P, k) => (ids, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
+    "const $enter = (ids, cls, body) => {"
+    "  $ids = ids; $clsR = cls === undefined ? null : cls; $nullRef = null; $memo.clear(); $back.clear(); $out = [];"
     "  try { const r = body(); const v = $outv(r); $sync(); return { v: v, out: $out }; }"
     "  catch (e) { throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e)); }"
     "  finally { $memo.clear(); $back.clear(); }"

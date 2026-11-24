@@ -51,7 +51,13 @@
   __if_then_else__ noWasm (,() __NULL__ "") (,() Kit_code_quote wat ,(q) Kit_code_cat3 "\tSjs_wasm_module " q " ,(Wsjs) ") ,(wc)
   __String_concat__ wc code ,(code)
   __String_equal__ hostJs "" ,(noHost)
-  __if_then_else__ noHost (,() __NULL__ "") (,() Kit_code_quote hostJs ,(q) Kit_code_cat3 "\tConjs_hostfn_module " q " ,(Hsjs) ") ,(hc)
+  ;; new を使うホストの関数があれば（$withClasses）、ランタイムが、クラスの記録の表も渡す
+  Sjs_zero ,(zero0)
+  __String_find__ __print_exit_error__ hostJs "const $withClasses = true;" zero0 ,(wcAt)
+  __is_null__ wcAt ,(noWc)
+  __not__ noWc ,(withClasses)
+  __if_then_else__ withClasses (,() __NULL__ " __TRUE__") (,() __NULL__ " __FALSE__") ,(wcf)
+  __if_then_else__ noHost (,() __NULL__ "") (,() Kit_code_quote hostJs ,(q) Kit_code_cat5 "\tConjs_hostfn_module " q wcf " ,(Hsjs) " "") ,(hc)
   __String_concat__ hc code ,(code)
   ;; 位置の入らなかった印を消す
   Kit_code_replace_marks code "" ,(code)
@@ -2674,6 +2680,10 @@
   Kit_code_cat5 pc "\tConjs_class G " qn " " hasParent ,(c)
   Kit_code_cat5 c " " pv " ,(" r ,(c)
   Kit_code_cat4 c " " f ") " ,(c)
+  ;; ConJS のホストのクラス（sjs_host.se の "hostClass"）：ホストで new したインスタンスに付ける記録を、名前で覚える
+  __Dict_lookup_or__ e "hostClass" (,(k) __NULL__ "") ,(hcls)
+  __String_equal__ hcls "" ,(noHcls)
+  __if_then_else__ noHcls (,() __NULL__ c) (,() Kit_code_cat5 c "Conjs_hostfn_class " qn " " r ,(c2) __String_concat__ c2 " ,() ") ,(c)
   ;; 名前のあるクラスは、中から自分の名前で読める
   __Dict_new__ ,(cdict)
   __String_concat__ "@" f ,(alias)

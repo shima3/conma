@@ -2,6 +2,7 @@ conjs: host: Counter.get
 conjs: host: Counter.hit
 conjs: host: Vec.add
 conjs: host: Vec.len2
+conjs: host: Vec.scaled
 conjs: host: Vec.shout
 conjs: host: Vec.show
 conjs: host: Vec.sumWith
