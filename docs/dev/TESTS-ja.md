@@ -137,7 +137,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：transpiled VM（作り直していない）、Windows。
 * 測ったもの：計画の 15 節〜19 節（19 節：呼び返しは 1 回 31 µs で、ConMa の 15 µs より遅い）。
 
-### m4/conjs-host-b3
+### m4/conjs-host-b3（shima3/conma#76）
 
 * 種類：機能（待つ関数も、wasm 版の VM のとき、ホストの JavaScript で動かす）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H4c の B3（20 節）。sleep、join、nextEvent か、待つホストの関数を呼ぶ一番外の関数を、JavaScript のジェネレータにして、待つ所で VM に yield し、Conjs_hostfn がその処理（VProc）で頼みを動かして（待ってよい）、__JS_fn_resume__ で続ける（sjs/include/sjs_host.se、conjs/include/conjs_host.se）。conjs/README の 2 つに、待つ関数のことを足した。
