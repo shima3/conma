@@ -21,6 +21,7 @@ CONMA_VM=wasm conjs/conjs f.con.js    # run it on the wasm VM (Node.js); CONMA_H
 CONMA_VM=python conjs/conjs f.con.js  # run it on the Python VM
 conjs/test/run_all.sh             # the tests (CONMA_VM chooses the VM)
 conjs/test/compare.sh             # compare the cases of step10 with Node.js
+conjs/bench/run.sh NAME           # a benchmark against Node.js (from 2026-11-24; the table in conjs/bench/README-ja.md)
 conjs/conjs --prepare             # make the modules of the translator and the runtime in advance (the first run is then fast; from 2026-11-23)
 conjs/conjs --version             # print the version of ConMa (from 2026-11-24; see Version of the README of ConMa)
 ```
