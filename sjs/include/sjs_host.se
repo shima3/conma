@@ -48,7 +48,9 @@
   Hx_classes E H order classes program stmts ,()
   __Ref_get__ order ,(rev)
   Wx_reverse rev __NULL__ ,(names)
-  Hx_compile_all E H names ,()
+  __Dict_new__ ,(waits)
+  __Dict_put__ H "#waits" waits ,()
+  Hx_wait_loop E H names ,()
   Hx_fixpoint H names ,()
   __Ref_get__ classes ,(crev)
   Wx_reverse crev __NULL__ ,(cs)
@@ -294,6 +296,30 @@
   __Dict_put__ info "callees" callees ,()
   Hx_compile_all E H rest)
 
+;; 待つホストの関数（段階 H4c の B3）：待つ呼び出し（sleep、join、nextEvent）か、待つホストの関数の呼び出しのある関数は、
+;; JavaScript のジェネレータにする。どの関数が待つかは、呼ぶ関数が待つかによるので、H の "#waits"（待つ関数の名前）が
+;; 増えなくなるまで、すべての関数を書き直す。"#waits" にある関数は、ジェネレータとして書く（Hx_func の "gen"）
+(define Hx_wait_loop ,(E H names)
+  Hx_compile_all E H names ,()
+  __Ref_new__ __FALSE__ ,(grew)
+  Hx_wait_new H names grew ,()
+  __Ref_get__ grew ,(again)
+  __if_then_else__ again (,() Hx_wait_loop E H names) (,() __nop__))
+
+(define Hx_wait_new ,(H names grew)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
+  Kit_parse_get info "ok" ,(ok)
+  __Dict_lookup_or__ info "waits" (,(k) __NULL__ __FALSE__) ,(w)
+  __Dict_lookup_or__ H "#waits" __print_exit_error__ ,(waits)
+  __Dict_lookup_or__ waits nm (,(k) __NULL__ __FALSE__) ,(known)
+  __not__ known ,(fresh)
+  __and__ ok w ,(x) __and__ x fresh ,(test__)
+  __if__ test__ (,() __Dict_put__ waits nm __TRUE__ ,() __Ref_set__ grew __TRUE__) ,()
+  Hx_wait_new H rest grew)
+
 ;; ほかのホストの関数でなくなった関数を呼ぶ関数を、ホストの関数でなくする（変わらなくなるまで）
 (define Hx_fixpoint ,(H names)
   __Ref_new__ __FALSE__ ,(changed)
@@ -429,7 +455,9 @@
   __String_equal__ w "" ,(notWasm)
   __if_then_else__ notWasm (,() __Dict_put__ fn "host" nm) (,() __Dict_put__ fn "hostAlso" nm) ,()
   Sjs_json_string nm ,(q)
-  Kit_code_cat5 table q ": $run(f_" nm "), " ,(table)
+  __Dict_lookup_or__ info "waits" (,(k) __NULL__ __FALSE__) ,(w)
+  __if_then_else__ w (,() __NULL__ ": $runG(f_") (,() __NULL__ ": $run(f_") ,(runner)
+  Kit_code_cat5 table q runner nm "), " ,(table)
   Hx_funcs H rest acc table)
 
 ;; ── 関数ごとの JavaScript ──
@@ -446,6 +474,18 @@
   __Dict_put__ cx "loops" loops ,()
   __Ref_new__ __NULL__ ,(callees)
   __Dict_put__ cx "callees" callees ,()
+  ;; 待つか（Hx_call が、待つ呼び出しで真にする）と、ジェネレータとして書くか（前に書いたとき待った関数。Hx_wait_loop）
+  __Ref_new__ __FALSE__ ,(waitsRef)
+  __Dict_put__ cx "waits" waitsRef ,()
+  __Dict_put__ cx "closure" __FALSE__ ,()
+  Kit_parse_get info "name" ,(name0)
+  __Dict_lookup_or__ H "#waits" (,(k) __NULL__ __NULL__) ,(waits0)
+  __is_null__ waits0 ,(noWaits)
+  __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits0 name0 (,(k) __NULL__ __FALSE__)) ,(gen0)
+  __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey0)
+  __String_equal__ mkey0 "" ,(notMethod0)
+  __and__ gen0 notMethod0 ,(gen)
+  __Dict_put__ cx "gen" gen ,()
   ;; 局所の名前：引数と、関数の中で宣言した名前（どのブロックでも。読む所が正しいかは JavaScript の有効範囲に任せる）
   __Dict_new__ ,(locals)
   __Dict_put__ cx "locals" locals ,()
@@ -467,10 +507,15 @@
   Kit_parse_get body "body" ,(stmts)
   __if_then_else__ isCtor (,() Hx_ctor_body cx info stmts) (,() Hx_stmts cx stmts "") ,(code)
   Kit_parse_get info "name" ,(name)
+  ;; 待つのは、一番外の関数だけ（メソッドとコンストラクタは、待てばホストの関数にしない）
+  __Ref_get__ waitsRef ,(waits)
+  __Dict_put__ info "waits" waits ,()
+  __and__ waits usesThis ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __if_then_else__ waits (,() __NULL__ "function* f_") (,() __NULL__ "function f_") ,(head)
   __if_then_else__ isCtor
     (,() Kit_parse_get info "class" ,(cname) Kit_code_cat5 "function C_ctor_" cname "(" ps ") {")
     (,() __if_then_else__ notMethod
-      (,() Kit_code_cat5 "function f_" name "(" ps ") {")
+      (,() Kit_code_cat5 head name "(" ps ") {")
       (,() Kit_parse_get info "class" ,(cname) Sjs_json_string mkey ,(mq) Kit_code_cat5 "P_" cname "[" mq "] = function (" ,(h) Kit_code_cat3 h ps ") {")) ,(js)
   __and__ isMethod notMethod ,(never)
   __if_then_else__ isMethod (,() __NULL__ "};\n") (,() __NULL__ "}\n") ,(tail)
@@ -1172,12 +1217,16 @@
   __Ref_get__ loops ,(outer)
   Wx_num "0" ,(zero)
   __Ref_set__ loops zero ,()
+  ;; 関数式はジェネレータにしないので、中で待てない（Hx_call）
+  __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(outerClosure)
+  __Dict_put__ cx "closure" __TRUE__ ,()
   __Dict_lookup_or__ e "body" (,(k) __NULL__ __NULL__) ,(body)
   __is_null__ body ,(concise)
   __if_then_else__ concise
     (,() Kit_parse_get e "expr" ,(x) Hx_expr cx x ,(xc) Kit_code_cat3 "(" xc ")")
     (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Kit_code_cat3 "{" bc "}") ,(bc)
   __Ref_set__ loops outer ,()
+  __Dict_put__ cx "closure" outerClosure ,()
   Kit_code_cat5 "((" ps ") => " bc ")")
 
 ;; 数 v の JavaScript の字句（ConMa の __Number_toString__ の字句を JavaScript が同じ値に読む。-0、NaN、無限大は式にする）
@@ -1310,6 +1359,10 @@
           __String_equal__ ac "" ,(noArgs)
           __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
           ;; 受け手が名前か this なら、$mc で関数を確かめて .call で呼ぶ（引数を配列にしないので速い）
+          ;; 待つホストの関数の中では、VM の値のメソッドを、VProc で呼ぶ（待ってよい。$mcallG が yield する。段階 H4c の B3）
+          Hx_genmode cx ,(gm)
+          __if__ gm
+            (,() Kit_code_cat5 "(yield* $mcallG(" oc ", " nq ", " ,(c) Kit_code_cat3 c p rest ,(c) __String_concat__ c "))" ,(c) return c) ,()
           Hx_simple object ,(simple)
           __if__ simple
             (,() Kit_code_cat5 "$mc(" oc ", " nq ", " ,(c) Kit_code_cat3 c p ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
@@ -1330,15 +1383,48 @@
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
   __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__
     (,() __String_equal__ ac "" ,(noArgs) __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
-        Hx_pos cx e ,(p) Kit_code_cat5 "$call(v_" nm ", " p rest ,(c) __String_concat__ c ")" ,(c) return c) ,()
+        Hx_genmode cx ,(gm)
+        __if_then_else__ gm (,() __NULL__ "(yield* $callG(v_") (,() __NULL__ "$call(v_") ,(head)
+        __if_then_else__ gm (,() __NULL__ "))") (,() __NULL__ ")") ,(tail)
+        Hx_pos cx e ,(p) Kit_code_cat5 head nm ", " p rest ,(c) __String_concat__ c tail ,(c) return c) ,()
   __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
   __Dict_lookup_or__ H nm (,(k) __NULL__ __NULL__) ,(info)
-  __is_null__ info ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __is_null__ info ,(test__) __if__ test__
+    (,()
+      ;; 待つ組み込みの関数（段階 H4c の B3）：VProc で呼ぶ（$Yq が yield で頼み、$Yr が答えを受け取る）
+      Kit_lex_in_words nm "sleep join nextEvent" ,(waitFn)
+      Hx_builtin cx callee nm ,(isBuiltin)
+      __and__ waitFn isBuiltin ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      Hx_wait cx ,()
+      Sjs_json_string nm ,(nq)
+      Hx_pos cx e ,(p)
+      Kit_code_cat5 "$Yr(yield $Yq(" p ", 'callg', " nq ", [" ,(c)
+      Kit_code_cat3 c ac "]))" ,(c)
+      return c) ,()
   __Dict_lookup_or__ cx "callees" __print_exit_error__ ,(callees)
   __Ref_get__ callees ,(cs)
   __LList_cons__ nm cs ,(cs)
   __Ref_set__ callees cs ,()
+  ;; 待つホストの関数は、yield* で呼ぶ
+  __Dict_lookup_or__ H "#waits" (,(k) __NULL__ __NULL__) ,(waits)
+  __is_null__ waits ,(noWaits)
+  __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits nm (,(k) __NULL__ __FALSE__)) ,(calleeWaits)
+  __if__ calleeWaits (,() Hx_wait cx ,() Kit_code_cat5 "(yield* f_" nm "(" ac "))" ,(c) return c) ,()
   Kit_code_cat5 "f_" nm "(" ac ")")
+
+;; この関数が待つ印を付ける。関数式の中や、待てない関数（フィールドなど）では、ホストの関数にしない
+(define Hx_wait ,(cx)
+  __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(inClosure)
+  __if__ inClosure (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ cx "waits" (,(k) Hx_fail cx) ,(waitsRef)
+  __Ref_set__ waitsRef __TRUE__)
+
+;; ジェネレータの本体（関数式の中でない）を書いているか
+(define Hx_genmode ,(cx)
+  __Dict_lookup_or__ cx "gen" (,(k) __NULL__ __FALSE__) ,(gen)
+  __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(inClosure)
+  __not__ inClosure ,(out)
+  __and__ gen out)
 
 ;; e が、一番外で宣言されず代入されない組み込みの名前 name か
 (define Hx_builtin ,(cx e name)
@@ -1558,19 +1644,50 @@
     "const $run = (f) => (ids, tramp, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; return $enter(ids, tramp, $withClasses ? rest[0] : null, () => f(...args.map($in))); };"
     ;; メソッド：Conjs_hostfn_method が、this を引数の前に渡す
     "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
-    ;; 呼び返しの中から、またホストの関数が呼ばれることがあるので、状態は呼び出しごとに保って戻す
-    "const $enter = (ids, tramp, cls, body) => {"
+    ;; 呼び返しの中から、またホストの関数が呼ばれることがあり、待つホストの関数（ジェネレータ）は、待つ間に、ほかの処理がホストの
+    ;; 関数を呼ぶので、状態は呼び出しごとに st に持ち、動かす間だけ大域の変数に置く（$go）
+    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null });"
+    ;; body を st で動かす。body は、イテレータの next の答え（{ done, value }）を返す。done でなければ、value（VM への頼み）を返す。
+    ;; done なら、値か、外へ出た例外か、止めるわけ（呼び返しの後）を、console.log の行と返す。呼び返しの前の rt.Escape は投げる
+    "const $go = (st, body) => {"
     "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0];"
-    "  $ids = ids; $tramp = tramp; $clsR = cls === undefined ? null : cls; $nullRef = null; $memo = new Map(); $back = new Map(); $out = []; $committed = false; $p0 = null;"
+    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0];"
     "  try {"
     "    let r, thrown = null;"
-    "    try { r = body(); } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
+    "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
     "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out }; }"
     "    const v = $outv(r); $sync(); return { v: v, out: $out };"
     "  } catch (e) {"
     "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
-    "  } finally { [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = saved; }"
+    "  } finally {"
+    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0 });"
+    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = saved;"
+    "  }"
     "};"
+    "const $enter = (ids, tramp, cls, body) => $go($fresh(ids, tramp, cls), () => ({ done: true, value: body() }));"
+    ;; 待つホストの関数の入口（段階 H4c の B3）：f のイテレータを動かし、待つ所（$Yq）で、頼み [位置, op, 引数, 行] を yield する
+    ;; （配列は、セッションの表に節を作らずに渡る。オブジェクトにすると、yield のたびに表が育ち、渡すたびに表のすべてを比べる）。Conjs_hostfn が VProc で頼みを動かし（待ってよい）、("ok" 値) か ("threw" 例外) で __JS_fn_resume__ する
+    "const $runG = (f) => function* (ids, tramp, ...rest) {"
+    "  const args = $withClasses ? rest.slice(1) : rest;"
+    "  const st = $fresh(ids, tramp, $withClasses ? rest[0] : null);"
+    "  let it = null, msg;"
+    "  for (;;) {"
+    "    const r = $go(st, () => { if (it === null) it = f(...args.map($in)); return it.next(msg); });"
+    "    if (!Array.isArray(r)) return r;"
+    "    msg = yield r;"
+    "  }"
+    "};"
+    ;; VM への頼み：ホストの変更を写しに書き、ためた行と渡す。頼んだ後は、やり直せない（ほかの処理が、ホストの変更を見る）
+    "const $Yq = (p, op, ...args) => {"
+    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
+    "  const lines = $out; $out = []; $committed = true;"
+    "  return [p === null || p === undefined ? null : $P[p], op, margs, lines];"
+    "};"
+    ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる
+    "const $Yr = (r) => { $refresh(); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
+    ;; ジェネレータの中の呼び出し：ホストの関数はその場で、VM の関数とメソッドは VProc で（待ってよい）
+    "const $callG = function* (f, p, ...a) { if (typeof f === 'function') return f(...a); return $Yr(yield $Yq(p, 'call', f, a)); };"
+    "const $mcallG = function* (o, k, p, ...a) { if ($isObj(o)) return $mcall(o, k, p, ...a); return $Yr(yield $Yq(p, 'callm', o, k, a)); };"
     ,(h)
   __String_concat__ h "\n")
