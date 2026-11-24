@@ -110,7 +110,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
 
-### m4/lang-start
+### m4/lang-start（shima3/conma#72）
 
 * 種類：直し（起動を速くした）。
 * bin/lang と bin/cache-dir で、起動のたびに動かす外のコマンドを減らした：dirname の代わりに `${0%/*}`、shasum（Perl）の代わりに cksum、2 つの grep の代わりに 1 つの awk、cut の代わりに `${x%% *}`、キャッシュのディレクトリがあれば mkdir しない。`console.log("hi")` の `bin/lang conjs` は、63 ms から 50 ms になった（M4、実時間、前の版と交互に 20 回ずつの中央値）。
