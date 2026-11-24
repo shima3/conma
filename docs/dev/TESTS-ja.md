@@ -152,7 +152,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 * 種類：機能（ConJS のホストの関数が速くなる。結果は変わらない）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H5b（22 節）。変換器（sjs/include/sjs_host.se）が、名前の決まったメンバーの読み書きとメソッドの呼び出しを、ホストのオブジェクトならその場で読み書きし、ほかは今までの補助の関数に任せる形で書く。nbody_class の 1 ステップが 1.74 µs から 0.13 µs に。段階 H5c（23 節）で、配列の要素と length も同じ形で書く。数の関数の wasm 版とホストの版を測り（24 節）、ユーザーの決定で、ConJS の数の関数は、ホストの版、wasm 版、ConMa 版の順に試す（sjs/include/sjs_gen.se）。step20 の case1、3、4、7 の case*.host.txt に、ホストで値を返すようになった 12 の数の関数を足した。あわせて、計画の 6 節の燃料の確かめの費用（約 8% としていた）を、測り直した値（測れるほどの差なし）に直した。
-* 作り直すもの：なし（変換器のモジュールは、bin/cache-dir の所で作り直される）。
-* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`。`CONMA_NO_HOSTJS=1 SJS_WASM_STRICT=1` でも）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、doc-pairs.py。
-* 流していないもの：consh/test と test/（ConJS の変換器しか変えていない。sjs_gen.se の変えた所は、ConJS のホストの関数のある数の関数だけ）、Windows。
+* 作り直すもの：transpiled VM（sjs/include/sjs_gen.se が変わって、ConSh のモジュールが変わる。bench/build.sh）。ConJS と SJS の変換器のモジュールは、bin/cache-dir の所で作り直される。
+* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`。`CONMA_NO_HOSTJS=1 SJS_WASM_STRICT=1` でも）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
+* 流していないもの：test/（ConJS の変換器しか変えていない。sjs_gen.se の変えた所は、ConJS のホストの関数のある数の関数だけ）、Windows。
 * 測ったもの：nbody_class と hof（計画の 22 節。版を替えて交互に測るときは、`cp -p` と版ごとの `CONMA_CACHE_DIR` で、変換器のモジュールを作り直させない）。
