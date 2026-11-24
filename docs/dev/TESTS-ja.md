@@ -109,3 +109,12 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * I7 が流したもの（PR のレビュー、ee14129）：consh.ps1 と consh.cmd の `--version`（Windows PowerShell 5.1）。I7 の見つけた 2 つ（bin/version を UTF-8 で読むこと、git が失敗しても止まらないこと）は、3e3219f で直し、I7 が 3e3219f で確かめた（4 つの状態で bin/version と同じ）。
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
+
+### m4/conjs-host-plan
+
+* 種類：なし（計画と、測るための台本だけ）。
+* docs/dev/CONJS-HOST-PLAN.md（ConJS の関数を、wasm 版の VM のとき、ホストの JavaScript で動かす計画）と、その段階 H0 で測った台本 conjs/bench/hostjs（nbody_host.js、hof_host.js、crossing.con.js）を足した。suite は、どれもこの台本を読まない。
+* 作り直すもの：なし。
+* M4 が流したもの：conjs/bench/hostjs の 3 つ（Node.js と wasm 版の VM。計画の 11 節）。
+* 流していないもの：ほかの suite（ランタイムも VM も変えていない）。
+* 測ったもの：計画の 11 節。

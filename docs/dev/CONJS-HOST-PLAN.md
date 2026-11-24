@@ -2,7 +2,7 @@
 
 The plan of running the functions of a ConJS program on the JavaScript engine of the host (Node.js or a browser) when the program runs on the wasm VM, calling back into the VM for what the host cannot do. Written on 2026-11-24 at the user's request, after the ConJS benchmarks (conjs/bench/README-ja.md, shima3/conma#71). The first version, the same day, ran only the functions that never wait and undid a call that met anything else; the user then asked that the host call ConJS back instead, and this version does that (3.1), keeping the undoing only as the last resort.
 
-**State**: a plan. Nothing is built. Section 10 lists what the user is to decide.
+**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done: section 11. Nothing else is built. Section 10 lists what the user is to decide.
 
 ## 1. Why
 
@@ -58,7 +58,8 @@ A call of a host function begins as in the first version: its arguments (and `th
 
 * The translator (sjs/include/sjs_gen.se and the files of ConJS) writes, beside the ConMa it writes now, the JavaScript of the host functions: one text for the program, with every host function and class, and a table of their names and kinds (2). The text goes into the module as a String, as the WAT of the numeric functions does, so `--emit` shows it.
 * The JavaScript uses only its own names and those of one object of the runtime passed in (`rt`): the translator writes no free name, so the code cannot reach the globals of the page or of Node.js. It is compiled once with `new Function("rt", text)` (Node.js), or loaded from a file made by the build (a browser page; 8).
-* What section 5 needs is written as calls of `rt` (`rt.len(s)`, `rt.add(a, b)`, `rt.get(o, "x")`), and a call of a method ConJS does not have becomes `rt.missing(...)`, which throws the TypeError of ConJS. Where the translator knows the types (a number in a loop counter, a field written only with numbers), it writes plain JavaScript (`i + 1`, `o.x`) so that the JIT sees ordinary code.
+* What section 5 needs is written as calls of `rt` (`rt.len(s)`, `rt.add(a, b)`), and a call of a method ConJS does not have becomes `rt.missing(...)`, which throws the TypeError of ConJS. Where the translator knows the types (a number in a loop counter, a field written only with numbers), it writes plain JavaScript (`i + 1`).
+* Reading and writing a member and calling a method keep the name in the code, with the check of ConJS written in place: `(o == null ? rt.fail(o, "x") : o.x)` and `(typeof o.m === "function" ? o.m(a) : rt.notFn("m"))`, never a call such as `rt.get(o, "x")` with the name as an argument. H0 found the second 25 times slower than plain JavaScript and the first 1.14 times (section 11): with the name in the code, the engine keeps the shape of the object in its caches.
 * In a waiting host function, a call that waits becomes `yield rt.wait(...)`, and a call of another waiting host function `yield* g(...)`.
 * The ConMa version of each host function stays in the module, wrapped by a function of the runtime (`Sjs_host_fn`, like `Sjs_wasm_fn`) that decides at each call whether to go to the host.
 
@@ -109,8 +110,47 @@ What ConJS does differently from JavaScript (conjs/README.md, Language, and sjs/
 
 ## 10. What the user is to decide
 
-1. **When a function is a waiting host function.** A generator is slower than a plain function in the engines, but only it can yield and run long with fuel after a call back. The plan makes a function a waiting host function when it calls something that waits, or when it calls back something the translator does not know and has a loop that can be long; otherwise a plain one. The other choice is to make every host function that calls back a generator, which never needs the error of 3.1, 3, at some cost in speed.
-2. **Whether H0 comes first** and the rest waits for its numbers (recommended: the copying of 3.2 and the call backs could eat the gain for small functions).
+1. **When a function is a waiting host function** (H0: a generator for `advance` alone costs 4%, generators for every function 8.3 times; section 11). A generator is slower than a plain function in the engines, but only it can yield and run long with fuel after a call back. The plan makes a function a waiting host function when it calls something that waits, or when it calls back something the translator does not know and has a loop that can be long; otherwise a plain one. The other choice is to make every host function that calls back a generator, which never needs the error of 3.1, 3, at some cost in speed.
+2. **Whether to go on after H0** (section 11): the host's JavaScript is 1.1 to 1.8 times Node.js where the VM is 1,000 to 18,500 times, but the crossings of today are too slow (a call back costs about 18 µs, and copying a value about 4 µs), so H1 and H2 must make them faster, with the copying done by Rust in the VM.
 3. **The browser (8)**: a file of JavaScript made by the build, or allowing `eval` in the pages of ConJS.
 4. **The numeric functions**: keep WebAssembly for them, or move them to the host when the host is as fast (H5).
 5. **SJS**: whether SJS in ConSh (`(( ))`) uses host functions too. Its scripts are not trusted in a page in the way a ConJS program is, so the plan leaves it out unless the user says otherwise.
+
+## 11. Results of H0 (2026-11-24)
+
+Measured on the M4 (Apple M4), Node.js v26.13.0, user + sys, the least of 3 runs, at commit 0ffa27a with the scripts of conjs/bench/hostjs (load average about 2.3 from other sessions). The scripts print the same energy and sums as the programs of ConJS.
+
+**The host's JavaScript, written by hand as the translator would write it** (conjs/bench/hostjs/nbody_host.js for `advance` of conjs/bench/nbody_class.con.js, 20,000,000 steps; hof_host.js for the loop of conjs/bench/hof.con.js of shima3/conma#71, moved into a function `round(r)`, 350,000 rounds):
+
+| What | nbody | hof |
+|---|---:|---:|
+| Node.js, the program as it is | 1.02 s | 1.03 s |
+| with a counter of fuel in each loop (6) | 1.04 s | 1.04 s |
+| with the checks of ConJS written in place, names in the code (4) | 1.21 s | — |
+| with `+` through `rt.add` and the merge sort of the runtime (5) | — | 1.81 s |
+| fields through `rt.get(o, "x")` and `rt.set`, methods direct | 26.2 s | — |
+| methods through `rt.call(o, "m", ...args)`, fields direct | 3.71 s | — |
+| both through `rt` | 28.3 s | — |
+| `advance` a generator (a waiting host function) | 1.09 s | 1.07 s |
+| `advance`, `pull` and `move` all generators, with `yield*` | 8.69 s | — |
+| the wasm VM, ConJS (conjs/bench/README-ja.md of #71; per step and per round) | 1.0 ms | 5.4 ms |
+| the host, per step and per round (best form above) | 60 ns | 5.2 µs |
+
+* The best forms are 1.1 (nbody) and 1.8 (hof) times Node.js, where ConJS on the wasm VM is 18,500 and 1,800 times. Moved to the host, `advance` would run about 16,000 times faster, and a round of hof about 1,000 times.
+* Writing the checks with the names in the code is what keeps the speed: `rt.get(o, "x")` makes the engine look the name up each time and is 25 times slower (section 4 now says so). A call through `rt.call` with the arguments spread is 3.6 times slower.
+* Fuel costs 2 to 4%. A generator for the function that waits costs 4%; generators for every function cost 8.3 times, so only the functions that need it are to be generators (10.1).
+* Copying the system of nbody (5 bodies, 10 pairs, about 60 values) from a list of nodes like the buffer of section 8 into objects of the host and back, around each step: 2.2 µs a step on the host side (`copy`, 1,000,000 steps, 2.24 s against 0.10 s without copying).
+
+**Crossings of today on the wasm VM** (conjs/bench/hostjs/crossing.con.js, ConJS on the wasm VM; the time per step after taking out an empty loop):
+
+| What | per step |
+|---|---:|
+| an empty loop | 3.6 µs |
+| a call of a small ConJS function (the work of a call back in the VM) | 6.8 µs |
+| `host.call("test.add", i, 1)`: to the host and back with numbers | 10.7 µs |
+| `host.call("test.echo", system)`: to the host and back with an object of about 45 values | 386 µs |
+
+* A call back would cost about the crossing and the call, some 18 µs, against 6.8 µs for the same call made in the VM. So a host function that calls back in every step of a loop (`a.map(f)` with `f` in the VM) is slower than its ConMa version, as 3.2 expected: the rule that stops using the host for such a function is needed (H5).
+* Copying values by the path of `host.call` today costs about 4 µs a value each way, 2,000 times what the host spends on its side. That path converts the values in ConMa code; the copying of 3.2 must be done by Rust in the VM (a primitive that writes a graph of Dicts into the buffer and reads it back), as the copying of numeric arrays was made a primitive for WebAssembly (section 17 of SJS-WASM-ARRAY-PLAN-ja.md). H2 measures it.
+* For nbody, `system.advance(0.01, n)` is called once: one copy each way (under 1 ms even at today's 4 µs a value) and 20,000,000 steps on the host. For hof moved into a function called from a loop at the top level, each round costs a crossing (about 11 µs) besides its 5.2 µs, so the top level should go to the host too (H6), or the round would gain about 340 times instead of 1,000.
+
