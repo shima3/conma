@@ -107,12 +107,14 @@
   Conjs_hostfn_report name ,()
   __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
   Conjs_hostfn_print G lines ,()
-  ;; 呼び返しの後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める
+  ;; 呼び返しか待った後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める。after は、そのわけ
   __Dict_lookup_or__ r "fatal" (,(k) __NULL__ __NULL__) ,(fatal)
   __is_null__ fatal ,(test__) __unless__ test__
     (,()
       __PDict_put__ "sjs_pos" __NULL__ ,()
-      Cat3s "the host function " name " could not go on after calling back: " ,(msg)
+      __Dict_lookup_or__ r "after" (,(k) __NULL__ "calling back") ,(after)
+      Cat3s "the host function " name " could not go on after " ,(msg)
+      Cat3s msg after ": " ,(msg)
       __String_concat__ msg fatal ,(msg)
       Sjs_uncaught msg) ,()
   ;; 呼び返しの後に、ホストの版の外へ出た例外：ここで投げ直す（tpos は、ホストの throw の位置。VM から来た例外は、位置を持つ）
@@ -207,6 +209,10 @@
   __String_equal__ op "callm" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
   __String_equal__ op "call" ,(test__) __if__ test__ (,() Sjs_call a b ,(v) return v) ,()
   __String_equal__ op "callg" ,(test__) __if__ test__ (,() Sjs_global G a ,(fn) Sjs_call fn b ,(v) return v) ,()
+  ;; Math と Object.keys の、ホストが確かめられない引数（呼び返しか待った後）
+  __String_equal__ op "math" ,(test__) __if__ test__ (,() Sjs_global G "Math" ,(M) Sjs_call_member G M a b ,(v) return v) ,()
+  __String_equal__ op "keys" ,(test__) __if__ test__
+    (,() Sjs_global G "Object" ,(O) __LList_cons__ a __NULL__ ,(l) Sjs_call_member G O "keys" l ,(v) return v) ,()
   __String_equal__ op "iter_open" ,(test__) __if__ test__ (,() Sjs_iter_open a ,(v) return v) ,()
   __String_equal__ op "iter_more" ,(test__) __if__ test__ (,() Sjs_iter_more a ,(v) return v) ,()
   __String_equal__ op "iter_take" ,(test__) __if__ test__ (,() Sjs_iter_take a ,(v) return v) ,()

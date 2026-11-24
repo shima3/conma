@@ -13,6 +13,9 @@ c 0
 caught boom
 41
 2,3
+[ 'é', 'b' ] 6 [ 1, 2, 3 ] a!bc
+[ 'é', 'b' ]
+2 4 0 the number 5 is not iterable
 before
-case8.con.js:71:3: TypeError: sleep: expected milliseconds (a number), got the string "x"
+case8.con.js:93:3: TypeError: sleep: expected milliseconds (a number), got the string "x"
 exit: 2

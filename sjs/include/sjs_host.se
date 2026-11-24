@@ -1345,11 +1345,22 @@
       __and__ isMath0 mathOk ,(isMath)
       Kit_lex_in_words name "floor ceil round trunc abs sqrt sign max min" ,(mathFn)
       __and__ isMath mathFn ,(test__) __if__ test__
-        (,() Hx_num_args cx args "" ,(nc) Kit_code_cat5 "Math." name "(" nc ")" ,(c) return c) ,()
+        (,()
+          ;; 数でない引数は、VM の Math で（呼び返しか待った後。前なら escape）。引数 1 つの関数は、$M_名前 で速く
+          __if__ noArgs0 (,() Hx_fail cx) ,()
+          Kit_lex_in_words name "floor ceil round trunc abs sqrt sign" ,(unary)
+          __LList_uncons__ __print_exit_error__ args ,(a0 more)
+          __is_null__ more ,(one)
+          __and__ unary one ,(test__) __if__ test__
+            (,() Wx_t a0 ,(t0) __String_equal__ t0 "spread" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+                Kit_code_cat5 "$M_" name "(" ac ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+          Hx_num_args cx args "" ,(nc)
+          Sjs_json_string name ,(nq)
+          Kit_code_cat5 "$math(" nq ", " p ", " ,(c) Kit_code_cat3 c ac ")" ,(c) return c) ,()
       __if__ isMath0 (,() Hx_fail cx) ,()
       Hx_builtin cx object "Object" ,(isObject)
       __String_equal__ name "keys" ,(isKeys)
-      __and__ isObject isKeys ,(test__) __if__ test__ (,() Kit_code_cat3 "$keys(" ac ")" ,(c) return c) ,()
+      __and__ isObject isKeys ,(test__) __if__ test__ (,() Kit_code_cat5 "$keys(" ac ", " p ")" ,(c) return c) ,()
       Hx_methods ,(methods)
       Kit_lex_in_words name methods ,(test__)
       __unless__ test__
@@ -1472,7 +1483,9 @@
 
 ;; 補助の関数。ConJS と同じになると確かめられない所では、呼び返しの前なら rt.Escape を投げ（呼んだ Conjs_hostfn が ConMa 版を始めから
 ;; 動かす）、呼び返しの後なら、その 1 つの演算を VM に頼む（$slow、$vm。段階 H4c）。呼び返しの後は、ConMa 版でやり直すと、呼び返した
-;; 関数のしたことが 2 度起きるため。VM に頼めない所（$no）は、呼び返しの後なら、プログラムを止める（$Fatal）。
+;; 関数のしたことが 2 度起きるため。VM に頼めない所（$no）は、呼び返しか待った後なら、$NoHost を投げる。文字列と配列のメソッド（$m）は、
+;; それを受けて、メソッドを VM で動かす。ほかの所では、プログラムを止める（$Fatal）。$committed は、やり直せなくなったわけ
+;; （'calling back' か 'waiting'。止めるときのメッセージに出す）
 ;; 値の受け渡し（段階 H3b）：__JS_fn_call__ が渡す VM の値の写し（rt.dict のオブジェクトと rt.VmRef。vm/wasm/conma.js）を、$in が
 ;; JavaScript の値にする（SJS の配列は配列、オブジェクトはプロトタイプのないオブジェクト、null の Ref は null、ほかの Dict は
 ;; $Opaque。同じものは同じ値）。終わったら、$outv が返す値を、$sync が変わった配列とオブジェクトを、VM の形に戻す（新しい配列と
@@ -1483,8 +1496,9 @@
   __String_join_lines__
     "'use strict';"
     "class $Fatal extends Error {}"
+    "class $NoHost extends $Fatal {}"
     "let $committed = false, $tramp = null;"
-    "const $no = () => { throw $committed ? new $Fatal('not on the host after a call back') : new rt.Escape('not on the host'); };"
+    "const $no = () => { throw $committed ? new $NoHost('not on the host') : new rt.Escape('not on the host'); };"
     "const $slow = (p, op, ...a) => $committed ? $vm(op, p, ...a) : $no();"
     "const $n = (x) => typeof x === 'number' ? x : $no();"
     "const $str = (s) => typeof s === 'string' ? s : $no();"
@@ -1535,10 +1549,14 @@
     "const $fn = (f, p) => typeof f === 'function' ? f : f instanceof $Opaque ? (...a) => $vm('call', p, f, a) : $no();"
     ;; for...of：配列は写し、文字列はそのまま、VM の値（ジェネレータ、ファイルの readLines など）は、VM の手順（Sjs_iter_open、more、
     ;; take、close。ConMa 版の for...of と同じ）を 1 つずつ VM に頼む。途中で抜ければ、JavaScript が return を呼ぶ（close）
-    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : a instanceof $Opaque ? $vmIter(a, p) : $no();"
+    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : a instanceof $Opaque || $committed ? $vmIter(a, p) : $no();"
     "const $vmIter = (a, p) => { const it = $vm('iter_open', p, a); return { [Symbol.iterator]() { return this; }, next() { return $vm('iter_more', p, it) ? { value: $vm('iter_take', p, it), done: false } : { value: undefined, done: true }; }, return() { $vm('iter_close', p, it); return { value: undefined, done: true }; } }; };"
     "const $arr = (a) => Array.isArray(a) ? a : $no();"
-    "const $keys = (o) => $isObj(o) ? Object.keys(o) : $no();"
+    "const $keys = (o, p) => $isObj(o) ? Object.keys(o) : $slow(p, 'keys', o);"
+    ;; Math：数どうしはホストで、ほかは VM の Math（Sjs の Math は、数でない引数を数にする）
+    "const $math = (name, p, ...a) => { for (const x of a) if (typeof x !== 'number') return $slow(p, 'math', name, a); return Math[name](...a); };"
+    "const $M_floor = (x, p) => typeof x === 'number' ? Math.floor(x) : $slow(p, 'math', 'floor', [x]), $M_ceil = (x, p) => typeof x === 'number' ? Math.ceil(x) : $slow(p, 'math', 'ceil', [x]), $M_round = (x, p) => typeof x === 'number' ? Math.round(x) : $slow(p, 'math', 'round', [x]), $M_trunc = (x, p) => typeof x === 'number' ? Math.trunc(x) : $slow(p, 'math', 'trunc', [x]);"
+    "const $M_abs = (x, p) => typeof x === 'number' ? Math.abs(x) : $slow(p, 'math', 'abs', [x]), $M_sqrt = (x, p) => typeof x === 'number' ? Math.sqrt(x) : $slow(p, 'math', 'sqrt', [x]), $M_sign = (x, p) => typeof x === 'number' ? Math.sign(x) : $slow(p, 'math', 'sign', [x]);"
     "const $text = (x, p) => x === null ? 'null' : typeof x === 'string' ? x : $committed ? $vm('console', p, x) : $S(x, p);"
     "let $out = [];"
     "const $log = (p, ...a) => { $out.push(a.map((x) => $text(x, p)).join(' ')); };"
@@ -1552,7 +1570,7 @@
     "  indexOf: (a, x) => a.indexOf(x), includes: (a, x) => a.includes(x),"
     "  map: (a, f) => a.map(f), filter: (a, f) => a.filter(f), forEach: (a, f) => { a.forEach(f); },"
     "  some: (a, f) => a.some(f), every: (a, f) => a.every(f), find: (a, f) => a.find(f), findIndex: (a, f) => a.findIndex(f),"
-    "  reduce: (a, f, ...init) => { if (init.length !== 1) $no(); return a.reduce(f, init[0]); },"
+    "  reduce: (a, f, ...init) => { if (init.length > 1) $no(); if (init.length === 1) return a.reduce(f, init[0]); if (a.length === 0) $no(); return a.reduce(f); },"
     "  concat: (a, ...x) => { for (const y of x) if (!Array.isArray(y)) $no(); return a.concat(...x); },"
     "  reverse: (a) => a.reverse(), sort: (a, f) => $sort(a, f),"
     "};"
@@ -1576,7 +1594,7 @@
     "  const args = t === $A ? a.map((x) => typeof x === 'function' || x instanceof $Opaque ? $fn(x, p) : x) : a;"
     "  const saved = $p0; $p0 = p;"
     "  try { return f(r, ...args); }"
-    "  catch (e) { if (!(e instanceof rt.Escape) || !$committed || args.some((x) => typeof x === 'function')) throw e; return $vm('method', p, r, name, a); }"
+    "  catch (e) { if (!(e instanceof rt.Escape || e instanceof $NoHost) || !$committed || args.some((x) => typeof x === 'function')) throw e; return $vm('method', p, r, name, a); }"
     "  finally { $p0 = saved; }"
     "};"
     "const $m_charAt = $m('charAt'), $m_at = $m('at'), $m_indexOf = $m('indexOf'), $m_includes = $m('includes'), $m_startsWith = $m('startsWith'), $m_endsWith = $m('endsWith'), $m_slice = $m('slice'), $m_trim = $m('trim'), $m_toUpperCase = $m('toUpperCase'), $m_toLowerCase = $m('toLowerCase'), $m_repeat = $m('repeat'), $m_replace = $m('replace'), $m_replaceAll = $m('replaceAll'), $m_split = $m('split');"
@@ -1628,12 +1646,12 @@
     "const $vm = (op, p, ...args) => {"
     "  const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
-    "  $sync(); const margs = args.map((x) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method') && args.indexOf(x) === args.length - 1 ? x.map($outv) : $outv(x));"
+    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = [];"
     "  let r;"
     "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs); }"
     "  catch (e) { if (e instanceof rt.Escape && (calls || $committed)) throw new $Fatal(`a call back could not finish: ${e.message}`); throw e; }"
-    "  if (calls) $committed = true;"
+    "  if (calls) $committed = $committed || 'calling back';"
     "  $refresh();"
     "  const v = $in(r[1]);"
     "  if (r[0] === 'threw') throw new $Thrown(v, null, true);"
@@ -1658,7 +1676,7 @@
     "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out }; }"
     "    const v = $outv(r); $sync(); return { v: v, out: $out };"
     "  } catch (e) {"
-    "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), out: $out };"
+    "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), after: $committed || 'calling back', out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
     "  } finally {"
     "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0 });"
@@ -1681,7 +1699,7 @@
     ;; VM への頼み：ホストの変更を写しに書き、ためた行と渡す。頼んだ後は、やり直せない（ほかの処理が、ホストの変更を見る）
     "const $Yq = (p, op, ...args) => {"
     "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
-    "  const lines = $out; $out = []; $committed = true;"
+    "  const lines = $out; $out = []; $committed = $committed || 'waiting';"
     "  return [p === null || p === undefined ? null : $P[p], op, margs, lines];"
     "};"
     ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる

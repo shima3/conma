@@ -1,7 +1,13 @@
 conjs: host: bad
 conjs: host: fill
+conjs: host: othersAfter
+conjs: host: reduceAfter
 conjs: host: relay
+conjs: host: replaceAfter
 conjs: host: safeJoin
+conjs: host: sortAfter
+conjs: host: splitAfter
+conjs: host: splitAfterCall
 conjs: host: tick
 conjs: host: twice
 conjs: host: waitFor

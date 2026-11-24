@@ -64,6 +64,28 @@ function later(a) {
 }
 console.log(later([1, 2]).join(","));
 
+// after waiting (or calling back), what the host cannot check is done by the VM (the review of shima3/conma#76 by M1):
+// a string of more than ASCII, reduce without a first value, sort without a comparing function, $ in replace
+function splitAfter(s) { sleep(0); return s.split(","); }
+function reduceAfter(a) { sleep(0); return a.reduce((x, y) => x + y); }
+function sortAfter(a) { sleep(0); return a.slice().sort(); }
+function replaceAfter(s) { sleep(0); return s.replace("a", "$&!"); }
+function splitAfterCall(s, cb) { cb(); return s.split(","); }
+console.log(splitAfter("é,b"), reduceAfter([1, 2, 3]), sortAfter([3, 1, 2]), replaceAfter("abc"));
+console.log(splitAfterCall("é,b", () => 0));
+// Math and Object.keys of values that are not numbers or objects of the host, and for...of over a number
+function othersAfter(x) {
+  sleep(0);
+  let msg = "";
+  try {
+    for (const c of 5) msg = c;
+  } catch (e) {
+    msg = e.message;
+  }
+  return `${Math.sqrt(x)} ${Math.max(1, x)} ${Object.keys(x).join(",")} ${msg}`;
+}
+console.log(othersAfter("4"));
+
 // a TypeError of sleep, after waiting: uncaught, with the position of the call
 function bad() {
   console.log("before");
