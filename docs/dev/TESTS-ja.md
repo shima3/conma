@@ -162,10 +162,10 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 ### m4/conjs-host-h3
 
-* 種類：機能（ConJS の値だけの関数を、wasm 版の VM のとき、ホストの JavaScript で動かす）。
-* docs/dev/CONJS-HOST-PLAN.md の段階 H3a。変換器に sjs/include/sjs_host.se（conjs/conjsc.se が include する）を足し、sjs/include/sjs_gen.se が、ConJS のとき、値だけの関数を JavaScript にして、Conjs_hostfn で包む。ランタイムは conjs/include/conjs_host.se（conjs_rt.se が include する）。数の関数でもある関数は、wasm 版、ホストの版、ConMa 版の順に試す。alpha（#70〜#73）を取り込んだ。
+* 種類：機能（ConJS の関数を、wasm 版の VM のとき、ホストの JavaScript で動かす）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H3（H3a と H3b）。変換器に sjs/include/sjs_host.se（conjs/conjsc.se が include する）を足し、sjs/include/sjs_gen.se が、ConJS のとき、外の変数を読み書きしない関数（値、配列、オブジェクト、アロー関数、console.log）を JavaScript にして、Conjs_hostfn で包む。ランタイムは conjs/include/conjs_host.se（conjs_rt.se が include する）。数の関数でもある関数は、wasm 版、ホストの版、ConMa 版の順に試す。alpha（#70〜#73）を取り込んだ。
 * 作り直すもの：Rust 版の VM、wasm 版の VM（H1、H2 から）。transpiled VM（sjs_gen.se が変わって、ConSh のモジュールが変わる）。
-* 新しいテスト：conjs/test/step20（3 つの場合。どの VM でも同じログ）。wasm 版の VM では、conjs/test/run_all.sh が、ホストで値を返した関数の名前を step20/case*.host.txt と比べる。
+* 新しいテスト：conjs/test/step20（4 つの場合。どの VM でも同じログ）。wasm 版の VM では、conjs/test/run_all.sh が、ホストで値を返した関数の名前を step20/case*.host.txt と比べる。
 * M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、consh/test（Rust 版と wasm 版）、consh/js/test、Rust 版の VM の test/、test/host-api.sh。
 * 流していないもの：transpiled VM（作り直していない）、Windows。
 * 測ったもの：計画の 15 節。
