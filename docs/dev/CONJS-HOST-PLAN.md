@@ -2,7 +2,7 @@
 
 The plan of running the functions of a ConJS program on the JavaScript engine of the host (Node.js or a browser) when the program runs on the wasm VM, calling back into the VM for what the host cannot do. Written on 2026-11-24 at the user's request, after the ConJS benchmarks (conjs/bench/README-ja.md, shima3/conma#71). The first version, the same day, ran only the functions that never wait and undid a call that met anything else; the user then asked that the host call ConJS back instead, and this version does that (3.1), keeping the undoing only as the last resort.
 
-**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done (section 11), stage H1 (the nested run of the VM) is built (section 12), and so is stage H2, in two halves: H2a (the copying of values and the primitives; section 13) and H2b (generators, and keeping the copies the same at a call back and a yield; section 14). Stage H3 is built in two parts: H3a (the translator writes functions of values; section 15) and H3b (arrays, objects, closures and `console.log`; section 16). Of stage H4, H4a (the methods of classes; section 17), H4b (`new`, `instanceof`, `throw` and `try`; section 18) and H4c (slow paths in the VM and calling ConMa back, section 19; waiting host functions, section 20) are built. Host functions have no fuel (the user's decision; section 6). Of H5, H5b (reading and writing members in place; section 22) is built. The rest is not. Section 10 lists what the user is to decide.
+**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done (section 11), stage H1 (the nested run of the VM) is built (section 12), and so is stage H2, in two halves: H2a (the copying of values and the primitives; section 13) and H2b (generators, and keeping the copies the same at a call back and a yield; section 14). Stage H3 is built in two parts: H3a (the translator writes functions of values; section 15) and H3b (arrays, objects, closures and `console.log`; section 16). Of stage H4, H4a (the methods of classes; section 17), H4b (`new`, `instanceof`, `throw` and `try`; section 18) and H4c (slow paths in the VM and calling ConMa back, section 19; waiting host functions, section 20) are built. Host functions have no fuel (the user's decision; section 6). Of H5, H5b (reading and writing members in place; section 22) and H5c (the elements of arrays in place; section 23) are built, and the numeric functions are measured on WebAssembly and on the host (section 24). The rest is not. Section 10 lists what the user is to decide.
 
 ## 1. Why
 
@@ -118,7 +118,7 @@ All this paid for the property above, which ConJS does not promise, so the user 
     * **H4a**: the methods of classes, on instances that come from the VM, with `Math` (section 17).
     * **H4b**: `new` on the host, exceptions and `instanceof` (section 18).
     * **H4c**: calling ConMa back (callbacks passed in from ConMa code), and waiting host functions. The user chose on 2026-11-24 that, after a call back, the host asks the VM to do what it cannot (slow paths) rather than stop the program, in three parts: **B1** the slow paths of the operations on values, **B2** calling ConMa back (with iterating over values of the VM), both in section 19, and **B3** the waiting host functions (section 20).
-* **H5 — measure and tune.** (Fuel was dropped on 2026-11-24; section 6. H5b, the members written in place, is built; section 22.) The benchmarks of conjs/bench and sjs/bench; the rules that stop using the host for a function (3.2); the choice between WebAssembly and the host for the numeric functions (both work for them; keep the faster).
+* **H5 — measure and tune.** (Fuel was dropped on 2026-11-24; section 6. H5b, the members written in place, is built, section 22; H5c, the elements of arrays, section 23; the numeric functions measured, section 24.) The benchmarks of conjs/bench and sjs/bench; the rules that stop using the host for a function (3.2); the choice between WebAssembly and the host for the numeric functions (both work for them; keep the faster).
 * **H6 — the top level.** Running the top level of a file on the host, as a waiting host function.
 * **H7 — the browser.** conjs/web/build.sh and the pages (8).
 
@@ -292,4 +292,28 @@ The methods of classes run on the host, on instances made in ConMa.
 * **How the versions were measured**: the translator and the runtime of ConJS are modules that conjs makes again when one of their sources is newer than the module (bin/lang). Putting one version of a source in place, then the other, between runs makes every run make its module again (about 5 s), which hides what is measured. Each version was kept in a file with an old time, put in place with `cp -p`, and given its own `CONMA_CACHE_DIR`. The first measure of the fuel of section 6 (H5a) did not do this; it is corrected there.
 * **The tests**: conjs/test (Rust, wasm with `CONJS_HOST_STRICT=1`, Python), the same functions return from the host in every case of step20, compare.sh and sjs/test (Rust, wasm).
 * **Not done**: the rules that stop using the host for a function that costs more than it gains (3.2); the elements of arrays (`a[i]`, `$idx`) and `length`, still through helpers; WebAssembly or the host for the numeric functions.
+
+## 23. Results of H5c: elements of arrays in place (2026-11-24)
+
+* **What the translator writes** (sjs/include/sjs_host.se, `Hx_read_index`, `Hx_write_index`, `Hx_length`), as in section 22 for members:
+    * reading `a[i]`: `(($t = a), ($u = i), Array.isArray($t) && typeof $u === 'number' && ($u >>> 0) === $u && $u < $t.length) ? $t[$u] : $idx($t, $u, p)`;
+    * writing `a[i] = e`: the same test with `$u <= $t.length` (writing at the length adds an element, as `$put` allows), else `$put($t, $u, e, p)`; compound assignments, `++` and `--` the same way;
+    * `x.length`: `Array.isArray($t = x) ? $t.length : $len($t, p)` (a string counts its characters in `$len`).
+    The array and the index are put in temporaries first, so both are evaluated once and in the order of JavaScript, whichever way the test goes.
+* **What it gives** (the M4, the wasm VM, user + sys, alternately with `cp -p` and a `CONMA_CACHE_DIR` per version, 3 times): a sieve of Eratosthenes over an array of Booleans up to 5,000,000 (a host function; WebAssembly does not take Booleans), 0.40 s against 0.55 s with H5b, about 0.21 s of work against 0.35 s once the start-up is taken off; Node.js 0.12 s. nbody_class (3,000,000 steps) is the same, 0.85 s.
+* **The tests**: conjs/test (Rust, wasm with `CONJS_HOST_STRICT=1`, Python), the same functions return from the host in every case of step20, compare.sh and sjs/test (Rust, wasm).
+
+## 24. The numeric functions: WebAssembly or the host (measured 2026-11-24; the user is to decide, 10.4)
+
+A numeric function of ConJS (the stages of SJS-WASM-PLAN-ja.md) has two versions on the wasm VM: WebAssembly, tried first, and the host's JavaScript (`"hostAlso"`, section 15), tried when WebAssembly does not take the call. `CONMA_NO_WASM=1` leaves WebAssembly out, so the host's version runs.
+
+| (the M4, the wasm VM, user + sys, 3 times alternately) | WebAssembly | the host | Node.js |
+|---|---:|---:|---:|
+| `fib(38)`, a recursion | 0.48 s | 0.43 s | 0.24 s |
+| `mandel(2400, 1800, 500)`, loops of floats | 2.65 s | 1.44 s | 1.17 s |
+| `collatz(100000)`, a loop with `%` and `/` | 0.47 s | 0.21 s | 0.05 s |
+
+(About 0.17 s of each time on the wasm VM is the start-up.) The host's version is faster in all three: the engine of the host optimizes the plain JavaScript as well as the WebAssembly the translator writes, and WebAssembly counts fuel and starts over with 8 times the fuel when it runs out (SJS-WASM-PLAN-ja.md 5.5), where the host has no fuel (section 6). A call that WebAssembly cannot finish within its last fuel (2^30) tries the host only after that: `collatz(1000000)` took 3.47 s with WebAssembly on, against 1.91 s with it off.
+
+So the plan proposes to try the host's version first for the numeric functions of ConJS on the wasm VM, and WebAssembly only where there is no host's version. The numeric functions of SJS in ConSh (`(( ))`), which have no host's version (10.5), keep WebAssembly. Not done, waiting for the user's decision.
 

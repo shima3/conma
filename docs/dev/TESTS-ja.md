@@ -151,7 +151,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 ### m4/conjs-host-h5
 
 * 種類：機能（ConJS のホストの関数が速くなる。結果は変わらない）。
-* docs/dev/CONJS-HOST-PLAN.md の段階 H5b（22 節）。変換器（sjs/include/sjs_host.se）が、名前の決まったメンバーの読み書きとメソッドの呼び出しを、ホストのオブジェクトならその場で読み書きし、ほかは今までの補助の関数に任せる形で書く。nbody_class の 1 ステップが 1.74 µs から 0.13 µs に。あわせて、計画の 6 節の燃料の確かめの費用（約 8% としていた）を、測り直した値（測れるほどの差なし）に直した。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H5b（22 節）。変換器（sjs/include/sjs_host.se）が、名前の決まったメンバーの読み書きとメソッドの呼び出しを、ホストのオブジェクトならその場で読み書きし、ほかは今までの補助の関数に任せる形で書く。nbody_class の 1 ステップが 1.74 µs から 0.13 µs に。段階 H5c（23 節）で、配列の要素と length も同じ形で書く。数の関数の wasm 版とホストの版を測った（24 節。どちらを使うかは、ユーザーが決める）。あわせて、計画の 6 節の燃料の確かめの費用（約 8% としていた）を、測り直した値（測れるほどの差なし）に直した。
 * 作り直すもの：なし（変換器のモジュールは、bin/cache-dir の所で作り直される）。
 * M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、doc-pairs.py。
 * 流していないもの：consh/test と test/（ConJS の変換器しか変えていない）、Windows。

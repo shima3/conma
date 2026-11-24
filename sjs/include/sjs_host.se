@@ -991,16 +991,14 @@
     (,()
       Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc)
       __if__ named0 (,() Hx_write_named cx oc tname vc p ,(c) return c) ,()
-      Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc pend ,(c) return c) ,()
+      Hx_write_index cx oc kc vc p ,(c) return c) ,()
   ;; 複合の代入と ++、--：オブジェクトと添字は、名前かリテラル
   Hx_simple object ,(so)
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(named)
   __if_then_else__ named (,() __NULL__ __TRUE__) (,() Hx_simple key) ,(sk)
   __and__ so sk ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  __if_then_else__ named0
-    (,() Hx_read_named cx oc tname p)
-    (,() Kit_code_cat4 getf oc ", " kc ,(cur) __String_concat__ cur pend) ,(cur)
+  __if_then_else__ named0 (,() Hx_read_named cx oc tname p) (,() Hx_read_index cx oc kc p) ,(cur)
   __if_then_else__ isUpdate
     (,()
       Kit_parse_get e "op" ,(uop)
@@ -1018,8 +1016,7 @@
       Hx_expr cx value ,(vc)
       Hx_op_call cx bop cur vc e) ,(nv)
   __if__ named0 (,() Hx_write_named cx oc tname nv p ,(c) return c) ,()
-  Kit_code_cat5 putf oc ", " kc ", " ,(c)
-  Kit_code_cat3 c nv pend)
+  Hx_write_index cx oc kc nv p)
 
 ;; ── その場に書く読み書き（段階 H5b）──
 ;; 共通の補助の関数（$getn など）は名前を変数で受けるので、エンジンが名前ごとの速い読み方を使えない。名前の決まったメンバーの
@@ -1115,6 +1112,52 @@
   Kit_code_cat5 c t ", " q ", " ,(c)
   Kit_code_cat4 c p rest "))" ,(c)
   __NULL__ __TRUE__ c)
+
+;; 配列の要素（段階 H5c）：配列と、長さより小さい整数の添字ならその場で、ほかは $idx（$get）。配列と添字を先に一時の変数に置く
+;; （確かめに通らなくても、JavaScript と同じ順に 1 度だけ動く）
+(define Hx_read_index ,(cx oc kc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 u)
+  __and__ ok1 ok2 ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$idx(" oc ", " kc ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c "), (" u " = " ,(c)
+  Kit_code_cat4 c kc "), Array.isArray(" t ,(c)
+  Kit_code_cat4 c ") && typeof " u " === 'number' && (" ,(c)
+  Kit_code_cat4 c u " >>> 0) === " u ,(c)
+  Kit_code_cat5 c " && " u " < " t ,(c)
+  Kit_code_cat4 c ".length ? " t "[" ,(c)
+  Kit_code_cat5 c u "] : $idx(" t ", " ,(c)
+  Kit_code_cat5 c u ", " p "))")
+
+;; 配列の要素に書く：配列と、長さまでの整数の添字ならその場で（長さのときは足す）、ほかは $put。値 vc は、どちらか一方でだけ動く
+(define Hx_write_index ,(cx oc kc vc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 u)
+  __and__ ok1 ok2 ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$put(" oc ", " kc ", " ,(c) Kit_code_cat5 c vc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c "), (" u " = " ,(c)
+  Kit_code_cat4 c kc "), Array.isArray(" t ,(c)
+  Kit_code_cat4 c ") && typeof " u " === 'number' && (" ,(c)
+  Kit_code_cat4 c u " >>> 0) === " u ,(c)
+  Kit_code_cat5 c " && " u " <= " t ,(c)
+  Kit_code_cat4 c ".length ? (" t "[" ,(c)
+  Kit_code_cat4 c u "] = " vc ,(c)
+  Kit_code_cat4 c ") : $put(" t ", " ,(c)
+  Kit_code_cat5 c u ", " vc ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.length：配列ならその場で、ほかは $len（文字列は文字の数）
+(define Hx_length ,(cx oc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok t)
+  __unless__ ok (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "(Array.isArray(" t " = " oc ,(c)
+  Kit_code_cat5 c ") ? " t ".length : $len(" t ,(c)
+  Kit_code_cat4 c ", " p "))")
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
@@ -1232,10 +1275,10 @@
       Hx_expr cx object ,(oc)
       __Dict_lookup_or__ e "key" (,(k) __NULL__ __NULL__) ,(key)
       __is_null__ key ,(test__) __unless__ test__
-        (,() Hx_expr cx key ,(kc) Hx_pos cx e ,(p) Kit_code_cat5 "$idx(" oc ", " kc ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+        (,() Hx_expr cx key ,(kc) Hx_pos cx e ,(p) Hx_read_index cx oc kc p ,(c) return c) ,()
       Kit_parse_get e "name" ,(name)
       Hx_pos cx e ,(p)
-      __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
+      __String_equal__ name "length" ,(test__) __if__ test__ (,() Hx_length cx oc p ,(c) return c) ,()
       Hx_read_named cx oc name p ,(c)
       return c) ,()
   __String_equal__ t "array" ,(test__) __if__ test__
