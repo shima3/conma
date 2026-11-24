@@ -119,3 +119,14 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * S5 が流したもの（PR のレビュー、abef32e）：Windows（Git Bash）で、小さくした大きさの 8 つの run.sh（どれも Node.js と同じ出力）。S5 の指摘で、Windows では `time` が Windows のプログラムの user と sys を数えないので、run.sh は実時間で測り、そう出すようにした。
 * 流していないもの：ほかの suite（ConJS のランタイムも VM も変えていない）。
 * 測ったもの：Full ConJS Bench（a102031、M4。conjs/bench/README-ja.md）。
+
+### m4/lang-start（shima3/conma#72）
+
+* 種類：直し（起動を速くした）。
+* bin/lang と bin/cache-dir で、起動のたびに動かす外のコマンドを減らした：dirname の代わりに `${0%/*}`、shasum（Perl）の代わりに cksum、2 つの grep の代わりに 1 つの awk、cut の代わりに `${x%% *}`、キャッシュのディレクトリがあれば mkdir しない。`console.log("hi")` の `bin/lang conjs` は、63 ms から 50 ms になった（M4、実時間、前の版と交互に 20 回ずつの中央値）。
+* ランタイムのモジュールの名前のハッシュが、shasum の 12 桁から cksum の数になった（`conjs-rt-1891629090.module.se`）。初めての実行で一度だけ作り直す（約 1.5 秒）。前の名前のファイルはキャッシュに残る（消してよい）。キャッシュのディレクトリの名前は変わらない（consh.ps1 と同じ）。
+* 作り直すもの：なし。
+* M4 が流したもの：`CONMA_TRANSLATE_VM=wasm` と `CONMA_VM=wasm` での conjs、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`（Rust 版と wasm 版）、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`。
+* S5 が流したもの（PR のレビュー、f6f7534）：Windows（Git Bash）の conjs/test（Rust 版と wasm 版）と sjs/test、cksum と awk、キャッシュのディレクトリの名前（consh.ps1 と同じ）。起動は 1413 ms から 1101 ms。S5 の指摘で、include でない行がないときも alone.se を作るようにした。
+* 流していないもの：Python 版の VM、transpiled VM。
+* 測ったもの：上の起動の時間だけ。
