@@ -1,7 +1,7 @@
 #!/bin/bash
 # sjs/bench/run.sh NAME [N [M]]：SJS の段階 B7 の測定（docs/consh/dev/SAFEJS-PLAN-ja.md の 6）。
 # NAME.safe.js（N_ARG を N にしたもの）と、bench/NAME（CPython と、手で書いた ConMa）の同じ計算について、
-# 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒、3 回の最良）を出す。
+# 大きさ（SJS、変換した ConMa のソース、モジュール）、変換の時間、実行の時間（user + sys 秒。Windows では実時間。3 回の最良）を出す。
 # 実行は、Node.js、CPython、Rust 版の VM（手で書いた ConMa と、変換した SJS）。出力が同じことも確かめる。
 # wasm 版の VM（vm/wasm/build.sh で作り、Node.js で動かす）があれば、その上で、変換した SJS（数の関数は WebAssembly。
 # docs/consh/dev/SJS-WASM-PLAN-ja.md）、CONMA_NO_WASM=1 で ConMa 版だけ、手で書いた ConMa も測る
@@ -28,10 +28,14 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/sjs-bench.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 sed "s/N_ARG/$n/" "$sjsbench/$name.safe.js" > "$tmp/$name.safe.js"
 sed "s/N_ARG/$m/" "$sjsbench/$name.safe.js" > "$tmp/slow.safe.js"
-best() {  # command...：3 回の最良の user + sys 秒
+# Windows（Git Bash、MSYS）の time は、Windows のプログラム（node.exe、conma.exe、python.exe）の user と sys を数えない
+# ので、そこでは実時間を測り、そう出す（2026-11-24。conjs/bench/run.sh と同じ。shima3/conma#71 の S5 のレビュー）
+clock='%U %S' what='user + sys'
+case "$(uname -o 2> /dev/null)" in Msys|Cygwin) clock='%R 0' what='real time (Windows: user + sys misses native programs)' ;; esac
+best() {  # command...：3 回の最良の秒（$what）
   local b= t
   for i in 1 2 3; do
-    t=$( { TIMEFORMAT='%U %S'; time "$@" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
+    t=$( { TIMEFORMAT="$clock"; time "$@" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
     if [ -z "$b" ] || awk "BEGIN{exit !($t < $b)}"; then b=$t; fi
   done
   echo "$b"
@@ -52,6 +56,7 @@ node "$tmp/slow.safe.js" > "$tmp/node-slow.out"
 "$conma" --main "$tmp/slow.module.se" > "$tmp/sjs.out" 2>&1
 cmp -s "$tmp/node-slow.out" "$tmp/sjs.out" || { echo "SJS prints otherwise than Node.js:"; diff "$tmp/node-slow.out" "$tmp/sjs.out"; }
 if [ "$m" = "$n" ]; then echo "== $name $n"; else echo "== $name $n (the slow columns, marked *: $m)"; fi
+echo "time: $what, the least of 3 runs"
 printf 'size: SJS %s lines %s bytes; translated ConMa %s bytes (%s lines); module %s bytes (with sjs_rt.se); hand-written ConMa module %s bytes\n' \
   "$(lines "$sjsbench/$name.safe.js")" "$(size "$sjsbench/$name.safe.js")" "$(size "$tmp/$name.se")" "$(wc -l < "$tmp/$name.se" | tr -d ' ')" \
   "$(size "$tmp/$name.module.se")" "$(size "$tmp/hand.module.se")"

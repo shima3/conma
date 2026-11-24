@@ -5,12 +5,15 @@
 # the repository>, so that two checkouts do not share their modules. The directories it makes can be read and
 # written by their owner only (umask 077), as a module found there is run without being checked.
 set -e -o pipefail
-root="$(cd "$(dirname "$0")/.."; pwd -P)"
+# 2026-11-24: no dirname, cut or mkdir when the directory is there, as bin/lang runs it at every start
+case "$0" in */*) root="${0%/*}/.." ;; *) root=.. ;; esac
+root="$(cd "$root" && pwd -P)"
 if [ -n "$CONMA_CACHE_DIR" ]; then
   dir="$CONMA_CACHE_DIR"
 else
   base="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}/conma"
-  dir="$base/$(printf '%s' "$root" | cksum | cut -d ' ' -f 1)"
+  sum="$(printf '%s' "$root" | cksum)"
+  dir="$base/${sum%% *}"
 fi
-(umask 077; mkdir -p "$dir")
+[ -d "$dir" ] || (umask 077; mkdir -p "$dir")
 printf '%s\n' "$dir"

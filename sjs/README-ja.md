@@ -51,6 +51,8 @@ ConSh では、`(( ))` と `$(( ))` の式を、この変換器で ConMa のモ�
 
 `sjs/bench/run.sh NAME [N [M]]` で測る。大きさを指定しなければ、下の表の大きさで流す。大きさは 2 つあり、N で Node.js、CPython、wasm 版の VM の SJS（数の関数は WebAssembly）を、M（なければ N）で残りの遅い列（`*` を付けた列）を測る。N は、Node.js と wasm 版の VM の SJS の速いほうが約 1 秒、M は、遅い列のいちばん遅いものが約 1 分になる大きさ（docs/dev/CONTRIBUTING.md の Benchmarks）。
 
+`sjs/bench/run.sh` は、Windows（Git Bash）では実時間で測り、出力の 2 行目にそう出す（2026-11-24 から）。Git Bash の `time` は、Windows のプログラム（conma.exe、node.exe、python.exe）の user と sys を数えないため（docs/dev/CONTRIBUTING.md の Benchmarks）。下の表は、どれも Unix で測った user + sys。
+
 **約 1 秒の大きさ**（2026-11-17、e3644a5 の後の run.sh、Apple M1、macOS 26.5.2、rustc 1.100.0、Node.js v26.13.1、CPython 3.12.3。user + sys 秒の 3 回の最良、起動を含む）。出力は、どれも Node.js と同じだった。
 
 | | N | Node.js | CPython | wasm 版の VM、SJS | M | Rust 版の VM、手で書いた ConMa `*` | Rust 版の VM、SJS `*` | wasm 版の VM、SJS（`CONMA_NO_WASM=1`）`*` | wasm 版の VM、手で書いた ConMa `*` |

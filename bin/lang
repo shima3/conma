@@ -1,6 +1,7 @@
 #!/bin/bash
 # bin/lang: ConMa に変換する言語のプログラムを、変換して動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.3 節、段階 P4。言語キット）。
 #   bin/lang [--emit] 言語のディレクトリ ファイル [引数 ...]
+#   bin/lang --version     ConMa の版を出す（bin/version。2026-11-24）
 # ファイルの後の引数は、変換したプログラムの main に渡す（ConJS の argv。docs/dev/PLATFORM-PLAN-ja.md の 4.8 節、段階 P8）。
 # 言語のディレクトリ（sjs、conjs など）の lang.conf に、言語の名前（name）、変換器（translator。ディレクトリからの相対パス）、
 # include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）を「名前=値」の行で書く（# で始まる行は飛ばす。
@@ -21,7 +22,11 @@
 # 新しくなったときだけ作り直す。include の行を除いたソースだけをモジュールにして、conma link でランタイムのモジュールと
 # 大域変数の名前で合わせる。できるモジュールは、include の行ごとフロントエンドに通したものと、大域変数の番号とファイルの
 # 順のほかは同じで、同じステップ数で動く
-root="$(cd "$(dirname "$0")/.."; pwd)"
+# 起動を速くするため、外のコマンドを少なくする（2026-11-24）：dirname の代わりに ${0%/*}、shasum（Perl）の代わりに cksum、
+# 2 つの grep の代わりに 1 つの awk
+case "$0" in */*) root="${0%/*}/.." ;; *) root=.. ;; esac
+root="$(cd "$root" && pwd)"
+if [ "$1" = --version ]; then exec "$root/bin/version"; fi
 conma="$root/vm/target/release/conma"
 wasm="$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm"
 # 変換とモジュール作りをする VM（tr）と、それが新しくなったらモジュールを作り直す印のファイル（stamps）
@@ -67,10 +72,12 @@ fi
 "${tr[@]}" --main "$module" "$file" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
 # ランタイムのモジュール（作りかけを読まないように、一時ファイルに作ってから mv で置き換える）
-grep '^(include ' "$tmp/prog.se" > "$tmp/rt.se"
-grep -v '^(include ' "$tmp/prog.se" > "$tmp/alone.se"
+awk -v rt="$tmp/rt.se" -v alone="$tmp/alone.se" '/^\(include / { print > rt; next } { print > alone }' "$tmp/prog.se" || exit 1
+# awk は、行のないファイルを作らない（前の grep は空のファイルを作った）
+: >> "$tmp/rt.se"; : >> "$tmp/alone.se"
 cache="$(dirname "$module")"
-rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | shasum | cut -c1-12)"
+rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | cksum)"
+rthash="${rthash%% *}"
 rtsrc="$cache/${name}-rt-$rthash.se" rtmod="$cache/${name}-rt-$rthash.module.se"
 if [ ! -s "$rtmod" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" \( -name '*.se' -o -type d \) -newer "$rtmod")" ] ||
    stale "$rtmod"; then

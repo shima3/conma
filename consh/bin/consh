@@ -2,6 +2,7 @@
 # ConSh を起動する。
 #   consh [--conma-parser | --python-parser] [--dump] <script> [<arg> ...]
 #   consh                 対話モード（標準入力から1行ずつ読んで実行する）
+#   consh --version       ConMa の版を出す（bin/version。2026-11-24）
 # 環境変数 CONSH_IMPL で版を選ぶ。
 #   rust（既定）  Rust 版（consh/rust の consh-rs）。構文解析も Rust 版で行い、--dump は Rust 版の構文解析の構文木を出す。
 #                 consh/rust で cargo build --release して作っておく（Rust 1.87 以降。std::io::pipe を使う）。
@@ -29,6 +30,7 @@
 set -o pipefail
 consh="$(cd ${0%/*}/..; pwd)"
 root="${consh%/*}"
+if [ "$1" = --version ]; then exec "$root/bin/version"; fi
 mode=run
 # 構文解析：ConMa 版（-src のモード）か、Python の consh_parse（py）。parser は、どちらかを明示したか
 src=-src

@@ -1,6 +1,7 @@
 # consh.ps1: start ConSh from PowerShell on Windows, as consh/bin/consh does from bash.
 #   consh.ps1 [--conma-parser] [--dump] <script> [<arg> ...]
 #   consh.ps1                 interactive mode (reads standard input line by line)
+#   consh.ps1 --version       print the version of ConMa, as bin/version does (2026-11-24)
 # It runs the ConMa version of ConSh on the Rust VM. The Rust version (consh/rust, consh-rs) does not build on
 # Windows (it uses Unix-only APIs), so CONSH_IMPL unset or rust runs the ConMa version too, unless
 # consh/rust/target/release/consh-rs.exe is there. CONSH_IMPL=reference runs the reference version.
@@ -175,6 +176,34 @@ function Exit-Usage {
 $consh = Get-DiskPath (Join-Path $PSScriptRoot '..')
 $root = Split-Path $consh -Parent
 $rest = @($args)
+# The version, as bin/version writes it: VERSION, then the commit and its date from Git, or from the line of
+# bin/version that git archive fills in (export-subst) when there is no Git
+if ($rest.Count -gt 0 -and $rest[0] -eq '--version') {
+  $version = (Get-Content -LiteralPath (Join-Path $root 'VERSION') -Raw).Trim()
+  $commit = ''
+  # Windows PowerShell 5.1 makes a message of git on standard error a stopping error under
+  # $ErrorActionPreference = 'Stop', even with 2>$null: a git that fails (not a repository, dubious ownership)
+  # leaves $commit empty instead, as in bin/version
+  if ((Test-Path -LiteralPath (Join-Path $root '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $commit = (& git -C $root log -1 --format='%h %cs' 2>$null | Out-String).Trim()
+      if ($LASTEXITCODE -ne 0) { $commit = '' }
+      if ($commit -and (& git -C $root status --porcelain --untracked-files=no 2>$null | Out-String).Trim()) {
+        $parts = $commit -split ' ', 2
+        $commit = "$($parts[0])-dirty $($parts[1])"
+      }
+    } catch { $commit = '' } finally { $ErrorActionPreference = $saved }
+  }
+  if (-not $commit) {
+    # bin/version is UTF-8 without a BOM, which Windows PowerShell 5.1 reads in the code page of the system
+    $line = Get-Content -Encoding UTF8 -LiteralPath (Join-Path $root 'bin\version') | Where-Object { $_ -like 'archived=*' } | Select-Object -First 1
+    if ($line -and $line -notlike '*$Format*') { $commit = $line.Substring(10).TrimEnd("'") }
+  }
+  if ($commit) { Write-Output "ConMa $version ($commit)" } else { Write-Output "ConMa $version" }
+  exit 0
+}
 $mode = 'run'
 $parser = $false
 if ($rest.Count -gt 0 -and $rest[0] -eq '--conma-parser') { $parser = $true; $rest = @($rest | Select-Object -Skip 1) }
