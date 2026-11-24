@@ -145,7 +145,8 @@
 (define Conjs_hostfn_vm ,(G)
   __NULL__ (,(lines pos op args gl) Conjs_hostfn_vm_run G lines pos op args gl ,(r) __NULL__ r))
 
-;; gl は、一番外の文がホストで動いているとき、その文が書いた一番外の変数の値の LList（段階 H6c。なければ null）：op の前に代入し、
+;; gl は、一番外の文がホストで動いているとき、その文が書いた一番外の変数の値の LList を 1 つ入れた LList（段階 H6c。なければ null）：
+;; op の前に代入し、
 ;; 後で、文の使う一番外の変数の値を読んで、答えの 3 つ目にする（Conjs_hoststmt が PDict の "conjs_host_io" に置く手順で）
 (define Conjs_hostfn_vm_run ,(G lines pos op args gl)
   __Cont_get__ ,(return)
@@ -169,13 +170,15 @@
   __LList_cons__ v fresh ,(l)
   __LList_cons__ "ok" l)
 
-;; 一番外の文の書いた変数の値 gl を代入する（gl が null なら何もしない）
+;; 一番外の文の書いた変数の値を代入する。gl は、値の LList を 1 つ入れた LList（書いた変数がなくても null にならないように。
+;; sjs_host.se の $gout）。gl が null なら何もしない
 (define Conjs_hostfn_set_globals ,(gl)
   __Cont_get__ ,(return)
   __is_null__ gl ,(test__) __if__ test__ return ,()
   __PDict_lookup_or__ "conjs_host_io" (,(k) return) ,(io)
   __Dict_lookup_or__ io "set" __print_exit_error__ ,(set)
-  set gl)
+  __LList_uncons__ __print_exit_error__ gl ,(vals rest)
+  set vals)
 
 ;; gl が null でなければ、文の使う変数の今の値の LList を 1 つ入れた LList（答えの 3 つ目）、null なら null
 (define Conjs_hostfn_get_globals ,(gl)

@@ -323,7 +323,12 @@
   __is_null__ stmts ,(test__) __if__ test__ return ,()
   __LList_uncons__ __print_exit_error__ stmts ,(s rest)
   Wx_t s ,(t)
-  Kit_lex_in_words t "for forof while dowhile" ,(isLoop)
+  Kit_lex_in_words t "for forof while dowhile" ,(isLoop0)
+  ;; 段階 H6d：中にループのある if、ブロック、try も（ループのない文は、1 度しか動かず、写す費用のほうが大きくなりうるので
+  ;; ConMa のまま）
+  Kit_lex_in_words t "if block try" ,(isCompound)
+  __if_then_else__ isCompound (,() Hx_has_loop s) (,() __NULL__ __FALSE__) ,(hasLoop)
+  __or__ isLoop0 hasLoop ,(isLoop)
   __if__ isLoop
     (,()
       __Ref_get__ stmtN ,(n)
@@ -354,6 +359,12 @@
       Kit_parse_get s "decls" ,(ds)
       Hx_note_decls before ds isConst) ,()
   Hx_stmt_candidates E H order before stmtN rest)
+
+;; 節 s の中に、ループ（for、for...of、while、do...while）があるか
+(define Hx_has_loop ,(s)
+  __Ref_new__ __FALSE__ ,(found)
+  Wx_walk s (,(n) Wx_t n ,(t) Kit_lex_in_words t "for forof while dowhile" ,(isLoop) __if__ isLoop (,() __Ref_set__ found __TRUE__) ,()) ,()
+  __Ref_get__ found)
 
 (define Hx_note_decls ,(before ds isConst)
   __Cont_get__ ,(return)
@@ -2044,7 +2055,8 @@
     ;; 入れる関数 }。VM へ渡るたびに、書いた変数を VM に送り（ConMa が代入する）、戻ったら、使う変数を読み直す（その間にほかの処理や
     ;; ConMa の関数が変えたもの）
     "let $gio = null;"
-    "const $gout = () => $gio === null ? null : $gio.get().map($outv);"
+    ;; 値の配列を、もう 1 つの配列に包んで送る（書いた変数がないとき、空の配列は VM で null になり、「文でない」と区別できないので）
+    "const $gout = () => $gio === null ? null : [$gio.get().map($outv)];"
     "const $gin = (r) => { if ($gio !== null && r.length > 2) $gio.set(r[2].map($in)); };"
     "const $vm = (op, p, ...args) => {"
     "  $cr++; const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
