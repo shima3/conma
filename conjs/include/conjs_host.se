@@ -62,7 +62,7 @@
   __Cont_get__ ,(return)
   __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
   ;; ホストを使わなくなった関数（段階 H5d。Conjs_hostfn_judge）
-  Conjs_hostfn_costs ,(costs)
+  Conjs_hostfn_costs H ,(costs)
   __Dict_lookup_or__ costs name (,(k) __NULL__ __NULL__) ,(cost)
   __is_null__ cost ,(fresh)
   __if_then_else__ fresh (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ cost "off" (,(k) __NULL__ __FALSE__)) ,(off)
@@ -77,15 +77,15 @@
   __Dict_lookup_or__ H "m" __print_exit_error__ ,(m)
   __JS_fn_call__ (,(e) Conjs_hostfn_escaped name e ,() f args ,(v) return v) m name hargs ,(status r)
   ;; 待つホストの関数（段階 H4c の B3）：最初の yield の前の escape は、ほかの関数と同じく ConMa 版で
-  __String_equal__ status "yield" ,(test__) __if__ test__ (,() Conjs_hostfn_wait G name status r ,(v) return v) ,()
+  __String_equal__ status "yield" ,(test__) __if__ test__ (,() Conjs_hostfn_wait G H name status r ,(v) return v) ,()
   __String_equal__ status "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_escaped name r ,() f args ,(v) return v) ,()
-  Conjs_hostfn_done G name r)
+  Conjs_hostfn_done G H name r)
 
 ;; 待つホストの関数の頼みを、この VProc で動かして（待ってよい）、ジェネレータを続ける。yield の後は、やり直せない（ほかの処理が、
 ;; ホストの変更を見た）ので、escape と error は止める
-(define Conjs_hostfn_wait ,(G name status r)
+(define Conjs_hostfn_wait ,(G H name status r)
   __Cont_get__ ,(return)
-  __String_equal__ status "ok" ,(test__) __if__ test__ (,() Conjs_hostfn_done G name r ,(v) return v) ,()
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() Conjs_hostfn_done G H name r ,(v) return v) ,()
   __String_equal__ status "yield" ,(test__) __unless__ test__ (,() Conjs_hostfn_stop name r) ,()
   __LList_uncons__ __print_exit_error__ r ,(g rest)
   __LList_uncons__ __print_exit_error__ rest ,(req rest2)
@@ -96,7 +96,7 @@
   __LList_uncons__ __print_exit_error__ req ,(lines req)
   Conjs_hostfn_vm_run G lines pos op margs ,(answer)
   __JS_fn_resume__ (,(e) Conjs_hostfn_stop name e) g "next" answer ,(status2 r2)
-  Conjs_hostfn_wait G name status2 r2)
+  Conjs_hostfn_wait G H name status2 r2)
 
 (define Conjs_hostfn_stop ,(name why)
   __type_name__ why ,(t)
@@ -108,11 +108,11 @@
   Sjs_uncaught msg)
 
 ;; ホストの版が終わったときの答え r（{ v, out, cost }、{ thrown, tpos, out, cost }、{ fatal, out }）
-(define Conjs_hostfn_done ,(G name r)
+(define Conjs_hostfn_done ,(G H name r)
   __Cont_get__ ,(return)
   Conjs_hostfn_report name ,()
   __Dict_lookup_or__ r "cost" (,(k) __NULL__ __NULL__) ,(cost)
-  __is_null__ cost ,(test__) __unless__ test__ (,() Conjs_hostfn_judge name cost) ,()
+  __is_null__ cost ,(test__) __unless__ test__ (,() Conjs_hostfn_judge H name cost) ,()
   __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
   Conjs_hostfn_print G lines ,()
   ;; 呼び返しか待った後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める。after は、そのわけ
@@ -300,16 +300,17 @@
 ;; ホストの費用の見積もり 9×写したもの＋25×渡った回数（µs）と、ConMa 版の費用の見積もり 7×仕事を足していき、ホストのほうが
 ;; 大きくなれば、その関数は、それからは ConMa 版だけで動かす（重みは、M4 の wasm 版の VM で測った値）
 
-;; 関数の名前から、{ host: 見積もり, conma: 見積もり, off: 真 } への表
-(define Conjs_hostfn_costs ,()
+;; 関数の名前から、{ host: 見積もり, conma: 見積もり, off: 真 } への表。ホストのモジュール H ごと（import と export のある
+;; プログラムでは、ファイルごとに H があり、同じ名前の関数がほかのファイルにあってもよい。段階 H6b）
+(define Conjs_hostfn_costs ,(H)
   __Cont_get__ ,(return)
-  __PDict_lookup_or__ "conjs_host_costs" (,(k) __NULL__ __NULL__) ,(t)
+  __Dict_lookup_or__ H "costs" (,(k) __NULL__ __NULL__) ,(t)
   __is_null__ t ,(test__) __unless__ test__ (,() return t) ,()
   __Dict_new__ ,(t)
-  __PDict_put__ "conjs_host_costs" t ,()
+  __Dict_put__ H "costs" t ,()
   __NULL__ t)
 
-(define Conjs_hostfn_judge ,(name cost)
+(define Conjs_hostfn_judge ,(H name cost)
   __Cont_get__ ,(return)
   ;; 一番外の文（"$s番号"。段階 H6a）は 1 度しか動かないので、決めない
   Sjs_zero ,(z0)
@@ -319,7 +320,7 @@
   __LList_uncons__ __print_exit_error__ cost ,(ops rest)
   __LList_uncons__ __print_exit_error__ rest ,(cp rest2)
   __LList_uncons__ __print_exit_error__ rest2 ,(cr rest3)
-  Conjs_hostfn_costs ,(costs)
+  Conjs_hostfn_costs H ,(costs)
   __Dict_lookup_or__ costs name (,(k) __Dict_new__ ,(d) Sjs_zero ,(z) __Dict_put__ d "host" z ,() __Dict_put__ d "conma" z ,() __Dict_put__ costs name d ,() __NULL__ d) ,(d)
   __Number_fromString__ __print_exit_error__ "9" ,(wcp)
   __Number_fromString__ __print_exit_error__ "25" ,(wcr)

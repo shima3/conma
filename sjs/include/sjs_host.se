@@ -33,9 +33,19 @@
 ;; Wasm_prepare の後に呼ぶ）もホストの版を作り、"hostAlso" を付ける：wasm 版が先で、引数が数でなく wasm 版が動かないとき
 ;; （文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）、ConMa 版の前にホストの版を試す
 (define Host_prepare ,(program file)
+  __Dict_new__ ,(other)
+  Host_prepare_with program file __NULL__ other)
+
+;; import と export のあるプログラムの、1 つのファイル（段階 H6b。conjs/include/conjs_modules.se の Gen_unit）：imported は、
+;; import した名前の LList（宣言した名前に数える。組み込みの名前と取り違えないため）、other は、ほかのファイルで宣言したクラスの
+;; 名前の Dict（その名前のクラスは、ホストのクラスにしない。インスタンスのクラスを名前で探すので、プログラムの中で 1 つだけのもの）
+(define Host_prepare_with ,(program file imported other)
   Kit_parse_get program "body" ,(stmts)
   Wx_env stmts ,(E)
+  __Dict_lookup_or__ E "declared" __print_exit_error__ ,(declared)
+  Hx_declare_names declared imported ,()
   __Dict_new__ ,(H)
+  __Dict_put__ H "#otherClasses" other ,()
   __Dict_put__ H "#file" file ,()
   __Dict_new__ ,(posIndex)
   __Dict_put__ H "#posIndex" posIndex ,()
@@ -99,8 +109,24 @@
   __Dict_lookup_or__ assigned name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() return __FALSE__ "" __NULL__) ,()
   __NULL__ __TRUE__ name init)
 
+(define Hx_declare_names ,(declared names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  Wx_num "0" ,(zero)
+  __Dict_lookup_or__ declared nm (,(k) __NULL__ zero) ,(c)
+  Wx_num "1" ,(one)
+  __Number_add__ c one ,(c)
+  __Dict_put__ declared nm c ,()
+  Hx_declare_names declared rest)
+
 (define Hx_class ,(E H order classes program name cls)
   __Cont_get__ ,(return)
+  ;; ほかのファイルに同じ名前のクラスがあれば、ホストのクラスにしない（段階 H6b）
+  __Dict_lookup_or__ H "#otherClasses" (,(k) __NULL__ __NULL__) ,(other)
+  __is_null__ other ,(noOther)
+  __if_then_else__ noOther (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ other name (,(k) __NULL__ __FALSE__)) ,(elsewhere)
+  __if__ elsewhere return ,()
   ;; プログラムの中で、この名前のクラスは 1 つだけ（インスタンスのクラスを名前で探すので）
   Wx_num "0" ,(zero)
   __Ref_new__ zero ,(count)

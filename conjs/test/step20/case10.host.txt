@@ -1,0 +1,6 @@
+conjs: host: $s1
+conjs: host: $s2
+conjs: host: scale
+conjs: host: showAll
+conjs: host: sleep
+conjs: host: sum
