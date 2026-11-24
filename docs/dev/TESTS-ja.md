@@ -128,3 +128,14 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * M4 が流したもの：test/fast19 を wasm 版、Rust 版、Python 版、transpiled VM で。Rust 版と wasm 版の VM の test/、consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、test/host-api.sh、vm の `cargo test --release`。
 * 流していないもの：Python 版の VM と transpiled VM の、fast19 のほかの suite。Windows（I7）。
 * 測ったもの：呼び返し 1 回の時間（計画の 12 節）。
+
+### m4/conjs-host-h2
+
+* 種類：機能（ホストの JavaScript の関数を、VM の値を写して呼ぶプリミティブ）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H2a。プリミティブ `__JS_fn_compile__` と `__JS_fn_call__`（プラットフォームの機能 "js"。vm/src/prim/jsfn.rs、Python 版の VM は onError、docs/PRIMITIVES.md）。bin/resolver、include/resolver.se、reference/resolver.se の "js" に 2 つを足し、vm/frontend.module.se を bin/update-frontend で作り直した。wasm 版の VM のホスト（vm/wasm/conma.js）が、値のグラフ（同じもの、輪、ハンドル）を受け取り、変えたものを書き戻す。ハンドルの呼び返し（conma_callback_handle）。
+* 作り直すもの：Rust 版の VM（frontend.module.se を埋め込む）、wasm 版の VM、transpiled VM（新しいプリミティブ。bench/build.sh）。consh/js/build.sh の作るブラウザ版も。
+* 新しいテスト：test/fast20（wasm 版の VM は case1.wasm.log、ほかの VM は case1.log）。
+* M4 が流したもの：test/fast20 を wasm 版、Rust 版、Python 版、transpiled VM で。Rust 版、wasm 版、Python 版の VM の test/、Rust 版と wasm 版の VM の consh/test と conjs/test、consh/js/test、sjs/test、test/host-api.sh、vm の `cargo test --release`。
+* 流していないもの：Python 版の VM の consh/test と conjs/test、transpiled VM の fast19、fast20 のほかの suite、Windows（I7）。
+* 測ったもの：写す費用（計画の 13 節）。
+

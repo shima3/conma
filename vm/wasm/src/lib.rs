@@ -516,3 +516,34 @@ pub unsafe extern "C" fn conma_callback(name_ptr: *const u8, name_len: usize, ar
 pub extern "C" fn conma_callback_ptr() -> *const u8 {
     CALLBACK_RESULT.with(|c| c.borrow().as_ptr())
 }
+
+/// conma_callback for a handle of the innermost call of __JS_fn_call__ that is running (prim/jsfn.rs): a
+/// value the host did not get, such as a Closure, which it calls back with args (the JSON of
+/// __Host_call__). Returns the length of the result, as conma_callback.
+///
+/// # Safety
+/// args_ptr must point to args_len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn conma_callback_handle(k: u32, args_ptr: *const u8, args_len: usize) -> i32 {
+    use prim::host::{callback, from_json, to_json, CallbackError, HostValue};
+    let args = text(args_ptr, args_len);
+    let quote = |s: &str| to_json(&HostValue::Str(s.to_string()));
+    let result = (|| {
+        let f = prim::jsfn::handle(k as usize).ok_or_else(|| format!("no handle {}", k))?;
+        let args = match from_json(&format!("{{\"r\":{}}}", args)) {
+            Ok(Ok(HostValue::List(items))) => items,
+            _ => return Err("the arguments are not an array of values".to_string()),
+        };
+        Ok(callback(f, &args))
+    })();
+    let r = match result {
+        Err(message) => format!("{{\"e\":{}}}", quote(&message)),
+        Ok(Ok(v)) => format!("{{\"r\":{}}}", to_json(&v)),
+        Ok(Err(CallbackError::Error(message))) => format!("{{\"e\":{}}}", quote(&message)),
+        Ok(Err(CallbackError::Escape(message))) => format!("{{\"x\":{}}}", quote(&message)),
+    };
+    let n = r.len() as i32;
+    CALLBACK_RESULT.with(|c| *c.borrow_mut() = r.into_bytes());
+    n
+}
+

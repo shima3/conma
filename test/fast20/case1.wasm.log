@@ -1,0 +1,25 @@
+compiled
+sum: ok 6.5
+make: ok {a 1 b (true "two" ()) c Ref d {k "v"}}
+mutate: ok {x 35 keep "k" added "new"}
+after mutate: {x 35 keep "k" added "new"}
+alias: ok true
+not alias: ok false
+cycle: ok true
+after cycle: n "kept"
+bump: ok 3
+after bump: 3
+call: ok 41
+numbers: ok (inf 0 nan 0 0 true)
+throws: throw "Error: boom"
+escapes: escape "cannot do this here"
+bad: error: __JS_fn_call__: a function cannot go to the VM
+unknown: error: __JS_fn_call__: no function nothing
+not a list: error: __JS_fn_call__: expected an LList of arguments, got Number
+sjsArray: ok 1
+after sjsArray: length 2
+after sjsArray: items {0 "a" 1 "b"}
+a syntax error: __JS_fn_compile__: Unexpected token '}'
+not an object: __JS_fn_compile__: the text did not return an object of functions
+another module: Number
+exit: 0

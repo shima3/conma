@@ -482,6 +482,25 @@ pub enum CallbackError {
     Escape(String),
 }
 
+/// Run f, a call of the host (sys), so that the host can call the VM back (callback): it gets what it
+/// needs of vp, and vp gets back its PDict as the call back left it.
+pub fn with_callback_context<T>(m: &Machine, vp: &mut VProc, f: impl FnOnce() -> T) -> T {
+    CALLBACKS.with(|c| {
+        c.borrow_mut().push(CallbackCtx {
+            gvenv: vp.gvenv.clone(),
+            pdict: std::mem::take(&mut vp.pdict),
+            cwd: vp.cwd.clone(),
+            booleans: (m.true_closure(), m.false_closure()),
+            transpiled_on: m.transpiled_on,
+        })
+    });
+    let r = f();
+    if let Some(ctx) = CALLBACKS.with(|c| c.borrow_mut().pop()) {
+        vp.pdict = ctx.pdict;
+    }
+    r
+}
+
 /// The global variable gid of the VProc whose call of the host is running, or None.
 #[allow(dead_code)]
 pub fn callback_global(gid: usize) -> Option<Value> {
@@ -555,24 +574,8 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let result = match m.host.fns.get(&fname) {
         Some(HostFn::Call(f)) => f(&args),
         Some(HostFn::Wait(_)) => Err(format!("{}: {} waits: call it with __Host_start__", prim, fname)),
-        None => match {
-            // The function of the host may call the VM back (callback): it gets what it needs of vp,
-            // and vp gets back its PDict as the call back left it.
-            CALLBACKS.with(|c| {
-                c.borrow_mut().push(CallbackCtx {
-                    gvenv: vp.gvenv.clone(),
-                    pdict: std::mem::take(&mut vp.pdict),
-                    cwd: vp.cwd.clone(),
-                    booleans: (m.true_closure(), m.false_closure()),
-                    transpiled_on: m.transpiled_on,
-                })
-            });
-            let r = sys::host_call(&fname, &to_json(&HostValue::List(args)));
-            if let Some(ctx) = CALLBACKS.with(|c| c.borrow_mut().pop()) {
-                vp.pdict = ctx.pdict;
-            }
-            r
-        } {
+        // The function of the host may call the VM back (callback)
+        None => match with_callback_context(m, vp, || sys::host_call(&fname, &to_json(&HostValue::List(args)))) {
             None => Err(format!("{}: no host function \"{}\"", prim, fname)),
             Some(Err(message)) => Err(message),
             Some(Ok(json)) => match from_json(&json) {

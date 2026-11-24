@@ -1863,6 +1863,9 @@ var ConMaVM = (function () {
     };
     // The WebAssembly modules of __Wasm_compile__ by number, and the message of the last failure
     const wasmModules = new Map();
+    // The modules of __JS_fn_compile__ by number
+    const jsfnModules = new Map();
+    let jsfnLast = 0;
     let wasmNext = 1;
     let wasmError = "";
     // The size of the last allocation of the VM that failed (host_out_of_memory), or null
@@ -2046,6 +2049,28 @@ var ConMaVM = (function () {
           }
         },
         host_wasm_error: (out, cap) => give(wasmError, out, cap),
+        // __JS_fn_compile__ and __JS_fn_call__ (vm/src/prim/jsfn.rs; stage H2 of docs/dev/CONJS-HOST-PLAN.md)
+        host_jsfn_compile: (ptr, len) => {
+          try {
+            const fns = new Function("rt", str(ptr, len))(jsfnRuntime);
+            if (fns === null || typeof fns !== "object") throw new Error("the text did not return an object of functions");
+            jsfnModules.set(++jsfnLast, fns);
+            return jsfnLast;
+          } catch (e) {
+            hostResult = utf8(e instanceof Error ? e.message : String(e));
+            return -hostResult.length;
+          }
+        },
+        host_jsfn_call: (id, namePtr, nameLen, jsonPtr, jsonLen) => {
+          const fns = jsfnModules.get(id);
+          const name = str(namePtr, nameLen);
+          let answer;
+          if (!fns) answer = { s: "error", v: `no module ${id}` };
+          else if (typeof fns[name] !== "function") answer = { s: "error", v: `no function ${name}` };
+          else answer = jsfnCall(fns[name], JSON.parse(str(jsonPtr, jsonLen)));
+          hostResult = utf8(JSON.stringify(answer));
+          return hostResult.length;
+        },
         host_wasm_free: (id) => {
           wasmModules.delete(id);
         },
@@ -2163,6 +2188,113 @@ var ConMaVM = (function () {
       throw e;
     }
     const callbackContext = { callVm };
+
+    // ── Functions of JavaScript called with values of the VM (vm/src/prim/jsfn.rs, whose header gives the
+    // JSON; stage H2 of docs/dev/CONJS-HOST-PLAN.md, 3.2) ──
+    // A Dict of the VM is a plain object without a prototype, with its keys in their order; a Ref an object
+    // of VmRef; an LList an array; a value the host does not get (a Closure, a Stream) an object of VmHandle,
+    // which rt.callVm calls back. The objects of the nodes of a call keep their numbers (NODE), and the
+    // contents they had (SEEN), so that the changed ones are written back.
+    const NODE = Symbol("node");
+    const SEEN = Symbol("seen");
+    class VmRef {
+      constructor(value) { this.value = value; }
+    }
+    class VmHandle {
+      constructor(k) { this.k = k; }
+    }
+    class Escape extends Error {}
+    const jsfnRuntime = {
+      VmRef,
+      VmHandle,
+      Escape,
+      // A new Dict of the VM, with the entries of the object o
+      dict(o) { return Object.assign(Object.create(null), o || {}); },
+      ref(value) { return new VmRef(value); },
+      // Call a value the host does not get (a handle) back, with numbers, strings, Booleans, plain
+      // objects and arrays (as __Host_call__); an escape of the call back escapes this call too
+      callVm(h, ...args) {
+        if (!(h instanceof VmHandle)) throw new TypeError("rt.callVm: not a handle of the VM");
+        const json = JSON.stringify(args.map((a) => hostEncode("rt.callVm", a)));
+        const n = pass(json, (pa, la) => x.conma_callback_handle(h.k, pa, la));
+        const r = JSON.parse(str(x.conma_callback_ptr(), n));
+        if (Object.prototype.hasOwnProperty.call(r, "r")) return hostDecode(r.r);
+        if (Object.prototype.hasOwnProperty.call(r, "x")) throw new Escape(r.x);
+        throw new Error(r.e);
+      },
+    };
+    function jsfnNumber(v) {
+      return v.x === "NaN" ? NaN : v.x === "Infinity" ? Infinity : v.x === "-Infinity" ? -Infinity : -0;
+    }
+    function jsfnCall(f, call) {
+      const objs = call.n.map((n) => (n.d ? Object.create(null) : new VmRef(undefined)));
+      const value = (v) => {
+        if (v === null) return undefined;
+        if (typeof v !== "object") return v;
+        if ("@" in v) return objs[v["@"]];
+        if ("l" in v) return v.l.map(value);
+        if ("h" in v) return new VmHandle(v.h);
+        return jsfnNumber(v);
+      };
+      call.n.forEach((n, i) => {
+        const o = objs[i];
+        o[NODE] = i;
+        if (n.d) {
+          for (const [k, v] of n.d) o[k] = value(v);
+          o[SEEN] = Object.entries(o);
+        } else {
+          o.value = value(n.r);
+          o[SEEN] = o.value;
+        }
+      });
+      let s = "ok";
+      let r;
+      try {
+        r = f(...call.a.map(value));
+      } catch (e) {
+        if (e instanceof Escape) return { s: "escape", v: e.message, w: [], n: [] };
+        s = "throw";
+        r = e;
+      }
+      // The answer: the changed nodes, the new ones, and the value
+      const made = [];
+      const madeIndex = new Map();
+      const enc = (v) => {
+        if (v === undefined || v === null) return null;
+        if (typeof v === "number") return Number.isNaN(v) || !Number.isFinite(v) || Object.is(v, -0) ? { x: String(Object.is(v, -0) ? "-0" : v) } : v;
+        if (typeof v === "string" || typeof v === "boolean") return v;
+        if (Array.isArray(v)) return { l: v.map(enc) };
+        if (v instanceof VmHandle) return { h: v.k };
+        if (typeof v === "object" && NODE in v) return { "@": v[NODE] };
+        if (v instanceof VmRef || (typeof v === "object" && (Object.getPrototypeOf(v) === null || Object.getPrototypeOf(v) === Object.prototype))) {
+          if (!madeIndex.has(v)) {
+            madeIndex.set(v, made.length);
+            made.push(null);
+            made[madeIndex.get(v)] = v instanceof VmRef ? { r: enc(v.value) } : { d: Object.entries(v).map(([k, e]) => [k, enc(e)]) };
+          }
+          return { "+": madeIndex.get(v) };
+        }
+        if (v instanceof Error) return `${v.name}: ${v.message}`;
+        throw new TypeError(`a ${typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v} cannot go to the VM`);
+      };
+      try {
+        const w = [];
+        objs.forEach((o, i) => {
+          if (o instanceof VmRef) {
+            if (o.value !== o[SEEN]) w.push([i, { r: enc(o.value) }]);
+            return;
+          }
+          const now = Object.entries(o);
+          const before = o[SEEN];
+          if (now.length !== before.length || now.some(([k, v], j) => k !== before[j][0] || v !== before[j][1]))
+            w.push([i, { d: now.map(([k, v]) => [k, enc(v)]) }]);
+        });
+        const v = enc(r);
+        return { s, v, w, n: made };
+      } catch (e) {
+        return { s: "error", v: e instanceof Error ? e.message : String(e), w: [], n: [] };
+      }
+    }
 
     vm = {
       exports: x,

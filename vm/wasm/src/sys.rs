@@ -69,6 +69,12 @@ extern "C" {
     fn host_wasm_error(out: *mut u8, cap: usize) -> i32;
     /// Forget module id.
     fn host_wasm_free(id: i32);
+    /// __JS_fn_compile__ (prim/jsfn.rs): make the JavaScript text into a module of functions; its
+    /// number, or minus the length of the message of the error, which host_fn_result copies.
+    fn host_jsfn_compile(ptr: *const u8, len: usize) -> i32;
+    /// __JS_fn_call__: call the function name of module id with the JSON of the arguments; the length
+    /// of the JSON of the answer, which host_fn_result copies (negative: of a message of an error).
+    fn host_jsfn_call(id: i32, name_ptr: *const u8, name_len: usize, json_ptr: *const u8, json_len: usize) -> i32;
     /// Call the function of the host named name with the arguments (a JSON
     /// array; vm/src/prim/host.rs): -1 if the host has no such function, else
     /// the length of the result ({"r":value} or {"e":"message"}), which
@@ -597,6 +603,34 @@ pub fn js_call(code: &str, args_json: &str) -> io::Result<(c_int, c_int)> {
 /// __Host_call__: call the function name of the host (vm/wasm/conma.js, the
 /// hook hostFunctions). The function is called once; its result is then
 /// copied, in a buffer as large as it needs.
+/// The text the host left for host_fn_result, n bytes.
+fn host_result_text(n: usize) -> String {
+    let mut buf = vec![0u8; n];
+    let m = unsafe { host_fn_result(buf.as_mut_ptr(), buf.len()) };
+    buf.truncate(m.max(0) as usize);
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+/// __JS_fn_compile__ (prim/jsfn.rs).
+pub fn jsfn_compile(text: &str) -> Result<i32, String> {
+    let n = unsafe { host_jsfn_compile(text.as_ptr(), text.len()) };
+    if n > 0 {
+        Ok(n)
+    } else {
+        Err(host_result_text((-n) as usize))
+    }
+}
+
+/// __JS_fn_call__ (prim/jsfn.rs).
+pub fn jsfn_call(id: i32, name: &str, json: &str) -> Result<String, String> {
+    let n = unsafe { host_jsfn_call(id, name.as_ptr(), name.len(), json.as_ptr(), json.len()) };
+    if n >= 0 {
+        Ok(host_result_text(n as usize))
+    } else {
+        Err(host_result_text((-n) as usize))
+    }
+}
+
 pub fn host_call(name: &str, args_json: &str) -> Option<Result<String, String>> {
     let n = unsafe { host_fn_call(name.as_ptr(), name.len(), args_json.as_ptr(), args_json.len()) };
     if n < 0 {
