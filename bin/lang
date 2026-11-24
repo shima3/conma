@@ -22,7 +22,10 @@
 # 新しくなったときだけ作り直す。include の行を除いたソースだけをモジュールにして、conma link でランタイムのモジュールと
 # 大域変数の名前で合わせる。できるモジュールは、include の行ごとフロントエンドに通したものと、大域変数の番号とファイルの
 # 順のほかは同じで、同じステップ数で動く
-root="$(cd "$(dirname "$0")/.."; pwd)"
+# 起動を速くするため、外のコマンドを少なくする（2026-11-24）：dirname の代わりに ${0%/*}、shasum（Perl）の代わりに cksum、
+# 2 つの grep の代わりに 1 つの awk
+case "$0" in */*) root="${0%/*}/.." ;; *) root=.. ;; esac
+root="$(cd "$root" && pwd)"
 if [ "$1" = --version ]; then exec "$root/bin/version"; fi
 conma="$root/vm/target/release/conma"
 wasm="$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm"
@@ -69,10 +72,11 @@ fi
 "${tr[@]}" --main "$module" "$file" > "$tmp/prog.se" || exit $?
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
 # ランタイムのモジュール（作りかけを読まないように、一時ファイルに作ってから mv で置き換える）
-grep '^(include ' "$tmp/prog.se" > "$tmp/rt.se"
-grep -v '^(include ' "$tmp/prog.se" > "$tmp/alone.se"
+awk -v rt="$tmp/rt.se" -v alone="$tmp/alone.se" '/^\(include / { print > rt; next } { print > alone }' "$tmp/prog.se" || exit 1
+: >> "$tmp/rt.se"
 cache="$(dirname "$module")"
-rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | shasum | cut -c1-12)"
+rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | cksum)"
+rthash="${rthash%% *}"
 rtsrc="$cache/${name}-rt-$rthash.se" rtmod="$cache/${name}-rt-$rthash.module.se"
 if [ ! -s "$rtmod" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" \( -name '*.se' -o -type d \) -newer "$rtmod")" ] ||
    stale "$rtmod"; then

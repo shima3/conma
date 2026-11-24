@@ -109,3 +109,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * I7 が流したもの（PR のレビュー、ee14129）：consh.ps1 と consh.cmd の `--version`（Windows PowerShell 5.1）。I7 の見つけた 2 つ（bin/version を UTF-8 で読むこと、git が失敗しても止まらないこと）は、3e3219f で直し、I7 が 3e3219f で確かめた（4 つの状態で bin/version と同じ）。
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
+
+### m4/lang-start
+
+* 種類：直し（起動を速くした）。
+* bin/lang と bin/cache-dir で、起動のたびに動かす外のコマンドを減らした：dirname の代わりに `${0%/*}`、shasum（Perl）の代わりに cksum、2 つの grep の代わりに 1 つの awk、cut の代わりに `${x%% *}`、キャッシュのディレクトリがあれば mkdir しない。`console.log("hi")` の `bin/lang conjs` は、63 ms から 50 ms になった（M4、実時間、前の版と交互に 20 回ずつの中央値）。
+* ランタイムのモジュールの名前のハッシュが、shasum の 12 桁から cksum の数になった（`conjs-rt-1891629090.module.se`）。初めての実行で一度だけ作り直す（約 1.5 秒）。前の名前のファイルはキャッシュに残る（消してよい）。キャッシュのディレクトリの名前は変わらない（consh.ps1 と同じ）。
+* 作り直すもの：なし。
+* M4 が流したもの：`CONMA_TRANSLATE_VM=wasm` と `CONMA_VM=wasm` での conjs、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`（Rust 版と wasm 版）、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`。
+* 流していないもの：Python 版の VM、transpiled VM、Windows（I7。bin/lang は Git Bash で動く）。
+* 測ったもの：上の起動の時間だけ。
