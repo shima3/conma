@@ -109,3 +109,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * I7 が流したもの（PR のレビュー、ee14129）：consh.ps1 と consh.cmd の `--version`（Windows PowerShell 5.1）。I7 の見つけた 2 つ（bin/version を UTF-8 で読むこと、git が失敗しても止まらないこと）は、3e3219f で直し、I7 が 3e3219f で確かめた（4 つの状態で bin/version と同じ）。
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
+
+### s5/bench-windows-time
+
+* bench/run.sh と sjs/bench/run.sh が、Windows（Git Bash。`uname -o` が `Msys` か `Cygwin`）では、user + sys でなく実時間で測り、何で測ったかを 1 行出すようにした（ユーザーの指示。conjs/bench/run.sh の shima3/conma#71 と同じ）。Git Bash の `time` は、Windows のプログラム（conma.exe、node.exe、python.exe）の user と sys を数えないため。Unix では、時間の測り方は前と同じで、出力に `time: user + sys, ...` の行が 1 行増える。文書：docs/dev/CONTRIBUTING.md の Benchmarks の 4、sjs/README-ja.md、bench/README.md。
+* 種類：なし（ベンチマークだけ）。
+* 作り直すもの：なし。
+* S5 が流したもの（Windows 11、Git Bash）：`sjs/bench/run.sh fib 27 22`（実時間になり、2 行目にそう出た。Node.js と同じ出力）。`uname -o` に `GNU/Linux` と答える uname を PATH の先に置いて、Unix の道（user + sys）も確かめた。`CONMA_BENCH_RUST=1 bench/run.sh fib 22` は、S5 に transpiled VM がないので、Rust 版の VM の写しを vm/target-transpiled/release に置いて流し、実時間になることを確かめた。
+* Windows で bench/run.sh が出す「prints otherwise than cpython」は、この変更の前からある：Windows の CPython は、`print` の行末に CRLF を書く。この変更では直していない。
+* 流していないもの：Unix での run.sh（M1、M2、M4 で、出力に 1 行増えるほかは前と同じはず）、transpiled VM、Full Bench。
+* 測ったもの：なし（表は変えていない）。

@@ -13,6 +13,8 @@ bench/run.sh nbody        # CPython and the transpiled VM at the size below: bes
 bench/run.sh nbody 100000 # at another size
 ```
 
+On Windows (Git Bash), `bench/run.sh` measures the real time and says so in its first line (from 2026-11-24), as `time` there does not count the user and sys time of the native programs of Windows (docs/dev/CONTRIBUTING.md, Benchmarks). The tables below are all user + sys, measured on Unix.
+
 Without a size, `bench/run.sh` runs each benchmark at the size at which the faster of CPython and the transpiled VM takes about one second (docs/dev/CONTRIBUTING.md, Benchmarks), chosen on 2026-11-17 on an Apple M1 (CPython 3.12.3, the transpiled VM built at cd7d3a4; user + sys, best of 3, all printing the same):
 
 | Benchmark | Size | CPython 3.12.3 | Rust VM | Transpiled VM |
