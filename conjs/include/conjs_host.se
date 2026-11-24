@@ -1,0 +1,68 @@
+;; ConJS のホストの関数（docs/dev/CONJS-HOST-PLAN.md の段階 H3a。変換器は sjs/include/sjs_host.se）。変換したプログラムは、
+;; ホストの関数があれば、始めに Conjs_hostfn_module でホストの JavaScript のモジュールを作り（,(Hsjs)）、ホストの関数を
+;; Conjs_hostfn Hsjs "名前" (ConMa 版) で包む。呼ばれたとき、モジュールがあり、引数がどれも値（数、文字列、真偽値、undefined）
+;; なら、ホストの版を呼ぶ（__JS_fn_call__。docs/PRIMITIVES.md）。ホストの版が値を返さなければ（ConJS と同じになると確かめ
+;; られない所で例外を投げたとき。sjs_host.se の「確かめ」）、ConMa 版を始めから動かす。ホストの関数は、引数だけで結果が決まり、
+;; 何も変えないので、やり直してよい。
+;; モジュールを作れないとき（JavaScript のない VM、環境変数 CONMA_NO_HOSTJS）は、黙って ConMa 版だけを使う。環境変数
+;; CONJS_HOST_STRICT があれば、作れなかった理由（JavaScript がない場合を除く）を、CONJS_HOST_REPORT があれば、ホストの版で
+;; 値を得た関数の名前を（関数ごとに 1 度）、標準エラーに出す（テストで、変換器の作った JavaScript を確かめるため）
+
+;; js のモジュール。作れなければ null
+(define Conjs_hostfn_module ,(js)
+  __Cont_get__ ,(return)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "CONMA_NO_HOSTJS" (,(k) __NULL__ __NULL__) ,(off)
+  __is_null__ off ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __Dict_lookup_or__ env "CONJS_HOST_REPORT" (,(k) __NULL__ __NULL__) ,(report)
+  __is_null__ report ,(test__) __unless__ test__ (,() __Dict_new__ ,(seen) __PDict_put__ "conjs_host_seen" seen) ,()
+  __JS_fn_compile__ (,(msg) Conjs_hostfn_strict env msg ,() return __NULL__) js ,(H)
+  __NULL__ H)
+
+(define Conjs_hostfn_strict ,(env msg)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ env "CONJS_HOST_STRICT" (,(k) return) ,(v)
+  Sjs_zero ,(zero)
+  __String_find__ (,(m) return) msg "not available" zero ,(at)
+  __is_null__ at ,(test__) __unless__ test__ return ,()
+  __String_concat__ "conjs: host: " msg ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
+
+;; ホストの関数 name の、引数の LList を受け取る Closure。H はモジュールか null、f は ConMa 版
+(define Conjs_hostfn ,(H name f)
+  __NULL__ (,(args) Conjs_hostfn_call H name f args))
+
+(define Conjs_hostfn_call ,(H name f args)
+  __Cont_get__ ,(return)
+  __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
+  Conjs_hostfn_values args ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
+  __JS_fn_call__ (,(e) f args ,(v) return v) H name args ,(status v)
+  __String_equal__ status "ok" ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
+  Conjs_hostfn_report name ,()
+  __NULL__ v)
+
+;; 引数がどれも値（数、文字列、真偽値、undefined）か
+(define Conjs_hostfn_values ,(args)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ args ,(a rest)
+  Sjs_kind a ,(k)
+  __String_equal__ k "number" ,(n)
+  __String_equal__ k "string" ,(s)
+  __String_equal__ k "boolean" ,(b)
+  __String_equal__ k "undefined" ,(u)
+  __or__ n s ,(x) __or__ x b ,(x) __or__ x u ,(x)
+  __unless__ x (,() return __FALSE__) ,()
+  Conjs_hostfn_values rest)
+
+;; CONJS_HOST_REPORT のとき、ホストの版で値を得た関数の名前を、関数ごとに 1 度出す
+(define Conjs_hostfn_report ,(name)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_seen" (,(k) return) ,(seen)
+  __Dict_lookup_or__ seen name (,(k) __NULL__ __NULL__) ,(done)
+  __is_null__ done ,(test__) __unless__ test__ return ,()
+  __Dict_put__ seen name __TRUE__ ,()
+  __String_concat__ "conjs: host: " name ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)

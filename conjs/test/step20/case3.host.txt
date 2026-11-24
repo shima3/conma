@@ -1,0 +1,3 @@
+conjs: host: partial
+conjs: host: scoped
+conjs: host: words

@@ -1,0 +1,581 @@
+;; ConJS の関数を、wasm 版の VM のとき、ホストの JavaScript で動かす（docs/dev/CONJS-HOST-PLAN.md の段階 H3a）。
+;; Host_prepare が、プログラムの一番外の function 宣言のうち、値（数、文字列、真偽値、undefined）だけを扱うもの（ホストの関数）を
+;; 見つけて、その fn の節に "host"（名前）を付け、それらをまとめた JavaScript の文（__JS_fn_compile__ に渡すもの）を返す
+;; （なければ ""）。変換器（sjs_gen.se）は、印の付いた関数を Conjs_hostfn で包み（conjs/include/conjs_rt.se）、呼ばれたとき、
+;; 引数がどれも値なら、ホストの版を呼ぶ。ホストの版が例外を投げたら（下の「確かめ」）、ConMa 版を始めから動かす。
+;;
+;; ホストの関数の条件（段階 H3a）：
+;; * 一番外の function 宣言で、ジェネレータでも async でもなく、引数は名前だけ（重ならない）。その名前は、一番外で 1 回だけ
+;;   宣言され、プログラムのどこでも代入されない（数の関数と同じ。sjs_wasm.se の Wx_env）。
+;; * 本体は、let と const（名前だけ）、式の文（局所の変数への代入と複合の代入、++、--、ホストの関数と文字列のメソッドの
+;;   呼び出し）、if、while、do...while、for、ラベルのない break と continue、return、ブロック、空の文だけ。
+;; * 式は、数と文字列のリテラル、true と false、引数と局所の変数、NaN、Infinity、undefined（一番外で宣言されず、代入されない
+;;   もの）、テンプレート、+ - * / %、< > <= >=、=== と !==、&& と ||、単項の ! - +、条件演算子、ほかのホストの関数の呼び出し
+;;   （名前で）、文字列の length、s[i]、文字列のメソッド（charAt、at、indexOf、includes、startsWith、endsWith、slice、trim、
+;;   toUpperCase、toLowerCase、repeat、replace、replaceAll）。
+;; * 外の変数を読み書きせず、console.log もオブジェクトも作らないので、ホストの関数は、引数だけで結果が決まり、何も変えない。
+;;   だから、ホストの版を途中でやめて、ConMa 版を始めから動かしてよい。
+;;
+;; 確かめ：ConJS の意味が JavaScript と同じと確かめられる所だけをホストで計算し、そうでない所では例外を投げる（ConMa 版に替わる）。
+;; 算術と比べるのは数どうしだけ（+ は ConJS でも数だけ）。文字列のメソッドは、ASCII の文字列と、数か undefined の引数だけ
+;; （ASCII でない文字列は、文字の数え方が違う。replace と replaceAll は、置き換える文字列に $ のないときだけ）。length は
+;; 文字（コードポイント）で数える。テンプレートに入れる数は、整数（-0 を除く）で絶対値が 10^21 より小さいものだけ。
+;; JavaScript の名前は、引数と局所の変数が v_名前、ホストの関数が f_名前、補助の関数が $ で始まる名前
+
+;; プログラムの JavaScript（ホストの関数がなければ ""）。ホストの関数の fn の節に "host" を付ける。数の関数（"wasm" の印。
+;; Wasm_prepare の後に呼ぶ）もホストの版を作り、"hostAlso" を付ける：wasm 版が先で、引数が数でなく wasm 版が動かないとき
+;; （文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）、ConMa 版の前にホストの版を試す
+(define Host_prepare ,(program)
+  Kit_parse_get program "body" ,(stmts)
+  Wx_env stmts ,(E)
+  __Dict_new__ ,(H)
+  __Ref_new__ __NULL__ ,(order)
+  Hx_candidates E H order stmts ,()
+  __Ref_get__ order ,(rev)
+  Wx_reverse rev __NULL__ ,(names)
+  Hx_compile_all E H names ,()
+  Hx_fixpoint H names ,()
+  Hx_module H names)
+
+(define Hx_candidates ,(E H order stmts)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Wx_t s ,(t)
+  __String_equal__ t "funcdecl" ,(test__) __if__ test__ (,() Hx_candidate E H order s) ,()
+  Hx_candidates E H order rest)
+
+(define Hx_candidate ,(E H order s)
+  __Cont_get__ ,(return)
+  Kit_parse_get s "name" ,(name)
+  Kit_parse_get s "fn" ,(fn)
+  Wx_once E name ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
+  __Dict_lookup_or__ assigned name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ return ,()
+  __Dict_lookup_or__ H name (,(k) __NULL__ __NULL__) ,(dup)
+  __is_null__ dup ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
+  __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
+  __or__ gen async ,(test__) __if__ test__ return ,()
+  __Dict_lookup_or__ fn "body" (,(k) __NULL__ __NULL__) ,(body)
+  __is_null__ body ,(test__) __if__ test__ return ,()
+  Kit_parse_get fn "params" ,(params)
+  Wx_param_names params __NULL__ ,(ok names)
+  __unless__ ok return ,()
+  __Dict_new__ ,(info)
+  __Dict_put__ info "name" name ,()
+  __Dict_put__ info "fn" fn ,()
+  __Dict_put__ info "params" names ,()
+  __Dict_put__ info "ok" __FALSE__ ,()
+  __Dict_put__ H name info ,()
+  __Ref_get__ order ,(o)
+  __LList_cons__ name o ,(o)
+  __Ref_set__ order o)
+
+(define Hx_compile_all ,(E H names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
+  Hx_func E H info ,(ok js callees)
+  __Dict_put__ info "ok" ok ,()
+  __Dict_put__ info "js" js ,()
+  __Dict_put__ info "callees" callees ,()
+  Hx_compile_all E H rest)
+
+;; ほかのホストの関数でなくなった関数を呼ぶ関数を、ホストの関数でなくする（変わらなくなるまで）
+(define Hx_fixpoint ,(H names)
+  __Ref_new__ __FALSE__ ,(changed)
+  Hx_fixpoint_pass H names changed ,()
+  __Ref_get__ changed ,(again)
+  __if_then_else__ again (,() Hx_fixpoint H names) (,() __nop__))
+
+(define Hx_fixpoint_pass ,(H names changed)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
+  Kit_parse_get info "ok" ,(ok)
+  __if__ ok
+    (,()
+      Kit_parse_get info "callees" ,(cs)
+      Hx_all_ok H cs ,(test__)
+      __unless__ test__ (,() __Dict_put__ info "ok" __FALSE__ ,() __Ref_set__ changed __TRUE__) ,()) ,()
+  Hx_fixpoint_pass H rest changed)
+
+(define Hx_all_ok ,(H names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
+  Kit_parse_get info "ok" ,(ok)
+  __unless__ ok (,() return __FALSE__) ,()
+  Hx_all_ok H rest)
+
+;; JavaScript の文：補助の関数、ホストの関数、名前から関数への表を返す文。ホストの関数がなければ ""
+(define Hx_module ,(H names)
+  Hx_funcs H names "" "" ,(fs table)
+  __String_equal__ fs "" ,(none)
+  __if_then_else__ none (,() __NULL__ "")
+    (,() Hx_helpers ,(h) Kit_code_cat5 h fs "return {" table "};"))
+
+(define Hx_funcs ,(H names acc table)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc table) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ H nm __print_exit_error__ ,(info)
+  Kit_parse_get info "ok" ,(ok)
+  __unless__ ok (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
+  Kit_parse_get info "js" ,(js)
+  __String_concat__ acc js ,(acc)
+  Kit_parse_get info "fn" ,(fn)
+  ;; 数の関数は wasm 版を使う（印を付けない）
+  __Dict_lookup_or__ fn "wasm" (,(k) __NULL__ "") ,(w)
+  __String_equal__ w "" ,(notWasm)
+  __if_then_else__ notWasm (,() __Dict_put__ fn "host" nm) (,() __Dict_put__ fn "hostAlso" nm) ,()
+  Sjs_json_string nm ,(q)
+  Kit_code_cat5 table q ": f_" nm ", " ,(table)
+  Hx_funcs H rest acc table)
+
+;; ── 関数ごとの JavaScript ──
+
+;; info の関数の JavaScript。ホストの関数の条件を満たさなければ偽
+(define Hx_func ,(E H info)
+  __Cont_get__ ,(fail)
+  __Dict_new__ ,(cx)
+  __Dict_put__ cx "fail" fail ,()
+  __Dict_put__ cx "E" E ,()
+  __Dict_put__ cx "H" H ,()
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(loops)
+  __Dict_put__ cx "loops" loops ,()
+  __Ref_new__ __NULL__ ,(callees)
+  __Dict_put__ cx "callees" callees ,()
+  ;; 局所の名前：引数と、関数の中で宣言した名前（どのブロックでも。読む所が正しいかは JavaScript の有効範囲に任せる）
+  __Dict_new__ ,(locals)
+  __Dict_put__ cx "locals" locals ,()
+  Kit_parse_get info "params" ,(params)
+  Hx_put_names locals params ,()
+  Kit_parse_get info "fn" ,(fn)
+  Kit_parse_get fn "body" ,(body)
+  Hx_collect_locals cx body ,()
+  Hx_param_list params "" ,(ps)
+  Kit_parse_get body "body" ,(stmts)
+  Hx_stmts cx stmts "" ,(code)
+  Kit_parse_get info "name" ,(name)
+  Kit_code_cat5 "function f_" name "(" ps ") {" ,(js)
+  Kit_code_cat3 js code "}\n" ,(js)
+  __Ref_get__ callees ,(cs)
+  __NULL__ __TRUE__ js cs)
+
+(define Hx_fail ,(cx)
+  __Dict_lookup_or__ cx "fail" __print_exit_error__ ,(fail)
+  fail __FALSE__ "" __NULL__)
+
+(define Hx_put_names ,(d names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_put__ d nm __TRUE__ ,()
+  Hx_put_names d rest)
+
+(define Hx_param_list ,(params acc)
+  __Cont_get__ ,(return)
+  __is_null__ params ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ params ,(nm rest)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat4 acc sep "v_" nm ,(acc)
+  Hx_param_list rest acc)
+
+;; 本体で宣言した名前を locals に入れる。名前でない宣言（分割代入）や、関数の中の関数があれば、ホストの関数にしない
+(define Hx_collect_locals ,(cx body)
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  Wx_walk body (,(n)
+    __Cont_get__ ,(return)
+    Wx_t n ,(t)
+    Kit_lex_in_words t "function arrow class funcdecl" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+    __String_equal__ t "decl" ,(test__) __unless__ test__ return ,()
+    Kit_parse_get n "kind" ,(kind)
+    Kit_lex_in_words kind "let const" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+    Kit_parse_get n "decls" ,(ds)
+    Hx_decl_targets cx locals ds))
+
+(define Hx_decl_targets ,(cx locals ds)
+  __Cont_get__ ,(return)
+  __is_null__ ds ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ ds ,(d rest)
+  Kit_parse_get d "target" ,(target)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get target "name" ,(nm)
+  __Dict_put__ locals nm __TRUE__ ,()
+  Hx_decl_targets cx locals rest)
+
+;; ── 文 ──
+
+(define Hx_stmts ,(cx stmts acc)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Hx_stmt cx s ,(c)
+  __String_concat__ acc c ,(acc)
+  Hx_stmts cx rest acc)
+
+;; 文の JavaScript。if やループの本体は、いつもブロックにする（JavaScript は、本体が宣言だけの文を受け付けない）
+(define Hx_body ,(cx s)
+  Hx_stmt cx s ,(c)
+  Kit_code_cat3 "{" c "}")
+
+(define Hx_loop_body ,(cx s)
+  __Dict_lookup_or__ cx "loops" __print_exit_error__ ,(loops)
+  __Ref_get__ loops ,(n)
+  Wx_num "1" ,(one)
+  __Number_add__ n one ,(m)
+  __Ref_set__ loops m ,()
+  Hx_body cx s ,(c)
+  __Ref_set__ loops n ,()
+  __NULL__ c)
+
+(define Hx_stmt ,(cx s)
+  __Cont_get__ ,(return)
+  __is_null__ s ,(test__) __if__ test__ (,() return ";") ,()
+  Wx_t s ,(t)
+  __String_equal__ t "empty" ,(test__) __if__ test__ (,() return ";") ,()
+  __String_equal__ t "block" ,(test__) __if__ test__
+    (,() Kit_parse_get s "body" ,(b) Hx_stmts cx b "" ,(c) Kit_code_cat3 "{" c "}" ,(c) return c) ,()
+  __String_equal__ t "decl" ,(test__) __if__ test__ (,() Hx_decl cx s ,(c) __String_concat__ c ";" ,(c) return c) ,()
+  __String_equal__ t "expr" ,(test__) __if__ test__
+    (,() Kit_parse_get s "expr" ,(e) Hx_effect cx e ,(c) __String_concat__ c ";" ,(c) return c) ,()
+  __String_equal__ t "return" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ s "value" (,(k) __NULL__ __NULL__) ,(v)
+      __is_null__ v ,(test__) __if__ test__ (,() return "return;") ,()
+      Hx_expr cx v ,(c)
+      Kit_code_cat3 "return " c ";" ,(c)
+      return c) ,()
+  __String_equal__ t "if" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get s "test" ,(test)
+      Hx_expr cx test ,(tc)
+      Kit_parse_get s "yes" ,(yes)
+      __Dict_lookup_or__ s "no" (,(k) __NULL__ __NULL__) ,(no)
+      Hx_body cx yes ,(yc)
+      __is_null__ no ,(noElse)
+      __if_then_else__ noElse (,() __NULL__ "") (,() Hx_body cx no ,(nc) __String_concat__ " else " nc) ,(ec)
+      Kit_code_cat5 "if (" tc ") " yc ec ,(c)
+      return c) ,()
+  __String_equal__ t "while" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get s "test" ,(test)
+      Hx_expr cx test ,(tc)
+      Kit_parse_get s "body" ,(body)
+      Hx_loop_body cx body ,(bc)
+      Kit_code_cat4 "while (" tc ") " bc ,(c)
+      return c) ,()
+  __String_equal__ t "dowhile" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get s "test" ,(test)
+      Hx_expr cx test ,(tc)
+      Kit_parse_get s "body" ,(body)
+      Hx_loop_body cx body ,(bc)
+      Kit_code_cat5 "do " bc " while (" tc ");" ,(c)
+      return c) ,()
+  __String_equal__ t "for" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ s "init" (,(k) __NULL__ __NULL__) ,(init)
+      Hx_for_init cx init ,(ic)
+      __Dict_lookup_or__ s "test" (,(k) __NULL__ __NULL__) ,(test)
+      __is_null__ test ,(noTest)
+      __if_then_else__ noTest (,() __NULL__ "") (,() Hx_expr cx test) ,(tc)
+      __Dict_lookup_or__ s "update" (,(k) __NULL__ __NULL__) ,(update)
+      __is_null__ update ,(noUpdate)
+      __if_then_else__ noUpdate (,() __NULL__ "") (,() Hx_effect cx update) ,(uc)
+      Kit_parse_get s "body" ,(body)
+      Hx_loop_body cx body ,(bc)
+      Kit_code_cat5 "for (" ic "; " tc "; " ,(c)
+      Kit_code_cat4 c uc ") " bc ,(c)
+      return c) ,()
+  Kit_lex_in_words t "break continue" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get s "label" ,(lab)
+      __String_equal__ lab "" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      __Dict_lookup_or__ cx "loops" __print_exit_error__ ,(loops)
+      __Ref_get__ loops ,(n)
+      __Number_is_zero__ n ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+      __String_concat__ t ";" ,(c)
+      return c) ,()
+  Hx_fail cx)
+
+;; for の初期化（; なし）：宣言か式か、なし
+(define Hx_for_init ,(cx init)
+  __Cont_get__ ,(return)
+  __is_null__ init ,(test__) __if__ test__ (,() return "") ,()
+  Wx_t init ,(t)
+  __String_equal__ t "decl" ,(test__) __if__ test__ (,() Hx_decl cx init ,(c) return c) ,()
+  __String_equal__ t "expr" ,(test__) __if__ test__ (,() Kit_parse_get init "expr" ,(e) Hx_effect cx e ,(c) return c) ,()
+  Hx_effect cx init)
+
+;; let と const の宣言（; なし）
+(define Hx_decl ,(cx s)
+  Kit_parse_get s "kind" ,(kind)
+  Kit_lex_in_words kind "let const" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get s "decls" ,(ds)
+  Hx_declarators cx ds "" ,(c)
+  Kit_code_cat3 kind " " c)
+
+(define Hx_declarators ,(cx ds acc)
+  __Cont_get__ ,(return)
+  __is_null__ ds ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ ds ,(d rest)
+  Kit_parse_get d "target" ,(target)
+  Kit_parse_get target "name" ,(nm)
+  __Dict_lookup_or__ d "init" (,(k) __NULL__ __NULL__) ,(init)
+  __is_null__ init ,(noInit)
+  __if_then_else__ noInit (,() __NULL__ "") (,() Hx_expr cx init ,(ic) __String_concat__ " = " ic) ,(ic)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat5 acc sep "v_" nm ic ,(acc)
+  Hx_declarators cx rest acc)
+
+;; 式の文（; なし）：局所の変数への代入と複合の代入、++、--。ほかの式はそのまま
+(define Hx_effect ,(cx e)
+  __Cont_get__ ,(return)
+  Wx_t e ,(t)
+  __String_equal__ t "paren" ,(test__) __if__ test__ (,() Kit_parse_get e "expr" ,(inner) Hx_effect cx inner ,(c) return c) ,()
+  __String_equal__ t "assign" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "target" ,(target)
+      Hx_local cx target ,(l)
+      Kit_parse_get e "op" ,(op)
+      Kit_parse_get e "value" ,(value)
+      Hx_expr cx value ,(vc)
+      __String_equal__ op "=" ,(test__) __if__ test__ (,() Kit_code_cat3 l " = " vc ,(c) return c) ,()
+      Kit_lex_in_words op "+= -= *= /= %=" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      __String_length__ op ,(len)
+      Wx_num "1" ,(one)
+      __Number_subtract__ len one ,(m)
+      Wx_num "0" ,(zero)
+      __String_substring__ __print_exit_error__ op zero m ,(bop)
+      Kit_code_cat5 l " = ($n(" l ") " bop ,(c)
+      Kit_code_cat3 c " $n(" vc ,(c)
+      __String_concat__ c "))" ,(c)
+      return c) ,()
+  __String_equal__ t "update" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "target" ,(target)
+      Hx_local cx target ,(l)
+      Kit_parse_get e "op" ,(op)
+      __String_equal__ op "++" ,(inc)
+      __if_then_else__ inc (,() __NULL__ " + 1") (,() __NULL__ " - 1") ,(d)
+      Kit_code_cat5 l " = $n(" l ")" d ,(c)
+      return c) ,()
+  Hx_expr cx e)
+
+;; 代入の先：局所の変数（引数も）の名前だけ
+(define Hx_local ,(cx target)
+  __Cont_get__ ,(return)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get target "name" ,(nm)
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  __String_concat__ "v_" nm)
+
+;; ── 式 ──
+
+(define Hx_expr ,(cx e)
+  __Cont_get__ ,(return)
+  Wx_t e ,(t)
+  __String_equal__ t "num" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "text" ,(text)
+      ;; 数の字句を ConMa と同じ値にする（BigInt の n などは、ここで外れる）
+      __Number_fromString__ (,(msg) Hx_fail cx) text ,(v)
+      Hx_number cx v ,(c)
+      return c) ,()
+  __String_equal__ t "str" ,(test__) __if__ test__ (,() Kit_parse_get e "value" ,(v) Sjs_json_string v ,(c) return c) ,()
+  __String_equal__ t "lit" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "text" ,(text)
+      Kit_lex_in_words text "true false" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      return text) ,()
+  __String_equal__ t "paren" ,(test__) __if__ test__
+    (,() Kit_parse_get e "expr" ,(inner) Hx_expr cx inner ,(c) Kit_code_cat3 "(" c ")" ,(c) return c) ,()
+  __String_equal__ t "id" ,(test__) __if__ test__ (,() Hx_id cx e ,(c) return c) ,()
+  __String_equal__ t "template" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "parts" ,(parts)
+      Kit_parse_get e "exprs" ,(exprs)
+      Hx_template cx parts exprs "(" ,(c)
+      __String_concat__ c ")" ,(c)
+      return c) ,()
+  __String_equal__ t "binary" ,(test__) __if__ test__ (,() Hx_binary cx e ,(c) return c) ,()
+  __String_equal__ t "unary" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "op" ,(op)
+      Kit_parse_get e "arg" ,(arg)
+      Hx_expr cx arg ,(ac)
+      __String_equal__ op "!" ,(test__) __if__ test__ (,() Kit_code_cat3 "(!" ac ")" ,(c) return c) ,()
+      __String_equal__ op "-" ,(test__) __if__ test__ (,() Kit_code_cat3 "(-$n(" ac "))" ,(c) return c) ,()
+      __String_equal__ op "+" ,(test__) __if__ test__ (,() Kit_code_cat3 "$n(" ac ")" ,(c) return c) ,()
+      Hx_fail cx) ,()
+  __String_equal__ t "cond" ,(test__) __if__ test__
+    (,()
+      Kit_parse_get e "test" ,(test)
+      Hx_expr cx test ,(tc)
+      Kit_parse_get e "yes" ,(yes)
+      Hx_expr cx yes ,(yc)
+      Kit_parse_get e "no" ,(no)
+      Hx_expr cx no ,(nc)
+      Kit_code_cat5 "(" tc " ? " yc " : " ,(c)
+      Kit_code_cat3 c nc ")" ,(c)
+      return c) ,()
+  __String_equal__ t "call" ,(test__) __if__ test__ (,() Hx_call cx e ,(c) return c) ,()
+  __String_equal__ t "member" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(opt)
+      __if__ opt (,() Hx_fail cx) ,()
+      Kit_parse_get e "object" ,(object)
+      Hx_expr cx object ,(oc)
+      __Dict_lookup_or__ e "key" (,(k) __NULL__ __NULL__) ,(key)
+      __is_null__ key ,(test__) __unless__ test__
+        (,() Hx_expr cx key ,(kc) Kit_code_cat5 "$idx(" oc ", " kc ")" ,(c) return c) ,()
+      Kit_parse_get e "name" ,(name)
+      __String_equal__ name "length" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      Kit_code_cat3 "$len(" oc ")" ,(c)
+      return c) ,()
+  Hx_fail cx)
+
+;; 数 v の JavaScript の字句（ConMa の __Number_toString__ の字句を JavaScript が同じ値に読む。-0、NaN、無限大は式にする）
+(define Hx_number ,(cx v)
+  __Cont_get__ ,(return)
+  Sjs_is_nan v ,(test__) __if__ test__ (,() return "NaN") ,()
+  __Number_toString__ v ,(s)
+  __String_equal__ s "inf" ,(test__) __if__ test__ (,() return "Infinity") ,()
+  __String_equal__ s "Infinity" ,(test__) __if__ test__ (,() return "Infinity") ,()
+  Kit_code_cat3 "(" s ")")
+
+;; テンプレート：parts と exprs を順に。式の値は $S で文字列にする
+(define Hx_template ,(cx parts exprs acc)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  Sjs_json_string p ,(pc)
+  __String_concat__ acc pc ,(acc)
+  __is_null__ exprs ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ exprs ,(x xs)
+  Hx_expr cx x ,(xc)
+  Kit_code_cat4 acc " + $S(" xc ") + " ,(acc)
+  Hx_template cx rest xs acc)
+
+(define Hx_id ,(cx e)
+  __Cont_get__ ,(return)
+  Kit_parse_get e "name" ,(nm)
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() __String_concat__ "v_" nm ,(c) return c) ,()
+  ;; NaN、Infinity、undefined：一番外で宣言されず、代入されないもの
+  __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
+  __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
+  __Dict_lookup_or__ assigned nm (,(k) __NULL__ __FALSE__) ,(written)
+  __Dict_lookup_or__ E "declared" __print_exit_error__ ,(declared)
+  __Dict_lookup_or__ declared nm (,(k) __NULL__ __NULL__) ,(d)
+  __is_null__ d ,(undeclared)
+  __not__ written ,(unwritten)
+  __and__ undeclared unwritten ,(builtin)
+  __unless__ builtin (,() Hx_fail cx) ,()
+  Kit_lex_in_words nm "NaN Infinity undefined" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  __NULL__ nm)
+
+(define Hx_binary ,(cx e)
+  __Cont_get__ ,(return)
+  Kit_parse_get e "op" ,(op)
+  Kit_parse_get e "left" ,(left)
+  Kit_parse_get e "right" ,(right)
+  Hx_expr cx left ,(lc)
+  Hx_expr cx right ,(rc)
+  Kit_lex_in_words op "&& || === !==" ,(test__) __if__ test__
+    (,() Kit_code_cat5 "(" lc " " op " " ,(c) Kit_code_cat3 c rc ")" ,(c) return c) ,()
+  Kit_lex_in_words op "+ - * / % < > <= >=" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_code_cat5 "($n(" lc ") " op " $n(" ,(c)
+  Kit_code_cat3 c rc "))" ,(c)
+  __NULL__ c)
+
+;; 呼び出し：ほかのホストの関数（名前で）か、文字列のメソッド
+(define Hx_call ,(cx e)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(opt)
+  __if__ opt (,() Hx_fail cx) ,()
+  Kit_parse_get e "callee" ,(callee)
+  Kit_parse_get e "args" ,(args)
+  Hx_args cx args "" ,(ac)
+  Wx_t callee ,(ct)
+  __String_equal__ ct "member" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ callee "optional" (,(k) __NULL__ __FALSE__) ,(mopt)
+      __if__ mopt (,() Hx_fail cx) ,()
+      __Dict_lookup_or__ callee "key" (,(k) __NULL__ __NULL__) ,(key)
+      __is_null__ key ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+      Kit_parse_get callee "name" ,(name)
+      Kit_lex_in_words name "charAt at indexOf includes startsWith endsWith slice trim toUpperCase toLowerCase repeat replace replaceAll" ,(test__)
+      __unless__ test__ (,() Hx_fail cx) ,()
+      Kit_parse_get callee "object" ,(object)
+      Hx_expr cx object ,(oc)
+      __String_equal__ ac "" ,(noArgs)
+      __if_then_else__ noArgs (,() __NULL__ "") (,() __String_concat__ ", " ac) ,(rest)
+      Kit_code_cat5 "$m_" name "(" oc rest ,(c)
+      __String_concat__ c ")" ,(c)
+      return c) ,()
+  __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
+  Kit_parse_get callee "name" ,(nm)
+  ;; 局所の変数の名前なら、ホストの関数ではない
+  __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
+  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ cx "H" __print_exit_error__ ,(H)
+  __Dict_lookup_or__ H nm (,(k) __NULL__ __NULL__) ,(info)
+  __is_null__ info ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ cx "callees" __print_exit_error__ ,(callees)
+  __Ref_get__ callees ,(cs)
+  __LList_cons__ nm cs ,(cs)
+  __Ref_set__ callees cs ,()
+  Kit_code_cat5 "f_" nm "(" ac ")")
+
+(define Hx_args ,(cx args acc)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ args ,(a rest)
+  Wx_t a ,(t)
+  ;; ...（スプレッド）は扱わない
+  __String_equal__ t "spread" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  Hx_expr cx a ,(c)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat3 acc sep c ,(acc)
+  Hx_args cx rest acc)
+
+;; 補助の関数。どれも、ConJS と同じになると確かめられないときは例外を投げる（呼んだ Conjs_hostfn が ConMa 版に替える）
+(define Hx_helpers ,()
+  __String_join_lines__
+    "'use strict';"
+    "const $no = () => { throw new Error('not on the host'); };"
+    "const $n = (x) => typeof x === 'number' ? x : $no();"
+    "const $str = (s) => typeof s === 'string' ? s : $no();"
+    "const $ascii = (s) => { $str(s); for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) $no(); return s; };"
+    "const $opt = (x) => x === undefined || typeof x === 'number' ? x : $no();"
+    "const $S = (x) => typeof x === 'string' ? x : typeof x === 'boolean' ? String(x) : x === undefined ? 'undefined' : typeof x === 'number' && Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21 ? String(x) : $no();"
+    "const $len = (s) => { $str(s); let n = 0; for (const c of s) n++; return n; };"
+    "const $idx = (s, i) => { $ascii(s); if (!Number.isInteger(i) || i < 0) $no(); return i < s.length ? s[i] : undefined; };"
+    "const $m_charAt = (s, i) => $ascii(s).charAt($opt(i));"
+    "const $m_at = (s, i) => $ascii(s).at($opt(i));"
+    "const $m_indexOf = (s, t, i) => $ascii(s).indexOf($ascii(t), $opt(i));"
+    "const $m_includes = (s, t, i) => $ascii(s).includes($ascii(t), $opt(i));"
+    "const $m_startsWith = (s, t, i) => $ascii(s).startsWith($ascii(t), $opt(i));"
+    "const $m_endsWith = (s, t, i) => $ascii(s).endsWith($ascii(t), $opt(i));"
+    "const $m_slice = (s, a, b) => $ascii(s).slice($opt(a), $opt(b));"
+    "const $m_trim = (s) => $ascii(s).trim();"
+    "const $m_toUpperCase = (s) => $ascii(s).toUpperCase();"
+    "const $m_toLowerCase = (s) => $ascii(s).toLowerCase();"
+    "const $m_repeat = (s, n) => $ascii(s).repeat($n(n));"
+    "const $m_replace = (s, p, r) => $ascii(s).replace($ascii(p), $ascii(r).includes('$') ? $no() : r);"
+    "const $m_replaceAll = (s, p, r) => $ascii(s).replaceAll($ascii(p), $ascii(r).includes('$') ? $no() : r);"
+    ,(h)
+  __String_concat__ h "\n")

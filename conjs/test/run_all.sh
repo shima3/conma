@@ -13,3 +13,12 @@ for name in $(grep -o '"[a-z]*\.[a-z_]*"' ../include/conjs_lib.se | tr -d '"' | 
 do
   grep -q "\`\"$name\"\`" ../../docs/PRIMITIVES.md || echo "$name is not in docs/PRIMITIVES.md"
 done
+# ホストの関数（docs/dev/CONJS-HOST-PLAN.md の段階 H3a）：wasm 版の VM では、step20 のホストの関数が、ホストの JavaScript で値を
+# 返すことを確かめる（ホストの版が動かなくても、ConMa 版に替わってログは同じになるため）。case*.host.txt は、ホストの版で値を
+# 得た関数の名前（CONJS_HOST_REPORT の出力を並べたもの）。CONJS_HOST_STRICT で、変換器の作った JavaScript の誤りも出す
+if [ "$CONMA_VM" = wasm ]; then
+  for c in step20/case*.con.js
+  do
+    CONJS_HOST_REPORT=1 CONJS_HOST_STRICT=1 ../conjs "$c" 2>&1 > /dev/null < /dev/null | grep '^conjs: host' | sort | diff "${c%.con.js}.host.txt" -
+  done
+fi

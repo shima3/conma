@@ -1,0 +1,5 @@
+conjs: host: cmp
+conjs: host: len
+conjs: host: logic
+conjs: host: pick
+conjs: host: show

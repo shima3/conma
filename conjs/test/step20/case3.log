@@ -1,0 +1,11 @@
+213 3 fizzxxfizzxxfizz
+5000
+undefined 1-undefined 1-2
+13
+not on the host
+2
+3 <null> <1,2>
+TypeError: + needs numbers, not an array (join strings with a template literal)
+TypeError: + needs numbers, not the string "a" (join strings with a template literal)
+TypeError: * needs numbers, not the string "2"
+exit: 0
