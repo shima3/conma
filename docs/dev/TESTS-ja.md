@@ -110,7 +110,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
 
-### s5/bench-windows-time
+### s5/bench-windows-time（shima3/conma#74）
 
 * bench/run.sh と sjs/bench/run.sh が、Windows（Git Bash。`uname -o` が `Msys` か `Cygwin`）では、user + sys でなく実時間で測り、何で測ったかを 1 行出すようにした（ユーザーの指示。conjs/bench/run.sh の shima3/conma#71 と同じ）。Git Bash の `time` は、Windows のプログラム（conma.exe、node.exe、python.exe）の user と sys を数えないため。Unix では、時間の測り方は前と同じで、出力に `time: user + sys, ...` の行が 1 行増える。文書：docs/dev/CONTRIBUTING.md の Benchmarks の 4、sjs/README-ja.md、bench/README.md。
 * 種類：なし（ベンチマークだけ）。
