@@ -2057,7 +2057,7 @@ var ConMaVM = (function () {
           let result;
           try {
             const args = JSON.parse(str(argsPtr, argsLen));
-            const r = hostFunctions[name](...(args === null ? [] : args.map(hostDecode)));
+            const r = hostFunctions[name].apply(callbackContext, args === null ? [] : args.map(hostDecode));
             if (r !== null && typeof r === "object" && typeof r.then === "function")
               throw new Error(name + ": returned a Promise (a call that waits is not supported yet)");
             result = JSON.stringify({ r: hostEncode(name, r) });
@@ -2146,6 +2146,23 @@ var ConMaVM = (function () {
     function pass2(a, b, f) {
       return pass(a, (pa, la) => pass(b, (pb, lb) => f(pa, la, pb, lb)));
     }
+
+    // A function of the host that __Host_call__ calls gets this as its this (a function, not an arrow):
+    // this.callVm(name, ...args) calls the global function name of the program back, in a nested run of
+    // the VM, and returns its value (stage H1 of docs/dev/CONJS-HOST-PLAN.md; conma_callback of
+    // vm/wasm/src/lib.rs). The arguments and the value are those of __Host_call__ (hostEncode,
+    // hostDecode). An error of the function throws an Error; a function that waits throws an Error
+    // whose escape is true, as the host cannot wait in the middle of its JavaScript.
+    function callVm(name, ...args) {
+      const json = JSON.stringify(args.length === 0 ? null : args.map((a) => hostEncode(name, a)));
+      const n = pass2(name, json, (pn, ln, pa, la) => x.conma_callback(pn, ln, pa, la));
+      const r = JSON.parse(str(x.conma_callback_ptr(), n));
+      if (Object.prototype.hasOwnProperty.call(r, "r")) return hostDecode(r.r);
+      const e = new Error(Object.prototype.hasOwnProperty.call(r, "x") ? r.x : r.e);
+      e.escape = Object.prototype.hasOwnProperty.call(r, "x");
+      throw e;
+    }
+    const callbackContext = { callVm };
 
     vm = {
       exports: x,

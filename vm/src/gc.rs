@@ -101,9 +101,26 @@ pub fn new_gvenv(g: GVEnv) -> Rc<GVEnv> {
     rc
 }
 
-/// True when enough containers have been made to collect.
+/// True when enough containers have been made to collect. Never during a nested run of the VM (a call
+/// back from the host, prim/host.rs): the step that called the host still borrows its VProc, which the
+/// collector would borrow too.
 pub fn due() -> bool {
-    MADE.load(Relaxed) >= THRESHOLD.load(Relaxed)
+    MADE.load(Relaxed) >= THRESHOLD.load(Relaxed) && NESTED.load(Relaxed) == 0
+}
+
+/// The nested runs of the VM going on (prim/host.rs, callback).
+static NESTED: AtomicUsize = AtomicUsize::new(0);
+
+/// A nested run of the VM begins (prim/host.rs, callback).
+#[allow(dead_code)]
+pub fn nested_enter() {
+    NESTED.fetch_add(1, Relaxed);
+}
+
+/// A nested run of the VM ends.
+#[allow(dead_code)]
+pub fn nested_leave() {
+    NESTED.fetch_sub(1, Relaxed);
 }
 
 /// A value that may be on a cycle, held while collecting.

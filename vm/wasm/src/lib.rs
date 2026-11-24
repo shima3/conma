@@ -91,6 +91,10 @@ struct Vm {
 thread_local! {
     static VM: RefCell<Option<Vm>> = const { RefCell::new(None) };
     static CWD: RefCell<String> = RefCell::new("/".to_string());
+    /// The global variables of the program by name, for conma_callback.
+    static NAMES: RefCell<std::collections::HashMap<String, usize>> = RefCell::new(Default::default());
+    /// The result of the last conma_callback, for conma_callback_ptr.
+    static CALLBACK_RESULT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
 fn eprint(text: &str) {
@@ -180,6 +184,7 @@ fn start(module_text: String, args: Vec<String>) -> i32 {
         }
     };
     let index = module::build_name_index(&module_sexp);
+    NAMES.with(|n| *n.borrow_mut() = index.clone());
     let gid = match index.get(&func_name) {
         Some(g) => *g,
         None => {
@@ -470,4 +475,44 @@ pub unsafe extern "C" fn conma_set_cwd(ptr: *const u8, len: usize) -> i32 {
         }
         Err(e) => e.raw_os_error().unwrap_or(-1),
     }
+}
+
+/// Call the global function name of the program back from a function of the host, while the VM is
+/// inside __Host_call__ (stage H1 of docs/dev/CONJS-HOST-PLAN.md): args is the JSON of the arguments as
+/// __Host_call__ gives them to the host (an array, or null for none). The call runs to its end in a
+/// nested run of the VM (prim/host.rs, callback). The result, which conma_callback_ptr points to, is
+/// the JSON {"r":value}, {"e":"message"} for an error, or {"x":"message"} when the call came to
+/// something that waits (an escape). Returns its length.
+///
+/// # Safety
+/// The pointers must point to len bytes each.
+#[no_mangle]
+pub unsafe extern "C" fn conma_callback(name_ptr: *const u8, name_len: usize, args_ptr: *const u8, args_len: usize) -> i32 {
+    use prim::host::{callback, callback_global, from_json, to_json, CallbackError, HostValue};
+    let name = text(name_ptr, name_len);
+    let args = text(args_ptr, args_len);
+    let quote = |s: &str| to_json(&HostValue::Str(s.to_string()));
+    let result = (|| {
+        let gid = NAMES.with(|n| n.borrow().get(&name).copied()).ok_or_else(|| format!("no global function {}", name))?;
+        let f = callback_global(gid).ok_or_else(|| format!("{} is undefined, or no function of the host runs", name))?;
+        let args = match from_json(&format!("{{\"r\":{}}}", args)) {
+            Ok(Ok(HostValue::List(items))) => items,
+            _ => return Err("the arguments are not an array of values".to_string()),
+        };
+        Ok(callback(f, &args))
+    })();
+    let r = match result {
+        Err(message) => format!("{{\"e\":{}}}", quote(&message)),
+        Ok(Ok(v)) => format!("{{\"r\":{}}}", to_json(&v)),
+        Ok(Err(CallbackError::Error(message))) => format!("{{\"e\":{}}}", quote(&message)),
+        Ok(Err(CallbackError::Escape(message))) => format!("{{\"x\":{}}}", quote(&message)),
+    };
+    let n = r.len() as i32;
+    CALLBACK_RESULT.with(|c| *c.borrow_mut() = r.into_bytes());
+    n
+}
+
+#[no_mangle]
+pub extern "C" fn conma_callback_ptr() -> *const u8 {
+    CALLBACK_RESULT.with(|c| c.borrow().as_ptr())
 }

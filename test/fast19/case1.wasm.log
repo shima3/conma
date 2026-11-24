@@ -1,0 +1,11 @@
+feature callback: yes
+twice 21: 42
+point 3 4: {x 3 y 4 sum 7 tags ("a" "b")}
+deeper 21: 43
+Error in VProc 1 at step 2: conma/test/fast19/test.se:104:3: Not a function: (__Number__ 21)
+broken: "error: the call back stopped with an error"
+waits: "escape: the call back waits"
+unknown: "error: no global function no_such_function"
+mark 21: 21
+PDict mark: 21
+exit: 0

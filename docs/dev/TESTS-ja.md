@@ -118,3 +118,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * M4 が流したもの：conjs/bench/hostjs の 3 つ（Node.js と wasm 版の VM。計画の 11 節）。
 * 流していないもの：ほかの suite（ランタイムも VM も変えていない）。
 * 測ったもの：計画の 11 節。
+
+### m4/conjs-host-h1
+
+* 種類：機能（wasm 版の VM で、ホストの関数から VM の関数を呼び返す）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H1。vm/src/prim/host.rs に入れ子の実行（`callback`）を、vm/src/sched.rs に `nested` と `set_booleans` を、vm/src/gc.rs に入れ子の実行の間は集めない印を、vm/wasm/src/lib.rs に `conma_callback` を、vm/wasm/conma.js にホストの関数の `this.callVm` を足した。ネイティブの VM の動きは変わらない（`__Host_call__` の間に PDict を預けて戻すだけ）。
+* 作り直すもの：Rust 版の VM（`cd vm && cargo build --release`）と wasm 版の VM（vm/wasm/build.sh）。consh/js/build.sh の作るブラウザ版も、wasm を作り直す。
+* 新しいテスト：test/fast19（呼び返し。wasm 版の VM のログは case1.wasm.log、ほかの VM は case1.log）。
+* M4 が流したもの：test/fast19 を wasm 版、Rust 版、Python 版、transpiled VM で。Rust 版と wasm 版の VM の test/、consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、test/host-api.sh、vm の `cargo test --release`。
+* 流していないもの：Python 版の VM と transpiled VM の、fast19 のほかの suite。Windows（I7）。
+* 測ったもの：呼び返し 1 回の時間（計画の 12 節）。

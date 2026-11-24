@@ -1,0 +1,10 @@
+feature callback: no
+twice 21: error: __Host_call__: no host function "cb.twice"
+point 3 4: error: __Host_call__: no host function "cb.point"
+deeper 21: error: __Host_call__: no host function "cb.deeper"
+broken: error: __Host_call__: no host function "cb.broken"
+waits: error: __Host_call__: no host function "cb.waits"
+unknown: error: __Host_call__: no host function "cb.unknown"
+mark 21: error: __Host_call__: no host function "cb.mark"
+PDict mark: "none"
+exit: 0

@@ -2,7 +2,7 @@
 
 The plan of running the functions of a ConJS program on the JavaScript engine of the host (Node.js or a browser) when the program runs on the wasm VM, calling back into the VM for what the host cannot do. Written on 2026-11-24 at the user's request, after the ConJS benchmarks (conjs/bench/README-ja.md, shima3/conma#71). The first version, the same day, ran only the functions that never wait and undid a call that met anything else; the user then asked that the host call ConJS back instead, and this version does that (3.1), keeping the undoing only as the last resort.
 
-**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done: section 11. Nothing else is built. Section 10 lists what the user is to decide.
+**State**: a plan. Stage H0 (measuring JavaScript written by hand) is done (section 11), and stage H1 (the nested run of the VM) is built (section 12). The rest is not. Section 10 lists what the user is to decide.
 
 ## 1. Why
 
@@ -153,4 +153,17 @@ Measured on the M4 (Apple M4), Node.js v26.13.0, user + sys, the least of 3 runs
 * A call back would cost about the crossing and the call, some 18 µs, against 6.8 µs for the same call made in the VM. So a host function that calls back in every step of a loop (`a.map(f)` with `f` in the VM) is slower than its ConMa version, as 3.2 expected: the rule that stops using the host for such a function is needed (H5).
 * Copying values by the path of `host.call` today costs about 4 µs a value each way, 2,000 times what the host spends on its side. That path converts the values in ConMa code; the copying of 3.2 must be done by Rust in the VM (a primitive that writes a graph of Dicts into the buffer and reads it back), as the copying of numeric arrays was made a primitive for WebAssembly (section 17 of SJS-WASM-ARRAY-PLAN-ja.md). H2 measures it.
 * For nbody, `system.advance(0.01, n)` is called once: one copy each way (under 1 ms even at today's 4 µs a value) and 20,000,000 steps on the host. For hof moved into a function called from a loop at the top level, each round costs a crossing (about 11 µs) besides its 5.2 µs, so the top level should go to the host too (H6), or the round would gain about 340 times instead of 1,000.
+
+## 12. Results of H1 (2026-11-24)
+
+The nested run of the VM (8) is built, for the global functions of a program, without the translator.
+
+* **The VM** (vm/src/prim/host.rs, `callback`): while `__Host_call__` runs a function of the host, it keeps what a call back needs of the VProc that called (its global variables, its PDict, its current directory, the Booleans of its Machine). A call back runs the function in a Machine of its own (vm/src/sched.rs), with a VProc that gets that PDict, until it ends; the VProc that called gets the PDict back with what the call back changed. Nothing else of the VM runs meanwhile.
+    * The collector does not run during a nested run (vm/src/gc.rs, `due`): the step that called the host still borrows its VProc, which the collector would borrow too. The `RefCell`s were the worry of 8: running a new Machine borrows nothing that the outer step holds, as the outer Machine is not touched and the VProc that called is not reached.
+    * A call back that comes to something that waits ends as an escape (3.1): with no VProc ready, the Machine of the call back returns instead of reporting a deadlock (`nested` of `Machine`). One that leaves a VProc it started unfinished is an escape too. An error of the function ends it as an error.
+* **The wasm VM** (vm/wasm/src/lib.rs): `conma_callback(name, args)` calls the global function `name` with the arguments in the JSON of `__Host_call__`, and gives `{"r":value}`, `{"e":"message"}` or `{"x":"message"}` (an escape).
+* **The host** (vm/wasm/conma.js): a function of the host that `__Host_call__` calls gets `this.callVm(name, ...args)`, which returns the value, or throws an Error (with `escape` true for an escape). Arrow functions do not get it.
+* **The test**: test/fast19 (test/run_all.sh runs it). Its functions of the host (host.js) call back a function that returns a number, one that returns a Dict with an LList, one that calls the host again (two nested runs), one that stops with an error, one that waits (an escape), a name that is not there, and one that writes the PDict, which the program reads after the call. The other VMs have no such functions of the host (case1.log).
+* **What a call back costs** (the M4, the wasm VM, user + sys, the least of 3): a function of the host that calls back `twice` 100,000 times takes 0.484 s, against 0.154 s for the same loop in ConMa, after taking out the start (0.094 s and 0.08 s for 1,000): **3.9 µs a call back**, against 0.75 µs for a call and a step of the loop in the VM. H0 expected about 18 µs (a crossing of `host.call` and a call); the JSON of the arguments and the result, and a new Machine for each call back, are most of it, to be measured again with the copying of H2.
+* **Not done**: calling back a closure that is not a global variable (a handle, 3.2; H2), copying with aliases (H2), and the native VMs, which have no host that runs during `__Host_call__`.
 
