@@ -33,9 +33,19 @@
 ;; Wasm_prepare の後に呼ぶ）もホストの版を作り、"hostAlso" を付ける：wasm 版が先で、引数が数でなく wasm 版が動かないとき
 ;; （文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）、ConMa 版の前にホストの版を試す
 (define Host_prepare ,(program file)
+  __Dict_new__ ,(other)
+  Host_prepare_with program file __NULL__ other)
+
+;; import と export のあるプログラムの、1 つのファイル（段階 H6b。conjs/include/conjs_modules.se の Gen_unit）：imported は、
+;; import した名前の LList（宣言した名前に数える。組み込みの名前と取り違えないため）、other は、ほかのファイルで宣言したクラスの
+;; 名前の Dict（その名前のクラスは、ホストのクラスにしない。インスタンスのクラスを名前で探すので、プログラムの中で 1 つだけのもの）
+(define Host_prepare_with ,(program file imported other)
   Kit_parse_get program "body" ,(stmts)
   Wx_env stmts ,(E)
+  __Dict_lookup_or__ E "declared" __print_exit_error__ ,(declared)
+  Hx_declare_names declared imported ,()
   __Dict_new__ ,(H)
+  __Dict_put__ H "#otherClasses" other ,()
   __Dict_put__ H "#file" file ,()
   __Dict_new__ ,(posIndex)
   __Dict_put__ H "#posIndex" posIndex ,()
@@ -46,6 +56,11 @@
   ;; クラス（段階 H4a）：一番外の class 宣言のメソッドも、名前 "クラス.メソッド" で候補にする
   __Ref_new__ __NULL__ ,(classes)
   Hx_classes E H order classes program stmts ,()
+  ;; 一番外のループ（段階 H6a）：名前 "$s番号" の候補にする
+  __Dict_new__ ,(before)
+  Wx_num "0" ,(zeroS)
+  __Ref_new__ zeroS ,(stmtN)
+  Hx_stmt_candidates E H order before stmtN stmts ,()
   __Ref_get__ order ,(rev)
   Wx_reverse rev __NULL__ ,(names)
   __Dict_new__ ,(waits)
@@ -94,8 +109,24 @@
   __Dict_lookup_or__ assigned name (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() return __FALSE__ "" __NULL__) ,()
   __NULL__ __TRUE__ name init)
 
+(define Hx_declare_names ,(declared names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  Wx_num "0" ,(zero)
+  __Dict_lookup_or__ declared nm (,(k) __NULL__ zero) ,(c)
+  Wx_num "1" ,(one)
+  __Number_add__ c one ,(c)
+  __Dict_put__ declared nm c ,()
+  Hx_declare_names declared rest)
+
 (define Hx_class ,(E H order classes program name cls)
   __Cont_get__ ,(return)
+  ;; ほかのファイルに同じ名前のクラスがあれば、ホストのクラスにしない（段階 H6b）
+  __Dict_lookup_or__ H "#otherClasses" (,(k) __NULL__ __NULL__) ,(other)
+  __is_null__ other ,(noOther)
+  __if_then_else__ noOther (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ other name (,(k) __NULL__ __FALSE__)) ,(elsewhere)
+  __if__ elsewhere return ,()
   ;; プログラムの中で、この名前のクラスは 1 つだけ（インスタンスのクラスを名前で探すので）
   Wx_num "0" ,(zero)
   __Ref_new__ zero ,(count)
@@ -280,6 +311,173 @@
   __LList_cons__ name o ,(o)
   __Ref_set__ order o)
 
+;; ── 一番外の文（段階 H6a、H6c。docs/dev/CONJS-HOST-PLAN.md の 26 節と 28 節）──
+;; 一番外のループ（for、for...of、while、do...while）で、ホストに書けるものを「文の関数」にする。前に let、const、var で宣言した
+;; 一番外の変数を、読むなら引数 g_名前 にし、書くなら、終わりに配列で返す（sjs_gen.se が、ConMa で代入する）。VM へ渡るとき
+;; （呼び返し、遅い道、待つ頼み）は、$gio で、書いた変数を VM に送り、戻ったら使う変数を読み直す（ConMa の関数や、待つ間に動いた
+;; ほかの処理が、一番外の変数を読み書きするため。段階 H6c）。sleep、join、nextEvent を呼ぶ文は、ジェネレータにする
+
+;; 一番外の文を順に見て、ループを候補にし、宣言した名前を before（名前 → const か）に足す
+(define Hx_stmt_candidates ,(E H order before stmtN stmts)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Wx_t s ,(t)
+  Kit_lex_in_words t "for forof while dowhile" ,(isLoop0)
+  ;; 段階 H6d：中にループのある if、ブロック、try も（ループのない文は、1 度しか動かず、写す費用のほうが大きくなりうるので
+  ;; ConMa のまま）
+  Kit_lex_in_words t "if block try" ,(isCompound)
+  __if_then_else__ isCompound (,() Hx_has_loop s) (,() __NULL__ __FALSE__) ,(hasLoop)
+  __or__ isLoop0 hasLoop ,(isLoop)
+  __if__ isLoop
+    (,()
+      __Ref_get__ stmtN ,(n)
+      Wx_num "1" ,(one)
+      __Number_add__ n one ,(n)
+      __Ref_set__ stmtN n ,()
+      Wx_str n ,(ns)
+      __String_concat__ "$s" ns ,(name)
+      __String_concat__ "s_" ns ,(fname)
+      __Dict_new__ ,(info)
+      __Dict_put__ info "name" name ,()
+      __Dict_put__ info "fname" fname ,()
+      __Dict_put__ info "kind" "stmt" ,()
+      __Dict_put__ info "stmt" s ,()
+      ;; 今までに宣言した名前（後で足す名前は入れない）
+      __Dict_copy__ before ,(seen)
+      __Dict_put__ info "outer" seen ,()
+      __Dict_put__ info "ok" __FALSE__ ,()
+      __Dict_put__ H name info ,()
+      __Ref_get__ order ,(o)
+      __LList_cons__ name o ,(o)
+      __Ref_set__ order o) ,()
+  __String_equal__ t "decl" ,(isDecl)
+  __if__ isDecl
+    (,()
+      Kit_parse_get s "kind" ,(kind)
+      __String_equal__ kind "const" ,(isConst)
+      Kit_parse_get s "decls" ,(ds)
+      Hx_note_decls before ds isConst) ,()
+  Hx_stmt_candidates E H order before stmtN rest)
+
+;; 節 s の中に、ループ（for、for...of、while、do...while）があるか
+(define Hx_has_loop ,(s)
+  __Ref_new__ __FALSE__ ,(found)
+  Wx_walk s (,(n) Wx_t n ,(t) Kit_lex_in_words t "for forof while dowhile" ,(isLoop) __if__ isLoop (,() __Ref_set__ found __TRUE__) ,()) ,()
+  __Ref_get__ found)
+
+(define Hx_note_decls ,(before ds isConst)
+  __Cont_get__ ,(return)
+  __is_null__ ds ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ ds ,(d rest)
+  Kit_parse_get d "target" ,(target)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __if__ test__ (,() Kit_parse_get target "name" ,(nm) __Dict_put__ before nm isConst) ,()
+  Hx_note_decls before rest isConst)
+
+;; 一番外の文の中で、name が前に宣言した一番外の変数なら、真と g_name（write なら、書く印も付ける。const なら、ホストに書かない）
+(define Hx_outer ,(cx name write)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "outer" (,(k) return __FALSE__ "") ,(outer)
+  __Dict_lookup_or__ outer name (,(k) return __FALSE__ "") ,(isConst)
+  __and__ write isConst ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ cx "used" __print_exit_error__ ,(used)
+  __Dict_lookup_or__ used name (,(k) __NULL__ "") ,(how)
+  __String_equal__ how "" ,(first)
+  __if__ first
+    (,() __Dict_lookup_or__ cx "usedList" __print_exit_error__ ,(ul) __Ref_get__ ul ,(l) __LList_cons__ name l ,(l) __Ref_set__ ul l) ,()
+  __String_equal__ how "w" ,(already)
+  __if_then_else__ write (,() __NULL__ "w") (,() __if_then_else__ already (,() __NULL__ "w") (,() __NULL__ "r")) ,(how2)
+  __Dict_put__ used name how2 ,()
+  __String_concat__ "g_" name ,(c)
+  __NULL__ __TRUE__ c)
+
+;; 文の関数の JavaScript：function s_N(g_a, ...) { 文; return [g_書いた変数, ...]; }
+(define Hx_stmt_func ,(E H info)
+  __Cont_get__ ,(fail)
+  __Dict_new__ ,(cx)
+  __Dict_put__ cx "fail" fail ,()
+  __Dict_put__ cx "E" E ,()
+  __Dict_put__ cx "H" H ,()
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(loops)
+  __Dict_put__ cx "loops" loops ,()
+  __Ref_new__ __NULL__ ,(callees)
+  __Dict_put__ cx "callees" callees ,()
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
+  __Ref_new__ zero ,(tempN)
+  __Dict_put__ cx "tempN" tempN ,()
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
+  __Dict_put__ cx "closure" __FALSE__ ,()
+  ;; 待つ文（段階 H6c）：前に書いたとき待った文は、ジェネレータとして書く（Hx_wait_loop）
+  __Ref_new__ __FALSE__ ,(waitsRef)
+  __Dict_put__ cx "waits" waitsRef ,()
+  Kit_parse_get info "name" ,(sname)
+  __Dict_lookup_or__ H "#waits" (,(k) __NULL__ __NULL__) ,(waits0)
+  __is_null__ waits0 ,(noWaits)
+  __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits0 sname (,(k) __NULL__ __FALSE__)) ,(gen)
+  __Dict_put__ cx "gen" gen ,()
+  __Dict_put__ cx "method" __FALSE__ ,()
+  Kit_parse_get info "outer" ,(outer)
+  __Dict_put__ cx "outer" outer ,()
+  __Dict_new__ ,(used)
+  __Dict_put__ cx "used" used ,()
+  __Ref_new__ __NULL__ ,(usedList)
+  __Dict_put__ cx "usedList" usedList ,()
+  __Dict_new__ ,(locals)
+  __Dict_put__ cx "locals" locals ,()
+  Kit_parse_get info "stmt" ,(s)
+  Hx_collect_locals cx s ,()
+  Hx_stmt cx s ,(code)
+  Hx_temp_decl temps ,(decl)
+  Hx_ops_wrap opsUsed code ,(code)
+  __String_concat__ decl code ,(code)
+  ;; 引数（使った順）と、書いた変数
+  __Ref_get__ usedList ,(ulr)
+  Wx_reverse ulr __NULL__ ,(reads)
+  Hx_stmt_writes used reads __NULL__ ,(wrev)
+  Wx_reverse wrev __NULL__ ,(writes)
+  __Dict_put__ info "reads" reads ,()
+  __Dict_put__ info "writes" writes ,()
+  Hx_prefixed reads "" ,(ps)
+  Hx_prefixed writes "" ,(ws)
+  Kit_parse_get info "fname" ,(fname)
+  __Ref_get__ waitsRef ,(waits)
+  __Dict_put__ info "waits" waits ,()
+  __if_then_else__ waits (,() __NULL__ "function* ") (,() __NULL__ "function ") ,(head)
+  Kit_code_cat5 head fname "(" ps ") {" ,(js)
+  ;; 一番外の変数を VM と合わせる $gio（使う変数があるとき）
+  __String_equal__ ps "" ,(noVars)
+  __if_then_else__ noVars (,() __NULL__ "")
+    (,() Kit_code_cat4 "$gio = { get: () => [" ws "], set: ($v) => { [" ps ,(g) __String_concat__ g "] = $v; } }; ") ,(gio)
+  __String_concat__ js gio ,(js)
+  Kit_code_cat4 js code "return [" ws ,(js)
+  __String_concat__ js "];}\n" ,(js)
+  __Ref_get__ callees ,(cs)
+  __NULL__ __TRUE__ js cs)
+
+;; reads のうち、書いた名前（reads の順を逆にした LList）
+(define Hx_stmt_writes ,(used names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ used nm __print_exit_error__ ,(how)
+  __String_equal__ how "w" ,(w)
+  __if_then_else__ w (,() __LList_cons__ nm acc) (,() __NULL__ acc) ,(acc)
+  Hx_stmt_writes used rest acc)
+
+;; g_a, g_b
+(define Hx_prefixed ,(names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat4 acc sep "g_" nm ,(acc)
+  Hx_prefixed rest acc)
+
 (define Hx_compile_all ,(E H names)
   __Cont_get__ ,(return)
   __is_null__ names ,(test__) __if__ test__ return ,()
@@ -288,9 +486,11 @@
   __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
   __String_equal__ kind "pseudo" ,(isPseudo)
   __String_equal__ kind "fields" ,(isFields)
+  __String_equal__ kind "stmt" ,(isStmt)
   __if_then_else__ isPseudo
     (,() Kit_parse_get info "callees" ,(cs) __NULL__ __TRUE__ "" cs)
-    (,() __if_then_else__ isFields (,() Hx_fields_func E H info) (,() Hx_func E H info)) ,(ok js callees)
+    (,() __if_then_else__ isFields (,() Hx_fields_func E H info)
+      (,() __if_then_else__ isStmt (,() Hx_stmt_func E H info) (,() Hx_func E H info))) ,(ok js callees)
   __Dict_put__ info "ok" ok ,()
   __Dict_put__ info "js" js ,()
   __Dict_put__ info "callees" callees ,()
@@ -446,6 +646,24 @@
   __String_equal__ mkey "" ,(notMethod)
   __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
   __String_equal__ kind "" ,(plainFn)
+  ;; 一番外の文（段階 H6a）：文の節に、名前と、読む変数と書く変数の名前を付ける（sjs_gen.se の Gen_stmt が使う）
+  __String_equal__ kind "stmt" ,(isStmt)
+  __and__ ok isStmt ,(test__) __if__ test__
+    (,()
+      Kit_parse_get info "js" ,(js)
+      __String_concat__ acc js ,(acc)
+      Kit_parse_get info "stmt" ,(node)
+      __Dict_put__ node "hostStmt" nm ,()
+      Kit_parse_get info "reads" ,(rs)
+      __Dict_put__ node "hostReads" rs ,()
+      Kit_parse_get info "writes" ,(ws)
+      __Dict_put__ node "hostWrites" ws ,()
+      Sjs_json_string nm ,(q)
+      Kit_parse_get info "fname" ,(fname)
+      __Dict_lookup_or__ info "waits" (,(k) __NULL__ __FALSE__) ,(w)
+      __if_then_else__ w (,() __NULL__ ": $runG(") (,() __NULL__ ": $run(") ,(runner)
+      Kit_code_cat5 table q runner fname "), " ,(table)
+      Hx_funcs H rest acc table ,(a t) return a t) ,()
   __and__ ok notMethod ,(x) __and__ x plainFn ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
   Kit_parse_get info "js" ,(js)
   __String_concat__ acc js ,(acc)
@@ -474,6 +692,15 @@
   __Dict_put__ cx "loops" loops ,()
   __Ref_new__ __NULL__ ,(callees)
   __Dict_put__ cx "callees" callees ,()
+  ;; その場に書く読み書きの一時の変数（段階 H5b。Hx_temp）
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
+  ;; ループがあったか（段階 H5d。Hx_ops_wrap）
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
+  Wx_num "0" ,(zeroT)
+  __Ref_new__ zeroT ,(tempN)
+  __Dict_put__ cx "tempN" tempN ,()
   ;; 待つか（Hx_call が、待つ呼び出しで真にする）と、ジェネレータとして書くか（前に書いたとき待った関数。Hx_wait_loop）
   __Ref_new__ __FALSE__ ,(waitsRef)
   __Dict_put__ cx "waits" waitsRef ,()
@@ -506,6 +733,9 @@
   __unless__ pok (,() Hx_fail cx) ,()
   Kit_parse_get body "body" ,(stmts)
   __if_then_else__ isCtor (,() Hx_ctor_body cx info stmts) (,() Hx_stmts cx stmts "") ,(code)
+  Hx_temp_decl temps ,(decl)
+  Hx_ops_wrap opsUsed code ,(code)
+  __String_concat__ decl code ,(code)
   Kit_parse_get info "name" ,(name)
   ;; 待つのは、一番外の関数だけ（メソッドとコンストラクタは、待てばホストの関数にしない）
   __Ref_get__ waitsRef ,(waits)
@@ -745,7 +975,17 @@
   __Ref_set__ loops m ,()
   Hx_body cx s ,(c)
   __Ref_set__ loops n ,()
-  __NULL__ c)
+  ;; 仕事を数える（段階 H5d）：関数か関数式の局所の数え $loops に（Hx_ops_wrap が、終わるときに $ops に足す）
+  __Dict_lookup_or__ cx "opsUsed" (,(k) __NULL__ __NULL__) ,(used)
+  __is_null__ used ,(test__) __if__ test__ (,() __NULL__ c) ,()
+  __Ref_set__ used __TRUE__ ,()
+  Kit_code_cat3 "{$loops++; " c "}")
+
+;; ループのあった関数か関数式の本体 code を、局所の数え $loops で包む（数えを、共通の $ops でなく、エンジンがレジスタに置ける局所の変数に
+;; する：ループの 1 回ごとに共通の変数に書くと、速いループでは目に見えて遅い）
+(define Hx_ops_wrap ,(used code)
+  __Ref_get__ used ,(u)
+  __if_then_else__ u (,() Kit_code_cat3 "let $loops = 0; try { " code " } finally { $ops += $loops; }") (,() __NULL__ code))
 
 (define Hx_stmt ,(cx s)
   __Cont_get__ ,(return)
@@ -978,16 +1218,19 @@
   Wx_t e ,(t)
   __String_equal__ t "update" ,(isUpdate)
   __if_then_else__ isUpdate (,() __NULL__ "update") (,() Kit_parse_get e "op") ,(op)
+  __Dict_lookup_or__ target "name" (,(k) __NULL__ "") ,(tname)
   __String_equal__ op "=" ,(test__) __if__ test__
-    (,() Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc) Kit_code_cat5 putf oc ", " kc ", " ,(c) Kit_code_cat3 c vc pend ,(c) return c) ,()
+    (,()
+      Kit_parse_get e "value" ,(value) Hx_expr cx value ,(vc)
+      __if__ named0 (,() Hx_write_named cx oc tname vc p ,(c) return c) ,()
+      Hx_write_index cx oc kc vc p ,(c) return c) ,()
   ;; 複合の代入と ++、--：オブジェクトと添字は、名前かリテラル
   Hx_simple object ,(so)
   __Dict_lookup_or__ target "key" (,(k) __NULL__ __NULL__) ,(key)
   __is_null__ key ,(named)
   __if_then_else__ named (,() __NULL__ __TRUE__) (,() Hx_simple key) ,(sk)
   __and__ so sk ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  Kit_code_cat4 getf oc ", " kc ,(cur)
-  __String_concat__ cur pend ,(cur)
+  __if_then_else__ named0 (,() Hx_read_named cx oc tname p) (,() Hx_read_index cx oc kc p) ,(cur)
   __if_then_else__ isUpdate
     (,()
       Kit_parse_get e "op" ,(uop)
@@ -1004,8 +1247,149 @@
       Kit_parse_get e "value" ,(value)
       Hx_expr cx value ,(vc)
       Hx_op_call cx bop cur vc e) ,(nv)
-  Kit_code_cat5 putf oc ", " kc ", " ,(c)
-  Kit_code_cat3 c nv pend)
+  __if__ named0 (,() Hx_write_named cx oc tname nv p ,(c) return c) ,()
+  Hx_write_index cx oc kc nv p)
+
+;; ── その場に書く読み書き（段階 H5b）──
+;; 共通の補助の関数（$getn など）は名前を変数で受けるので、エンジンが名前ごとの速い読み方を使えない。名前の決まったメンバーの
+;; 読み書きとメソッドの呼び出しは、ホストのオブジェクト（$K が真）の自分のプロパティなら、その場で読み書きし、ほかは補助の関数に
+;; 任せる（意味は同じ）。値は一時の変数（関数と関数式ごと。Hx_temp）に置き、式を 2 度動かさない
+
+;; 新しい一時の変数の名前。一時の変数を持たない所（フィールドの関数）なら偽
+(define Hx_temp ,(cx)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "temps" (,(k) return __FALSE__ "") ,(temps)
+  __is_null__ temps ,(test__) __if__ test__ (,() return __FALSE__ "") ,()
+  __Dict_lookup_or__ cx "tempN" (,(k) return __FALSE__ "") ,(tempN)
+  __Ref_get__ tempN ,(n)
+  Wx_num "1" ,(one)
+  __Number_add__ n one ,(n)
+  __Ref_set__ tempN n ,()
+  Wx_str n ,(ns)
+  __String_concat__ "$t" ns ,(name)
+  __Ref_get__ temps ,(l)
+  __LList_cons__ name l ,(l)
+  __Ref_set__ temps l ,()
+  __NULL__ __TRUE__ name)
+
+;; 一時の変数の宣言（なければ ""）
+(define Hx_temp_decl ,(temps)
+  __Cont_get__ ,(return)
+  __Ref_get__ temps ,(l)
+  __is_null__ l ,(test__) __if__ test__ (,() return "") ,()
+  Hx_join_names l "" ,(names)
+  Kit_code_cat3 "let " names "; ")
+
+(define Hx_join_names ,(l acc)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ l ,(h t)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ h) (,() Kit_code_cat3 acc ", " h) ,(acc)
+  Hx_join_names t acc)
+
+;; その場に書いてよい名前か（__proto__ は、プロトタイプを読み書きするので、補助の関数で）
+(define Hx_inline_name ,(name)
+  __String_equal__ name "__proto__" ,(proto)
+  __not__ proto)
+
+;; o.name を読む：ホストのオブジェクトの、関数でも undefined でもない値ならその場で、ほかは $getn
+(define Hx_read_named ,(cx oc name p)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 v)
+  __and__ ok1 ok2 ,(x) __and__ x inl ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$getn(" oc ", " q ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true && (" ,(c)
+  Kit_code_cat5 c v " = " t "." ,(c)
+  Kit_code_cat4 c name ") !== undefined && typeof " v ,(c)
+  Kit_code_cat4 c " !== 'function' ? " v " : $getn(" ,(c)
+  Kit_code_cat5 c t ", " q ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.name = vc：ホストのオブジェクトならその場で、ほかは $putn（vc は、どちらか一方でだけ動く）
+(define Hx_write_named ,(cx oc name vc p)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok t)
+  __and__ ok inl ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$putn(" oc ", " q ", " ,(c) Kit_code_cat5 c vc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true ? (" ,(c)
+  Kit_code_cat5 c t "." name " = " ,(c)
+  Kit_code_cat5 c vc ") : $putn(" t ", " ,(c)
+  Kit_code_cat5 c q ", " vc ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.name(args)（rest は ", 引数" か ""）：ホストのオブジェクトのメソッドか関数のプロパティならその場で呼び、ほかは $mcall。
+;; 偽なら、その場に書かない（Hx_call が $mc か $mcall で）
+(define Hx_call_named ,(cx oc name p rest)
+  __Cont_get__ ,(return)
+  Sjs_json_string name ,(q)
+  Hx_inline_name name ,(inl)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 v)
+  __and__ ok1 ok2 ,(x) __and__ x inl ,(test__)
+  __unless__ test__ (,() return __FALSE__ "") ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c ") != null && " t "[$K] === true && typeof (" ,(c)
+  Kit_code_cat5 c v " = " t "." ,(c)
+  Kit_code_cat4 c name ") === 'function' && " v ,(c)
+  Kit_code_cat4 c " !== $nom ? " v ".call(" ,(c)
+  Kit_code_cat4 c t rest ") : $mcall(" ,(c)
+  Kit_code_cat5 c t ", " q ", " ,(c)
+  Kit_code_cat4 c p rest "))" ,(c)
+  __NULL__ __TRUE__ c)
+
+;; 配列の要素（段階 H5c）：配列と、長さより小さい整数の添字ならその場で、ほかは $idx（$get）。配列と添字を先に一時の変数に置く
+;; （確かめに通らなくても、JavaScript と同じ順に 1 度だけ動く）
+(define Hx_read_index ,(cx oc kc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 u)
+  __and__ ok1 ok2 ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$idx(" oc ", " kc ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c "), (" u " = " ,(c)
+  Kit_code_cat4 c kc "), Array.isArray(" t ,(c)
+  Kit_code_cat4 c ") && typeof " u " === 'number' && (" ,(c)
+  Kit_code_cat4 c u " >>> 0) === " u ,(c)
+  Kit_code_cat5 c " && " u " < " t ,(c)
+  Kit_code_cat4 c ".length ? " t "[" ,(c)
+  Kit_code_cat5 c u "] : $idx(" t ", " ,(c)
+  Kit_code_cat5 c u ", " p "))")
+
+;; 配列の要素に書く：配列と、長さまでの整数の添字ならその場で（長さのときは足す）、ほかは $put。値 vc は、どちらか一方でだけ動く
+(define Hx_write_index ,(cx oc kc vc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok1 t)
+  Hx_temp cx ,(ok2 u)
+  __and__ ok1 ok2 ,(test__)
+  __unless__ test__ (,() Kit_code_cat5 "$put(" oc ", " kc ", " ,(c) Kit_code_cat5 c vc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "((" t " = " oc ,(c)
+  Kit_code_cat4 c "), (" u " = " ,(c)
+  Kit_code_cat4 c kc "), Array.isArray(" t ,(c)
+  Kit_code_cat4 c ") && typeof " u " === 'number' && (" ,(c)
+  Kit_code_cat4 c u " >>> 0) === " u ,(c)
+  Kit_code_cat5 c " && " u " <= " t ,(c)
+  Kit_code_cat4 c ".length ? (" t "[" ,(c)
+  Kit_code_cat4 c u "] = " vc ,(c)
+  Kit_code_cat4 c ") : $put(" t ", " ,(c)
+  Kit_code_cat5 c u ", " vc ", " ,(c)
+  Kit_code_cat3 c p "))")
+
+;; o.length：配列ならその場で、ほかは $len（文字列は文字の数）
+(define Hx_length ,(cx oc p)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok t)
+  __unless__ ok (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
+  Kit_code_cat4 "(Array.isArray(" t " = " oc ,(c)
+  Kit_code_cat5 c ") ? " t ".length : $len(" t ,(c)
+  Kit_code_cat4 c ", " p "))")
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
@@ -1051,8 +1435,11 @@
   __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
   Kit_parse_get target "name" ,(nm)
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
-  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  __String_concat__ "v_" nm)
+  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(isLocal)
+  __if__ isLocal (,() __String_concat__ "v_" nm ,(c) return c) ,()
+  Hx_outer cx nm __TRUE__ ,(isOuter oc)
+  __unless__ isOuter (,() Hx_fail cx) ,()
+  __NULL__ oc)
 
 ;; ── 式 ──
 
@@ -1092,6 +1479,8 @@
       Hx_pos cx e ,(p)
       __String_equal__ op "-" ,(test__) __if__ test__ (,() Kit_code_cat5 "$neg(" ac ", " p ")" ,(c) return c) ,()
       __String_equal__ op "+" ,(test__) __if__ test__ (,() Kit_code_cat5 "$pos(" ac ", " p ")" ,(c) return c) ,()
+      ;; typeof（段階 H5e）：ホストの値はその場で、VM の値は VM で
+      __String_equal__ op "typeof" ,(test__) __if__ test__ (,() Kit_code_cat5 "$typeof(" ac ", " p ")" ,(c) return c) ,()
       Hx_fail cx) ,()
   __String_equal__ t "cond" ,(test__) __if__ test__
     (,()
@@ -1123,13 +1512,11 @@
       Hx_expr cx object ,(oc)
       __Dict_lookup_or__ e "key" (,(k) __NULL__ __NULL__) ,(key)
       __is_null__ key ,(test__) __unless__ test__
-        (,() Hx_expr cx key ,(kc) Hx_pos cx e ,(p) Kit_code_cat5 "$idx(" oc ", " kc ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+        (,() Hx_expr cx key ,(kc) Hx_pos cx e ,(p) Hx_read_index cx oc kc p ,(c) return c) ,()
       Kit_parse_get e "name" ,(name)
       Hx_pos cx e ,(p)
-      __String_equal__ name "length" ,(test__) __if__ test__ (,() Kit_code_cat5 "$len(" oc ", " p ")" ,(c) return c) ,()
-      Sjs_json_string name ,(q)
-      Kit_code_cat5 "$getn(" oc ", " q ", " ,(c)
-      Kit_code_cat3 c p ")" ,(c)
+      __String_equal__ name "length" ,(test__) __if__ test__ (,() Hx_length cx oc p ,(c) return c) ,()
+      Hx_read_named cx oc name p ,(c)
       return c) ,()
   __String_equal__ t "array" ,(test__) __if__ test__
     (,()
@@ -1150,6 +1537,19 @@
       Wx_t callee ,(ct)
       __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       Kit_parse_get callee "name" ,(cname)
+      ;; 組み込みのエラー（段階 H5e。一番外で宣言されず、代入されないとき）：VM で new する（名前、メッセージ、クラスの記録を
+      ;; ConMa 版と同じにするため）。呼び返しと同じく、その後は ConMa 版でやり直せない
+      Kit_lex_in_words cname "Error TypeError RangeError SyntaxError ReferenceError" ,(isErr)
+      Hx_builtin cx callee cname ,(isBuiltin)
+      __and__ isErr isBuiltin ,(test__) __if__ test__
+        (,()
+          Kit_parse_get e "args" ,(eargs)
+          Hx_args cx eargs "" ,(eac)
+          Sjs_json_string cname ,(ecq)
+          Hx_pos cx e ,(ep)
+          Kit_code_cat5 "$vm('new', " ep ", " ecq ", [" ,(c)
+          Kit_code_cat3 c eac "])" ,(c)
+          return c) ,()
       Hx_class_name cx cname ,(ok)
       __unless__ ok (,() Hx_fail cx) ,()
       Kit_code_cat3 cname ":" "init" ,(iname)
@@ -1220,13 +1620,25 @@
   ;; 関数式はジェネレータにしないので、中で待てない（Hx_call）
   __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(outerClosure)
   __Dict_put__ cx "closure" __TRUE__ ,()
+  ;; 一時の変数は、関数式ごと（再帰しても、呼び出しごとに別）
+  __Dict_lookup_or__ cx "temps" (,(k) __NULL__ __NULL__) ,(outerTemps)
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
+  __Dict_lookup_or__ cx "opsUsed" (,(k) __NULL__ __NULL__) ,(outerOps)
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
   __Dict_lookup_or__ e "body" (,(k) __NULL__ __NULL__) ,(body)
   __is_null__ body ,(concise)
   __if_then_else__ concise
-    (,() Kit_parse_get e "expr" ,(x) Hx_expr cx x ,(xc) Kit_code_cat3 "(" xc ")")
-    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Kit_code_cat3 "{" bc "}") ,(bc)
+    (,() Kit_parse_get e "expr" ,(x) Hx_expr cx x ,(xc)
+        Hx_temp_decl temps ,(decl)
+        __String_equal__ decl "" ,(noDecl)
+        __if_then_else__ noDecl (,() Kit_code_cat3 "(" xc ")") (,() Kit_code_cat5 "{" decl "return (" xc "); }"))
+    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Hx_ops_wrap opsUsed bc ,(bc) Hx_temp_decl temps ,(decl) Kit_code_cat4 "{" decl bc "}") ,(bc)
   __Ref_set__ loops outer ,()
   __Dict_put__ cx "closure" outerClosure ,()
+  __Dict_put__ cx "temps" outerTemps ,()
+  __Dict_put__ cx "opsUsed" outerOps ,()
   Kit_code_cat5 "((" ps ") => " bc ")")
 
 ;; 数 v の JavaScript の字句（ConMa の __Number_toString__ の字句を JavaScript が同じ値に読む。-0、NaN、無限大は式にする）
@@ -1257,6 +1669,9 @@
   Kit_parse_get e "name" ,(nm)
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
   __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() __String_concat__ "v_" nm ,(c) return c) ,()
+  ;; 一番外の文の中の、前に宣言した一番外の変数（段階 H6a）：引数 g_名前
+  Hx_outer cx nm __FALSE__ ,(isOuter oc)
+  __if__ isOuter (,() return oc) ,()
   ;; NaN、Infinity、undefined：一番外で宣言されず、代入されないもの
   __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
   __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
@@ -1303,10 +1718,15 @@
       Wx_t right ,(rt)
       __String_equal__ rt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       Kit_parse_get right "name" ,(cname)
-      Hx_class_name cx cname ,(ok)
-      __unless__ ok (,() Hx_fail cx) ,()
       Hx_pos cx e ,(p)
       Sjs_json_string cname ,(cq)
+      ;; 組み込みのエラー（段階 H5e）：ホストの値はエラーでないので偽、VM の値は VM で
+      Kit_lex_in_words cname "Error TypeError RangeError SyntaxError ReferenceError" ,(isErr)
+      Hx_builtin cx right cname ,(isBuiltin)
+      __and__ isErr isBuiltin ,(test__) __if__ test__
+        (,() Kit_code_cat5 "$instofE(" lc ", " cq ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+      Hx_class_name cx cname ,(ok)
+      __unless__ ok (,() Hx_fail cx) ,()
       Kit_code_cat5 "$instof(" lc ", P_" cname ", " ,(c)
       Kit_code_cat5 c cq ", " p ")" ,(c)
       return c) ,()
@@ -1358,6 +1778,13 @@
           Sjs_json_string name ,(nq)
           Kit_code_cat5 "$math(" nq ", " p ", " ,(c) Kit_code_cat3 c ac ")" ,(c) return c) ,()
       __if__ isMath0 (,() Hx_fail cx) ,()
+      ;; JSON.stringify と JSON.parse（段階 H5e。JSON が一番外で宣言されず、代入されないとき）
+      Hx_builtin cx object "JSON" ,(isJson)
+      __String_equal__ name "stringify" ,(isStr)
+      __String_equal__ name "parse" ,(isParse)
+      __and__ isJson isStr ,(test__) __if__ test__ (,() Kit_code_cat4 "$jsonS(" p rest0 ")" ,(c) return c) ,()
+      __and__ isJson isParse ,(test__) __if__ test__ (,() Kit_code_cat4 "$jsonP(" p rest0 ")" ,(c) return c) ,()
+      __if__ isJson (,() Hx_fail cx) ,()
       Hx_builtin cx object "Object" ,(isObject)
       __String_equal__ name "keys" ,(isKeys)
       __and__ isObject isKeys ,(test__) __if__ test__ (,() Kit_code_cat5 "$keys(" ac ", " p ")" ,(c) return c) ,()
@@ -1374,6 +1801,8 @@
           Hx_genmode cx ,(gm)
           __if__ gm
             (,() Kit_code_cat5 "(yield* $mcallG(" oc ", " nq ", " ,(c) Kit_code_cat3 c p rest ,(c) __String_concat__ c "))" ,(c) return c) ,()
+          Hx_call_named cx oc name p rest ,(ok c)
+          __if__ ok (,() return c) ,()
           Hx_simple object ,(simple)
           __if__ simple
             (,() Kit_code_cat5 "$mc(" oc ", " nq ", " ,(c) Kit_code_cat3 c p ").call(" ,(c) Kit_code_cat4 c oc rest ")" ,(c) return c) ,()
@@ -1528,6 +1957,19 @@
     "const $new = (name, I, a) => { const o = Object.create($classes.get(name)); const r = I(o, a); return (typeof r === 'object' && r !== null) || typeof r === 'function' ? r : o; };"
     "const $instof = (x, P, name, p) => { if (x instanceof $Opaque) return $slow(p, 'instof', x, name); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
     "const $isObj = (o) => typeof o === 'object' && o !== null && o[$K] === true;"
+    ;; JSON（段階 H5e）：ConJS の JSON.stringify（sjs_rt.se の Sjs_json）と同じになると確かめられる値だけ、エンジンの JSON で。
+    ;; 確かめられる値：null、undefined、真偽値、文字列、$S と同じ字句の数（整数）か NaN と無限大（どちらも null）、配列、toJSON の
+    ;; ないホストのオブジェクト、関数（書かない）で、輪のないもの。ほかは VM（引数が 2 つ以上のときも。ConJS は使わない）
+    "const $jsonOk = (x, seen) => { if (x === null || x === undefined || typeof x === 'boolean' || typeof x === 'string' || typeof x === 'function') return true; if (typeof x === 'number') return !Number.isFinite(x) || (Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21); if (typeof x !== 'object' || seen.has(x)) return false; if (Array.isArray(x)) { seen.add(x); const ok = x.every((v) => $jsonOk(v, seen)); seen.delete(x); return ok; } if (!$isObj(x) || 'toJSON' in x) return false; seen.add(x); const ok = Object.keys(x).every((k) => $jsonOk(x[k], seen)); seen.delete(x); return ok; };"
+    "const $jsonS = (p, x, ...more) => more.length === 0 && $jsonOk(x, new Set()) ? JSON.stringify(x) : $slow(p, 'json', x);"
+    ;; JSON.parse：エンジンの JSON で読み、オブジェクトをホストのオブジェクトにする。整数のような名前や __proto__ のあるもの、読めない文字列
+    ;; （エラーを ConJS と同じにするため）、reviver は VM で
+    "const $jsonIn = (v) => { if (Array.isArray(v)) return v.map($jsonIn); if (v === null || typeof v !== 'object') return v; const o = $plain(); for (const k of Object.keys(v)) { if ($int(k) || k === '__proto__') throw $noJson; o[k] = $jsonIn(v[k]); } return o; };"
+    "const $noJson = {};"
+    "const $jsonP = (p, text, ...more) => { if (more.length === 0 && typeof text === 'string') { let v; try { v = $jsonIn(JSON.parse(text)); } catch (e) { v = $noJson; } if (v !== $noJson) return v; } return $slow(p, 'jsonp', text); };"
+    ;; typeof と、組み込みのエラーの instanceof（段階 H5e）
+    "const $typeof = (x, p) => x === null ? 'object' : x instanceof $Opaque ? $slow(p, 'typeof', x) : typeof x;"
+    "const $instofE = (x, name, p) => x instanceof $Opaque ? $slow(p, 'instofg', x, name) : false;"
     "const $plain = () => { const o = Object.create(null); o[$K] = true; return o; };"
     "const $own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);"
     "const $nom = function () { $no(); };"
@@ -1559,7 +2001,9 @@
     "const $M_abs = (x, p) => typeof x === 'number' ? Math.abs(x) : $slow(p, 'math', 'abs', [x]), $M_sqrt = (x, p) => typeof x === 'number' ? Math.sqrt(x) : $slow(p, 'math', 'sqrt', [x]), $M_sign = (x, p) => typeof x === 'number' ? Math.sign(x) : $slow(p, 'math', 'sign', [x]);"
     "const $text = (x, p) => x === null ? 'null' : typeof x === 'string' ? x : $committed ? $vm('console', p, x) : $S(x, p);"
     "let $out = [];"
-    "const $log = (p, ...a) => { $out.push(a.map((x) => $text(x, p)).join(' ')); };"
+    ;; 行を作ってから足す（$text が VM に頼むと、$vm がためた行を渡して $out を新しくするので、先に $out を読むと、渡した後の古い
+    ;; 配列に足してしまう）
+    "const $log = (p, ...a) => { const line = a.map((x) => $text(x, p)).join(' '); $out.push(line); };"
     "const $join = (a, sep, p) => a.map((x) => x === undefined || x === null ? '' : $S(x, p)).join(sep === undefined ? ',' : $str(sep));"
     ;; 併合ソート：sjs_rt.se の Sjs_msort と同じ手順（同じ順で比べる関数を呼ぶ）。undefined は後ろ
     "const $msort = (l, after) => { if (l.length < 2) return l; const h = Math.floor(l.length / 2); const a = $msort(l.slice(0, h), after), b = $msort(l.slice(h), after); const r = []; let i = 0, j = 0; while (i < a.length && j < b.length) { if (after(a[i], b[j])) r.push(b[j++]); else r.push(a[i++]); } while (i < a.length) r.push(a[i++]); while (j < b.length) r.push(b[j++]); return r; };"
@@ -1589,6 +2033,7 @@
     "let $p0 = null;"
     "const $m = (name) => (p, r, ...a) => {"
     "  const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : null;"
+    "  $ops += t === $A ? r.length + 1 : 1;"
     "  if (t === null) return $mcall(r, name, p, ...a);"
     "  const f = t[name]; if (f === undefined) return $vm('method', p, r, name, a);"
     "  const args = t === $A ? a.map((x) => typeof x === 'function' || x instanceof $Opaque ? $fn(x, p) : x) : a;"
@@ -1602,10 +2047,13 @@
     ;; VM の値の写しと JavaScript の値
     "class $Opaque { constructor(m) { this.m = m; } }"
     "let $ids = null, $nullRef = null;"
+    ;; 費用の数え（段階 H5d）：仕事（$ops：ループの 1 回、関数の始め、配列のメソッドの要素）、写した配列とオブジェクト（$cp）、
+    ;; VM へ渡った回数（$cr：呼び返し、遅い道、待つ頼み）。呼び出しの答えに付けて、Conjs_hostfn がホストを使い続けるか決める
+    "let $ops = 0, $cp = 0, $cr = 0;"
     "let $memo = new Map(), $back = new Map();"
     "const $newId = () => { $ids.value = $ids.value + 1; return $ids.value; };"
-    "const $fromArray = (v, a) => { a.length = 0; const n = v.length.value; for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); } };"
-    "const $fromObject = (v, o) => { for (const k of Object.keys(o)) delete o[k]; const names = (v.keys.value || []).slice().reverse(); if (names.length !== Object.keys(v.props).length) $no(); for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); } };"
+    "const $fromArray = (v, a) => { $cp++; a.length = 0; const n = v.length.value; for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); } };"
+    "const $fromObject = (v, o) => { $cp++; for (const k of Object.keys(o)) delete o[k]; const names = (v.keys.value || []).slice().reverse(); if (names.length !== Object.keys(v.props).length) $no(); for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); } };"
     "const $in = (v) => {"
     "  if (v === null || v === undefined || typeof v !== 'object') return v;"
     "  if (v instanceof rt.VmRef) { if ($nullRef === null) $nullRef = v; return null; }"
@@ -1621,8 +2069,8 @@
     "  }"
     "  const op = new $Opaque(v); $memo.set(v, op); return op;"
     "};"
-    "const $fillArray = (m, a) => { for (const k of Object.keys(m.items)) delete m.items[k]; for (let i = 0; i < a.length; i++) { if (!(i in a)) $no(); m.items[String(i)] = $outv(a[i]); } m.length.value = a.length; };"
-    "const $fillObject = (m, o) => { const names = Object.keys(o); for (const k of Object.keys(m.props)) delete m.props[k]; for (const k of names) { if ($int(k)) $no(); m.props[k] = $outv(o[k]); } m.keys.value = names.slice().reverse(); };"
+    "const $fillArray = (m, a) => { $cp++; for (const k of Object.keys(m.items)) delete m.items[k]; for (let i = 0; i < a.length; i++) { if (!(i in a)) $no(); m.items[String(i)] = $outv(a[i]); } m.length.value = a.length; };"
+    "const $fillObject = (m, o) => { $cp++; const names = Object.keys(o); for (const k of Object.keys(m.props)) delete m.props[k]; for (const k of names) { if ($int(k)) $no(); m.props[k] = $outv(o[k]); } m.keys.value = names.slice().reverse(); };"
     "const $outv = (x) => {"
     "  if (x === undefined) return undefined;"
     "  if (x === null) { if ($nullRef === null) $nullRef = rt.ref(undefined); return $nullRef; }"
@@ -1643,16 +2091,24 @@
     "const $refresh = () => { for (const [x, b] of [...$back]) { if (Array.isArray(x)) { $fromArray(b.m, x); b.snap = x.slice(); } else { $fromObject(b.m, x); b.snap = Object.entries(x); } } };"
     ;; VM に op を頼む（Conjs_hostfn_vm）：ためた console.log の行を先に出させ、値を写しにして渡し、変わったものを読み直す。
     ;; 呼び返し（call、callm）の後は、やり直せない（$committed）。VM で投げられた例外は、$Thrown にして投げる
+    ;; 一番外の文（段階 H6c）：$gio は、文の関数が置く { get: 書いた一番外の変数の値の配列, set: 使う一番外の変数に新しい値を
+    ;; 入れる関数 }。VM へ渡るたびに、書いた変数を VM に送り（ConMa が代入する）、戻ったら、使う変数を読み直す（その間にほかの処理や
+    ;; ConMa の関数が変えたもの）
+    "let $gio = null;"
+    ;; 値の配列を、もう 1 つの配列に包んで送る（書いた変数がないとき、空の配列は VM で null になり、「文でない」と区別できないので）
+    "const $gout = () => $gio === null ? null : [$gio.get().map($outv)];"
+    "const $gin = (r) => { if ($gio !== null && r.length > 2) $gio.set(r[2].map($in)); };"
     "const $vm = (op, p, ...args) => {"
-    "  const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
+    "  $cr++; const calls = op === 'call' || op === 'callm' || op === 'new' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
-    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
+    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math' || op === 'new') && i === args.length - 1 ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = [];"
     "  let r;"
-    "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs); }"
+    "  const gl = $gout();"
+    "  try { r = rt.callVm($tramp, lines, p === null || p === undefined ? null : $P[p], op, margs, gl); }"
     "  catch (e) { if (e instanceof rt.Escape && (calls || $committed)) throw new $Fatal(`a call back could not finish: ${e.message}`); throw e; }"
     "  if (calls) $committed = $committed || 'calling back';"
-    "  $refresh();"
+    "  $refresh(); $gin(r);"
     "  const v = $in(r[1]);"
     "  if (r[0] === 'threw') throw new $Thrown(v, null, true);"
     "  return v;"
@@ -1664,23 +2120,23 @@
     "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
     ;; 呼び返しの中から、またホストの関数が呼ばれることがあり、待つホストの関数（ジェネレータ）は、待つ間に、ほかの処理がホストの
     ;; 関数を呼ぶので、状態は呼び出しごとに st に持ち、動かす間だけ大域の変数に置く（$go）
-    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null });"
+    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0, gio: null });"
     ;; body を st で動かす。body は、イテレータの next の答え（{ done, value }）を返す。done でなければ、value（VM への頼み）を返す。
     ;; done なら、値か、外へ出た例外か、止めるわけ（呼び返しの後）を、console.log の行と返す。呼び返しの前の rt.Escape は投げる
     "const $go = (st, body) => {"
-    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0];"
-    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0];"
+    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio];"
+    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr, st.gio];"
     "  try {"
     "    let r, thrown = null;"
     "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
-    "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out }; }"
-    "    const v = $outv(r); $sync(); return { v: v, out: $out };"
+    "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out, cost: [$ops, $cp, $cr] }; }"
+    "    const v = $outv(r); $sync(); return { v: v, out: $out, cost: [$ops, $cp, $cr] };"
     "  } catch (e) {"
     "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), after: $committed || 'calling back', out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
     "  } finally {"
-    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0 });"
-    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = saved;"
+    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr, gio: $gio });"
+    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio] = saved;"
     "  }"
     "};"
     "const $enter = (ids, tramp, cls, body) => $go($fresh(ids, tramp, cls), () => ({ done: true, value: body() }));"
@@ -1698,12 +2154,12 @@
     "};"
     ;; VM への頼み：ホストの変更を写しに書き、ためた行と渡す。頼んだ後は、やり直せない（ほかの処理が、ホストの変更を見る）
     "const $Yq = (p, op, ...args) => {"
-    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
+    "  $cr++; $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = []; $committed = $committed || 'waiting';"
-    "  return [p === null || p === undefined ? null : $P[p], op, margs, lines];"
+    "  return [p === null || p === undefined ? null : $P[p], op, margs, lines, $gout()];"
     "};"
     ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる
-    "const $Yr = (r) => { $refresh(); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
+    "const $Yr = (r) => { $refresh(); $gin(r); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
     ;; ジェネレータの中の呼び出し：ホストの関数はその場で、VM の関数とメソッドは VProc で（待ってよい）
     "const $callG = function* (f, p, ...a) { if (typeof f === 'function') return f(...a); return $Yr(yield $Yq(p, 'call', f, a)); };"
     "const $mcallG = function* (o, k, p, ...a) { if ($isObj(o)) return $mcall(o, k, p, ...a); return $Yr(yield $Yq(p, 'callm', o, k, a)); };"

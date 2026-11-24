@@ -4,5 +4,6 @@ conjs: host: check
 conjs: host: make
 conjs: host: nested
 conjs: host: odd
+conjs: host: runtimeError
 conjs: host: safeDiv
 conjs: host: uncaught

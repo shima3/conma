@@ -39,6 +39,8 @@
   Gen_mod_visit m program file real ,()
   __Ref_get__ list ,(recs)
   Kit_lex_reverse recs ,(order)
+  ;; ホストの関数（段階 H6b）：ファイルごとに、ほかのファイルで宣言したクラスの名前の Dict を、構文木の "hostOtherClasses" に置く
+  Gen_mod_host_classes order program ,()
   ;; 読み込まれるファイルの関数（深さ優先の帰りがけの順なので、読み込む先は先に作ってある）
   Gen_mod_defines order "" ,(defines)
   ;; main：読み込まれるファイルの関数を順に呼んでから、main のファイルの文
@@ -258,6 +260,11 @@
   Kit_parse_node "program" ,(prog)
   __Dict_put__ prog "body" body ,()
   Wasm_prepare prog ,(wat)
+  ;; ConJS のホストの関数（段階 H6b。sjs/include/sjs_host.se）：ファイルごとにホストのモジュールを作る。import した名前は、宣言した
+  ;; 名前に数える
+  Gen_import_locals imports __NULL__ ,(imported)
+  __Dict_lookup_or__ program "hostOtherClasses" (,(k) __Dict_new__) ,(other)
+  Host_prepare_with prog name imported other ,(hostJs)
   Gen_state prog ,(g)
   Kit_code_quote name ,(fq)
   __Dict_put__ g "file" fq ,()
@@ -274,6 +281,8 @@
   __String_equal__ wat "" ,(noWasm)
   __if_then_else__ noWasm (,() __NULL__ "") (,() Kit_code_quote wat ,(q) Kit_code_cat3 "\tSjs_wasm_module " q " ,(Wsjs) ") ,(wc)
   __String_concat__ wc code ,(code)
+  Gen_host_module_code hostJs ,(hc)
+  __String_concat__ hc code ,(code)
   Kit_code_replace_marks code "" ,(code)
   __String_concat__ bind code ,(code)
   Gen_unit_exports scope exports "__Dict_new__ ,(EX) " ,(ex)
@@ -411,3 +420,109 @@
   Kit_code_cat5 acc "__Dict_put__ EX " q " " var ,(acc)
   __String_concat__ acc " ,() " ,(acc)
   Gen_unit_exports scope rest acc)
+
+;; ── ホストの関数（段階 H6b。docs/dev/CONJS-HOST-PLAN.md の 27 節）──
+
+;; import の節の LList から、読み込んだ名前（"local"）の LList
+(define Gen_import_locals ,(imports acc)
+  __Cont_get__ ,(return)
+  __is_null__ imports ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ imports ,(node rest)
+  __Dict_lookup_or__ node "specs" (,(k) __NULL__ __NULL__) ,(specs)
+  Gen_import_spec_locals specs acc ,(acc)
+  Gen_import_locals rest acc)
+
+(define Gen_import_spec_locals ,(specs acc)
+  __Cont_get__ ,(return)
+  __is_null__ specs ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ specs ,(sp rest)
+  __Dict_lookup_or__ sp "local" (,(k) __NULL__ "") ,(local)
+  __String_equal__ local "" ,(none)
+  __if_then_else__ none (,() __NULL__ acc) (,() __LList_cons__ local acc) ,(acc)
+  Gen_import_spec_locals rest acc)
+
+;; ホストのモジュールを作る手順（ホストの関数がなければ ""）。new を使うホストの関数があれば、ランタイムがクラスの記録の表も渡す
+(define Gen_host_module_code ,(hostJs)
+  __Cont_get__ ,(return)
+  __String_equal__ hostJs "" ,(test__) __if__ test__ (,() return "") ,()
+  Sjs_zero ,(zero)
+  __String_find__ __print_exit_error__ hostJs "const $withClasses = true;" zero ,(wcAt)
+  __is_null__ wcAt ,(noWc)
+  __if_then_else__ noWc (,() __NULL__ " __FALSE__") (,() __NULL__ " __TRUE__") ,(wcf)
+  Kit_code_quote hostJs ,(q)
+  Kit_code_cat4 "\tConjs_hostfn_module " q wcf " ,(Hsjs) ")
+
+;; 読み込まれるファイルの記録 order と main の構文木 main の、どれにも、ほかのファイルで宣言したクラスの名前の Dict を付ける
+(define Gen_mod_host_classes ,(order main)
+  ;; 名前 → それを宣言したファイルの数
+  __Dict_new__ ,(all)
+  Gen_mod_programs order __NULL__ ,(progs)
+  __LList_cons__ main progs ,(progs)
+  Gen_mod_count_classes progs all ,()
+  Gen_mod_put_other progs all)
+
+(define Gen_mod_programs ,(order acc)
+  __Cont_get__ ,(return)
+  __is_null__ order ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ order ,(rec rest)
+  Kit_parse_get rec "program" ,(p)
+  __LList_cons__ p acc ,(acc)
+  Gen_mod_programs rest acc)
+
+;; 構文木ごとに、クラスの名前を "hostClasses"（名前 → 真）に集め、all に、それを持つファイルの数を足す
+(define Gen_mod_count_classes ,(progs all)
+  __Cont_get__ ,(return)
+  __is_null__ progs ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ progs ,(p rest)
+  __Dict_new__ ,(mine)
+  Wx_walk p (,(n)
+    Wx_t n ,(t)
+    __String_equal__ t "class" ,(isClass)
+    __if__ isClass (,() __Dict_lookup_or__ n "name" (,(k) __NULL__ "") ,(nm) __Dict_put__ mine nm __TRUE__) ,()) ,()
+  __Dict_put__ p "hostClasses" mine ,()
+  Gen_mod_keys mine ,(names)
+  Gen_mod_add_counts all names ,()
+  Gen_mod_count_classes rest all)
+
+(define Gen_mod_add_counts ,(all names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Number_fromString__ __print_exit_error__ "0" ,(zero)
+  __Dict_lookup_or__ all nm (,(k) __NULL__ zero) ,(c)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __Number_add__ c one ,(c)
+  __Dict_put__ all nm c ,()
+  Gen_mod_add_counts all rest)
+
+;; ファイルごとに、ほかのファイルにもある名前（all の数が、自分の分を引いて 1 以上）の Dict
+(define Gen_mod_put_other ,(progs all)
+  __Cont_get__ ,(return)
+  __is_null__ progs ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ progs ,(p rest)
+  Kit_parse_get p "hostClasses" ,(mine)
+  __Dict_new__ ,(other)
+  Gen_mod_keys all ,(names)
+  Gen_mod_other_names all mine other names ,()
+  __Dict_put__ p "hostOtherClasses" other ,()
+  Gen_mod_put_other rest all)
+
+(define Gen_mod_other_names ,(all mine other names)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ all nm __print_exit_error__ ,(c)
+  __Dict_lookup_or__ mine nm (,(k) __NULL__ __FALSE__) ,(isMine)
+  __Number_fromString__ __print_exit_error__ "1" ,(one)
+  __if_then_else__ isMine (,() __Number_subtract__ c one) (,() __NULL__ c) ,(others)
+  __Number_is_positive__ others ,(test__) __if__ test__ (,() __Dict_put__ other nm __TRUE__) ,()
+  Gen_mod_other_names all mine other rest)
+
+;; Dict の名前の LList（sjs_gen.se の Gen_collect で）
+(define Gen_mod_keys ,(d)
+  __Dict_keys__ d ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  Gen_collect acc ,(sink)
+  keys sink ,(s)
+  __Ref_get__ acc)
+

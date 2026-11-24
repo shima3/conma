@@ -147,3 +147,22 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：consh/test と test/（ConJS の変換器とランタイムしか変えていない）、Windows。
 * 測ったもの：待つ 1 回の費用と、待つ間に仕事のある繰り返し（計画の 20 節）。
 * M1 のレビュー（650b45f）の指摘で、待った後（呼び返しの後も）に、ホストが確かめられない組み込み（ASCII でない文字列のメソッド、初めの値のない reduce、比べる関数のない sort、Math、Object.keys、配列でない値の for...of）を VM で動かすようにし、止まるときのメッセージにわけ（after waiting か after calling back）を出す。case8 に足した。M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、compare.sh、sjs/test（Rust 版と wasm 版）。
+
+### m4/conjs-host-h5（shima3/conma#77）
+
+* 種類：機能（ConJS のホストの関数が速くなる。結果は変わらない）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H5b（22 節）。変換器（sjs/include/sjs_host.se）が、名前の決まったメンバーの読み書きとメソッドの呼び出しを、ホストのオブジェクトならその場で読み書きし、ほかは今までの補助の関数に任せる形で書く。nbody_class の 1 ステップが 1.74 µs から 0.13 µs に。段階 H5c（23 節）で、配列の要素と length も同じ形で書く。数の関数の wasm 版とホストの版を測り（24 節）、ユーザーの決定で、ConJS の数の関数は、ホストの版、wasm 版、ConMa 版の順に試す（sjs/include/sjs_gen.se）。step20 の case1、3、4、7 の case*.host.txt に、ホストで値を返すようになった 12 の数の関数を足した。段階 H5d（25 節）で、ホストの版が仕事（ループの回数）、写したもの、VM へ渡った回数を数え、ConMa 版より高くつくと見積もった関数は、それからは ConMa 版で動かす（conjs/include/conjs_host.se の Conjs_hostfn_judge。CONJS_HOST_REPORT=1 で conjs: off: 名前）。あわせて、計画の 6 節の燃料の確かめの費用（約 8% としていた）を、測り直した値（測れるほどの差なし）に直した。
+* 作り直すもの：transpiled VM（sjs/include/sjs_gen.se が変わって、ConSh のモジュールが変わる。bench/build.sh）。ConJS と SJS の変換器のモジュールは、bin/cache-dir の所で作り直される。
+* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`。`CONMA_NO_HOSTJS=1 SJS_WASM_STRICT=1` でも）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
+* 流していないもの：test/（ConJS の変換器しか変えていない。sjs_gen.se の変えた所は、ConJS のホストの関数のある数の関数だけ）、Windows。
+* 測ったもの：nbody_class と hof（計画の 22 節。版を替えて交互に測るときは、`cp -p` と版ごとの `CONMA_CACHE_DIR` で、変換器のモジュールを作り直させない）。
+
+### m4/conjs-host-h6（shima3/conma#77）
+
+* 種類：機能（一番外のループも、wasm 版の VM のとき、ホストの JavaScript で動かす）。m4/conjs-host-h5 の上に積んだブランチ。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H6a（26 節）。一番外のループで、ホストに書けて、待たないものを「文の関数」にし、前に宣言した一番外の変数を引数で渡し、代入したものを返す（sjs/include/sjs_host.se）。sjs/include/sjs_gen.se の Gen_host_stmt が、Conjs_hoststmt（conjs/include/conjs_host.se）を呼び、ホストで終われば代入し、終わらなければ ConMa 版の文を動かす。文の関数は VM へ渡れない（渡れば escape して ConMa 版）。
+* 作り直すもの：transpiled VM（sjs_gen.se が変わって、ConSh のモジュールが変わる）。
+* 新しいテスト：conjs/test/step20/case9（どの VM でも同じログ。case9.host.txt）。段階 H6b（27 節）で、import と export のあるプログラムでも、ファイルごとにホストの関数を作る（conjs/include/conjs_modules.se の Gen_unit）：case10（読み込むファイル h6lib.con.js。case ではない）。段階 H6c（28 節）で、一番外のループが待ったり ConMa を呼び返したりしてもホストで動き、VM へ渡るたびに一番外の変数を両方で合わせる：case11。あわせて、呼び返しの後に数を console.log すると行が消える誤り（#75 から）を直した。段階 H6d（29 節）で、中にループのある一番外の if、ブロック、try も：case12。段階 H5e（30 節）で、new Error などの組み込みのエラー（VM で作る）、typeof、JSON.stringify と JSON.parse（ConJS と同じになるときだけエンジンの JSON）をホストで：case13。case6 と case9 の case*.host.txt に、ホストで値を返すようになったものを足した。
+* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、conjs/bench の 8 つ（小さな大きさで、Node.js と同じ出力）、doc-pairs.py。
+* 流していないもの：test/、Windows。（`CONMA_VM=rust consh/test/run_all.sh -j 6` は流した。違いなし）
+* 測ったもの：hof、strings、dict（計画の 26 節）。
