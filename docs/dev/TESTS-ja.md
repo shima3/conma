@@ -117,5 +117,6 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * ランタイムのモジュールの名前のハッシュが、shasum の 12 桁から cksum の数になった（`conjs-rt-1891629090.module.se`）。初めての実行で一度だけ作り直す（約 1.5 秒）。前の名前のファイルはキャッシュに残る（消してよい）。キャッシュのディレクトリの名前は変わらない（consh.ps1 と同じ）。
 * 作り直すもの：なし。
 * M4 が流したもの：`CONMA_TRANSLATE_VM=wasm` と `CONMA_VM=wasm` での conjs、`sjs/test/run_all.sh`、`conjs/test/run_all.sh`（Rust 版と wasm 版）、`conjs/test/compare.sh`、`CONMA_VM=rust consh/test/run_all.sh -j 6`。
-* 流していないもの：Python 版の VM、transpiled VM、Windows（I7。bin/lang は Git Bash で動く）。
+* S5 が流したもの（PR のレビュー、f6f7534）：Windows（Git Bash）の conjs/test（Rust 版と wasm 版）と sjs/test、cksum と awk、キャッシュのディレクトリの名前（consh.ps1 と同じ）。起動は 1413 ms から 1101 ms。S5 の指摘で、include でない行がないときも alone.se を作るようにした。
+* 流していないもの：Python 版の VM、transpiled VM。
 * 測ったもの：上の起動の時間だけ。

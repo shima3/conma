@@ -73,7 +73,8 @@ fi
 if [ -n "$emit" ]; then cat "$tmp/prog.se"; exit 0; fi
 # ランタイムのモジュール（作りかけを読まないように、一時ファイルに作ってから mv で置き換える）
 awk -v rt="$tmp/rt.se" -v alone="$tmp/alone.se" '/^\(include / { print > rt; next } { print > alone }' "$tmp/prog.se" || exit 1
-: >> "$tmp/rt.se"
+# awk は、行のないファイルを作らない（前の grep は空のファイルを作った）
+: >> "$tmp/rt.se"; : >> "$tmp/alone.se"
 cache="$(dirname "$module")"
 rthash="$( { printf '%s\n' "$include"; cat "$tmp/rt.se"; } | cksum)"
 rthash="${rthash%% *}"
