@@ -1,0 +1,7 @@
+4 TypeError: not a number: string true false true RangeError: negative false true true
+number,string,boolean,undefined,object,object,object,function
+[ '{"name":"é\\"q","list":[1,2,3],"flag":false}', 3, 'é"q' ]
+{"x":1.5} {}
+SyntaxError: Unexpected token in JSON at position 1 { '2': 'two', a: 1 }
+case13.con.js:29:3: Error: failed with 7
+exit: 2

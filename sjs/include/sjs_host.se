@@ -1479,6 +1479,8 @@
       Hx_pos cx e ,(p)
       __String_equal__ op "-" ,(test__) __if__ test__ (,() Kit_code_cat5 "$neg(" ac ", " p ")" ,(c) return c) ,()
       __String_equal__ op "+" ,(test__) __if__ test__ (,() Kit_code_cat5 "$pos(" ac ", " p ")" ,(c) return c) ,()
+      ;; typeof（段階 H5e）：ホストの値はその場で、VM の値は VM で
+      __String_equal__ op "typeof" ,(test__) __if__ test__ (,() Kit_code_cat5 "$typeof(" ac ", " p ")" ,(c) return c) ,()
       Hx_fail cx) ,()
   __String_equal__ t "cond" ,(test__) __if__ test__
     (,()
@@ -1535,6 +1537,19 @@
       Wx_t callee ,(ct)
       __String_equal__ ct "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       Kit_parse_get callee "name" ,(cname)
+      ;; 組み込みのエラー（段階 H5e。一番外で宣言されず、代入されないとき）：VM で new する（名前、メッセージ、クラスの記録を
+      ;; ConMa 版と同じにするため）。呼び返しと同じく、その後は ConMa 版でやり直せない
+      Kit_lex_in_words cname "Error TypeError RangeError SyntaxError ReferenceError" ,(isErr)
+      Hx_builtin cx callee cname ,(isBuiltin)
+      __and__ isErr isBuiltin ,(test__) __if__ test__
+        (,()
+          Kit_parse_get e "args" ,(eargs)
+          Hx_args cx eargs "" ,(eac)
+          Sjs_json_string cname ,(ecq)
+          Hx_pos cx e ,(ep)
+          Kit_code_cat5 "$vm('new', " ep ", " ecq ", [" ,(c)
+          Kit_code_cat3 c eac "])" ,(c)
+          return c) ,()
       Hx_class_name cx cname ,(ok)
       __unless__ ok (,() Hx_fail cx) ,()
       Kit_code_cat3 cname ":" "init" ,(iname)
@@ -1703,10 +1718,15 @@
       Wx_t right ,(rt)
       __String_equal__ rt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
       Kit_parse_get right "name" ,(cname)
-      Hx_class_name cx cname ,(ok)
-      __unless__ ok (,() Hx_fail cx) ,()
       Hx_pos cx e ,(p)
       Sjs_json_string cname ,(cq)
+      ;; 組み込みのエラー（段階 H5e）：ホストの値はエラーでないので偽、VM の値は VM で
+      Kit_lex_in_words cname "Error TypeError RangeError SyntaxError ReferenceError" ,(isErr)
+      Hx_builtin cx right cname ,(isBuiltin)
+      __and__ isErr isBuiltin ,(test__) __if__ test__
+        (,() Kit_code_cat5 "$instofE(" lc ", " cq ", " ,(c) Kit_code_cat3 c p ")" ,(c) return c) ,()
+      Hx_class_name cx cname ,(ok)
+      __unless__ ok (,() Hx_fail cx) ,()
       Kit_code_cat5 "$instof(" lc ", P_" cname ", " ,(c)
       Kit_code_cat5 c cq ", " p ")" ,(c)
       return c) ,()
@@ -1758,6 +1778,13 @@
           Sjs_json_string name ,(nq)
           Kit_code_cat5 "$math(" nq ", " p ", " ,(c) Kit_code_cat3 c ac ")" ,(c) return c) ,()
       __if__ isMath0 (,() Hx_fail cx) ,()
+      ;; JSON.stringify と JSON.parse（段階 H5e。JSON が一番外で宣言されず、代入されないとき）
+      Hx_builtin cx object "JSON" ,(isJson)
+      __String_equal__ name "stringify" ,(isStr)
+      __String_equal__ name "parse" ,(isParse)
+      __and__ isJson isStr ,(test__) __if__ test__ (,() Kit_code_cat4 "$jsonS(" p rest0 ")" ,(c) return c) ,()
+      __and__ isJson isParse ,(test__) __if__ test__ (,() Kit_code_cat4 "$jsonP(" p rest0 ")" ,(c) return c) ,()
+      __if__ isJson (,() Hx_fail cx) ,()
       Hx_builtin cx object "Object" ,(isObject)
       __String_equal__ name "keys" ,(isKeys)
       __and__ isObject isKeys ,(test__) __if__ test__ (,() Kit_code_cat5 "$keys(" ac ", " p ")" ,(c) return c) ,()
@@ -1930,6 +1957,19 @@
     "const $new = (name, I, a) => { const o = Object.create($classes.get(name)); const r = I(o, a); return (typeof r === 'object' && r !== null) || typeof r === 'function' ? r : o; };"
     "const $instof = (x, P, name, p) => { if (x instanceof $Opaque) return $slow(p, 'instof', x, name); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
     "const $isObj = (o) => typeof o === 'object' && o !== null && o[$K] === true;"
+    ;; JSON（段階 H5e）：ConJS の JSON.stringify（sjs_rt.se の Sjs_json）と同じになると確かめられる値だけ、エンジンの JSON で。
+    ;; 確かめられる値：null、undefined、真偽値、文字列、$S と同じ字句の数（整数）か NaN と無限大（どちらも null）、配列、toJSON の
+    ;; ないホストのオブジェクト、関数（書かない）で、輪のないもの。ほかは VM（引数が 2 つ以上のときも。ConJS は使わない）
+    "const $jsonOk = (x, seen) => { if (x === null || x === undefined || typeof x === 'boolean' || typeof x === 'string' || typeof x === 'function') return true; if (typeof x === 'number') return !Number.isFinite(x) || (Number.isInteger(x) && !Object.is(x, -0) && Math.abs(x) < 1e21); if (typeof x !== 'object' || seen.has(x)) return false; if (Array.isArray(x)) { seen.add(x); const ok = x.every((v) => $jsonOk(v, seen)); seen.delete(x); return ok; } if (!$isObj(x) || 'toJSON' in x) return false; seen.add(x); const ok = Object.keys(x).every((k) => $jsonOk(x[k], seen)); seen.delete(x); return ok; };"
+    "const $jsonS = (p, x, ...more) => more.length === 0 && $jsonOk(x, new Set()) ? JSON.stringify(x) : $slow(p, 'json', x);"
+    ;; JSON.parse：エンジンの JSON で読み、オブジェクトをホストのオブジェクトにする。整数のような名前や __proto__ のあるもの、読めない文字列
+    ;; （エラーを ConJS と同じにするため）、reviver は VM で
+    "const $jsonIn = (v) => { if (Array.isArray(v)) return v.map($jsonIn); if (v === null || typeof v !== 'object') return v; const o = $plain(); for (const k of Object.keys(v)) { if ($int(k) || k === '__proto__') throw $noJson; o[k] = $jsonIn(v[k]); } return o; };"
+    "const $noJson = {};"
+    "const $jsonP = (p, text, ...more) => { if (more.length === 0 && typeof text === 'string') { let v; try { v = $jsonIn(JSON.parse(text)); } catch (e) { v = $noJson; } if (v !== $noJson) return v; } return $slow(p, 'jsonp', text); };"
+    ;; typeof と、組み込みのエラーの instanceof（段階 H5e）
+    "const $typeof = (x, p) => x === null ? 'object' : x instanceof $Opaque ? $slow(p, 'typeof', x) : typeof x;"
+    "const $instofE = (x, name, p) => x instanceof $Opaque ? $slow(p, 'instofg', x, name) : false;"
     "const $plain = () => { const o = Object.create(null); o[$K] = true; return o; };"
     "const $own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);"
     "const $nom = function () { $no(); };"
@@ -2059,9 +2099,9 @@
     "const $gout = () => $gio === null ? null : [$gio.get().map($outv)];"
     "const $gin = (r) => { if ($gio !== null && r.length > 2) $gio.set(r[2].map($in)); };"
     "const $vm = (op, p, ...args) => {"
-    "  $cr++; const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
+    "  $cr++; const calls = op === 'call' || op === 'callm' || op === 'new' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
-    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
+    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math' || op === 'new') && i === args.length - 1 ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = [];"
     "  let r;"
     "  const gl = $gout();"

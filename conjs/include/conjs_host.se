@@ -245,6 +245,12 @@
   __String_equal__ op "callm" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
   __String_equal__ op "call" ,(test__) __if__ test__ (,() Sjs_call a b ,(v) return v) ,()
   __String_equal__ op "callg" ,(test__) __if__ test__ (,() Sjs_global G a ,(fn) Sjs_call fn b ,(v) return v) ,()
+  __String_equal__ op "typeof" ,(test__) __if__ test__ (,() Sjs_typeof a ,(v) return v) ,()
+  __String_equal__ op "json" ,(test__) __if__ test__ (,() Sjs_json a ,(v) return v) ,()
+  __String_equal__ op "jsonp" ,(test__) __if__ test__ (,() Sjs_to_string a ,(t) Sjs_json_parse G t ,(v) return v) ,()
+  __String_equal__ op "instofg" ,(test__) __if__ test__ (,() Sjs_global G b ,(F) Conjs_instanceof a F ,(v) return v) ,()
+  ;; 組み込みのエラーを new する（段階 H5e）
+  __String_equal__ op "new" ,(test__) __if__ test__ (,() Sjs_global G a ,(F) Conjs_new G F b ,(v) return v) ,()
   ;; Math と Object.keys の、ホストが確かめられない引数（呼び返しか待った後）
   __String_equal__ op "math" ,(test__) __if__ test__ (,() Sjs_global G "Math" ,(M) Sjs_call_member G M a b ,(v) return v) ,()
   __String_equal__ op "keys" ,(test__) __if__ test__
