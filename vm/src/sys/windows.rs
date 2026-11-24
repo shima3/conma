@@ -1069,6 +1069,23 @@ pub fn js_value(_id: &str) -> io::Result<String> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "JavaScript is not available"))
 }
 
+/// __JS_fn_compile__: make the JavaScript text into a module of functions of the host
+/// (prim/jsfn.rs). The native VM has no JavaScript.
+pub fn jsfn_compile(_text: &str) -> Result<i32, String> {
+    Err("JavaScript is not available".to_string())
+}
+
+/// __JS_fn_call__: call the function name of module id with the JSON of the arguments; the JSON of the
+/// answer (prim/jsfn.rs). The native VM has no JavaScript.
+pub fn jsfn_call(_id: i32, _name: &str, _json: &str) -> Result<String, String> {
+    Err("JavaScript is not available".to_string())
+}
+
+/// __JS_fn_resume__: go on with generator g of the host (prim/jsfn.rs). The native VM has no JavaScript.
+pub fn jsfn_resume(_g: i32, _json: &str) -> Result<String, String> {
+    Err("JavaScript is not available".to_string())
+}
+
 pub fn wasm_compile(_bytes: &[u8]) -> Result<i32, String> {
     Err("WebAssembly is not available".into())
 }

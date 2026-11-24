@@ -8,6 +8,7 @@
 (include "sjs_parse.se")
 (include "sjs_gen.se")
 (include "sjs_wasm.se")
+(include "sjs_host.se")
 (include "conjs_modules.se")
 
 (define main ,(args)

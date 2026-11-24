@@ -1,0 +1,5 @@
+withCb: ok (1 2 true)
+d.x: 1
+d.y: 2
+d.z: "Dict"
+exit: 0

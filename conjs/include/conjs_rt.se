@@ -11,6 +11,7 @@
 (include "conjs_file.se")
 (include "conjs_lib.se")
 (include "conjs_class.se")
+(include "conjs_host.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
 ;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）

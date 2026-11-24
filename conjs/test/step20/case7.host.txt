@@ -1,0 +1,6 @@
+conjs: host: apply
+conjs: host: callbackThrows
+conjs: host: logged
+conjs: host: mapAll
+conjs: host: mutateIn
+conjs: host: uncaughtCallback

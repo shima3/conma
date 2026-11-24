@@ -453,6 +453,127 @@ fn name_args(vp: &mut VProc, prim: &str, on_error: &Value, name: &Value, args: &
     }
 }
 
+/// What a call back from the host into the VM needs of the VProc that called the host (stage H1 of
+/// docs/dev/CONJS-HOST-PLAN.md): its global variables, its PDict (the state of the runtime of ConJS,
+/// which the call back reads and may change), its current directory, and the Booleans and the
+/// transpiled code of its Machine. __Host_call__ pushes it while the function of the host runs.
+// Only the VM for wasm32 calls back (vm/wasm/src/lib.rs, conma_callback): the native VMs have no host
+// that runs during __Host_call__ and could call back.
+#[allow(dead_code)]
+struct CallbackCtx {
+    gvenv: Rc<crate::module::GVEnv>,
+    pdict: Vec<(Value, Value)>,
+    cwd: String,
+    booleans: (Value, Value),
+    transpiled_on: bool,
+}
+
+thread_local! {
+    static CALLBACKS: std::cell::RefCell<Vec<CallbackCtx>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// How a call back failed.
+#[allow(dead_code)]
+pub enum CallbackError {
+    /// The function went to an error, or the call back was made when no function of the host runs.
+    Error(String),
+    /// The function came to something that waits (or started a VProc): the host cannot wait in the
+    /// middle of its JavaScript (3.1 of the plan), so the call back stops there.
+    Escape(String),
+}
+
+/// Run f, a call of the host (sys), so that the host can call the VM back (callback): it gets what it
+/// needs of vp, and vp gets back its PDict as the call back left it.
+pub fn with_callback_context<T>(m: &Machine, vp: &mut VProc, f: impl FnOnce() -> T) -> T {
+    CALLBACKS.with(|c| {
+        c.borrow_mut().push(CallbackCtx {
+            gvenv: vp.gvenv.clone(),
+            pdict: std::mem::take(&mut vp.pdict),
+            cwd: vp.cwd.clone(),
+            booleans: (m.true_closure(), m.false_closure()),
+            transpiled_on: m.transpiled_on,
+        })
+    });
+    let r = f();
+    if let Some(ctx) = CALLBACKS.with(|c| c.borrow_mut().pop()) {
+        vp.pdict = ctx.pdict;
+    }
+    r
+}
+
+/// The global variable gid of the VProc whose call of the host is running, or None.
+#[allow(dead_code)]
+pub fn callback_global(gid: usize) -> Option<Value> {
+    CALLBACKS.with(|c| c.borrow().last().and_then(|ctx| ctx.gvenv.get(gid)))
+}
+
+/// Run f applied to args to its end, in a Machine of its own, while the VM is inside a call of the
+/// host (a nested run; stage H1 of docs/dev/CONJS-HOST-PLAN.md). The VProc of the call back gets the
+/// PDict of the VProc that called the host, which gets it back with what the call back changed.
+/// Nothing else runs meanwhile: the scheduler of the VM is set aside, and the collector does not run.
+#[allow(dead_code)]
+pub fn callback(f: Value, args: &[HostValue]) -> Result<HostValue, CallbackError> {
+    let results = run_nested(f, |m| {
+        let mut olist = Vec::with_capacity(args.len());
+        for a in args {
+            match from_host(m, a) {
+                Ok(v) => olist.push(v),
+                Err(_) => return Err(CallbackError::Error("a call back of the VM: an argument cannot be made".to_string())),
+            }
+        }
+        Ok(olist)
+    })?;
+    let result = match results.as_slice() {
+        [v] => to_host(v),
+        vs => vs.iter().map(to_host).collect::<Result<Vec<_>, _>>().map(HostValue::List),
+    };
+    result.map_err(|t| CallbackError::Error(format!("the call back returned a value that cannot go to the host: {}", t)))
+}
+
+/// callback, with the arguments made by args in the Machine of the call back; the values the function
+/// returned (prim/jsfn.rs gives values of the VM as they are).
+#[allow(dead_code)]
+pub fn run_nested(f: Value, args: impl FnOnce(&mut Machine) -> Result<Vec<Value>, CallbackError>) -> Result<Vec<Value>, CallbackError> {
+    let Some((gvenv, pdict, cwd, booleans, transpiled_on)) = CALLBACKS.with(|c| {
+        c.borrow().last().map(|x| (x.gvenv.clone(), x.pdict.clone(), x.cwd.clone(), x.booleans.clone(), x.transpiled_on))
+    }) else {
+        return Err(CallbackError::Error("a call back of the VM while no function of the host runs".to_string()));
+    };
+    let mut m = Machine::new(false);
+    m.nested = true;
+    m.blocking = false;
+    m.transpiled_on = transpiled_on;
+    m.set_booleans(booleans.0, booleans.1);
+    let olist = args(&mut m)?;
+    let vp = m.make_vproc(f, olist, None, gvenv, cwd);
+    vp.vp.borrow_mut().pdict = pdict;
+    m.add(vp.clone());
+    crate::gc::nested_enter();
+    let outcome = loop {
+        match m.run_slice(1 << 20) {
+            crate::sched::Slice::Paused => continue,
+            crate::sched::Slice::Idle => break Err(CallbackError::Escape("the call back waits".to_string())),
+            crate::sched::Slice::Done(Some(code)) => break Err(CallbackError::Error(format!("the call back exited with status {}", code))),
+            crate::sched::Slice::Done(None) => break Ok(()),
+        }
+    };
+    crate::gc::nested_leave();
+    outcome?;
+    if m.main_failed {
+        return Err(CallbackError::Error("the call back stopped with an error".to_string()));
+    }
+    if m.vprocs.iter().any(|v| !Rc::ptr_eq(v, &vp) && v.state.get() != crate::vproc::State::Finished) {
+        return Err(CallbackError::Escape("the call back started a VProc".to_string()));
+    }
+    let inner = vp.vp.borrow();
+    CALLBACKS.with(|c| {
+        if let Some(ctx) = c.borrow_mut().last_mut() {
+            ctx.pdict = inner.pdict.clone();
+        }
+    });
+    Ok(inner.olist.clone())
+}
+
 /// __Host_call__ onError name args ,(result)
 pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let prim = "__Host_call__";
@@ -464,7 +585,8 @@ pub fn call(m: &mut Machine, vp: &mut VProc) -> PResult {
     let result = match m.host.fns.get(&fname) {
         Some(HostFn::Call(f)) => f(&args),
         Some(HostFn::Wait(_)) => Err(format!("{}: {} waits: call it with __Host_start__", prim, fname)),
-        None => match sys::host_call(&fname, &to_json(&HostValue::List(args))) {
+        // The function of the host may call the VM back (callback)
+        None => match with_callback_context(m, vp, || sys::host_call(&fname, &to_json(&HostValue::List(args)))) {
             None => Err(format!("{}: no host function \"{}\"", prim, fname)),
             Some(Err(message)) => Err(message),
             Some(Ok(json)) => match from_json(&json) {

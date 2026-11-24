@@ -82,6 +82,9 @@ pub struct Machine {
     pub main_failed: bool,
     /// A Ref may have changed since the VProcs waiting for a change were checked.
     pub ref_changed: bool,
+    /// A Machine of a nested run (prim/host.rs, callback): when no VProc can run, run_slice returns
+    /// Slice::Idle instead of reporting a deadlock, so that the call back ends as one that waits.
+    pub nested: bool,
     /// The calls of test.later (__Host_start__) by the virtual clock.
     pub host_later: crate::prim::host::Later,
     /// The calls of time.sleep (__Host_start__) by the real clock.
@@ -261,6 +264,7 @@ impl Machine {
             finished_any: false,
             main_failed: false,
             ref_changed: false,
+            nested: false,
             host_later: Default::default(),
             host_timers: Default::default(),
             host: crate::prim::host::take_host(),
@@ -283,6 +287,12 @@ impl Machine {
     pub fn use_prim_booleans(&mut self) {
         self.true_closure = Value::Prim(crate::prim::lookup("__TRUE__").expect("__TRUE__"));
         self.false_closure = Value::Prim(crate::prim::lookup("__FALSE__").expect("__FALSE__"));
+    }
+    /// Use the Booleans of another Machine (a nested run, prim/host.rs).
+    #[allow(dead_code)]
+    pub fn set_booleans(&mut self, t: Value, f: Value) {
+        self.true_closure = t;
+        self.false_closure = f;
     }
     pub fn true_closure(&self) -> Value {
         self.true_closure.clone()
@@ -720,6 +730,9 @@ impl Machine {
                     .collect();
                 if blocked.is_empty() {
                     return Slice::Done(None);
+                }
+                if self.nested {
+                    return Slice::Idle;
                 }
                 write_std(2, &format!("Deadlock: no VProc is ready; blocked VProc(s): {}\n", blocked.join(", ")));
                 return Slice::Done(Some(2));

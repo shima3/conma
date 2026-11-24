@@ -1,0 +1,8 @@
+conjs: host: Pt.add
+conjs: host: Pt3.add
+conjs: host: check
+conjs: host: make
+conjs: host: nested
+conjs: host: odd
+conjs: host: safeDiv
+conjs: host: uncaught

@@ -1,0 +1,229 @@
+;; ConJS のホストの関数（docs/dev/CONJS-HOST-PLAN.md の段階 H3a と H3b。変換器は sjs/include/sjs_host.se）。変換したプログラムは、
+;; ホストの関数があれば、始めに Conjs_hostfn_module でホストの JavaScript のモジュールを作り（,(Hsjs)）、ホストの関数を
+;; Conjs_hostfn G Hsjs "名前" (ConMa 版) で包む。呼ばれたとき、モジュールがあれば、ホストの版を、値の番号を数える Ref（G の ""）と
+;; 引数で呼ぶ（__JS_fn_call__。docs/PRIMITIVES.md）。ホストの版は、値を返せば { v: 値, out: console.log の行の配列 } を返し、
+;; 変えた配列とオブジェクトは __JS_fn_call__ が書き戻す。行は、ここで console.log で出す。値を返せなければ（ConJS と同じに
+;; なると確かめられない所で rt.Escape を投げたとき。sjs_host.se の「確かめ」）、何も書き戻されず、ConMa 版を始めから動かす。
+;; モジュールを作れないとき（JavaScript のない VM、環境変数 CONMA_NO_HOSTJS）は、黙って ConMa 版だけを使う。環境変数
+;; CONJS_HOST_STRICT があれば、作れなかった理由（JavaScript がない場合を除く）を、CONJS_HOST_REPORT があれば、ホストの版で
+;; 値を得た関数の名前を（関数ごとに 1 度）、標準エラーに出す（テストで、変換器の作った JavaScript を確かめるため）
+
+;; js のモジュール。作れなければ null
+(define Conjs_hostfn_module ,(js withClasses)
+  __Cont_get__ ,(return)
+  __OS_get_envDict__ ,(env)
+  __Dict_lookup_or__ env "CONMA_NO_HOSTJS" (,(k) __NULL__ __NULL__) ,(off)
+  __is_null__ off ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __Dict_lookup_or__ env "CONJS_HOST_REPORT" (,(k) __NULL__ __NULL__) ,(report)
+  __is_null__ report ,(test__) __unless__ test__ (,() __Dict_new__ ,(seen) __PDict_put__ "conjs_host_seen" seen) ,()
+  __JS_fn_compile__ (,(msg) Conjs_hostfn_strict env msg ,() return __NULL__) js ,(m)
+  ;; H：モジュール（"m"）と、クラスの記録の表を渡すか（"cls"。new を使うホストの関数があるとき）
+  __Dict_new__ ,(H)
+  __Dict_put__ H "m" m ,()
+  __Dict_put__ H "cls" withClasses ,()
+  __NULL__ H)
+
+;; ホストで new するクラスの記録を、名前で覚える（変換器が、受け付けたクラスごとに、クラスを作ったところで呼ぶ）
+(define Conjs_hostfn_class ,(name R)
+  Conjs_hostfn_classes ,(t)
+  __Dict_put__ t name R)
+
+(define Conjs_hostfn_classes ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_classes" (,(k) __NULL__ __NULL__) ,(t)
+  __is_null__ t ,(test__) __unless__ test__ (,() return t) ,()
+  __Dict_new__ ,(t)
+  __PDict_put__ "conjs_host_classes" t ,()
+  __NULL__ t)
+
+(define Conjs_hostfn_strict ,(env msg)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ env "CONJS_HOST_STRICT" (,(k) return) ,(v)
+  Sjs_zero ,(zero)
+  __String_find__ (,(m) return) msg "not available" zero ,(at)
+  __is_null__ at ,(test__) __unless__ test__ return ,()
+  __String_concat__ "conjs: host: " msg ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
+
+;; ホストの関数 name の、引数の LList を受け取る Closure。H はモジュールか null、f は ConMa 版
+(define Conjs_hostfn ,(G H name f)
+  __NULL__ (,(args) Conjs_hostfn_call G H name f args))
+
+(define Conjs_hostfn_call ,(G H name f args)
+  Conjs_hostfn_call_with G H name f args args)
+
+;; メソッド name（"クラス.メソッド"）の、引数の LList を受け取る Closure：ホストに this（self）を引数の前に渡す（段階 H4a）
+(define Conjs_hostfn_method ,(G H name self f)
+  __NULL__ (,(args) __LList_cons__ self args ,(hargs) Conjs_hostfn_call_with G H name f args hargs))
+
+;; ConMa 版には args を、ホストの版には hargs を渡す
+(define Conjs_hostfn_call_with ,(G H name f args hargs)
+  __Cont_get__ ,(return)
+  __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
+  Conjs_hostfn_values hargs ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
+  __Dict_lookup_or__ G "" __print_exit_error__ ,(ids)
+  __Dict_lookup_or__ H "cls" __print_exit_error__ ,(withClasses)
+  __if_then_else__ withClasses (,() Conjs_hostfn_classes ,(t) __LList_cons__ t hargs) (,() __NULL__ hargs) ,(hargs)
+  Conjs_hostfn_vm G ,(tramp)
+  __LList_cons__ tramp hargs ,(hargs)
+  __LList_cons__ ids hargs ,(hargs)
+  __Dict_lookup_or__ H "m" __print_exit_error__ ,(m)
+  __JS_fn_call__ (,(e) Conjs_hostfn_escaped name e ,() f args ,(v) return v) m name hargs ,(status r)
+  __String_equal__ status "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_escaped name r ,() f args ,(v) return v) ,()
+  Conjs_hostfn_report name ,()
+  __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
+  Conjs_hostfn_print G lines ,()
+  ;; 呼び返しの後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める
+  __Dict_lookup_or__ r "fatal" (,(k) __NULL__ __NULL__) ,(fatal)
+  __is_null__ fatal ,(test__) __unless__ test__
+    (,()
+      __PDict_put__ "sjs_pos" __NULL__ ,()
+      Cat3s "the host function " name " could not go on after calling back: " ,(msg)
+      __String_concat__ msg fatal ,(msg)
+      Sjs_uncaught msg) ,()
+  ;; 呼び返しの後に、ホストの版の外へ出た例外：ここで投げ直す（tpos は、ホストの throw の位置。VM から来た例外は、位置を持つ）
+  __Dict_lookup_or__ r "thrown" (,(k) __NULL__ __NULL__) ,(thrown)
+  __Dict_lookup_or__ r "tpos" (,(k) __NULL__ __NULL__) ,(tpos)
+  Sjs_dict_has r "thrown" ,(hasThrown)
+  __if__ hasThrown
+    (,()
+      __is_null__ tpos ,(test__) __unless__ test__ (,() __PDict_put__ "sjs_pos" tpos) ,()
+      Sjs_reraise thrown) ,()
+  __Dict_lookup_or__ r "v" (,(k) __NULL__ __NULL__))
+
+;; ホストの版に渡す、VM に 1 つの演算を頼む Closure（段階 H4c。sjs_host.se の $vm）：ためた console.log の行を出してから、op を
+;; 動かし、("ok" 値) か ("threw" 例外) を返す。値の演算（呼び返しでないもの）の例外は、位置 pos（ホストの演算の位置）で投げたことにする
+;; （Conjs_hostfn_vm_run は、例外のとき継続 return で戻る。入れ子の実行の一番外の継続に値を渡すと、VM はその値を落とすので
+;; （vm/src/step.rs の Cont）、ふつうに返す枠を 1 つはさむ）
+(define Conjs_hostfn_vm ,(G)
+  __NULL__ (,(lines pos op args) Conjs_hostfn_vm_run G lines pos op args ,(r) __NULL__ r))
+
+(define Conjs_hostfn_vm_run ,(G lines pos op args)
+  __Cont_get__ ,(return)
+  Conjs_hostfn_print G lines ,()
+  __Ref_new__ __NULL__ ,(out)
+  Sjs_try (,() Conjs_hostfn_op G op args ,(v) __Ref_set__ out v)
+    (,(exc)
+      Conjs_hostfn_vm_pos op pos exc ,()
+      __LList_cons__ exc __NULL__ ,(l)
+      __LList_cons__ "threw" l ,(r)
+      return r) ,()
+  __Ref_get__ out ,(v)
+  __LList_cons__ v __NULL__ ,(l)
+  __LList_cons__ "ok" l)
+
+(define Conjs_hostfn_vm_pos ,(op pos exc)
+  __Cont_get__ ,(return)
+  __is_null__ pos ,(test__) __if__ test__ return ,()
+  __String_equal__ op "call" ,(c1)
+  __String_equal__ op "callm" ,(c2)
+  __or__ c1 c2 ,(test__) __if__ test__ return ,()
+  __PDict_put__ "sjs_pos" pos ,()
+  __type_name__ exc ,(type)
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ return ,()
+  __Dict_lookup_or__ exc "error" (,(k) return) ,(isError)
+  __Dict_put__ exc "pos" pos)
+
+;; op を、引数の LList args で動かす（sjs_rt.se と conjs_class.se の演算）
+(define Conjs_hostfn_op ,(G op args)
+  __Cont_get__ ,(return)
+  Sjs_arg args ,(a rest)
+  Sjs_arg rest ,(b rest2)
+  Sjs_arg rest2 ,(c rest3)
+  __String_equal__ op "add" ,(test__) __if__ test__ (,() Sjs_add a b ,(v) return v) ,()
+  __String_equal__ op "sub" ,(test__) __if__ test__ (,() Sjs_sub a b ,(v) return v) ,()
+  __String_equal__ op "mul" ,(test__) __if__ test__ (,() Sjs_mul a b ,(v) return v) ,()
+  __String_equal__ op "div" ,(test__) __if__ test__ (,() Sjs_div a b ,(v) return v) ,()
+  __String_equal__ op "mod" ,(test__) __if__ test__ (,() Sjs_mod a b ,(v) return v) ,()
+  __String_equal__ op "lt" ,(test__) __if__ test__ (,() Sjs_lt a b ,(v) return v) ,()
+  __String_equal__ op "le" ,(test__) __if__ test__ (,() Sjs_le a b ,(v) return v) ,()
+  __String_equal__ op "gt" ,(test__) __if__ test__ (,() Sjs_gt a b ,(v) return v) ,()
+  __String_equal__ op "ge" ,(test__) __if__ test__ (,() Sjs_ge a b ,(v) return v) ,()
+  __String_equal__ op "neg" ,(test__) __if__ test__ (,() Sjs_neg a ,(v) return v) ,()
+  __String_equal__ op "pos" ,(test__) __if__ test__ (,() Sjs_pos a ,(v) return v) ,()
+  __String_equal__ op "step" ,(test__) __if__ test__ (,() Sjs_step a b ,(v) return v) ,()
+  __String_equal__ op "str" ,(test__) __if__ test__ (,() Sjs_to_string a ,(v) return v) ,()
+  __String_equal__ op "console" ,(test__) __if__ test__ (,() Sjs_console_string a ,(v) return v) ,()
+  __type_name__ b ,(bt)
+  __String_equal__ bt "Number" ,(numKey)
+  __String_equal__ op "get" ,(test__) __if__ test__
+    (,() __if_then_else__ numKey (,() Sjs_get_index G a b) (,() Sjs_get_member G a b) ,(v) return v) ,()
+  __String_equal__ op "set" ,(test__) __if__ test__
+    (,() __if_then_else__ numKey (,() Sjs_set_index G a b c) (,() Sjs_set_member G a b c) ,() return c) ,()
+  __String_equal__ op "method" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
+  __String_equal__ op "callm" ,(test__) __if__ test__ (,() Sjs_call_member G a b c ,(v) return v) ,()
+  __String_equal__ op "call" ,(test__) __if__ test__ (,() Sjs_call a b ,(v) return v) ,()
+  __String_equal__ op "iter_open" ,(test__) __if__ test__ (,() Sjs_iter_open a ,(v) return v) ,()
+  __String_equal__ op "iter_more" ,(test__) __if__ test__ (,() Sjs_iter_more a ,(v) return v) ,()
+  __String_equal__ op "iter_take" ,(test__) __if__ test__ (,() Sjs_iter_take a ,(v) return v) ,()
+  __String_equal__ op "iter_close" ,(test__) __if__ test__ (,() Sjs_iter_close a ,() return __NULL__) ,()
+  __String_equal__ op "instof" ,(test__) __if__ test__
+    (,()
+      Conjs_hostfn_classes ,(t)
+      __Dict_lookup_or__ t b __print_exit_error__ ,(R)
+      __Dict_lookup_or__ R "fn" __print_exit_error__ ,(F)
+      Conjs_instanceof a F ,(v)
+      return v) ,()
+  Sjs_type_error "conjs: host: an unknown operation")
+
+;; console.log の行を、ConJS の console.log で出す（行は文字列なので、そのまま出る）
+(define Conjs_hostfn_print ,(G lines)
+  __Cont_get__ ,(return)
+  __is_null__ lines ,(test__) __if__ test__ return ,()
+  Sjs_global G "console" ,(console)
+  Conjs_hostfn_lines G console lines)
+
+(define Conjs_hostfn_lines ,(G console lines)
+  __Cont_get__ ,(return)
+  __is_null__ lines ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ lines ,(line rest)
+  __LList_cons__ line __NULL__ ,(a)
+  Sjs_call_member G console "log" a ,(x)
+  Conjs_hostfn_lines G console rest)
+
+;; 引数がどれも、ホストに渡してよい値か：数、文字列、真偽値、undefined、null、配列、オブジェクト（クラスのインスタンス、関数、
+;; 処理などの、ほかの SJS の値は、ホストでは中身の見えない値になる）
+(define Conjs_hostfn_values ,(args)
+  __Cont_get__ ,(return)
+  __is_null__ args ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  __LList_uncons__ __print_exit_error__ args ,(a rest)
+  __type_name__ a ,(type)
+  Kit_lex_in_words_rt type "Number String Closure null Ref Dict" ,(ok)
+  __unless__ ok (,() return __FALSE__) ,()
+  Conjs_hostfn_values rest)
+
+;; word が、空白で区切った words の 1 つか
+(define Kit_lex_in_words_rt ,(word words)
+  __String_concat__ " " words ,(w)
+  __String_concat__ w " " ,(w)
+  __String_concat__ " " word ,(x)
+  __String_concat__ x " " ,(x)
+  Sjs_zero ,(zero)
+  __String_find__ __print_exit_error__ w x zero ,(at)
+  __is_null__ at ,(none)
+  __not__ none)
+
+;; CONJS_HOST_REPORT のとき、ホストの版で値を得られなかったわけ（rt.Escape のメッセージ）を、毎回出す
+(define Conjs_hostfn_escaped ,(name why)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_seen" (,(k) return) ,(seen)
+  __type_name__ why ,(t)
+  __String_equal__ t "String" ,(isText)
+  __if_then_else__ isText (,() __NULL__ why) (,() __NULL__ "(not a message)") ,(why)
+  __String_concat__ "conjs: escape: " name ,(line)
+  __String_concat__ line ": " ,(line)
+  __String_concat__ line why ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
+
+;; CONJS_HOST_REPORT のとき、ホストの版で値を得た関数の名前を、関数ごとに 1 度出す
+(define Conjs_hostfn_report ,(name)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_seen" (,(k) return) ,(seen)
+  __Dict_lookup_or__ seen name (,(k) __NULL__ __NULL__) ,(done)
+  __is_null__ done ,(test__) __unless__ test__ return ,()
+  __Dict_put__ seen name __TRUE__ ,()
+  __String_concat__ "conjs: host: " name ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)

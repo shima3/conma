@@ -20,6 +20,7 @@ This list is the only list of these documents; a new one is added here. They are
 - [Arrays](ARRAY-PLAN-ja.md): the plan of arrays that are read and written by index in O(1), as primitives of extended ConMa
 - [LazyList in the VM](LAZYLIST-PLAN-ja.md): the plan of reading the evaluated cells of a LazyList with primitives of extended ConMa
 - [Platforms and languages translated to ConMa](PLATFORM-PLAN-ja.md): the plan of running ConMa on more platforms with their own features, and of a kit for making languages that are translated to ConMa, as SJS is
+- [ConJS on the host's JavaScript](CONJS-HOST-PLAN.md): the plan of running the functions of ConJS on the JavaScript engine of the host on the wasm VM, calling the VM back for what the host cannot do
 - [Speed-ups](SPEED-ja.md): every speed-up tried, with its effect and whether it was kept
 - [Checklists](CHECKLISTS.md): the steps of each task (a piece of work, a pull request, a review, a Full Test), with the rules they come from in [Contributing](CONTRIBUTING.md)
 - [Running the tests](TESTS-ja.md): what to build, how to run every suite, the known differences and the notes for the tester

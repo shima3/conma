@@ -58,7 +58,7 @@
 
 ;; プラットフォームの機能（docs/dev/PLATFORM-PLAN-ja.md の 3.1）：その組み込みを定義のない大域の名前として使うモジュールは、
 ;; (Uses ...) の後（なければ (F ...) の後）に (Platform ...) を置く（bin/resolver と同じ）。言語の層（コア ConMa と拡張 ConMa）とは
-;; 別の軸で、どの VM もその組み込みを持ち、ないプラットフォームでは onError に行く。"js" は __JS_call__ と __JS_value__、
+;; 別の軸で、どの VM もその組み込みを持ち、ないプラットフォームでは onError に行く。"js" は __JS_call__、__JS_value__、__JS_fn_compile__、__JS_fn_call__、__JS_fn_resume__、
 ;; "host" は __Host_call__ と、待つ __Host_start__、__Host_start_tracked__、__Host_result__（ホストの関数を名前で呼ぶ。
 ;; docs/dev/PLATFORM-PLAN-ja.md の 3.2 と 3.4）
 (define __Resolver_platform__ ,(globals values)
@@ -70,7 +70,10 @@
   __if_then_else__ usesHost
     (,() __LList_cons__ "host" __NULL__)
     (,() __NULL__ __NULL__) ,(features)
-  __LList_cons__ "__JS_value__" __NULL__ ,(js)
+  __LList_cons__ "__JS_fn_resume__" __NULL__ ,(js)
+  __LList_cons__ "__JS_fn_call__" js ,(js)
+  __LList_cons__ "__JS_fn_compile__" js ,(js)
+  __LList_cons__ "__JS_value__" js ,(js)
   __LList_cons__ "__JS_call__" js ,(js)
   __Resolver_uses_prim__ globals values js ,(usesJs)
   __if_then_else__ usesJs

@@ -1,0 +1,6 @@
+a undefined undefined 本
+a| |2|true|false|false|ab|abcdabx| ABCDABX | abcdabx | abcdabx  abcdabx | aBcdabx | a_cda_x 
+b|x|1|true|false|true|bc|äbcdäbx|äBCDäBX|äbcdäbx|äbcdäbxäbcdäbx|äBcdäbx|ä_cdä_x
+baanana
+3 2 16
+exit: 0

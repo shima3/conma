@@ -1,0 +1,15 @@
+9 [ 1, 4, 9 ] [ 10, 20 ]
+before
+shout a
+shout b
+after
+[ 'A', 'B' ]
+HéLLO 4 5 本 5.5
+1 [ 1, 2 ]
+TypeError: + needs numbers, not the string "!" (join strings with a template literal)
+caught + needs numbers, not the string "!" (join strings with a template literal)
+caught boom
+from the callback: boom
+INNER
+case7.con.js:13:51: TypeError: + needs numbers, not the string "!" (join strings with a template literal)
+exit: 2
