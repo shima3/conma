@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Notes for AI agents (Claude Code) working in this repository, in every clone (M1, M2, M4, I7). Keep it short: it is read at the start of every session. The rules themselves are in docs/dev/CONTRIBUTING.md and docs/dev/TESTS-ja.md; this file lists where to look and the mistakes agents have made. When an agent makes a new mistake worth a line here, it proposes the line in a pull request of documents only (Branches 5), and the user decides whether it goes in.
+Notes for AI agents (Claude Code) working in this repository, in every clone (M1, M2, M4, I7, S5). Keep it short: it is read at the start of every session. The rules themselves are in docs/dev/CONTRIBUTING.md and docs/dev/TESTS-ja.md; this file lists where to look and the mistakes agents have made. When an agent makes a new mistake worth a line here, it proposes the line in a pull request of documents only (Branches 5), and the user decides whether it goes in.
 
 ## Who you are
 
-- Your machine is in `git config user.name` (`m1 Shima`, `m2 Shima`, `m4 Shima`, `i7 Shima`). Every clone uses the same GitHub account (shima3), so begin each PR description and comment with your machine (「M2 のレビューです」) and each PR title with it (`M2: ...`). Docs: CONTRIBUTING, Branches 6.
+- Your machine is in `git config user.name` (`m1 Shima`, `m2 Shima`, `m4 Shima`, `i7 Shima`, `s5 Shima`). Every clone uses the same GitHub account (shima3), so begin each PR description and comment with your machine (「M2 のレビューです」) and each PR title with it (`M2: ...`). Docs: CONTRIBUTING, Branches 6.
 - Write "the tester", not a machine, for the role: who tests can change.
 - Talk to the user in Japanese. In Japanese text, keep proper nouns as they are written in English, untranslated, so that they read as names: transpiled VM (not 変換した VM), Full Test, ConMa, ConJS, VProc.
 
@@ -23,7 +23,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 - Run the wasm VM with Node.js only.
 - The Python VM is slow (conjs/test takes 3–4 minutes): run it in the background.
 - Do not switch the checkout while tests run in the background: they read the working tree. Use a worktree to test another commit.
-- On M1, M2 and M4 the shell is macOS bash 3.2 and BSD sed (`sed -i ''`). I7 is Windows (Git Bash with GNU sed, and PowerShell): the Rust VM (vm/src/sys/windows.rs) and the wasm VM build there, consh-rs does not; what it runs is in TESTS-ja.md (Windows（I7）で流す), and a run of all of it is a Windows Test. Before a bulk replace with sed, check how many lines match: a pattern that ends a line in one record often ends many.
+- On M1, M2 and M4 the shell is macOS bash 3.2 and BSD sed (`sed -i ''`). I7 and S5 are Windows (Git Bash with GNU sed, and PowerShell); on I7 the Rust VM (vm/src/sys/windows.rs) and the wasm VM build, consh-rs does not; what it runs is in TESTS-ja.md (Windows（I7）で流す), and a run of all of it is a Windows Test. Before a bulk replace with sed, check how many lines match: a pattern that ends a line in one record often ends many.
 - Benchmarks: measure the versions alternately, on the same machine.
 - Do not kill processes by a broad pattern (`pkill -f conma`): other sessions on the machine run the same commands. Stop only the processes you started.
 
