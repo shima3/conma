@@ -156,3 +156,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`。`CONMA_NO_HOSTJS=1 SJS_WASM_STRICT=1` でも）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、`CONMA_VM=rust consh/test/run_all.sh -j 6`、doc-pairs.py。
 * 流していないもの：test/（ConJS の変換器しか変えていない。sjs_gen.se の変えた所は、ConJS のホストの関数のある数の関数だけ）、Windows。
 * 測ったもの：nbody_class と hof（計画の 22 節。版を替えて交互に測るときは、`cp -p` と版ごとの `CONMA_CACHE_DIR` で、変換器のモジュールを作り直させない）。
+
+### m4/conjs-host-h6
+
+* 種類：機能（一番外のループも、wasm 版の VM のとき、ホストの JavaScript で動かす）。m4/conjs-host-h5 の上に積んだブランチ。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H6a（26 節）。一番外のループで、ホストに書けて、待たないものを「文の関数」にし、前に宣言した一番外の変数を引数で渡し、代入したものを返す（sjs/include/sjs_host.se）。sjs/include/sjs_gen.se の Gen_host_stmt が、Conjs_hoststmt（conjs/include/conjs_host.se）を呼び、ホストで終われば代入し、終わらなければ ConMa 版の文を動かす。文の関数は VM へ渡れない（渡れば escape して ConMa 版）。
+* 作り直すもの：transpiled VM（sjs_gen.se が変わって、ConSh のモジュールが変わる）。
+* 新しいテスト：conjs/test/step20/case9（どの VM でも同じログ。case9.host.txt）。
+* M4 が流したもの：conjs/test（Rust 版、wasm 版（`CONJS_HOST_STRICT=1`）、Python 版）、conjs/test/compare.sh、sjs/test（Rust 版と wasm 版）、conjs/bench の 8 つ（小さな大きさで、Node.js と同じ出力）、doc-pairs.py。
+* 流していないもの：test/、Windows。（`CONMA_VM=rust consh/test/run_all.sh -j 6` は流した。違いなし）
+* 測ったもの：hof、strings、dict（計画の 26 節）。

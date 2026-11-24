@@ -46,6 +46,11 @@
   ;; クラス（段階 H4a）：一番外の class 宣言のメソッドも、名前 "クラス.メソッド" で候補にする
   __Ref_new__ __NULL__ ,(classes)
   Hx_classes E H order classes program stmts ,()
+  ;; 一番外のループ（段階 H6a）：名前 "$s番号" の候補にする
+  __Dict_new__ ,(before)
+  Wx_num "0" ,(zeroS)
+  __Ref_new__ zeroS ,(stmtN)
+  Hx_stmt_candidates E H order before stmtN stmts ,()
   __Ref_get__ order ,(rev)
   Wx_reverse rev __NULL__ ,(names)
   __Dict_new__ ,(waits)
@@ -280,6 +285,147 @@
   __LList_cons__ name o ,(o)
   __Ref_set__ order o)
 
+;; ── 一番外の文（段階 H6a。docs/dev/CONJS-HOST-PLAN.md の 26 節）──
+;; 一番外のループ（for、for...of、while、do...while）で、ホストに書けるものを「文の関数」にする。前に let、const、var で宣言した
+;; 一番外の変数を、読むなら引数 g_名前 にし、書くなら、終わりに配列で返す（sjs_gen.se が、ConMa で代入する）。文の関数は、VM へ
+;; 渡れない（$runS の $noCross）：渡れば escape して、ConMa 版の文を始めから動かす。ConMa の関数が、書き戻す前の一番外の変数を
+;; 読まないため（文がホストで呼べるのは、ほかのホストの関数と組み込みだけで、それらは一番外の変数を読み書きしない）
+
+;; 一番外の文を順に見て、ループを候補にし、宣言した名前を before（名前 → const か）に足す
+(define Hx_stmt_candidates ,(E H order before stmtN stmts)
+  __Cont_get__ ,(return)
+  __is_null__ stmts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ stmts ,(s rest)
+  Wx_t s ,(t)
+  Kit_lex_in_words t "for forof while dowhile" ,(isLoop)
+  __if__ isLoop
+    (,()
+      __Ref_get__ stmtN ,(n)
+      Wx_num "1" ,(one)
+      __Number_add__ n one ,(n)
+      __Ref_set__ stmtN n ,()
+      Wx_str n ,(ns)
+      __String_concat__ "$s" ns ,(name)
+      __String_concat__ "s_" ns ,(fname)
+      __Dict_new__ ,(info)
+      __Dict_put__ info "name" name ,()
+      __Dict_put__ info "fname" fname ,()
+      __Dict_put__ info "kind" "stmt" ,()
+      __Dict_put__ info "stmt" s ,()
+      ;; 今までに宣言した名前（後で足す名前は入れない）
+      __Dict_copy__ before ,(seen)
+      __Dict_put__ info "outer" seen ,()
+      __Dict_put__ info "ok" __FALSE__ ,()
+      __Dict_put__ H name info ,()
+      __Ref_get__ order ,(o)
+      __LList_cons__ name o ,(o)
+      __Ref_set__ order o) ,()
+  __String_equal__ t "decl" ,(isDecl)
+  __if__ isDecl
+    (,()
+      Kit_parse_get s "kind" ,(kind)
+      __String_equal__ kind "const" ,(isConst)
+      Kit_parse_get s "decls" ,(ds)
+      Hx_note_decls before ds isConst) ,()
+  Hx_stmt_candidates E H order before stmtN rest)
+
+(define Hx_note_decls ,(before ds isConst)
+  __Cont_get__ ,(return)
+  __is_null__ ds ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ ds ,(d rest)
+  Kit_parse_get d "target" ,(target)
+  Wx_t target ,(tt)
+  __String_equal__ tt "id" ,(test__) __if__ test__ (,() Kit_parse_get target "name" ,(nm) __Dict_put__ before nm isConst) ,()
+  Hx_note_decls before rest isConst)
+
+;; 一番外の文の中で、name が前に宣言した一番外の変数なら、真と g_name（write なら、書く印も付ける。const なら、ホストに書かない）
+(define Hx_outer ,(cx name write)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "outer" (,(k) return __FALSE__ "") ,(outer)
+  __Dict_lookup_or__ outer name (,(k) return __FALSE__ "") ,(isConst)
+  __and__ write isConst ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+  __Dict_lookup_or__ cx "used" __print_exit_error__ ,(used)
+  __Dict_lookup_or__ used name (,(k) __NULL__ "") ,(how)
+  __String_equal__ how "" ,(first)
+  __if__ first
+    (,() __Dict_lookup_or__ cx "usedList" __print_exit_error__ ,(ul) __Ref_get__ ul ,(l) __LList_cons__ name l ,(l) __Ref_set__ ul l) ,()
+  __String_equal__ how "w" ,(already)
+  __if_then_else__ write (,() __NULL__ "w") (,() __if_then_else__ already (,() __NULL__ "w") (,() __NULL__ "r")) ,(how2)
+  __Dict_put__ used name how2 ,()
+  __String_concat__ "g_" name ,(c)
+  __NULL__ __TRUE__ c)
+
+;; 文の関数の JavaScript：function s_N(g_a, ...) { 文; return [g_書いた変数, ...]; }
+(define Hx_stmt_func ,(E H info)
+  __Cont_get__ ,(fail)
+  __Dict_new__ ,(cx)
+  __Dict_put__ cx "fail" fail ,()
+  __Dict_put__ cx "E" E ,()
+  __Dict_put__ cx "H" H ,()
+  Wx_num "0" ,(zero)
+  __Ref_new__ zero ,(loops)
+  __Dict_put__ cx "loops" loops ,()
+  __Ref_new__ __NULL__ ,(callees)
+  __Dict_put__ cx "callees" callees ,()
+  __Ref_new__ __NULL__ ,(temps)
+  __Dict_put__ cx "temps" temps ,()
+  __Ref_new__ zero ,(tempN)
+  __Dict_put__ cx "tempN" tempN ,()
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
+  __Dict_put__ cx "closure" __FALSE__ ,()
+  __Dict_put__ cx "gen" __FALSE__ ,()
+  __Dict_put__ cx "method" __FALSE__ ,()
+  Kit_parse_get info "outer" ,(outer)
+  __Dict_put__ cx "outer" outer ,()
+  __Dict_new__ ,(used)
+  __Dict_put__ cx "used" used ,()
+  __Ref_new__ __NULL__ ,(usedList)
+  __Dict_put__ cx "usedList" usedList ,()
+  __Dict_new__ ,(locals)
+  __Dict_put__ cx "locals" locals ,()
+  Kit_parse_get info "stmt" ,(s)
+  Hx_collect_locals cx s ,()
+  Hx_stmt cx s ,(code)
+  Hx_temp_decl temps ,(decl)
+  Hx_ops_wrap opsUsed code ,(code)
+  __String_concat__ decl code ,(code)
+  ;; 引数（使った順）と、書いた変数
+  __Ref_get__ usedList ,(ulr)
+  Wx_reverse ulr __NULL__ ,(reads)
+  Hx_stmt_writes used reads __NULL__ ,(wrev)
+  Wx_reverse wrev __NULL__ ,(writes)
+  __Dict_put__ info "reads" reads ,()
+  __Dict_put__ info "writes" writes ,()
+  Hx_prefixed reads "" ,(ps)
+  Hx_prefixed writes "" ,(ws)
+  Kit_parse_get info "fname" ,(fname)
+  Kit_code_cat5 "function " fname "(" ps ") {" ,(js)
+  Kit_code_cat4 js code "return [" ws ,(js)
+  __String_concat__ js "];}\n" ,(js)
+  __Ref_get__ callees ,(cs)
+  __NULL__ __TRUE__ js cs)
+
+;; reads のうち、書いた名前（reads の順を逆にした LList）
+(define Hx_stmt_writes ,(used names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __Dict_lookup_or__ used nm __print_exit_error__ ,(how)
+  __String_equal__ how "w" ,(w)
+  __if_then_else__ w (,() __LList_cons__ nm acc) (,() __NULL__ acc) ,(acc)
+  Hx_stmt_writes used rest acc)
+
+;; g_a, g_b
+(define Hx_prefixed ,(names acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ "") (,() __NULL__ ", ") ,(sep)
+  Kit_code_cat4 acc sep "g_" nm ,(acc)
+  Hx_prefixed rest acc)
+
 (define Hx_compile_all ,(E H names)
   __Cont_get__ ,(return)
   __is_null__ names ,(test__) __if__ test__ return ,()
@@ -288,9 +434,11 @@
   __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
   __String_equal__ kind "pseudo" ,(isPseudo)
   __String_equal__ kind "fields" ,(isFields)
+  __String_equal__ kind "stmt" ,(isStmt)
   __if_then_else__ isPseudo
     (,() Kit_parse_get info "callees" ,(cs) __NULL__ __TRUE__ "" cs)
-    (,() __if_then_else__ isFields (,() Hx_fields_func E H info) (,() Hx_func E H info)) ,(ok js callees)
+    (,() __if_then_else__ isFields (,() Hx_fields_func E H info)
+      (,() __if_then_else__ isStmt (,() Hx_stmt_func E H info) (,() Hx_func E H info))) ,(ok js callees)
   __Dict_put__ info "ok" ok ,()
   __Dict_put__ info "js" js ,()
   __Dict_put__ info "callees" callees ,()
@@ -446,6 +594,22 @@
   __String_equal__ mkey "" ,(notMethod)
   __Dict_lookup_or__ info "kind" (,(k) __NULL__ "") ,(kind)
   __String_equal__ kind "" ,(plainFn)
+  ;; 一番外の文（段階 H6a）：文の節に、名前と、読む変数と書く変数の名前を付ける（sjs_gen.se の Gen_stmt が使う）
+  __String_equal__ kind "stmt" ,(isStmt)
+  __and__ ok isStmt ,(test__) __if__ test__
+    (,()
+      Kit_parse_get info "js" ,(js)
+      __String_concat__ acc js ,(acc)
+      Kit_parse_get info "stmt" ,(node)
+      __Dict_put__ node "hostStmt" nm ,()
+      Kit_parse_get info "reads" ,(rs)
+      __Dict_put__ node "hostReads" rs ,()
+      Kit_parse_get info "writes" ,(ws)
+      __Dict_put__ node "hostWrites" ws ,()
+      Sjs_json_string nm ,(q)
+      Kit_parse_get info "fname" ,(fname)
+      Kit_code_cat5 table q ": $runS(" fname "), " ,(table)
+      Hx_funcs H rest acc table ,(a t) return a t) ,()
   __and__ ok notMethod ,(x) __and__ x plainFn ,(test__) __unless__ test__ (,() Hx_funcs H rest acc table ,(a t) return a t) ,()
   Kit_parse_get info "js" ,(js)
   __String_concat__ acc js ,(acc)
@@ -1217,8 +1381,11 @@
   __String_equal__ tt "id" ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
   Kit_parse_get target "name" ,(nm)
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
-  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __unless__ test__ (,() Hx_fail cx) ,()
-  __String_concat__ "v_" nm)
+  __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(isLocal)
+  __if__ isLocal (,() __String_concat__ "v_" nm ,(c) return c) ,()
+  Hx_outer cx nm __TRUE__ ,(isOuter oc)
+  __unless__ isOuter (,() Hx_fail cx) ,()
+  __NULL__ oc)
 
 ;; ── 式 ──
 
@@ -1433,6 +1600,9 @@
   Kit_parse_get e "name" ,(nm)
   __Dict_lookup_or__ cx "locals" __print_exit_error__ ,(locals)
   __Dict_lookup_or__ locals nm (,(k) __NULL__ __FALSE__) ,(test__) __if__ test__ (,() __String_concat__ "v_" nm ,(c) return c) ,()
+  ;; 一番外の文の中の、前に宣言した一番外の変数（段階 H6a）：引数 g_名前
+  Hx_outer cx nm __FALSE__ ,(isOuter oc)
+  __if__ isOuter (,() return oc) ,()
   ;; NaN、Infinity、undefined：一番外で宣言されず、代入されないもの
   __Dict_lookup_or__ cx "E" __print_exit_error__ ,(E)
   __Dict_lookup_or__ E "assigned" __print_exit_error__ ,(assigned)
@@ -1825,7 +1995,11 @@
     "const $refresh = () => { for (const [x, b] of [...$back]) { if (Array.isArray(x)) { $fromArray(b.m, x); b.snap = x.slice(); } else { $fromObject(b.m, x); b.snap = Object.entries(x); } } };"
     ;; VM に op を頼む（Conjs_hostfn_vm）：ためた console.log の行を先に出させ、値を写しにして渡し、変わったものを読み直す。
     ;; 呼び返し（call、callm）の後は、やり直せない（$committed）。VM で投げられた例外は、$Thrown にして投げる
+    ;; 一番外の文（段階 H6a）：VM へ渡れない
+    "let $noCross = false;"
+    "const $runS = (f) => (ids, tramp, ...rest) => { const args = $withClasses ? rest.slice(1) : rest; const st = $fresh(ids, tramp, $withClasses ? rest[0] : null); st.noCross = true; return $go(st, () => ({ done: true, value: f(...args.map($in)) })); };"
     "const $vm = (op, p, ...args) => {"
+    "  if ($noCross) throw new rt.Escape('a statement of the top level does not go to the VM');"
     "  $cr++; const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
     "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
@@ -1846,12 +2020,12 @@
     "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
     ;; 呼び返しの中から、またホストの関数が呼ばれることがあり、待つホストの関数（ジェネレータ）は、待つ間に、ほかの処理がホストの
     ;; 関数を呼ぶので、状態は呼び出しごとに st に持ち、動かす間だけ大域の変数に置く（$go）
-    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0 });"
+    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0, noCross: false });"
     ;; body を st で動かす。body は、イテレータの next の答え（{ done, value }）を返す。done でなければ、value（VM への頼み）を返す。
     ;; done なら、値か、外へ出た例外か、止めるわけ（呼び返しの後）を、console.log の行と返す。呼び返しの前の rt.Escape は投げる
     "const $go = (st, body) => {"
-    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr];"
-    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr];"
+    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross];"
+    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr, st.noCross];"
     "  try {"
     "    let r, thrown = null;"
     "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
@@ -1861,8 +2035,8 @@
     "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), after: $committed || 'calling back', out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
     "  } finally {"
-    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr });"
-    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr] = saved;"
+    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr, noCross: $noCross });"
+    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $noCross] = saved;"
     "  }"
     "};"
     "const $enter = (ids, tramp, cls, body) => $go($fresh(ids, tramp, cls), () => ({ done: true, value: body() }));"

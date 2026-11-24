@@ -297,6 +297,70 @@
 ;; 文。ランタイムの呼び出しに、文の位置の SInfo を入れる（式が入れなかったもの。Kit_code_sinfo_fill）
 (define Gen_stmt ,(g scope s cx)
   __Cont_get__ ,(return)
+  ;; ConJS の一番外の文で、ホストの版のあるもの（sjs_host.se の "hostStmt"。docs/dev/CONJS-HOST-PLAN.md の段階 H6a）
+  __Dict_lookup_or__ s "hostStmt" (,(k) __NULL__ "") ,(hs)
+  __String_equal__ hs "" ,(test__) __unless__ test__ (,() Gen_host_stmt g scope s cx hs ,(c) return c) ,()
+  Gen_stmt_plain g scope s cx)
+
+;; 読む一番外の変数の値を LList にして Conjs_hoststmt に渡し、ホストで終われば、書いた変数に新しい値を順に代入する。ホストで動かな
+;; ければ、Conjs_hoststmt が、ConMa 版の文（関数式に包んだもの）を動かす
+(define Gen_host_stmt ,(g scope s cx name)
+  Gen_stmt_plain g scope s cx ,(fallback)
+  Kit_parse_get s "hostReads" ,(reads)
+  Gen_host_reads g scope reads "" __NULL__ ,(rc vals)
+  Gen_host_list g vals "__NULL__" "" ,(lc l)
+  Kit_code_temp g "ok" ,(ok)
+  Kit_code_temp g "ws" ,(ws)
+  Kit_code_quote name ,(q)
+  Kit_code_cat5 rc lc "\tConjs_hoststmt G Hsjs " q " " ,(c)
+  Kit_code_cat5 c l " (,() " fallback "__NULL__) ,(" ,(c)
+  Kit_code_cat5 c ok " " ws ") " ,(c)
+  Kit_parse_get s "hostWrites" ,(writes)
+  Gen_host_writes g scope writes ws "" ,(wc)
+  Kit_code_cat5 c "__if__ " ok " (,() " wc ,(c)
+  __String_concat__ c "__nop__) ,() ")
+
+;; 名前を順に読む手順と、値（読んだ順の LList）
+(define Gen_host_reads ,(g scope names code acc)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() Wx_reverse acc __NULL__ ,(vals) return code vals) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  Gen_read g scope nm ,(c v)
+  __String_concat__ code c ,(code)
+  __LList_cons__ v acc ,(acc)
+  Gen_host_reads g scope rest code acc)
+
+;; 値の LList（読んだ順）を、後ろから __LList_cons__ でつなぐ手順と、その変数
+(define Gen_host_list ,(g vals tail code)
+  Wx_reverse vals __NULL__ ,(rev)
+  Gen_host_cons g rev tail code)
+
+(define Gen_host_cons ,(g rev tail code)
+  __Cont_get__ ,(return)
+  __is_null__ rev ,(test__) __if__ test__ (,() return code tail) ,()
+  __LList_uncons__ __print_exit_error__ rev ,(v rest)
+  Kit_code_temp g "l" ,(l)
+  Kit_code_cat5 code "__LList_cons__ " v " " tail ,(code)
+  Kit_code_cat3 code " ,(" l ,(code)
+  __String_concat__ code ") " ,(code)
+  Gen_host_cons g rest l code)
+
+;; 新しい値の LList ws を、名前に順に代入する手順
+(define Gen_host_writes ,(g scope names ws code)
+  __Cont_get__ ,(return)
+  __is_null__ names ,(test__) __if__ test__ (,() return code) ,()
+  __LList_uncons__ __print_exit_error__ names ,(nm rest)
+  Kit_code_temp g "w" ,(w)
+  Kit_code_temp g "ws" ,(ws2)
+  Kit_code_cat5 code "__LList_uncons__ __print_exit_error__ " ws " ,(" w ,(code)
+  Kit_code_cat3 code " " ws2 ,(code)
+  __String_concat__ code ") " ,(code)
+  Gen_write g scope nm w ,(c)
+  __String_concat__ code c ,(code)
+  Gen_host_writes g scope rest ws2 code)
+
+(define Gen_stmt_plain ,(g scope s cx)
+  __Cont_get__ ,(return)
   Kit_parse_get s "t" ,(t)
   __String_equal__ t "block" ,(isBlock)
   __String_equal__ t "empty" ,(isEmpty)

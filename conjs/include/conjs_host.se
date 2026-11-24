@@ -311,6 +311,11 @@
 
 (define Conjs_hostfn_judge ,(name cost)
   __Cont_get__ ,(return)
+  ;; 一番外の文（"$s番号"。段階 H6a）は 1 度しか動かないので、決めない
+  Sjs_zero ,(z0)
+  __String_find__ (,(m) return) name "$s" z0 ,(at)
+  __is_null__ at ,(notStmt)
+  __unless__ notStmt (,() __Number_is_zero__ at ,(test__) __if__ test__ return ,()) ,()
   __LList_uncons__ __print_exit_error__ cost ,(ops rest)
   __LList_uncons__ __print_exit_error__ rest ,(cp rest2)
   __LList_uncons__ __print_exit_error__ rest2 ,(cr rest3)
@@ -339,3 +344,25 @@
   __String_concat__ line "\n" ,(line)
   __OS_print_error__ line)
 
+
+;; ── 一番外の文（段階 H6a。docs/dev/CONJS-HOST-PLAN.md の 26 節）──
+;; 文の関数 name を、読む一番外の変数の値の LList args で呼ぶ。ホストで終われば、真と、書いた変数の新しい値の LList（sjs_gen.se の
+;; Gen_host_stmt が、順に代入する）。ホストで動かなければ（モジュールがない、escape）、ConMa 版の文 f を動かして、偽
+(define Conjs_hoststmt ,(G H name args f)
+  __Cont_get__ ,(return)
+  __Ref_new__ __FALSE__ ,(fell)
+  Conjs_hostfn_call_with G H name (,(a) __Ref_set__ fell __TRUE__ ,() f ,() __NULL__ __NULL__) args args ,(r)
+  __Ref_get__ fell ,(test__) __if__ test__ (,() return __FALSE__ __NULL__) ,()
+  Sjs_get_member G r "length" ,(n)
+  Conjs_hoststmt_items G r n __NULL__ ,(vals)
+  __NULL__ __TRUE__ vals)
+
+;; 配列 a の、i 番目より前の要素の LList（後ろから）
+(define Conjs_hoststmt_items ,(G a i acc)
+  __Cont_get__ ,(return)
+  __Number_is_positive__ i ,(more)
+  __unless__ more (,() return acc) ,()
+  Sjs_dec i ,(j)
+  Sjs_get_index G a j ,(v)
+  __LList_cons__ v acc ,(acc)
+  Conjs_hoststmt_items G a j acc)
