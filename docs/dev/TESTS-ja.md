@@ -110,7 +110,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM と transpiled VM（VM は変えていない）。
 * 測ったもの：なし。
 
-### m4/conjs-bench
+### m4/conjs-bench（shima3/conma#71）
 
 * 種類：なし（ベンチマークだけ）。
 * conjs/bench に、ConJS のベンチマーク 7 つ（startup、strings、dict、hof、json、exceptions、tasks。tasks には Node.js 版の tasks.node.js）と、Node.js、Rust 版の VM、wasm 版の VM で測る run.sh を足した。前からある nbody_class も run.sh で測る。結果は conjs/bench/README-ja.md。docs/dev/CONTRIBUTING.md の Benchmarks に Full ConJS Bench（conjs/bench）を足し、Full Bench を 4 つにした。
