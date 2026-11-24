@@ -61,6 +61,12 @@
 (define Conjs_hostfn_call_with ,(G H name f args hargs)
   __Cont_get__ ,(return)
   __is_null__ H ,(test__) __if__ test__ (,() f args ,(v) return v) ,()
+  ;; ホストを使わなくなった関数（段階 H5d。Conjs_hostfn_judge）
+  Conjs_hostfn_costs ,(costs)
+  __Dict_lookup_or__ costs name (,(k) __NULL__ __NULL__) ,(cost)
+  __is_null__ cost ,(fresh)
+  __if_then_else__ fresh (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ cost "off" (,(k) __NULL__ __FALSE__)) ,(off)
+  __if__ off (,() f args ,(v) return v) ,()
   Conjs_hostfn_values hargs ,(test__) __unless__ test__ (,() f args ,(v) return v) ,()
   __Dict_lookup_or__ G "" __print_exit_error__ ,(ids)
   __Dict_lookup_or__ H "cls" __print_exit_error__ ,(withClasses)
@@ -101,10 +107,12 @@
   __String_concat__ msg why ,(msg)
   Sjs_uncaught msg)
 
-;; ホストの版が終わったときの答え r（{ v, out }、{ thrown, tpos, out }、{ fatal, out }）
+;; ホストの版が終わったときの答え r（{ v, out, cost }、{ thrown, tpos, out, cost }、{ fatal, out }）
 (define Conjs_hostfn_done ,(G name r)
   __Cont_get__ ,(return)
   Conjs_hostfn_report name ,()
+  __Dict_lookup_or__ r "cost" (,(k) __NULL__ __NULL__) ,(cost)
+  __is_null__ cost ,(test__) __unless__ test__ (,() Conjs_hostfn_judge name cost) ,()
   __Dict_lookup_or__ r "out" (,(k) __NULL__ __NULL__) ,(lines)
   Conjs_hostfn_print G lines ,()
   ;; 呼び返しか待った後に、ホストの版が続けられなくなったとき（段階 H4c）：やり直せないので、止める。after は、そのわけ
@@ -286,3 +294,48 @@
   __String_concat__ "conjs: host: " name ,(line)
   __String_concat__ line "\n" ,(line)
   __OS_print_error__ line)
+
+;; ── ホストを使い続けるか（段階 H5d。docs/dev/CONJS-HOST-PLAN.md の 25 節）──
+;; ホストの版の呼び出しは、答えに (仕事 写したもの VM へ渡った回数) を付ける（sjs_host.se の $ops、$cp、$cr）。関数ごとに、
+;; ホストの費用の見積もり 9×写したもの＋25×渡った回数（µs）と、ConMa 版の費用の見積もり 7×仕事を足していき、ホストのほうが
+;; 大きくなれば、その関数は、それからは ConMa 版だけで動かす（重みは、M4 の wasm 版の VM で測った値）
+
+;; 関数の名前から、{ host: 見積もり, conma: 見積もり, off: 真 } への表
+(define Conjs_hostfn_costs ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_host_costs" (,(k) __NULL__ __NULL__) ,(t)
+  __is_null__ t ,(test__) __unless__ test__ (,() return t) ,()
+  __Dict_new__ ,(t)
+  __PDict_put__ "conjs_host_costs" t ,()
+  __NULL__ t)
+
+(define Conjs_hostfn_judge ,(name cost)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ cost ,(ops rest)
+  __LList_uncons__ __print_exit_error__ rest ,(cp rest2)
+  __LList_uncons__ __print_exit_error__ rest2 ,(cr rest3)
+  Conjs_hostfn_costs ,(costs)
+  __Dict_lookup_or__ costs name (,(k) __Dict_new__ ,(d) Sjs_zero ,(z) __Dict_put__ d "host" z ,() __Dict_put__ d "conma" z ,() __Dict_put__ costs name d ,() __NULL__ d) ,(d)
+  __Number_fromString__ __print_exit_error__ "9" ,(wcp)
+  __Number_fromString__ __print_exit_error__ "25" ,(wcr)
+  __Number_fromString__ __print_exit_error__ "7" ,(wops)
+  __Number_multiply__ cp wcp ,(h1)
+  __Number_multiply__ cr wcr ,(h2)
+  __Number_add__ h1 h2 ,(h)
+  __Number_multiply__ ops wops ,(c)
+  __Dict_lookup_or__ d "host" __print_exit_error__ ,(h0)
+  __Dict_lookup_or__ d "conma" __print_exit_error__ ,(c0)
+  __Number_add__ h0 h ,(ht)
+  __Number_add__ c0 c ,(ct)
+  __Dict_put__ d "host" ht ,()
+  __Dict_put__ d "conma" ct ,()
+  __Number_subtract__ ht ct ,(diff)
+  __Number_is_positive__ diff ,(worse)
+  __unless__ worse return ,()
+  __Dict_put__ d "off" __TRUE__ ,()
+  ;; CONJS_HOST_REPORT のとき、そのことを出す
+  __PDict_lookup_or__ "conjs_host_seen" (,(k) return) ,(seen)
+  __String_concat__ "conjs: off: " name ,(line)
+  __String_concat__ line "\n" ,(line)
+  __OS_print_error__ line)
+

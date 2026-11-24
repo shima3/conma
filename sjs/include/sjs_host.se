@@ -477,6 +477,9 @@
   ;; その場に書く読み書きの一時の変数（段階 H5b。Hx_temp）
   __Ref_new__ __NULL__ ,(temps)
   __Dict_put__ cx "temps" temps ,()
+  ;; ループがあったか（段階 H5d。Hx_ops_wrap）
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
   Wx_num "0" ,(zeroT)
   __Ref_new__ zeroT ,(tempN)
   __Dict_put__ cx "tempN" tempN ,()
@@ -513,6 +516,7 @@
   Kit_parse_get body "body" ,(stmts)
   __if_then_else__ isCtor (,() Hx_ctor_body cx info stmts) (,() Hx_stmts cx stmts "") ,(code)
   Hx_temp_decl temps ,(decl)
+  Hx_ops_wrap opsUsed code ,(code)
   __String_concat__ decl code ,(code)
   Kit_parse_get info "name" ,(name)
   ;; 待つのは、一番外の関数だけ（メソッドとコンストラクタは、待てばホストの関数にしない）
@@ -753,7 +757,17 @@
   __Ref_set__ loops m ,()
   Hx_body cx s ,(c)
   __Ref_set__ loops n ,()
-  __NULL__ c)
+  ;; 仕事を数える（段階 H5d）：関数か関数式の局所の数え $loops に（Hx_ops_wrap が、終わるときに $ops に足す）
+  __Dict_lookup_or__ cx "opsUsed" (,(k) __NULL__ __NULL__) ,(used)
+  __is_null__ used ,(test__) __if__ test__ (,() __NULL__ c) ,()
+  __Ref_set__ used __TRUE__ ,()
+  Kit_code_cat3 "{$loops++; " c "}")
+
+;; ループのあった関数か関数式の本体 code を、局所の数え $loops で包む（数えを、共通の $ops でなく、エンジンがレジスタに置ける局所の変数に
+;; する：ループの 1 回ごとに共通の変数に書くと、速いループでは目に見えて遅い）
+(define Hx_ops_wrap ,(used code)
+  __Ref_get__ used ,(u)
+  __if_then_else__ u (,() Kit_code_cat3 "let $loops = 0; try { " code " } finally { $ops += $loops; }") (,() __NULL__ code))
 
 (define Hx_stmt ,(cx s)
   __Cont_get__ ,(return)
@@ -1374,6 +1388,9 @@
   __Dict_lookup_or__ cx "temps" (,(k) __NULL__ __NULL__) ,(outerTemps)
   __Ref_new__ __NULL__ ,(temps)
   __Dict_put__ cx "temps" temps ,()
+  __Dict_lookup_or__ cx "opsUsed" (,(k) __NULL__ __NULL__) ,(outerOps)
+  __Ref_new__ __FALSE__ ,(opsUsed)
+  __Dict_put__ cx "opsUsed" opsUsed ,()
   __Dict_lookup_or__ e "body" (,(k) __NULL__ __NULL__) ,(body)
   __is_null__ body ,(concise)
   __if_then_else__ concise
@@ -1381,10 +1398,11 @@
         Hx_temp_decl temps ,(decl)
         __String_equal__ decl "" ,(noDecl)
         __if_then_else__ noDecl (,() Kit_code_cat3 "(" xc ")") (,() Kit_code_cat5 "{" decl "return (" xc "); }"))
-    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Hx_temp_decl temps ,(decl) Kit_code_cat4 "{" decl bc "}") ,(bc)
+    (,() Kit_parse_get body "body" ,(stmts) Hx_stmts cx stmts "" ,(bc) Hx_ops_wrap opsUsed bc ,(bc) Hx_temp_decl temps ,(decl) Kit_code_cat4 "{" decl bc "}") ,(bc)
   __Ref_set__ loops outer ,()
   __Dict_put__ cx "closure" outerClosure ,()
   __Dict_put__ cx "temps" outerTemps ,()
+  __Dict_put__ cx "opsUsed" outerOps ,()
   Kit_code_cat5 "((" ps ") => " bc ")")
 
 ;; 数 v の JavaScript の字句（ConMa の __Number_toString__ の字句を JavaScript が同じ値に読む。-0、NaN、無限大は式にする）
@@ -1749,6 +1767,7 @@
     "let $p0 = null;"
     "const $m = (name) => (p, r, ...a) => {"
     "  const t = Array.isArray(r) ? $A : typeof r === 'string' ? $Sm : null;"
+    "  $ops += t === $A ? r.length + 1 : 1;"
     "  if (t === null) return $mcall(r, name, p, ...a);"
     "  const f = t[name]; if (f === undefined) return $vm('method', p, r, name, a);"
     "  const args = t === $A ? a.map((x) => typeof x === 'function' || x instanceof $Opaque ? $fn(x, p) : x) : a;"
@@ -1762,10 +1781,13 @@
     ;; VM の値の写しと JavaScript の値
     "class $Opaque { constructor(m) { this.m = m; } }"
     "let $ids = null, $nullRef = null;"
+    ;; 費用の数え（段階 H5d）：仕事（$ops：ループの 1 回、関数の始め、配列のメソッドの要素）、写した配列とオブジェクト（$cp）、
+    ;; VM へ渡った回数（$cr：呼び返し、遅い道、待つ頼み）。呼び出しの答えに付けて、Conjs_hostfn がホストを使い続けるか決める
+    "let $ops = 0, $cp = 0, $cr = 0;"
     "let $memo = new Map(), $back = new Map();"
     "const $newId = () => { $ids.value = $ids.value + 1; return $ids.value; };"
-    "const $fromArray = (v, a) => { a.length = 0; const n = v.length.value; for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); } };"
-    "const $fromObject = (v, o) => { for (const k of Object.keys(o)) delete o[k]; const names = (v.keys.value || []).slice().reverse(); if (names.length !== Object.keys(v.props).length) $no(); for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); } };"
+    "const $fromArray = (v, a) => { $cp++; a.length = 0; const n = v.length.value; for (let i = 0; i < n; i++) { const k = String(i); if (!(k in v.items)) $no(); a.push($in(v.items[k])); } };"
+    "const $fromObject = (v, o) => { $cp++; for (const k of Object.keys(o)) delete o[k]; const names = (v.keys.value || []).slice().reverse(); if (names.length !== Object.keys(v.props).length) $no(); for (const k of names) { if ($int(k) || !(k in v.props)) $no(); o[k] = $in(v.props[k]); } };"
     "const $in = (v) => {"
     "  if (v === null || v === undefined || typeof v !== 'object') return v;"
     "  if (v instanceof rt.VmRef) { if ($nullRef === null) $nullRef = v; return null; }"
@@ -1781,8 +1803,8 @@
     "  }"
     "  const op = new $Opaque(v); $memo.set(v, op); return op;"
     "};"
-    "const $fillArray = (m, a) => { for (const k of Object.keys(m.items)) delete m.items[k]; for (let i = 0; i < a.length; i++) { if (!(i in a)) $no(); m.items[String(i)] = $outv(a[i]); } m.length.value = a.length; };"
-    "const $fillObject = (m, o) => { const names = Object.keys(o); for (const k of Object.keys(m.props)) delete m.props[k]; for (const k of names) { if ($int(k)) $no(); m.props[k] = $outv(o[k]); } m.keys.value = names.slice().reverse(); };"
+    "const $fillArray = (m, a) => { $cp++; for (const k of Object.keys(m.items)) delete m.items[k]; for (let i = 0; i < a.length; i++) { if (!(i in a)) $no(); m.items[String(i)] = $outv(a[i]); } m.length.value = a.length; };"
+    "const $fillObject = (m, o) => { $cp++; const names = Object.keys(o); for (const k of Object.keys(m.props)) delete m.props[k]; for (const k of names) { if ($int(k)) $no(); m.props[k] = $outv(o[k]); } m.keys.value = names.slice().reverse(); };"
     "const $outv = (x) => {"
     "  if (x === undefined) return undefined;"
     "  if (x === null) { if ($nullRef === null) $nullRef = rt.ref(undefined); return $nullRef; }"
@@ -1804,7 +1826,7 @@
     ;; VM に op を頼む（Conjs_hostfn_vm）：ためた console.log の行を先に出させ、値を写しにして渡し、変わったものを読み直す。
     ;; 呼び返し（call、callm）の後は、やり直せない（$committed）。VM で投げられた例外は、$Thrown にして投げる
     "const $vm = (op, p, ...args) => {"
-    "  const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
+    "  $cr++; const calls = op === 'call' || op === 'callm' || op.startsWith('iter_');"
     "  if (!calls && !$committed) $no();"
     "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && (op === 'call' || op === 'callm' || op === 'method' || op === 'math') && i === args.length - 1 ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = [];"
@@ -1824,23 +1846,23 @@
     "const $runm = (P, k) => (ids, tramp, ...rest) => { const r = $withClasses ? rest.slice(1) : rest; const self = r[0], args = r.slice(1); return $enter(ids, tramp, $withClasses ? rest[0] : null, () => { const o = $in(self); if (!$isObj(o) || !(k in o)) $no(); return P[k].call(o, ...args.map($in)); }); };"
     ;; 呼び返しの中から、またホストの関数が呼ばれることがあり、待つホストの関数（ジェネレータ）は、待つ間に、ほかの処理がホストの
     ;; 関数を呼ぶので、状態は呼び出しごとに st に持ち、動かす間だけ大域の変数に置く（$go）
-    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null });"
+    "const $fresh = (ids, tramp, cls) => ({ ids, tramp, cls: cls === undefined ? null : cls, nullRef: null, memo: new Map(), back: new Map(), out: [], committed: false, p0: null, ops: 0, cp: 0, cr: 0 });"
     ;; body を st で動かす。body は、イテレータの next の答え（{ done, value }）を返す。done でなければ、value（VM への頼み）を返す。
     ;; done なら、値か、外へ出た例外か、止めるわけ（呼び返しの後）を、console.log の行と返す。呼び返しの前の rt.Escape は投げる
     "const $go = (st, body) => {"
-    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0];"
-    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0];"
+    "  const saved = [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr];"
+    "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr];"
     "  try {"
     "    let r, thrown = null;"
     "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
-    "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out }; }"
-    "    const v = $outv(r); $sync(); return { v: v, out: $out };"
+    "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out, cost: [$ops, $cp, $cr] }; }"
+    "    const v = $outv(r); $sync(); return { v: v, out: $out, cost: [$ops, $cp, $cr] };"
     "  } catch (e) {"
     "    if ($committed || e instanceof $Fatal) return { fatal: String(e && e.message || e), after: $committed || 'calling back', out: $out };"
     "    throw e instanceof rt.Escape ? e : new rt.Escape(String(e && e.message || e));"
     "  } finally {"
-    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0 });"
-    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0] = saved;"
+    "    Object.assign(st, { ids: $ids, tramp: $tramp, cls: $clsR, nullRef: $nullRef, memo: $memo, back: $back, out: $out, committed: $committed, p0: $p0, ops: $ops, cp: $cp, cr: $cr });"
+    "    [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr] = saved;"
     "  }"
     "};"
     "const $enter = (ids, tramp, cls, body) => $go($fresh(ids, tramp, cls), () => ({ done: true, value: body() }));"
@@ -1858,7 +1880,7 @@
     "};"
     ;; VM への頼み：ホストの変更を写しに書き、ためた行と渡す。頼んだ後は、やり直せない（ほかの処理が、ホストの変更を見る）
     "const $Yq = (p, op, ...args) => {"
-    "  $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
+    "  $cr++; $sync(); const margs = args.map((x, i) => x instanceof $Opaque ? x.m : Array.isArray(x) && i === args.length - 1 && (op === 'call' || op === 'callm' || op === 'callg') ? x.map($outv) : $outv(x));"
     "  const lines = $out; $out = []; $committed = $committed || 'waiting';"
     "  return [p === null || p === undefined ? null : $P[p], op, margs, lines];"
     "};"
