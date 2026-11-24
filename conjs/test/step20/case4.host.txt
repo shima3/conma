@@ -14,6 +14,7 @@ conjs: host: same
 conjs: host: say
 conjs: host: sortInPlace
 conjs: host: sorted
+conjs: host: sum
 conjs: host: total
 conjs: host: useInc
 conjs: host: words

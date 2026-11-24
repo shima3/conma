@@ -127,7 +127,7 @@ All this paid for the property above, which ConJS does not promise, so the user 
 1. **When a function is a waiting host function** (H0: a generator for `advance` alone costs 4%, generators for every function 8.3 times; section 11). A generator is slower than a plain function in the engines, but only it can yield. (Settled on 2026-11-24 with section 6: a function is a waiting host function when it calls something that waits; there is no fuel, so no other reason to make one.) The plan made a function a waiting host function when it calls something that waits, or when it calls back something the translator does not know and has a loop that can be long; otherwise a plain one. The other choice is to make every host function that calls back a generator, which never needs the error of 3.1, 3, at some cost in speed.
 2. **Whether to go on after H0** (section 11): the host's JavaScript is 1.1 to 1.8 times Node.js where the VM is 1,000 to 18,500 times, but the crossings of today are too slow (a call back costs about 18 µs, and copying a value about 4 µs), so H1 and H2 must make them faster, with the copying done by Rust in the VM.
 3. **The browser (8)**: a file of JavaScript made by the build, or allowing `eval` in the pages of ConJS.
-4. **The numeric functions**: keep WebAssembly for them, or move them to the host when the host is as fast (H5).
+4. **The numeric functions**: keep WebAssembly for them, or move them to the host when the host is as fast (H5). Decided on 2026-11-24: the host first (section 24).
 5. **SJS**: whether SJS in ConSh (`(( ))`) uses host functions too. Its scripts are not trusted in a page in the way a ConJS program is, so the plan leaves it out unless the user says otherwise.
 
 ## 11. Results of H0 (2026-11-24)
@@ -303,7 +303,7 @@ The methods of classes run on the host, on instances made in ConMa.
 * **What it gives** (the M4, the wasm VM, user + sys, alternately with `cp -p` and a `CONMA_CACHE_DIR` per version, 3 times): a sieve of Eratosthenes over an array of Booleans up to 5,000,000 (a host function; WebAssembly does not take Booleans), 0.40 s against 0.55 s with H5b, about 0.21 s of work against 0.35 s once the start-up is taken off; Node.js 0.12 s. nbody_class (3,000,000 steps) is the same, 0.85 s.
 * **The tests**: conjs/test (Rust, wasm with `CONJS_HOST_STRICT=1`, Python), the same functions return from the host in every case of step20, compare.sh and sjs/test (Rust, wasm).
 
-## 24. The numeric functions: WebAssembly or the host (measured 2026-11-24; the user is to decide, 10.4)
+## 24. The numeric functions: the host first (measured and decided by the user, 2026-11-24; 10.4)
 
 A numeric function of ConJS (the stages of SJS-WASM-PLAN-ja.md) has two versions on the wasm VM: WebAssembly, tried first, and the host's JavaScript (`"hostAlso"`, section 15), tried when WebAssembly does not take the call. `CONMA_NO_WASM=1` leaves WebAssembly out, so the host's version runs.
 
@@ -315,5 +315,7 @@ A numeric function of ConJS (the stages of SJS-WASM-PLAN-ja.md) has two versions
 
 (About 0.17 s of each time on the wasm VM is the start-up.) The host's version is faster in all three: the engine of the host optimizes the plain JavaScript as well as the WebAssembly the translator writes, and WebAssembly counts fuel and starts over with 8 times the fuel when it runs out (SJS-WASM-PLAN-ja.md 5.5), where the host has no fuel (section 6). A call that WebAssembly cannot finish within its last fuel (2^30) tries the host only after that: `collatz(1000000)` took 3.47 s with WebAssembly on, against 1.91 s with it off.
 
-So the plan proposes to try the host's version first for the numeric functions of ConJS on the wasm VM, and WebAssembly only where there is no host's version. The numeric functions of SJS in ConSh (`(( ))`), which have no host's version (10.5), keep WebAssembly. Not done, waiting for the user's decision.
+**Decision** (the user, 2026-11-24): a numeric function of ConJS that has a host's version tries it first, then WebAssembly (when the host's module could not be made, `CONMA_NO_HOSTJS`, or when the host falls back), then ConMa (sjs/include/sjs_gen.se: `Conjs_hostfn` wraps `Sjs_wasm_fn`, which wraps the ConMa version; before, the other way round). The numeric functions of SJS in ConSh (`(( ))`), which have no host's version (10.5), keep WebAssembly.
+
+* **After the change**: `fib(38)` 0.44 s, `mandel` 1.48 s, `collatz(100000)` 0.21 s, the host's times; with `CONMA_NO_HOSTJS=1`, WebAssembly's (0.49 s, 2.75 s, 0.47 s). In conjs/test/step20, 12 numeric functions of case1, case3, case4 and case7 now return from the host, and their names are added to case*.host.txt (none removed). conjs/test on the wasm VM with `CONMA_NO_HOSTJS=1 SJS_WASM_STRICT=1` still gives every log (only the lists of host functions differ), so the WebAssembly versions still work; sjs/test checks them for SJS too.
 

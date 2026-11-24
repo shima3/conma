@@ -2054,21 +2054,22 @@
       Gen_wasm_writes e ,(wrq)
       Kit_code_cat4 "(,(" args ") __Cont_get__ ,(return) " bind ,(inner)
       Kit_code_cat3 inner bodyCode "return __NULL__)" ,(inner)
-      ;; ConJS のホストの関数でもあれば（sjs_host.se の "hostAlso"）、wasm 版で動かないとき（引数が数でないとき）に、ConMa 版の
-      ;; 前にホストの版を試す（文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）
+      ;; ConJS のホストの関数でもあれば（sjs_host.se の "hostAlso"）、ホストの版を先に試し、ホストの版が値を返せないとき（ホストの
+      ;; モジュールがない、escape）に、wasm 版、ConMa 版の順に試す（ユーザーの決定、2026-11-24。docs/dev/CONJS-HOST-PLAN.md の
+      ;; 24 節：数の関数でも、ホストのほうが wasm 版より速い。文字列の s.length と s[i] を使う関数は、数の配列の関数としても印が付く）
       __Dict_lookup_or__ e "hostAlso" (,(k) __NULL__ "") ,(hname)
       __String_equal__ hname "" ,(noHost)
       Kit_code_temp g "h" ,(hf)
-      __if_then_else__ noHost (,() __NULL__ inner) (,() __NULL__ hf) ,(fc)
-      __if_then_else__ noHost (,() __NULL__ "")
+      __if_then_else__ noHost (,() __NULL__ wf) (,() __NULL__ hf) ,(wout)
+      Kit_code_cat4 "\tSjs_wasm_fn Wsjs " wq " " nv ,(c)
+      Kit_code_cat5 c " " wrq " " vq ,(c)
+      Kit_code_cat4 c " " inner " ,(" ,(c)
+      Kit_code_cat3 c wout ") " ,(c)
+      __if_then_else__ noHost (,() __NULL__ c)
         (,()
           Kit_code_quote hname ,(hq)
-          Kit_code_cat5 "\tConjs_hostfn G Hsjs " hq " " inner " ,(" ,(pre)
-          Kit_code_cat3 pre hf ") ") ,(pre)
-      Kit_code_cat5 pre "\tSjs_wasm_fn Wsjs " wq " " nv ,(c)
-      Kit_code_cat5 c " " wrq " " vq ,(c)
-      Kit_code_cat4 c " " fc " ,(" ,(c)
-      Kit_code_cat3 c wf ") " ,(c)
+          Kit_code_cat4 c "\tConjs_hostfn G Hsjs " hq " " ,(c)
+          Kit_code_cat5 c hf " ,(" wf ") ") ,(c)
       Kit_code_cat5 c "\tSjs_function G " qn " " wf ,(c)
       Kit_code_cat3 c " ,(" v ,(c)
       __String_concat__ c ") " ,(c)

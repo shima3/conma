@@ -1,3 +1,7 @@
+conjs: host: deep
+conjs: host: len
+conjs: host: loops
+conjs: host: nothing
 conjs: host: partial
 conjs: host: scoped
 conjs: host: usesNotHost

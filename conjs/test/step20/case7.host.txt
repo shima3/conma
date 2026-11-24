@@ -1,5 +1,6 @@
 conjs: host: apply
 conjs: host: callbackThrows
+conjs: host: count
 conjs: host: logged
 conjs: host: mapAll
 conjs: host: mutateIn
