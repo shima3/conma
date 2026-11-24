@@ -1,7 +1,7 @@
 #!/bin/bash
 # bench/run.sh NAME [ARG...]: run benchmark NAME (NAME/NAME.py and NAME/NAME.se) with CPython and the transpiled
-# VM (built by build.sh), check that they print the same, and print the best of 3 times (user + sys seconds)
-# of each. With CONMA_BENCH_RUST=1, the Rust VM too. Without ARG, the size of NAME at which the faster of
+# VM (built by build.sh), check that they print the same, and print the best of 3 times (user + sys seconds;
+# real time on Windows) of each. With CONMA_BENCH_RUST=1, the Rust VM too. Without ARG, the size of NAME at which the faster of
 # CPython and the transpiled VM takes about one second (docs/dev/CONTRIBUTING.md, Benchmarks; README.md).
 bench="$(cd "$(dirname "$0")"; pwd)"
 root="${bench%/*}"
@@ -15,6 +15,11 @@ if [ $# -eq 0 ]; then
   esac
   echo "$name $*"
 fi
+# On Windows (Git Bash, MSYS), time does not count the user and sys time of the native programs of Windows (conma.exe,
+# python.exe): there the real time is measured instead, and the output says so (as conjs/bench/run.sh, 2026-11-24)
+clock='%U %S' what='user + sys'
+case "$(uname -o 2> /dev/null)" in Msys|Cygwin) clock='%R 0' what='real time (Windows: user + sys misses native programs)' ;; esac
+echo "time: $what, the best of 3 runs"
 tmp="$(mktemp -d /tmp/conma-bench.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 "$bench/module.sh" "$bench/$name/$name.se" "$tmp/$name.module.se" || exit 1
@@ -24,7 +29,7 @@ run() {  # label command...
   "${@:2}" > "$tmp/$1.out" 2>&1 || { echo "$1 failed:"; cat "$tmp/$1.out"; exit 1; }
   local best=
   for i in 1 2 3; do
-    t=$( { TIMEFORMAT='%U %S'; time "${@:2}" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
+    t=$( { TIMEFORMAT="$clock"; time "${@:2}" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
     if [ -z "$best" ] || awk "BEGIN{exit !($t < $best)}"; then best=$t; fi
   done
   printf '%-12s %6.2f s\n' "$1" "$best"

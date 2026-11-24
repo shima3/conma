@@ -130,3 +130,13 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * S5 が流したもの（PR のレビュー、f6f7534）：Windows（Git Bash）の conjs/test（Rust 版と wasm 版）と sjs/test、cksum と awk、キャッシュのディレクトリの名前（consh.ps1 と同じ）。起動は 1413 ms から 1101 ms。S5 の指摘で、include でない行がないときも alone.se を作るようにした。
 * 流していないもの：Python 版の VM、transpiled VM。
 * 測ったもの：上の起動の時間だけ。
+
+### s5/bench-windows-time（shima3/conma#74）
+
+* bench/run.sh と sjs/bench/run.sh が、Windows（Git Bash。`uname -o` が `Msys` か `Cygwin`）では、user + sys でなく実時間で測り、何で測ったかを 1 行出すようにした（ユーザーの指示。conjs/bench/run.sh の shima3/conma#71 と同じ）。Git Bash の `time` は、Windows のプログラム（conma.exe、node.exe、python.exe）の user と sys を数えないため。Unix では、時間の測り方は前と同じで、出力に `time: user + sys, ...` の行が 1 行増える。文書：docs/dev/CONTRIBUTING.md の Benchmarks の 4、sjs/README-ja.md、bench/README.md。
+* 種類：なし（ベンチマークだけ）。
+* 作り直すもの：なし。
+* S5 が流したもの（Windows 11、Git Bash）：`sjs/bench/run.sh fib 27 22`（実時間になり、2 行目にそう出た。Node.js と同じ出力）。`uname -o` に `GNU/Linux` と答える uname を PATH の先に置いて、Unix の道（user + sys）も確かめた。`CONMA_BENCH_RUST=1 bench/run.sh fib 22` は、S5 に transpiled VM がないので、Rust 版の VM の写しを vm/target-transpiled/release に置いて流し、実時間になることを確かめた。
+* Windows で bench/run.sh が出す「prints otherwise than cpython」は、この変更の前からある：Windows の CPython は、`print` の行末に CRLF を書く。この変更では直していない。
+* 流していないもの：Unix での run.sh（M1、M2、M4 で、出力に 1 行増えるほかは前と同じはず）、transpiled VM、Full Bench。
+* 測ったもの：なし（表は変えていない）。
