@@ -171,6 +171,7 @@ prims! {
     "__JS_value__"         => "prim_JS_value", js::value;
     "__JS_fn_compile__"    => "prim_JS_fn_compile", jsfn::compile;
     "__JS_fn_call__"       => "prim_JS_fn_call", jsfn::call;
+    "__JS_fn_resume__"     => "prim_JS_fn_resume", jsfn::resume;
     "__Feature_available__" => "prim_Feature_available", js::feature_available;
     "__Host_call__"        => "prim_Host_call", host::call;
     "__Host_start__"       => "prim_Host_start", host::start;

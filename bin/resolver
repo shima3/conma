@@ -34,8 +34,8 @@ EXT_PRIMITIVES = [
 # primitives, which go to onError on a platform without the feature
 PLATFORM_PRIMITIVES = [
     # __JS_call__ and __JS_value__, JavaScript in the host of the VM for wasm32 (docs/consh/dev/JS-PLAN-ja.md 2.1),
-    # and __JS_fn_compile__ and __JS_fn_call__, functions of it called with copies of values (docs/dev/CONJS-HOST-PLAN.md)
-    ("js", ("__JS_call__", "__JS_value__", "__JS_fn_compile__", "__JS_fn_call__")),
+    # and __JS_fn_compile__, __JS_fn_call__ and __JS_fn_resume__, functions of it called with copies of values (docs/dev/CONJS-HOST-PLAN.md)
+    ("js", ("__JS_call__", "__JS_value__", "__JS_fn_compile__", "__JS_fn_call__", "__JS_fn_resume__")),
     # __Host_call__ and the calls that wait, __Host_start__, __Host_start_tracked__ and __Host_result__: the
     # functions of the host called by name (docs/dev/PLATFORM-PLAN-ja.md 3.2 and 3.4)
     ("host", ("__Host_call__", "__Host_start__", "__Host_start_tracked__", "__Host_result__")),

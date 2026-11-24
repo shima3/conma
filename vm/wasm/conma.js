@@ -2071,6 +2071,10 @@ var ConMaVM = (function () {
           hostResult = utf8(JSON.stringify(answer));
           return hostResult.length;
         },
+        host_jsfn_resume: (g, jsonPtr, jsonLen) => {
+          hostResult = utf8(JSON.stringify(jsfnResume(g, JSON.parse(str(jsonPtr, jsonLen)))));
+          return hostResult.length;
+        },
         host_wasm_free: (id) => {
           wasmModules.delete(id);
         },
@@ -2190,11 +2194,11 @@ var ConMaVM = (function () {
     const callbackContext = { callVm };
 
     // ── Functions of JavaScript called with values of the VM (vm/src/prim/jsfn.rs, whose header gives the
-    // JSON; stage H2 of docs/dev/CONJS-HOST-PLAN.md, 3.2) ──
+    // JSON and the sessions; stages H2a and H2b of docs/dev/CONJS-HOST-PLAN.md, 3.1 and 3.2) ──
     // A Dict of the VM is a plain object without a prototype, with its keys in their order; a Ref an object
     // of VmRef; an LList an array; a value the host does not get (a Closure, a Stream) an object of VmHandle,
-    // which rt.callVm calls back. The objects of the nodes of a call keep their numbers (NODE), and the
-    // contents they had (SEEN), so that the changed ones are written back.
+    // which rt.callVm calls back. A session numbers the objects of its nodes (NODE) as the VM does, and keeps
+    // what each was when the VM last saw it (SEEN), so that only the changed ones are sent.
     const NODE = Symbol("node");
     const SEEN = Symbol("seen");
     class VmRef {
@@ -2204,6 +2208,10 @@ var ConMaVM = (function () {
       constructor(k) { this.k = k; }
     }
     class Escape extends Error {}
+    // The session of the innermost call running (for rt.callVm), and the generators waiting, by number
+    let jsfnSession = null;
+    const jsfnGenerators = new Map();
+    let jsfnGenLast = 0;
     const jsfnRuntime = {
       VmRef,
       VmHandle,
@@ -2211,89 +2219,151 @@ var ConMaVM = (function () {
       // A new Dict of the VM, with the entries of the object o
       dict(o) { return Object.assign(Object.create(null), o || {}); },
       ref(value) { return new VmRef(value); },
-      // Call a value the host does not get (a handle) back, with numbers, strings, Booleans, plain
-      // objects and arrays (as __Host_call__); an escape of the call back escapes this call too
+      // Call a value of the VM back (a handle) with values of the host, which keep their aliases with the
+      // objects of the call: what the call changed so far goes to the VM first, and what the call back
+      // changed comes back. An escape of the call back escapes this call too.
       callVm(h, ...args) {
         if (!(h instanceof VmHandle)) throw new TypeError("rt.callVm: not a handle of the VM");
-        const json = JSON.stringify(args.map((a) => hostEncode("rt.callVm", a)));
-        const n = pass(json, (pa, la) => x.conma_callback_handle(h.k, pa, la));
+        const ss = jsfnSession;
+        if (!ss) throw new Error("rt.callVm: no call of the VM is running");
+        const msg = ss.out((enc) => ({ f: enc(h), a: args.map(enc) }));
+        const n = pass(JSON.stringify(msg), (pa, la) => x.conma_jsfn_callback(pa, la));
         const r = JSON.parse(str(x.conma_callback_ptr(), n));
-        if (Object.prototype.hasOwnProperty.call(r, "r")) return hostDecode(r.r);
         if (Object.prototype.hasOwnProperty.call(r, "x")) throw new Escape(r.x);
-        throw new Error(r.e);
+        if (Object.prototype.hasOwnProperty.call(r, "e")) throw new Error(r.e);
+        return ss.take(r, r.r);
       },
     };
     function jsfnNumber(v) {
       return v.x === "NaN" ? NaN : v.x === "Infinity" ? Infinity : v.x === "-Infinity" ? -Infinity : -0;
     }
-    function jsfnCall(f, call) {
-      const objs = call.n.map((n) => (n.d ? Object.create(null) : new VmRef(undefined)));
-      const value = (v) => {
+    function isPlain(v) {
+      const p = Object.getPrototypeOf(v);
+      return p === null || p === Object.prototype;
+    }
+    class JsfnSession {
+      constructor() { this.objs = []; }
+      // A value the VM wrote
+      value(v) {
         if (v === null) return undefined;
         if (typeof v !== "object") return v;
-        if ("@" in v) return objs[v["@"]];
-        if ("l" in v) return v.l.map(value);
+        if ("@" in v) return this.objs[v["@"]];
+        if ("l" in v) return v.l.map((e) => this.value(e));
         if ("h" in v) return new VmHandle(v.h);
         return jsfnNumber(v);
-      };
-      call.n.forEach((n, i) => {
-        const o = objs[i];
-        o[NODE] = i;
-        if (n.d) {
-          for (const [k, v] of n.d) o[k] = value(v);
-          o[SEEN] = Object.entries(o);
-        } else {
-          o.value = value(n.r);
-          o[SEEN] = o.value;
-        }
-      });
-      let s = "ok";
-      let r;
-      try {
-        r = f(...call.a.map(value));
-      } catch (e) {
-        if (e instanceof Escape) return { s: "escape", v: e.message, w: [], n: [] };
-        s = "throw";
-        r = e;
       }
-      // The answer: the changed nodes, the new ones, and the value
-      const made = [];
-      const madeIndex = new Map();
-      const enc = (v) => {
-        if (v === undefined || v === null) return null;
-        if (typeof v === "number") return Number.isNaN(v) || !Number.isFinite(v) || Object.is(v, -0) ? { x: String(Object.is(v, -0) ? "-0" : v) } : v;
-        if (typeof v === "string" || typeof v === "boolean") return v;
-        if (Array.isArray(v)) return { l: v.map(enc) };
-        if (v instanceof VmHandle) return { h: v.k };
-        if (typeof v === "object" && NODE in v) return { "@": v[NODE] };
-        if (v instanceof VmRef || (typeof v === "object" && (Object.getPrototypeOf(v) === null || Object.getPrototypeOf(v) === Object.prototype))) {
-          if (!madeIndex.has(v)) {
-            madeIndex.set(v, made.length);
-            made.push(null);
-            made[madeIndex.get(v)] = v instanceof VmRef ? { r: enc(v.value) } : { d: Object.entries(v).map(([k, e]) => [k, enc(e)]) };
-          }
-          return { "+": madeIndex.get(v) };
+      // Fill the object o of a node with its contents n, which the VM now has
+      fill(o, n) {
+        if (o instanceof VmRef) {
+          o.value = this.value(n.r);
+          o[SEEN] = o.value;
+          return;
         }
-        if (v instanceof Error) return `${v.name}: ${v.message}`;
-        throw new TypeError(`a ${typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v} cannot go to the VM`);
-      };
-      try {
+        for (const k of Object.keys(o)) delete o[k];
+        for (const [k, v] of n.d) o[k] = this.value(v);
+        o[SEEN] = Object.entries(o);
+      }
+      // Take in a message of the VM: its new nodes, its changed nodes; then the value v
+      take(msg, v) {
+        const base = this.objs.length;
+        for (const n of msg.n) {
+          const o = n.d ? Object.create(null) : new VmRef(undefined);
+          o[NODE] = this.objs.length;
+          this.objs.push(o);
+        }
+        msg.n.forEach((n, j) => this.fill(this.objs[base + j], n));
+        for (const [i, n] of msg.w) this.fill(this.objs[i], n);
+        return this.value(v);
+      }
+      // A message to the VM: head(enc) gives its first fields; then "w", the objects that changed, and
+      // "n", the objects made (numbered from the size of the table, as the VM will number them)
+      out(head) {
+        const made = [];
+        const enc = (v) => {
+          if (v === undefined || v === null) return null;
+          if (typeof v === "number") return Number.isNaN(v) || !Number.isFinite(v) || Object.is(v, -0) ? { x: Object.is(v, -0) ? "-0" : String(v) } : v;
+          if (typeof v === "string" || typeof v === "boolean") return v;
+          if (Array.isArray(v)) return { l: v.map(enc) };
+          if (v instanceof VmHandle) return { h: v.k };
+          if (typeof v === "object" && NODE in v) return { "@": v[NODE] };
+          if (v instanceof VmRef || (typeof v === "object" && isPlain(v))) {
+            const i = this.objs.length;
+            v[NODE] = i;
+            this.objs.push(v);
+            made.push(null);
+            made[i - base] = v instanceof VmRef ? { r: enc(v.value) } : { d: Object.entries(v).map(([k, e]) => [k, enc(e)]) };
+            v[SEEN] = v instanceof VmRef ? v.value : Object.entries(v);
+            return { "@": i };
+          }
+          if (v instanceof Error) return `${v.name}: ${v.message}`;
+          throw new TypeError(`a ${typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v} cannot go to the VM`);
+        };
+        const base = this.objs.length;
         const w = [];
-        objs.forEach((o, i) => {
+        for (let i = 0; i < base; i++) {
+          const o = this.objs[i];
           if (o instanceof VmRef) {
-            if (o.value !== o[SEEN]) w.push([i, { r: enc(o.value) }]);
-            return;
+            if (!Object.is(o.value, o[SEEN])) {
+              w.push([i, { r: enc(o.value) }]);
+              o[SEEN] = o.value;
+            }
+            continue;
           }
           const now = Object.entries(o);
           const before = o[SEEN];
-          if (now.length !== before.length || now.some(([k, v], j) => k !== before[j][0] || v !== before[j][1]))
+          if (now.length !== before.length || now.some(([k, v], j) => k !== before[j][0] || !Object.is(v, before[j][1]))) {
             w.push([i, { d: now.map(([k, v]) => [k, enc(v)]) }]);
-        });
-        const v = enc(r);
-        return { s, v, w, n: made };
+            o[SEEN] = now;
+          }
+        }
+        return Object.assign(head(enc), { w, n: made });
+      }
+    }
+    // Run step (the start of a call, or the resumption of a generator) in the session ss, and make the
+    // answer: a generator that yields keeps the session under its number g
+    function jsfnRun(ss, step, gen) {
+      const outer = jsfnSession;
+      jsfnSession = ss;
+      try {
+        let s = "ok";
+        let r;
+        try {
+          r = step();
+          if (gen === undefined && r !== null && typeof r === "object" && Object.prototype.toString.call(r) === "[object Generator]") {
+            gen = { it: r, ss };
+            r = gen.it.next();
+          }
+          if (gen !== undefined) {
+            if (!r.done) {
+              const g = ++jsfnGenLast;
+              jsfnGenerators.set(g, gen);
+              return Object.assign(ss.out((enc) => ({ s: "yield", g, v: enc(r.value) })));
+            }
+            r = r.value;
+          }
+        } catch (e) {
+          if (e instanceof Escape) return { s: "escape", v: e.message, w: [], n: [] };
+          s = "throw";
+          r = e;
+        }
+        return ss.out((enc) => ({ s, v: enc(r) }));
       } catch (e) {
         return { s: "error", v: e instanceof Error ? e.message : String(e), w: [], n: [] };
+      } finally {
+        jsfnSession = outer;
       }
+    }
+    function jsfnCall(f, call) {
+      const ss = new JsfnSession();
+      const args = ss.take(call, null) === undefined ? call.a.map((v) => ss.value(v)) : [];
+      return jsfnRun(ss, () => f(...args));
+    }
+    function jsfnResume(g, msg) {
+      const gen = jsfnGenerators.get(g);
+      if (!gen) return { s: "error", v: `no generator ${g}`, w: [], n: [] };
+      jsfnGenerators.delete(g);
+      const v = gen.ss.take(msg, msg.v);
+      return jsfnRun(gen.ss, () => (msg.how === "throw" ? gen.it.throw(v) : gen.it.next(v)), gen);
     }
 
     vm = {

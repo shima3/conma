@@ -75,6 +75,8 @@ extern "C" {
     /// __JS_fn_call__: call the function name of module id with the JSON of the arguments; the length
     /// of the JSON of the answer, which host_fn_result copies (negative: of a message of an error).
     fn host_jsfn_call(id: i32, name_ptr: *const u8, name_len: usize, json_ptr: *const u8, json_len: usize) -> i32;
+    /// __JS_fn_resume__: go on with generator g with the JSON of the resumption; as host_jsfn_call.
+    fn host_jsfn_resume(g: i32, json_ptr: *const u8, json_len: usize) -> i32;
     /// Call the function of the host named name with the arguments (a JSON
     /// array; vm/src/prim/host.rs): -1 if the host has no such function, else
     /// the length of the result ({"r":value} or {"e":"message"}), which
@@ -616,6 +618,16 @@ pub fn jsfn_compile(text: &str) -> Result<i32, String> {
     let n = unsafe { host_jsfn_compile(text.as_ptr(), text.len()) };
     if n > 0 {
         Ok(n)
+    } else {
+        Err(host_result_text((-n) as usize))
+    }
+}
+
+/// __JS_fn_resume__ (prim/jsfn.rs).
+pub fn jsfn_resume(g: i32, json: &str) -> Result<String, String> {
+    let n = unsafe { host_jsfn_resume(g, json.as_ptr(), json.len()) };
+    if n >= 0 {
+        Ok(host_result_text(n as usize))
     } else {
         Err(host_result_text((-n) as usize))
     }

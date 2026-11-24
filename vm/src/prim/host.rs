@@ -513,6 +513,27 @@ pub fn callback_global(gid: usize) -> Option<Value> {
 /// Nothing else runs meanwhile: the scheduler of the VM is set aside, and the collector does not run.
 #[allow(dead_code)]
 pub fn callback(f: Value, args: &[HostValue]) -> Result<HostValue, CallbackError> {
+    let results = run_nested(f, |m| {
+        let mut olist = Vec::with_capacity(args.len());
+        for a in args {
+            match from_host(m, a) {
+                Ok(v) => olist.push(v),
+                Err(_) => return Err(CallbackError::Error("a call back of the VM: an argument cannot be made".to_string())),
+            }
+        }
+        Ok(olist)
+    })?;
+    let result = match results.as_slice() {
+        [v] => to_host(v),
+        vs => vs.iter().map(to_host).collect::<Result<Vec<_>, _>>().map(HostValue::List),
+    };
+    result.map_err(|t| CallbackError::Error(format!("the call back returned a value that cannot go to the host: {}", t)))
+}
+
+/// callback, with the arguments made by args in the Machine of the call back; the values the function
+/// returned (prim/jsfn.rs gives values of the VM as they are).
+#[allow(dead_code)]
+pub fn run_nested(f: Value, args: impl FnOnce(&mut Machine) -> Result<Vec<Value>, CallbackError>) -> Result<Vec<Value>, CallbackError> {
     let Some((gvenv, pdict, cwd, booleans, transpiled_on)) = CALLBACKS.with(|c| {
         c.borrow().last().map(|x| (x.gvenv.clone(), x.pdict.clone(), x.cwd.clone(), x.booleans.clone(), x.transpiled_on))
     }) else {
@@ -523,13 +544,7 @@ pub fn callback(f: Value, args: &[HostValue]) -> Result<HostValue, CallbackError
     m.blocking = false;
     m.transpiled_on = transpiled_on;
     m.set_booleans(booleans.0, booleans.1);
-    let mut olist = Vec::with_capacity(args.len());
-    for a in args {
-        match from_host(&mut m, a) {
-            Ok(v) => olist.push(v),
-            Err(_) => return Err(CallbackError::Error("a call back of the VM: an argument cannot be made".to_string())),
-        }
-    }
+    let olist = args(&mut m)?;
     let vp = m.make_vproc(f, olist, None, gvenv, cwd);
     vp.vp.borrow_mut().pdict = pdict;
     m.add(vp.clone());
@@ -556,11 +571,7 @@ pub fn callback(f: Value, args: &[HostValue]) -> Result<HostValue, CallbackError
             ctx.pdict = inner.pdict.clone();
         }
     });
-    let result = match inner.olist.as_slice() {
-        [v] => to_host(v),
-        vs => vs.iter().map(to_host).collect::<Result<Vec<_>, _>>().map(HostValue::List),
-    };
-    result.map_err(|t| CallbackError::Error(format!("the call back returned a value that cannot go to the host: {}", t)))
+    Ok(inner.olist.clone())
 }
 
 /// __Host_call__ onError name args ,(result)

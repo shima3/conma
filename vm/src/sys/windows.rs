@@ -1081,6 +1081,11 @@ pub fn jsfn_call(_id: i32, _name: &str, _json: &str) -> Result<String, String> {
     Err("JavaScript is not available".to_string())
 }
 
+/// __JS_fn_resume__: go on with generator g of the host (prim/jsfn.rs). The native VM has no JavaScript.
+pub fn jsfn_resume(_g: i32, _json: &str) -> Result<String, String> {
+    Err("JavaScript is not available".to_string())
+}
+
 pub fn wasm_compile(_bytes: &[u8]) -> Result<i32, String> {
     Err("WebAssembly is not available".into())
 }

@@ -1,0 +1,13 @@
+sum: yield (1 0)
+sum: yield (2 1)
+sum: yield (3 2)
+sum: ok 30
+watch: yield (4 "first")
+d at the yield: {inner {k "kept"} a 1}
+watch: ok (5 2 "reply" true "changed")
+catcher: yield (5 "wait")
+catcher: ok "caught boom"
+made at the yield: {n 1}
+made: ok 7
+__JS_fn_resume__: no generator 6 waits
+exit: 0
