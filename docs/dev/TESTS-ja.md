@@ -98,7 +98,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench、Full ConJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、4 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
 
-### m4/conjs-host-plan
+### m4/conjs-host-plan（shima3/conma#75）
 
 * 種類：なし（計画と、測るための台本だけ）。
 * docs/dev/CONJS-HOST-PLAN.md（ConJS の関数を、wasm 版の VM のとき、ホストの JavaScript で動かす計画）と、その段階 H0 で測った台本 conjs/bench/hostjs（nbody_host.js、hof_host.js、crossing.con.js）を足した。suite は、どれもこの台本を読まない。
@@ -107,7 +107,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：ほかの suite（ランタイムも VM も変えていない）。
 * 測ったもの：計画の 11 節。
 
-### m4/conjs-host-h1
+### m4/conjs-host-h1（shima3/conma#75）
 
 * 種類：機能（wasm 版の VM で、ホストの関数から VM の関数を呼び返す）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H1。vm/src/prim/host.rs に入れ子の実行（`callback`）を、vm/src/sched.rs に `nested` と `set_booleans` を、vm/src/gc.rs に入れ子の実行の間は集めない印を、vm/wasm/src/lib.rs に `conma_callback` を、vm/wasm/conma.js にホストの関数の `this.callVm` を足した。ネイティブの VM の動きは変わらない（`__Host_call__` の間に PDict を預けて戻すだけ）。
@@ -117,7 +117,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM と transpiled VM の、fast19 のほかの suite。Windows（I7）。
 * 測ったもの：呼び返し 1 回の時間（計画の 12 節）。
 
-### m4/conjs-host-h2
+### m4/conjs-host-h2（shima3/conma#75）
 
 * 種類：機能（ホストの JavaScript の関数を、VM の値を写して呼ぶプリミティブ）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H2（H2a と H2b）。プリミティブ `__JS_fn_compile__`、`__JS_fn_call__`、`__JS_fn_resume__`（プラットフォームの機能 "js"。vm/src/prim/jsfn.rs、Python 版の VM は onError、docs/PRIMITIVES.md）。bin/resolver、include/resolver.se、reference/resolver.se の "js" に 3 つを足し、vm/frontend.module.se を bin/update-frontend で作り直した。wasm 版の VM のホスト（vm/wasm/conma.js）が、値のグラフ（同じもの、輪、ハンドル）を受け取り、変えたものを書き戻す。呼び出しごとのセッションが写したものの表を持ち、変わったものだけを送り合う。ジェネレータの yield と再開（`__JS_fn_resume__`）。呼び返しも、同じ表で値を渡す（conma_jsfn_callback）。
@@ -127,7 +127,7 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * 流していないもの：Python 版の VM の consh/test と conjs/test、transpiled VM の fast19〜21 のほかの suite、Windows（I7。vm/src/sys/windows.rs に足した関数がビルドできるかも）。
 * 測ったもの：写す費用、yield と再開、呼び返し（計画の 13 節と 14 節）。
 
-### m4/conjs-host-h3
+### m4/conjs-host-h3（shima3/conma#75）
 
 * 種類：機能（ConJS の関数を、wasm 版の VM のとき、ホストの JavaScript で動かす）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H3（H3a と H3b）と H4（H4a はクラスのメソッド、H4b は new、instanceof、throw、try、H4c の B1 と B2 は VM に頼む遅い道と呼び返し）。変換器に sjs/include/sjs_host.se（conjs/conjsc.se が include する）を足し、sjs/include/sjs_gen.se が、ConJS のとき、外の変数を読み書きしない関数（値、配列、オブジェクト、アロー関数、console.log）を JavaScript にして、Conjs_hostfn で包む。ランタイムは conjs/include/conjs_host.se（conjs_rt.se が include する）。数の関数でもある関数は、wasm 版、ホストの版、ConMa 版の順に試す。alpha（#70〜#74 と M1 の 7 回目の Full Test）を取り込んだ。
