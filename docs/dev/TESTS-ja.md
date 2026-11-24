@@ -116,5 +116,6 @@ CONMA_VM=wasm conjs/test/run_all.sh
 * conjs/bench に、ConJS のベンチマーク 7 つ（startup、strings、dict、hof、json、exceptions、tasks。tasks には Node.js 版の tasks.node.js）と、Node.js、Rust 版の VM、wasm 版の VM で測る run.sh を足した。前からある nbody_class も run.sh で測る。結果は conjs/bench/README-ja.md。docs/dev/CONTRIBUTING.md の Benchmarks に Full ConJS Bench（conjs/bench）を足し、Full Bench を 4 つにした。
 * 作り直すもの：なし。
 * M4 が流したもの：8 つの run.sh（a102031。どれも Node.js と同じ出力）、`conjs/test/run_all.sh`、doc-pairs.py。
+* S5 が流したもの（PR のレビュー、abef32e）：Windows（Git Bash）で、小さくした大きさの 8 つの run.sh（どれも Node.js と同じ出力）。S5 の指摘で、Windows では `time` が Windows のプログラムの user と sys を数えないので、run.sh は実時間で測り、そう出すようにした。
 * 流していないもの：ほかの suite（ConJS のランタイムも VM も変えていない）。
 * 測ったもの：Full ConJS Bench（a102031、M4。conjs/bench/README-ja.md）。

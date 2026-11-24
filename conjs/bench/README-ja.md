@@ -9,6 +9,7 @@ conjs/bench/run.sh 名前 [N [M]]
 ```
 
 * 同じプログラムを、Node.js と、`conjs/conjs`（Rust 版の VM と、wasm 版の VM。`CONMA_VM=wasm`）で動かし、時間（user + sys、3 回の最良）を出す。wasm 版の VM は vm/wasm/build.sh で作っておく。
+* Windows（Git Bash）では、`time` が Windows のプログラム（node.exe、conma.exe）の user と sys を数えないので、実時間で測り、出力の 2 行目にそう出す（2026-11-24。S5 のレビュー、shima3/conma#71）。実時間には、bin/lang の中で動く MSYS のプログラムの時間（起動ごとに約 1 秒）も入るので、Unix で測った表とは比べられない。表に足すときは、実時間であることと機械を書く。
 * プログラムの `N_ARG` を大きさに置き換える。Node.js は N、VM の 2 つ（表の `*`）は M で測る（Node.js が約 1 秒、遅い方が 1 分を超えないように。CONTRIBUTING の Benchmarks の 1）。N と M を書かなければ、run.sh の中の名前ごとの既定。
 * Node.js では、`名前.node.js` があればそれを、なければ `名前.con.js` そのものを動かす（`spawn` と `join` を使う tasks だけ、`async` 関数と `await` で書いた tasks.node.js がある）。大きさ M で、VM の出力が Node.js と同じことも確かめる。
 * ConJS の時間は、`conjs/conjs` の全体（プログラムの変換、ランタイムのモジュールとの link、実行）。変換器とランタイムのモジュールは、測る前に作っておく（`conjs/conjs --prepare`）。起動の時間は startup で分かる（Rust 版で約 0.06 秒）。

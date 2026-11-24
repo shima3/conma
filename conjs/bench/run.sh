@@ -2,7 +2,7 @@
 # conjs/bench/run.sh NAME [N [M]]: measure the benchmark NAME.con.js of ConJS (2026-11-24; conjs/bench/README-ja.md).
 # It runs the same program in Node.js (NAME.node.js when it is there, as for tasks, which uses spawn and join; otherwise
 # NAME.con.js itself, which is JavaScript too), and with conjs/conjs on the Rust VM and on the wasm VM (CONMA_VM=wasm;
-# Node.js), and prints the time of each: user + sys seconds, the least of 3 runs. conjs/conjs translates the program and
+# Node.js), and prints the time of each: user + sys seconds (real time on Windows), the least of 3 runs. conjs/conjs translates the program and
 # joins it to the runtime each time, so the times of ConJS include that (the translator and the runtime are made once
 # before, as conjs/conjs --prepare does). N_ARG in the program is replaced by the size: N for Node.js, and M (N when it is
 # not given) for the slow columns, the two VMs, marked * (docs/dev/CONTRIBUTING.md, Benchmarks: the fastest version about
@@ -32,10 +32,14 @@ trap 'rm -rf "$tmp"' EXIT
 sed "s/N_ARG/$n/" "$node" > "$tmp/fast.js"
 sed "s/N_ARG/$m/" "$node" > "$tmp/slow.js"
 sed "s/N_ARG/$m/" "$bench/$name.con.js" > "$tmp/slow.con.js"
-best() {  # command...: the least of 3 runs, user + sys seconds
+# On Windows (Git Bash, MSYS), time does not count the user and sys time of the native programs of Windows (node.exe,
+# conma.exe): there the real time is measured instead, and the output says so (S5's review of shima3/conma#71)
+clock='%U %S' what='user + sys'
+case "$(uname -o 2> /dev/null)" in Msys|Cygwin) clock='%R 0' what='real time (Windows: user + sys misses native programs)' ;; esac
+best() {  # command...: the least of 3 runs, in seconds of $what
   local b= t i
   for i in 1 2 3; do
-    t=$( { TIMEFORMAT='%U %S'; time "$@" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
+    t=$( { TIMEFORMAT="$clock"; time "$@" > /dev/null 2>&1; } 2>&1 | awk '{print $1 + $2}')
     if [ -z "$b" ] || awk "BEGIN{exit !($t < $b)}"; then b=$t; fi
   done
   echo "$b"
@@ -49,6 +53,7 @@ for vm in rust wasm; do
   cmp -s "$tmp/node.out" "$tmp/$vm.out" || { echo "ConJS on the $vm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/$vm.out"; }
 done
 if [ "$m" = "$n" ]; then echo "== $name $n"; else echo "== $name $n (the slow columns, marked *: $m)"; fi
+echo "time: $what, the least of 3 runs"
 printf '%-16s %s s\n' "Node.js" "$(best node "$tmp/fast.js")"
 printf '%-16s %s s\n' "Rust VM *" "$(best "$conjs" "$tmp/slow.con.js")"
 printf '%-16s %s s\n' "wasm VM *" "$(best env CONMA_VM=wasm "$conjs" "$tmp/slow.con.js")"
