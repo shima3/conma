@@ -123,7 +123,7 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * M1 が流したもの：conjs/test の step14 と step15 を Rust 版、wasm 版、Python 版の VM で。端末版をパイプの入力で Rust 版と wasm 版の VM で動かし、前の版と同じふるまい（Rust 版は始める前に入力の終わり、wasm 版は Escape で `stars: bye`）。stars.html をブラウザで遊び、キーとクリックで動くこと、星を拾うこと、Escape で終わること。compare.html の表示。
 * 流していないもの：ほかの suite（見本しか変えていない）。Windows（I7）。
 
-### m4/host-forof
+### m4/host-forof（shima3/conma#84）
 
 * 種類：直し（ConJS の一番外の for...of が、VM の値の次の値を待つと止まっていた）。
 * docs/dev/CONJS-HOST-PLAN.md の 31 節。M1 が shima3/conma#83 で見つけた（wordcount.con.js を標準入力から読むと止まる）。段階 H6c から、一番外の文が VM へ渡れるようになり、一番外の for...of が、VM のジェネレータの次の値を入れ子の呼び返しで求めて、それが入力を待つと止まっていた。ジェネレータの本体（待つホストの関数と一番外の文）の for...of を、頼み（yield）で 1 つずつ進める形にした（sjs/include/sjs_host.se）。
