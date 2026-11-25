@@ -38,7 +38,7 @@ When the whole message of the user is 「PR確認」, "check your PRs" or "PRs":
 
 1. Only on the words of the user (6, Merging).
 2. Merge into `alpha` (`main`, then `alpha`, for documents only) and push; delete the branch on GitHub and in your clone (2, 5, 6 Merging).
-3. When you merged the pull request of another author, say so in a comment and leave their label; when another machine merged yours, check it, delete your branch and remove the label (6, Merging).
+3. When you merged your own pull request, remove its label once it shows as merged (6, Whose turn, Merging). When you merged the pull request of another author, say so in a comment and leave their label; when another machine merged yours, check it, delete your branch and remove the label (6, Merging).
 
 ## A change of documents only
 
