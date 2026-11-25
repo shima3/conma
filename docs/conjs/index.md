@@ -19,6 +19,7 @@ The documents of ConJS for its users are listed only here; a new one is added he
 These run ConJS programs on the wasm VM (conjs/web of the repository).
 - [Stars](web/stars.html) (星ひろい): a game that waits for input (conjs/web/stars.con.js). The arrow keys or a click move you; pick up every star and keep away from the ghosts; Escape ends it. The same game in plain JavaScript: [event-driven](web/stars-events.html), [with async/await](web/stars-async.html); [compare the code](web/compare.html) of the three
 - [Canvas](web/canvas.html): a bouncing ball (conjs/web/canvas_demo.con.js)
+- [Bench](web/bench.html): the programs of conjs/bench with and without host functions (the JavaScript that the translator writes for some functions), and the time of one round of each. Add `?hostreport` to the address of a page to see in the console of the browser which functions ran on the host
 
 ## For developers of ConJS
 

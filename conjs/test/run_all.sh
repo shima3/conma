@@ -24,4 +24,9 @@ if [ "${CONMA_VM:-wasm}" = wasm ]; then
   do
     CONJS_HOST_REPORT=1 CONJS_HOST_STRICT=1 ../conjs "$c" 2>&1 > /dev/null < /dev/null | grep '^conjs: host' | LC_ALL=C sort | diff "${c%.con.js}.host.txt" -
   done
+  # eval を止めたページ（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：Node.js が new Function を止めると、ホストの関数を
+  # 作れず、ConMa 版だけで動くので、ログは同じになる。run_case.sh（bin/lang-test）で、case*.feed.py の入力も渡して流す。
+  # CONJS_HOST_STRICT は付けない（付けると、作れなかったことを出し、ログと違う）
+  echo "== step20 (no eval)"
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" bash run_case.sh step20
 fi

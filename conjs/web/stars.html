@@ -15,7 +15,7 @@
 <h1>星ひろい</h1>
 <p>入力を待つ対話の見本（docs/dev/PLATFORM-PLAN-ja.md の 4.6 節、段階 P5c）。stars.con.js を wasm 版の ConMa の VM で動かす。
 画面の順はふつうのループで、おばけは 1 匹ごとに spawn した処理で書き、キーは nextEvent() で await なしに待つ。
-<a href="canvas.html">canvas の見本</a>。
+<a href="canvas.html">canvas の見本</a>。<a href="bench.html">ホストの関数を測る</a>。
 同じゲームを JavaScript で書いたもの：<a href="stars-events.html">イベント駆動</a>、<a href="stars-async.html">async/await</a>。
 <a href="compare.html">コードを比べる</a>。</p>
 <canvas id="canvas" width="480" height="360" tabindex="0"></canvas>
@@ -24,6 +24,7 @@
 <script src="conma.js"></script>
 <script src="canvas.js"></script>
 <script src="input.js"></script>
+<script src="hostreport.js"></script>
 <script>
 "use strict";
 // The page runs the VM in its own thread: conma.js, canvas.js and input.js (vm/wasm/host), as build.sh puts them here
@@ -44,7 +45,9 @@
     const draw = ConmaCanvas(canvas);
     const input = ConmaInput(canvas);
     let wake = null;
-    const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), write, {
+    // ?hostreport：ホストの関数の報告を、ブラウザのコンソールに出す（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）
+    const report = ConjsHostReport();
+    const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), report.wrap(write), {
       hostFunctions: Object.assign({}, draw.hostFunctions, input.hostFunctions),
       hostFeatures: draw.hostFeatures.concat(input.hostFeatures),
       // A call of the host (canvas.frame, input.next, time.sleep) has finished: run the VM again
@@ -58,6 +61,7 @@
     });
     canvas.focus();
     // main は引数を受け取るので、-m で __start__ から呼ぶ
+    report.setup(vm);
     let code = vm.start(moduleText, ["-m", file]);
     if (code !== 0) throw new Error("the VM did not start (" + code + ")");
     status.textContent = "動いている（canvas をクリックすると、キーを受け取る）";

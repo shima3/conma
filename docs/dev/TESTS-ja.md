@@ -36,6 +36,7 @@ sjs/test/run_all.sh
 conjs/test/run_all.sh                                  # ConJS（wasm 版の VM だけ。段階 P10、2026-11-25 から）
 ```
 
+* ConJS のブラウザのページは、CI にブラウザがないので、手で確かめる（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：`conjs/web/build.sh` の後、`python3 -m http.server -d conjs/web -b 127.0.0.1 8768` で出し、bench.html の「すべて測る」で、出力の列がすべて「同じ」になること、stars.html?hostreport で遊ぶと、ブラウザのコンソールに `conjs: host: ` の行が出ること。conjs/test/run_all.sh は、step20 を、Node.js で new Function を止めて（`--disallow-code-generation-from-strings`）もう一度流す（== step20 (no eval)。eval を止めたページの代わり）。
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
 * consh/test は、`CONSH_IMPL` がなければ ConMa 版の最適化版を試す（consh/test/common.sh）。`CONMA_VM` がなければ、ConSh は Rust 版の VM を使う（作っていなければエラー。Python 版の VM で流すときは `CONMA_VM=python`）。
 
@@ -94,6 +95,15 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 ## 申し送り
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench、Full ConJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、4 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
+
+### m1/h7
+
+* 種類：機能（ConJS のページに、bench.html と `?hostreport` を足した）。
+* docs/dev/CONJS-HOST-PLAN.md の段階 H7（32 節の設計、33 節の結果）：conjs/web/hostreport.js（`?hostreport`。stars.html、canvas.html、bench.html）、conjs/web/bench.html（conjs/bench の 7 つを、ホストの関数ありとなしで測る）、conjs/web/build.sh が bench_NAME_conjs.module.se も作る（.gitignore に足した）。docs/conjs/index.md からも指した（main に入ってから、サイトに出る）。
+* conjs/test/run_all.sh：step20 を、`NODE_OPTIONS=--disallow-code-generation-from-strings` でもう一度流す（`== step20 (no eval)`。約 7 秒）。全部流すときは、この行も違いがないこと。
+* 作り直すもの：`conjs/web/build.sh`（ページを見るとき）。
+* M1 が流したもの（Apple M1）：conjs/test（wasm 版。新しい行を含む）：違いなし。Claude のアプリの組み込みのブラウザ（Chromium）で、bench.html の「すべて測る」（7 つとも出力が同じ。時間は 33 節）、stars.html?hostreport で遊んで、コンソールに `conjs: host: same` などが出ること、canvas.html?hostreport と、`?hostreport` なしの stars.html が動くこと。
+* 流していないもの：Safari、Firefox、Windows のページ（手で確かめる。上の「全部流す」の項）。
 
 ### m1/wasm-tty-exit（shima3/conma#83）
 
