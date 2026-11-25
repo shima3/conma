@@ -2022,7 +2022,9 @@
     "const $fn = (f, p) => typeof f === 'function' ? f : f instanceof $Opaque ? (...a) => $vm('call', p, f, a) : $no();"
     ;; for...of：配列は写し、文字列はそのまま、VM の値（ジェネレータ、ファイルの readLines など）は、VM の手順（Sjs_iter_open、more、
     ;; take、close。ConMa 版の for...of と同じ）を 1 つずつ VM に頼む。途中で抜ければ、JavaScript が return を呼ぶ（close）
-    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : a instanceof $Opaque || $committed ? $vmIter(a, p) : $no();"
+    ;; ふつうのホストの関数（ジェネレータでない。ジェネレータの本体は $iterG）で VM の値を回すのは、呼び返しの後だけ：前なら
+    ;; ConMa 版に替える（次の値が待つことがあり、入れ子の呼び返しは待てないので。M1 の shima3/conma#84 のレビュー）
+    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : $committed ? $vmIter(a, p) : $no();"
     "const $vmIter = (a, p) => { const it = $vm('iter_open', p, a); return { [Symbol.iterator]() { return this; }, next() { return $vm('iter_more', p, it) ? { value: $vm('iter_take', p, it), done: false } : { value: undefined, done: true }; }, return() { $vm('iter_close', p, it); return { value: undefined, done: true }; } }; };"
     "const $arr = (a) => Array.isArray(a) ? a : $no();"
     "const $keys = (o, p) => $isObj(o) ? Object.keys(o) : $slow(p, 'keys', o);"

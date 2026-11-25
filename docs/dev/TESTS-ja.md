@@ -128,6 +128,6 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * 種類：直し（ConJS の一番外の for...of が、VM の値の次の値を待つと止まっていた）。
 * docs/dev/CONJS-HOST-PLAN.md の 31 節。M1 が shima3/conma#83 で見つけた（wordcount.con.js を標準入力から読むと止まる）。段階 H6c から、一番外の文が VM へ渡れるようになり、一番外の for...of が、VM のジェネレータの次の値を入れ子の呼び返しで求めて、それが入力を待つと止まっていた。ジェネレータの本体（待つホストの関数と一番外の文）の for...of を、頼み（yield）で 1 つずつ進める形にした（sjs/include/sjs_host.se）。
 * 作り直すもの：なし（変換器のモジュールは、bin/cache-dir の所で作り直される）。
-* 新しいテスト：conjs/test/step20/case14（case14.feed.py が、標準入力をパイプで少しずつ渡す）。
+* 新しいテスト：conjs/test/step20/case14（case14.feed.py が、標準入力をパイプで少しずつ渡す）。M1 の #84 のレビューで、ふつうのホストの関数の for...of も、呼び返しの前なら VM の値を回さずに ConMa 版に替えるようにした（標準入力の行を関数に渡して回すと止まっていた。B2 から）：case15（case15.feed.py）。
 * M4 が流したもの：conjs/test（`CONJS_HOST_STRICT=1`）、conjs/test/compare.sh、sjs/test、conjs/bench の 8 つ（小さな大きさで Node.js と同じ出力）、wordcount.con.js をパイプの入力で、doc-pairs.py。
 * 流していないもの：test/ と consh/test（ConJS の変換器しか変えていない）、Windows。
