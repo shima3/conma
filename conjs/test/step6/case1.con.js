@@ -1,1 +1,1 @@
-async function f() { return 1; }
+const f = async function () { return 1; };

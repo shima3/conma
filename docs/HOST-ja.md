@@ -99,6 +99,19 @@ if (host.available("hash")) console.log(host.call("hash.sha256", "abc")); // ba7
 
 **async/await のコードを任せる**（段階 P10、2026-11-25 から）：ConJS は `async`、`await`、`Promise` を受け付けない（待つ呼び出しは、その場で待つ。conjs/README-ja.md）。async/await を使う JavaScript のコード（Node.js の `fs.promises` や、Promise を返す npm のライブラリ）は、ホストの関数にする。async 関数は Promise を返すので、そのまま待つ関数になり、ConJS から `host.wait` で呼べる。待つのは呼んだ処理だけで、ほかの処理は動き続ける。ConJS を動かすのは wasm 版の VM だけなので（docs/dev/PLATFORM-PLAN-ja.md の 4.13 節）、Rust で書き直すことはない。
 
+2026-11-26 からは、同じことを、ConJS のファイルの中にも書ける（docs/dev/CONJS-HOST-PLAN.md の 34 節。conjs/README-ja.md の「言語」）。ファイルの一番外の `async function` は JavaScript で、変換器がそれをホストの関数にし、ConJS のコードは `host.wait` を書かずに、ふつうの呼び出しとして呼ぶ。`CONMA_HOST` のファイルは、いくつものプログラムで使うホストのコードと、JavaScript でない（Rust の）ホストの関数のために残る。
+
+```js
+// files.con.js：conjs/conjs files.con.js
+async function countLines(name) {                    // ホストの JavaScript で動く
+  const fs = require("node:fs/promises");          // require は、このファイルの場所から探す
+  const text = await fs.readFile(name, "utf8");
+  return text.split("\n").filter((line) => line !== "").length;
+}
+const t = spawn(() => countLines("files.con.js"));  // 待つ呼び出し。ほかの処理は動き続ける
+console.log(join(t));
+```
+
 ```js
 // files.host.js
 const fs = require("node:fs/promises");

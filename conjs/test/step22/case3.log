@@ -1,0 +1,2 @@
+conjs: the async function f runs on the host and cannot use spawn of the program
+exit: 2
