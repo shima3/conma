@@ -1060,8 +1060,14 @@
       Kit_parse_get s "right" ,(right)
       Hx_expr cx right ,(rc)
       Kit_parse_get s "body" ,(body)
+      ;; 一番外の文の for...of（関数式の中でない）は、文をジェネレータにして、VM の値を頼みで 1 つずつ進める（入力の行のように、
+      ;; 次の値を待つことがあるので。入れ子の呼び返しは待てない。M1 が shima3/conma#83 で見つけた）
+      Hx_stmt_forof_waits cx ,()
       Hx_loop_body cx body ,(bc)
       Hx_pattern_names target ,(isPat pnames)
+      ;; ジェネレータの本体では、頼みで進める形（$iterG、$moreG、$takeG、$closeG）
+      Hx_genmode cx ,(gm)
+      __if__ gm (,() Hx_forof_gen cx s kind target isPat pnames rc bc ,(c) return c) ,()
       __if__ isPat
         (,()
           Hx_pattern_code pnames ,(pc)
@@ -1390,6 +1396,31 @@
   Kit_code_cat4 "(Array.isArray(" t " = " oc ,(c)
   Kit_code_cat5 c ") ? " t ".length : $len(" t ,(c)
   Kit_code_cat4 c ", " p "))")
+
+;; 一番外の文の中（関数式の中でない）の for...of なら、文が待つ印を付ける（Hx_wait。次に書くとき、ジェネレータになる）
+(define Hx_stmt_forof_waits ,(cx)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ cx "outer" (,(k) return) ,(outer)
+  __Dict_lookup_or__ cx "closure" (,(k) __NULL__ __FALSE__) ,(inClosure)
+  __if__ inClosure return ,()
+  Hx_wait cx)
+
+;; ジェネレータの中の for...of：{ $t = yield* $iterG(右辺, 位置); try { while (yield* $moreG($t)) { kind 名前 = yield* $takeG($t);
+;; 本体 } } finally { yield* $closeG($t); } }。ホストの配列と文字列は、ホストで 1 つずつ（頼みなし）、VM の値は、ConMa 版の for...of
+;; と同じ手順（Sjs_iter_open、more、take、close）を頼みで（待ってよい）。途中で抜ければ閉じる
+(define Hx_forof_gen ,(cx s kind target isPat pnames rc bc)
+  __Cont_get__ ,(return)
+  Hx_temp cx ,(ok t)
+  __unless__ ok (,() Hx_fail cx) ,()
+  Hx_pos cx s ,(p)
+  __if_then_else__ isPat
+    (,() Hx_pattern_code pnames ,(pc) Kit_code_cat4 pc " = $arr(yield* $takeG(" t ")); ")
+    (,() Kit_parse_get target "name" ,(nm) Kit_code_cat4 "v_" nm " = yield* $takeG(" t ,(x) __String_concat__ x "); ") ,(bind)
+  Kit_code_cat5 "{" t " = yield* $iterG(" rc ", " ,(c)
+  Kit_code_cat4 c p "); try { while (yield* $moreG(" t ,(c)
+  Kit_code_cat5 c ")) { " kind " " bind ,(c)
+  Kit_code_cat4 c bc " } } finally { yield* $closeG(" t ,(c)
+  __String_concat__ c "); } }")
 
 ;; 名前かリテラル（2 度読んでよい式）か
 (define Hx_simple ,(e)
@@ -2161,6 +2192,10 @@
     ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる
     "const $Yr = (r) => { $refresh(); $gin(r); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
     ;; ジェネレータの中の呼び出し：ホストの関数はその場で、VM の関数とメソッドは VProc で（待ってよい）
+    "const $iterG = function* (a, p) { if (Array.isArray(a)) return { h: a.slice(), i: 0 }; if (typeof a === 'string') return { h: [...a], i: 0 }; if (a instanceof $Opaque || $committed) return { v: $Yr(yield $Yq(p, 'iter_open', a)), p, done: false }; return $no(); };"
+    "const $moreG = function* (it) { if (it.h) return it.i < it.h.length; if (it.done) return false; const m = $Yr(yield $Yq(it.p, 'iter_more', it.v)); if (!m) it.done = true; return m; };"
+    "const $takeG = function* (it) { if (it.h) return it.h[it.i++]; return $Yr(yield $Yq(it.p, 'iter_take', it.v)); };"
+    "const $closeG = function* (it) { if (it.h || it.done) return; it.done = true; $Yr(yield $Yq(it.p, 'iter_close', it.v)); };"
     "const $callG = function* (f, p, ...a) { if (typeof f === 'function') return f(...a); return $Yr(yield $Yq(p, 'call', f, a)); };"
     "const $mcallG = function* (o, k, p, ...a) { if ($isObj(o)) return $mcall(o, k, p, ...a); return $Yr(yield $Yq(p, 'callm', o, k, a)); };"
     ,(h)

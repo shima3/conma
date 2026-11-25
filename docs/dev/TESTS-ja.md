@@ -114,3 +114,12 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * 作り直すもの：conjs/web/build.sh の作るページの stars_conjs.module.se。
 * M1 が流したもの：conjs/test の step14 と step15 を Rust 版、wasm 版、Python 版の VM で。端末版をパイプの入力で Rust 版と wasm 版の VM で動かし、前の版と同じふるまい（Rust 版は始める前に入力の終わり、wasm 版は Escape で `stars: bye`）。stars.html をブラウザで遊び、キーとクリックで動くこと、星を拾うこと、Escape で終わること。compare.html の表示。
 * 流していないもの：ほかの suite（見本しか変えていない）。Windows（I7）。
+
+### m4/host-forof
+
+* 種類：直し（ConJS の一番外の for...of が、VM の値の次の値を待つと止まっていた）。
+* docs/dev/CONJS-HOST-PLAN.md の 31 節。M1 が shima3/conma#83 で見つけた（wordcount.con.js を標準入力から読むと止まる）。段階 H6c から、一番外の文が VM へ渡れるようになり、一番外の for...of が、VM のジェネレータの次の値を入れ子の呼び返しで求めて、それが入力を待つと止まっていた。ジェネレータの本体（待つホストの関数と一番外の文）の for...of を、頼み（yield）で 1 つずつ進める形にした（sjs/include/sjs_host.se）。
+* 作り直すもの：なし（変換器のモジュールは、bin/cache-dir の所で作り直される）。
+* 新しいテスト：conjs/test/step20/case14（case14.feed.py が、標準入力をパイプで少しずつ渡す）。
+* M4 が流したもの：conjs/test（`CONJS_HOST_STRICT=1`）、conjs/test/compare.sh、sjs/test、conjs/bench の 8 つ（小さな大きさで Node.js と同じ出力）、wordcount.con.js をパイプの入力で、doc-pairs.py。
+* 流していないもの：test/ と consh/test（ConJS の変換器しか変えていない）、Windows。

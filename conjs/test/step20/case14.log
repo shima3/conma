@@ -1,0 +1,7 @@
+lines [ 'ALPHA', 'BETA', 'GAMMA', 'DELTA', 'EPSILON', 'ZETA' ]
+nums closed
+got [ 1, 2 ]
+nums closed
+total 6
+sum 14
+exit: 0
