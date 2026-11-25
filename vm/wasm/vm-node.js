@@ -39,6 +39,33 @@ function retry(f) {
   }
 }
 
+// The names that the async functions of a ConJS file get from the host (section 34 of
+// docs/dev/CONJS-HOST-PLAN.md; rt.asyncScope of conma.js): require from that file (file is its absolute
+// path), and a console whose log, info and debug write to the standard output, and error, warn and trace
+// to the standard error, with writeAll as the VM writes, so that their lines keep their order with
+// what the program prints (the console of Node.js writes to a pipe asynchronously on macOS and Windows).
+// The arguments are formatted as console.log formats them (util.format): the body is JavaScript.
+let asyncConsole = null;
+function asyncScope(file) {
+  if (!asyncConsole) {
+    const util = require("util");
+    const writer = (fd) => (...a) => writeAll(fd, Buffer.from(util.format(...a) + "\n"));
+    asyncConsole = Object.assign(Object.create(console), {
+      log: writer(1),
+      info: writer(1),
+      debug: writer(1),
+      error: writer(2),
+      warn: writer(2),
+      trace: (...a) => {
+        const e = new Error(util.format(...a));
+        e.name = "Trace";
+        writeAll(2, Buffer.from(e.stack + "\n"));
+      },
+    });
+  }
+  return { require: require("module").createRequire(file), console: asyncConsole };
+}
+
 function writeAll(fd, bytes) {
   let off = 0;
   while (off < bytes.length) {
@@ -601,6 +628,7 @@ async function main() {
     hostFs,
     hostProc: makeHostProc(() => vm),
     buildModule: (source, cwd, core) => buildModule(wasm, source, cwd, core),
+    asyncScope,
     // As the native VM: SIGINT ends this process until the VM traps it.
     trapInterrupt: (v) => {
       if (process.listenerCount("SIGINT") > 0) return;

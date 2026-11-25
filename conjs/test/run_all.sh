@@ -30,4 +30,14 @@ if [ "${CONMA_VM:-wasm}" = wasm ]; then
   # 効かない。CONJS_HOST_STRICT=1 で run_all.sh を流しても通るように。M4 のレビュー、shima3/conma#87）
   echo "== step20 (no eval)"
   env -u CONJS_HOST_STRICT NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" bash run_case.sh step20
+  # ConJS の async 関数（docs/dev/CONJS-HOST-PLAN.md の 34 節）：本体の console.log は、出力がパイプでも、プログラムの出力と順が
+  # そろう（vm-node.js の asyncScope。Node.js の console は、macOS と Windows ではパイプに非同期に書く。M2 のレビュー、
+  # shima3/conma#90）。bin/lang-test は出力をファイルに書くので、ここでパイプにつなぐ。new Function を止めると、ConMa 版が
+  # ないので、始めで止まる
+  echo "== step22 (pipe)"
+  (cd step22 && ../../conjs case7.con.js 2> /dev/null | (sleep 1; cat) | diff <(grep -v -e '^exit:' -e '^host error:' case7.log) -)
+  echo "== step22 (no eval)"
+  (cd step22 && NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" ../../conjs case7.con.js 2>&1; echo "exit: $?") \
+    | sed 's|of .*/step22/|of step22/|' \
+    | diff - <(printf '%s\n' 'conjs: the async functions of step22/case7.con.js need JavaScript on the host: __JS_fn_compile__: Code generation from strings disallowed for this context' 'exit: 1')
 fi

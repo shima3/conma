@@ -18,7 +18,16 @@
 (include "lang/parse.se")
 
 (define Sjs_parse ,(text)
+  Sjs_parse_file text "")
+
+;; file は、ファイルの名前（ConJS の async 関数が、ホストで require する所と、ホストの関数の名前に使う。なければ ""）。
+;; ConJS では、一番外の async function の宣言を、字句の段階で切り出して、host.wait を呼ぶ関数に置き換え、構文木が
+;; できてから、本体をホストの JavaScript にする（docs/dev/CONJS-HOST-PLAN.md の 34 節。conjs/include/conjs_async.se。
+;; conjs/conjsc.se だけが include する）
+(define Sjs_parse_file ,(text file)
   Sjs_lex text ,(toks)
+  Sjs_is_conjs ,(conjs)
+  __if_then_else__ conjs (,() Conjs_async_split toks text file) (,() __NULL__ toks __NULL__) ,(toks regions)
   Sjs_check_tokens toks __NULL__ ,()
   __Ref_new__ toks ,(ref)
   __Dict_new__ ,(p)
@@ -26,6 +35,7 @@
   P_statements p "" __NULL__ ,(body)
   Kit_parse_node "program" ,(n)
   __Dict_put__ n "body" body ,()
+  __is_null__ regions ,(test__) __unless__ test__ (,() Conjs_async_finish n regions) ,()
   __NULL__ n)
 
 ;; SJS式だけのテキスト（ConSh の (( )) と $(( ))）を読む
@@ -96,9 +106,15 @@
   __Cont_get__ ,(return)
   ;; ConJS（言語の印 "sjs_lang" が "conjs"。conjs/conjsc.se）は、async、await、Promise も受け付けない
   ;; （docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）
+  ;; ConJS の async 関数の本体（JavaScript。conjs/include/conjs_async.se）は、名前を確かめない
+  __PDict_lookup_or__ "sjs_js_body" (,(k) __NULL__ __FALSE__) ,(jsBody)
+  __if__ jsBody return ,()
   Sjs_is_conjs ,(conjs)
   __if__ conjs
     (,()
+      ;; await は、ConJS では要らない（async 関数の呼び出しは、そのまま待つ。34 節。M2 のレビュー、shima3/conma#90）
+      __String_equal__ name "await" ,(test__)
+      __if__ test__ (,() Sjs_uncaught "not in ConJS: await (a call of an async function waits without it)") ,()
       Kit_lex_in_words name "async await Promise" ,(test__)
       __if__ test__ (,() __String_concat__ "not in ConJS: " name ,(msg) Sjs_not_in msg) ,()
       ;; ConJS のクラス（4.5 節。段階 P5b）の名前と、import と export（4.12 節。段階 P9。P_import、P_export）は通す

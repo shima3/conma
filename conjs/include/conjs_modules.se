@@ -106,7 +106,7 @@
   __Dict_lookup_or__ mods real (,(k) __NULL__ __NULL__) ,(known)
   __is_null__ known ,(test__) __unless__ test__ (,() return known) ,()
   Gen_read_file real (,(msg) Gen_error missing) ,(text)
-  Sjs_parse text ,(program)
+  Sjs_parse_file text real ,(program)
   Gen_mod_visit m program target real ,()
   __Dict_lookup_or__ m "count" __print_exit_error__ ,(count)
   __Ref_get__ count ,(n)

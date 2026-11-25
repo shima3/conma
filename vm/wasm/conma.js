@@ -63,6 +63,10 @@
 // Every host also has the functions of defaultHostFunctions below (time.now, time.sleep, and
 // http.fetch where the host has fetch; stage P5 of the plan, 4.4), unless hostFunctions gives
 // its own of the same name, and their features ("time", "fetch").
+// asyncScope(file), if given, returns {require, console} for the async functions of the ConJS file at
+// the absolute path file (rt.asyncScope; section 34 of docs/dev/CONJS-HOST-PLAN.md): vm-node.js gives a
+// require from that file and a console that writes in order with the output of the program. Without
+// it, they get the console of the page and no require.
 // jsDone(vm), if given, is called when the result of a call of JavaScript
 // (__JS_call__, the builtin js of ConSh) has been given to the VM: the host
 // should run the VM again if it was IDLE. While vm.jsPending() > 0, the host
@@ -1845,7 +1849,7 @@ var ConMaVM = (function () {
   }
 
   function create(wasmModule, write, hooks) {
-    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote } = hooks || {};
+    const { inputNeeded, fileNeeded, dirNeeded, jsDone, hostFs, hostProc, trapInterrupt, buildModule, jsRemote, asyncScope } = hooks || {};
     const defaults = defaultHostFunctions();
     const hostFunctions = Object.assign(defaults.f, (hooks && hooks.hostFunctions) || {});
     const hostFeatures = defaults.features.concat((hooks && Array.isArray(hooks.hostFeatures) && hooks.hostFeatures) || []);
@@ -2219,6 +2223,18 @@ var ConMaVM = (function () {
       // A new Dict of the VM, with the entries of the object o
       dict(o) { return Object.assign(Object.create(null), o || {}); },
       ref(value) { return new VmRef(value); },
+      // The async functions of a ConJS file (section 34 of docs/dev/CONJS-HOST-PLAN.md): the names their text
+      // gets from the host for the file at the absolute path file ({require, console}; hooks.asyncScope gives
+      // them on Node.js, else the console of the page and no require), and adding one to the host functions,
+      // where host.wait (__Host_start__) calls it
+      asyncScope(file) {
+        const s = (asyncScope && asyncScope(file)) || {};
+        return { require: s.require, console: s.console || globalThis.console };
+      },
+      defineHost(name, f) {
+        if (typeof f !== "function") throw new TypeError(`rt.defineHost: ${name} is not a function`);
+        hostFunctions[name] = f;
+      },
       // Call a value of the VM back (a handle) with values of the host, which keep their aliases with the
       // objects of the call: what the call changed so far goes to the VM first, and what the call back
       // changed comes back. An escape of the call back escapes this call too.

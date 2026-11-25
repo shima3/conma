@@ -408,3 +408,18 @@
   Sjs_get_index G a j ,(v)
   __LList_cons__ v acc ,(acc)
   Conjs_hoststmt_items G a j acc)
+
+;; ConJS の async 関数（docs/dev/CONJS-HOST-PLAN.md の 34 節。変換器は conjs/include/conjs_async.se）：ファイル file の async
+;; 関数の JavaScript のテキスト js を、ホストで作る。テキストは、関数を rt.defineHost でホストの関数に足し（vm/wasm/conma.js）、
+;; 変換器が置いた ConJS の関数が、それを host.wait で呼ぶ。ConMa 版はないので、作れなければ（JavaScript のない VM、new Function を
+;; 止めた所）、プログラムを始めで止める
+(define Conjs_async_define ,(file js)
+  __JS_fn_compile__
+    (,(msg)
+      __String_concat__ "conjs: the async functions of " file ,(m)
+      __String_concat__ m " need JavaScript on the host: " ,(m)
+      __String_concat__ m msg ,(m)
+      __String_concat__ m "\n" ,(m)
+      __print_exit_error__ m)
+    js ,(module)
+  __nop__)
