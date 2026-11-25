@@ -1,2 +1,2 @@
-conjs: not in ConJS: a regular expression
+conjs: not in ConJS yet, in an async function: a regular expression literal (new RegExp(...) can be used)
 exit: 2

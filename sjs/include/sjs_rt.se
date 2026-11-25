@@ -125,6 +125,10 @@
   __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(pos)
   Sjs_is_conjs ,(conjs)
   __if_then_else__ conjs (,() __NULL__ "conjs: ") (,() __NULL__ "sjs: ") ,(prefix)
+  ;; ConJS の async 関数の本体を変換している間（conjs/include/conjs_async.se。docs/dev/CONJS-HOST-PLAN.md の 34 節）は、
+  ;; 変換器がまだ読めないものだと分かるメッセージにする
+  __PDict_lookup_or__ "sjs_js_body" (,(k) __NULL__ __FALSE__) ,(jsBody)
+  __if_then_else__ jsBody (,() Conjs_async_message text) (,() __NULL__ text) ,(text)
   Kit_err_report pos prefix text)
 
 ;; ── 例外 ──

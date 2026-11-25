@@ -46,7 +46,9 @@
   __LList_cons__ tok acc ,(acc)
   Conjs_async_scan rest tok depth acc regions text real)
 
-;; tok が、一番外の文の始めの async function 名前 か（async と function は同じ行。async function* は違う）
+;; tok が、一番外の文の始めの async function 名前 か（async と function は同じ行。async function* は違う）。文の始めは、
+;; 前の字句がないか、; } export の後か、改行の後で、前の字句が式を続ける演算子でないとき（セミコロンを書かない文の後。
+;; JavaScript でも、ASI で 2 つの文になる。M2 のレビューの 1、shima3/conma#92）
 (define Conjs_async_at ,(tok rest prev depth)
   __Cont_get__ ,(return)
   __Number_is_zero__ depth ,(test__) __unless__ test__ (,() return __FALSE__) ,()
@@ -67,7 +69,12 @@
   Kit_parse_tok_is prev "}" ,(b)
   Kit_parse_tok_is prev "export" ,(c)
   __or__ a b ,(ab)
-  __or__ ab c)
+  __or__ ab c ,(test__) __if__ test__ (,() return __TRUE__) ,()
+  Kit_lex_tok_nl tok ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  Kit_lex_tok_kind prev ,(pk)
+  __String_equal__ pk "punct" ,(test__) __unless__ test__ (,() return __TRUE__) ,()
+  Kit_lex_tok_text prev ,(pt)
+  Kit_lex_in_words pt ") ] ++ --")
 
 (define Conjs_async_depth ,(tok depth)
   __Cont_get__ ,(return)
@@ -190,14 +197,27 @@
   Conjs_async_check_all regions names own ,()
   __LList_uncons__ __print_exit_error__ regions ,(first more)
   Kit_parse_get first "file" ,(real)
+  ;; 宣言のソースを、行と桁がソースと同じになるように並べ、直接の eval に渡す（eval のコードは 1 行目から数えるので、
+  ;; new Function の前の 2 行を気にしない。M2 のレビューの 2、shima3/conma#92）。eval は、引数の require と console を見る
+  ;; 関数の中で動かし、その関数の引数 rt で、外の rt（VM の内側）を隠す（M2 のレビューの 4）
   __Number_fromString__ __print_exit_error__ "1" ,(one)
-  Conjs_async_text regions one "" ,(js)
+  Conjs_async_text regions one "" ,(src)
+  Kit_code_cat4 src "\n//# sourceURL=" real "\n" ,(src)
+  Kit_code_quote src ,(srcq)
+  Conjs_async_names regions "" ,(fnNames)
   Kit_code_quote real ,(rq)
-  Kit_code_cat3 js "\n;const { require, console } = rt.asyncScope(" rq ,(js)
-  __String_concat__ js ");\n" ,(js)
+  __String_join_lines__
+    "return ((__conjs_scope) => {"
+    "  const __conjs_fns = (function (require, console, rt) {" ,(js)
+  Kit_code_cat5 js "\n    eval(" srcq ");\n    return { " fnNames ,(js)
+  __String_join_lines__
+    " };"
+    "  })(__conjs_scope.require, __conjs_scope.console);"
+    "" ,(mid)
+  __String_concat__ js mid ,(js)
   Conjs_async_defines regions js ,(js)
-  Kit_code_cat3 js "return {};\n//# sourceURL=" real ,(js)
-  __String_concat__ js "\n" ,(js)
+  Kit_code_cat3 js "  return {};\n})(rt.asyncScope(" rq ,(js)
+  __String_concat__ js "));\n" ,(js)
   __Dict_new__ ,(d)
   __Dict_put__ d "file" real ,()
   __Dict_put__ d "js" js ,()
@@ -249,7 +269,6 @@
   __Dict_new__ ,(p)
   __Dict_put__ p "toks" ref ,()
   P_statements p "" __NULL__ ,(body)
-  __PDict_put__ "sjs_js_body" __FALSE__ ,()
   Kit_parse_node "program" ,(prog)
   __Dict_put__ prog "body" body ,()
   Gen_state prog ,(g)
@@ -260,6 +279,7 @@
   __LList_cons__ topScope __NULL__ ,(scope)
   Gen_cx __FALSE__ "" "" ,(cx)
   Gen_block_code g scope body cx ,(code)
+  __PDict_put__ "sjs_js_body" __FALSE__ ,()
   __Dict_keys__ free ,(keys)
   __Ref_new__ __NULL__ ,(acc)
   Gen_collect acc ,(sink)
@@ -283,9 +303,8 @@
       Sjs_uncaught msg) ,()
   Conjs_async_check fname rest names own)
 
-;; 宣言のソースの文字列を、行と桁がソースと同じになるように並べる。テキストは new Function の本体になり、その前に
-;; 2 行（function anonymous(rt と ) {）がつくので、ソースの行 L の宣言は、テキストの行 L - 2 に置く（ソースの 1、2 行目の
-;; 宣言は、テキストの 1 行目に置くので、行がずれる）。at は、次に書くテキストの行
+;; 宣言のソースの文字列を、行と桁がソースと同じになるように並べる（eval のコードの行 L が、ソースの行 L）。at は、次に書く行。
+;; 同じ行に続く宣言は、空白 1 つの後に置く（桁はずれる）
 (define Conjs_async_text ,(regions at acc)
   __Cont_get__ ,(return)
   __is_null__ regions ,(test__) __if__ test__ (,() return acc) ,()
@@ -293,23 +312,36 @@
   Kit_parse_get rec "line" ,(line)
   Kit_parse_get rec "col" ,(col)
   Kit_parse_get rec "js" ,(js)
-  __Number_fromString__ __print_exit_error__ "2" ,(two)
   __Number_fromString__ __print_exit_error__ "1" ,(one)
-  __Number_subtract__ line two ,(want)
-  __Number_subtract__ want at ,(diff)
-  __Number_is_negative__ diff ,(early)
-  __if_then_else__ early (,() __NULL__ at) (,() __NULL__ want) ,(target)
-  __Number_subtract__ target at ,(nls)
-  Conjs_async_repeat "\n" nls acc ,(acc)
-  __Number_subtract__ col one ,(spaces)
-  Conjs_async_repeat " " spaces acc ,(acc)
+  __Number_subtract__ line at ,(nls)
+  __Number_is_positive__ nls ,(newLine)
+  __String_equal__ acc "" ,(firstLine)
+  __or__ newLine firstLine ,(test__)
+  __if__ test__
+    (,()
+      Conjs_async_repeat "\n" nls acc ,(acc)
+      __Number_subtract__ col one ,(spaces)
+      Conjs_async_repeat " " spaces acc ,(acc)
+      __String_concat__ acc js ,(acc)
+      Conjs_async_count_nl js ,(n)
+      __Number_add__ line n ,(at)
+      Conjs_async_text rest at acc ,(acc)
+      return acc) ,()
+  __String_concat__ acc " " ,(acc)
   __String_concat__ acc js ,(acc)
   Conjs_async_count_nl js ,(n)
-  __Number_add__ target n ,(at)
-  ;; 次の宣言は、改行してから
-  __String_concat__ acc "\n" ,(acc)
-  __Number_add__ at one ,(at)
+  __Number_add__ at n ,(at)
   Conjs_async_text rest at acc)
+
+;; 名前を , で区切って並べる
+(define Conjs_async_names ,(regions acc)
+  __Cont_get__ ,(return)
+  __is_null__ regions ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ regions ,(rec rest)
+  Kit_parse_get rec "name" ,(name)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ name) (,() Kit_code_cat3 acc ", " name) ,(acc)
+  Conjs_async_names rest acc)
 
 (define Conjs_async_repeat ,(s n acc)
   __Cont_get__ ,(return)
@@ -332,7 +364,7 @@
   __Number_add__ n one ,(n)
   Conjs_async_count_from s i n)
 
-;; rt.defineHost("キー", 名前); を宣言ごとに
+;; rt.defineHost("キー", __conjs_fns.名前); を宣言ごとに
 (define Conjs_async_defines ,(regions acc)
   __Cont_get__ ,(return)
   __is_null__ regions ,(test__) __if__ test__ (,() return acc) ,()
@@ -340,7 +372,7 @@
   Kit_parse_get rec "key" ,(key)
   Kit_parse_get rec "name" ,(name)
   Kit_code_quote key ,(kq)
-  Kit_code_cat5 acc "rt.defineHost(" kq ", " name ,(acc)
+  Kit_code_cat5 acc "  rt.defineHost(" kq ", __conjs_fns." name ,(acc)
   __String_concat__ acc ");\n" ,(acc)
   Conjs_async_defines rest acc)
 
@@ -361,3 +393,20 @@
   Kit_code_cat5 acc "\tConjs_async_define " fq " " jq ,(acc)
   __String_concat__ acc " ,() " ,(acc)
   Conjs_async_code_from rest acc)
+
+;; 本体を変換している間のエラーのメッセージ（Sjs_uncaught）：「not in ConJS yet, in an async function: 何か」。本体は JavaScript
+;; なので、JavaScript として誤りなのでなく、変換器がまだ読めないことを言う（M2 のレビューの 3、shima3/conma#92）
+(define Conjs_async_message ,(text)
+  Conjs_async_strip text "SyntaxError: " ,(text)
+  Conjs_async_strip text "not in SJS: " ,(text)
+  Conjs_async_strip text "not in ConJS: " ,(text)
+  __String_equal__ text "a regular expression" ,(regex)
+  __if_then_else__ regex (,() __NULL__ "a regular expression literal (new RegExp(...) can be used)") (,() __NULL__ text) ,(text)
+  __String_concat__ "not in ConJS yet, in an async function: " text)
+
+(define Conjs_async_strip ,(text head)
+  __Cont_get__ ,(return)
+  Kit_lex_starts_with text head ,(test__) __unless__ test__ (,() return text) ,()
+  __String_length__ head ,(n)
+  __String_length__ text ,(len)
+  __String_substring__ __print_exit_error__ text n len)
