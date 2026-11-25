@@ -471,4 +471,4 @@ console.log(join(t));
 
 1. `await` before a call in ConJS code stays an error, with a message that says what to do (1).
 2. `console.log` of the body goes to the output of the program in order on Node.js, to the console of the browser in a page (1).
-3. Who builds it is the user's to say; M2 offered to review it if M1 builds it, as in the earlier stages. It touches the translator (sjs/include/sjs_parse.se, the files of ConJS), conma.js and vm-node.js, and the runtime of ConJS, and not sjs/include/sjs_host.se or conjs/include/conjs_host.se beyond the mark of a waiting call.
+3. Who builds it: M1, reviewed by M2 (the user's decision, 2026-11-26, after M2 offered to review it). It touches the translator (sjs/include/sjs_parse.se, the files of ConJS), conma.js and vm-node.js, and the runtime of ConJS, and not sjs/include/sjs_host.se or conjs/include/conjs_host.se beyond the mark of a waiting call.
