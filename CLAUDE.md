@@ -7,6 +7,7 @@ Notes for AI agents (Claude Code) working in this repository, in every clone (M1
 - Your machine is in `git config user.name` (`m1 Shima`, `m2 Shima`, `m4 Shima`, `i7 Shima`, `s5 Shima`). Every clone uses the same GitHub account (shima3), so begin each PR description and comment with your machine (「M2 のレビューです」) and each PR title with it (`M2: ...`). Docs: CONTRIBUTING, Branches 6.
 - Write "the tester", not a machine, for the role: who tests can change.
 - Talk to the user in Japanese. In Japanese text, keep proper nouns as they are written in English, untranslated, so that they read as names: transpiled VM (not 変換した VM), Full Test, ConMa, ConJS, VProc.
+- When you ask the user a question with choices, number them and say that a number is an answer (「1. PR を開く　2. まだ開かない（番号で答えてください）」): the user often answers from another device (the user's request, 2026-11-25).
 
 ## Before you act
 
