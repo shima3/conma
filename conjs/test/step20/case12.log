@@ -1,0 +1,6 @@
+if 6
+block [ 0, 1, 4 ]
+try [ 0, 1, 2, 'three 6', 'finally' ]
+after waiting 7
+no loop 6
+exit: 0

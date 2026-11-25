@@ -1,0 +1,15 @@
+[
+  Pt { z: 0, x: 0, y: 0 },
+  Pt { z: 0, x: 1, y: 2 },
+  Pt { z: 0, x: 2, y: 4 }
+] Pt { z: 0, x: 4, y: 6 } Pt3 { z: 4, x: 2, y: 3, tag: '3d' }
+true true false true false false false false false
+finally
+finally
+0.5 caught zero [ 1, 2 ]
+Pt { z: 0, x: 2, y: 4 } true
+no throw,inner finally inner 2,inner finally,outer 2
+from uncaught: Pt { z: 0, x: 5, y: 5 }
+1 caught true 3
+stop [ 1 ]
+exit: 0

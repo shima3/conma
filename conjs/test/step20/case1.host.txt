@@ -1,0 +1,11 @@
+conjs: host: add
+conjs: host: cmp
+conjs: host: div
+conjs: host: len
+conjs: host: logic
+conjs: host: mod
+conjs: host: mul
+conjs: host: neg
+conjs: host: pick
+conjs: host: show
+conjs: host: sub

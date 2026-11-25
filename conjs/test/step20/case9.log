@@ -1,0 +1,12 @@
+30 n0,n1,n2,n3,n4 5
+adding 1
+adding 2
+adding 3
+sum 14
+7 [ 0, 2, 4, 6, 8 ]
+cubes 36
+visit 0
+visit 1
+out [ 100, 101 ]
+case9.con.js:53:16: Error: stop at 3
+exit: 2

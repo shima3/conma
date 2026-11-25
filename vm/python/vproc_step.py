@@ -1093,6 +1093,61 @@ def prim_JS_value(vp, gvenv):
         return
     _prim_error(vp, on_error, f"{name}: JavaScript is not available")
 
+def prim_JS_fn_compile(vp, gvenv):
+    """__JS_fn_compile__ onError text ,(module)
+    Make the JavaScript text into a module of functions of the host of the VM for wasm32 (vm/src/prim/jsfn.rs).
+    This VM has no JavaScript: after checking the argument, it goes to onError."""
+    name  = "__JS_fn_compile__"
+    olist = vp["olist"]
+    if len(olist) < 2: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    text     = olist.pop(0)
+    if value_type_name(text) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String text, got {value_type_name(text)}")
+        return
+    _prim_error(vp, on_error, f"{name}: JavaScript is not available")
+
+def prim_JS_fn_call(vp, gvenv):
+    """__JS_fn_call__ onError module name args ,(status value)
+    Call a function of a module of __JS_fn_compile__ in the host of the VM for wasm32 (vm/src/prim/jsfn.rs).
+    This VM has no JavaScript: after checking the arguments, it goes to onError."""
+    name  = "__JS_fn_call__"
+    olist = vp["olist"]
+    if len(olist) < 4: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    module   = olist.pop(0)
+    fname    = olist.pop(0)
+    args     = olist.pop(0)
+    if value_type_name(module) != "Number":
+        _prim_error(vp, on_error, f"{name}: expected a Number module, got {value_type_name(module)}")
+        return
+    if value_type_name(fname) != "String":
+        _prim_error(vp, on_error, f"{name}: expected String name, got {value_type_name(fname)}")
+        return
+    if args is not None and value_type_name(args) != "LList":
+        _prim_error(vp, on_error, f"{name}: expected an LList of arguments, got {value_type_name(args)}")
+        return
+    _prim_error(vp, on_error, f"{name}: JavaScript is not available")
+
+def prim_JS_fn_resume(vp, gvenv):
+    """__JS_fn_resume__ onError generator how value ,(status value)
+    Go on with a generator of the host of the VM for wasm32 (vm/src/prim/jsfn.rs). This VM has no
+    JavaScript: after checking the arguments, it goes to onError."""
+    name  = "__JS_fn_resume__"
+    olist = vp["olist"]
+    if len(olist) < 4: raise VProcError(f"{name}: missing argument(s)")
+    on_error = olist.pop(0)
+    gen      = olist.pop(0)
+    how      = olist.pop(0)
+    olist.pop(0)
+    if value_type_name(gen) != "Number":
+        _prim_error(vp, on_error, f"{name}: expected a Number generator, got {value_type_name(gen)}")
+        return
+    if value_type_name(how) != "String" or how not in ("next", "throw"):
+        _prim_error(vp, on_error, f'{name}: expected "next" or "throw"')
+        return
+    _prim_error(vp, on_error, f"{name}: JavaScript is not available")
+
 # The features that __Feature_available__ answers true for on this VM: the features of extended ConMa, which work on
 # every VM (on this one through the replacement definitions of bin/to-core), but not "wasm", whose primitives go to
 # onError here as on the native VMs, "test", the test functions of __Host_call__ that every VM has, and "time"
@@ -3187,6 +3242,9 @@ PRIMITIVES = {
     "__Ref_wait_change__":     prim_Ref_wait_change,
     "__JS_call__":             prim_JS_call,
     "__JS_value__":            prim_JS_value,
+    "__JS_fn_compile__":       prim_JS_fn_compile,
+    "__JS_fn_call__":          prim_JS_fn_call,
+    "__JS_fn_resume__":        prim_JS_fn_resume,
     "__Feature_available__":   prim_Feature_available,
     "__Host_call__":           prim_Host_call,
     "__Host_start__":          prim_Host_start,

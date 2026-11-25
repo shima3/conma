@@ -14,6 +14,7 @@ pub mod collections;
 pub mod control;
 pub(crate) mod host;
 mod js;
+pub(crate) mod jsfn;
 mod wasm;
 pub mod wasm_asm;
 pub mod lazy;
@@ -168,6 +169,9 @@ prims! {
     "__OS_trap_interrupt__" => "prim_OS_trap_interrupt", process::trap_interrupt;
     "__JS_call__"          => "prim_JS_call", js::call;
     "__JS_value__"         => "prim_JS_value", js::value;
+    "__JS_fn_compile__"    => "prim_JS_fn_compile", jsfn::compile;
+    "__JS_fn_call__"       => "prim_JS_fn_call", jsfn::call;
+    "__JS_fn_resume__"     => "prim_JS_fn_resume", jsfn::resume;
     "__Feature_available__" => "prim_Feature_available", js::feature_available;
     "__Host_call__"        => "prim_Host_call", host::call;
     "__Host_start__"       => "prim_Host_start", host::start;
