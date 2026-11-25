@@ -1181,4 +1181,4 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 * conjs/test：6 つの `case*.wasm.log` を `case*.log` にした。step21（async/await で書いたホストの関数を `host.wait` で呼ぶ。docs/HOST-ja.md の 3.2 節の例）を足した。test/host-api.sh の Rust 版の行に `CONMA_VM=rust` を付けた。
 * CI：unix のジョブは conjs/test を wasm 版だけで流す。windows のジョブは wasm 版の VM を作って conjs/test を流し、使われていない shasum の手順を除いた。
 * 文書：conjs/README と QUICKSTART の組、docs/dev/CONJS.md、docs/HOST-ja.md（async/await の例。3.3 節と 3.4 節に、ConJS はその VM を目標にしないこと）、TESTS-ja.md、CONTRIBUTING の Tests。conjs/bench は Node.js と wasm 版の VM だけを測る。
-* `console.log("hi")` の起動は、wasm 版の VM で約 0.18 秒（Apple M1。P5 の目標の 0.2 秒以下）。Windows の数は 4.13 節の 6 で決める。
+* `console.log("hi")` の起動は、wasm 版の VM で約 0.18 秒（Apple M1。P5 の目標の 0.2 秒以下）。Windows（S5、Git Bash）では、実時間で wasm 版が 1.33〜1.34 秒、Rust 版が 1.10〜1.15 秒で、差は約 0.22 秒（PR shima3/conma#82 の S5 のレビュー。交互に 5 回ずつ）。目標の数は 4.13 節の 6 で決める。
