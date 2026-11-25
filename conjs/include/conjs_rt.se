@@ -14,40 +14,34 @@
 (include "conjs_host.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
-;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）
-(define Conjs_local_keys ,()
-  __LList_cons__ "sjs_pos" __NULL__ ,(l)
-  __LList_cons__ "sjs_gen" l ,(l)
-  __LList_cons__ "sjs_handlers" l)
+;; sjs_rt.se が処理ごとに持つべき名前を足したら、Conjs_save と Conjs_restore の両方に足す（M2 の PR shima3/conma#3 のレビューの 2）。
+;; 処理が切り替わるたびに動くので、名前の LList を回さず、3 つを並べて書く（2026-11-25。それまでは、名前の LList を再帰で回し、
+;; 値を Ref の箱に入れていて、切り替え 1 回に約 80 ステップかかっていた。tasks の 1 回のステップの約 6%）。
+;; 取り出した状態は LList (sjs_handlers sjs_gen sjs_pos)。新しい処理（local が null）では、どれも null にする
 
 (define Conjs_save ,()
-  Conjs_local_keys ,(keys)
-  Conjs_save_keys keys)
+  __PDict_lookup_or__ "sjs_pos" (,(x) __NULL__ __NULL__) ,(pos)
+  __PDict_lookup_or__ "sjs_gen" (,(x) __NULL__ __NULL__) ,(gen)
+  __PDict_lookup_or__ "sjs_handlers" (,(x) __NULL__ __NULL__) ,(handlers)
+  __LList_cons__ pos __NULL__ ,(l)
+  __LList_cons__ gen l ,(l)
+  __LList_cons__ handlers l)
 
-(define Conjs_save_keys ,(keys)
-  __Cont_get__ ,(return)
-  __is_null__ keys ,(test__) __if__ test__ (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ keys ,(k rest)
-  __PDict_lookup_or__ k (,(x) __NULL__ __NULL__) ,(v)
-  Conjs_save_keys rest ,(vs)
-  __Ref_new__ v ,(box)
-  __LList_cons__ box vs)
-
-;; 新しい処理（local が null）では、どれも null にする
 (define Conjs_restore ,(local)
-  Conjs_local_keys ,(keys)
-  Conjs_restore_keys keys local)
-
-(define Conjs_restore_keys ,(keys local)
   __Cont_get__ ,(return)
-  __is_null__ keys ,(test__) __if__ test__ return ,()
-  __LList_uncons__ __print_exit_error__ keys ,(k rest)
   __is_null__ local ,(fresh)
-  __if_then_else__ fresh
-    (,() __NULL__ __NULL__ __NULL__)
-    (,() __LList_uncons__ __print_exit_error__ local ,(box more) __Ref_get__ box ,(v) __NULL__ v more) ,(v more)
-  __PDict_put__ k v ,()
-  Conjs_restore_keys rest more)
+  __if__ fresh
+    (,()
+      __PDict_put__ "sjs_handlers" __NULL__ ,()
+      __PDict_put__ "sjs_gen" __NULL__ ,()
+      __PDict_put__ "sjs_pos" __NULL__ ,()
+      return) ,()
+  __LList_uncons__ __print_exit_error__ local ,(handlers l)
+  __LList_uncons__ __print_exit_error__ l ,(gen l)
+  __LList_uncons__ __print_exit_error__ l ,(pos l)
+  __PDict_put__ "sjs_handlers" handlers ,()
+  __PDict_put__ "sjs_gen" gen ,()
+  __PDict_put__ "sjs_pos" pos)
 
 ;; main（文の並びの thunk）を動かし、すべての処理が終わったら、join されなかった例外と行き詰まりを報告する
 (define Conjs_run ,(G body)
