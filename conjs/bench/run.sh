@@ -1,13 +1,13 @@
 #!/bin/bash
 # conjs/bench/run.sh NAME [N [M]]: measure the benchmark NAME.con.js of ConJS (2026-11-24; conjs/bench/README-ja.md).
 # It runs the same program in Node.js (NAME.node.js when it is there, as for tasks, which uses spawn and join; otherwise
-# NAME.con.js itself, which is JavaScript too), and with conjs/conjs on the Rust VM and on the wasm VM (CONMA_VM=wasm;
-# Node.js), and prints the time of each: user + sys seconds (real time on Windows), the least of 3 runs. conjs/conjs translates the program and
+# NAME.con.js itself, which is JavaScript too), and with conjs/conjs on the wasm VM (Node.js; the only VM of ConJS from
+# stage P10, 2026-11-25: until then also on the Rust VM), and prints the time of each: user + sys seconds (real time on Windows), the least of 3 runs. conjs/conjs translates the program and
 # joins it to the runtime each time, so the times of ConJS include that (the translator and the runtime are made once
 # before, as conjs/conjs --prepare does). N_ARG in the program is replaced by the size: N for Node.js, and M (N when it is
-# not given) for the slow columns, the two VMs, marked * (docs/dev/CONTRIBUTING.md, Benchmarks: the fastest version about
+# not given) for the slow column, the wasm VM, marked * (docs/dev/CONTRIBUTING.md, Benchmarks: the fastest version about
 # one second, a slower one not over a minute). Without N, the size of each NAME below (Apple M4, 2026-11-24). It also
-# checks that the VMs print what Node.js prints at size M. startup has no N_ARG and is run as it is.
+# checks that the wasm VM prints what Node.js prints at size M. startup has no N_ARG and is run as it is.
 bench="$(cd "$(dirname "$0")"; pwd)"
 conjs="${bench%/*}/conjs"
 name=$1 n=$2 m=${3:-$2}
@@ -45,15 +45,10 @@ best() {  # command...: the least of 3 runs, in seconds of $what
   echo "$b"
 }
 "$conjs" --prepare > /dev/null || exit 1
-CONMA_VM=wasm "$conjs" --prepare > /dev/null || exit 1
 node "$tmp/slow.js" > "$tmp/node.out" 2>&1
-for vm in rust wasm; do
-  if [ $vm = rust ]; then "$conjs" "$tmp/slow.con.js" > "$tmp/$vm.out" 2>&1
-  else CONMA_VM=wasm "$conjs" "$tmp/slow.con.js" > "$tmp/$vm.out" 2>&1; fi
-  cmp -s "$tmp/node.out" "$tmp/$vm.out" || { echo "ConJS on the $vm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/$vm.out"; }
-done
-if [ "$m" = "$n" ]; then echo "== $name $n"; else echo "== $name $n (the slow columns, marked *: $m)"; fi
+"$conjs" "$tmp/slow.con.js" > "$tmp/wasm.out" 2>&1
+cmp -s "$tmp/node.out" "$tmp/wasm.out" || { echo "ConJS on the wasm VM prints otherwise than Node.js:"; diff "$tmp/node.out" "$tmp/wasm.out"; }
+if [ "$m" = "$n" ]; then echo "== $name $n"; else echo "== $name $n (the slow column, marked *: $m)"; fi
 echo "time: $what, the least of 3 runs"
 printf '%-16s %s s\n' "Node.js" "$(best node "$tmp/fast.js")"
-printf '%-16s %s s\n' "Rust VM *" "$(best "$conjs" "$tmp/slow.con.js")"
-printf '%-16s %s s\n' "wasm VM *" "$(best env CONMA_VM=wasm "$conjs" "$tmp/slow.con.js")"
+printf '%-16s %s s\n' "wasm VM *" "$(best "$conjs" "$tmp/slow.con.js")"

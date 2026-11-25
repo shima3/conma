@@ -83,7 +83,7 @@ cd conma
 
 ## 3. ビルドする
 
-ConJS のプログラムは、ConMa という言語に変換してから、ConMa の VM（仮想機械）で動かします。その VM を 2 つビルドします。
+ConJS のプログラムは、ConMa という言語に変換してから、ConMa の VM（仮想機械）で動かします。その VM をビルドします。
 
 ```
 (cd vm && cargo build --release)
@@ -91,8 +91,8 @@ vm/wasm/build.sh
 conjs/conjs --prepare
 ```
 
-* 1 つ目は、パソコンの上で直接動く VM（Rust 版の VM）です。ConJS の変換にも使います。
-* 2 つ目は、WebAssembly の VM（wasm 版の VM）です。Node.js の上で動き、Web サーバの見本はこちらで動かします。
+* 1 つ目は、パソコンの上で直接動く VM（Rust 版の VM）です。ConJS の変換を速くします。なくても ConJS は動きます。
+* 2 つ目は、WebAssembly の VM（wasm 版の VM）です。Node.js の上で動き、ConJS のプログラムはこちらで動かします。
 * 3 つ目は、ConJS の変換器とランタイム（ConJS のプログラムが使う部品）を作っておきます。
 
 初めてのビルドは、パソコンによって数十秒から数分かかります。1 つ目と 2 つ目は `Finished`、3 つ目は `conjs: ready` と出れば成功です。3 つ目は、何も出ないまま 30 秒くらい（パソコンによっては、もっと）かかることがあります。止まったように見えても、Ctrl-C を押さずに待ってください。
@@ -121,10 +121,10 @@ conjs/conjs hello.con.js
 
 ## 5. Web サーバを動かす
 
-ConJS で書いた小さな Web サーバの見本（`conjs/examples/counter_server.con.js`）を、Node.js の上で動かします。Web サーバは Node.js の上でだけ動くので、`CONMA_VM=wasm` を付けて、wasm 版の VM を使います。
+ConJS で書いた小さな Web サーバの見本（`conjs/examples/counter_server.con.js`）を、Node.js の上で動かします。
 
 ```
-CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+conjs/conjs conjs/examples/counter_server.con.js
 ```
 
 出力：
@@ -183,13 +183,13 @@ node conjs/examples/counter_server.node.js
 | 出たメッセージ | どうするか |
 |---|---|
 | `cargo: command not found` | ターミナルを開き直す。それでも出るときは、1 の Rust を入れ直す |
-| `vm-wasm.sh: ... is not built` | 3 の `vm/wasm/build.sh` を動かす |
+| `lang: conjs runs on the wasm VM: build it ...` か `vm-wasm.sh: ... is not built` | 3 の `vm/wasm/build.sh` を動かす |
 | `vm/wasm/build.sh` が、`wasm32-unknown-unknown` が入っていないというエラーで止まる | 1 の最後の `rustup target add wasm32-unknown-unknown` を打つ |
 | 何も出ない。または、ファイルを開くアプリを聞かれる（Windows の PowerShell） | PowerShell で打っている。Git Bash を開いて打ち直す（0） |
 | `'conjs' は、内部コマンドまたは外部コマンド、操作可能なプログラムまたはバッチ ファイルとして認識されていません。`（Windows のコマンド プロンプト） | コマンド プロンプトで打っている。Git Bash を開いて打ち直す（0） |
 | `$'\r': command not found`（Windows） | 改行の形が変わってクローンされている。`conma` フォルダを消して、2 の `-c core.autocrlf=false` を付けてクローンし直す |
 | `EADDRINUSE` | 8000 番が使われている。5 のとおり、別の番号を付ける |
-| `http.listen: this platform has no server` | `CONMA_VM=wasm` を付け忘れている |
+| `http.listen: this platform has no server` | `CONMA_VM=rust` などで、サーバのない VM を選んでいる。`CONMA_VM` を付けずに動かす |
 
 ## 次に読むもの
 

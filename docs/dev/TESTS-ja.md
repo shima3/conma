@@ -33,9 +33,7 @@ CONMA_VM=wasm consh/test/run_all.sh -j 3
 CONMA_VM=transpiled consh/test/run_all.sh -j 6
 consh/js/test/run_all.sh
 sjs/test/run_all.sh
-conjs/test/run_all.sh                                  # ConJS（Rust 版の VM）
-CONMA_VM=wasm conjs/test/run_all.sh
-CONMA_VM=python conjs/test/run_all.sh
+conjs/test/run_all.sh                                  # ConJS（wasm 版の VM だけ。段階 P10、2026-11-25 から）
 ```
 
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
@@ -43,7 +41,7 @@ CONMA_VM=python conjs/test/run_all.sh
 
 ### CI（GitHub Actions）
 
-PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、下の「Windows（I7）で流す」のとおりに用意して、vm の `cargo test --release --lib` と、Rust 版の VM の test/、consh/test、conjs/test、sjs/test を流す（既知の違いは、下の表の I7 の行。段階 P6c から。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）。
+PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、下の「Windows（I7）で流す」のとおりに用意して、vm の `cargo test --release --lib` と、Rust 版の VM の test/、consh/test、sjs/test、wasm 版の VM の conjs/test を流す（段階 P10 から、conjs/test は wasm 版。既知の違いは、下の表の I7 の行。段階 P6c から。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）。
 
 ### Windows（I7）で流す
 
@@ -61,12 +59,11 @@ export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSY
 (cd vm && cargo build --release && cargo test --release --lib)
 CONMA_VM=rust test/run_all.sh -j 8
 CONMA_VM=rust consh/test/run_all.sh -j 6
-conjs/test/run_all.sh
 sjs/test/run_all.sh
-vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から。CI の windows ジョブは流さない）
-CONMA_VM=wasm test/run_all.sh -j 4
-CONMA_VM=wasm consh/test/run_all.sh -j 4
-CONMA_VM=wasm conjs/test/run_all.sh
+vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から）
+CONMA_VM=wasm test/run_all.sh -j 4                     # CI の windows ジョブは流さない
+CONMA_VM=wasm consh/test/run_all.sh -j 4               # CI の windows ジョブは流さない
+conjs/test/run_all.sh                                  # ConJS（wasm 版の VM。段階 P10 から。CI の windows ジョブも流す）
 ```
 
 ## 既知の違い
@@ -97,6 +94,18 @@ CONMA_VM=wasm conjs/test/run_all.sh
 ## 申し送り
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench、Full ConJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、4 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
+
+### m1/p10
+
+* 種類：機能（ConJS を動かす既定の VM が、Rust 版から wasm 版に変わる。使う人から見て変わるので、機能とした）。
+* 段階 P10（docs/dev/PLATFORM-PLAN-ja.md の 4.14 節）：ConJS を wasm 版の VM だけで動かす。bin/lang が lang.conf の `vm=` を読み（SJS には書かないので、SJS は今のまま）、conjs/lang.conf を `vm=wasm` にした。wasm 版の VM がなければ、変換する前に作り方を出して終える。bin/lang-test も、ログを選ぶ VM に `vm=` を使う。
+* conjs/test：6 つの `case*.wasm.log` を `case*.log` にし、ログを 1 つずつにした。step21 を足した（async/await で書いたホストの関数を `host.wait` で呼ぶ。docs/HOST-ja.md の 3.2 節の例）。step18 の case2.node-check.js は case2.log を読む。test/host-api.sh の Rust 版の行に `CONMA_VM=rust` を付けた。
+* CI：unix のジョブから conjs/test の Rust 版を除いた。windows のジョブで wasm 版の VM を作り（`rustup target add wasm32-unknown-unknown` と `vm/wasm/build.sh`）、conjs/test を wasm 版で流す。使われていない shasum の手順を除いた。windows のジョブで初めて wasm 版の conjs/test を流すので、違いがないこと（既知の違いの表に足す行がないこと）を、この PR の CI で確かめる。
+* 全部流す：conjs/test は wasm 版の 1 行だけになった（上の流し方）。Windows Test も同じ。
+* 文書：conjs/README と QUICKSTART の組、docs/dev/CONJS.md、docs/HOST-ja.md、TESTS-ja.md、CONTRIBUTING の Tests、conjs/bench（run.sh は Node.js と wasm 版の VM だけを測る）。
+* M1 が流したもの（Apple M1、m1/p10 の作業中のワークツリー。Rust 版と wasm 版の VM を alpha の 584c044 で作り直して）：conjs/test（既定の wasm 版。違いなし。step21 を 4 回）、conjs/test/compare.sh、test/host-api.sh、`bin/lang-emit-check origin/alpha`（違いなし）、sjs/test を Rust 版と wasm 版の VM で（違いなし）。`console.log("hi")` の起動は、wasm 版で約 0.18 秒、Rust 版で約 0.08 秒（交互に 3 回ずつ）。wasm 版の VM がないときのメッセージと、`--emit` はそれでも動くことを、wasm のファイルを一時的に名前を変えて確かめた。
+* sjs/test の Python 版の VM：違いが出た（標準出力と標準エラーの順、VM の Traceback）。alpha（584c044）の worktree で流しても、別のステップで違いが出て、出る所は流すたびに違う（M1 の 2 回）。P10 は SJS の道を変えていない（`vm=` は ConJS の設定だけ）ので、P10 の違いではないと見た。Python 版の VM の sjs/test は Full Test に入らない。
+* 流していないもの：Windows（S5 か I7 に頼む）、Python 版と transpiled VM の conjs/test（P10 からテストしない）、ベンチマーク（startup のほかは測っていない）、ブラウザのページ（変えていない）。
 
 ### m1/stars-split（shima3/conma#78）
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # conjs/test の下のすべてのステップを動かす（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）。diff の出力がなければ成功。
-# VM は CONMA_VM（なし：Rust 版、wasm、python）。変換は Rust 版の VM（vm で cargo build --release しておく）
+# VM は wasm 版（conjs/lang.conf の vm。段階 P10、2026-11-25 から。それまでは CONMA_VM で Rust 版、wasm 版、Python 版を選び、
+# 3 つで流した）。vm/wasm/build.sh で作っておく。変換は、Rust 版の VM があればそれで行い、速い
 cd "$(dirname "$0")"
 for t in step*/
 do
@@ -17,7 +18,7 @@ done
 # 返すことを確かめる（ホストの版が動かなくても、ConMa 版に替わってログは同じになるため）。case*.host.txt は、ホストの版で値を
 # 得た関数の名前（CONJS_HOST_REPORT の出力を、LC_ALL=C の順に並べたもの。ロケールの順では、大文字と小文字の順が機械で
 # 違う）。CONJS_HOST_STRICT で、変換器の作った JavaScript の誤りも出す。違いが step20 のものと分かるように見出しを出す
-if [ "$CONMA_VM" = wasm ]; then
+if [ "${CONMA_VM:-wasm}" = wasm ]; then
   echo "== step20 (host)"
   for c in step20/case*.con.js
   do
