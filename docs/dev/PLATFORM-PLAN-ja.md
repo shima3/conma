@@ -807,17 +807,17 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 
 **この節でしないこと**：コードとテストは変えない。上の 1〜8 を決めたら、段階を足して作る（5 節）。
 
-### 4.14. 段階 P10 の設計（案、2026-11-25。4.13 節の 1、3、8。レビューを待つ）
+### 4.14. 段階 P10 の設計（案、2026-11-25。4.13 節の 1、3、8。S5 のレビューは PR shima3/conma#81）
 
 **すること**：ConJS を動かす既定の VM を wasm 版にし、ConJS のテスト、CI、手順、文書を、wasm 版だけに合わせる（4.13 節）。ConJS の言語、変換器、ランタイムは変えない。ConMa、SJS、ConSh は、今までどおり 3 つの VM で動かす。
 
 **1. 既定の VM**（4.13 節の 1）
 
-* `conjs/conjs` は bin/lang を呼ぶだけで、bin/lang は SJS（sjs/sjs）と共有している。そこで、言語ごとの設定（conjs/lang.conf）に `vm=wasm` を足し、bin/lang は、`CONMA_VM` がないとき、その VM で動かす。SJS の設定（sjs/lang.conf）には足さないので、SJS は今のまま（`CONMA_VM` がなければ Rust 版）。
+* `conjs/conjs` は bin/lang を呼ぶだけで、bin/lang は SJS（sjs/sjs）と共有している。そこで、言語ごとの設定（conjs/lang.conf）に `vm=wasm` を足し、bin/lang は、`CONMA_VM` がないとき、その VM で動かす。bin/lang は lang.conf の知らない行を `unknown line` で止めるので、`vm=` の行を読む所を足す。`bin/lang conjs ...` を直接呼ぶ test/host-api.sh と bin/lang-test も、同じ既定になる。SJS の設定（sjs/lang.conf）には足さないので、SJS は今のまま（`CONMA_VM` がなければ Rust 版）。
 * wasm 版の VM（vm/wasm/build.sh で作るもの）がなければ、`conjs: build the wasm VM (vm/wasm/build.sh; it needs Node.js)` のように出して、終了ステータス 2 で終える。今の「Rust 版がなければ wasm 版」の道は、ConJS では要らなくなる。
 * `CONMA_VM=rust`、`python`、`transpiled` は、bin/lang が SJS と共有するので、ConJS でも選べるまま残す。ただし、ConJS の文書には書かず、テストもログも置かない（開発者が違いを調べるためのもの）。
 * 変換は今のまま（4.13 節の 2）：Rust 版の VM があればそれで、なければ wasm 版で変換する。できるモジュールは、どちらで変換しても同じ（2026-11-23 から）。
-* `conjs/conjs --prepare`：作るモジュールは、変換する VM によらず同じなので、変えない見込み。conjs/bench/run.sh が `CONMA_VM=wasm` でも `--prepare` を呼んでいる理由（wasm 版でだけ作るものがあるか）を確かめ、あれば、`--prepare` がそれも作るようにする。
+* `conjs/conjs --prepare`：変えない。キャッシュに作るのは、変換器のモジュール（conjsc.module.se）とランタイムのモジュール（conjs-rt-*.module.se）だけで、どちらも変換する VM で作り、動かす VM（`CONMA_VM`）によらない（S5 が 2026-11-25 に、Rust 版の後に `CONMA_VM=wasm` で流しても、キャッシュのファイルの大きさと時刻が変わらないことを確かめた）。conjs/bench/run.sh の `CONMA_VM=wasm "$conjs" --prepare` は、既定が wasm 版になれば 1 つ目の呼び出しと同じになるので除く。
 * test/host-api.sh は、`CONMA_RUNNER`（Rust の API で関数を足した実行ファイル）で `bin/lang conjs` を動かしている。`CONMA_RUNNER` は Rust 版でだけ効くので、その行に `CONMA_VM=rust` を書く（4.13 節の 4。Rust の API は残す）。
 
 **3. テスト**（4.13 節の 3）
@@ -827,10 +827,11 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 * CI（.github/workflows/ci.yml）：
     * unix のジョブ：「conjs/test (Rust VM)」を除き、「conjs/test (wasm VM)」だけにする。
     * windows のジョブ：今は Rust 版の VM だけを作り、conjs/test を Rust 版で流している。wasm 版の VM を作る手順（`rustup target add wasm32-unknown-unknown` と `vm/wasm/build.sh`。Node.js は、もう入れている）を足し、conjs/test を wasm 版で流す。Rust 版で流す手順は除く。ジョブが長くなる分を、作った後の CI で測る。
+    * 同じ windows のジョブの「shasum」の手順（sha1sum を shasum として置くもの）と、その説明、Build の手順の `command -v shasum` を除く。bin/lang は shima3/conma#72 から cksum を使い、repo の中にほかに shasum を使う所はない（S5 のレビューの 1）。
 * docs/dev/TESTS-ja.md：
     * 全部流す：conjs/test の 3 行（Rust 版、wasm 版、Python 版）を、wasm 版の 1 行にする。
     * Windows（I7）で流す：Rust 版の `conjs/test/run_all.sh` の行を除く。wasm 版の行の「CI の windows ジョブは流さない」を直す。
-    * 既知の違い：ConJS の Rust 版と Python 版のものがあれば除く。
+    * 既知の違い：ConJS の Rust 版と Python 版のものがあれば除く。Windows の wasm 版の conjs/test には、違いがない見込み（S5 が shima3/conma#72 のレビューのときに流して、違いがなかった）。
 * docs/dev/CONTRIBUTING.md の Tests の「it runs no wasm VM there」を、windows ジョブが wasm 版の VM で conjs/test を流すことに合わせて直す。
 * 変えないもの：sjs/test（3 つの VM のまま）、test/host-api.sh の比べ方（上の `CONMA_VM=rust` のほか）、conjs/web のページ。
 
@@ -840,6 +841,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
     * `conjs/conjs file.con.js` は wasm 版の VM で動き、Node.js と `vm/wasm/build.sh` が要る。変換は、Rust 版の VM を作ってあればそれで速くなる。
     * `CONMA_VM=wasm` を付けた例から `CONMA_VM=wasm` を除き、`CONMA_VM=python` の行を除く。
     * 端末の見本（stars-term.con.js など）を「Rust 版の VM の端末で遊べる」と書いた所を直す。
+    * QUICKSTART（macOS と Windows の手順）：Node.js、`rustup target add wasm32-unknown-unknown`、`vm/wasm/build.sh` は、もう書いてある。`(cd vm && cargo build --release)` は、変換を速くするためのもの（なくても動く）だと書く。counter_server.con.js を動かす所の「`CONMA_VM=wasm` を付ける」も除く（S5 のレビューの 3 と補足）。
     * 2 つの言語の組は、同じコミットで直す（`python3 .github/doc-pairs.py`）。
 * conjs/bench：run.sh は、Node.js と wasm 版の VM を測る。conjs/bench/README-ja.md の表の Rust 版の列は、それまでの結果として日付を付けて残し、新しく測るのは wasm 版だけにする。Full ConJS Bench も wasm 版だけにする。
 * docs/HOST-ja.md：
@@ -852,7 +854,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 * `conjs/conjs f.con.js` が、`CONMA_VM` なしで wasm 版の VM で動く。wasm 版の VM がなければ、上のメッセージで終わる。
 * conjs/test が wasm 版の VM で、1 つずつのログで通る。CI の unix と windows のジョブが、conjs/test を wasm 版で流して通る。
 * conjs/test/compare.sh、test/host-api.sh が通る。sjs/test が 3 つの VM で通り、`bin/lang-emit-check` で、ConJS と SJS の作るコードが変わらない。
-* `python3 .github/doc-pairs.py` が通る。Windows Test（I7 か S5）で、conjs/test が wasm 版で通る。
+* `python3 .github/doc-pairs.py` が通る。Windows Test（I7 か S5）で、conjs/test が wasm 版で通る。CI の windows のジョブで初めて wasm 版の conjs/test を流したとき、違いがなく、既知の違いの表に足す行がないことを確かめる。
 * conjs/bench の startup を、wasm 版で macOS と Windows で測って書く（目標の数をどうするかは 4.13 節の 6 で、ここでは決めない）。
 
 **P10 でしないこと**
@@ -867,6 +869,8 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 3. conjs_lib.se の Rust 版と Python 版のための道を、P10 では除かないこと。
 4. conjs/bench の Rust 版の列を、それまでの結果として残すこと。
 5. HOST-ja.md の例をテストにするのに、conjs/test の新しいステップを使うこと（test/host-api.sh でなく）。
+
+**S5 のレビュー**（PR shima3/conma#81）：決めることの 1〜5 は、どれも賛成だった（1 は、bin/lang を直接呼ぶ所も同じ既定になるため）。`--prepare` を確かめたことと、指摘の 1（windows のジョブの shasum）、2（Windows の既知の違い）、3（QUICKSTART）を、上に入れた。
 
 ## 5. 段階
 
