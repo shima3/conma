@@ -5,6 +5,8 @@
 // costs 50 to 170 ms in Git Bash on Windows). The translation, the build and the link are done as bin/lang does them: by
 // the Rust VM (vm/target/release/conma) if it is there and CONMA_TRANSLATE_VM is not wasm, else by the wasm VM (vm-node.js
 // build and link, in other processes). The modules in the cache are the same files as bin/lang makes and uses.
+// bin/lang and bin/cache-dir do the same work in bash (for the other VMs, and with CONMA_LANG_SH=1): when you change the
+// rules of the cache (the names of the modules, when they are made again, the hash), change both.
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -81,23 +83,50 @@ function cksum(buf) {
   return (~c >>> 0).toString();
 }
 
-// As bin/cache-dir
+// As bin/cache-dir, which hashes the path of the repository as `pwd -P` writes it. On Windows that is Git Bash, which
+// writes C:\Users\a as /c/Users/a: the same text is hashed here, so that both use one directory.
+function shellPath(p) {
+  if (process.platform !== "win32") return p;
+  const m = /^([A-Za-z]):[\\/]?(.*)$/.exec(p);
+  return m ? `/${m[1].toLowerCase()}/${m[2].replace(/\\/g, "/")}`.replace(/\/$/, "") || "/" : p.replace(/\\/g, "/");
+}
 function cacheDir() {
   let d = process.env.CONMA_CACHE_DIR;
   if (!d) {
     const home = process.env.HOME || os.homedir();
     const base = path.join(process.env.XDG_CACHE_HOME || path.join(home, ".cache"), "conma");
-    d = path.join(base, cksum(Buffer.from(fs.realpathSync(root))));
+    d = path.join(base, cksum(Buffer.from(shellPath(fs.realpathSync(root)))));
   }
   fs.mkdirSync(d, { recursive: true, mode: 0o700 });
   return d;
+}
+
+// The temporary directory of the modules of the program, removed when this process ends, also by a signal (as the trap of
+// bin/lang). Until the program runs, a signal is caught here (caught) and handled before vm-node.js starts; a listener must
+// not stay, since vm-node.js traps SIGINT only when there is none (trapInterrupt).
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lang."));
+const removeTmp = () => fs.rmSync(tmp, { recursive: true, force: true });
+process.on("exit", removeTmp);
+const signals = process.platform === "win32" ? ["SIGINT"] : ["SIGINT", "SIGTERM", "SIGHUP"];
+let caught = null;
+const catcher = (s) => {
+  caught = caught || s;
+};
+for (const s of signals) process.on(s, catcher);
+// Ends this process by the signal s, as bash ends when a command it waits for ends by a signal it does not trap.
+function dieBy(s) {
+  removeTmp();
+  for (const t of signals) process.removeListener(t, catcher);
+  process.kill(process.pid, s);
+  process.exit(128 + (os.constants.signals[s] || 0)); // if the signal did not end it
 }
 
 // Runs tr with arguments; its standard error goes to ours. Returns its standard output, or exits as it did.
 function runTr(trArgs) {
   const r = spawnSync(tr[0], tr.slice(1).concat(trArgs), { stdio: ["ignore", "pipe", "inherit"], maxBuffer: 1 << 30 });
   if (r.error) throw r.error;
-  if (r.status !== 0) process.exit(r.status === null ? 1 : r.status);
+  if (r.signal) dieBy(r.signal);
+  if (r.status !== 0) process.exit(r.status);
   return r.stdout;
 }
 // Writes the output of tr to a temporary file beside f, then moves it to f (no bin/lang reads a module half made).
@@ -111,8 +140,6 @@ function makeInto(f, trArgs) {
 const incDirs = include.split(/\s+/).filter((d) => d !== "").map((d) => path.join(root, d));
 const inc = incDirs.flatMap((d) => ["--include", d]);
 const libDirs = incDirs.concat([path.join(root, "include/ext"), path.join(root, "include")]);
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lang."));
-process.on("exit", () => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const cache = cacheDir();
 const transMod = path.join(cache, `${name}c.module.se`);
@@ -148,6 +175,13 @@ fs.writeFileSync(aloneMod, runTr(["build", ...inc, aloneSe]));
 const progMod = path.join(tmp, "prog.module.se");
 fs.writeFileSync(progMod, runTr(["link", rtmod, aloneMod]));
 
-// Run it here, as vm-wasm.sh runs node vm-node.js --main prog.module.se arguments.
-process.argv = [process.argv[0], vmNode, "--main", progMod, ...args];
-require(vmNode);
+// Run it here, as vm-wasm.sh runs node vm-node.js --main prog.module.se arguments. Everything above is synchronous: let a
+// signal that came meanwhile reach catcher first. vm-node.js reads the module before it first waits, that is, before
+// require returns, so the temporary directory goes then.
+setImmediate(() => {
+  if (caught) dieBy(caught);
+  for (const s of signals) process.removeListener(s, catcher);
+  process.argv = [process.argv[0], vmNode, "--main", progMod, ...args];
+  require(vmNode);
+  removeTmp();
+});

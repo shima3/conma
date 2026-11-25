@@ -82,6 +82,7 @@ inc=() dirs=()
 for d in $include; do inc+=(--include "$root/$d"); dirs+=("$root/$d"); done
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
+# キャッシュの決まり（モジュールの名前、作り直す条件、ハッシュ）は、wasm 版で動かすときの bin/lang.cjs にも書いてある。変えるときは両方を変える
 module="$("$root/bin/cache-dir")/${name}c.module.se" || exit 1
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" "$dir/$translator" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    stale "$module"; then

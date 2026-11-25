@@ -34,6 +34,7 @@ CONMA_VM=transpiled consh/test/run_all.sh -j 6
 consh/js/test/run_all.sh
 sjs/test/run_all.sh
 conjs/test/run_all.sh                                  # ConJS（wasm 版の VM だけ。段階 P10、2026-11-25 から）
+CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の道（ふだんは bin/lang.cjs を通る。CI は流さない）
 ```
 
 * ConJS のブラウザのページは、CI にブラウザがないので、手で確かめる（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：`conjs/web/build.sh` の後、`python3 -m http.server -d conjs/web -b 127.0.0.1 8768` で出し、bench.html の「すべて測る」で、出力の列がすべて「同じ」になること、stars.html?hostreport で遊ぶと、ブラウザのコンソールに `conjs: host: ` の行が出ること。conjs/test/run_all.sh は、step20 を、Node.js で new Function を止めて（`--disallow-code-generation-from-strings`）もう一度流す（== step20 (no eval)。eval を止めたページの代わり）。
@@ -65,6 +66,7 @@ vm/wasm/build.sh                                       # wasm 版の VM（2026-1
 CONMA_VM=wasm test/run_all.sh -j 4                     # CI の windows ジョブは流さない
 CONMA_VM=wasm consh/test/run_all.sh -j 4               # CI の windows ジョブは流さない
 conjs/test/run_all.sh                                  # ConJS（wasm 版の VM。段階 P10 から。CI の windows ジョブも流す）
+CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の道（CI の windows ジョブは流さない）
 ```
 
 ## 既知の違い
@@ -155,4 +157,5 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * bin/lang：wasm 版の VM で動かすとき（ConJS の既定）、lang.conf を読んだ後に Node.js の bin/lang.cjs を exec し、変換、build、link から実行までを 1 つの Node.js のプロセスでする（実行は vm/wasm/vm-node.js を require する）。キャッシュの確かめ（find の代わり）、include の行の分け方（awk の代わり）、ハッシュ（cksum の CRC）、bin/cache-dir の場所を JavaScript でするので、キャッシュのファイルは bash の版と同じものを使う。変換、build、link は、今までどおり Rust 版の VM の子プロセスで（なければ wasm 版の VM の別の Node.js で）する。`CONMA_LANG_SH=1` で、今までの bash の道になる。`CONMA_WASM_HOST=jsc`、`--emit`、ほかの VM は変えていない。
 * I7 で測ったもの（`console.log("hi")`、7 回ずつ交互、中央値）：既定 1373 ms → 638 ms、`CONMA_TRANSLATE_VM=wasm`（Rust 版の VM のない環境と同じ）2345 ms → 1171 ms。conjs/test の全体は 216 秒 → 141 秒。Git Bash では、bash の起動する小さなコマンドが 1 つ 50〜170 ms かかっていた。macOS では測っていない（M1 の測った Rust 版の起動は全体で約 0.08 秒なので、縮むのは Node.js を 1 回起動する分だけと思う）。
 * I7 が流したもの（Windows、Git Bash）：conjs/test を Node.js の道と `CONMA_LANG_SH=1` の両方で（違いなし）、test/host-api.sh（Rust 版と wasm 版、違いなし）。
+* M2 のレビューで直したもの：Windows では、キャッシュのディレクトリのハッシュを、bin/cache-dir と同じく Git Bash の形のパス（`/c/Users/...`）から作る（前は `C:Users...` から作り、bash の道とは別のディレクトリに変換器のモジュールを作り直していた）。一時ディレクトリは、vm-node.js がモジュールを読んだ後に消し、それまでに来たシグナル（SIGINT、SIGTERM、SIGHUP）でも消してから、同じシグナルで終える（前は Ctrl-C で残った）。変換などの子プロセスがシグナルで終わったら、同じシグナルで終える（前は終了コード 1）。全部流すと Windows Test に、conjs/test を `CONMA_LANG_SH=1` でも流す行を足した（CI は Node.js の道しか流さないので）。I7 で、直した後の conjs/test を 2 つの道で（違いなし、144 秒と 219 秒）、test/host-api.sh（違いなし）。Windows では、Git Bash の `kill -INT` が届かないので、シグナルのふるまいは確かめていない。
 * 流していないもの：Unix のすべて（macOS と Linux の bin/lang.cjs、ulimit から決めるスタックの大きさ）、sjs/test（SJS は Rust 版で動くので、この道を通らない）、ベンチマーク。
