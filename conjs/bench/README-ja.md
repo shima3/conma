@@ -29,6 +29,24 @@ conjs/bench/run.sh 名前 [N [M]]
 
 ## 結果
 
+2026-11-25、5610042（alpha。段階 P10、H6c、H7 の後）、Apple M1（M1）。Full ConJS Bench（ユーザーの指示）。Node.js v26.13.1、rustc 1.100.0。user + sys、3 回の最良（起動を含む）。測っている間、ほかのアプリ（リモートデスクトップ、ファイルの同期など）が動いていた（load average 約 2〜2.5）。P10 から ConJS は wasm 版の VM だけなので、Rust 版は測っていない。大きさは下の M4 の表と同じ。機械が違うので、M4 の表とは比べない（Node.js も M1 では約 1.4 倍かかる）。出力は、M（と、wasm 版（N）では N）で、どれも Node.js と同じ。
+
+| 名前 | N | Node.js | M | wasm 版 * | wasm 版（N） | Node.js の何倍（wasm 版） |
+|---|---:|---:|---:|---:|---:|---:|
+| startup | — | 0.062 s | — | 0.199 s | — | 3.2 |
+| strings | 3,000,000 | 1.454 s | 180,000 | 0.515 s | 3.836 s | 2.6 |
+| dict | 15,000,000 | 1.336 s | 600,000 | 0.612 s | 2.463 s | 1.8 |
+| hof | 350,000 | 1.624 s | 6,000 | 0.377 s | 4.386 s | 2.7 |
+| json | 200,000 | 1.518 s | 4,500 | 0.463 s | 6.439 s | 4.2 |
+| exceptions | 2,000,000 | 1.300 s | 1,200,000 | 39.3 s | — | 50 |
+| tasks | 1,600,000 | 1.301 s | 60,000 | 39.8 s | — | 817 |
+| nbody_class | 20,000,000 | 1.780 s | 27,000 | 0.629 s | 5.469 s | 3.1 |
+
+* 「Node.js の何倍」は、wasm 版（N）を測ったものは、同じ大きさの時間の比（wasm 版（N）の列を測ったときの Node.js は、上の列と 1% 以内で同じ）。exceptions と tasks は、1 回あたりの時間の比（Node.js は N、wasm 版は M で測った。exceptions は 0.65 µs と 32.8 µs、tasks は 0.81 µs と 664 µs）。
+* exceptions と tasks は、まだホストの JavaScript で動かない（下の M4 の表の注のとおり。`class Bad extends Error` と `spawn`）。ほかの 6 つは、M ではほとんど起動の時間。
+
+### 2026-11-25、9e8bdc5（alpha）
+
 2026-11-25、9e8bdc5（alpha）、Apple M4（M4）。Node.js v26.13.0、rustc 1.99.1。user + sys、3 回の最良（起動を含む）。測っている間、ほかのセッションも動いていた（load average 約 2.3）。wasm 版の VM では、ConJS の関数と一番外のループの多くが、ホストの JavaScript で動く（docs/dev/CONJS-HOST-PLAN.md の段階 H3〜H6、shima3/conma#75、#76、#77）。Rust 版の VM は、前の表（a102031）と 3% の中で同じ。
 
 | 名前 | N | Node.js | M | Rust 版 * | wasm 版 * | wasm 版（N） | Node.js の何倍（Rust 版、wasm 版） |
