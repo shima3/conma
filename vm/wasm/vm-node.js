@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
 const os = require("os");
+const tty = require("tty");
 const ConMaVM = require("./conma.js");
 const { serverHost } = require("./host/server.js");
 
@@ -217,11 +218,43 @@ function notify() {
 
 // Standard input read without blocking the loop, while a VProc waits for it.
 let reading = false;
+// A terminal is read through a tty.ReadStream, not fs.read (2026-11-25): fs.read waits in a thread of
+// libuv's pool, and process.exit joins those threads, so a program that ended while the read waited
+// for a key did not end until the next key (stars-term.con.js after Escape, PLATFORM-PLAN 4.13 5).
+// libuv reads a terminal without a thread. Not on Windows, where it has not been tried.
+let ttyIn = null;
+function readTtyAsync(vm) {
+  if (!ttyIn) {
+    ttyIn = new tty.ReadStream(0);
+    ttyIn.pause();
+    const done = (bytes) => {
+      if (!reading) {
+        if (bytes) ttyIn.unshift(bytes); // keep it for the next read
+        return;
+      }
+      reading = false;
+      ttyIn.pause();
+      if (bytes && bytes.length > 0) {
+        vm.input(new Uint8Array(bytes));
+      } else {
+        vm.inputEnd();
+        inputEnded = true;
+      }
+      notify();
+    };
+    ttyIn.on("data", (bytes) => done(bytes));
+    ttyIn.on("end", () => done(null));
+    ttyIn.on("error", () => done(null));
+  }
+  reading = true;
+  ttyIn.resume();
+}
 // The VM traps SIGINT (__OS_trap_interrupt__): the run loop lets events come now and then even
 // when nothing outside the VM runs, so that the handler gets Ctrl-C during a long computation
 let sigintTrapped = false;
 function readInputAsync(vm) {
   if (reading || inputEnded) return;
+  if (!windows && tty.isatty(0)) return readTtyAsync(vm);
   reading = true;
   fs.read(0, inbuf, 0, inbuf.length, null, (e, n) => {
     reading = false;
