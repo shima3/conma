@@ -773,7 +773,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 
 **M4 のレビュー**（PR shima3/conma#60）：決めることの 4 つは、どれも賛成だった。指摘の 1（同じファイルを realpath で見分ける）と 2（SInfo に書く名前の形）を、上に入れた。テスト 4 を Node.js で確かめるなら、`await new Promise(...)` を使う `*.node.js` を別に置く形があること、星ひろいを分けるときは stars.html と shima3/conma#57 の compare.html（stars.con.js 1 つを読む）に気を付けることも、意見としてもらった。
 
-### 4.13. ConJS を wasm 版の VM だけにする（ユーザーが決めた、2026-11-25。細部は M1 の案で、S5 のレビューを待つ）
+### 4.13. ConJS を wasm 版の VM だけにする（ユーザーが決めた、2026-11-25。細部は M1 の案で、S5 のレビューは PR shima3/conma#80）
 
 **決めたこと**（ユーザー、2026-11-25）：ConJS のプログラムを動かす VM は、wasm 版（Node.js とブラウザ）だけでよい。Rust 版と Python 版の VM で ConJS を動かすことは、目標にしない。
 
@@ -782,7 +782,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 **変わること**
 
 * 4.1 節の「ConMa の動くどのプラットフォームでも試せる」は、「JavaScript の動く所（Node.js とブラウザ）で試せる」に狭まる。関数に色が付かないこと、協調的に切り替えることは変わらない。
-* ConJS の言語は変えない。`async`、`await`、`Promise` は、今までどおり受け付けない。async/await を使うコードは、ホストの関数に任せる（docs/HOST-ja.md に、その書き方の例を足す）。
+* ConJS の言語は変えない。`async`、`await`、`Promise` は、今までどおり受け付けない。async/await を使うコードは、ホストの関数に任せる（docs/HOST-ja.md に、その書き方の例を足す。下の 8）。
 * ConMa の言語、SJS、ConSh は、今までどおり 3 つの VM で動かす。この決めごとは ConJS だけのもの。
 
 **これから決めること**（M1 の案。レビューで意見がほしいこと）
@@ -790,12 +790,22 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 1. `conjs/conjs` の既定の VM：今は Rust 版（`CONMA_VM=wasm` で wasm 版）。案：wasm 版を既定にする。`CONMA_VM` で Rust 版と Python 版を選べるのは、3 の整理が済むまで残す。
 2. 変換を動かす VM：今は Rust 版（ないときだけ wasm 版。2026-11-23 から）。変換器は ConMa のプログラムで、ConJS のプログラムではない。案：今のまま。
 3. テスト：conjs/test を流す VM を wasm 版だけにする。Full Test と Windows Test の手順、docs/dev/TESTS-ja.md の流し方と既知の違い、conjs/test/run_all.sh と run_case.sh、VM ごとのログ（case*.log）を整理する。案：wasm 版ですべて通ることを確かめてから、ほかの VM のログと流す手順を除く。
+    * CI の windows ジョブ（.github/workflows/ci.yml）は、Rust 版の VM しか作らず、conjs/test を Rust 版で流している。wasm 版だけにすると、Windows の CI で ConJS を確かめるものがなくなるので、同じ段階で、windows ジョブに `vm/wasm/build.sh` と `CONMA_VM=wasm conjs/test/run_all.sh` を足す（S5 のレビューの 1）。docs/dev/CONTRIBUTING.md の Tests の「it runs no wasm VM there」も直す。
+    * Windows Test の手順（TESTS-ja.md の「Windows（I7）で流す」）から、Rust 版の `conjs/test/run_all.sh` の行を除き、wasm 版の行だけにする。
 4. Rust 版の VM のホストの関数の口（4.9 節。vm/examples/host_demo.rs、test/host-api.sh）：ConMa のプログラムを Rust に組み込むための口でもある。案：残し、ConJS の見本（host_demo.con.js）と比べる所だけを見直す。
-5. 端末の見本（stars-term.con.js、merge.con.js、wordcount.con.js、counter_server.con.js）：Node.js の上で動かすことになる。今、wasm 版の VM では、パイプから入れた矢印のキーで自分が動かない（2026-11-25 に M1 が見た。shima3/conma#78 の前と後のどちらの版でも同じ）。端末のキーの読み方を wasm 版で確かめて直す。端末で手で遊べるかも確かめる。
+5. 端末の見本（stars-term.con.js、merge.con.js、wordcount.con.js、counter_server.con.js）：Node.js の上で動かすことになる。今、wasm 版の VM では、パイプから入れた矢印のキーで自分が動かない（2026-11-25 に M1 が見た。shima3/conma#78 の前と後のどちらの版でも同じ。S5 が Windows でも同じことを見た）。端末のキーの読み方を wasm 版で確かめて直し、macOS と Windows で確かめる。端末で手で遊べるかも確かめる。
+    * この計画の外のこと：Rust 版の VM では、macOS でも Windows でも、パイプからの入力が、キーを読む前に終わったと読まれる（stars-term.con.js が `stars: the input has ended` で終わる。S5 のレビューの 3）。ConMa のプログラムがパイプを読むときにも起きるかもしれないので、別に調べる。
 6. VM ごとに決めた目標の数（5 節の P5 の「`console.log("hi")` を動かす時間が 0.2 秒以下」など）：wasm 版で測り直す。
+    * Windows では、wasm 版の起動は Rust 版より約 0.35 秒（約 26%）長い（S5 が 2026-11-25 に、alpha の 9e8bdc5 の `console.log("hi")` を、交互に 5 回ずつ測った。Rust 版 1355〜1544 ms、wasm 版 1720〜1843 ms）。どちらも 0.2 秒に届かず、時間の多くは bin/lang が動かす MSYS のプログラム（shima3/conma#72 のレビュー）。案：Windows の数は分けて書き、目標を Unix のものとするか、Windows にも目標を置くかを、そのとき決める（S5 のレビューの 2）。
 7. docs/dev/CONJS-HOST-PLAN.md（外の変数に触れない関数を、ホストの JavaScript で動かす）：いつも JavaScript があるので、範囲を広げられる。案：ここでは決めず、別の計画にする。
+8. 1 と 3 に合わせて直すもの（S5 のレビューの 4）：
+    * conjs/README.md と conjs/README-ja.md の使い方（「Rust VM で動かす」、`CONMA_VM=python` の行）。2 つは同じコミットで直す。
+    * `conjs/conjs --prepare`：既定の VM の分のモジュールを作るので、1 で既定が変われば、作るものも変わる。
+    * conjs/bench（run.sh と README-ja.md の表の Rust 版の列）：Full ConJS Bench で、どの VM を測るか。
+    * docs/HOST-ja.md の、async/await のコードをホストの関数に任せる書き方の例。
+    案：1、3、8 を 1 つの段階にして作る（この 4.13 節の次の設計）。
 
-**この節でしないこと**：コードとテストは変えない。上の 1〜7 を決めたら、段階を足して作る（5 節）。
+**この節でしないこと**：コードとテストは変えない。上の 1〜8 を決めたら、段階を足して作る（5 節）。
 
 ## 5. 段階
 
