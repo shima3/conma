@@ -160,7 +160,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 * M2 のレビューで直したもの：Windows では、キャッシュのディレクトリのハッシュを、bin/cache-dir と同じく Git Bash の形のパス（`/c/Users/...`）から作る（前は `C:\Users\...` から作り、bash の道とは別のディレクトリに変換器のモジュールを作り直していた）。一時ディレクトリは、vm-node.js がモジュールを読んだ後に消し、それまでに来たシグナル（SIGINT、SIGTERM、SIGHUP）でも消してから、同じシグナルで終える（前は Ctrl-C で残った）。変換などの子プロセスがシグナルで終わったら、同じシグナルで終える（前は終了コード 1）。全部流すと Windows Test に、conjs/test を `CONMA_LANG_SH=1` でも流す行を足した（CI は Node.js の道しか流さないので）。I7 で、直した後の conjs/test を 2 つの道で（違いなし、144 秒と 219 秒）、test/host-api.sh（違いなし）。Windows では、Git Bash の `kill -INT` が届かないので、シグナルのふるまいは確かめていない。
 * 流していないもの：Unix のすべて（macOS と Linux の bin/lang.cjs、ulimit から決めるスタックの大きさ）、sjs/test（SJS は Rust 版で動くので、この道を通らない）、ベンチマーク。
 
-### i7/server-wait
+### i7/server-wait（shima3/conma#91）
 
 * 種類：なし（テストの台本だけ）。
 * conjs/test/run_case.sh：step9 の HTTP のサーバ（server.py）がポートを書くのを、60 秒まで待つ。前は 0.1 秒の sleep を 100 回くり返していて、Git Bash では sleep の起動に時間がかかるので、実際は約 12.8 秒だった。回数でなく、時間（`SECONDS`）で数える。間に合わないときのメッセージは `the server did not start in 60 seconds`。
