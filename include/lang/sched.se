@@ -36,9 +36,6 @@
 (define Kit_sched_num ,(text)
   __Number_fromString__ __print_exit_error__ text)
 
-(define Kit_sched_ref ,(S key)
-  __Dict_lookup_or__ S key __print_exit_error__)
-
 (define Kit_sched_get ,(S key)
   __Dict_lookup_or__ S key __print_exit_error__)
 
@@ -144,7 +141,7 @@
   __Number_is_zero__ pending ,(none)
   __unless__ none
     (,()
-      Kit_sched_ref S "reader" ,(reader)
+      Kit_sched_get S "reader" ,(reader)
       __Chan_take__ reader ,(r found)
       __LList_uncons__ __print_exit_error__ r ,(task more)
       __LList_uncons__ __print_exit_error__ more ,(ok more)

@@ -220,7 +220,7 @@ SJS の作りから、ConJS と SJS が共有する部品を取り出す（言�
 
 * **キットは include/lang/ に置く**（6 節の 4 の案）：`(include "lang/lex.se")` のように読む（include/platform/ と同じ形）。標準ライブラリの探し場所に入っているので、ConSh（consh/bin/consh、consh/js/build.sh）、wasm 版のページ（vm/wasm/web/build.sh）、sjs/sjs、sjs/bench/run.sh、conjs/conjs の include の並びを変えずに済む。別のディレクトリにすると、そのすべてに足すことになり、足し忘れると、その道だけで「include が見つからない」になる。キットの部品は、ふつうのプログラムからも使える（文字列を字句にする、構文木の節を作る）ので、標準ライブラリに置いてもおかしくない。
 * **言語のディレクトリは、ルートに並べたままにする**（6 節の 5 の案）：sjs/ を `langs/` の下に移すと、ConSh、bench、文書の多くのパスと、「移動」の記録（docs/dev/CONTRIBUTING.md の Files that moved）が要る。言語が 3〜4 個のうちは、ルートに並べても見通しは悪くならない。P5 の見本の言語も、ルートに置く。言語が増えて見通しが悪くなったら、そのときにまとめて移す。
-* **名前**：キットの関数は `Kit_` と部品の名前で始める（`Kit_lex_`、`Kit_parse_`、`Kit_code_`、`Kit_err_`、`Kit_sched_`）。`Parse_`（include/parser.se）と `Sched_`（conjs）は使われているため。キットが新しく使う PDict の名前は `"kit_"` で始めるが、**今ある名前（`"sjs_pos"`、`"sjs_handlers"`、`"sjs_gen"` など）は変えない**（M2 の PR shima3/conma#5 のレビューの 2）。consh/include/consh_jsstmt.se が `"sjs_pos"` と `"sjs_handlers"` を直接読み書きし、conjs_rt.se の `Conjs_local_keys` も `"sjs_pos"` を使うため。キットの部品で、そうした名前を使うものは、名前を引数で受け取る（エラーの部品は、位置を置く名前を受け取り、SJS は `"sjs_pos"` を渡す）。
+* **名前**：キットの関数は `Kit_` と部品の名前で始める（`Kit_lex_`、`Kit_parse_`、`Kit_code_`、`Kit_err_`、`Kit_sched_`）。`Parse_`（include/parser.se）と `Sched_`（conjs）は使われているため。キットが新しく使う PDict の名前は `"kit_"` で始めるが、**今ある名前（`"sjs_pos"`、`"sjs_handlers"`、`"sjs_gen"` など）は変えない**（M2 の PR shima3/conma#5 のレビューの 2）。consh/include/consh_jsstmt.se が `"sjs_pos"` と `"sjs_handlers"` を直接読み書きし、conjs_rt.se の `Conjs_save` と `Conjs_restore` も `"sjs_pos"` を使うため（2026-11-25 までは `Conjs_local_keys`）。キットの部品で、そうした名前を使うものは、名前を引数で受け取る（エラーの部品は、位置を置く名前を受け取り、SJS は `"sjs_pos"` を渡す）。
 
 **部品**（左が取り出すもの、右が今あるところ）
 
