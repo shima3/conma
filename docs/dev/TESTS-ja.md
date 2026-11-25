@@ -148,3 +148,11 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * 新しいテスト：conjs/test/step20/case14（case14.feed.py が、標準入力をパイプで少しずつ渡す）。M1 の #84 のレビューで、ふつうのホストの関数の for...of も、呼び返しの前なら VM の値を回さずに ConMa 版に替えるようにした（標準入力の行を関数に渡して回すと止まっていた。B2 から）：case15（case15.feed.py）。
 * M4 が流したもの：conjs/test（`CONJS_HOST_STRICT=1`）、conjs/test/compare.sh、sjs/test、conjs/bench の 8 つ（小さな大きさで Node.js と同じ出力）、wordcount.con.js をパイプの入力で、doc-pairs.py。
 * 流していないもの：test/ と consh/test（ConJS の変換器しか変えていない）、Windows。
+
+### i7/lang-node
+
+* 種類：機能（ConJS の起動が速くなる。出力は変わらない）。
+* bin/lang：wasm 版の VM で動かすとき（ConJS の既定）、lang.conf を読んだ後に Node.js の bin/lang.cjs を exec し、変換、build、link から実行までを 1 つの Node.js のプロセスでする（実行は vm/wasm/vm-node.js を require する）。キャッシュの確かめ（find の代わり）、include の行の分け方（awk の代わり）、ハッシュ（cksum の CRC）、bin/cache-dir の場所を JavaScript でするので、キャッシュのファイルは bash の版と同じものを使う。変換、build、link は、今までどおり Rust 版の VM の子プロセスで（なければ wasm 版の VM の別の Node.js で）する。`CONMA_LANG_SH=1` で、今までの bash の道になる。`CONMA_WASM_HOST=jsc`、`--emit`、ほかの VM は変えていない。
+* I7 で測ったもの（`console.log("hi")`、7 回ずつ交互、中央値）：既定 1373 ms → 638 ms、`CONMA_TRANSLATE_VM=wasm`（Rust 版の VM のない環境と同じ）2345 ms → 1171 ms。conjs/test の全体は 216 秒 → 141 秒。Git Bash では、bash の起動する小さなコマンドが 1 つ 50〜170 ms かかっていた。macOS では測っていない（M1 の測った Rust 版の起動は全体で約 0.08 秒なので、縮むのは Node.js を 1 回起動する分だけと思う）。
+* I7 が流したもの（Windows、Git Bash）：conjs/test を Node.js の道と `CONMA_LANG_SH=1` の両方で（違いなし）、test/host-api.sh（Rust 版と wasm 版、違いなし）。
+* 流していないもの：Unix のすべて（macOS と Linux の bin/lang.cjs、ulimit から決めるスタックの大きさ）、sjs/test（SJS は Rust 版で動くので、この道を通らない）、ベンチマーク。
