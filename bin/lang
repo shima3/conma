@@ -67,10 +67,22 @@ if [ -z "$emit" ] && [ "$vm" = wasm ] && [ ! -f "$wasm" ]; then
   echo "lang: $name runs on the wasm VM: build it with vm/wasm/build.sh (it needs Node.js and rustup target add wasm32-unknown-unknown)" >&2
   exit 2
 fi
+# wasm 版で動かすなら、Node.js の bin/lang.cjs が、変換から実行までを 1 つのプロセスでする（I7 の試み、2026-11-25。
+# CONMA_LANG_SH=1 で、この台本のままにする）。スタックの大きさは vm/wasm/vm-wasm.sh と同じに決める。
+if [ -z "$emit" ] && [ "$vm" = wasm ] && [ -z "$CONMA_LANG_SH" ] && [ "${CONMA_WASM_HOST:-node}" = node ] && command -v node > /dev/null 2>&1; then
+  want=$(ulimit -Hs)
+  [ "$want" = unlimited ] && want=1048576
+  ulimit -s "$want" 2>/dev/null
+  have=$(ulimit -s)
+  [ "$have" = unlimited ] && have=1048576
+  if command -v cygpath > /dev/null && [ "$have" -gt 8192 ]; then have=8192; fi
+  exec node --stack-size=$((have * 9 / 10)) "$root/bin/lang.cjs" "$root" "$dir" "$name" "$translator" "$include" "$file" "$@"
+fi
 inc=() dirs=()
 for d in $include; do inc+=(--include "$root/$d"); dirs+=("$root/$d"); done
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
+# キャッシュの決まり（モジュールの名前、作り直す条件、ハッシュ）は、wasm 版で動かすときの bin/lang.cjs にも書いてある。変えるときは両方を変える
 module="$("$root/bin/cache-dir")/${name}c.module.se" || exit 1
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" "$dir/$translator" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    stale "$module"; then
