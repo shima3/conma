@@ -51,13 +51,7 @@ pub fn pdict_put(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let mut a = take_args(vp, "__PDict_put__", 2)?;
     let value = a.pop().unwrap();
     let key = a.pop().unwrap();
-    let mut found = None;
-    for (i, (k, _)) in vp.pdict.iter().enumerate() {
-        if values_equal(k, &key).map_err(VmError::Error)? {
-            found = Some(i);
-            break;
-        }
-    }
+    let found = pdict_find(&vp.pdict, &key)?;
     match found {
         Some(i) => vp.pdict[i].1 = value,
         None => vp.pdict.push((key, value)),
@@ -71,13 +65,7 @@ pub fn pdict_lookup_or(_m: &mut Machine, vp: &mut VProc) -> PResult {
     let mut a = take_args(vp, "__PDict_lookup_or__", 2)?;
     let on_missing = a.pop().unwrap();
     let key = a.pop().unwrap();
-    let mut found = None;
-    for (k, v) in vp.pdict.iter() {
-        if values_equal(k, &key).map_err(VmError::Error)? {
-            found = Some(v.clone());
-            break;
-        }
-    }
+    let found = pdict_find(&vp.pdict, &key)?.map(|i| vp.pdict[i].1.clone());
     match found {
         Some(v) => vp.prim_return(vec![v]),
         None => {
@@ -86,4 +74,27 @@ pub fn pdict_lookup_or(_m: &mut Machine, vp: &mut VProc) -> PResult {
         }
     }
     Ok(())
+}
+
+/// The index of key in a PDict. A String key is turned into its text once, and
+/// compared with the text of each String key (values_equal turned both into
+/// text at every entry).
+fn pdict_find(pdict: &[(Value, Value)], key: &Value) -> Result<Option<usize>, VmError> {
+    if let Some(kt) = crate::value::string_cow(key) {
+        let kt = kt.map_err(VmError::Error)?;
+        for (i, (k, _)) in pdict.iter().enumerate() {
+            if let Some(t) = crate::value::string_cow(k) {
+                if t.map_err(VmError::Error)? == kt {
+                    return Ok(Some(i));
+                }
+            }
+        }
+        return Ok(None);
+    }
+    for (i, (k, _)) in pdict.iter().enumerate() {
+        if values_equal(k, key).map_err(VmError::Error)? {
+            return Ok(Some(i));
+        }
+    }
+    Ok(None)
 }
