@@ -126,7 +126,7 @@ All this paid for the property above, which ConJS does not promise, so the user 
 
 1. **When a function is a waiting host function** (H0: a generator for `advance` alone costs 4%, generators for every function 8.3 times; section 11). A generator is slower than a plain function in the engines, but only it can yield. (Settled on 2026-11-24 with section 6: a function is a waiting host function when it calls something that waits; there is no fuel, so no other reason to make one.) The plan made a function a waiting host function when it calls something that waits, or when it calls back something the translator does not know and has a loop that can be long; otherwise a plain one. The other choice is to make every host function that calls back a generator, which never needs the error of 3.1, 3, at some cost in speed.
 2. **Whether to go on after H0** (section 11): the host's JavaScript is 1.1 to 1.8 times Node.js where the VM is 1,000 to 18,500 times, but the crossings of today are too slow (a call back costs about 18 µs, and copying a value about 4 µs), so H1 and H2 must make them faster, with the copying done by Rust in the VM.
-3. **The browser (8)**: a file of JavaScript made by the build, or allowing `eval` in the pages of ConJS. M1's proposal (section 32): allow it, and leave the file for later.
+3. **The browser (8)**: a file of JavaScript made by the build, or allowing `eval` in the pages of ConJS. Decided by the user on 2026-11-25 (section 32): allow it, and leave the file for later.
 4. **The numeric functions**: keep WebAssembly for them, or move them to the host when the host is as fast (H5). Decided on 2026-11-24: the host first (section 24).
 5. **SJS**: whether SJS in ConSh (`(( ))`) uses host functions too. Its scripts are not trusted in a page in the way a ConJS program is, so the plan leaves it out unless the user says otherwise.
 
@@ -383,7 +383,7 @@ A numeric function of ConJS (the stages of SJS-WASM-PLAN-ja.md) has two versions
 * **The test**: conjs/test/step20/case13 (built-in errors thrown, caught and tested with `instanceof`; `typeof` of each kind of value; `JSON.stringify` and `JSON.parse` on the host and in the VM: a number that is not whole, `toJSON`, invalid text, a key like an integer; an error made on the host and thrown out of it, uncaught). The log is the same on the Rust, wasm and Python VMs. In case6, `runtimeError`, and in case9, the top-level loop that throws `new Error`, now return from the host.
 * **Not done**: classes that extend a built-in error (`class Bad extends Error`, as in conjs/bench/exceptions) and `new` of a class of ConMa from the host (top-level classes are not globals, so `Sjs_global` cannot find them); `typeof` of a value of the VM before any crossing (it escapes).
 
-## 32. Design of H7: the browser (2026-11-25; a draft by M1, for M4 to review)
+## 32. Design of H7: the browser (2026-11-25; designed by M1, reviewed by M4 in shima3/conma#86)
 
 The user asked M1 to design H7, the stage of this plan that touches the files of M4's work least (conjs/web, not sjs/include/sjs_host.se or conjs/include/conjs_host.se). Section 31 is on `alpha` (shima3/conma#84), not yet on `main`; this section is numbered after it.
 
@@ -395,7 +395,7 @@ The user asked M1 to design H7, the stage of this plan that touches the files of
 
 So H7 needs no new machinery to run host functions in a page. What is left is the choice of 10.3, a way to see and measure them in a page, a test of the fallback, and the documents.
 
-**1. The choice of 10.3** (M1's proposal): allow `new Function` in the pages of ConJS, and do not build now the file of section 8 (the JavaScript of the host functions written by build.sh into a file of its own, found by the hash of its text).
+**1. The choice of 10.3** (decided by the user on 2026-11-25, as M1 proposed and M4 agreed): allow `new Function` in the pages of ConJS, and do not build now the file of section 8 (the JavaScript of the host functions written by build.sh into a file of its own, found by the hash of its text).
 
 * The JavaScript of a host function is made by the translator from the program of the page, and the program already runs in the page with everything the page can do (`host.call`, `fetch`, the canvas). A policy against `eval` would not keep from the program anything it can do now; it guards against text that comes from outside, which these pages do not take.
 * A site that serves the pages with such a policy still runs them, without host functions (above). The file of section 8 is the way to make them fast there; it waits until a page needs it. The pages of ConSh (consh/js) keep their policy: they do not use host functions (10.5).
@@ -403,23 +403,17 @@ So H7 needs no new machinery to run host functions in a page. What is left is th
 
 **2. Seeing and measuring host functions in a page**
 
-* stars.html and canvas.html read two switches from the query of their URL: `?nohost` sets `CONMA_NO_HOSTJS` (the program runs in ConMa only), `?hostreport` sets `CONJS_HOST_REPORT` and `CONJS_HOST_STRICT` and writes the report lines (the standard error of the VM) to the console of the browser, not into the page.
-* A new page, conjs/web/bench.html, runs the programs of conjs/bench that need no files, input or arguments (dict, exceptions, hof, json, nbody_class, strings, tasks) at a size chosen in the page, once with host functions and once without, and shows the two times and whether the outputs are the same. build.sh translates them with N_ARG replaced by a size small enough for the run without host functions (as conjs/bench/run.sh replaces it), and the page names the size. With it, the results of H7 can be measured in Chromium, Safari and Firefox, and on Windows, by hand.
+* stars.html and canvas.html read one switch from the query of their URL: `?hostreport` sets `CONJS_HOST_REPORT` and `CONJS_HOST_STRICT` and writes the report lines (the standard error of the VM) to the console of the browser, not into the page. It shows which functions ran on the host in a page. Turning host functions off (`CONMA_NO_HOSTJS`) is left to bench.html (M4's review).
+* A new page, conjs/web/bench.html, runs the programs of conjs/bench that need no files, input or arguments (dict, exceptions, hof, json, nbody_class, strings, tasks), each once with host functions and once without, and shows the time of one round of each (as the column "1 回の時間" of conjs/bench/README-ja.md) and whether the outputs are the same. The two runs have sizes of their own, so that the run with host functions is not mostly the start of the VM (M4's review: at the sizes of conjs/bench/run.sh for the wasm VM, 0.27 to 0.47 s, mostly the start): build.sh translates each program twice, with N_ARG replaced by the size for each run, and the page names the sizes. With it, the results of H7 can be measured in Chromium, Safari and Firefox, and on Windows, by hand.
 
 **3. Tests**
 
-* The fallback: conjs/test/run_all.sh runs the cases of step20 a second time with `NODE_OPTIONS=--disallow-code-generation-from-strings`, and compares their output with their case*.log, as the host check of step20 does (the logs are the same without host functions by the rule of section 7). This is the page that forbids `eval`, without a browser.
-* The pages: CI has no browser, and the pages are checked by hand, as today (docs/dev/TESTS-ja.md). The list there gains bench.html (the outputs are the same with and without host functions) and the two switches of stars.html.
+* The fallback: conjs/test/run_all.sh runs step20 a second time through conjs/test/run_case.sh (bin/lang-test, which gives each case its case*.in or case*.feed.py, as the logs of case14 and case15 need) with `NODE_OPTIONS=--disallow-code-generation-from-strings`, and without `CONJS_HOST_STRICT` (with it, the report of the failed `__JS_fn_compile__` would be in the output). The logs are the same without host functions by the rule of section 7. This is the page that forbids `eval`, without a browser. M4 ran it on `alpha` (0b9714a): no differences. It runs when the VM is the wasm VM, which is the default of ConJS since stage P10, as the host check of step20 does.
+* The pages: CI has no browser, and the pages are checked by hand, as today (docs/dev/TESTS-ja.md). The list there gains bench.html (the outputs are the same with and without host functions) and `?hostreport` of stars.html.
 * Nothing changes in the cases of step20 that M4 is adding.
 
-**4. Documents**: conjs/README.md and README-ja.md (the pages run host functions; the switches; a policy against `eval` makes them slower), docs/HOST-ja.md if it speaks of the pages, and section 8 of this plan (the file of the build is for later).
+**4. Documents**: conjs/README.md and README-ja.md (the pages run host functions; `?hostreport`; bench.html; a policy against `eval` makes them slower), docs/HOST-ja.md if it speaks of the pages, and section 8 of this plan (the file of the build is for later).
 
 **Not in H7**: the file of section 8; SJS in ConSh (10.5); making the translator or the runtime different in a page (the modules are those of Node.js).
 
-**Points for the review**
-
-1. The choice of 10.3 in 1 (the user decides; M1 proposes allowing `eval`).
-2. Whether the fallback test belongs in run_all.sh (M1's proposal) or in a script of its own.
-3. Which programs of conjs/bench go into bench.html, and at what sizes.
-4. Whether the switches of 2 are worth having in stars.html and canvas.html, or bench.html is enough.
-5. Who builds H7: M1 proposes M1, since it touches conjs/web, conjs/test/run_all.sh and the documents, and not the translator; M4 would review it.
+**The review** (M4, shima3/conma#86): M4 agreed with the design and with allowing `eval`, and ran step20 with `eval` forbidden. From it: the fallback test goes through run_case.sh without `CONJS_HOST_STRICT` (3); bench.html runs each program at a size of its own with and without host functions and shows the time of one round (2); `?nohost` is left to bench.html (2); M1 builds H7 and M4 reviews it, since it touches neither sjs/include/sjs_host.se nor conjs/include/conjs_host.se.
