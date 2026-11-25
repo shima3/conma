@@ -16,9 +16,13 @@ work="$tmp/$step"
 mkdir "$work" && cp "$here/$step"/case* "$work/" || { rm -rf "$tmp"; exit 1; }
 if [ -f "$here/$step/server.py" ]; then
   # サーバは、標準入力（fd 3 の先のパイプ）が閉じたら終わる
+  # ポートを書くまで、60 秒まで待つ（ふだんは 1 秒もかからない。2026-11-26 から。それまでは 0.1 秒の sleep を 100 回で、
+  # Git Bash では sleep の起動に時間がかかるので約 12.8 秒だった。CI の windows で、Python がポートを書くまでに約 14 秒
+  # かかったことがあった。shima3/conma#89）。回数でなく、時間（SECONDS）で数える
   exec 3> >(exec python3 "$here/$step/server.py" "$work/port.txt")
-  for i in $(seq 1 100); do [ -s "$work/port.txt" ] && break; sleep 0.1; done
-  [ -s "$work/port.txt" ] || { echo "run_case.sh: $step: the server did not start" >&2; exec 3>&-; rm -rf "$tmp"; exit 1; }
+  end=$((SECONDS + 60))
+  until [ -s "$work/port.txt" ] || [ $SECONDS -ge $end ]; do sleep 0.1; done
+  [ -s "$work/port.txt" ] || { echo "run_case.sh: $step: the server did not start in 60 seconds" >&2; exec 3>&-; rm -rf "$tmp"; exit 1; }
 fi
 "$here/../../bin/lang-test" "$here/.." "$work" | sed "s|$tmp/||g"
 exec 3>&- 2>/dev/null
