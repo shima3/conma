@@ -98,6 +98,15 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench、Full ConJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、4 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
 
+### m1/pdict-text
+
+* 種類：直し（PDict を引くのを速くした。動きは変えていない）。
+* vm/src/prim/refs.rs：`__PDict_put__` と `__PDict_lookup_or__` は、キーを表の項目ごとに `values_equal` で比べ、比べるたびに両方を文字列にしていた（`string_cow`。ソースのリテラルの文字列は、読むたびに引用符を外す）。`pdict_find` で、探すキーが文字列なら、1 度だけ文字列にしてから比べる。表の後ろから探す形も試したが、速くならなかった。
+* わけ：conjs/bench の tasks を Rust 版の VM で macOS の `sample` にかけると、PDict の 2 つのプリミティブが時間の約 10% だった（ステップでは 1% 足らず）。ConJS は、処理を切り替えるたびに 3 つのキー（`sjs_handlers`、`sjs_gen`、`sjs_pos`）を読み書きし、tasks の PDict には 11 のキーがあって、その 3 つは最後にある。
+* tasks の大きさ 15,000 を、前の版と交互に 3 回ずつ（Apple M1、user + sys。ほかのセッションで負荷の平均が約 3.4）：Rust 版 13.81〜13.93 秒 → 13.15〜13.26 秒（約 −4.8%）、wasm 版 9.38〜9.39 秒 → 8.81〜8.87 秒（約 −6%）。
+* M1 が流したもの：vm の `cargo test --release`、Rust 版と wasm 版の VM の test/ と consh/test、consh/js/test（consh/js/build.sh で作り直して）、sjs/test、conjs/test、test/host-api.sh：既知の違い（wasm 版の test/step40、consh/test の step17 と step8）だけ。
+* 流していないもの：Python 版の VM（別に書いた VM で、変えていない）、transpiled VM（vm/src のプリミティブを使うので、Full Test で）、ConSh の参照版。
+
 ### m1/async-host（shima3/conma#92）
 
 * 種類：機能（ConJS のファイルの一番外の async 関数が、ホストの JavaScript で動く）。
