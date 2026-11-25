@@ -80,8 +80,11 @@ pub fn pdict_lookup_or(_m: &mut Machine, vp: &mut VProc) -> PResult {
 /// compared with the text of each String key (values_equal turned both into
 /// text at every entry).
 fn pdict_find(pdict: &[(Value, Value)], key: &Value) -> Result<Option<usize>, VmError> {
-    if let Some(kt) = crate::value::string_cow(key) {
-        let kt = kt.map_err(VmError::Error)?;
+    // A String key whose text cannot be read (an escape that unescape does not know)
+    // goes the slow way, as before: values_equal reads it only when it meets a
+    // String in the PDict, so an empty PDict, or one without Strings, answers
+    // that it is missing (M2's review of shima3/conma#93).
+    if let Some(Ok(kt)) = crate::value::string_cow(key) {
         for (i, (k, _)) in pdict.iter().enumerate() {
             if let Some(t) = crate::value::string_cow(k) {
                 if t.map_err(VmError::Error)? == kt {
