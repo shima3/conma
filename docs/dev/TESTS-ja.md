@@ -100,7 +100,7 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 
 * 種類：機能（ConJS のページに、bench.html と `?hostreport` を足した）。
 * docs/dev/CONJS-HOST-PLAN.md の段階 H7（32 節の設計、33 節の結果）：conjs/web/hostreport.js（`?hostreport`。stars.html、canvas.html、bench.html）、conjs/web/bench.html（conjs/bench の 7 つを、ホストの関数ありとなしで測る）、conjs/web/build.sh が bench_NAME_conjs.module.se も作る（.gitignore に足した）。docs/conjs/index.md からも指した（main に入ってから、サイトに出る）。
-* conjs/test/run_all.sh：step20 を、`NODE_OPTIONS=--disallow-code-generation-from-strings` でもう一度流す（`== step20 (no eval)`。約 7 秒）。全部流すときは、この行も違いがないこと。
+* conjs/test/run_all.sh：step20 を、`NODE_OPTIONS=--disallow-code-generation-from-strings` で、`CONJS_HOST_STRICT` を消して、もう一度流す（`== step20 (no eval)`。約 7 秒。`CONJS_HOST_STRICT=1` で run_all.sh を流しても通る）。全部流すときは、この行も違いがないこと。
 * 作り直すもの：`conjs/web/build.sh`（ページを見るとき）。
 * M1 が流したもの（Apple M1）：conjs/test（wasm 版。新しい行を含む）：違いなし。Claude のアプリの組み込みのブラウザ（Chromium）で、bench.html の「すべて測る」（7 つとも出力が同じ。時間は 33 節）、stars.html?hostreport で遊んで、コンソールに `conjs: host: same` などが出ること、canvas.html?hostreport と、`?hostreport` なしの stars.html が動くこと。
 * 流していないもの：Safari、Firefox、Windows のページ（手で確かめる。上の「全部流す」の項）。

@@ -26,7 +26,8 @@ if [ "${CONMA_VM:-wasm}" = wasm ]; then
   done
   # eval を止めたページ（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：Node.js が new Function を止めると、ホストの関数を
   # 作れず、ConMa 版だけで動くので、ログは同じになる。run_case.sh（bin/lang-test）で、case*.feed.py の入力も渡して流す。
-  # CONJS_HOST_STRICT は付けない（付けると、作れなかったことを出し、ログと違う）
+  # CONJS_HOST_STRICT は消して流す（あると、作れなかったことを出し、ログと違う。ランタイムは、あるかだけを見るので、空にしても
+  # 効かない。CONJS_HOST_STRICT=1 で run_all.sh を流しても通るように。M4 のレビュー、shima3/conma#87）
   echo "== step20 (no eval)"
-  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" bash run_case.sh step20
+  env -u CONJS_HOST_STRICT NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" bash run_case.sh step20
 fi
