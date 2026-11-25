@@ -149,7 +149,7 @@ conjs/test/run_all.sh                                  # ConJS（wasm 版の VM�
 * M4 が流したもの：conjs/test（`CONJS_HOST_STRICT=1`）、conjs/test/compare.sh、sjs/test、conjs/bench の 8 つ（小さな大きさで Node.js と同じ出力）、wordcount.con.js をパイプの入力で、doc-pairs.py。
 * 流していないもの：test/ と consh/test（ConJS の変換器しか変えていない）、Windows。
 
-### i7/lang-node
+### i7/lang-node（shima3/conma#89）
 
 * 種類：機能（ConJS の起動が速くなる。出力は変わらない）。
 * bin/lang：wasm 版の VM で動かすとき（ConJS の既定）、lang.conf を読んだ後に Node.js の bin/lang.cjs を exec し、変換、build、link から実行までを 1 つの Node.js のプロセスでする（実行は vm/wasm/vm-node.js を require する）。キャッシュの確かめ（find の代わり）、include の行の分け方（awk の代わり）、ハッシュ（cksum の CRC）、bin/cache-dir の場所を JavaScript でするので、キャッシュのファイルは bash の版と同じものを使う。変換、build、link は、今までどおり Rust 版の VM の子プロセスで（なければ wasm 版の VM の別の Node.js で）する。`CONMA_LANG_SH=1` で、今までの bash の道になる。`CONMA_WASM_HOST=jsc`、`--emit`、ほかの VM は変えていない。
