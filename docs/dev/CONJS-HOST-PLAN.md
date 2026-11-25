@@ -417,3 +417,55 @@ So H7 needs no new machinery to run host functions in a page. What is left is th
 **Not in H7**: the file of section 8; SJS in ConSh (10.5); making the translator or the runtime different in a page (the modules are those of Node.js).
 
 **The review** (M4, shima3/conma#86): M4 agreed with the design and with allowing `eval`, and ran step20 with `eval` forbidden. From it: the fallback test goes through run_case.sh without `CONJS_HOST_STRICT` (3); bench.html runs each program at a size of its own with and without host functions and shows the time of one round (2); `?nohost` is left to bench.html (2); M1 builds H7 and M4 reviews it, since it touches neither sjs/include/sjs_host.se nor conjs/include/conjs_host.se.
+
+## 34. Design: async functions in a ConJS file run on the host (2026-11-26; designed by M1, to be reviewed)
+
+Section 33 (the results of H7) is on `alpha`, not yet on `main`; this section is numbered after it.
+
+**The question** (the user, 2026-11-26): when the translator finds `async` in a `.con.js` file, could it take the function as code of the host instead of stopping with `conjs: not in ConJS: async`? Today the code that uses async/await (Node.js's `fs.promises`, a library that returns Promises) goes into a host file of its own, given with `CONMA_HOST` (docs/HOST-ja.md, 3.2; conjs/test/step21), and the program calls it with `host.wait`. ConJS is not SJS: it is not a sandbox (section 1: a ConJS program reads and writes files and the network), and it is to take more of JavaScript (conjs/README.md). So nothing in ConJS asks that code of the host stay out of its files. The user chose to design it (2026-11-26).
+
+**What the program writes**
+
+```js
+// files.con.js
+async function countLines(name) {                     // runs on the host, as JavaScript
+  const fs = require("node:fs/promises");
+  const text = await fs.readFile(name, "utf8");
+  return text.split("\n").filter((line) => line !== "").length;
+}
+
+const t = spawn(() => countLines("a.txt"));            // a call that waits, as host.wait does
+console.log(countLines("files.con.js"));
+console.log(join(t));
+```
+
+**1. What the translator takes**
+
+* An `async function` declaration at the top level of a file (exported or not). Not yet: async arrow functions and function expressions, async methods, async generators, `await` outside such a function. They stop as now, with `not in ConJS: async` or `await`.
+* The body is **JavaScript, not ConJS**: it means what it means in JavaScript (`+` joins strings, `length` counts units of UTF-16, Promise, `Map` and the methods ConJS lacks are there). The translator copies its text into the module as it is in the source, from the token after `async` to the closing brace, so nothing of section 5 applies to it. To find the closing brace and the names of the body, the translator parses it with its parser and `await` added as a unary operator. A body with syntax that the parser does not know (a regular expression, `for await`, a label) stops the translation with `conjs: not in ConJS yet, in an async function: ...` for now; a lexer that knows these, used only to find the end of the body, is a later step.
+* **The names of the body**: its parameters and local names, the globals of the host (`fetch`, `setTimeout`, `process`, `globalThis` ...), `require` on Node.js (2), and the other async functions of the same file. A name declared at the top level of the ConJS program (a variable, a function that is not async, a class, an imported name) or one of the names of ConJS (`spawn`, `join`, `sleep`, `host`, `fs`, `http`, `readLine` ...) is an error of the translator: `conjs: an async function runs on the host and cannot use NAME of the program`. The host has no copy of them and could not call them back (values cross, functions do not; HOST-ja, 2). `console` is that of the host (in a page, the console of the browser, not the output of the page): written into the documents, and a point for the review.
+
+**2. How it runs**
+
+* The translator writes the text of the async functions of a file into the module as one String, with their names, as it writes the JavaScript of the host functions (section 4). At the start of the program the runtime of ConJS hands it to the host with a new primitive of the feature `"js"`, `__JS_host_define__ onError text names ,()`: vm/wasm/conma.js compiles the text with `new Function` and adds each function to its `hostFunctions` under a name of its own (`conjs.async.N.NAME`, N the number of the module, so that two files can have functions of the same name and none meets a name of `CONMA_HOST`).
+* On Node.js, vm-node.js passes into the text a `require` made with `module.createRequire` from the path of the `.con.js` file, so that `require("./x.js")` and the packages of `node_modules` are found from the program, as a CommonJS module beside it finds them. In a page there is no `require`, and the body uses what the page has.
+* **A call** of the function in ConJS code (`countLines(x)`) is written as the call of `host.wait` (`__Host_start__`) with that name: it waits for the Promise, the other tasks run meanwhile, and the arguments and the result are copied as `host.wait` copies them (HOST-ja, 2: numbers, strings, Booleans, plain objects, arrays; the empty array comes back as `undefined`, a function cannot be passed). A rejection throws an `Error` of ConJS with the message of the host, at the position of the call. The name used as a value (`const f = countLines`) is a ConJS function that makes that call.
+* A ConJS host function (section 2) that calls it is a waiting host function, as one that calls `host.wait`.
+* **Where it cannot run**: ConJS runs on the wasm VM only (stage P10). On the native VMs (`CONMA_VM=rust`) and where `new Function` is forbidden (a page with a Content-Security-Policy against `eval`, Node.js with `--disallow-code-generation-from-strings`) `__JS_host_define__` fails, and the program stops at the start with `conjs: the async functions of FILE need JavaScript on the host: ...`. There is no ConMa version to fall back to, unlike the host functions of section 7. The file of the build of section 8 (10.3) would let a page that forbids `eval` run them; it waits, as before.
+
+**3. What does not change**
+
+* ConJS code still has no `async`, `await` or Promise (PLATFORM-PLAN-ja.md, 4.13): a call that waits is an ordinary call. Only the top-level async functions are JavaScript, and the line between the two is the keyword `async`.
+* `CONMA_HOST` and `host.wait` stay, for host code shared by many programs and for the functions of the host that are not JavaScript.
+* A `.con.js` file with an async function is no longer a program that Node.js runs as it is with the same output (ConJS code calls the function without `await`): conjs/test/compare.sh leaves such files out, as it leaves out those with `spawn` or `host`.
+
+**4. Tests and documents**
+
+* A new step of conjs/test (or cases in step21): a call, a call from two tasks with the order of their output, a rejection caught and one not caught (its position), arguments and results of each kind, `require` of a file beside the program and of `node:fs/promises`, two files with an async function of the same name, the name used as a value, a ConJS host function that calls one. The errors of the translator (a name of the program in the body, an async arrow function, syntax that the parser does not know), and the stop at the start under `--disallow-code-generation-from-strings`.
+* conjs/README.md and README-ja.md (Language: async functions at the top level are JavaScript on the host), docs/HOST-ja.md 3.2 (the same example in one file), docs/PRIMITIVES.md (`__JS_host_define__`).
+
+**For the review**
+
+1. Whether `await` before a call of such a function in ConJS code is taken as the call itself (so that `await countLines(x)` can be written as in JavaScript) or stays an error. The design keeps it an error: in a ConJS function that is not async, it is not JavaScript either.
+2. Whether `console.log` in the body is the host's console (the design) or goes to the output of the program in order with it.
+3. Who builds it: the translator (sjs/include/sjs_parse.se, the files of ConJS), conma.js and vm-node.js, and the runtime of ConJS; it does not touch sjs/include/sjs_host.se or conjs/include/conjs_host.se beyond the mark of a waiting call.
