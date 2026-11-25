@@ -841,7 +841,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
     * `conjs/conjs file.con.js` は wasm 版の VM で動き、Node.js と `vm/wasm/build.sh` が要る。変換は、Rust 版の VM を作ってあればそれで速くなる。
     * `CONMA_VM=wasm` を付けた例から `CONMA_VM=wasm` を除き、`CONMA_VM=python` の行を除く。
     * 端末の見本（stars-term.con.js など）を「Rust 版の VM の端末で遊べる」と書いた所を直す。
-    * QUICKSTART（macOS と Windows の手順）：Node.js、`rustup target add wasm32-unknown-unknown`、`vm/wasm/build.sh` は、もう書いてある。`(cd vm && cargo build --release)` は、変換を速くするためのもの（なくても動く）だと書く。counter_server.con.js を動かす所の「`CONMA_VM=wasm` を付ける」も除く（S5 のレビューの 3 と補足）。
+    * QUICKSTART（macOS と Windows の手順）：Node.js、`rustup target add wasm32-unknown-unknown`、`vm/wasm/build.sh` は、もう書いてある。`(cd vm && cargo build --release)` は、変換を速くするためのもの（なくても動く）だと書く。counter_server.con.js を動かす所の「`CONMA_VM=wasm` を付ける」も除く（S5 のレビューの 3 と補足）。困ったときの表の `http.listen: this platform has no server` の原因（今は「`CONMA_VM=wasm` がない」）は、「`CONMA_VM=rust` などで、サーバのない VM を選んでいる」にする（S5 の 2 度目の確認）。
     * 2 つの言語の組は、同じコミットで直す（`python3 .github/doc-pairs.py`）。
 * conjs/bench：run.sh は、Node.js と wasm 版の VM を測る。conjs/bench/README-ja.md の表の Rust 版の列は、それまでの結果として日付を付けて残し、新しく測るのは wasm 版だけにする。Full ConJS Bench も wasm 版だけにする。
 * docs/HOST-ja.md：
@@ -870,7 +870,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 4. conjs/bench の Rust 版の列を、それまでの結果として残すこと。
 5. HOST-ja.md の例をテストにするのに、conjs/test の新しいステップを使うこと（test/host-api.sh でなく）。
 
-**S5 のレビュー**（PR shima3/conma#81）：決めることの 1〜5 は、どれも賛成だった（1 は、bin/lang を直接呼ぶ所も同じ既定になるため）。`--prepare` を確かめたことと、指摘の 1（windows のジョブの shasum）、2（Windows の既知の違い）、3（QUICKSTART）を、上に入れた。
+**S5 のレビュー**（PR shima3/conma#81）：決めることの 1〜5 は、どれも賛成だった（1 は、bin/lang を直接呼ぶ所も同じ既定になるため）。`--prepare` を確かめたことと、指摘の 1（windows のジョブの shasum）、2（Windows の既知の違い）、3（QUICKSTART）を、上に入れた。2 度目の確認で、QUICKSTART の困ったときの表の行も足した。
 
 ## 5. 段階
 
