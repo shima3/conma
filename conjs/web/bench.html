@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConJS bench</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  table { border-collapse: collapse; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  input[type=number] { width: 7em; }
+  .same { color: #070; }
+  .differ { color: #b00; font-weight: bold; }
+  .wrap { overflow-x: auto; }
+  pre { background: #f4f4f4; padding: 8px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>ConJS のホストの関数を測る</h1>
+<p>conjs/bench のプログラムを、wasm 版の ConMa の VM で、ホストの JavaScript の関数あり（ふつう）と、なし（<code>CONMA_NO_HOSTJS</code>。ConMa だけで動かす）で動かし、
+1 回の時間を比べる（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）。1 回の時間は、（時間 − 大きさ 0 で動かした時間）÷ 大きさ。
+ホストの関数なしは遅いので、大きさを分けた。出力は、なしの大きさで、ありとなしを比べる。
+<code>?hostreport</code> を付けると、ホストで動いた関数を、ブラウザのコンソールに出す。
+<a href="stars.html">星ひろい</a>、<a href="canvas.html">canvas の見本</a>。</p>
+<p><button id="all" type="button">すべて測る</button> <span id="status">読み込み中…</span></p>
+<div class="wrap">
+<table>
+  <thead>
+    <tr><th>プログラム</th><th>大きさ（あり）</th><th>大きさ（なし）</th><th></th><th>起動（ms）</th><th>あり：1 回（µs）</th><th>なし：1 回（µs）</th><th>なし ÷ あり</th><th>出力</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+<pre id="err"></pre>
+<script src="conma.js"></script>
+<script src="hostreport.js"></script>
+<script>
+"use strict";
+// The programs of conjs/bench that build.sh translates for this page (bench_NAME_conjs.module.se), with the sizes of the
+// two runs: with host functions about 5 times the size M of conjs/bench/run.sh, without them a twentieth of it (about two
+// seconds on an Apple M1 in Node.js). exceptions and tasks do not run on the host yet, so both of their runs are small.
+const PROGRAMS = [
+  ["strings", 900000, 9000],
+  ["dict", 3000000, 30000],
+  ["hof", 30000, 300],
+  ["json", 22500, 225],
+  ["exceptions", 60000, 60000],
+  ["tasks", 3000, 3000],
+  ["nbody_class", 135000, 1350],
+];
+const rows = document.getElementById("rows");
+const status = document.getElementById("status");
+const err = document.getElementById("err");
+const report = ConjsHostReport();
+let wasmModule = null;
+let busy = false;
+
+// One run of the module text with the size n; host false sets CONMA_NO_HOSTJS. { ms, out, code }
+async function runOnce(file, moduleText, n, host) {
+  const decoder = new TextDecoder();
+  let out = "";
+  const write = (fd, bytes) => {
+    const text = decoder.decode(bytes, { stream: true });
+    if (fd === 1) out += text;
+    else err.textContent += text;
+  };
+  let wake = null;
+  const vm = ConMaVM.create(wasmModule, report.wrap(write), {
+    jsDone: () => {
+      if (wake) {
+        const w = wake;
+        wake = null;
+        w();
+      }
+    },
+  });
+  report.setup(vm);
+  if (!host) vm.setenv("CONMA_NO_HOSTJS", "1");
+  const t0 = performance.now();
+  let code = vm.start(moduleText, ["-m", file, String(n)]);
+  if (code === 0) {
+    for (;;) {
+      code = vm.run(100000);
+      if (code === ConMaVM.RUNNING) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } else if (code === ConMaVM.IDLE) {
+        if (vm.jsPending() === 0) break;
+        await new Promise((resolve) => (wake = resolve));
+      } else {
+        break;
+      }
+    }
+  }
+  return { ms: performance.now() - t0, out, code };
+}
+
+const fmt = (x) => (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2));
+
+async function measure(row) {
+  const { name, hostSize, plainSize, cells } = row;
+  const n1 = Math.max(1, Math.floor(Number(hostSize.value)));
+  const n2 = Math.max(1, Math.floor(Number(plainSize.value)));
+  for (const c of [cells.start, cells.host, cells.plain, cells.ratio, cells.same]) c.textContent = "";
+  cells.same.className = "";
+  const file = `bench_${name}_conjs.module.se`;
+  status.textContent = `${name}：読み込み中…`;
+  const moduleText = await fetch(file).then((r) => {
+    if (!r.ok) throw new Error(`${file}: ${r.status} (conjs/web/build.sh で作る)`);
+    return r.text();
+  });
+  status.textContent = `${name}：起動（大きさ 0）`;
+  const zero = await runOnce(file, moduleText, 0, true);
+  cells.start.textContent = fmt(zero.ms);
+  status.textContent = `${name}：ホストの関数あり（大きさ ${n1}）`;
+  const a = await runOnce(file, moduleText, n1, true);
+  const perHost = ((a.ms - zero.ms) * 1000) / n1;
+  cells.host.textContent = fmt(perHost);
+  status.textContent = `${name}：ホストの関数あり（大きさ ${n2}、比べるため）`;
+  const b = await runOnce(file, moduleText, n2, true);
+  status.textContent = `${name}：ホストの関数なし（大きさ ${n2}）`;
+  const c = await runOnce(file, moduleText, n2, false);
+  const perPlain = ((c.ms - zero.ms) * 1000) / n2;
+  cells.plain.textContent = fmt(perPlain);
+  cells.ratio.textContent = perHost > 0 ? fmt(perPlain / perHost) : "";
+  const same = b.out === c.out && b.code === c.code && a.code === 0;
+  cells.same.textContent = same ? "同じ" : "違う";
+  cells.same.className = same ? "same" : "differ";
+  if (!same) err.textContent += `${name}: with host functions (exit ${b.code})\n${b.out}without (exit ${c.code})\n${c.out}`;
+}
+
+async function guarded(f) {
+  if (busy) return;
+  busy = true;
+  try {
+    await f();
+    status.textContent = "終わった";
+  } catch (e) {
+    status.textContent = "エラー：" + e.message;
+  } finally {
+    busy = false;
+  }
+}
+
+const table = PROGRAMS.map(([name, n1, n2]) => {
+  const tr = document.createElement("tr");
+  const td = (child) => {
+    const cell = document.createElement("td");
+    if (child) cell.appendChild(child);
+    tr.appendChild(cell);
+    return cell;
+  };
+  const input = (value) => {
+    const x = document.createElement("input");
+    x.type = "number";
+    x.min = "1";
+    x.value = String(value);
+    return x;
+  };
+  td(document.createTextNode(name));
+  const hostSize = input(n1);
+  const plainSize = input(n2);
+  td(hostSize);
+  td(plainSize);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "測る";
+  td(button);
+  const cells = { start: td(), host: td(), plain: td(), ratio: td(), same: td() };
+  rows.appendChild(tr);
+  const row = { name, hostSize, plainSize, cells };
+  button.addEventListener("click", () => guarded(() => measure(row)));
+  return row;
+});
+
+document.getElementById("all").addEventListener("click", () =>
+  guarded(async () => {
+    for (const row of table) await measure(row);
+  }));
+
+(async () => {
+  try {
+    wasmModule = new WebAssembly.Module(await fetch("conma.wasm").then((r) => r.arrayBuffer()));
+    status.textContent = "測れる";
+  } catch (e) {
+    status.textContent = "エラー：" + e.message;
+  }
+})();
+</script>
+</body>
+</html>

@@ -21,3 +21,4 @@ conjs/web/canvas.js
 conjs/web/input.js
 conjs/web/canvas_demo_conjs.module.se
 conjs/web/stars_conjs.module.se
+conjs/web/bench_*_conjs.module.se

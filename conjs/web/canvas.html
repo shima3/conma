@@ -20,6 +20,7 @@
 <pre id="out"></pre>
 <script src="conma.js"></script>
 <script src="canvas.js"></script>
+<script src="hostreport.js"></script>
 <script>
 "use strict";
 // The page runs the VM in its own thread: conma.js and canvas.js (vm/wasm/host), as build.sh puts them here
@@ -39,7 +40,9 @@
     ]);
     const host = ConmaCanvas(document.getElementById("canvas"));
     let wake = null;
-    const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), write, {
+    // ?hostreport：ホストの関数の報告を、ブラウザのコンソールに出す（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）
+    const report = ConjsHostReport();
+    const vm = ConMaVM.create(new WebAssembly.Module(wasmBytes), report.wrap(write), {
       hostFunctions: host.hostFunctions,
       hostFeatures: host.hostFeatures,
       // A call of the host (canvas.frame) has finished: run the VM again
@@ -51,6 +54,7 @@
         }
       },
     });
+    report.setup(vm);
     let code = vm.start(moduleText, ["-m", file]);
     if (code !== 0) throw new Error("the VM did not start (" + code + ")");
     status.textContent = "動いている";
