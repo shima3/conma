@@ -1,6 +1,6 @@
 // conjs/examples/host_demo.con.js のホストの関数を、JavaScript で書いたもの（docs/HOST-ja.md、段階 P7）。
 // wasm 版の VM を Node.js で動かすとき、CONMA_HOST に、このファイルを渡す：
-//   CONMA_VM=wasm CONMA_HOST=conjs/examples/host_demo.host.js bin/lang conjs conjs/examples/host_demo.con.js
+//   CONMA_HOST=conjs/examples/host_demo.host.js bin/lang conjs conjs/examples/host_demo.con.js
 // ブラウザでは、同じ hostFunctions と hostFeatures を ConMaVM.create の hooks に渡す（vm/wasm/conma.js）。
 // Rust で同じものを書いたのが vm/examples/host_demo.rs。
 module.exports = {

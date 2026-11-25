@@ -1,5 +1,5 @@
 // Stage H0 of docs/dev/CONJS-HOST-PLAN.md: what a crossing between the VM and the host costs today, measured with
-// ConJS on the wasm VM (CONMA_VM=wasm conjs/conjs crossing.con.js MODE N).
+// ConJS on the wasm VM (conjs/conjs crossing.con.js MODE N).
 // MODE:
 //   empty  an empty loop of N steps (subtract it from the others)
 //   call   a call of a small ConJS function in each step: what the VM spends to run a function called back (3.1)

@@ -1,9 +1,9 @@
 #!/bin/bash
 # ConJS のテストの 1 つのステップ（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）。2026-11-20 から、言語キットのテストの型
 # bin/lang-test（4.3 節）を呼ぶだけにした。ステップのディレクトリの case*.con.js を変換して動かし、出力と終了ステータスを
-# case*.log と比べる。VM は CONMA_VM（なし：Rust 版、wasm、python）
+# case*.log と比べる。VM は wasm 版（conjs/lang.conf の vm。段階 P10）
 #   run_case.sh ステップのディレクトリ
-# ステップに copy.txt があれば、一時ディレクトリに写してから動かす（ファイルを書くステップ。同じワークツリーで 3 つの VM の
+# ステップに copy.txt があれば、一時ディレクトリに写してから動かす（ファイルを書くステップ。同じワークツリーで、いくつかの
 # テストを同時に流しても混ざらない）。server.py もあれば、写した所で HTTP のサーバとして立て（ポートは port.txt）、
 # 終わったら止める（4.4 節、段階 P5。step9 の fetch）
 here="$(cd "$(dirname "$0")"; pwd)"

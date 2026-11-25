@@ -87,13 +87,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/ci-suite.sh "" sjs/test/run_all.sh
 
-      - name: conjs/test (Rust VM)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: .github/ci-suite.sh "" conjs/test/run_all.sh
-
+      # ConJS runs on the wasm VM only (stage P10, docs/dev/PLATFORM-PLAN-ja.md 4.14)
       - name: conjs/test (wasm VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: CONMA_VM=wasm .github/ci-suite.sh "" conjs/test/run_all.sh
+        run: .github/ci-suite.sh "" conjs/test/run_all.sh
 
       - name: test/host-api.sh
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -141,19 +138,14 @@ jobs:
         with:
           node-version: '26'
 
-      # bin/lang hashes with shasum, which the Git Bash of the runner lacks (that of I7 has it): sha1sum gives the same
-      - name: shasum
-        run: |
-          mkdir -p "$HOME/bin"
-          printf '#!/bin/bash\nexec sha1sum "$@"\n' > "$HOME/bin/shasum"
-          chmod +x "$HOME/bin/shasum"
-          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
-
+      # The Rust VM, then the wasm32 VM for ConJS (stage P10)
       - name: Build
         id: build
         run: |
-          command -v shasum; echo /tmp is "$(cygpath -m /tmp)"
-          cd vm && cargo build --release
+          echo /tmp is "$(cygpath -m /tmp)"
+          rustup target add wasm32-unknown-unknown
+          (cd vm && cargo build --release)
+          vm/wasm/build.sh
 
       - name: vm (cargo test --lib)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -167,9 +159,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: CONMA_VM=rust .github/ci-suite.sh "examples step2 step3 step4 step6 step11 step12 step13 step14 step16" consh/test/run_all.sh -j 4
 
-      - name: conjs/test (Rust VM)
+      - name: conjs/test (wasm VM)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: CONMA_VM=rust .github/ci-suite.sh "" conjs/test/run_all.sh
+        run: .github/ci-suite.sh "" conjs/test/run_all.sh
 
       - name: sjs/test
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}

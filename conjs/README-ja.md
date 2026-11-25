@@ -15,18 +15,16 @@ console.log(join(t));                                        // t が終わる�
 ## 使い方
 
 ```
-conjs/conjs file.con.js           # 変換して、Rust 版の VM で動かす（vm で cargo build --release しておく。なければ wasm 版の VM）
+conjs/conjs file.con.js           # 変換して、wasm 版の VM（Node.js）で動かす（vm/wasm/build.sh で作っておく）。CONMA_HOST でホストの関数を渡せる
 conjs/conjs --emit file.con.js    # 変換した ConMa のソースを出す
-CONMA_VM=wasm conjs/conjs f.con.js    # wasm 版の VM（Node.js）で動かす。CONMA_HOST でホストの関数を渡せる
-CONMA_VM=python conjs/conjs f.con.js  # Python 版の VM で動かす
-conjs/test/run_all.sh             # テスト（CONMA_VM で VM を選ぶ）
+conjs/test/run_all.sh             # テスト（wasm 版の VM で）
 conjs/test/compare.sh             # step10 の場合を Node.js と比べる
 conjs/bench/run.sh 名前           # ベンチマークを Node.js と比べる（2026-11-24 から。表は conjs/bench/README-ja.md）
 conjs/conjs --prepare             # 変換器とランタイムのモジュールを作っておく（初めての実行が速くなる。2026-11-23 から）
 conjs/conjs --version             # ConMa の版を出す（2026-11-24 から。ConMa の README の Version）
 ```
 
-変換は Rust 版の VM で行い、変換したプログラムを選んだ VM で動かす。Rust 版の VM を作っていなければ、変換も動かすのも wasm 版の VM（vm/wasm/build.sh で作る。Node.js）で行う（2026-11-23 から。vm-node.js の `build` と `link`）。どちらで変換しても、できるモジュールは 1 バイトも同じ。環境変数 `CONMA_TRANSLATE_VM=wasm` で、Rust 版の VM があっても wasm 版で変換する。変換器は SJS のもの（sjs/include）に、言語の印（PDict の `"sjs_lang"` を `"conjs"`）を付けて使う。変換器のモジュールは、bin/cache-dir の場所に conjsc.module.se として作っておく（sjs/sjs と同じ）。ランタイム（変換したソースが include する conjs_rt.se など）のモジュールも、同じ所に conjs-rt-ハッシュ.module.se として 1 度だけ作っておき、変換したソースは include の行を除いてモジュールにしてから、`conma link` で合わせる（bin/lang。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。`console.log("hi")` だけのプログラムは、Rust 版の VM で約 0.1 秒で動く（前は、毎回ランタイムをフロントエンドに通して約 1.45 秒）。
+ConJS は、2026-11-25 から、wasm 版の VM だけで動かす（段階 P10。docs/dev/PLATFORM-PLAN-ja.md の 4.13 節）。`conjs/lang.conf` がそれを決め、作っていなければ、`conjs/conjs` が作り方を出す。それまでは、既定で Rust 版の VM で動かし、`CONMA_VM` で選んだ VM（wasm 版と Python 版）でも動かした。`CONMA_VM=rust` は、開発者のために今も使えるが、テストはしない。`async` と `await` を使うコードは、ホストの関数にする（docs/HOST-ja.md の 3.2 節）。変換は、Rust 版の VM を作ってあればそれで行い（速い）、変換したプログラムは wasm 版の VM で動かす。Rust 版の VM を作っていなければ、変換も wasm 版の VM（vm/wasm/build.sh で作る。Node.js）で行う（2026-11-23 から。vm-node.js の `build` と `link`）。どちらで変換しても、できるモジュールは 1 バイトも同じ。環境変数 `CONMA_TRANSLATE_VM=wasm` で、Rust 版の VM があっても wasm 版で変換する。変換器は SJS のもの（sjs/include）に、言語の印（PDict の `"sjs_lang"` を `"conjs"`）を付けて使う。変換器のモジュールは、bin/cache-dir の場所に conjsc.module.se として作っておく（sjs/sjs と同じ）。ランタイム（変換したソースが include する conjs_rt.se など）のモジュールも、同じ所に conjs-rt-ハッシュ.module.se として 1 度だけ作っておき、変換したソースは include の行を除いてモジュールにしてから、`conma link` で合わせる（bin/lang。docs/dev/PLATFORM-PLAN-ja.md の 4.4 節、段階 P5）。`console.log("hi")` だけのプログラムは、wasm 版の VM で約 0.18 秒、Rust 版の VM で約 0.08 秒で動く（Apple M1、2026-11-25。その前は、Rust 版の VM で約 0.1 秒。もっと前は、毎回ランタイムをフロントエンドに通して約 1.45 秒）。
 
 wasm 版の VM では、外の変数に触れない関数を、ホストの JavaScript で動かす。結果は同じで、速い（2026-11-24 から。docs/dev/CONJS-HOST-PLAN.md）。待つ呼び出しのうち、そのような関数が呼べるのは、`sleep`、`join`、`nextEvent` と、ほかのそのような関数で、ConMa と同じく、その処理で待つ。そのような関数が、ConMa の関数を呼び返した後や、待った後に、ホストにできないことに出会うと、プログラムは `conjs: the host function NAME could not go on after calling back: ...` か `... after waiting: ...` と出して止まる（status 2）。そのときは、すべての関数を ConMa で動かす `CONMA_NO_HOSTJS=1` を付けて流し直し、そのプログラムを知らせてほしい。`CONJS_HOST_REPORT=1` を付けると、どの関数がなぜ ConMa に戻ったかを出す。
 
@@ -62,7 +60,7 @@ SJS で書けるもの（sjs/README-ja.md の「書けるもの」）から、�
         * ファイルのオブジェクト（`console.log` では `File { path: 'a.txt' }`）：`readLine()`（次の 1 行。`\n` か `\r\n` を除く。終わりなら `undefined`）、`readLines()`（残りの行を返すジェネレータ。`for (const line of f.readLines())`。終わったときと、`break`、例外、`return` で抜けたときに閉じる）、`read()`（残りを全部）、`write(text)`、`close()`（何度でもよい）、`closed`（閉じたか）。閉じた後に読み書きすると Error。
         * **`fs.readLines(path)`**：`fs.open(path).readLines()` と同じ（Node.js にはない近道）。
         * **`fs.stdin`**、**`fs.stdout`**：標準入力（読むだけ）と標準出力（`write` だけ。改行を足さない）のファイルのオブジェクト。標準入力は、キー（`nextEvent`）と行の両方では読めない（先に使ったほうに決まり、もう一方は Error）。
-        * ふつうのファイルは待たずに読む。パイプや標準入力で、まだ届いていなければ、呼んだ処理だけが待つ。読む時間は行の数に比例する（Rust 版の VM で、1 行およそ 22 マイクロ秒）。
+        * ふつうのファイルは待たずに読む。パイプや標準入力で、まだ届いていなければ、呼んだ処理だけが待つ。読む時間は行の数に比例する（wasm 版の VM で、1 行およそ 31 マイクロ秒。Apple M1）。
     * **`argv`**（段階 P8）：プログラムに渡した引数の配列（`conjs/conjs file.con.js a b` の `["a", "b"]`。Node.js の `process.argv.slice(2)`）。
     * **`fetch(url, options)`**：HTTP の要求。options は `method`（文字列）、`headers`（オブジェクト）、`body`（文字列）。返すのは、本体を全部読んである Response のようなオブジェクトで、`status`、`ok`（状態が 200〜299）、`text()`、`json()` を持つ（どれも待たない）。404 などは例外にせず `ok` を偽にし、つながらないときは TypeError（`fetch failed`）を投げる（JavaScript と同じ）。wasm 版の VM ではホストの `fetch`（Node.js 18 以降とブラウザ）を、Rust 版と Python 版の VM では `curl` を、待つための VProc で動かす（curl がなければ TypeError）。`json()` は `JSON.parse` と同じ読み手を使う。curl の道では、HEAD は `-X HEAD` でなく `--head` で送る（`-X HEAD` の curl は、来ない本体を待って失敗する）。
     * **`http.listen(port, host)`**（段階 P6b。Node.js だけ）：HTTP のサーバを始め、サーバのオブジェクトを返す。port は数（書かなければ 0。OS が選ぶ）、host は文字列（書かなければ `"127.0.0.1"`。ほかの機械から届かない）。wasm 版の VM を Node.js で動かすとき（機能 `"server"`。vm/wasm/host/server.js）だけ使え、ほかの VM では Error（`http.listen: this platform has no server (Node.js only)`）。使えない port は Error（`server.listen: EADDRINUSE: address already in use`）。
@@ -89,5 +87,5 @@ ConJS の構文は JavaScript のサブセットだが、ConJS のプログラ�
 
 * **ファイルの見本**（段階 P8。conjs/examples）：merge.con.js は、ソートした 2 つのファイルを 1 行ずつ読み比べ、片方だけにある行と両方にある行を出す（Unix の `comm` と同じ。`-` は標準入力）。2 つの `readLine` を、比べた結果で交互に進めるだけで書ける。同じことを Node.js で書いた merge.node.js では、`readline` の Interface を 2 つ作り、`for await` が使えないので、2 つの非同期のイテレータの `next()` を `await` で呼び、関数を `async` にし、`try`／`finally` で閉じる。2 つが同じ出力になることを、conjs/test/compare.sh が確かめる（conjs/test/node-pairs.txt）。wordcount.con.js は、`fs.readLines` で語を数える、いちばん短い使い方の例。
 * **サーバの見本**（段階 P6b。conjs/examples）：counter_server.con.js は、要求ごとに処理を `spawn` する小さなサーバ（`/count`、`/slow`、`/file?name=...`、`/stop`）。`/slow` が `sleep(200)` で待つ間も、ほかの要求に答える。数は共有の変数に持つが、読んでから書くまでに待つ所がないので、ほかの処理に割り込まれない。`demo` を引数にすると、OS が選ぶ port で答え、自分に要求を送って答えを出し、`/stop` で終わる。同じことを Node.js で書いた counter_server.node.js では、`http.createServer` のコールバックを `async` にし、`setTimeout` の Promise と、`fs.promises` と `readline` の `for await` を使う。2 つが `demo` で同じ出力になることを、conjs/test/step18 の case2.node-check.js が確かめる（conjs/test/compare.sh が動かす）。
-* **ホストの関数の見本**（段階 P7。conjs/examples）：host_demo.con.js は、ホストの関数 `demo.*` を呼ぶ。同じ関数を、Rust の vm/examples/host_demo.rs と、JavaScript の host_demo.host.js（wasm 版の VM の `CONMA_HOST`）で書いてあり、test/host-api.sh が、2 つで同じログになることを確かめる（[docs/HOST-ja.md](../docs/HOST-ja.md)）。
+* **ホストの関数の見本**（段階 P7。conjs/examples）：host_demo.con.js は、ホストの関数 `demo.*` を呼ぶ。同じ関数を、Rust の vm/examples/host_demo.rs と、JavaScript の host_demo.host.js（wasm 版の VM の `CONMA_HOST`）で書いてあり、test/host-api.sh が、2 つで同じログになることを確かめる（Rust のほうは `CONMA_VM=rust` で。Rust の API は、段階 P10 から、ConMa のプログラムのための口）（[docs/HOST-ja.md](../docs/HOST-ja.md)）。
 * **ページの見本**（conjs/web。2026-11-23 までは vm/wasm/web）：canvas_demo.con.js（canvas の跳ねる玉。canvas.html で見る）と、stars.con.js（入力を待つ対話のゲーム「星ひろい」。stars.html で遊ぶ。段階 P5c。端末では conjs/examples/stars-term.con.js で遊ぶ。`conjs/conjs conjs/examples/stars-term.con.js`。段階 P6a。ゲームの決まり（両方で同じ関数：面の作り方、おばけ、キーで動くこと）を stars.con.js から import し、画面の順と描き方はそれぞれのファイルが持つので、stars.con.js に端末の分はなく、stars-term.con.js に canvas の分はない。2026-11-23 から 2026-11-24 までは、画面の順（`play`）も import し、描き方を渡した。その前は stars.con.js が両方で動いた）。ページの分は、conjs/web/build.sh が変換する。同じゲームを、ふつうのブラウザの JavaScript で 2 通りに書いたものもある。stars-events.js（イベント駆動：画面を表す変数と、キーの受け手の中の分岐、おばけの setInterval）と stars-async.js（async/await：ConJS 版と同じ形だが、待つ所すべてに await が要り、キーを待つ Promise を自分で作る）で、stars-events.html と stars-async.html で遊ぶ。compare.html は、3 つのうち 2 つを並べて見せ、待つ所の行に印を付ける（2026-11-23 から）。
