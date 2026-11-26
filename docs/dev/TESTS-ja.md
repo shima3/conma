@@ -122,7 +122,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 * 種類：直し（ConJS の処理の切り替えを、少し速くした。動きは変えていない）。
 * include/lang/sched.se：処理とスケジューラの状態を、Ref に入れず Dict に直に置き、`__Dict_put__` で書き換える（`Kit_sched_new_ref` を `Kit_sched_init` にした）。conjs/include/conjs_rt.se：処理だけの 3 つの PDict のキーの保存と戻し（`Conjs_save`、`Conjs_restore`）を、名前の LList を回す再帰から、3 つを並べて書く形にした。sched.se を読み込むのは、conjs_rt.se と test/fast18 だけ（SJS と ConSh は読まない）。
-* conjs/bench の tasks（Rust 版の VM の `CONMA_PROFILE`、大きさ 100 と 200 の差）：1 回 14,364 → 12,678 ステップ（−11.7%）。大きさ 15,000 で alpha（2750a43）と交互に 3 回ずつ（Apple M1）：wasm 版 10.04〜10.06 秒 → 9.45〜9.52 秒、Rust 版 7.53〜7.57 秒 → 7.11〜7.18 秒（約 −5.5%）。conjs/bench/README-ja.md の表は、次の Full ConJS Bench で。
+* conjs/bench の tasks（Rust 版の VM の `CONMA_PROFILE`、大きさ 100 と 200 の差）：1 回 14,364 → 12,678 ステップ（−11.7%）。大きさ 15,000 で alpha（2750a43）と交互に 3 回ずつ（Apple M1）：wasm 版 10.04〜10.06 秒 → 9.45〜9.52 秒、Rust 版 7.53〜7.57 秒 → 7.11〜7.18 秒（約 −5.5%）。conjs/bench/README-ja.md の表は、991dd42 の Full ConJS Bench（M1）で作り直した。
 * M1 が流したもの（Apple M1）：conjs/test（wasm 版）、conjs/test/compare.sh、test/host-api.sh、test/fast18（Python 版、Rust 版、wasm 版、transpiled VM）：違いなし。
 
 ### m1/h7（shima3/conma#87）
