@@ -1,8 +1,8 @@
 # Command lines in ConJS
 
-The plan of writing shell commands in a ConJS file: a line that begins with `$ ` runs an external command or a command function, with redirections from and to the variables of the program. The user proposed it on 2026-11-26; M2 wrote this plan the same day, with the questions it raises. M1 reviewed it in shima3/conma#94, the user decided two of the questions after reading the review, and this version takes both in (section 13).
+The plan of writing shell commands in a ConJS file: a line that begins with `$ ` runs an external command or a command function, with redirections from and to the variables of the program. The user proposed it on 2026-11-26; M2 wrote this plan the same day, with the questions it raises. M1 reviewed it in shima3/conma#94, and the user decided two of the questions after reading the review. On 2026-11-27 the user decided where the queue and the loop of a command line are: both on the host, with the VM changed so that it can hold values of the host (sections 7 and 9). Section 13 records the review and the decisions.
 
-**State**: a plan. Nothing is built. Section 12 lists what the user is to decide; each question there says what this plan suggests. D3 and D12 are decided.
+**State**: a plan. Nothing is built. Section 12 lists what the user is to decide; each question there says what this plan suggests. D3, D12 and D13 are decided.
 
 ## 1. Why
 
@@ -37,6 +37,11 @@ The user added on 2026-11-26, after M1's review (section 13):
 * A command function is called with a dollar sign before its name: `$ $sleep 1`. A name without it is always an external command (D3).
 * `${...}` holds a variable only, not an expression (D12).
 
+And on 2026-11-27, after the second version (translated):
+
+* The `Queue` is on the host, and the VM is changed so that it can hold values of JavaScript (D13).
+* The loop of a command line runs on the host. The ConMa VM is used as little as possible.
+
 ## 3. The syntax of a command line
 
 * **Found before the lexer of JavaScript.** As the `async` functions of CONJS-HOST-PLAN.md (section 34) are found before parsing, so are command lines, but on the characters of the file, not on its tokens. The words of a command line are not JavaScript: `$ echo it's` has a lone `'`, and `` $ grep `x` f `` has backquotes; the lexer of JavaScript would start a string or a template there and misread the rest of the file. So a scan over the characters, which knows only where strings, template literals and comments of JavaScript begin and end (ConJS has no regular expressions), finds `$ ` at the start of a line, after spaces or tabs only, outside those. It takes the line, up to its end (with the lines that a `\` at the end of a line joins to it), as raw text. The lexer of JavaScript never sees that text: it sees one token in its place, a command-line token that carries the text and its position. Only the idea is taken from `Conjs_async_at` (shima3/conma#92, conjs/include/conjs_async.se), not the way it works, which looks at tokens.
@@ -67,7 +72,7 @@ Decided by the user (D3): the first word says it.
 * **Without a redirection** (this plan's suggestion; D5):
     * an external command reads the standard input and writes the standard output of the program, as in a shell;
     * a command function gets an iterator of the lines of the standard input of the program, and a queue whose elements are written to the standard output of the program, each turned into a string with a newline after it, as `<$` does for an external command.
-* **Into an external command** (`<$`): each element, a string as it is or another value turned into a string as in section 4, then `\n`. The writing is done while the command runs, by a task of the program (section 9), so an iterator that waits (a generator that reads a file, a queue that another task fills) is fine. When the iterator ends, the standard input of the command is closed.
+* **Into an external command** (`<$`): each element, a string as it is or another value turned into a string as in section 4, then `\n`. The writing is done while the command runs, by the loop on the host (section 9), so an iterator that waits (a generator that reads a file, a queue that another task fills) is fine. When the iterator ends, the standard input of the command is closed.
 * **From an external command** (`>$`, `>>$`): lines end at `\n` and `\r\n`, as for `readLines()` in conjs/README.md; a last line with no newline is still a line; empty output gives no element. The bytes are read as UTF-8; bytes that are not UTF-8 become U+FFFD, as `TextDecoder` does.
 * **To and from a command function**: the elements are passed as they are: the same objects, so `===` holds and a change made through one reference is seen through the other. `>$` gives a new queue, which is closed when the function returns or throws. `>>$` gives the queue in the variable, which the line does not close (section 7).
 
@@ -80,7 +85,10 @@ ConJS has no queue that waits yet. This plan adds one, `Queue`, as a built-in.
 * `new Queue()` makes one, so that a program can fill a queue itself and pass it with `<$`, or give a queue to `>>$` the first time.
 * **Who closes it.** `>$` makes a queue that the line closes when the command ends. `>>$` never closes the queue: the program closes it when every command that writes to it has ended (D6). This keeps one rule for any number of writers.
 * **How big it gets.** A command line waits until the command ends (section 8), so the queue of `>$` holds all the output of the command; the reader runs after it. That is unbounded, like `$(...)` in a shell. A queue with a bound, whose `push` waits when it is full, is needed when a reader and a writer run at the same time (a line in a `spawn`, or the pipes of section 11), and is left for that stage (D7).
-* **Where it lives: in the VM** (D13). A queue holds values of ConJS, which are values of the VM. Values that cross between the VM and the host are copies (CONJS-HOST-PLAN.md, sections 3.2, 13 and 16): an object put into a queue on the host and taken out again would be another object, and every element would cross twice. So the `Queue` is a part of the runtime of ConJS in the VM, and it waits as the other built-ins wait, with the channels of include/core/chan.se (CHAN-PLAN-ja.md is the plan of channels as primitives). Only strings, the lines of external commands, cross to and from the host (section 9).
+* **Where it lives: on the host** (D13, decided by the user on 2026-11-27). The `Queue` is an object of the host's JavaScript, and the lines of an external command go into it on the host, with no step of the VM. Today values that cross between the VM and the host are copies (CONJS-HOST-PLAN.md, sections 3.2, 13 and 16), so an object of ConJS put into a queue on the host and taken out again would be another object. Stage S0 (section 11) changes the wasm VM so that values are passed by reference both ways:
+    * **Values of the host in the VM.** A new kind of value of the VM names an object of the host by a number. The VM can hold it in variables, arrays and objects, pass it, and compare it with `===` (the same number). Reading a member of it or calling a method of it is done by the host (a call to the host, as `host.wait` is, but one that does not wait unless the method waits: `q.push(x)` does not, taking the next element of an empty queue does). When the VM drops the last reference to it (`Drop` in the Rust of the VM), the host forgets it (removes it from its table).
+    * **Values of the VM on the host, kept.** Today a handle of a value of the VM (vm/src/prim/jsfn.rs, `handles`) is good only during one call. A handle that the host keeps in a `Queue` is kept until the host drops it (`FinalizationRegistry`), and the VM keeps the value alive until then. A copy of an object of the VM that a host function made (CONJS-HOST-PLAN.md 3.2) goes into a queue as the object of the VM it is a copy of (by the table of 3.2), so that `===` holds when it is taken out.
+    * **What it costs and what it does not do** (M1's answer to the user, section 13): a cycle through the VM and the host (an object of the VM that holds a queue that holds that object) is collected by neither side and lives until the program ends; the native VMs have no host, so they have no `Queue` (D10); each element that the VM puts in or takes out crosses to the host once.
 
 ## 8. What a command line gives
 
@@ -92,30 +100,39 @@ ConJS has no queue that waits yet. This plan adds one, `Queue`, as a built-in.
 
 ## 9. Where it runs
 
-* **The loop is ConJS; the host only runs processes.** M1 pointed out (section 13) that the host cannot run the loop of a command line itself: to feed `<$ lines` it would take the elements one by one from an iterator of the VM, a generator or a queue that another task fills, calling the VM back for each, and a call back cannot wait for another task of the VM (CONJS-HOST-PLAN.md section 34: async functions do not call the VM back). So the translator writes the loop in ConJS, and the host gives a few small calls that wait, each through `host.wait`:
-    * `start(argv, how)`: starts the process, with each of the standard input and output a pipe or that of the program, and gives a number for it (a plain value, so nothing of the VM is kept on the host);
-    * `write(p, text)`, `closeInput(p)`: write to its standard input and close it;
-    * `readLines(p)`: the lines that have come, as an array of strings (one line or more; waiting when none has come), or `undefined` at the end. An array of lines, not one line, keeps the trips to the host fewer;
-    * `wait(p)`: waits for the end and gives `{ status, signal }`.
-* **What the translator writes.** For example `$ grep -n ${pat} <$ lines >$ hits` becomes, in outline:
+* **The loop runs on the host** (decided by the user on 2026-11-27). The work of a command line is one function of the host's JavaScript, `$sh.run`: it starts the process, feeds its standard input, puts its lines into the queue and waits for its end. The VM only calls it, and does for it only what needs the VM: the next element of an iterator of the VM, and a call of a command function of the VM.
+* **How the host waits without stopping the other tasks.** M1 pointed out (section 13) that the host cannot take the elements of `<$ lines` from an iterator of the VM by calling the VM back, since a call back cannot wait for another task of the VM. CONJS-HOST-PLAN.md already has the way round it: a waiting host function is a JavaScript generator that, where it must wait, yields a request to the VProc of its task and is resumed with the result, while the other tasks run (section 20); and a `for...of` over a value of the VM in such a generator takes each element by such a request, which may wait (`$iterG`, `$moreG`, `$takeG`; section 31, which is on `alpha` and reaches `main` with the next merge of `alpha`, as sjs/include/sjs_host.se does). `$sh.run` is a waiting host function of the runtime, written the same way:
+    * an element of an iterator of the VM (a generator of ConMa, the lines of `fs.stdin.readLines()`) is taken by a request, which may wait; an array or a string of the host, and a `Queue`, are stepped through on the host, with no request;
+    * waiting for the process (its end, or room in the pipe of its standard input) is a request that waits for a Promise of the host, as `host.wait` does;
+    * a command function of the VM is called by a request (`$callG`), which may wait; one that is a host function is called on the host.
+* **What the translator writes.** A command line becomes one call of `$sh.run` with the parsed line as data and the values it names: `$ grep -n ${pat} <$ lines >$ hits` becomes, in outline, `hits = $sh.run(["grep", "-n", ["var", 0]], { input: 1, output: "new" }, [pat, lines])`. In a waiting host function it is `(yield* $sh.run(...))`; in code that stays in ConMa it is a call of a waiting host function from ConMa, which CONJS-HOST-PLAN.md already does. Either way the VM does one call for the line, and a request for each element of an iterator of the VM.
+* **What `$sh.run` does** for an external command, in outline:
 
     ```
-    {
-      const p = __sh.start(["grep", "-n", ...__sh.args(pat)], { input: "pipe", output: "pipe" });
-      hits = new Queue();
-      const w = spawn(() => { for (const x of lines) __sh.write(p, __sh.line(x)); __sh.closeInput(p); });
-      for (let ls; (ls = __sh.readLines(p)) !== undefined;) for (const l of ls) hits.push(l);
-      join(w);
-      hits.close();
-      __sh.check(p, __sh.wait(p));
+    function* run(words, redir, values) {
+      const argv = expand(words, values);              // section 4
+      const p = child_process.spawn(argv[0], argv.slice(1), { stdio: [...] });
+      const out = redir.output === "new" ? new Queue() : values[redir.output];
+      // stdout: Node.js pushes each line into out as it comes (no step of the VM)
+      if (redir.input !== undefined) {
+        for (const x of yield* iterate(values[redir.input])) {   // a request only for a value of the VM
+          if (!p.stdin.write(line(x))) yield* waitFor(drained(p.stdin));
+        }
+        p.stdin.end();
+      }
+      const { status, signal } = yield* waitFor(exited(p));
+      if (redir.output === "new") out.close();
+      if (status !== 0) throw new CommandError(...);  // section 8
+      return out;
     }
     ```
 
-    The writer is a task of its own, so that a command that writes much before it reads all of its input does not stop with both pipes full. A command function becomes a plain call: `$ $f a ${b} <$ xs >$ out` is `out = new Queue(); try { f(["a", ...__sh.args(b)], xs, out); } finally { out.close(); }`. The pipes of S3 use the same pieces.
-* **On Node.js** (the wasm VM run by vm/wasm/vm-node.js): the calls above are host JavaScript, as the async functions of CONJS-HOST-PLAN.md section 34 are, on `child_process.spawn` with no shell.
+    The standard output is read by Node.js into the queue while the loop feeds the standard input, so a command that writes much before it reads all of its input does not stop with both pipes full. The variable of `>$` gets the queue before the command starts (section 8): `$sh.run` hands it to the VM by a request first (in outline above it is only returned).
+* **A command function**: `$ $f a ${b} <$ xs >$ out` is `out = new Queue()`, then the call `f(["a", b], xs, out)`, then `out.close()` (also when `f` throws). `out` is a value of the host held by the VM (section 7): when `f` is a function of the VM, its `out.push(x)` goes to the host. The pipes of S3 use the same pieces.
+* **On Node.js** (the wasm VM run by vm/wasm/vm-node.js): processes are started with `child_process.spawn`, with no shell.
 * **On Windows** (D14): Node.js starts `.exe` and `.com` files found in `PATH`, but without a shell it refuses `.cmd` and `.bat` files (with `EINVAL`, since the fix of 2024), and `npm`, `npx` and many other tools are `.cmd` files. The commands of Git Bash are `.exe`, so the tests of S1 to S3 run on I7, but `$ npm test` does not. Running `.cmd` and `.bat` files needs `cmd.exe`, whose rules of quoting differ, and a value in `${...}` could then inject a command unless it is escaped for `cmd.exe`. This plan suggests: not at first; the line throws an Error that names the file and says to write `$ cmd /c ...` with care.
 * **In a browser**: there are no external commands. Command functions work; an external command throws an Error that says so.
-* **On the Rust, transpiled and Python VMs**: these have no JavaScript. CONJS-HOST-PLAN.md section 7 asks that a program print the same on every VM, so there are two choices (D10): run external commands on Node.js only (the other VMs throw an Error that says so; command functions and `Queue` work everywhere, since they are ConJS), or write the five calls above in ConMa on `__OS_spawn__`, as ConSh does. With the loop in ConJS, the second is small. This plan suggests Node.js only at first, and the ConMa calls later if the user wants them.
+* **On the Rust, transpiled and Python VMs**: these have no JavaScript. CONJS-HOST-PLAN.md section 7 asks that a program print the same on every VM, and with the loop and the `Queue` on the host, a command line and a `Queue` need a host. There are two choices (D10): command lines and `Queue` on the wasm VM only (on the other VMs, a command line and `new Queue()` throw an Error that says so), or a second version of `$sh.run` and of `Queue` in ConMa for the native VMs (on `__OS_spawn__` and the channels of include/core/chan.se, as ConSh does), which goes against using the VM as little as possible. This plan suggests the wasm VM only.
 
 ## 10. ConSh and this plan
 
@@ -125,11 +142,12 @@ ConJS has no queue that waits yet. This plan adds one, `Queue`, as a built-in.
 
 ## 11. Stages
 
-1. **S1, external commands.** `$ ` lines with words, quotes and `${...}`, and `<$`, `>$`, `>>$`, on Node.js only. `Queue` without a bound. `CommandError`. Ctrl-C stops the running command and the program, as a shell script does.
+0. **S0, values by reference between the VM and the host** (section 7): values of the host held by the VM, and values of the VM kept by the host, on the wasm VM. Its own tests in conjs/test (`===` of an object put into a host object and taken out, a value of the host dropped by the VM and forgotten by the host, a value of the VM kept by the host and not collected).
+1. **S1, external commands.** `$ ` lines with words, quotes and `${...}`, and `<$`, `>$`, `>>$`, on Node.js only, with `$sh.run` on the host (section 9). `Queue` on the host, without a bound. `CommandError`. Ctrl-C stops the running command and the program, as a shell script does.
 2. **S2, command functions.** `$ $name`, with the iterator of the standard input and the queue of the standard output for a function without redirections.
-3. **S3, pipes.** `a | b | c` with external commands and functions mixed: two external commands are joined by an OS pipe (as consh/test step15 and step8 of ConSh do), a function and a command by the calls of section 9 and a queue with a bound. `2>$`, `&&` and `||`.
+3. **S3, pipes.** `a | b | c` with external commands and functions mixed: two external commands are joined by an OS pipe (as consh/test step15 and step8 of ConSh do), a function and a command by a `Queue` with a bound, all on the host. `2>$`, `&&` and `||`.
 4. **S4, jobs and the terminal.** `&` (a task from `spawn` that runs the line), and, for an interactive use, job control: the foreground process group of the terminal, Ctrl-Z, `fg` and `bg`. Node.js cannot call `setpgid` or `tcsetpgrp`, so a small helper in Rust starts the commands in a process group of their own and gives it the terminal. Windows has no process groups of this kind: S4 is for macOS and Linux (D11).
-5. **Later, if wanted**: the ConMa calls for the native VMs (D10), glob and `~` (D1), a command line as an expression (D9), `.cmd` and `.bat` on Windows (D14), values of the host kept in the VM (D13).
+5. **Later, if wanted**: a ConMa version for the native VMs (D10), glob and `~` (D1), a command line as an expression (D9), `.cmd` and `.bat` on Windows (D14).
 
 Each stage gets a step of conjs/test, with a `.node.js` version beside it where the output can be compared (conjs/test/compare.sh); on Windows (I7), S1 to S3 are run with Git Bash's commands.
 
@@ -144,21 +162,23 @@ Each stage gets a step of conjs/test, with a `.node.js` version beside it where 
 * **D7.** A queue without a bound in S1, and one with a bound when readers and writers run at the same time (S3)? (Suggested: yes.)
 * **D8.** A status other than 0 throws `CommandError`? Or the line sets a value such as `$?` and goes on? (Suggested: throw.)
 * **D9.** A command line is only a statement at first? (Suggested: yes.)
-* **D10.** External commands on Node.js only at first, with an Error on the other VMs? Or the same on every VM from the start? (Suggested: Node.js first.)
+* **D10.** Command lines and `Queue` on the wasm VM only, with an Error on the other VMs? Or a ConMa version for the native VMs too? (Suggested: the wasm VM only, as the VM is to be used as little as possible.)
 * **D11.** Job control (S4) for macOS and Linux only? And is it needed at all, or are scripts enough? (Suggested: leave S4 until S1 to S3 are used.)
 * **D12.** Decided (2026-11-26): `${...}` holds a variable only (section 3).
-* **D13.** The `Queue` in the VM (section 7), or on the host with values of the VM kept there (section 13, the user's question)? (Suggested: in the VM. With the loop in ConJS (section 9), no value of ConJS has to stay on the host, so this plan does not need the change of the VM; it may still be wanted for other uses, as a plan of its own.)
+* **D13.** Decided (2026-11-27): the `Queue` is on the host, the VM is changed to hold values of the host and to let the host keep values of the VM (section 7, stage S0), and the loop of a command line runs on the host (section 9).
 * **D14.** On Windows, `.cmd` and `.bat` files: not run at first, with an Error that says so? (Suggested: yes.)
 
 ## 13. The review (shima3/conma#94)
 
 M1 reviewed the first version (2fb40e0) on 2026-11-26. What it found, and what changed:
 
-1. **A `Queue` on the host would not pass the elements as they are.** Values that cross between the VM and the host are copies, so an object put in and taken out would be another object. Section 7 now keeps the `Queue` in the VM.
-2. **The host cannot take the elements of `<$` from the VM.** It would call the VM back for each, and a call back cannot wait for another task. M1 suggested that the translator write the loop in ConJS, with small calls that wait on the host; section 9 now does that.
+1. **A `Queue` on the host would not pass the elements as they are.** Values that cross between the VM and the host are copies, so an object put in and taken out would be another object. The second version (631e184) kept the `Queue` in the VM; the third keeps it on the host, with the change of the VM below (section 7).
+2. **The host cannot take the elements of `<$` from the VM.** It would call the VM back for each, and a call back cannot wait for another task. M1 suggested that the translator write the loop in ConJS, with small calls that wait on the host, and the second version did that. The third version, after the user's decision below, runs the loop on the host as a waiting host function, which takes each element of an iterator of the VM by a request that may wait, as a `for...of` over a value of the VM does already (CONJS-HOST-PLAN.md sections 20 and 31; section 9).
 3. **A command line must be cut out on the characters, not on the tokens**, because its words are not JavaScript (`it's`, backquotes). And a `$ ` line where a statement cannot begin is an error, not the end of the statement before it. Section 3 now says both.
 4. **The built-in names of ConJS** (`sleep`, `spawn`, ...) would make `$ sleep 1` call ConJS's `sleep`. Solved by the user's decision D3.
 5. **To be added to the questions**: what `${...}` may hold (decided by the user: a variable only, D12), and `.cmd` and `.bat` files on Windows (D14).
 6. **Small things**: section 8 now says what the variable of `>$` holds when the command fails.
 
-The user asked, after reading the review, whether the VM could be changed so that the host can keep values of the VM as they are. M1 answered that the wasm VM could: a handle of a value of the VM (vm/src/prim/jsfn.rs, `handles`), now good only during one call, would be kept until the host drops it (`FinalizationRegistry`), and a value of the VM would be added for an object of the host, removed from the host's table when the VM drops it (`Drop`). Then a `Queue` on the host could hold handles, and `===` would hold. M1 noted that a cycle through the VM and the host would be collected by neither, that the native VMs have no host, and that each element would still cross to the host and back. It would not solve point 2. This version keeps the `Queue` in the VM, and leaves the change as D13.
+The user asked, after reading the review, whether the VM could be changed so that the host can keep values of the VM as they are. M1 answered that the wasm VM could: a handle of a value of the VM (vm/src/prim/jsfn.rs, `handles`), now good only during one call, would be kept until the host drops it (`FinalizationRegistry`), and a value of the VM would be added for an object of the host, removed from the host's table when the VM drops it (`Drop`). Then a `Queue` on the host could hold handles, and `===` would hold. M1 noted that a cycle through the VM and the host would be collected by neither, that the native VMs have no host, and that each element would still cross to the host and back. It would not solve point 2.
+
+After the second version, the user decided (2026-11-27) that the `Queue` is on the host, with the VM changed to hold values of JavaScript, and that the loop runs on the host, the ConMa VM being used as little as possible. The third version does that: section 7 (the change of the VM, stage S0), section 9 (`$sh.run`, a waiting host function), D10 (the wasm VM only) and D13 (decided).
