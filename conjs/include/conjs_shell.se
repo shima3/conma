@@ -525,7 +525,7 @@
   Conjs_shell_one ,(one)
   __Number_subtract__ count one ,(lastIndex)
   Conjs_shell_zero ,(zero)
-  Conjs_shell_gen_stages stages zero lastIndex n col "" "false" "false" "" __NULL__ ,(scode input output setup single)
+  Conjs_shell_gen_stages stages zero lastIndex n col "" "false" "false" "" __NULL__ "" ,(scode input output setup single finish)
   __LList_uncons__ __print_exit_error__ single ,(fname more)
   __LList_uncons__ __print_exit_error__ more ,(argv more)
   __LList_uncons__ __print_exit_error__ more ,(err x)
@@ -534,7 +534,7 @@
     (,()
       Kit_code_cat5 setup "conjs_command_line = conjs_sh_pipe([" scode "], " input ,(c)
       Kit_code_cat5 c ", " output ", " q ,(c)
-      __String_concat__ c "); " ,(c)
+      Kit_code_cat3 c "); " finish ,(c)
       return c) ,()
   __is_null__ fname ,(external)
   __if__ external
@@ -542,20 +542,20 @@
       Kit_code_cat5 setup "conjs_command_line = conjs_sh_run(" argv ", " input ,(c)
       Kit_code_cat5 c ", " output ", " q ,(c)
       Kit_code_cat3 c ", " err ,(c)
-      __String_concat__ c "); " ,(c)
+      Kit_code_cat3 c "); " finish ,(c)
       return c) ,()
   ;; コマンド型関数 1 つ：その行で呼ぶ（関数でない値の TypeError も、その行の位置になる）
   ;; その例外は、パイプのときと同じく、この行の結果にする（Bash の関数の失敗と同じく、|| が受ける。M1 のレビュー、
   ;; shima3/conma#97）
   Kit_code_cat5 setup "{ const conjs_sh_c = conjs_sh_begin(" input ", " output ,(c)
   Kit_code_cat5 c "); try { " fname "(" argv ,(c)
-  __String_concat__ c ", conjs_sh_c.input, conjs_sh_c.output); conjs_command_line = undefined; } catch (conjs_sh_e) { conjs_command_line = conjs_sh_e; } finally { conjs_sh_end(conjs_sh_c); } } ")
+  Kit_code_cat3 c ", conjs_sh_c.input, conjs_sh_c.output); conjs_command_line = undefined; } catch (conjs_sh_e) { conjs_command_line = conjs_sh_e; } finally { conjs_sh_end(conjs_sh_c); } } " finish)
 
 ;; パイプのコマンドを順に：返すのは、段のコード（", " で区切る）、初めの段の入力、最後の段の出力、すべての出力の用意、
 ;; 1 段だけのときに使う (関数の名前か null  引数の配列のコード  2>$ の変数か false)
-(define Conjs_shell_gen_stages ,(stages i lastIndex n col scode input output setup single)
+(define Conjs_shell_gen_stages ,(stages i lastIndex n col scode input output setup single finish)
   __Cont_get__ ,(return)
-  __is_null__ stages ,(test__) __if__ test__ (,() return scode input output setup single) ,()
+  __is_null__ stages ,(test__) __if__ test__ (,() return scode input output setup single finish) ,()
   __LList_uncons__ __print_exit_error__ stages ,(item rest)
   __LList_uncons__ __print_exit_error__ item ,(op more)
   __LList_uncons__ __print_exit_error__ more ,(words x)
@@ -565,7 +565,7 @@
   Conjs_shell_fn_name firstWord ,(fname)
   __is_null__ fname ,(external)
   __if_then_else__ external (,() __NULL__ words) (,() __NULL__ others) ,(args)
-  Conjs_shell_args args n col "" "false" "false" "false" "" ,(list in out err set)
+  Conjs_shell_args args n col "" "false" "false" "false" "" finish ,(list in out err set finish)
   __String_equal__ list "" ,(noArgs)
   __and__ external noArgs ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
   Conjs_shell_zero ,(zero)
@@ -577,9 +577,9 @@
   __not__ noIn ,(hasIn) __not__ isFirst ,(notFirst) __and__ hasIn notFirst ,(test__)
   __if__ test__ (,() Conjs_shell_error n col "<$ is only for the first command of a pipeline") ,()
   __not__ noOut ,(hasOut) __not__ isLast ,(notLast) __and__ hasOut notLast ,(test__)
-  __if__ test__ (,() Conjs_shell_error n col ">$ and >>$ are only for the last command of a pipeline") ,()
+  __if__ test__ (,() Conjs_shell_error n col ">$, >>$ and >@ are only for the last command of a pipeline") ,()
   __not__ noErr ,(hasErr) __not__ external ,(isFn) __and__ hasErr isFn ,(test__)
-  __if__ test__ (,() Conjs_shell_error n col "2>$ is only for external commands") ,()
+  __if__ test__ (,() Conjs_shell_error n col "2>$ and 2>@ are only for external commands") ,()
   __String_concat__ "[" list ,(arr) __String_concat__ arr "]" ,(arr)
   __if_then_else__ external
     (,() Kit_code_cat4 "{ args: " arr ", err: " err ,(s) __String_concat__ s " }")
@@ -592,7 +592,7 @@
   __LList_cons__ err __NULL__ ,(s1) __LList_cons__ arr s1 ,(s1) __LList_cons__ fname s1 ,(single)
   Conjs_shell_one ,(one)
   __Number_add__ i one ,(i)
-  Conjs_shell_gen_stages rest i lastIndex n col scode input output setup single)
+  Conjs_shell_gen_stages rest i lastIndex n col scode input output setup single finish)
 
 ;; 語の記号（|、||、&&）。記号でなければ null
 (define Conjs_shell_op ,(w)
@@ -675,9 +675,9 @@
   __NULL__ s)
 
 ;; 引数の語と、リダイレクト。返すのは、引数のコード（", " で区切る）、入力、出力、出力の用意
-(define Conjs_shell_args ,(words n col list input output err setup)
+(define Conjs_shell_args ,(words n col list input output err setup finish)
   __Cont_get__ ,(return)
-  __is_null__ words ,(test__) __if__ test__ (,() return list input output err setup) ,()
+  __is_null__ words ,(test__) __if__ test__ (,() return list input output err setup finish) ,()
   __LList_uncons__ __print_exit_error__ words ,(w rest)
   __LList_uncons__ __print_exit_error__ w ,(parts more)
   __LList_uncons__ __print_exit_error__ more ,(quoted x)
@@ -686,6 +686,10 @@
   __if_then_else__ notPlain (,() __NULL__ "") (,() __NULL__ plain) ,(plain)
   __String_equal__ plain "<$" ,(isIn) __String_equal__ plain ">$" ,(isOut) __String_equal__ plain ">>$" ,(isAppend)
   __String_equal__ plain "2>$" ,(isErr)
+  ;; >@ と 2>@：行の間は >$ と 2>$ と同じく変数にキューを入れ、コマンドが終わったら、その要素の配列にする（finish）
+  __String_equal__ plain ">@" ,(isOutA) __String_equal__ plain "2>@" ,(isErrA)
+  __or__ isOutA isErrA ,(isArray)
+  __or__ isOut isOutA ,(isOut) __or__ isErr isErrA ,(isErr)
   __or__ isIn isOut ,(isRedir) __or__ isRedir isAppend ,(isRedir) __or__ isRedir isErr ,(isRedir)
   __not__ quoted ,(unq)
   __and__ isRedir unq ,(isRedir)
@@ -698,33 +702,34 @@
       __is_null__ name ,(test__) __if_then_else__ test__ (,() __NULL__ "") (,() __NULL__ name) ,(name)
       Conjs_shell_is_name name ,(ok)
       __unless__ ok (,() Kit_code_cat3 plain " needs the name of a variable, not " name ,(m) Conjs_shell_error n col m) ,()
+      __if_then_else__ isArray (,() Kit_code_cat5 finish name " = [..." name "]; ") (,() __NULL__ finish) ,(finish)
       __if__ isIn
         (,()
           __String_equal__ input "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one <$") ,()
-          Conjs_shell_args rest n col list name output err setup ,(a b c d e) return a b c d e) ,()
+          Conjs_shell_args rest n col list name output err setup finish ,(a b c d e f) return a b c d e f) ,()
       ;; 2>$：標準エラーの行を、新しいキューに（段階 S3）
       __if__ isErr
         (,()
-          __String_equal__ err "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one 2>$") ,()
+          __String_equal__ err "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one 2>$ or 2>@") ,()
           Kit_code_cat3 setup name " = new Queue(); " ,(setup)
-          Conjs_shell_args rest n col list input output name setup ,(a b c d e) return a b c d e) ,()
-      __String_equal__ output "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one >$ or >>$") ,()
+          Conjs_shell_args rest n col list input output name setup finish ,(a b c d e f) return a b c d e f) ,()
+      __String_equal__ output "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one >$, >>$ or >@") ,()
       __if_then_else__ isOut
         (,() Kit_code_cat3 setup name " = new Queue(); ")
         (,() Kit_code_cat5 setup name " = new Queue(" name "); ") ,(setup)
-      Conjs_shell_args rest n col list input name err setup ,(a b c d e)
-      return a b c d e) ,()
+      Conjs_shell_args rest n col list input name err setup finish ,(a b c d e f)
+      return a b c d e f) ,()
   ;; 引用符の外の < と > は、<$ >$ >>$ のほかは誤り（ファイルへのリダイレクトはない）
   __unless__ quoted
     (,()
       Conjs_shell_zero ,(zero)
       __String_find_any__ __print_exit_error__ plain "<>" zero ,(lt)
       __is_null__ lt ,(test__) __unless__ test__
-        (,() __String_concat__ plain ": only <$, >$, >>$ and 2>$ redirect, to and from variables" ,(m) Conjs_shell_error n col m) ,()) ,()
+        (,() __String_concat__ plain ": only <$, >$, >>$, >@, 2>$ and 2>@ redirect, to and from variables" ,(m) Conjs_shell_error n col m) ,()) ,()
   Conjs_shell_word_code parts ,(code)
   __String_equal__ list "" ,(firstArg)
   __if_then_else__ firstArg (,() __NULL__ code) (,() Kit_code_cat3 list ", " code) ,(list)
-  Conjs_shell_args rest n col list input output err setup)
+  Conjs_shell_args rest n col list input output err setup finish)
 
 ;; 語のコード："文字"、String(名前)、または [..].join("")（4 節：値は String(x) と同じく文字列にする。D2）
 (define Conjs_shell_word_code ,(parts)

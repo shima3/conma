@@ -100,12 +100,11 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 ### m2/queue-text（shima3/conma#99）
 
-* 種類：機能（ConJS の `Queue` の `text()`：閉じるまで待ち、残りの要素を改行でつないで、終わりの改行を除いた 1 つの文字列。Bash の `$(...)` と同じ。docs/dev/CONJS-SHELL-PLAN.md の 16 節）。
-* vm/wasm/conma.js：`rt.Queue` に `text()`。
-* conjs/test/step24 の case2 と step25 の case14（新しい）。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
-* conjs/examples の todos.con.js と wordcounts.con.js：コマンドの出力を `text()` で受け取る（shima3/conma#98 の後）。
-* M2 が流したもの：conjs/test（`step25 (no eval)` を含む）、sjs/test、wasm 版の VM の test/fast22、test/host-api.sh：違いなし。
-* 流していないもの：vm/src は変えていないので、Rust 版、Python 版、transpiled VM の test/ と consh/test。consh/js/test（`Queue` を使わない）。
+* 種類：機能（ConJS のコマンド行の `>@` と `2>@`：コマンドが終わったら、出力の行を配列にして変数に入れる。docs/dev/CONJS-SHELL-PLAN.md の 20 節）。初めに足した `Queue` の `text()` は、ユーザーが配列を選んだので外した（vm/wasm/conma.js は alpha と同じ）。
+* conjs/include/conjs_shell.se：`>@` と `2>@` を読み、`>$` と `2>$` と同じキューを入れ、コマンドの後で配列にする。
+* conjs/test/step25 の case14 と case15（新しい）。conjs/examples の todos.con.js と wordcounts.con.js は `>@` を使う。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
+* M2 が流したもの：conjs/test（`== shell-examples` と `step25 (no eval)` を含む）：違いなし。
+* 流していないもの：vm/ は変えていないので、Rust 版、Python 版、transpiled VM の test/ と consh/test。sjs/test（sjs/ は変えていない）。
 
 ### m2/pipes（shima3/conma#97）
 
