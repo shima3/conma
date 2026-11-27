@@ -99,6 +99,14 @@
   Sjs_def G host "wait" (,(args) Conjs_host_wait G args) ,()
   Sjs_def G host "available" (,(args) Sjs_arg args ,(f rest) Conjs_host_name "host.available" f ,() __Feature_available__ f) ,()
   __Dict_put__ G "host" host ,()
+  ;; Queue（docs/dev/CONJS-SHELL-PLAN.md の 7 節、段階 S1）：ホストの rt.Queue を、参照で持つ。new でだけ作る
+  Sjs_function G "Queue" (,(args) Sjs_type_error "Class constructor Queue cannot be invoked without 'new'") ,(queue)
+  __Dict_put__ queue "hostnew" (,(args)
+    Sjs_arg args ,(parent rest)
+    __LList_cons__ parent __NULL__ ,(a)
+    Sjs_host_js "queue" a ,(r)
+    Sjs_host_answer r) ,()
+  __Dict_put__ G "Queue" queue ,()
   Conjs_lib_builtins G ,()
   __Dict_remove__ G "Promise")
 

@@ -2,7 +2,7 @@
 
 The plan of writing shell commands in a ConJS file: a line that begins with `$ ` runs an external command or a command function, with redirections from and to the variables of the program. The user proposed it on 2026-11-26; M2 wrote this plan the same day, with the questions it raises. M1 reviewed it in shima3/conma#94, and the user decided two of the questions after reading the review. On 2026-11-27 the user decided where the queue and the loop of a command line are: both on the host, with the VM changed so that it can hold values of the host (sections 7 and 9). The same day the user decided the form of the queue: a queue can have a parent, and `>>$` makes a new queue whose parent is the old one (section 7). Section 13 records the review and the decisions.
 
-**State**: a plan. Stage S0 is built: S0a, values by reference between the VM and the host, below the language (section 14), and S0b, their use from ConJS (section 15). The rest is not. Section 12 lists the questions and what the user decided. All of them were decided by 2026-11-27 (D1 to D15; the user's last answers are in section 12).
+**State**: a plan. Stage S0 is built: S0a, values by reference between the VM and the host, below the language (section 14), and S0b, their use from ConJS (section 15). Of S1, the `Queue` (S1a) is built (section 16). The rest is not. Section 12 lists the questions and what the user decided. All of them were decided by 2026-11-27 (D1 to D15; the user's last answers are in section 12).
 
 ## 1. Why
 
@@ -230,4 +230,11 @@ S0 is built in two parts: S0a, the values by reference between the VM and the ho
 * **Shown**: `console.log` writes `[host Box]`, with the name of the class, not its members (which would each be a call to the host).
 * **The test**: conjs/test/step23 (docs/dev/CONJS.md lists what it checks). Functions of ConJS given a `Box` (case2) print the same; whether they run on the host or in ConMa (section 2 of CONJS-HOST-PLAN.md) is not checked.
 * **Not done**: a plain object that the host returns and that holds a kept value of ConJS is copied with that value inside it, and the copy reads the value as a plain object too (the kept object of ConJS is a Dict with its own marks); methods return such values rarely, and the `Queue` of S1 returns its elements one by one.
+
+## 16. Results of S1a: the Queue (2026-11-27)
+
+* **On the host** (vm/wasm/conma.js, `rt.Queue`): an array of elements, whether it is closed, the parent and the readers that wait. `take()` asks the parent first, recursively; once the parent answers that it is closed and empty, the queue forgets it (it stays so). Then its own first element, or the end when it is closed, or the queue itself as the one to wait for. `next()` of its iterator returns `{ done, value }`, or a Promise when the reader must wait, which `push` or `close` of the queue that it waits for settles; the reader then tries again. The prototype carries the mark of S0, so a queue goes to the VM by reference.
+* **In ConJS**: `Queue` is a built-in (conjs/include/conjs_rt.se). `new Queue(parent)` goes to `"hostnew"` of the function (conjs/include/conjs_class.se, `Conjs_new`), which asks the module of S0b (`queue`) to make one. The rest is what S0b gives to any object of the host: `push`, `close` and `closed` on the host, `for...of` with `next()` waiting by a Promise, the elements kept as they are.
+* **The test**: conjs/test/step24 (docs/dev/CONJS.md).
+* **Not done**: a bound (D7; S3), `instanceof Queue`, and stopping at the start without a host (D15; with the command lines of S1b).
 

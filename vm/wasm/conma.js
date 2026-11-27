@@ -2248,6 +2248,60 @@ var ConMaVM = (function () {
     class VmKept {
       constructor(k) { this.k = k; }
     }
+    // The Queue of the command lines of ConJS (stage S1 of docs/dev/CONJS-SHELL-PLAN.md, section 7): open
+    // at first; push adds to the queue itself; a reader takes the elements of the parent (and of its parent
+    // first) until the parent is closed and empty, then those of the queue; an element read is gone. A
+    // reader that finds the queue it reads from empty and open waits (next returns a Promise) until that
+    // queue gets an element or is closed. It goes to the VM by reference (BYREF).
+    const END = Symbol("end");
+    class Queue {
+      constructor(parent) {
+        if (parent !== undefined && parent !== null && !(parent instanceof Queue)) throw new TypeError("Queue: the parent is not a Queue");
+        this.parent = parent || null;
+        this.items = [];
+        this.isClosed = false;
+        this.waiters = [];
+      }
+      get closed() {
+        return this.isClosed;
+      }
+      push(x) {
+        if (this.isClosed) throw new TypeError("Queue: cannot push to a closed queue");
+        this.items.push(x);
+        this.wake();
+      }
+      close() {
+        if (this.isClosed) return;
+        this.isClosed = true;
+        this.wake();
+      }
+      wake() {
+        const w = this.waiters;
+        this.waiters = [];
+        for (const f of w) f();
+      }
+      // { value }, END, or the queue that the reader waits for
+      take() {
+        if (this.parent) {
+          const r = this.parent.take();
+          if (r !== END) return r;
+          // the parent is closed and empty for good
+          this.parent = null;
+        }
+        if (this.items.length > 0) return { value: this.items.shift() };
+        return this.isClosed ? END : this;
+      }
+      next() {
+        const r = this.take();
+        if (r === END) return { done: true, value: undefined };
+        if (r instanceof Queue) return new Promise((resolve) => r.waiters.push(resolve)).then(() => this.next());
+        return { done: false, value: r.value };
+      }
+      [Symbol.iterator]() {
+        return { next: () => this.next(), return: () => ({ done: true, value: undefined }) };
+      }
+    }
+    Queue.prototype[BYREF] = true;
     const keptRegistry = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((k) => x.conma_jsfn_release(k)) : null;
     // The session of the innermost call running (for rt.callVm), and the generators waiting, by number
     let jsfnSession = null;
@@ -2257,6 +2311,7 @@ var ConMaVM = (function () {
       VmRef,
       VmHandle,
       VmKept,
+      Queue,
       Escape,
       // Mark the object o to go to the VM by reference (an object of a class: mark its prototype)
       byRef(o) {
