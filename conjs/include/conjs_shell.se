@@ -784,6 +784,9 @@
   Conjs_shell_one ,(one)
   __Number_subtract__ len one ,(last)
   __String_substring__ __print_exit_error__ text one last ,(inner)
+  ;; [] は、空の所でなく、名前がない（M1 のレビュー、shima3/conma#100）
+  Conjs_shell_trim inner ,(t) __String_equal__ t "" ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
   Conjs_shell_pattern_items inner holes n col __NULL__ __NULL__ ,(code first)
   __is_null__ first ,(test__) __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
   Kit_code_cat3 "[" code "]" ,(code)

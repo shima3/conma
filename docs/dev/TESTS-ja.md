@@ -102,7 +102,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 * 種類：機能（ConJS のコマンド行の `<$ [header, ...rows]`：角括弧の中の名前の配列を、入力の行に。docs/dev/CONJS-SHELL-PLAN.md の 20 節の終わり）。
 * conjs/include/conjs_shell.se：`<$` の後の `[...]` を、`>$ [...]` と同じく読み（空の所は誤り、`...` はどこにでも）、配列のリテラルを入力にする。角括弧の形の誤りのメッセージを、`<$` にも合うように変えた（step25 case15 のログ）。
-* conjs/test/step25 の case16 と case17（新しい）。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
+* conjs/test/step25 の case16、case17、case18（新しい）。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
 * M2 が流したもの：conjs/test（`== shell-examples` と `step25 (no eval)` を含む）：違いなし。
 * 流していないもの：vm/ と sjs/ は変えていないので、ほかの suite。
 
