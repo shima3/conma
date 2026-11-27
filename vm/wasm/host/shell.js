@@ -143,9 +143,15 @@ function run(argv, input, output, errs) {
     }
     const procs = [];
     let failed = null;
+    // On Windows, external commands are not joined by a pipe of the OS: the end of a pipe that this process
+    // holds is a named pipe opened for overlapped I/O, and a program of MSYS (Git Bash) given it as its
+    // standard input gets NUL bytes when it reads it while it is empty ($ sh -c "sleep 0.5; printf out" |
+    // cat gave about 2,000,000 of them; step25 case14). This process reads the output of each command and
+    // writes it to the next one, through a pipe made for that command, as for the input of <$.
+    const relay = process.platform === "win32";
     for (let i = 0; i < cmds.length; i++) {
       const last = i === cmds.length - 1;
-      const stdin = i > 0 ? procs[i - 1].stdout : input === false ? "inherit" : "pipe";
+      const stdin = i > 0 ? (relay ? "pipe" : procs[i - 1].stdout) : input === false ? "inherit" : "pipe";
       const stdout = !last || output !== false ? "pipe" : "inherit";
       const stderr = errOf(i) !== false ? "pipe" : "inherit";
       let p;
@@ -157,9 +163,24 @@ function run(argv, input, output, errs) {
         reject(new Error(startError(cmds[i][0], e)));
         return;
       }
-      // the next command has its own copy of the pipe: this process lets go of the end it does not read,
-      // so that a command that stops reading makes the one before it get SIGPIPE
-      if (i > 0) procs[i - 1].stdout.destroy();
+      if (i > 0 && relay) {
+        // this process carries the bytes; pipe() waits for room in the next command's pipe. When the next
+        // command stops reading (EPIPE, or its pipe closes), let go of the output of the one before it, so
+        // that it fails on its next write, as with SIGPIPE
+        const from = procs[i - 1].stdout;
+        const stop = () => {
+          from.unpipe(p.stdin);
+          from.destroy();
+        };
+        p.stdin.on("error", stop);
+        p.stdin.on("close", stop);
+        from.on("error", () => p.stdin.end());
+        from.pipe(p.stdin);
+      } else if (i > 0) {
+        // the next command has its own copy of the pipe: this process lets go of the end it does not read,
+        // so that a command that stops reading makes the one before it get SIGPIPE
+        procs[i - 1].stdout.destroy();
+      }
       // a command that cannot start: the last one makes the line fail; one before it is reported on the
       // standard error, and the pipeline goes on, as in Bash (its output is empty; section 18)
       p.on("error", (e) => {
