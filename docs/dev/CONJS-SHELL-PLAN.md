@@ -73,6 +73,7 @@ And on 2026-11-27, the form of the queue (translated; relayed by M1 in shima3/co
 Decided by the user (D3): the first word says it.
 
 * `$ $name ...` calls the command function in the variable `name`. `name` is a variable the line can see, as in a call `name(...)`; when there is none, it is a `ReferenceError` when the line runs, and when it holds no function, a `TypeError`, as for a call.
+* A first word that begins with `$`, unquoted, and is not `$` and the name of a variable (`$fs.readLines`, `$` alone, `$fn${s}`) is a SyntaxError at the line, not an external command (the user's decision of 2026-11-27, after section 19).
 * Any other first word is an external command, found in `PATH` when it has no `/`. A function of the program, an import or a built-in of ConJS (`sleep`, `spawn`, `join`, `fs`, `http`, `host`, ...) with the same name does not change that: `$ sleep 1` runs the command `sleep` of the OS.
 * The translator then needs no rule of scopes for commands, and a name cannot change meaning when a declaration is added elsewhere.
 
@@ -262,4 +263,16 @@ S0 is built in two parts: S0a, the values by reference between the VM and the ho
     * **Kept as it is**: a failure that ends a line throws (`set -e`), so a single `$ $boom` or `$ false` stops the program unless caught, as a script with `set -e` stops; and `pipefail` is not offered yet.
 * **The test**: conjs/test/step26 (docs/dev/CONJS.md); step25's case3 is now a `;`.
 * **Not done**: `;` and `&` (S4), `pipefail` (a failure before the last command is not seen), `2>&1`, and redirections to files.
+
+## 19. Using S1 to S3: three examples (2026-11-27)
+
+D11 left S4 until S1 to S3 are used. At the user's request, M2 wrote three examples of what scripts do, each with a Bash version that prints the same (conjs/examples; conjs/test/shell-examples/test.sh compares both with one log): logreport.con.js (a summary of a log, with pipelines of external commands and ConJS functions), todos.con.js (a loop over files, with commands that fail, `||`, `&&` and `catch`) and wordcounts.con.js (commands run at the same time in tasks). What writing them showed:
+
+* **The clearest gain**: between command functions, the records stay objects (`{ time, method, path, status, ms }`), so logreport cuts the fields once, where the Bash version cuts them again with `awk` at each step. Running commands at the same time with `spawn` and gathering their results in one `Queue` (wordcounts) is shorter and safer than Bash's `&`, `wait` and a directory of temporary files.
+* **Not missed**: `&` (the tasks of `spawn` do it, and give values back with `join`), `;` (a ConJS program writes one statement a line) and job control (no script needs it). This supports D11: S4 can stay where it is.
+* **What was awkward**:
+    * **The output of a command as one value.** Bash's `$( )` has no counterpart: `let n; $ grep -c TODO ${f} >$ n` then `Number([...n][0])`, and `[...out][0].trim()` for `wc`. A way to take the text of a command as a value (D9 left the command line as an expression for later; or a method of `Queue` such as `text()`) would help most.
+    * **`<$` takes a variable only** (D12): a value of ConJS made on the spot, such as `fs.readLines(log)` or an array literal, has to be put into a variable first. The lines of a file need no variable: `$ cat ${log} | $fields | ...` does the same, as the second pipeline of logreport does (logreport's first one uses `<$ lines` only to show a generator given to a command).
+    * **Padding of numbers differs between systems** (`wc`, `uniq -c` of GNU and BSD): both versions trim or reprint them, as any shell script that runs on both must.
+* **The order of output** from a command and from `console.log` is kept (the program writes synchronously, and a command line waits for its command).
 
