@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 3:8: ${...} holds the name of a variable, not a.b
+exit: 2

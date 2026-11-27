@@ -1,0 +1,10 @@
+> A|> B
+* A
+* B
+B
+A
+true 2
+failed in the function true partial
+one,two,three
+function
+exit: 0

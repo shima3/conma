@@ -107,6 +107,14 @@
     Sjs_host_js "queue" a ,(r)
     Sjs_host_answer r) ,()
   __Dict_put__ G "Queue" queue ,()
+  ;; コマンド行の入力（conjs/include/conjs_shell.se の conjs_sh_run）：ホストにそのまま渡せるか（ホストのオブジェクトと配列）。
+  ;; ほかの繰り返せるもの（ジェネレータなど）は、ConJS の処理が Queue に移す
+  Sjs_function G "conjs_sh_direct" (,(args)
+    Sjs_arg args ,(x rest)
+    Sjs_kind x ,(kind)
+    __String_equal__ kind "host" ,(h) __String_equal__ kind "array" ,(a)
+    __or__ h a) ,(direct)
+  __Dict_put__ G "conjs_sh_direct" direct ,()
   Conjs_lib_builtins G ,()
   __Dict_remove__ G "Promise")
 

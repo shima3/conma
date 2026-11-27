@@ -40,4 +40,13 @@ if [ "${CONMA_VM:-wasm}" = wasm ]; then
   (cd step22 && NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" ../../conjs case7.con.js 2>&1; echo "exit: $?") \
     | sed 's|of .*/step22/|of step22/|' \
     | diff - <(printf '%s\n' 'conjs: the async functions of step22/case7.con.js need JavaScript on the host: __JS_fn_compile__: Code generation from strings disallowed for this context' 'exit: 1')
+  # コマンド行と Queue（docs/dev/CONJS-SHELL-PLAN.md の D15）：new Function を止めると、ConMa 版がないので、始めで止まる
+  echo "== step25 (no eval)"
+  for c in case7 case8
+  do
+    line=$(grep -n -m1 -e '^\$ ' -e 'new Queue' step25/$c.con.js | cut -d: -f1)
+    (cd step25 && NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" ../../conjs $c.con.js 2>&1; echo "exit: $?") \
+      | sed 's|(.*/step25/|(|' \
+      | diff - <(printf '%s\n' "conjs: command lines and Queue need the JavaScript of the host ($c.con.js:$line): __JS_fn_compile__: Code generation from strings disallowed for this context" 'exit: 1')
+  done
 fi

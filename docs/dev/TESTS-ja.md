@@ -100,10 +100,12 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 ### m2/queue
 
-* 種類：機能（ConJS の組み込みの `Queue`。docs/dev/CONJS-SHELL-PLAN.md の段階 S1 の前半、S1a。16 節）。
+* 種類：機能（ConJS の組み込みの `Queue` と、コマンド行。docs/dev/CONJS-SHELL-PLAN.md の段階 S1。16 節と 17 節）。
 * vm/wasm/conma.js：`rt.Queue`（親を持てる、待つキュー）。sjs/include/sjs_rt.se：補助の JavaScript に `queue`。conjs/include/conjs_rt.se と conjs_class.se：組み込みの `Queue` と、`new` でホストに作らせる道（`"hostnew"`）。
 * conjs/test/step24（新しい）、conjs/README.md と README-ja.md、docs/dev/CONJS.md。
-* M2 が流したもの：conjs/test、conjs/test/compare.sh、sjs/test、wasm 版の VM の test/fast22、test/host-api.sh、consh/js/test（consh/js/build.sh で作り直して）：違いなし。
+* S1b：conjs/include/conjs_shell.se（新しい。コマンド行を、字句の前に同じ行の ConJS にする）、conjs/conjsc.se、sjs/include/sjs_parse.se と sjs_gen.se（呼ぶだけ）、conjs/include/conjs_host.se（`Conjs_shell_check`。D15）、conjs/include/conjs_rt.se（`conjs_sh_direct`）、vm/wasm/host/shell.js（新しい。ホストの関数 `conma.sh.run`）と vm/wasm/vm-node.js。conjs/test/step25（新しい）と run_all.sh の `step25 (no eval)`。
+* Windows（I7）：step25 は、Git Bash の `echo`、`printf`、`sort`、`sh`、`false`、`sleep` を使う。
+* M2 が流したもの：conjs/test（step25 (no eval) を含む）、conjs/test/compare.sh、sjs/test、wasm 版の VM の test/fast22、test/host-api.sh、consh/js/test（consh/js/build.sh で作り直して）、consh/test（Rust 版、wasm 版）：既知の違い（wasm 版の step17 と step8）だけ。
 * 流していないもの：vm/src は変えていないので、Rust 版と Python 版の VM の test/ と consh/test。
 
 ### m2/host-values（shima3/conma#95）

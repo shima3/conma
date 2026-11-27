@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 2:10: | is not in command lines yet
+exit: 2
