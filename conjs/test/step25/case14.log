@@ -1,10 +1,12 @@
-3 1 true
-a b c 3 3
+3
+a b [ 'c', 'd' ]
+a b c 3 3 true
+2 undefined
 ["b","","a","","c",""]
 none
-[ '0' ]
-[ 'out' ] [ 'err' ]
-3 true A B
-4 C
+0
+out err
+true [ 'A', 'B' ]
 before
+object [ 'a' ]
 exit: 0
