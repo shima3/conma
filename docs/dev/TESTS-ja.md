@@ -100,12 +100,15 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 ### m2/host-values
 
-* 種類：機能（wasm 版の VM とホストの間で、値を参照で渡す。docs/dev/CONJS-SHELL-PLAN.md の段階 S0 の前半、S0a。14 節）。
+* 種類：機能（wasm 版の VM とホストの間で、値を参照で渡し、ConJS からホストのオブジェクトを使う。docs/dev/CONJS-SHELL-PLAN.md の段階 S0。14 節と 15 節）。
 * vm/src/value.rs、vm/src/prim/jsfn.rs、vm/src/trace.rs：VM がホストのオブジェクトを持つ新しい値 `Value::Host`（`__type_name__` は `"HostObject"`）と、ホストが持ち続ける VM の値の表（`KEPT`）。vm/src/sys/unix.rs と windows.rs には、何もしない `host_obj_free` を足しただけ。
 * vm/wasm/src/sys.rs、vm/wasm/src/lib.rs、vm/wasm/conma.js：`rt.byRef`、`rt.keep`、`rt.VmKept`、`host_obj_free`、`conma_jsfn_release`。
 * test/fast22（新しい）：wasm 版の VM は case*.wasm.log、ほかの VM は case*.log（JavaScript がない）。
+* vm/src/prim/host.rs、vm/wasm/conma.js：`host.wait` と `host.call` の JSON にも、ホストのオブジェクト（`{"o":k}`）を通す。印は `Symbol.for("conma.byRef")`。
+* sjs/include/sjs_rt.se、sjs/include/sjs_inspect.se、conjs/include/conjs_rt.se：ConJS（と SJS）の値の種類 `"host"`。メンバー、メソッド、`for...of`、`===` を、補助の JavaScript でホストでする。Promise を返すメソッドは、ConJS では待つ呼び出し。
+* conjs/test/step23（新しい）、conjs/README.md と README-ja.md、docs/dev/CONJS.md。
 * M2 が流したもの：vm の `cargo test --release`、Rust 版と wasm 版の VM の test/ と consh/test、Python 版の VM の test/fast22、consh/js/test（consh/js/build.sh で作り直して）、sjs/test、conjs/test、conjs/test/compare.sh、test/host-api.sh：既知の違い（wasm 版の test/step40、consh/test の step17 と step8）だけ。
-* 流していないもの：transpiled VM（`Value` に種類を足したので、Full Test で）、Python 版の VM の test/（fast22 のほかは変えていない）、ConSh の参照版。
+* 流していないもの：transpiled VM（`Value` に種類を足したので、Full Test で）、Python 版の VM の test/ と consh/test（fast22 のほかは流していない。sjs_rt.se は ConSh も使う）、ConSh の参照版。
 
 ### m1/pdict-text（shima3/conma#93）
 

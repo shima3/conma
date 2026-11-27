@@ -1781,21 +1781,29 @@ var ConMaVM = (function () {
   // A value of __Host_call__ from the VM as a JavaScript value: {"n":"NaN"} and the like are
   // numbers, null in a list is [] (the empty LList), true and false are booleans, and {"d":{...}}
   // is a Dict, an object (docs/dev/PLATFORM-PLAN-ja.md 4.9, stage P7)
-  function hostDecode(v) {
+  // refs, if given, are the objects of the host that the VM holds by reference ({"o":k}; stage S0 of
+  // docs/dev/CONJS-SHELL-PLAN.md): refs.get(k) is the object, refs.id(o) its number
+  // The mark of an object of the host that goes to the VM by reference (rt.byRef; a registered symbol,
+  // so that a file of CONMA_HOST and an async function can mark one too)
+  const BYREF = Symbol.for("conma.byRef");
+  function hostDecode(v, refs) {
     if (v === null) return [];
-    if (Array.isArray(v)) return v.map(hostDecode);
+    if (Array.isArray(v)) return v.map((e) => hostDecode(e, refs));
     if (typeof v === "object") {
       if (Object.prototype.hasOwnProperty.call(v, "d"))
-        return Object.fromEntries(Object.entries(v.d).map(([k, e]) => [k, hostDecode(e)]));
+        return Object.fromEntries(Object.entries(v.d).map(([k, e]) => [k, hostDecode(e, refs)]));
+      if (Object.prototype.hasOwnProperty.call(v, "o")) return refs ? refs.get(v.o) : undefined;
       return v.n === "-0" ? -0 : Number(v.n);
     }
     return v;
   }
   // A result of a function of the host as a value for the VM: a number, a string, a boolean, null
   // (also for undefined and []), a plain object (its own enumerable properties, a Dict) or an array
-  // of them; anything else is an error of the function name
-  function hostEncode(name, v) {
+  // of them, or an object marked to go by reference (BYREF), as {"o":k}; anything else is an error of
+  // the function name
+  function hostEncode(name, v, refs) {
     if (v === null || v === undefined) return null;
+    if (refs && typeof v === "object" && v[BYREF]) return { o: refs.id(v) };
     if (typeof v === "number") {
       if (Number.isNaN(v)) return { n: "NaN" };
       if (v === Infinity) return { n: "Infinity" };
@@ -1804,11 +1812,11 @@ var ConMaVM = (function () {
       return v;
     }
     if (typeof v === "string" || typeof v === "boolean") return v;
-    if (Array.isArray(v)) return v.length === 0 ? null : v.map((e) => hostEncode(name, e));
+    if (Array.isArray(v)) return v.length === 0 ? null : v.map((e) => hostEncode(name, e, refs));
     if (typeof v === "object") {
       const proto = Object.getPrototypeOf(v);
       if (proto === Object.prototype || proto === null)
-        return { d: Object.fromEntries(Object.entries(v).map(([k, e]) => [k, hostEncode(name, e)])) };
+        return { d: Object.fromEntries(Object.entries(v).map(([k, e]) => [k, hostEncode(name, e, refs)])) };
     }
     const what = typeof v === "object" ? (v.constructor && v.constructor.name) || "object" : typeof v;
     throw new Error(name + ": returned a " + what + " (only numbers, strings, booleans, plain objects and arrays of them go back)");
@@ -2096,10 +2104,10 @@ var ConMaVM = (function () {
           let result;
           try {
             const args = JSON.parse(str(argsPtr, argsLen));
-            const r = hostFunctions[name].apply(callbackContext, args === null ? [] : args.map(hostDecode));
+            const r = hostFunctions[name].apply(callbackContext, args === null ? [] : args.map((a) => hostDecode(a, hostRefs)));
             if (r !== null && typeof r === "object" && typeof r.then === "function")
               throw new Error(name + ": returned a Promise (a call that waits is not supported yet)");
-            result = JSON.stringify({ r: hostEncode(name, r) });
+            result = JSON.stringify({ r: hostEncode(name, r, hostRefs) });
           } catch (e) {
             result = JSON.stringify({ e: e instanceof Error ? e.message : String(e) });
           }
@@ -2130,7 +2138,7 @@ var ConMaVM = (function () {
           const ok = (r) => {
             let result;
             try {
-              result = JSON.stringify({ r: hostEncode(name, r) });
+              result = JSON.stringify({ r: hostEncode(name, r, hostRefs) });
             } catch (e) {
               result = JSON.stringify({ e: e instanceof Error ? e.message : String(e) });
             }
@@ -2140,7 +2148,7 @@ var ConMaVM = (function () {
           Promise.resolve()
             .then(() => {
               const args = JSON.parse(argsText);
-              return hostFunctions[name](...(args === null ? [] : args.map(hostDecode)));
+              return hostFunctions[name](...(args === null ? [] : args.map((a) => hostDecode(a, hostRefs))));
             })
             .then(ok, fail);
         },
@@ -2193,10 +2201,10 @@ var ConMaVM = (function () {
     // hostDecode). An error of the function throws an Error; a function that waits throws an Error
     // whose escape is true, as the host cannot wait in the middle of its JavaScript.
     function callVm(name, ...args) {
-      const json = JSON.stringify(args.length === 0 ? null : args.map((a) => hostEncode(name, a)));
+      const json = JSON.stringify(args.length === 0 ? null : args.map((a) => hostEncode(name, a, hostRefs)));
       const n = pass2(name, json, (pn, ln, pa, la) => x.conma_callback(pn, ln, pa, la));
       const r = JSON.parse(str(x.conma_callback_ptr(), n));
-      if (Object.prototype.hasOwnProperty.call(r, "r")) return hostDecode(r.r);
+      if (Object.prototype.hasOwnProperty.call(r, "r")) return hostDecode(r.r, hostRefs);
       const e = new Error(Object.prototype.hasOwnProperty.call(r, "x") ? r.x : r.e);
       e.escape = Object.prototype.hasOwnProperty.call(r, "x");
       throw e;
@@ -2222,10 +2230,21 @@ var ConMaVM = (function () {
     // BYREF (rt.byRef) goes to the VM as {"o":k}, its number in hostObjs, and comes back as the same
     // object; the VM tells host_obj_free when it drops it. A value of the VM that the host keeps across
     // calls (rt.keep) is a VmKept, {"k":i}; when the host drops it, the VM lets the value go.
-    const BYREF = Symbol("byRef");
     const hostObjs = new Map();
     const hostIds = new WeakMap();
     let hostObjLast = 0;
+    const hostRefs = {
+      get: (k) => hostObjs.get(k),
+      id(o) {
+        let k = hostIds.get(o);
+        if (k === undefined) {
+          k = ++hostObjLast;
+          hostIds.set(o, k);
+          hostObjs.set(k, o);
+        }
+        return k;
+      },
+    };
     class VmKept {
       constructor(k) { this.k = k; }
     }
@@ -2345,15 +2364,7 @@ var ConMaVM = (function () {
           if (Array.isArray(v)) return { l: v.map(enc) };
           if (v instanceof VmHandle) return { h: v.k };
           if (v instanceof VmKept) return { k: v.k };
-          if (typeof v === "object" && v[BYREF]) {
-            let k = hostIds.get(v);
-            if (k === undefined) {
-              k = ++hostObjLast;
-              hostIds.set(v, k);
-              hostObjs.set(k, v);
-            }
-            return { o: k };
-          }
+          if (typeof v === "object" && v[BYREF]) return { o: hostRefs.id(v) };
           if (typeof v === "object" && NODE in v) return { "@": v[NODE] };
           if (v instanceof VmRef || (typeof v === "object" && isPlain(v))) {
             const i = this.objs.length;

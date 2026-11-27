@@ -61,7 +61,7 @@ pub fn host_obj_dropped(k: i32) {
 }
 
 /// The value of the VM for object k of the host: the same HostObj while the VM holds it.
-fn host_obj(k: i32) -> Value {
+pub fn host_obj(k: i32) -> Value {
     HOST_OBJS.with(|t| {
         let mut t = t.borrow_mut();
         if let Some(h) = t.get(&k).and_then(|w| w.upgrade()) {
