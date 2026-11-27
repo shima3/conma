@@ -712,13 +712,18 @@
       __String_length__ name ,(nlen) __Number_is_zero__ nlen ,(empty)
       __if_then_else__ empty (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ name zero one) ,(c0)
       __String_equal__ c0 "[" ,(isPat) __not__ nquoted ,(nunq) __and__ isPat nunq ,(isPat)
-      __or__ isOut isErr ,(canPat) __and__ isPat canPat ,(isPat)
+      ;; <$ [a, b, ...r]：入力は、配列 [a, b, ...r] の要素（空の所は書けない。2026-11-28 から）
+      __or__ isOut isErr ,(canPat) __or__ canPat isIn ,(canPat) __and__ isPat canPat ,(isPat)
       __if_then_else__ isPat
         (,()
           Conjs_shell_pattern_words rest "" n col ,(text rest)
-          Conjs_shell_pattern text n col ,(code first)
-          Kit_code_cat5 finish code " = [..." first "]; " ,(finish)
-          __NULL__ first rest finish)
+          __not__ isIn ,(holes)
+          Conjs_shell_pattern text holes n col ,(code first)
+          __if_then_else__ isIn
+            (,() __NULL__ code rest finish)
+            (,()
+              Kit_code_cat5 finish code " = [..." first "]; " ,(finish)
+              __NULL__ first rest finish))
         (,()
           Conjs_shell_is_name name ,(ok)
           __unless__ ok (,() Kit_code_cat3 plain " needs the name of a variable, not " name ,(m) Conjs_shell_error n col m) ,()
@@ -751,16 +756,16 @@
   __if_then_else__ firstArg (,() __NULL__ code) (,() Kit_code_cat3 list ", " code) ,(list)
   Conjs_shell_args rest n col list input output err setup finish)
 
-;; >$ と 2>$ の後の [ から ] まで（空白で分かれた語をつなぐ）：返すのは、その文字と、残りの語
+;; <$、>$、2>$ の後の [ から ] まで（空白で分かれた語をつなぐ）：返すのは、その文字と、残りの語
 (define Conjs_shell_pattern_words ,(words text n col)
   __Cont_get__ ,(return)
-  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "[ without ] after >$ or 2>$") ,()
+  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "[ without ]") ,()
   __LList_uncons__ __print_exit_error__ words ,(w rest)
   __LList_uncons__ __print_exit_error__ w ,(parts more)
   __LList_uncons__ __print_exit_error__ more ,(quoted x)
   Conjs_shell_plain parts ,(plain)
   __is_null__ plain ,(bad) __or__ bad quoted ,(bad)
-  __if__ bad (,() Conjs_shell_error n col "the pattern after >$ or 2>$ has names, commas and ... only") ,()
+  __if__ bad (,() Conjs_shell_error n col "a pattern in brackets has names, commas and ... only") ,()
   __String_equal__ text "" ,(first)
   __if_then_else__ first (,() __NULL__ plain) (,() Kit_code_cat3 text " " plain) ,(text)
   __String_length__ plain ,(len)
@@ -771,19 +776,23 @@
   __if__ done (,() return text rest) ,()
   Conjs_shell_pattern_words rest text n col)
 
-;; [a, , b, ...r] を確かめる：要素は、空、名前、または最後の ...名前。返すのは、ConJS のコードと、初めの名前
-(define Conjs_shell_pattern ,(text n col)
+;; [a, , b, ...r] を確かめる：要素は、名前か ...名前。holes が真（>$ と 2>$ の分割代入）なら、空の所も書け、... は最後だけ。
+;; 偽（<$ の配列）なら、空の所は書けず、... はどこにでも。返すのは、ConJS のコードと、初めの名前
+(define Conjs_shell_pattern ,(text holes n col)
   __Cont_get__ ,(return)
   __String_length__ text ,(len)
   Conjs_shell_one ,(one)
   __Number_subtract__ len one ,(last)
   __String_substring__ __print_exit_error__ text one last ,(inner)
-  Conjs_shell_pattern_items inner n col __NULL__ __NULL__ ,(code first)
-  __is_null__ first ,(test__) __if__ test__ (,() Conjs_shell_error n col "the pattern after >$ or 2>$ needs a name") ,()
+  ;; [] は、空の所でなく、名前がない（M1 のレビュー、shima3/conma#100）
+  Conjs_shell_trim inner ,(t) __String_equal__ t "" ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
+  Conjs_shell_pattern_items inner holes n col __NULL__ __NULL__ ,(code first)
+  __is_null__ first ,(test__) __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
   Kit_code_cat3 "[" code "]" ,(code)
   __NULL__ code first)
 
-(define Conjs_shell_pattern_items ,(inner n col code first)
+(define Conjs_shell_pattern_items ,(inner holes n col code first)
   ;; code は、まだ要素がなければ null（初めの要素が穴の空文字でも、区切りを落とさない）
   __Cont_get__ ,(return)
   Conjs_shell_zero ,(zero)
@@ -801,15 +810,19 @@
   __if_then_else__ hasDots
     (,()
       Conjs_shell_zero ,(z) __Number_subtract__ dots z ,(d) __Number_is_zero__ d ,(atStart)
-      __unless__ atStart (,() Conjs_shell_error n col "the pattern after >$ or 2>$ has names, commas and ... only") ,()
-      __unless__ isLast (,() Conjs_shell_error n col "... is only for the last name of the pattern after >$ or 2>$") ,()
+      __unless__ atStart (,() Conjs_shell_error n col "a pattern in brackets has names, commas and ... only") ,()
+      ;; 分割代入（>$ と 2>$）では、... は最後だけ。<$ の配列では、どこにでも書ける
+      __not__ isLast ,(notLast) __and__ holes notLast ,(test__)
+      __if__ test__ (,() Conjs_shell_error n col "... is only for the last name of a pattern of >$ and 2>$") ,()
       Conjs_shell_three ,(three)
       __String_substring__ __print_exit_error__ item three ilen)
     (,() __NULL__ item) ,(name)
+  __not__ holes ,(noHoles) __and__ hole noHoles ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "an empty place in brackets is only for >$ and 2>$") ,()
   __unless__ hole
     (,()
       Conjs_shell_is_name name ,(ok)
-      __unless__ ok (,() Kit_code_cat3 "the pattern after >$ or 2>$ has names, commas and ... only, not " item "" ,(m) Conjs_shell_error n col m) ,()) ,()
+      __unless__ ok (,() Kit_code_cat3 "a pattern in brackets has names, commas and ... only, not " item "" ,(m) Conjs_shell_error n col m) ,()) ,()
   __is_null__ first ,(noFirst) __not__ hole ,(isName) __and__ noFirst isName ,(take)
   __if_then_else__ take (,() __NULL__ name) (,() __NULL__ first) ,(first)
   __is_null__ code ,(none)
@@ -817,7 +830,7 @@
   __if__ isLast (,() return code first) ,()
   __Number_add__ comma one ,(next)
   __String_substring__ __print_exit_error__ inner next len ,(inner)
-  Conjs_shell_pattern_items inner n col code first)
+  Conjs_shell_pattern_items inner holes n col code first)
 
 ;; 語のコード："文字"、String(名前)、または [..].join("")（4 節：値は String(x) と同じく文字列にする。D2）
 (define Conjs_shell_word_code ,(parts)
