@@ -25,8 +25,11 @@
 ;; できてから、本体をホストの JavaScript にする（docs/dev/CONJS-HOST-PLAN.md の 34 節。conjs/include/conjs_async.se。
 ;; conjs/conjsc.se だけが include する）
 (define Sjs_parse_file ,(text file)
-  Sjs_lex text ,(toks)
   Sjs_is_conjs ,(conjs)
+  ;; ConJS のコマンド行（"$ " で始まる行）は、字句の前に、同じ行の ConJS のコードにする（docs/dev/CONJS-SHELL-PLAN.md の
+  ;; 段階 S1b。conjs/include/conjs_shell.se）
+  __if_then_else__ conjs (,() Conjs_shell_rewrite text file) (,() __NULL__ text) ,(text)
+  Sjs_lex text ,(toks)
   __if_then_else__ conjs (,() Conjs_async_split toks text file) (,() __NULL__ toks __NULL__) ,(toks regions)
   Sjs_check_tokens toks __NULL__ ,()
   __Ref_new__ toks ,(ref)

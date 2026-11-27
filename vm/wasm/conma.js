@@ -2248,6 +2248,97 @@ var ConMaVM = (function () {
     class VmKept {
       constructor(k) { this.k = k; }
     }
+    // The Queue of the command lines of ConJS (stage S1 of docs/dev/CONJS-SHELL-PLAN.md, section 7): open
+    // at first; push adds to the queue itself; a reader takes the elements of the parent (and of its parent
+    // first) until the parent is closed and empty, then those of the queue; an element read is gone. A
+    // reader that finds the queue it reads from empty and open waits (next returns a Promise) until that
+    // queue gets an element or is closed. It goes to the VM by reference (BYREF).
+    const END = Symbol("end");
+    const HAVE = Symbol("have");
+    class Queue {
+      constructor(parent) {
+        if (parent !== undefined && parent !== null && !(parent instanceof Queue)) throw new TypeError("Queue: the parent is not a Queue");
+        this.parent = parent || null;
+        this.items = [];
+        this.isClosed = false;
+        this.waiters = [];
+        // the writers that wait for room (room())
+        this.roomWaiters = [];
+      }
+      get closed() {
+        return this.isClosed;
+      }
+      push(x) {
+        if (this.isClosed) throw new TypeError("Queue: cannot push to a closed queue");
+        this.items.push(x);
+        this.wake();
+      }
+      close() {
+        if (this.isClosed) return;
+        this.isClosed = true;
+        this.wake();
+        this.wakeRoom();
+      }
+      wakeRoom() {
+        const w = this.roomWaiters;
+        this.roomWaiters = [];
+        for (const f of w) f();
+      }
+      // For a writer that fills the queue from a source that does not wait (a generator of the VM moved
+      // into it for a command line; docs/dev/CONJS-SHELL-PLAN.md, section 17): undefined while the queue
+      // holds fewer than 64 elements or is closed, else a Promise that settles when a reader has taken it
+      // down to 32 or it is closed, so that the writer waits and other tasks run
+      room() {
+        if (this.isClosed || this.items.length < 64) return undefined;
+        return new Promise((resolve) => this.roomWaiters.push(resolve));
+      }
+      // Without taking anything: null when next() would answer at once (an element or the end), else a
+      // Promise that settles when the queue that the reader waits for gets an element or is closed
+      ready() {
+        const r = this.peek();
+        return r instanceof Queue ? new Promise((resolve) => r.waiters.push(resolve)) : null;
+      }
+      // As take(), without taking: END, HAVE, or the queue that the reader waits for
+      peek() {
+        if (this.parent) {
+          const r = this.parent.peek();
+          if (r !== END) return r;
+          this.parent = null;
+        }
+        if (this.items.length > 0) return HAVE;
+        return this.isClosed ? END : this;
+      }
+      wake() {
+        const w = this.waiters;
+        this.waiters = [];
+        for (const f of w) f();
+      }
+      // { value }, END, or the queue that the reader waits for
+      take() {
+        if (this.parent) {
+          const r = this.parent.take();
+          if (r !== END) return r;
+          // the parent is closed and empty for good
+          this.parent = null;
+        }
+        if (this.items.length > 0) {
+          const value = this.items.shift();
+          if (this.roomWaiters.length > 0 && this.items.length <= 32) this.wakeRoom();
+          return { value };
+        }
+        return this.isClosed ? END : this;
+      }
+      next() {
+        const r = this.take();
+        if (r === END) return { done: true, value: undefined };
+        if (r instanceof Queue) return new Promise((resolve) => r.waiters.push(resolve)).then(() => this.next());
+        return { done: false, value: r.value };
+      }
+      [Symbol.iterator]() {
+        return { next: () => this.next(), return: () => ({ done: true, value: undefined }) };
+      }
+    }
+    Queue.prototype[BYREF] = true;
     const keptRegistry = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((k) => x.conma_jsfn_release(k)) : null;
     // The session of the innermost call running (for rt.callVm), and the generators waiting, by number
     let jsfnSession = null;
@@ -2257,6 +2348,7 @@ var ConMaVM = (function () {
       VmRef,
       VmHandle,
       VmKept,
+      Queue,
       Escape,
       // Mark the object o to go to the VM by reference (an object of a class: mark its prototype)
       byRef(o) {

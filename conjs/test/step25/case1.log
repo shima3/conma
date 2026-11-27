@@ -1,0 +1,14 @@
+hello world
+name: a b single ${name} xa by
+[one]
+[two]
+[three]
+a,b,c
+first,second
+1,2,3
+CommandError 1 Command failed with exit status 1: false
+no-such-command-here: command not found
+continued
+lines
+end
+exit: 0

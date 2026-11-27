@@ -22,6 +22,7 @@ const os = require("os");
 const tty = require("tty");
 const ConMaVM = require("./conma.js");
 const { serverHost } = require("./host/server.js");
+const { shellHost } = require("./host/shell.js");
 
 const argv = process.argv.slice(2);
 const wasmFile = path.join(__dirname, "target/wasm32-unknown-unknown/release/conma_wasm.wasm");
@@ -621,7 +622,8 @@ async function main() {
   // The network server of Node.js (host/server.js, feature "server"; stage P6b), then those of CONMA_HOST
   const server = serverHost();
   vm = ConMaVM.create(wasm, writeAll, {
-    hostFunctions: Object.assign({}, server.hostFunctions, host.hostFunctions || {}),
+    // The external commands of the command lines of ConJS (host/shell.js; docs/dev/CONJS-SHELL-PLAN.md, section 9)
+    hostFunctions: Object.assign({}, server.hostFunctions, shellHost().hostFunctions, host.hostFunctions || {}),
     hostFeatures: server.hostFeatures.concat(Array.isArray(host.hostFeatures) ? host.hostFeatures : []),
     inputNeeded: readInput,
     jsDone: notify,

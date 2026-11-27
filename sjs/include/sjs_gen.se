@@ -82,6 +82,10 @@
   ;; conjs/include/conjs_async.se が PDict の "conjs_async_js" に置く）
   Conjs_async_code ,(defs)
   __String_concat__ defs code ,(code)
+  ;; コマンド行か Queue のあるプログラムは、始めに、ホストの JavaScript があるかを確かめる（docs/dev/CONJS-SHELL-PLAN.md の D15。
+  ;; conjs/include/conjs_shell.se）
+  Conjs_shell_code ,(check)
+  __String_concat__ check code ,(code)
   __String_join_lines__
     ";; ConJS を変換したもの（sjs/include/sjs_gen.se）"
     "(include \"util.se\")"
