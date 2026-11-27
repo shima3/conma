@@ -47,6 +47,12 @@
 (define Conjs_run ,(G body)
   __Cont_get__ ,(return)
   __PDict_put__ "sjs_lang" "conjs" ,()
+  ;; メソッドが Promise を返したホストのオブジェクト（sjs_rt.se の Sjs_host_await）：host.wait と同じく、この処理だけが待つ
+  __PDict_put__ "sjs_host_await" (,(id)
+    __LList_cons__ id __NULL__ ,(list)
+    Kit_sched_wait (,(msg) Sjs_throw "Error" msg) "conma.hostobj.await" list ,(ok payload)
+    __unless__ ok (,() Sjs_throw "Error" payload) ,()
+    __nop__) ,()
   Conjs_builtins G ,()
   Kit_sched_run (,() Conjs_save) (,(local) Conjs_restore local) body ,(blocked failed)
   ;; 端末の入力の道（conjs_term.se）を使ったなら、端末のモードを戻し、その VProc を止める
@@ -182,6 +188,8 @@
   __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
+  ;; ホストのオブジェクトは、参照のまま渡す（{"o":k}。docs/dev/CONJS-SHELL-PLAN.md の 15 節。M1 のレビュー、shima3/conma#95）
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "array" ,(isArray)
   __String_equal__ kind "object" ,(isObject)
   __or__ isArray isObject ,(test__) __if__ test__

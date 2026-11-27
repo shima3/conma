@@ -47,6 +47,8 @@ pub enum HostValue {
     Bool(bool),
     /// A Dict, its String keys in the order they were put in.
     Dict(Vec<(String, HostValue)>),
+    /// An object of the host held by the VM by reference (Value::Host; the wasm VM only), {"o":k}.
+    Obj(i32),
 }
 
 type CallFn = Box<dyn Fn(&[HostValue]) -> Result<HostValue, String> + Send>;
@@ -356,6 +358,7 @@ fn to_host_in(v: &Value, path: &mut Vec<*const DictObj>) -> Result<HostValue, St
     }
     match v {
         Value::Number(x) => Ok(HostValue::Num(*x)),
+        Value::Host(h) => Ok(HostValue::Obj(h.host)),
         Value::LList(_) => {
             let mut items = Vec::new();
             let mut cur = v.clone();
@@ -420,6 +423,7 @@ fn from_host(m: &mut Machine, h: &HostValue) -> Result<Value, VmError> {
             }
             tail
         }
+        HostValue::Obj(k) => super::jsfn::host_obj(*k),
         HostValue::Dict(entries) => {
             m.serials.dicts += 1;
             let d = Value::Dict(crate::gc::new_dict(DictObj::new(m.serials.dicts)));
@@ -780,7 +784,8 @@ pub fn result(m: &mut Machine, vp: &mut VProc) -> PResult {
 // The values go to the host of the VM for wasm32 and come back as JSON: a
 // Number that JSON cannot write (-0, NaN, an infinity) as {"n":"-0"},
 // {"n":"NaN"}, {"n":"Infinity"} or {"n":"-Infinity"}, null for the empty LList,
-// true and false for the Booleans, and a Dict as {"d":{"key":value,...}}.
+// true and false for the Booleans, a Dict as {"d":{"key":value,...}}, and an
+// object of the host held by the VM (Value::Host) as {"o":k}.
 // A result is {"r":value} or {"e":"message"} (vm/wasm/conma.js, hostCall).
 
 /// The JSON of a value for the host.
@@ -820,6 +825,7 @@ fn write_json(h: &HostValue, out: &mut String) {
             out.push('"');
         }
         HostValue::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        HostValue::Obj(k) => out.push_str(&format!("{{\"o\":{}}}", k)),
         HostValue::Dict(entries) => {
             // wrapped, so that a Dict is not taken for a Number such as {"n":"NaN"}
             out.push_str("{\"d\":{");
@@ -971,6 +977,16 @@ impl Json<'_> {
                     self.ws();
                     self.expect(b'}')?;
                     return Ok(HostValue::Dict(entries));
+                }
+                if key == "o" {
+                    // an object of the host held by reference: {"o":k}
+                    let k = self.value()?;
+                    self.ws();
+                    self.expect(b'}')?;
+                    return match k {
+                        HostValue::Num(k) => Ok(HostValue::Obj(k as i32)),
+                        _ => Err(VALUE_ERROR.into()),
+                    };
                 }
                 let v = self.string()?;
                 self.ws();

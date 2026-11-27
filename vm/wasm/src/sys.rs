@@ -69,6 +69,9 @@ extern "C" {
     fn host_wasm_error(out: *mut u8, cap: usize) -> i32;
     /// Forget module id.
     fn host_wasm_free(id: i32);
+    /// The VM dropped object k of the host (Value::Host; prim/jsfn.rs): the host forgets it.
+    #[link_name = "host_obj_free"]
+    fn host_obj_free_import(k: i32);
     /// __JS_fn_compile__ (prim/jsfn.rs): make the JavaScript text into a module of functions; its
     /// number, or minus the length of the message of the error, which host_fn_result copies.
     fn host_jsfn_compile(ptr: *const u8, len: usize) -> i32;
@@ -706,6 +709,10 @@ fn wasm_error() -> String {
 
 pub fn wasm_free(host: i32) {
     unsafe { host_wasm_free(host) }
+}
+
+pub fn host_obj_free(k: i32) {
+    unsafe { host_obj_free_import(k) }
 }
 
 pub fn wasm_available() -> bool {
