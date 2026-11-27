@@ -2256,27 +2256,47 @@ var ConMaVM = (function () {
     const END = Symbol("end");
     const HAVE = Symbol("have");
     class Queue {
-      constructor(parent) {
+      // limit (stage S3, D7): with a number, push returns a Promise while the queue holds that many,
+      // which settles when a reader has taken it down to half, so that a writer that waits for it waits
+      constructor(parent, limit) {
         if (parent !== undefined && parent !== null && !(parent instanceof Queue)) throw new TypeError("Queue: the parent is not a Queue");
+        if (limit !== undefined && limit !== null && !(typeof limit === "number" && limit >= 1)) throw new TypeError("Queue: the limit is not a number of 1 or more");
         this.parent = parent || null;
+        this.limit = limit || 0;
         this.items = [];
         this.isClosed = false;
+        // the reader has gone (abandon()): a push throws, as a write to a pipe whose reader has gone
+        this.isGone = false;
         this.waiters = [];
-        // the writers that wait for room (room())
+        // the writers that wait for room (room(), and push with a limit)
         this.roomWaiters = [];
       }
       get closed() {
         return this.isClosed;
       }
+      get gone() {
+        return this.isGone;
+      }
       push(x) {
+        if (this.isGone) throw new Error("Queue: the reader has gone");
         if (this.isClosed) throw new TypeError("Queue: cannot push to a closed queue");
         this.items.push(x);
         this.wake();
+        if (this.limit > 0 && this.items.length >= this.limit) return new Promise((resolve) => this.roomWaiters.push(resolve));
+        return undefined;
       }
       close() {
         if (this.isClosed) return;
         this.isClosed = true;
         this.wake();
+        this.wakeRoom();
+      }
+      // The reader stops reading (a command function or a command of a pipeline has ended): the queue is
+      // closed, what is in it is dropped, and a later push throws (M2, stage S3)
+      abandon() {
+        this.isGone = true;
+        this.items = [];
+        this.close();
         this.wakeRoom();
       }
       wakeRoom() {
@@ -2289,7 +2309,7 @@ var ConMaVM = (function () {
       // holds fewer than 64 elements or is closed, else a Promise that settles when a reader has taken it
       // down to 32 or it is closed, so that the writer waits and other tasks run
       room() {
-        if (this.isClosed || this.items.length < 64) return undefined;
+        if (this.isClosed || this.items.length < (this.limit || 64)) return undefined;
         return new Promise((resolve) => this.roomWaiters.push(resolve));
       }
       // Without taking anything: null when next() would answer at once (an element or the end), else a
@@ -2323,7 +2343,7 @@ var ConMaVM = (function () {
         }
         if (this.items.length > 0) {
           const value = this.items.shift();
-          if (this.roomWaiters.length > 0 && this.items.length <= 32) this.wakeRoom();
+          if (this.roomWaiters.length > 0 && this.items.length <= Math.floor((this.limit || 64) / 2)) this.wakeRoom();
           return { value };
         }
         return this.isClosed ? END : this;
