@@ -343,8 +343,26 @@
           __LList_cons__ p parts ,(parts)
           Conjs_shell_words cmd k n col words parts __TRUE__ quoted ,(w)
           return w) ,()) ,()
-  __String_equal__ c "|" ,(bar) __String_equal__ c ";" ,(semi) __String_equal__ c "&" ,(amp)
-  __or__ bar semi ,(bad) __or__ bad amp ,(bad)
+  ;; |、||、&&（段階 S3）：語を終え、記号の語（部分が ("o" 記号) の 1 つ）を置く。; と 1 つの & は、まだ誤り
+  __String_equal__ c "|" ,(bar) __String_equal__ c "&" ,(amp)
+  __Number_add__ j one ,(j1)
+  __Number_if_greater_then_else__ j1 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ cmd j j1) ,(next)
+  __String_equal__ next c ,(double)
+  __and__ amp double ,(andand)
+  __or__ bar andand ,(isOp)
+  __if__ isOp
+    (,()
+      finish words parts inWord quoted ,(words)
+      __if_then_else__ double (,() __String_concat__ c c) (,() __NULL__ c) ,(op)
+      __if_then_else__ double (,() __NULL__ j1) (,() __NULL__ j) ,(k)
+      __LList_cons__ op __NULL__ ,(o) __LList_cons__ "o" o ,(o)
+      __LList_cons__ o __NULL__ ,(ps)
+      __LList_cons__ __FALSE__ __NULL__ ,(w) __LList_cons__ ps w ,(w)
+      __LList_cons__ w words ,(words)
+      Conjs_shell_words cmd k n col words __NULL__ __FALSE__ __FALSE__ ,(w)
+      return w) ,()
+  __String_equal__ c ";" ,(semi)
+  __or__ semi amp ,(bad)
   __if__ bad (,() __String_concat__ c " is not in command lines yet" ,(m) Conjs_shell_error n at m) ,()
   Conjs_shell_add_text parts c ,(parts)
   Conjs_shell_words cmd j n col words parts __TRUE__ quoted)
@@ -468,30 +486,136 @@
 ;;   try { 名前([語...], conjs_command_line.input, conjs_command_line.output); } finally { conjs_sh_end(conjs_command_line); } }
 ;; conjs_command_line と、conjs_sh_ で始まる名前は、プログラムで使わない
 ;; 入力と出力は、変数の名前か false。出力の用意は、>$ なら 名前 = new Queue();、>>$ なら 名前 = new Queue(名前);
+;; 1 行のコード：{ let conjs_command_line; パイプ && や || のつながり if (conjs_command_line !== undefined) throw conjs_command_line; }
+;; conjs_command_line は、パイプの結果（undefined か、投げる Error）。&& の次は undefined のとき、|| の次は Error のときだけ
+;; 動かし、最後に動いたものの Error を投げる（段階 S3。シェルの set -e と同じく、途中の失敗は投げない）。|| が受けた
+;; Error は、標準エラーに出す（conjs_sh_report。18 節）
 (define Conjs_shell_gen ,(words shown n col)
   __Cont_get__ ,(return)
-  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
-  __LList_uncons__ __print_exit_error__ words ,(first rest)
-  Conjs_shell_fn_name first ,(fname)
+  Kit_code_quote shown ,(q)
+  Conjs_shell_split words "&& ||" __NULL__ "" __NULL__ ,(items)
+  Conjs_shell_gen_list items q n col "{ let conjs_command_line; " ,(code)
+  __String_concat__ code "if (conjs_command_line !== undefined) throw conjs_command_line; }")
+
+(define Conjs_shell_gen_list ,(items q n col code)
+  __Cont_get__ ,(return)
+  __is_null__ items ,(test__) __if__ test__ (,() return code) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  __LList_uncons__ __print_exit_error__ item ,(op more)
+  __LList_uncons__ __print_exit_error__ more ,(seg x)
+  Conjs_shell_gen_pipe seg q n col ,(pc)
+  __String_equal__ op "" ,(first)
+  __String_equal__ op "&&" ,(andThen)
+  __if_then_else__ first
+    (,() __String_concat__ code pc)
+    (,()
+      ;; || が受けた誤りは、標準エラーに出す（conjs_sh_report。CommandError は、コマンドが自分で出すので出さない）
+      __if_then_else__ andThen (,() __NULL__ "===") (,() __NULL__ "!==") ,(cmp)
+      __if_then_else__ andThen (,() __NULL__ "") (,() __NULL__ "conjs_sh_report(conjs_command_line); ") ,(report)
+      __String_concat__ report pc ,(pc)
+      Kit_code_cat5 code "if (conjs_command_line " cmp " undefined) { " pc ,(c)
+      __String_concat__ c "} ") ,(code)
+  Conjs_shell_gen_list rest q n col code)
+
+;; 1 つのパイプ（| で分けた語）：conjs_command_line に結果を入れるコード
+(define Conjs_shell_gen_pipe ,(seg q n col)
+  __Cont_get__ ,(return)
+  Conjs_shell_split seg "|" __NULL__ "" __NULL__ ,(stages)
+  __LList_length__ stages ,(count)
+  Conjs_shell_one ,(one)
+  __Number_subtract__ count one ,(lastIndex)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_gen_stages stages zero lastIndex n col "" "false" "false" "" __NULL__ ,(scode input output setup single)
+  __LList_uncons__ __print_exit_error__ single ,(fname more)
+  __LList_uncons__ __print_exit_error__ more ,(argv more)
+  __LList_uncons__ __print_exit_error__ more ,(err x)
+  __Number_is_zero__ lastIndex ,(one1)
+  __unless__ one1
+    (,()
+      Kit_code_cat5 setup "conjs_command_line = conjs_sh_pipe([" scode "], " input ,(c)
+      Kit_code_cat5 c ", " output ", " q ,(c)
+      __String_concat__ c "); " ,(c)
+      return c) ,()
   __is_null__ fname ,(external)
-  __if_then_else__ external (,() __NULL__ words) (,() __NULL__ rest) ,(args)
-  Conjs_shell_args args n col "" "false" "false" "" ,(list input output setup)
-  __String_equal__ list "" ,(noArgs)
-  __if__ external (,() __if__ noArgs (,() Conjs_shell_error n col "no command") ,()) ,()
-  __String_concat__ "[" list ,(arr) __String_concat__ arr "]" ,(arr)
-  ;; 初めは、いつも let conjs_command_line;（文を始められない所では、構文の誤りに、この名前が出る）
-  __String_concat__ "{ let conjs_command_line; " setup ,(code)
   __if__ external
     (,()
-      Kit_code_quote shown ,(q)
-      __String_concat__ code "conjs_command_line = conjs_sh_run(" ,(code)
-      Kit_code_cat5 code arr ", " input ", " ,(code)
-      Kit_code_cat4 code output ", " q ,(code)
-      __String_concat__ code "); if (conjs_command_line !== undefined) throw conjs_command_line; }" ,(code)
-      return code) ,()
-  Kit_code_cat5 code "conjs_command_line = conjs_sh_begin(" input ", " output ,(code)
-  Kit_code_cat5 code "); try { " fname "(" arr ,(code)
-  __String_concat__ code ", conjs_command_line.input, conjs_command_line.output); } finally { conjs_sh_end(conjs_command_line); } }")
+      Kit_code_cat5 setup "conjs_command_line = conjs_sh_run(" argv ", " input ,(c)
+      Kit_code_cat5 c ", " output ", " q ,(c)
+      Kit_code_cat3 c ", " err ,(c)
+      __String_concat__ c "); " ,(c)
+      return c) ,()
+  ;; コマンド型関数 1 つ：その行で呼ぶ（関数でない値の TypeError も、その行の位置になる）
+  ;; その例外は、パイプのときと同じく、この行の結果にする（Bash の関数の失敗と同じく、|| が受ける。M1 のレビュー、
+  ;; shima3/conma#97）
+  Kit_code_cat5 setup "{ const conjs_sh_c = conjs_sh_begin(" input ", " output ,(c)
+  Kit_code_cat5 c "); try { " fname "(" argv ,(c)
+  __String_concat__ c ", conjs_sh_c.input, conjs_sh_c.output); conjs_command_line = undefined; } catch (conjs_sh_e) { conjs_command_line = conjs_sh_e; } finally { conjs_sh_end(conjs_sh_c); } } ")
+
+;; パイプのコマンドを順に：返すのは、段のコード（", " で区切る）、初めの段の入力、最後の段の出力、すべての出力の用意、
+;; 1 段だけのときに使う (関数の名前か null  引数の配列のコード  2>$ の変数か false)
+(define Conjs_shell_gen_stages ,(stages i lastIndex n col scode input output setup single)
+  __Cont_get__ ,(return)
+  __is_null__ stages ,(test__) __if__ test__ (,() return scode input output setup single) ,()
+  __LList_uncons__ __print_exit_error__ stages ,(item rest)
+  __LList_uncons__ __print_exit_error__ item ,(op more)
+  __LList_uncons__ __print_exit_error__ more ,(words x)
+  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
+  __LList_uncons__ __print_exit_error__ words ,(firstWord others)
+  Conjs_shell_fn_name firstWord ,(fname)
+  __is_null__ fname ,(external)
+  __if_then_else__ external (,() __NULL__ words) (,() __NULL__ others) ,(args)
+  Conjs_shell_args args n col "" "false" "false" "false" "" ,(list in out err set)
+  __String_equal__ list "" ,(noArgs)
+  __and__ external noArgs ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
+  Conjs_shell_zero ,(zero)
+  __Number_subtract__ i zero ,(d0) __Number_is_zero__ d0 ,(isFirst)
+  __Number_subtract__ i lastIndex ,(dl) __Number_is_zero__ dl ,(isLast)
+  __String_equal__ in "false" ,(noIn)
+  __String_equal__ out "false" ,(noOut)
+  __String_equal__ err "false" ,(noErr)
+  __not__ noIn ,(hasIn) __not__ isFirst ,(notFirst) __and__ hasIn notFirst ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "<$ is only for the first command of a pipeline") ,()
+  __not__ noOut ,(hasOut) __not__ isLast ,(notLast) __and__ hasOut notLast ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col ">$ and >>$ are only for the last command of a pipeline") ,()
+  __not__ noErr ,(hasErr) __not__ external ,(isFn) __and__ hasErr isFn ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "2>$ is only for external commands") ,()
+  __String_concat__ "[" list ,(arr) __String_concat__ arr "]" ,(arr)
+  __if_then_else__ external
+    (,() Kit_code_cat4 "{ args: " arr ", err: " err ,(s) __String_concat__ s " }")
+    (,() Kit_code_cat4 "{ f: " fname ", args: " arr ,(s) __String_concat__ s " }") ,(stageCode)
+  __String_equal__ scode "" ,(none)
+  __if_then_else__ none (,() __NULL__ stageCode) (,() Kit_code_cat3 scode ", " stageCode) ,(scode)
+  __if_then_else__ isFirst (,() __NULL__ in) (,() __NULL__ input) ,(input)
+  __if_then_else__ isLast (,() __NULL__ out) (,() __NULL__ output) ,(output)
+  __String_concat__ setup set ,(setup)
+  __LList_cons__ err __NULL__ ,(s1) __LList_cons__ arr s1 ,(s1) __LList_cons__ fname s1 ,(single)
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(i)
+  Conjs_shell_gen_stages rest i lastIndex n col scode input output setup single)
+
+;; 語の記号（|、||、&&）。記号でなければ null
+(define Conjs_shell_op ,(w)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __is_null__ parts ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  __LList_uncons__ __print_exit_error__ p ,(kind r)
+  __String_equal__ kind "o" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ r ,(op x)
+  __NULL__ op)
+
+;; 語を、ops（空白で区切った記号）で分ける。返すのは (前の記号 語の LList) の LList（初めの記号は ""）。seg は今の語（逆順）
+(define Conjs_shell_split ,(words ops seg op acc)
+  __Cont_get__ ,(return)
+  __NULL__ (,() Kit_lex_reverse seg ,(s) __LList_cons__ s __NULL__ ,(item) __LList_cons__ op item ,(item) __LList_cons__ item acc) ,(push)
+  __is_null__ words ,(test__) __if__ test__ (,() push ,(acc) Kit_lex_reverse acc ,(items) return items) ,()
+  __LList_uncons__ __print_exit_error__ words ,(w rest)
+  Conjs_shell_op w ,(o)
+  __is_null__ o ,(test__) __if__ test__ (,() __LList_cons__ w seg ,(seg) Conjs_shell_split rest ops seg op acc ,(r) return r) ,()
+  Kit_lex_in_words o ops ,(isSplit)
+  __if__ isSplit (,() push ,(acc) Conjs_shell_split rest ops __NULL__ o acc ,(r) return r) ,()
+  __LList_cons__ w seg ,(seg)
+  Conjs_shell_split rest ops seg op acc)
 
 ;; 初めの語が $名前（引用符なし）なら、その名前（コマンド型関数。D3）。そうでなければ null
 (define Conjs_shell_fn_name ,(w)
@@ -524,9 +648,9 @@
   __NULL__ s)
 
 ;; 引数の語と、リダイレクト。返すのは、引数のコード（", " で区切る）、入力、出力、出力の用意
-(define Conjs_shell_args ,(words n col list input output setup)
+(define Conjs_shell_args ,(words n col list input output err setup)
   __Cont_get__ ,(return)
-  __is_null__ words ,(test__) __if__ test__ (,() return list input output setup) ,()
+  __is_null__ words ,(test__) __if__ test__ (,() return list input output err setup) ,()
   __LList_uncons__ __print_exit_error__ words ,(w rest)
   __LList_uncons__ __print_exit_error__ w ,(parts more)
   __LList_uncons__ __print_exit_error__ more ,(quoted x)
@@ -534,7 +658,8 @@
   __is_null__ plain ,(notPlain)
   __if_then_else__ notPlain (,() __NULL__ "") (,() __NULL__ plain) ,(plain)
   __String_equal__ plain "<$" ,(isIn) __String_equal__ plain ">$" ,(isOut) __String_equal__ plain ">>$" ,(isAppend)
-  __or__ isIn isOut ,(isRedir) __or__ isRedir isAppend ,(isRedir)
+  __String_equal__ plain "2>$" ,(isErr)
+  __or__ isIn isOut ,(isRedir) __or__ isRedir isAppend ,(isRedir) __or__ isRedir isErr ,(isRedir)
   __not__ quoted ,(unq)
   __and__ isRedir unq ,(isRedir)
   __if__ isRedir
@@ -549,24 +674,30 @@
       __if__ isIn
         (,()
           __String_equal__ input "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one <$") ,()
-          Conjs_shell_args rest n col list name output setup ,(a b c d) return a b c d) ,()
+          Conjs_shell_args rest n col list name output err setup ,(a b c d e) return a b c d e) ,()
+      ;; 2>$：標準エラーの行を、新しいキューに（段階 S3）
+      __if__ isErr
+        (,()
+          __String_equal__ err "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one 2>$") ,()
+          Kit_code_cat3 setup name " = new Queue(); " ,(setup)
+          Conjs_shell_args rest n col list input output name setup ,(a b c d e) return a b c d e) ,()
       __String_equal__ output "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one >$ or >>$") ,()
       __if_then_else__ isOut
         (,() Kit_code_cat3 setup name " = new Queue(); ")
         (,() Kit_code_cat5 setup name " = new Queue(" name "); ") ,(setup)
-      Conjs_shell_args rest n col list input name setup ,(a b c d)
-      return a b c d) ,()
+      Conjs_shell_args rest n col list input name err setup ,(a b c d e)
+      return a b c d e) ,()
   ;; 引用符の外の < と > は、<$ >$ >>$ のほかは誤り（ファイルへのリダイレクトはない）
   __unless__ quoted
     (,()
       Conjs_shell_zero ,(zero)
       __String_find_any__ __print_exit_error__ plain "<>" zero ,(lt)
       __is_null__ lt ,(test__) __unless__ test__
-        (,() __String_concat__ plain ": only <$, >$ and >>$ redirect, to and from variables" ,(m) Conjs_shell_error n col m) ,()) ,()
+        (,() __String_concat__ plain ": only <$, >$, >>$ and 2>$ redirect, to and from variables" ,(m) Conjs_shell_error n col m) ,()) ,()
   Conjs_shell_word_code parts ,(code)
   __String_equal__ list "" ,(firstArg)
   __if_then_else__ firstArg (,() __NULL__ code) (,() Kit_code_cat3 list ", " code) ,(list)
-  Conjs_shell_args rest n col list input output setup)
+  Conjs_shell_args rest n col list input output err setup)
 
 ;; 語のコード："文字"、String(名前)、または [..].join("")（4 節：値は String(x) と同じく文字列にする。D2）
 (define Conjs_shell_word_code ,(parts)
@@ -598,35 +729,34 @@
 (define Conjs_shell_prelude ,()
   __String_join_lines__
     "// the command lines of this file (conjs/include/conjs_shell.se)"
-    "function conjs_sh_run(argv, input, output, cmd) {"
-    "  let inq = input;"
-    "  if (input !== false && !conjs_sh_direct(input)) {"
-    "    const src = input;"
-    "    const q = new Queue();"
-    "    inq = q;"
-    "    // the task waits while the queue holds 64 elements (q.room()), so that other tasks run, and stops"
-    "    // when the command has ended (the line closes q). M1's review of shima3/conma#96"
-    "    spawn(() => {"
-    "      try {"
-    "        for (const x of src) {"
-    "          if (q.closed) break;"
-    "          q.push(x);"
-    "          q.room();"
-    "        }"
-    "      } finally {"
-    "        q.close();"
+    "// The input of a command: false (the standard input), an array or an object of the host as it is, else"
+    "// (a generator of the VM) a Queue that a task fills, waiting while 64 are in it and stopping when the"
+    "// queue is closed (M1's review of shima3/conma#96)"
+    "function conjs_sh_input(input) {"
+    "  if (input === false || conjs_sh_direct(input)) return input;"
+    "  const src = input;"
+    "  const q = new Queue();"
+    "  spawn(() => {"
+    "    try {"
+    "      for (const x of src) {"
+    "        if (q.closed) break;"
+    "        q.push(x);"
+    "        q.room();"
     "      }"
-    "    });"
-    "  }"
-    "  let r;"
-    "  try {"
-    "    r = host.wait(\"conma.sh.run\", argv, inq, output);"
-    "  } catch (e) {"
-    "    if (output !== false) output.close();"
-    "    return e;"
-    "  } finally {"
-    "    if (inq !== input) inq.close();"
-    "  }"
+    "    } finally {"
+    "      q.close();"
+    "    }"
+    "  });"
+    "  return q;"
+    "}"
+    "// An error that the line does not throw (one that || takes, or one before the last command of a pipeline) goes"
+    "// to the standard error, as Bash writes \"command not found\" and a function writes its own; a CommandError"
+    "// does not, since its command has written to the standard error itself (section 18)"
+    "function conjs_sh_report(e) {"
+    "  if (e instanceof Error && e.name === \"CommandError\") return;"
+    "  conjs_sh_stderr(e instanceof Error ? (e.name === \"Error\" ? e.message : `${e.name}: ${e.message}`) : String(e));"
+    "}"
+    "function conjs_sh_error(r, cmd) {"
     "  if (r.status === 0) return undefined;"
     "  const e = new Error(r.signal ? `Command killed by ${r.signal}: ${cmd}` : `Command failed with exit status ${r.status}: ${cmd}`);"
     "  e.name = \"CommandError\";"
@@ -634,6 +764,77 @@
     "  e.signal = r.signal;"
     "  e.command = cmd;"
     "  return e;"
+    "}"
+    "function conjs_sh_run(argv, input, output, cmd, err) {"
+    "  const inq = conjs_sh_input(input);"
+    "  let r;"
+    "  try {"
+    "    r = host.wait(\"conma.sh.run\", argv, inq, output, [err]);"
+    "  } catch (e) {"
+    "    if (output !== false) output.close();"
+    "    if (err !== false) err.close();"
+    "    return e;"
+    "  } finally {"
+    "    if (inq !== input) inq.close();"
+    "  }"
+    "  return conjs_sh_error(r, cmd);"
+    "}"
+    "// A pipeline (stage S3): the external commands next to each other run as one pipeline of the OS; a"
+    "// command function and what is next to it are joined by a Queue with a limit of 64. Each group runs in a"
+    "// task; when a group ends, the queue it read from is abandoned, so that the one before it stops (a push"
+    "// throw, or the command gets SIGPIPE). The result is that of the last group, as in Bash without pipefail; an"
+    "// Error of a group before it (a command that cannot start, an exception of a function) is reported, not thrown."
+    "function conjs_sh_pipe(stages, input, output, cmd) {"
+    "  const groups = [];"
+    "  for (const s of stages) {"
+    "    const last = groups.length > 0 ? groups[groups.length - 1] : undefined;"
+    "    if (s.f === undefined && last !== undefined && last.f === undefined) {"
+    "      last.argvs.push(s.args);"
+    "      last.errs.push(s.err);"
+    "    } else if (s.f === undefined) {"
+    "      groups.push({ f: undefined, argvs: [s.args], errs: [s.err] });"
+    "    } else {"
+    "      groups.push(s);"
+    "    }"
+    "  }"
+    "  const first = conjs_sh_input(input);"
+    "  let inq = first;"
+    "  const tasks = [];"
+    "  for (let i = 0; i < groups.length; i++) {"
+    "    const g = groups[i];"
+    "    const out = i === groups.length - 1 ? output : new Queue(undefined, 64);"
+    "    const inp = inq;"
+    "    const between = i > 0;"
+    "    tasks.push(spawn(() => {"
+    "      try {"
+    "        if (g.f === undefined) return { r: host.wait(\"conma.sh.run\", g.argvs, inp, out, g.errs) };"
+    "        const c = conjs_sh_begin(inp, out);"
+    "        try {"
+    "          g.f(g.args, c.input, c.output);"
+    "        } finally {"
+    "          conjs_sh_end(c);"
+    "        }"
+    "        return { r: undefined };"
+    "      } catch (e) {"
+    "        if (out !== false) out.close();"
+    "        for (const q of g.errs || []) if (q !== false) q.close();"
+    "        // the reader after it has gone: as a command that gets SIGPIPE, not an error of the line"
+    "        if (e instanceof Error && e.message === \"Queue: the reader has gone\") return { r: undefined };"
+    "        return { e: e };"
+    "      } finally {"
+    "        if (between) inp.abandon();"
+    "      }"
+    "    }));"
+    "    inq = out;"
+    "  }"
+    "  const results = [];"
+    "  for (const t of tasks) results.push(join(t));"
+    "  if (first !== input) first.close();"
+    "  // as Bash without pipefail: the result is that of the last group; an error before it is reported, not thrown"
+    "  for (let i = 0; i < results.length - 1; i++) if (results[i].e !== undefined) conjs_sh_report(results[i].e);"
+    "  const last = results[results.length - 1];"
+    "  if (last.e !== undefined) return last.e;"
+    "  return last.r === undefined ? undefined : conjs_sh_error(last.r, cmd);"
     "}"
     "function conjs_sh_begin(input, output) {"
     "  const inp = input === false ? fs.stdin.readLines() : input;"

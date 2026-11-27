@@ -1,0 +1,17 @@
+1:
+fallback
+2:
+3:
+fallback
+4:
+5:
+after-false
+6:
+thrown: boom
+7:
+thrown: boom
+conjs: boom
+conjs: boom
+conjs: no-such-cmd: command not found
+conjs: no-such-cmd: command not found
+exit: 0

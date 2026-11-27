@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 4:3: 2>$ is only for external commands
+exit: 2

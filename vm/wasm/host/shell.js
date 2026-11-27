@@ -1,4 +1,4 @@
-// The external commands of the command lines of ConJS (stage S1b of docs/dev/CONJS-SHELL-PLAN.md, section 9;
+// The external commands of the command lines of ConJS (stages S1b and S3 of docs/dev/CONJS-SHELL-PLAN.md;
 // conjs/include/conjs_shell.se). The host function "conma.sh.run" argv input output, called with host.wait:
 // starts argv[0] with the arguments argv[1..] (no shell), writes the elements of input (an array, or a Queue
 // of rt.Queue; false for the standard input of the program) to its standard input, a line for each (a string
@@ -75,58 +75,132 @@ async function feed(w, input) {
   }
 }
 
-function run(argv, input, output) {
+// Push the lines of the readable stream r into the Queue q (UTF-8; "\n" and "\r\n" end a line; a last
+// line without one too). A queue with a limit makes r pause until it has room; a queue whose reader has
+// gone (abandon) makes r stop, so that the command gets SIGPIPE on its next write, as in a shell. done is
+// called at the end of r.
+function linesInto(r, q, done) {
+  const decoder = new TextDecoder();
+  let rest = "";
+  let stopped = false;
+  const push = (s) => {
+    if (stopped) return;
+    if (q.gone || q.closed) {
+      stopped = true;
+      r.destroy();
+      return;
+    }
+    const wait = q.push(s.endsWith("\r") ? s.slice(0, -1) : s);
+    if (wait !== undefined) {
+      r.pause();
+      wait.then(() => {
+        if (!r.destroyed) r.resume();
+      });
+    }
+  };
+  const put = (text) => {
+    rest += text;
+    let at;
+    while ((at = rest.indexOf("\n")) >= 0) {
+      const s = rest.slice(0, at);
+      rest = rest.slice(at + 1);
+      push(s);
+    }
+  };
+  r.on("data", (chunk) => put(decoder.decode(chunk, { stream: true })));
+  r.on("error", () => {});
+  const end = () => {
+    put(decoder.decode());
+    if (rest !== "") push(rest);
+    rest = "";
+    done();
+  };
+  r.on("end", end);
+  r.on("close", () => {
+    if (!r.readableEnded) done();
+  });
+}
+
+// argv is the words of one command, or an array of them for a pipeline of commands joined by pipes of
+// the OS (stage S3; section 11 of docs/dev/CONJS-SHELL-PLAN.md). errs, if given, is for each command a
+// Queue for the lines of its standard error (2>$), or false for that of the program. It resolves to the
+// status and the signal of the last command.
+function run(argv, input, output, errs) {
   return new Promise((resolve, reject) => {
-    const close = () => {
+    const cmds = Array.isArray(argv) && argv.length > 0 && Array.isArray(argv[0]) ? argv : [argv];
+    const errOf = (i) => (Array.isArray(errs) && errs[i] ? errs[i] : false);
+    const closeAll = () => {
       if (output !== false && !output.closed) output.close();
+      cmds.forEach((c, i) => {
+        const e = errOf(i);
+        if (e !== false && !e.closed) e.close();
+      });
     };
-    if (!Array.isArray(argv) || argv.length === 0) {
-      close();
+    if (cmds.some((c) => !Array.isArray(c) || c.length === 0)) {
+      closeAll();
       reject(new Error("conma.sh.run: no command"));
       return;
     }
-    let p;
-    try {
-      p = childProcess.spawn(argv[0], argv.slice(1), {
-        stdio: [input === false ? "inherit" : "pipe", output === false ? "inherit" : "pipe", "inherit"],
-      });
-    } catch (e) {
-      close();
-      reject(new Error(startError(argv[0], e)));
-      return;
-    }
+    const procs = [];
     let failed = null;
-    p.on("error", (e) => {
-      failed = e;
-    });
+    for (let i = 0; i < cmds.length; i++) {
+      const last = i === cmds.length - 1;
+      const stdin = i > 0 ? procs[i - 1].stdout : input === false ? "inherit" : "pipe";
+      const stdout = !last || output !== false ? "pipe" : "inherit";
+      const stderr = errOf(i) !== false ? "pipe" : "inherit";
+      let p;
+      try {
+        p = childProcess.spawn(cmds[i][0], cmds[i].slice(1), { stdio: [stdin, stdout, stderr] });
+      } catch (e) {
+        for (const q of procs) q.kill();
+        closeAll();
+        reject(new Error(startError(cmds[i][0], e)));
+        return;
+      }
+      // the next command has its own copy of the pipe: this process lets go of the end it does not read,
+      // so that a command that stops reading makes the one before it get SIGPIPE
+      if (i > 0) procs[i - 1].stdout.destroy();
+      // a command that cannot start: the last one makes the line fail; one before it is reported on the
+      // standard error, and the pipeline goes on, as in Bash (its output is empty; section 18)
+      p.on("error", (e) => {
+        if (i === cmds.length - 1) {
+          if (failed === null) failed = { cmd: cmds[i][0], e };
+        } else {
+          fs.writeSync(2, `conjs: ${startError(cmds[i][0], e)}\n`);
+        }
+      });
+      procs.push(p);
+    }
+    const first = procs[0];
     if (input !== false) {
       // a command that ends without reading all of its input: EPIPE, not an error of the line
-      p.stdin.on("error", () => {});
-      feed(p.stdin, input).catch(() => {});
+      first.stdin.on("error", () => {});
+      feed(first.stdin, input).catch(() => {});
     }
+    // the end comes when every process has closed and every stream given to a Queue has ended
+    let waiting = procs.length;
+    const lastProc = procs[procs.length - 1];
+    let result = null;
+    const finish = () => {
+      if (--waiting > 0) return;
+      closeAll();
+      if (failed !== null) reject(new Error(startError(failed.cmd, failed.e)));
+      else resolve(result);
+    };
     if (output !== false) {
-      const decoder = new TextDecoder();
-      let rest = "";
-      const put = (text) => {
-        rest += text;
-        let at;
-        while ((at = rest.indexOf("\n")) >= 0) {
-          const s = rest.slice(0, at);
-          rest = rest.slice(at + 1);
-          if (!output.closed) output.push(s.endsWith("\r") ? s.slice(0, -1) : s);
-        }
-      };
-      p.stdout.on("data", (chunk) => put(decoder.decode(chunk, { stream: true })));
-      p.stdout.on("end", () => {
-        put(decoder.decode());
-        if (rest !== "" && !output.closed) output.push(rest.endsWith("\r") ? rest.slice(0, -1) : rest);
-        rest = "";
-      });
+      waiting++;
+      linesInto(lastProc.stdout, output, finish);
     }
-    p.on("close", (code, signal) => {
-      close();
-      if (failed !== null) reject(new Error(startError(argv[0], failed)));
-      else resolve({ status: code, signal: signal || undefined });
+    procs.forEach((p, i) => {
+      const e = errOf(i);
+      if (e !== false) {
+        waiting++;
+        linesInto(p.stderr, e, finish);
+      }
+      p.on("close", (code, signal) => {
+        if (p === lastProc) result = { status: code, signal: signal || undefined };
+        finish();
+      });
     });
   });
 }
