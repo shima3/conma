@@ -42,3 +42,19 @@ console.log(z);
 let q;
 $ printf "a\n" >$ q
 console.log(typeof q, [...q]);
+// <$ と同じ名前に出力を入れる：入力は、出力の用意より先に読む（M1 のレビュー、shima3/conma#99）
+let srt = ["b", "a"];
+$ sort <$ srt >$ [...srt]
+console.log(srt);
+let sq = ["d", "c"];
+$ sort <$ sq >$ sq
+console.log([...sq]);
+function up(args, input, output) {
+  for (const v of input) output.push(v.toUpperCase());
+}
+let fk = ["x"];
+$ $up <$ fk >$ [...fk]
+console.log(fk);
+let pr = ["q", "p"];
+$ false || sort <$ pr | cat >$ [...pr]
+console.log(pr);

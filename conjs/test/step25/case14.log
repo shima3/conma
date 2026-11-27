@@ -9,4 +9,8 @@ out err
 true [ 'A', 'B' ]
 before
 object [ 'a' ]
+[ 'a', 'b' ]
+[ 'c', 'd' ]
+[ 'X' ]
+[ 'p', 'q' ]
 exit: 0

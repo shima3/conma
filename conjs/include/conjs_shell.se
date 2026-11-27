@@ -527,6 +527,14 @@
   __Number_subtract__ count one ,(lastIndex)
   Conjs_shell_zero ,(zero)
   Conjs_shell_gen_stages stages zero lastIndex n col "" "false" "false" "" __NULL__ "" ,(scode input output setup single finish)
+  ;; <$ の変数は、出力の用意（>$ v の v = new Queue(); など）より先に読む：<$ n >$ n や <$ n >$ [...n] は、もとの n を
+  ;; 入力にして、出力を n に入れる（Bash の x=$(sort <<< "$x") と同じ。M1 のレビュー、shima3/conma#99）
+  __String_equal__ input "false" ,(noIn)
+  __if_then_else__ noIn
+    (,() __NULL__ setup input)
+    (,()
+      Kit_code_cat4 "const conjs_sh_in = " input "; " setup ,(setup)
+      __NULL__ setup "conjs_sh_in") ,(setup input)
   __LList_uncons__ __print_exit_error__ single ,(fname more)
   __LList_uncons__ __print_exit_error__ more ,(argv more)
   __LList_uncons__ __print_exit_error__ more ,(err x)
