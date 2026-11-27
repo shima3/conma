@@ -118,6 +118,15 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 * M2 が流したもの：conjs/test（step25 (no eval) を含む）、conjs/test/compare.sh、sjs/test、wasm 版の VM の test/fast22、test/host-api.sh、consh/js/test（consh/js/build.sh で作り直して）、consh/test（Rust 版、wasm 版）：既知の違い（wasm 版の step17 と step8）だけ。
 * 流していないもの：vm/src は変えていないので、Rust 版と Python 版の VM の test/ と consh/test。
 
+### m2/shell-examples（shima3/conma#98）
+
+* 種類：直し（ConJS のコマンド行の見本と、そのテスト。docs/dev/CONJS-SHELL-PLAN.md の 19 節。`$` で始まるのに名前でない初めの語を、外部コマンドでなく SyntaxError にした：conjs/include/conjs_shell.se の Conjs_shell_check_dollar、conjs/test/step25 の case12）。
+* conjs/examples：logreport.con.js（access.log を集計）、todos.con.js（notes/ の TODO を数える）、wordcounts.con.js（同時に wc）と、それぞれの Bash 版（`NAME.bash`）。データは access.log と notes/。
+* conjs/test/shell-examples/test.sh（新しい）：ConJS 版と Bash 版を conjs/examples で流し、どちらも NAME.log と同じになるかを見る。conjs/test/run_all.sh が `== shell-examples` で呼ぶ。Bash 版は、PATH の bash で動かす。
+* Windows（I7）：Git Bash の `find`、`grep`、`sort`、`awk`、`uniq`、`wc`、`mktemp`、`cut`、`tr`、`test` を使う。
+* M2 が流したもの：conjs/test（shell-examples を含む）：違いなし。
+* 流していないもの：ほかの suite（ConJS の言語とランタイムは変えていない）。
+
 ### m2/host-values（shima3/conma#95）
 
 * 種類：機能（wasm 版の VM とホストの間で、値を参照で渡し、ConJS からホストのオブジェクトを使う。docs/dev/CONJS-SHELL-PLAN.md の段階 S0。14 節と 15 節）。

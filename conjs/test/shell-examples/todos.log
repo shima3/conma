@@ -1,0 +1,11 @@
+3 notes
+notes/a.txt: 3
+notes/b.txt: no TODO
+notes/c.txt: 1
+total: 4
+notes/a.txt has DONE
+notes/b.txt has no DONE (exit status 1)
+notes/c.txt has no DONE (exit status 1)
+notes is a directory
+nothing-here is not a directory
+exit: 0

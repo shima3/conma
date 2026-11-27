@@ -40,6 +40,9 @@ if [ "${CONMA_VM:-wasm}" = wasm ]; then
   (cd step22 && NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disallow-code-generation-from-strings" ../../conjs case7.con.js 2>&1; echo "exit: $?") \
     | sed 's|of .*/step22/|of step22/|' \
     | diff - <(printf '%s\n' 'conjs: the async functions of step22/case7.con.js need JavaScript on the host: __JS_fn_compile__: Code generation from strings disallowed for this context' 'exit: 1')
+  # コマンド行の見本（conjs/examples の logreport、todos、wordcounts）：ConJS 版と Bash 版が、同じ出力になる
+  echo "== shell-examples"
+  bash shell-examples/test.sh
   # コマンド行と Queue（docs/dev/CONJS-SHELL-PLAN.md の D15）：new Function を止めると、ConMa 版がないので、始めで止まる
   echo "== step25 (no eval)"
   for c in case7 case8
