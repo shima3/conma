@@ -2079,6 +2079,12 @@ var ConMaVM = (function () {
           hostResult = utf8(JSON.stringify(jsfnResume(g, JSON.parse(str(jsonPtr, jsonLen)))));
           return hostResult.length;
         },
+        // The VM dropped object k of the host (Value::Host of vm/src/prim/jsfn.rs): forget it
+        host_obj_free: (k) => {
+          const o = hostObjs.get(k);
+          hostObjs.delete(k);
+          if (o !== undefined) hostIds.delete(o);
+        },
         host_wasm_free: (id) => {
           wasmModules.delete(id);
         },
@@ -2212,6 +2218,18 @@ var ConMaVM = (function () {
       constructor(k) { this.k = k; }
     }
     class Escape extends Error {}
+    // Values by reference (stage S0 of docs/dev/CONJS-SHELL-PLAN.md, section 7). An object marked with
+    // BYREF (rt.byRef) goes to the VM as {"o":k}, its number in hostObjs, and comes back as the same
+    // object; the VM tells host_obj_free when it drops it. A value of the VM that the host keeps across
+    // calls (rt.keep) is a VmKept, {"k":i}; when the host drops it, the VM lets the value go.
+    const BYREF = Symbol("byRef");
+    const hostObjs = new Map();
+    const hostIds = new WeakMap();
+    let hostObjLast = 0;
+    class VmKept {
+      constructor(k) { this.k = k; }
+    }
+    const keptRegistry = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((k) => x.conma_jsfn_release(k)) : null;
     // The session of the innermost call running (for rt.callVm), and the generators waiting, by number
     let jsfnSession = null;
     const jsfnGenerators = new Map();
@@ -2219,7 +2237,31 @@ var ConMaVM = (function () {
     const jsfnRuntime = {
       VmRef,
       VmHandle,
+      VmKept,
       Escape,
+      // Mark the object o to go to the VM by reference (an object of a class: mark its prototype)
+      byRef(o) {
+        o[BYREF] = true;
+        return o;
+      },
+      // Keep v, a value of the VM that a call has (a handle, or an object copied from the VM), across
+      // calls: a VmKept that names the same value of the VM. Other values are kept as they are.
+      keep(v) {
+        if (v === null || v === undefined || (typeof v !== "object" && typeof v !== "function")) return v;
+        if (v instanceof VmKept || v[BYREF]) return v;
+        const ss = jsfnSession;
+        if (!ss) throw new Error("rt.keep: no call of the VM is running");
+        const msg = ss.out((enc) => ({ keep: enc(v) }));
+        const n = pass(JSON.stringify(msg), (pa, la) => x.conma_jsfn_callback(pa, la));
+        const r = JSON.parse(str(x.conma_callback_ptr(), n));
+        if (Object.prototype.hasOwnProperty.call(r, "e")) throw new Error(r.e);
+        const kept = new VmKept(ss.take(r, r.r));
+        if (keptRegistry) keptRegistry.register(kept, kept.k);
+        return kept;
+      },
+      // For the tests: the objects of the host that the VM holds, and the values of the VM kept here
+      hostObjCount: () => hostObjs.size,
+      keptCount: () => x.conma_jsfn_kept(),
       // A new Dict of the VM, with the entries of the object o
       dict(o) { return Object.assign(Object.create(null), o || {}); },
       ref(value) { return new VmRef(value); },
@@ -2266,6 +2308,7 @@ var ConMaVM = (function () {
         if ("@" in v) return this.objs[v["@"]];
         if ("l" in v) return v.l.map((e) => this.value(e));
         if ("h" in v) return new VmHandle(v.h);
+        if ("o" in v) return hostObjs.get(v.o);
         return jsfnNumber(v);
       }
       // Fill the object o of a node with its contents n, which the VM now has
@@ -2301,6 +2344,16 @@ var ConMaVM = (function () {
           if (typeof v === "string" || typeof v === "boolean") return v;
           if (Array.isArray(v)) return { l: v.map(enc) };
           if (v instanceof VmHandle) return { h: v.k };
+          if (v instanceof VmKept) return { k: v.k };
+          if (typeof v === "object" && v[BYREF]) {
+            let k = hostIds.get(v);
+            if (k === undefined) {
+              k = ++hostObjLast;
+              hostIds.set(v, k);
+              hostObjs.set(k, v);
+            }
+            return { o: k };
+          }
           if (typeof v === "object" && NODE in v) return { "@": v[NODE] };
           if (v instanceof VmRef || (typeof v === "object" && isPlain(v))) {
             const i = this.objs.length;

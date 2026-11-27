@@ -1096,6 +1096,9 @@ pub fn wasm_call(_host: i32, _name: &str, _args: &[f64], _memory: &mut [f64], _f
 
 pub fn wasm_free(_host: i32) {}
 
+/// The VM dropped object k of the host (the VM for wasm32 only: no other VM has one).
+pub fn host_obj_free(_k: i32) {}
+
 pub fn wasm_available() -> bool {
     false
 }

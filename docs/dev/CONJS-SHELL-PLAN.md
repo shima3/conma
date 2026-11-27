@@ -2,7 +2,7 @@
 
 The plan of writing shell commands in a ConJS file: a line that begins with `$ ` runs an external command or a command function, with redirections from and to the variables of the program. The user proposed it on 2026-11-26; M2 wrote this plan the same day, with the questions it raises. M1 reviewed it in shima3/conma#94, and the user decided two of the questions after reading the review. On 2026-11-27 the user decided where the queue and the loop of a command line are: both on the host, with the VM changed so that it can hold values of the host (sections 7 and 9). The same day the user decided the form of the queue: a queue can have a parent, and `>>$` makes a new queue whose parent is the old one (section 7). Section 13 records the review and the decisions.
 
-**State**: a plan. Nothing is built. Section 12 lists the questions and what the user decided. All of them were decided by 2026-11-27 (D1 to D15; the user's last answers are in section 12).
+**State**: a plan. Of stage S0, S0a (values by reference between the VM and the host, below the language) is built (section 14); the rest is not. Section 12 lists the questions and what the user decided. All of them were decided by 2026-11-27 (D1 to D15; the user's last answers are in section 12).
 
 ## 1. Why
 
@@ -210,3 +210,14 @@ Then the user decided the form of the queue (2026-11-27), relayed by M1 with two
 M1 then pointed to three things of its review of 9c9e4b3 that the fourth version had not taken in: where `$sh.run` and `Queue` are (in `rt`), that a function with a command line is a waiting function and that a command line in a function expression goes through the ConMa version, and what happens without a host (D15). The fifth version adds them to section 9, with the scope of S0 (section 11). M1 also checked B: tasks of ConJS change only at a call that waits, so making the queue with a call that does not wait keeps `>>$` whole.
 
 On 2026-11-27 the user answered the rest of the questions (section 12). All followed what this plan suggested but D2: a value of `${...}` that is an array is turned into a string, as the proposal said, not split into arguments (section 4).
+
+## 14. Results of S0a: values by reference (2026-11-27)
+
+S0 is built in two parts: S0a, the values by reference between the VM and the host, which the primitives of the platform feature `"js"` carry (`__JS_fn_call__` and `__JS_fn_resume__`; docs/PRIMITIVES.md), and S0b, the use of them from ConJS code (reading the members of an object of the host and calling its methods, `for...of` over it), which the `Queue` of S1 needs.
+
+* **Objects of the host in the VM.** A new kind of value of the VM, `Value::Host` (vm/src/value.rs), holds the number of an object in a table of the host; `__type_name__` gives `"HostObject"`. An object whose prototype or itself is marked with `rt.byRef` (vm/wasm/conma.js) crosses as `{"o":k}` instead of being copied, and comes back as the same object. The VM keeps one `HostObj` for each number (a table of weak references in vm/src/prim/jsfn.rs), so the same object of the host is the same value of the VM; when the VM drops the last reference, `Drop` calls `host_obj_free`, and the host removes the object from its table.
+* **Values of the VM kept by the host.** `rt.keep(v)`, during a call, sends `v` to the VM by a call back (`{"keep":value}`); the VM puts the value in a table (`KEPT`) and answers its number, and the host gets an `rt.VmKept`, which crosses as `{"k":i}` and is the same value of the VM in any later call. A `FinalizationRegistry` calls `conma_jsfn_release` when the host drops the `VmKept`, and the VM lets the value go. The collector of cycles of the VM (vm/src/gc.rs) needs no roots: a value in `KEPT` has a reference from outside the containers, so it stays alive.
+* **The native VMs** have no host: the new kind of value never appears there, and `host_obj_free` does nothing.
+* **The test**: test/fast22. case1: a box made on the host (a class marked with `rt.byRef`) has the type `"HostObject"`, keeps its state across calls, is still an instance of its class and `===` to itself, and not to another box; a box that the VM drops leaves the table of the host; a box inside a plain object comes inside the copied Dict. case2: a Dict kept by the host comes back as the same Dict (a change made through what came back is seen in the original), and a kept Closure can be called after the call that kept it. The release of a kept value by `FinalizationRegistry` is not in the log, since when it runs depends on the collector of the engine.
+* **Not done**: S0b. A cycle through the VM and the host is collected by neither (section 7).
+

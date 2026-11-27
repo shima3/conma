@@ -1,0 +1,7 @@
+kept: 1
+kept: 2
+kept in the VM: 2
+a VmKept on the host: true
+d.k: "changed through the kept value"
+the kept closure, called
+exit: 0
