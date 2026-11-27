@@ -625,8 +625,12 @@
   __LList_uncons__ __print_exit_error__ w ,(parts more)
   __LList_uncons__ __print_exit_error__ more ,(quoted x)
   __if__ quoted return ,()
-  Conjs_shell_plain parts ,(s)
-  __is_null__ s ,(test__) __if__ test__ return ,()
+  ;; 初めの部分が、$ で始まる文字か（$fn${s} のように、後に ${...} が続く語も。M1 のレビュー、shima3/conma#98）
+  __is_null__ parts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  __LList_uncons__ __print_exit_error__ p ,(kind pr)
+  __String_equal__ kind "s" ,(test__) __unless__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ pr ,(s y)
   Conjs_shell_zero ,(zero) Conjs_shell_one ,(one)
   __String_length__ s ,(len)
   __Number_is_zero__ len ,(test__) __if__ test__ return ,()
@@ -634,8 +638,10 @@
   __String_equal__ c "$" ,(test__) __unless__ test__ return ,()
   __String_substring__ __print_exit_error__ s one len ,(name)
   Conjs_shell_is_name name ,(ok)
-  __if__ ok return ,()
-  __String_concat__ s ": a command function is $ and the name of a variable" ,(m)
+  __is_null__ rest ,(single)
+  __and__ ok single ,(test__) __if__ test__ return ,()
+  __if_then_else__ single (,() __NULL__ s) (,() __String_concat__ s "${...}") ,(shown)
+  __String_concat__ shown ": a command function is $ and the name of a variable" ,(m)
   Conjs_shell_error n col m)
 
 ;; 初めの語が $名前（引用符なし）なら、その名前（コマンド型関数。D3）。そうでなければ null
