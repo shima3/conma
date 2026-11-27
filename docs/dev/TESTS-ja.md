@@ -105,7 +105,17 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 * わけ：alpha の 0c1d360 の Windows Test で、step25 の case14 の `o` の前に NUL が数千から数万バイト付いた。このプロセスの持つパイプの端（overlapped の名前付きパイプ）を次のコマンドに渡すと、MSYS（Git Bash）のプログラムは、空の間に読むと NUL を得る（`$ sh -c "sleep 0.5; printf out" | cat` で約 200 万）。shima3/conma#99 で、M2 とユーザーが、直しを I7、レビューを M2 と決めた。
 * conjs/test/step26 の case7（新しい）：書き始めるのが遅い前のコマンド（`cat` と `wc -c`、3 回）、遅い読み手（`yes | sh -c "sleep 1; head -1"`）、`yes | cat | head -2`。前の shell.js では、I7 で 30 秒たっても終わらなかった。
 * I7 が流したもの（Windows、Git Bash）：conjs/test を Node.js の道と `CONMA_LANG_SH=1` の両方で、step25 と step26 を 3 回。試しのプログラムで、`yes | head -2`、`yes | cat | head -1`、遅い読み手（Node.js のメモリは約 64 MB のまま）、`seq 1 200000 | cat | wc -l`、始められないコマンド（初め、間、最後）、`2>$ [e] | cat >$ [o]`。
-* 流していないもの：Unix（変えていない道なので、step26 の case7 だけを流してほしい）、test/、consh/test、sjs/test（vm/wasm/host/shell.js は ConJS のコマンド行だけが使う）。
+* M2 のレビュー（指摘なし）：macOS で conjs/test（step26 の case7 を含む）が違いなし。一時的に中継の道（`relay = true`）にして、step25、step26 と、同じ試しのプログラム（遅い読み手の RSS は約 78 MB まで）も違いなし。
+* alpha（shima3/conma#100 の `<$ [header, ...rows]`）を取り込んだ後に、I7 で conjs/test を流した。
+* 流していないもの：Linux（CI は通った）、test/、consh/test、sjs/test（vm/wasm/host/shell.js は ConJS のコマンド行だけが使う）。
+
+### m2/input-pattern（shima3/conma#100）
+
+* 種類：機能（ConJS のコマンド行の `<$ [header, ...rows]`：角括弧の中の名前の配列を、入力の行に。docs/dev/CONJS-SHELL-PLAN.md の 20 節の終わり）。
+* conjs/include/conjs_shell.se：`<$` の後の `[...]` を、`>$ [...]` と同じく読み（空の所は誤り、`...` はどこにでも）、配列のリテラルを入力にする。角括弧の形の誤りのメッセージを、`<$` にも合うように変えた（step25 case15 のログ）。
+* conjs/test/step25 の case16、case17、case18（新しい）。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
+* M2 が流したもの：conjs/test（`== shell-examples` と `step25 (no eval)` を含む）：違いなし。
+* 流していないもの：vm/ と sjs/ は変えていないので、ほかの suite。
 
 ### m2/queue-text（shima3/conma#99）
 
