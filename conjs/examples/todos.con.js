@@ -11,7 +11,7 @@ for (const f of names) {
   // grep -c fails (exit status 1) when no line matches: || takes it and goes on
   let n;
   $ grep -c TODO ${f} >$ n || echo "${f}: no TODO"
-  const count = Number([...n][0]);
+  const count = Number(n.text());
   if (count > 0) console.log(`${f}: ${count}`);
   total = total + count;
 }

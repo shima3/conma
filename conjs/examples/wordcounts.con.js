@@ -10,7 +10,7 @@ const tasks = names.map((f) => spawn(() => {
   let out;
   $ wc -w ${f} >$ out
   // wc writes the count first, padded with spaces on some systems
-  const count = Number([...out][0].trim().split(" ")[0]);
+  const count = Number(out.text().trim().split(" ")[0]);
   results.push(`${f} ${count}`);
   return count;
 }));
