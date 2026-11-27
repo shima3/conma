@@ -89,6 +89,7 @@
   __String_concat__ t "count() { return rt.hostObjCount() }," ,(t)
   __String_concat__ t "keepIt(v) { store.push(rt.keep(v)); return store.length }, at(i) { return store[i] }, kept() { return rt.keptCount() }," ,(t)
   __String_concat__ t "change(i) { const d = store[i]; return d instanceof rt.VmKept }," ,(t)
+  __String_concat__ t "release() { store = []; if (typeof gc === 'function') gc(); return typeof gc }," ,(t)
   __String_concat__ t "}")
 
 ;; 箱を作って、捨てる
@@ -136,3 +137,20 @@
   num "1" ,(n1) call1 M "at" n1 ,(f)
   f "the kept closure, called" ,()
   __NULL__)
+
+;; ホストが VM の値を捨てると、VM も放す（FinalizationRegistry。test.sh が node に --expose-gc を渡し、gc() の後に
+;; ホストのイベントループを回す：FinalizationRegistry の呼び出しは、同期のコードの途中では起きない。M1 のレビュー、shima3/conma#95）
+(define case3 ,()
+  __Cont_get__ ,(return)
+  js_text ,(text)
+  __JS_fn_compile__ (,(e) println e ,() return) text ,(M)
+  __Dict_new__ ,(d)
+  call1 M "keepIt" d ,(n)
+  call1 M "keepIt" fail ,(n)
+  call0 M "kept" ,(n) show "kept in the VM: " n ,()
+  call0 M "release" ,(g) show "gc: " g ,()
+  num "50" ,(ms) __LList_cons__ ms __NULL__ ,(a)
+  __Host_start__ fail "time.sleep" a ,(s) __OS_wait_readable__ fail s ,() __Host_result__ fail s ,(r)
+  call0 M "kept" ,(n) show "kept in the VM after the host let them go: " n ,()
+  __NULL__)
+

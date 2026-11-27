@@ -188,6 +188,8 @@
   __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
+  ;; ホストのオブジェクトは、参照のまま渡す（{"o":k}。docs/dev/CONJS-SHELL-PLAN.md の 15 節。M1 のレビュー、shima3/conma#95）
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "array" ,(isArray)
   __String_equal__ kind "object" ,(isObject)
   __or__ isArray isObject ,(test__) __if__ test__

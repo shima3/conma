@@ -103,7 +103,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 * 種類：機能（wasm 版の VM とホストの間で、値を参照で渡し、ConJS からホストのオブジェクトを使う。docs/dev/CONJS-SHELL-PLAN.md の段階 S0。14 節と 15 節）。
 * vm/src/value.rs、vm/src/prim/jsfn.rs、vm/src/trace.rs：VM がホストのオブジェクトを持つ新しい値 `Value::Host`（`__type_name__` は `"HostObject"`）と、ホストが持ち続ける VM の値の表（`KEPT`）。vm/src/sys/unix.rs と windows.rs には、何もしない `host_obj_free` を足しただけ。
 * vm/wasm/src/sys.rs、vm/wasm/src/lib.rs、vm/wasm/conma.js：`rt.byRef`、`rt.keep`、`rt.VmKept`、`host_obj_free`、`conma_jsfn_release`。
-* test/fast22（新しい）：wasm 版の VM は case*.wasm.log、ほかの VM は case*.log（JavaScript がない）。
+* test/fast22（新しい）：wasm 版の VM は case*.wasm.log、ほかの VM は case*.log（JavaScript がない）。case3 は、node に `--expose-gc` を渡して（test.sh の NODE_OPTIONS）、ホストが捨てた値を VM が放すことを確かめる。
 * vm/src/prim/host.rs、vm/wasm/conma.js：`host.wait` と `host.call` の JSON にも、ホストのオブジェクト（`{"o":k}`）を通す。印は `Symbol.for("conma.byRef")`。
 * sjs/include/sjs_rt.se、sjs/include/sjs_inspect.se、conjs/include/conjs_rt.se：ConJS（と SJS）の値の種類 `"host"`。メンバー、メソッド、`for...of`、`===` を、補助の JavaScript でホストでする。Promise を返すメソッドは、ConJS では待つ呼び出し。
 * conjs/test/step23（新しい）、conjs/README.md と README-ja.md、docs/dev/CONJS.md。
