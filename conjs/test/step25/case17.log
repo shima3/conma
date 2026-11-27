@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 3:3: an empty place in brackets is only for >$ and 2>$
+exit: 2

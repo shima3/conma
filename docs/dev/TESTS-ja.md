@@ -98,6 +98,14 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 次に全部流す人への申し送り。作業した人が、作業のブランチの見出し（`### m4/chan` など）の下に書いて alpha にマージし、テストの担当者は、その見出しを含む alpha を自分のブランチ（`m2/test` など。機械と `test`）で全部流して確かめたら、その見出しの行を消して記録（docs/dev/TESTS-RECORD-ja.md）の行を足す（docs/dev/CONTRIBUTING.md の「Branches and Git settings」）。見出しを書かないのは、変えたファイルがすべて文書（docs/dev/CONTRIBUTING.md の Branches の 5 の、`docs/` と `.github/` の下のファイルと、`*.md`）で、ベンチマークも頼まないブランチだけ（2026-11-21 から。設計の案など。変えたものは、コミットのメッセージと PR にある）。ほかのファイルを 1 つでも変えたブランチには、どの suite も読まないと思うファイル（`.gitignore`、見本のページなど）だけでも、見出しを書く（テストの担当者は、それも含めて全部流すので、何が変わったかを知る必要がある）。Full Bench（Full ConMa Bench、Full ConSh Bench、Full SJS Bench、Full ConJS Bench）も、ここで「ベンチマーク：」で始まる行で頼む。行には、4 つのどれか、測るコミット（7 桁。前後を比べるなら前のコミットも）、版（最適化版＋transpiled VM など）を書き、測る人は書かない。Full Bench は、ディレクトリのすべてのベンチマークを、書いた版だけで測る（すべての版で流す Full Test とは違う。版を書かなければ、表が比べるすべての版）。誰がいつ測るかはユーザーが決め、測る人は、その行を見ただけでは始めない。Full Bench でない測り直しは、変更した開発者が、ユーザーの指示を待たずに自分で測る（2026-11-18 から。それまでは、どの測り直しもここで頼んでいた）。その行は、測った人が、測ったブランチ（`m2/bench-1a2b3c4` など。機械と、測ったコミットの 7 桁）で消すまで残し（テストが済んでも消さない）、見出しは、その下の行がすべてなくなったときに消す（同じ文書の「Benchmarks」）。全部流している間に alpha に入ったブランチの見出しは、次に流すまで残す（記録には流したコミットだけを書く）。2026-11-16 までは、作業のブランチを作らずに alpha に書いていたので、見出しは alpha にした。見出しの下には「種類：」の行を書き、機能（機能を足した）、直し（直しただけ）、両方、なし（テスト、ベンチマーク、ワークフローだけ）のどれかを書く。テストの担当者は、Full Test で消す見出しのこの行を見て VERSION を上げる（2026-11-24 から。docs/dev/CONTRIBUTING.md の Versions）。
 
+### m2/input-pattern
+
+* 種類：機能（ConJS のコマンド行の `<$ [header, ...rows]`：角括弧の中の名前の配列を、入力の行に。docs/dev/CONJS-SHELL-PLAN.md の 20 節の終わり）。
+* conjs/include/conjs_shell.se：`<$` の後の `[...]` を、`>$ [...]` と同じく読み（空の所は誤り、`...` はどこにでも）、配列のリテラルを入力にする。角括弧の形の誤りのメッセージを、`<$` にも合うように変えた（step25 case15 のログ）。
+* conjs/test/step25 の case16 と case17（新しい）。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
+* M2 が流したもの：conjs/test（`== shell-examples` と `step25 (no eval)` を含む）：違いなし。
+* 流していないもの：vm/ と sjs/ は変えていないので、ほかの suite。
+
 ### m2/queue-text（shima3/conma#99）
 
 * 種類：機能（ConJS のコマンド行の `>$ [first, second, ...rest]` と `2>$ [...]`：コマンドが終わったら、出力の行の配列を分割代入する。docs/dev/CONJS-SHELL-PLAN.md の 20 節）。初めに足した `Queue` の `text()` は、ユーザーが配列を選んだので外した（vm/wasm/conma.js は alpha と同じ）。
