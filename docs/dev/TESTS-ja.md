@@ -118,7 +118,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 * M2 が流したもの：conjs/test（step25 (no eval) を含む）、conjs/test/compare.sh、sjs/test、wasm 版の VM の test/fast22、test/host-api.sh、consh/js/test（consh/js/build.sh で作り直して）、consh/test（Rust 版、wasm 版）：既知の違い（wasm 版の step17 と step8）だけ。
 * 流していないもの：vm/src は変えていないので、Rust 版と Python 版の VM の test/ と consh/test。
 
-### m2/shell-examples
+### m2/shell-examples（shima3/conma#98）
 
 * 種類：直し（ConJS のコマンド行の見本と、そのテスト。docs/dev/CONJS-SHELL-PLAN.md の 19 節。`$` で始まるのに名前でない初めの語を、外部コマンドでなく SyntaxError にした：conjs/include/conjs_shell.se の Conjs_shell_check_dollar、conjs/test/step25 の case12）。
 * conjs/examples：logreport.con.js（access.log を集計）、todos.con.js（notes/ の TODO を数える）、wordcounts.con.js（同時に wc）と、それぞれの Bash 版（`NAME.bash`）。データは access.log と notes/。
