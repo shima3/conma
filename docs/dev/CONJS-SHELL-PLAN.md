@@ -73,6 +73,7 @@ And on 2026-11-27, the form of the queue (translated; relayed by M1 in shima3/co
 Decided by the user (D3): the first word says it.
 
 * `$ $name ...` calls the command function in the variable `name`. `name` is a variable the line can see, as in a call `name(...)`; when there is none, it is a `ReferenceError` when the line runs, and when it holds no function, a `TypeError`, as for a call.
+* A first word that begins with `$`, unquoted, and is not `$` and the name of a variable (`$fs.readLines`, `$` alone) is a SyntaxError at the line, not an external command (the user's decision of 2026-11-27, after section 19).
 * Any other first word is an external command, found in `PATH` when it has no `/`. A function of the program, an import or a built-in of ConJS (`sleep`, `spawn`, `join`, `fs`, `http`, `host`, ...) with the same name does not change that: `$ sleep 1` runs the command `sleep` of the OS.
 * The translator then needs no rule of scopes for commands, and a name cannot change meaning when a declaration is added elsewhere.
 

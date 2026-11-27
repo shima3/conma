@@ -561,6 +561,7 @@
   __LList_uncons__ __print_exit_error__ more ,(words x)
   __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
   __LList_uncons__ __print_exit_error__ words ,(firstWord others)
+  Conjs_shell_check_dollar firstWord n col ,()
   Conjs_shell_fn_name firstWord ,(fname)
   __is_null__ fname ,(external)
   __if_then_else__ external (,() __NULL__ words) (,() __NULL__ others) ,(args)
@@ -616,6 +617,26 @@
   __if__ isSplit (,() push ,(acc) Conjs_shell_split rest ops __NULL__ o acc ,(r) return r) ,()
   __LList_cons__ w seg ,(seg)
   Conjs_shell_split rest ops seg op acc)
+
+;; 引用符なしの初めの語が $ で始まるのに、$ の後が変数の名前でなければ（$fs.readLines、$ だけ）、その行の SyntaxError
+;; （黙って外部コマンドにしない。ユーザーの決めたこと、2026-11-27）
+(define Conjs_shell_check_dollar ,(w n col)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __LList_uncons__ __print_exit_error__ more ,(quoted x)
+  __if__ quoted return ,()
+  Conjs_shell_plain parts ,(s)
+  __is_null__ s ,(test__) __if__ test__ return ,()
+  Conjs_shell_zero ,(zero) Conjs_shell_one ,(one)
+  __String_length__ s ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ return ,()
+  __String_substring__ __print_exit_error__ s zero one ,(c)
+  __String_equal__ c "$" ,(test__) __unless__ test__ return ,()
+  __String_substring__ __print_exit_error__ s one len ,(name)
+  Conjs_shell_is_name name ,(ok)
+  __if__ ok return ,()
+  __String_concat__ s ": a command function is $ and the name of a variable" ,(m)
+  Conjs_shell_error n col m)
 
 ;; 初めの語が $名前（引用符なし）なら、その名前（コマンド型関数。D3）。そうでなければ null
 (define Conjs_shell_fn_name ,(w)

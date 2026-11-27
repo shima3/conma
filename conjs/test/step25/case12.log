@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 2:3: $fs.readLines: a command function is $ and the name of a variable
+exit: 2

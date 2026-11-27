@@ -120,7 +120,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 
 ### m2/shell-examples
 
-* 種類：なし（ConJS のコマンド行の見本と、そのテスト。docs/dev/CONJS-SHELL-PLAN.md の 19 節）。
+* 種類：直し（ConJS のコマンド行の見本と、そのテスト。docs/dev/CONJS-SHELL-PLAN.md の 19 節。`$` で始まるのに名前でない初めの語を、外部コマンドでなく SyntaxError にした：conjs/include/conjs_shell.se の Conjs_shell_check_dollar、conjs/test/step25 の case12）。
 * conjs/examples：logreport.con.js（access.log を集計）、todos.con.js（notes/ の TODO を数える）、wordcounts.con.js（同時に wc）と、それぞれの Bash 版（`NAME.bash`）。データは access.log と notes/。
 * conjs/test/shell-examples/test.sh（新しい）：ConJS 版と Bash 版を conjs/examples で流し、どちらも NAME.log と同じになるかを見る。conjs/test/run_all.sh が `== shell-examples` で呼ぶ。Bash 版は、PATH の bash で動かす。
 * Windows（I7）：Git Bash の `find`、`grep`、`sort`、`awk`、`uniq`、`wc`、`mktemp`、`cut`、`tr`、`test` を使う。
