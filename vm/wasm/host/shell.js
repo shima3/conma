@@ -160,8 +160,14 @@ function run(argv, input, output, errs) {
       // the next command has its own copy of the pipe: this process lets go of the end it does not read,
       // so that a command that stops reading makes the one before it get SIGPIPE
       if (i > 0) procs[i - 1].stdout.destroy();
+      // a command that cannot start: the last one makes the line fail; one before it is reported on the
+      // standard error, and the pipeline goes on, as in Bash (its output is empty; section 18)
       p.on("error", (e) => {
-        if (failed === null) failed = { cmd: cmds[i][0], e };
+        if (i === cmds.length - 1) {
+          if (failed === null) failed = { cmd: cmds[i][0], e };
+        } else {
+          fs.writeSync(2, `conjs: ${startError(cmds[i][0], e)}\n`);
+        }
       });
       procs.push(p);
     }

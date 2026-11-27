@@ -488,7 +488,8 @@
 ;; 入力と出力は、変数の名前か false。出力の用意は、>$ なら 名前 = new Queue();、>>$ なら 名前 = new Queue(名前);
 ;; 1 行のコード：{ let conjs_command_line; パイプ && や || のつながり if (conjs_command_line !== undefined) throw conjs_command_line; }
 ;; conjs_command_line は、パイプの結果（undefined か、投げる Error）。&& の次は undefined のとき、|| の次は Error のときだけ
-;; 動かし、最後に動いたものの Error を投げる（段階 S3。シェルの set -e と同じく、途中の失敗は投げない）
+;; 動かし、最後に動いたものの Error を投げる（段階 S3。シェルの set -e と同じく、途中の失敗は投げない）。|| が受けた
+;; Error は、標準エラーに出す（conjs_sh_report。18 節）
 (define Conjs_shell_gen ,(words shown n col)
   __Cont_get__ ,(return)
   Kit_code_quote shown ,(q)
@@ -508,7 +509,10 @@
   __if_then_else__ first
     (,() __String_concat__ code pc)
     (,()
+      ;; || が受けた誤りは、標準エラーに出す（conjs_sh_report。CommandError は、コマンドが自分で出すので出さない）
       __if_then_else__ andThen (,() __NULL__ "===") (,() __NULL__ "!==") ,(cmp)
+      __if_then_else__ andThen (,() __NULL__ "") (,() __NULL__ "conjs_sh_report(conjs_command_line); ") ,(report)
+      __String_concat__ report pc ,(pc)
       Kit_code_cat5 code "if (conjs_command_line " cmp " undefined) { " pc ,(c)
       __String_concat__ c "} ") ,(code)
   Conjs_shell_gen_list rest q n col code)
@@ -541,9 +545,11 @@
       __String_concat__ c "); " ,(c)
       return c) ,()
   ;; コマンド型関数 1 つ：その行で呼ぶ（関数でない値の TypeError も、その行の位置になる）
+  ;; その例外は、パイプのときと同じく、この行の結果にする（Bash の関数の失敗と同じく、|| が受ける。M1 のレビュー、
+  ;; shima3/conma#97）
   Kit_code_cat5 setup "{ const conjs_sh_c = conjs_sh_begin(" input ", " output ,(c)
   Kit_code_cat5 c "); try { " fname "(" argv ,(c)
-  __String_concat__ c ", conjs_sh_c.input, conjs_sh_c.output); } finally { conjs_sh_end(conjs_sh_c); } } conjs_command_line = undefined; ")
+  __String_concat__ c ", conjs_sh_c.input, conjs_sh_c.output); conjs_command_line = undefined; } catch (conjs_sh_e) { conjs_command_line = conjs_sh_e; } finally { conjs_sh_end(conjs_sh_c); } } ")
 
 ;; パイプのコマンドを順に：返すのは、段のコード（", " で区切る）、初めの段の入力、最後の段の出力、すべての出力の用意、
 ;; 1 段だけのときに使う (関数の名前か null  引数の配列のコード  2>$ の変数か false)
@@ -743,6 +749,13 @@
     "  });"
     "  return q;"
     "}"
+    "// An error that the line does not throw (one that || takes, or one before the last command of a pipeline) goes"
+    "// to the standard error, as Bash writes \"command not found\" and a function writes its own; a CommandError"
+    "// does not, since its command has written to the standard error itself (section 18)"
+    "function conjs_sh_report(e) {"
+    "  if (e instanceof Error && e.name === \"CommandError\") return;"
+    "  conjs_sh_stderr(e instanceof Error ? (e.name === \"Error\" ? e.message : `${e.name}: ${e.message}`) : String(e));"
+    "}"
     "function conjs_sh_error(r, cmd) {"
     "  if (r.status === 0) return undefined;"
     "  const e = new Error(r.signal ? `Command killed by ${r.signal}: ${cmd}` : `Command failed with exit status ${r.status}: ${cmd}`);"
@@ -769,8 +782,8 @@
     "// A pipeline (stage S3): the external commands next to each other run as one pipeline of the OS; a"
     "// command function and what is next to it are joined by a Queue with a limit of 64. Each group runs in a"
     "// task; when a group ends, the queue it read from is abandoned, so that the one before it stops (a push"
-    "// throws, or the command gets SIGPIPE). The result is that of the last command, as in a shell; an Error"
-    "// that a group threw (a command that cannot start, an exception of a function) comes first."
+    "// throw, or the command gets SIGPIPE). The result is that of the last group, as in Bash without pipefail; an"
+    "// Error of a group before it (a command that cannot start, an exception of a function) is reported, not thrown."
     "function conjs_sh_pipe(stages, input, output, cmd) {"
     "  const groups = [];"
     "  for (const s of stages) {"
@@ -817,9 +830,11 @@
     "  const results = [];"
     "  for (const t of tasks) results.push(join(t));"
     "  if (first !== input) first.close();"
-    "  for (const x of results) if (x.e !== undefined) return x.e;"
-    "  const last = results[results.length - 1].r;"
-    "  return last === undefined ? undefined : conjs_sh_error(last, cmd);"
+    "  // as Bash without pipefail: the result is that of the last group; an error before it is reported, not thrown"
+    "  for (let i = 0; i < results.length - 1; i++) if (results[i].e !== undefined) conjs_sh_report(results[i].e);"
+    "  const last = results[results.length - 1];"
+    "  if (last.e !== undefined) return last.e;"
+    "  return last.r === undefined ? undefined : conjs_sh_error(last.r, cmd);"
     "}"
     "function conjs_sh_begin(input, output) {"
     "  const inp = input === false ? fs.stdin.readLines() : input;"

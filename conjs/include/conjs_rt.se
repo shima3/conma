@@ -117,6 +117,16 @@
     __String_equal__ kind "host" ,(h) __String_equal__ kind "array" ,(a)
     __or__ h a) ,(direct)
   __Dict_put__ G "conjs_sh_direct" direct ,()
+  ;; コマンド行が投げずに済ませた誤り（|| で受けたもの、パイプの途中のもの）を、標準エラーに「conjs: 文字」で出す
+  ;; （Bash が command not found などを出すのと同じ。docs/dev/CONJS-SHELL-PLAN.md の 18 節）
+  Sjs_function G "conjs_sh_stderr" (,(args)
+    Sjs_arg args ,(x rest)
+    Sjs_to_string x ,(s)
+    __String_concat__ "conjs: " s ,(m)
+    __String_concat__ m "\n" ,(m)
+    __OS_print_error__ m ,()
+    __NULL__ __NULL__) ,(stderr)
+  __Dict_put__ G "conjs_sh_stderr" stderr ,()
   Conjs_lib_builtins G ,()
   __Dict_remove__ G "Promise")
 
