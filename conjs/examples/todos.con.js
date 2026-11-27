@@ -1,6 +1,6 @@
 // Count the TODO lines of each note in notes/ with command lines (docs/dev/CONJS-SHELL-PLAN.md): a command
 // that fails is taken by || or by catch, as in a shell, and the output of a command goes into a variable
-// as a Queue. Compare with todos.bash.
+// as a Queue (>$ n) or as an array taken apart (>$ [n]). Compare with todos.bash.
 let files;
 $ find notes -name "*.txt" >$ files
 const names = [...files].sort();
@@ -10,8 +10,8 @@ let total = 0;
 for (const f of names) {
   // grep -c fails (exit status 1) when no line matches: || takes it and goes on
   let n;
-  $ grep -c TODO ${f} >$ n || echo "${f}: no TODO"
-  const count = Number([...n][0]);
+  $ grep -c TODO ${f} >$ [n] || echo "${f}: no TODO"
+  const count = Number(n);
   if (count > 0) console.log(`${f}: ${count}`);
   total = total + count;
 }

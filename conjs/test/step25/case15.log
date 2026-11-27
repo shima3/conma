@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 3:3: the pattern after >$ or 2>$ has names, commas and ... only, not a.b
+exit: 2
