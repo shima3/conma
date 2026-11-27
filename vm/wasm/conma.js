@@ -2254,6 +2254,7 @@ var ConMaVM = (function () {
     // reader that finds the queue it reads from empty and open waits (next returns a Promise) until that
     // queue gets an element or is closed. It goes to the VM by reference (BYREF).
     const END = Symbol("end");
+    const HAVE = Symbol("have");
     class Queue {
       constructor(parent) {
         if (parent !== undefined && parent !== null && !(parent instanceof Queue)) throw new TypeError("Queue: the parent is not a Queue");
@@ -2261,6 +2262,8 @@ var ConMaVM = (function () {
         this.items = [];
         this.isClosed = false;
         this.waiters = [];
+        // the writers that wait for room (room())
+        this.roomWaiters = [];
       }
       get closed() {
         return this.isClosed;
@@ -2274,6 +2277,36 @@ var ConMaVM = (function () {
         if (this.isClosed) return;
         this.isClosed = true;
         this.wake();
+        this.wakeRoom();
+      }
+      wakeRoom() {
+        const w = this.roomWaiters;
+        this.roomWaiters = [];
+        for (const f of w) f();
+      }
+      // For a writer that fills the queue from a source that does not wait (a generator of the VM moved
+      // into it for a command line; docs/dev/CONJS-SHELL-PLAN.md, section 17): undefined while the queue
+      // holds fewer than 64 elements or is closed, else a Promise that settles when a reader has taken it
+      // down to 32 or it is closed, so that the writer waits and other tasks run
+      room() {
+        if (this.isClosed || this.items.length < 64) return undefined;
+        return new Promise((resolve) => this.roomWaiters.push(resolve));
+      }
+      // Without taking anything: null when next() would answer at once (an element or the end), else a
+      // Promise that settles when the queue that the reader waits for gets an element or is closed
+      ready() {
+        const r = this.peek();
+        return r instanceof Queue ? new Promise((resolve) => r.waiters.push(resolve)) : null;
+      }
+      // As take(), without taking: END, HAVE, or the queue that the reader waits for
+      peek() {
+        if (this.parent) {
+          const r = this.parent.peek();
+          if (r !== END) return r;
+          this.parent = null;
+        }
+        if (this.items.length > 0) return HAVE;
+        return this.isClosed ? END : this;
       }
       wake() {
         const w = this.waiters;
@@ -2288,7 +2321,11 @@ var ConMaVM = (function () {
           // the parent is closed and empty for good
           this.parent = null;
         }
-        if (this.items.length > 0) return { value: this.items.shift() };
+        if (this.items.length > 0) {
+          const value = this.items.shift();
+          if (this.roomWaiters.length > 0 && this.items.length <= 32) this.wakeRoom();
+          return { value };
+        }
         return this.isClosed ? END : this;
       }
       next() {

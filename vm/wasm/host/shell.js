@@ -28,22 +28,45 @@ function startError(cmd, e) {
   return `${cmd}: ${e.message}`;
 }
 
-// Write the elements of input to the stream w, waiting for room in the pipe; end it
+// Write the elements of input to the stream w, waiting for room in the pipe; end it. When the command
+// stops reading (it has ended, or closed its standard input), stop, and take no more elements from a
+// Queue: what is left stays for its other readers (M1's review of shima3/conma#96)
 async function feed(w, input) {
+  let gone = false;
+  // one Promise for the end of the pipe, so that waiting for it adds no listener each time
+  const closed = new Promise((resolve) => w.once("close", resolve));
+  closed.then(() => {
+    gone = true;
+  });
+  // wait for room in the pipe, or for the pipe to close; the listener that did not fire is taken off
   const room = () => new Promise((resolve) => {
-    w.once("drain", resolve);
-    w.once("close", resolve);
+    const done = () => {
+      w.off("drain", done);
+      w.off("close", done);
+      resolve();
+    };
+    w.on("drain", done);
+    w.on("close", done);
   });
   const line = (x) => `${typeof x === "string" ? x : String(x)}\n`;
   try {
     if (Array.isArray(input)) {
-      for (const x of input) if (!w.write(line(x))) await room();
+      for (const x of input) {
+        if (gone || w.destroyed) break;
+        if (!w.write(line(x))) await room();
+      }
     } else {
       for (;;) {
-        let r = input.next();
-        if (r !== null && typeof r === "object" && typeof r.then === "function") r = await r;
+        if (gone || w.destroyed) break;
+        // wait for an element or the end without taking it, so that none is taken after the command
+        // has stopped reading
+        const ready = input.ready();
+        if (ready !== null) {
+          await Promise.race([ready, closed]);
+          continue;
+        }
+        const r = input.next();
         if (r.done) break;
-        if (w.destroyed) break;
         if (!w.write(line(r.value))) await room();
       }
     }

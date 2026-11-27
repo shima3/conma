@@ -18,3 +18,11 @@ if (n === 0)
 for (const w of ["x", "y"]) {
   $ echo ${w} # a comment after a space
 }
+// 行の終わりの \ で次の行に続く文字列の中の行も、コマンド行でない（M1 のレビュー、shima3/conma#96）
+const s = "x\
+$ y";
+console.log(s);
+// \\ で終わる行は、次の行に続かない（\ が 1 つの語）。\ が奇数なら続く
+$ echo a\\
+$ echo b \
+  c

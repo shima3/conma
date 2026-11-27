@@ -152,9 +152,9 @@
   __Number_is_zero__ len ,(test__) __if__ test__ (,() return cmd rest extra) ,()
   Conjs_shell_one ,(one)
   __Number_subtract__ len one ,(last)
-  __String_substring__ __print_exit_error__ cmd last len ,(c)
-  __String_equal__ c "\\" ,(cont)
-  __unless__ cont (,() return cmd rest extra) ,()
+  ;; 終わりの \ の数が奇数のときだけ続ける（\\ は \ の 1 文字。シェルと同じ。M1 のレビュー、shima3/conma#96）
+  Conjs_shell_odd_backslashes cmd last __FALSE__ ,(odd)
+  __unless__ odd (,() return cmd rest extra) ,()
   Conjs_shell_zero ,(zero)
   __String_substring__ __print_exit_error__ cmd zero last ,(cmd)
   __is_null__ rest ,(test__) __if__ test__ (,() return cmd rest extra) ,()
@@ -162,6 +162,19 @@
   __String_concat__ cmd next ,(cmd)
   __Number_add__ extra one ,(extra)
   Conjs_shell_continued cmd rest extra)
+
+;; 位置 i から前に続く \ の数が奇数か（odd は、ここまでに数えた数が奇数か）
+(define Conjs_shell_odd_backslashes ,(s i odd)
+  __Cont_get__ ,(return)
+  __Number_is_negative__ i ,(test__) __if__ test__ (,() return odd) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ s i j ,(c)
+  __String_equal__ c "\\" ,(bs)
+  __unless__ bs (,() return odd) ,()
+  __not__ odd ,(odd)
+  __Number_subtract__ i one ,(i)
+  Conjs_shell_odd_backslashes s i odd)
 
 (define Conjs_shell_blank ,(k acc)
   __Cont_get__ ,(return)
@@ -187,6 +200,17 @@
   __is_null__ stack ,(empty)
   __if_then_else__ empty (,() __NULL__ "") (,() __LList_uncons__ __print_exit_error__ stack ,(x more) __NULL__ x) ,(top)
   __type_name__ top ,(tt)
+  ;; 前の行から続く文字列（("q" 引用符)）
+  __String_equal__ tt "LList" ,(inString)
+  __if__ inString
+    (,()
+      __LList_uncons__ __print_exit_error__ stack ,(e more)
+      __LList_uncons__ __print_exit_error__ e ,(x qs)
+      __LList_uncons__ __print_exit_error__ qs ,(q y)
+      Conjs_shell_skip_string line i q ,(k state)
+      __String_equal__ state "cont" ,(test__) __if__ test__ (,() return stack block) ,()
+      Conjs_shell_scan line k more block ,(s b)
+      return s b) ,()
   __String_equal__ tt "String" ,(isStr)
   __if_then_else__ isStr (,() __String_equal__ top "t") (,() __NULL__ __FALSE__) ,(inTmpl)
   __if_then_else__ inTmpl (,() __NULL__ "\\`$") (,() __NULL__ "'\"`/{}") ,(specials)
@@ -216,7 +240,13 @@
   __String_equal__ c "'" ,(sq)
   __String_equal__ c "\"" ,(dq)
   __or__ sq dq ,(test__) __if__ test__
-    (,() Conjs_shell_skip_string line j c ,(k) Conjs_shell_scan line k stack block ,(s b) return s b) ,()
+    (,()
+      Conjs_shell_skip_string line j c ,(k state)
+      __String_equal__ state "cont" ,(cont)
+      ;; 次の行に続く文字列は、stack に ("q" 引用符) を置く
+      __if__ cont (,() __LList_cons__ c __NULL__ ,(e) __LList_cons__ "q" e ,(e) __LList_cons__ e stack ,(s) return s block) ,()
+      Conjs_shell_scan line k stack block ,(s b)
+      return s b) ,()
   __String_equal__ c "`" ,(test__) __if__ test__
     (,() __LList_cons__ "t" stack ,(stack) Conjs_shell_scan line j stack block ,(s b) return s b) ,()
   ;; { と }：${ } の中なら、深さを数える
@@ -229,20 +259,21 @@
   __if_then_else__ closed (,() __NULL__ more) (,() __LList_cons__ d more) ,(stack)
   Conjs_shell_scan line j stack block)
 
-;; 引用符 q の文字列の終わりの次（行の終わりまでに閉じなければ、行の長さ）
+;; 引用符 q の文字列の終わりの次と、状態："closed"（閉じた）、"cont"（行の終わりの \ で次の行に続く。ConJS の字句解析と同じ。
+;; M1 のレビュー、shima3/conma#96）、"open"（閉じずに行が終わった）。後の 2 つの位置は、行の長さ
 (define Conjs_shell_skip_string ,(line i q)
   __Cont_get__ ,(return)
   __String_concat__ q "\\" ,(specials)
   __String_length__ line ,(len)
   __String_find_any__ __print_exit_error__ line specials i ,(at)
-  __is_null__ at ,(test__) __if__ test__ (,() return len) ,()
+  __is_null__ at ,(test__) __if__ test__ (,() return len "open") ,()
   Conjs_shell_one ,(one)
   __Number_add__ at one ,(j)
   __String_substring__ __print_exit_error__ line at j ,(c)
-  __String_equal__ c q ,(test__) __if__ test__ (,() return j) ,()
+  __String_equal__ c q ,(test__) __if__ test__ (,() return j "closed") ,()
   __Number_add__ j one ,(j2)
-  __Number_if_greater_then_else__ j2 len (,() __NULL__ len) (,() __NULL__ j2) ,(k)
-  Conjs_shell_skip_string line k q)
+  __Number_if_greater__ j2 len (,() return len "cont") ,()
+  Conjs_shell_skip_string line j2 q)
 
 ;; ── コマンド行を読む（3 節、4 節）──
 ;; 語は空白で分ける。'...' はそのまま、"..." の中では \" \\ \$ が 1 文字、${名前} が変数の値、引用符の外では \ の次の 1 文字が
@@ -573,7 +604,19 @@
     "    const src = input;"
     "    const q = new Queue();"
     "    inq = q;"
-    "    spawn(() => { try { for (const x of src) q.push(x); } finally { q.close(); } });"
+    "    // the task waits while the queue holds 64 elements (q.room()), so that other tasks run, and stops"
+    "    // when the command has ended (the line closes q). M1's review of shima3/conma#96"
+    "    spawn(() => {"
+    "      try {"
+    "        for (const x of src) {"
+    "          if (q.closed) break;"
+    "          q.push(x);"
+    "          q.room();"
+    "        }"
+    "      } finally {"
+    "        q.close();"
+    "      }"
+    "    });"
     "  }"
     "  let r;"
     "  try {"
@@ -581,6 +624,8 @@
     "  } catch (e) {"
     "    if (output !== false) output.close();"
     "    return e;"
+    "  } finally {"
+    "    if (inq !== input) inq.close();"
     "  }"
     "  if (r.status === 0) return undefined;"
     "  const e = new Error(r.signal ? `Command killed by ${r.signal}: ${cmd}` : `Command failed with exit status ${r.status}: ${cmd}`);"
