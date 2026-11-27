@@ -2354,6 +2354,26 @@ var ConMaVM = (function () {
         if (r instanceof Queue) return new Promise((resolve) => r.waiters.push(resolve)).then(() => this.next());
         return { done: false, value: r.value };
       }
+      // The rest of the elements as one string, as $(...) of Bash gives the output of a command: after the
+      // queue is closed, the elements (a string as it is, anything else String(x)) joined with newlines,
+      // without the newlines at the end. The elements are taken. A Promise while the queue is open.
+      text() {
+        const parts = [];
+        const go = () => {
+          for (;;) {
+            const r = this.take();
+            if (r === END) {
+              let s = parts.join("\n");
+              let n = s.length;
+              while (n > 0 && s[n - 1] === "\n") n--;
+              return s.slice(0, n);
+            }
+            if (r instanceof Queue) return new Promise((resolve) => r.waiters.push(resolve)).then(go);
+            parts.push(typeof r.value === "string" ? r.value : String(r.value));
+          }
+        };
+        return go();
+      }
       [Symbol.iterator]() {
         return { next: () => this.next(), return: () => ({ done: true, value: undefined }) };
       }
