@@ -1,1 +1,2 @@
+conjs: host: slow
 conjs: host: sumArray

@@ -1,0 +1,7 @@
+conjs: host: $s1
+conjs: host: $s2
+conjs: host: $s3
+conjs: host: countTicks
+conjs: host: doubled
+conjs: host: readFailing
+conjs: host: useAll

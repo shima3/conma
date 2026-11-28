@@ -2096,6 +2096,22 @@
   ;; ジェネレータ：呼び出しは引数を入れてジェネレータのオブジェクトを返し、本体は、next で動かす thunk にする
   ;; async 関数も同じ形で、本体の thunk を Sjs_async に渡す（結果は Promise）。async ジェネレータは Sjs_async_generator
   __or__ isGen isAsync ,(wrapped)
+  ;; ホストの版のあるジェネレータ関数（sjs_host.se の "host"。docs/dev/CONJS-HOST-PLAN.md の段階 H8）：Conjs_hostgen が
+  ;; ジェネレータのオブジェクトを返し、その本体がホストの版を動かす。ホストの版が動かなければ、ConMa 版の本体の thunk を動かす
+  __Dict_lookup_or__ e "host" (,(k) __NULL__ "") ,(ghname)
+  __String_equal__ ghname "" ,(noGh)
+  __not__ noGh ,(hasGh)
+  __and__ isGen hasGh ,(test__) __if__ test__
+    (,()
+      Kit_code_quote ghname ,(hq)
+      Kit_code_temp g "gen" ,(gv)
+      Kit_code_cat5 "\tSjs_function G " qn " (,(" args ") __Cont_get__ ,(return) " ,(c)
+      Kit_code_cat3 c bind "\tConjs_hostgen G Hsjs " ,(c)
+      Kit_code_cat5 c hq " " args " (,() __Cont_get__ ,(return) " ,(c)
+      Kit_code_cat3 c bodyCode "return __NULL__) ,(" ,(c)
+      Kit_code_cat5 c gv ") return " gv ") ,(" ,(c)
+      Kit_code_cat3 c v ") " ,(c)
+      return c v) ,()
   __if__ wrapped
     (,()
       Kit_code_temp g "gen" ,(gv)
