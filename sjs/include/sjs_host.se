@@ -5,7 +5,7 @@
 ;; ホストの版が値を返せなければ（下の「確かめ」）、ConMa 版を始めから動かす。
 ;;
 ;; ホストの関数の条件：
-;; * 一番外の function 宣言で、ジェネレータでも async でもなく、引数は名前だけ（重ならない）。その名前は、一番外で 1 回だけ
+;; * 一番外の function 宣言で、async でなく、引数は名前だけ（重ならない）。ジェネレータ関数は、段階 H8 から（下の「ジェネレータ関数」）。その名前は、一番外で 1 回だけ
 ;;   宣言され、プログラムのどこでも代入されない（数の関数と同じ。sjs_wasm.se の Wx_env）。
 ;; * 本体は、let と const（名前だけ）、式の文（局所の変数、オブジェクトのメンバー、配列の要素への代入と複合の代入、++、--、
 ;;   呼び出し）、if、while、do...while、for、for...of（let か const で名前を宣言するものだけ）、ラベルのない break と continue、return、ブロック、
@@ -295,7 +295,7 @@
   __is_null__ dup ,(test__) __unless__ test__ return ,()
   __Dict_lookup_or__ fn "gen" (,(k) __NULL__ __FALSE__) ,(gen)
   __Dict_lookup_or__ fn "async" (,(k) __NULL__ __FALSE__) ,(async)
-  __or__ gen async ,(test__) __if__ test__ return ,()
+  __if__ async return ,()
   __Dict_lookup_or__ fn "body" (,(k) __NULL__ __NULL__) ,(body)
   __is_null__ body ,(test__) __if__ test__ return ,()
   Kit_parse_get fn "params" ,(params)
@@ -303,6 +303,8 @@
   __unless__ ok return ,()
   __Dict_new__ ,(info)
   __Dict_put__ info "name" name ,()
+  ;; ジェネレータ関数（段階 H8）
+  __Dict_put__ info "genfn" gen ,()
   __Dict_put__ info "fn" fn ,()
   __Dict_put__ info "params" names ,()
   __Dict_put__ info "ok" __FALSE__ ,()
@@ -674,7 +676,9 @@
   __if_then_else__ notWasm (,() __Dict_put__ fn "host" nm) (,() __Dict_put__ fn "hostAlso" nm) ,()
   Sjs_json_string nm ,(q)
   __Dict_lookup_or__ info "waits" (,(k) __NULL__ __FALSE__) ,(w)
+  __Dict_lookup_or__ info "genfn" (,(k) __NULL__ __FALSE__) ,(genfn)
   __if_then_else__ w (,() __NULL__ ": $runG(f_") (,() __NULL__ ": $run(f_") ,(runner)
+  __if_then_else__ genfn (,() __NULL__ ": $runGen(f_") (,() __NULL__ runner) ,(runner)
   Kit_code_cat5 table q runner nm "), " ,(table)
   Hx_funcs H rest acc table)
 
@@ -711,7 +715,10 @@
   __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits0 name0 (,(k) __NULL__ __FALSE__)) ,(gen0)
   __Dict_lookup_or__ info "method" (,(k) __NULL__ "") ,(mkey0)
   __String_equal__ mkey0 "" ,(notMethod0)
-  __and__ gen0 notMethod0 ,(gen)
+  __and__ gen0 notMethod0 ,(gen1)
+  ;; ジェネレータ関数（段階 H8）は、いつもジェネレータとして書く（本体の yield と、VM への頼みを、どちらも yield で出す）
+  __Dict_lookup_or__ info "genfn" (,(k) __NULL__ __FALSE__) ,(genfn)
+  __or__ gen1 genfn ,(gen)
   __Dict_put__ cx "gen" gen ,()
   ;; 局所の名前：引数と、関数の中で宣言した名前（どのブロックでも。読む所が正しいかは JavaScript の有効範囲に任せる）
   __Dict_new__ ,(locals)
@@ -741,7 +748,8 @@
   __Ref_get__ waitsRef ,(waits)
   __Dict_put__ info "waits" waits ,()
   __and__ waits usesThis ,(test__) __if__ test__ (,() Hx_fail cx) ,()
-  __if_then_else__ waits (,() __NULL__ "function* f_") (,() __NULL__ "function f_") ,(head)
+  __or__ waits genfn ,(star)
+  __if_then_else__ star (,() __NULL__ "function* f_") (,() __NULL__ "function f_") ,(head)
   __if_then_else__ isCtor
     (,() Kit_parse_get info "class" ,(cname) Kit_code_cat5 "function C_ctor_" cname "(" ps ") {")
     (,() __if_then_else__ notMethod
@@ -1525,6 +1533,22 @@
       Kit_code_cat3 c nc ")" ,(c)
       return c) ,()
   __String_equal__ t "call" ,(test__) __if__ test__ (,() Hx_call cx e ,(c) return c) ,()
+  ;; yield と yield*（ジェネレータ関数の本体。段階 H8）：yield は値を $Give に包んで出し、答えを $Gr で受ける。関数を出すことは
+  ;; しない（VM に渡せないので、値を出した後なら止まる）
+  __String_equal__ t "yield" ,(test__) __if__ test__
+    (,()
+      Hx_genmode cx ,(gm)
+      __unless__ gm (,() Hx_fail cx) ,()
+      Hx_pos cx e ,(p)
+      __Dict_lookup_or__ e "delegate" (,(k) __NULL__ __FALSE__) ,(delegate)
+      __Dict_lookup_or__ e "arg" (,(k) __NULL__ __NULL__) ,(arg)
+      __is_null__ arg ,(noArg)
+      __if_then_else__ noArg (,() __NULL__ "") (,() Wx_t arg) ,(at)
+      Kit_lex_in_words at "function arrow" ,(test__) __if__ test__ (,() Hx_fail cx) ,()
+      __if_then_else__ noArg (,() __NULL__ "undefined") (,() Hx_expr cx arg) ,(ac)
+      __if__ delegate (,() Kit_code_cat5 "(yield* $star(" ac ", " p "))" ,(c) return c) ,()
+      Kit_code_cat5 "$Gr(yield new $Give(" ac ", " p "))" ,(c)
+      return c) ,()
   __String_equal__ t "member" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ e "optional" (,(k) __NULL__ __FALSE__) ,(opt)
@@ -1880,6 +1904,10 @@
   __Dict_lookup_or__ H "#waits" (,(k) __NULL__ __NULL__) ,(waits)
   __is_null__ waits ,(noWaits)
   __if_then_else__ noWaits (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ waits nm (,(k) __NULL__ __FALSE__)) ,(calleeWaits)
+  ;; ジェネレータ関数（段階 H8）：呼ぶと、動かさずに $HG を返す（for...of と yield* が、ホストで回す）。待つものなら、回す関数も待つ
+  __Dict_lookup_or__ info "genfn" (,(k) __NULL__ __FALSE__) ,(calleeGen)
+  __if__ calleeGen
+    (,() __if__ calleeWaits (,() Hx_wait cx) ,() Kit_code_cat5 "new $HG(f_" nm "(" ac "))" ,(c) return c) ,()
   __if__ calleeWaits (,() Hx_wait cx ,() Kit_code_cat5 "(yield* f_" nm "(" ac "))" ,(c) return c) ,()
   Kit_code_cat5 "f_" nm "(" ac ")")
 
@@ -1984,6 +2012,11 @@
     "const $K = Symbol('conjs'), $N = Symbol('class');"
     ;; throw した値。p は throw の位置（呼び返しの後、外へ出たとき、VM がそこで投げ直す）。vm は VM から来た例外（位置を持つ）
     "class $Thrown { constructor(v, p, vm) { this.v = v; this.p = p; this.vm = vm; } }"
+    ;; ジェネレータ関数（段階 H8）：$Give は、本体の yield が出す値 v（読み手に渡すもの。VM への頼みの配列と区別する）、$Ret は、
+    ;; return(v) で止まる印（catch は受けず、finally は動く）、$HG は、ホストの関数の中で呼んだジェネレータ関数の値（イテレータ it）
+    "class $Give { constructor(v, p) { this.v = v; this.p = p; } }"
+    "class $Ret { constructor(v) { this.v = v; } }"
+    "class $HG { constructor(it) { this.it = it; this.msg = undefined; this.done = false; } }"
     "let $clsR = null;"
     "const $new = (name, I, a) => { const o = Object.create($classes.get(name)); const r = I(o, a); return (typeof r === 'object' && r !== null) || typeof r === 'function' ? r : o; };"
     "const $instof = (x, P, name, p) => { if (x instanceof $Opaque) return $slow(p, 'instof', x, name); return typeof x === 'object' && x !== null && !Array.isArray(x) && Object.prototype.isPrototypeOf.call(P, x); };"
@@ -2024,8 +2057,15 @@
     ;; take、close。ConMa 版の for...of と同じ）を 1 つずつ VM に頼む。途中で抜ければ、JavaScript が return を呼ぶ（close）
     ;; ふつうのホストの関数（ジェネレータでない。ジェネレータの本体は $iterG）で VM の値を回すのは、呼び返しの後だけ：前なら
     ;; ConMa 版に替える（次の値が待つことがあり、入れ子の呼び返しは待てないので。M1 の shima3/conma#84 のレビュー）
-    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : $committed ? $vmIter(a, p) : $no();"
+    "const $iter = (a, p) => Array.isArray(a) ? a.slice() : typeof a === 'string' ? a : a instanceof $HG ? $hgIter(a) : $committed ? $vmIter(a, p) : $no();"
     "const $vmIter = (a, p) => { const it = $vm('iter_open', p, a); return { [Symbol.iterator]() { return this; }, next() { return $vm('iter_more', p, it) ? { value: $vm('iter_take', p, it), done: false } : { value: undefined, done: true }; }, return() { $vm('iter_close', p, it); return { value: undefined, done: true }; } }; };"
+    ;; ホストのジェネレータを、ふつうのホストの関数の中で回す（段階 H8）：本体の $Give の値を出し、ほかの頼み（VM の関数の呼び出しなど）
+    ;; は、その場で VM に頼む（入れ子の実行。待てば止める。待つジェネレータ関数を呼ぶ関数は、ジェネレータとして書くので、ここには
+    ;; 来ない）。途中で抜ければ return で閉じる（finally の頼みも動かし、そこの yield で止まる。ConMa 版の Sjs_iter_close と同じ）
+    "const $vmReq = (q) => { $cr++; try { return rt.callVm($tramp, q[3], q[0], q[1], q[2], q[4]); } catch (e) { if (e instanceof rt.Escape) throw new $Fatal(`a call back could not finish: ${e.message}`); throw e; } };"
+    "const $hgNext = (h) => { for (;;) { const s = h.it.next(h.msg); h.msg = undefined; if (s.done) { h.done = true; return { value: undefined, done: true }; } if (s.value instanceof $Give) return { value: s.value.v, done: false }; h.msg = $vmReq(s.value); } };"
+    "const $hgClose = (h) => { if (h.done) return; h.done = true; let s = h.it.return(undefined); while (!s.done && !(s.value instanceof $Give)) s = h.it.next($vmReq(s.value)); };"
+    "const $hgIter = (h) => ({ [Symbol.iterator]() { return this; }, next() { return h.done ? { value: undefined, done: true } : $hgNext(h); }, return() { $hgClose(h); return { value: undefined, done: true }; } });"
     "const $arr = (a) => Array.isArray(a) ? a : $no();"
     "const $keys = (o, p) => $isObj(o) ? Object.keys(o) : $slow(p, 'keys', o);"
     ;; Math：数どうしはホストで、ほかは VM の Math（Sjs の Math は、数でない引数を数にする）
@@ -2161,7 +2201,7 @@
     "  [$ids, $tramp, $clsR, $nullRef, $memo, $back, $out, $committed, $p0, $ops, $cp, $cr, $gio] = [st.ids, st.tramp, st.cls, st.nullRef, st.memo, st.back, st.out, st.committed, st.p0, st.ops, st.cp, st.cr, st.gio];"
     "  try {"
     "    let r, thrown = null;"
-    "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; }"
+    "    try { const s = body(); if (!s.done) return s.value; r = s.value; } catch (e) { if (e instanceof $Ret) r = e.v; else { if (!(e instanceof $Thrown) || !$committed) throw e; thrown = e; } }"
     "    if (thrown !== null) { const tv = $outv(thrown.v); $sync(); return { thrown: tv, tpos: thrown.vm || thrown.p === null ? null : $P[thrown.p], out: $out, cost: [$ops, $cp, $cr] }; }"
     "    const v = $outv(r); $sync(); return { v: v, out: $out, cost: [$ops, $cp, $cr] };"
     "  } catch (e) {"
@@ -2194,10 +2234,35 @@
     ;; 頼みの答え：VM の変更を読み直し、値を返すか、VM の例外を投げる
     "const $Yr = (r) => { $refresh(); $gin(r); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); return v; };"
     ;; ジェネレータの中の呼び出し：ホストの関数はその場で、VM の関数とメソッドは VProc で（待ってよい）
-    "const $iterG = function* (a, p) { if (Array.isArray(a)) return { h: a.slice(), i: 0 }; if (typeof a === 'string') return { h: [...a], i: 0 }; if (a instanceof $Opaque || $committed) return { v: $Yr(yield $Yq(p, 'iter_open', a)), p, done: false }; return $no(); };"
-    "const $moreG = function* (it) { if (it.h) return it.i < it.h.length; if (it.done) return false; const m = $Yr(yield $Yq(it.p, 'iter_more', it.v)); if (!m) it.done = true; return m; };"
-    "const $takeG = function* (it) { if (it.h) return it.h[it.i++]; return $Yr(yield $Yq(it.p, 'iter_take', it.v)); };"
-    "const $closeG = function* (it) { if (it.h || it.done) return; it.done = true; $Yr(yield $Yq(it.p, 'iter_close', it.v)); };"
+    ;; ホストのジェネレータ（$HG。段階 H8）は、ホストで 1 つずつ動かし、本体のほかの頼みは、そのまま上へ渡す（待ってよい）
+    "const $iterG = function* (a, p) { if (Array.isArray(a)) return { h: a.slice(), i: 0 }; if (typeof a === 'string') return { h: [...a], i: 0 }; if (a instanceof $HG) return { g: a, val: undefined }; if (a instanceof $Opaque || $committed) return { v: $Yr(yield $Yq(p, 'iter_open', a)), p, done: false }; return $no(); };"
+    "const $moreG = function* (it) { if (it.h) return it.i < it.h.length; if (it.g) { const h = it.g; if (h.done) return false; for (;;) { const s = h.it.next(h.msg); h.msg = undefined; if (s.done) { h.done = true; return false; } if (s.value instanceof $Give) { it.val = s.value.v; return true; } h.msg = yield s.value; } } if (it.done) return false; const m = $Yr(yield $Yq(it.p, 'iter_more', it.v)); if (!m) it.done = true; return m; };"
+    "const $takeG = function* (it) { if (it.h) return it.h[it.i++]; if (it.g) return it.val; return $Yr(yield $Yq(it.p, 'iter_take', it.v)); };"
+    "const $closeG = function* (it) { if (it.g) { const h = it.g; if (h.done) return; h.done = true; let s = h.it.return(undefined); while (!s.done && !(s.value instanceof $Give)) s = h.it.next(yield s.value); return; } if (it.h || it.done) return; it.done = true; $Yr(yield $Yq(it.p, 'iter_close', it.v)); };"
+    ;; yield の答え（段階 H8）：ホストの中の読み手（for...of、yield*）は何も渡さない（undefined）。VM の読み手（Conjs_hostgen）は、
+    ;; next(x)、throw(x)、return(x) を ['ok', x]、['threw', x]、['ret', x] で渡す
+    "const $Gr = (r) => { if (r === undefined) return undefined; $refresh(); const v = $in(r[1]); if (r[0] === 'threw') throw new $Thrown(v, null, true); if (r[0] === 'ret') throw new $Ret(v); return v; };"
+    ;; yield*（段階 H8）：値を 1 つずつ、この本体の yield として出す（ConMa 版の Sjs_yield_star と同じく、next の値は渡さず、throw と
+    ;; return は、この本体で起きる）。ジェネレータなら、その戻り値を返す（VM の値は iter_ret で）
+    "const $star = function* (a, p) {"
+    "  if (a instanceof $HG) { const h = a; if (h.done) return undefined; for (;;) { const s = h.it.next(h.msg); h.msg = undefined; if (s.done) { h.done = true; return s.value; } if (s.value instanceof $Give) $Gr(yield s.value); else h.msg = yield s.value; } }"
+    "  const t = yield* $iterG(a, p);"
+    "  while (yield* $moreG(t)) $Gr(yield new $Give(yield* $takeG(t), p));"
+    "  return t.v === undefined ? undefined : $Yr(yield $Yq(p, 'iter_ret', t.v));"
+    "};"
+    ;; ジェネレータ関数の入口（段階 H8）：$runG と同じく本体を動かし、本体の $Give を、頼み [位置, 'give', [値], 行, $gout()] にして
+    ;; Conjs_hostgen に渡す。値を出した後は、やり直せない（読み手が値を見た）
+    "const $giveOut = (g) => { $cr++; const v = $outv(g.v); $sync(); const lines = $out; $out = []; $committed = $committed || 'yielding'; return [g.p === null || g.p === undefined ? null : $P[g.p], 'give', [v], lines, $gout()]; };"
+    "const $runGen = (f) => function* (ids, tramp, ...rest) {"
+    "  const args = $withClasses ? rest.slice(1) : rest;"
+    "  const st = $fresh(ids, tramp, $withClasses ? rest[0] : null);"
+    "  let it = null, msg;"
+    "  for (;;) {"
+    "    const r = $go(st, () => { if (it === null) it = f(...args.map($in)); const s = it.next(msg); return !s.done && s.value instanceof $Give ? { done: false, value: $giveOut(s.value) } : s; });"
+    "    if (!Array.isArray(r)) return r;"
+    "    msg = yield r;"
+    "  }"
+    "};"
     "const $callG = function* (f, p, ...a) { if (typeof f === 'function') return f(...a); return $Yr(yield $Yq(p, 'call', f, a)); };"
     "const $mcallG = function* (o, k, p, ...a) { if ($isObj(o)) return $mcall(o, k, p, ...a); return $Yr(yield $Yq(p, 'callm', o, k, a)); };"
     ,(h)

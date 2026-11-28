@@ -1,0 +1,26 @@
+true [ 1, 2 ]
+2
+3
+make 0
+use 0
+make 1
+use 1
+made all
+make 0
+use in a host function 0
+make 1
+use in a host function 1
+made all
+used
+[ 2, 4, 6 ]
+sum 20
+[ 'a', 'ñ', '😀', 'b' ]
+ok
+caught broken
+[ 'ok', 'broken' ]
+tick 0
+the other task ran
+tick 1
+tick 2
+ticks 2
+exit: 0

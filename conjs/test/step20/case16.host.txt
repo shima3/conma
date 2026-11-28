@@ -1,0 +1,12 @@
+conjs: host: $s1
+conjs: host: $s2
+conjs: host: catching
+conjs: host: firstOver
+conjs: host: guarded
+conjs: host: inOrder
+conjs: host: leaf
+conjs: host: listOf
+conjs: host: outer
+conjs: host: range
+conjs: host: sum
+conjs: host: talk

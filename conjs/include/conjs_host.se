@@ -101,6 +101,68 @@
   __JS_fn_resume__ (,(e) Conjs_hostfn_stop name e) g "next" answer ,(status2 r2)
   Conjs_hostfn_wait G H name status2 r2)
 
+;; ── ジェネレータ関数（段階 H8。docs/dev/CONJS-HOST-PLAN.md の 36 節）──
+;; ホストの版のあるジェネレータ関数 name の呼び出し：ConMa のジェネレータのオブジェクトを返す（typeof、console.log、for...of、
+;; next、return、throw は、ConMa 版のものと同じ）。その本体は、最初の next で、ホストの版を動かす（Conjs_hostgen_run）。
+;; body は、ConMa 版の本体の thunk（引数は入れてある）で、ホストの版が動かないとき（モジュールがない、使わなくなった関数、
+;; 渡せない引数、最初の値を出す前の escape）に、このジェネレータの本体として動かす
+(define Conjs_hostgen ,(G H name args body)
+  __Cont_get__ ,(return)
+  __is_null__ H ,(test__) __if__ test__ (,() Sjs_generator G body ,(gen) return gen) ,()
+  Conjs_hostfn_costs H ,(costs)
+  __Dict_lookup_or__ costs name (,(k) __NULL__ __NULL__) ,(cost)
+  __is_null__ cost ,(fresh)
+  __if_then_else__ fresh (,() __NULL__ __FALSE__) (,() __Dict_lookup_or__ cost "off" (,(k) __NULL__ __FALSE__)) ,(off)
+  __if__ off (,() Sjs_generator G body ,(gen) return gen) ,()
+  Conjs_hostfn_values args ,(test__) __unless__ test__ (,() Sjs_generator G body ,(gen) return gen) ,()
+  Sjs_generator G (,() Conjs_hostgen_run G H name args body) ,(gen)
+  __NULL__ gen)
+
+;; ジェネレータの本体：ホストの版を呼び、頼みを Conjs_hostgen_loop で動かす。返すのは、ジェネレータの戻り値
+(define Conjs_hostgen_run ,(G H name args body)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ G "" __print_exit_error__ ,(ids)
+  __Dict_lookup_or__ H "cls" __print_exit_error__ ,(withClasses)
+  __if_then_else__ withClasses (,() Conjs_hostfn_classes ,(t) __LList_cons__ t args) (,() __NULL__ args) ,(hargs)
+  Conjs_hostfn_vm G ,(tramp)
+  __LList_cons__ tramp hargs ,(hargs)
+  __LList_cons__ ids hargs ,(hargs)
+  __Dict_lookup_or__ H "m" __print_exit_error__ ,(m)
+  __JS_fn_call__ (,(e) Conjs_hostfn_escaped name e ,() body ,(v) return v) m name hargs ,(status r)
+  __String_equal__ status "yield" ,(test__) __if__ test__ (,() Conjs_hostgen_loop G H name r ,(v) return v) ,()
+  __String_equal__ status "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_escaped name r ,() body ,(v) return v) ,()
+  Conjs_hostfn_done G H name r)
+
+;; ホストの版の頼み r（(ジェネレータ 頼み)）を動かして続け、終われば戻り値を返す。頼み "give" は、本体の yield：ためた console.log の
+;; 行を出してから、このジェネレータとして止まり（Sjs_yield_wait）、次の next(x)、throw(x)、return(x) を、("ok" x)、("threw" x)、
+;; ("ret" x) でホストに渡す。ほかの頼みは、待つホストの関数と同じく、この VProc で動かす（待ってよい）
+(define Conjs_hostgen_loop ,(G H name r)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ r ,(g rest)
+  __LList_uncons__ __print_exit_error__ rest ,(req rest2)
+  __LList_uncons__ __print_exit_error__ req ,(pos req)
+  __LList_uncons__ __print_exit_error__ req ,(op req)
+  __LList_uncons__ __print_exit_error__ req ,(margs req)
+  __LList_uncons__ __print_exit_error__ req ,(lines req)
+  __is_null__ req ,(noGl)
+  __if_then_else__ noGl (,() __NULL__ __NULL__) (,() __LList_uncons__ __print_exit_error__ req ,(gl more) __NULL__ gl) ,(gl)
+  __String_equal__ op "give" ,(isGive)
+  __if_then_else__ isGive
+    (,()
+      Conjs_hostfn_print G lines ,()
+      Sjs_arg margs ,(v more)
+      Sjs_yield_wait v ,(mode x)
+      __String_equal__ mode "next" ,(isNext)
+      __String_equal__ mode "throw" ,(isThrow)
+      __if_then_else__ isNext (,() __NULL__ "ok") (,() __if_then_else__ isThrow (,() __NULL__ "threw") (,() __NULL__ "ret")) ,(tag)
+      __LList_cons__ x __NULL__ ,(l)
+      __LList_cons__ tag l)
+    (,() Conjs_hostfn_vm_run G lines pos op margs gl) ,(answer)
+  __JS_fn_resume__ (,(e) Conjs_hostfn_stop name e) g "next" answer ,(status2 r2)
+  __String_equal__ status2 "yield" ,(test__) __if__ test__ (,() Conjs_hostgen_loop G H name r2 ,(v) return v) ,()
+  __String_equal__ status2 "ok" ,(test__) __unless__ test__ (,() Conjs_hostfn_stop name r2) ,()
+  Conjs_hostfn_done G H name r2)
+
 (define Conjs_hostfn_stop ,(name why)
   __type_name__ why ,(t)
   __String_equal__ t "String" ,(isText)
@@ -259,6 +321,9 @@
   __String_equal__ op "iter_more" ,(test__) __if__ test__ (,() Sjs_iter_more a ,(v) return v) ,()
   __String_equal__ op "iter_take" ,(test__) __if__ test__ (,() Sjs_iter_take a ,(v) return v) ,()
   __String_equal__ op "iter_close" ,(test__) __if__ test__ (,() Sjs_iter_close a ,() return __NULL__) ,()
+  ;; yield* の値（ジェネレータの戻り値。ほかは undefined。段階 H8）
+  __String_equal__ op "iter_ret" ,(test__) __if__ test__
+    (,() __Dict_lookup_or__ a "ret" (,(k) return __NULL__) ,(ret) __Ref_get__ ret ,(v) return v) ,()
   __String_equal__ op "instof" ,(test__) __if__ test__
     (,()
       Conjs_hostfn_classes ,(t)

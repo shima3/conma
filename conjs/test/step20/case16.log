@@ -1,0 +1,36 @@
+sum 4950
+top 10
+object Object [Generator] {}
+{ value: 0, done: false } { value: 1, done: false } { value: undefined, done: true } { value: undefined, done: true }
+[ 0, 1, 2, 3 ]
+0 1
+{ value: 'first', done: false } { value: 'got 1', done: false } { value: 'end 2', done: true } { value: undefined, done: true }
+finally
+{ value: 1, done: false } { value: 9, done: true } { value: undefined, done: true }
+caught boom
+{ value: 'waiting', done: false } { value: 'done', done: true } { value: undefined, done: true }
+left out
+{ value: undefined, done: true }
+closed at 8
+first 8
+[
+  1,         2,
+  'a',       'b',
+  'i1',      'i2',
+  "inner's", 'c0',
+  'c1',      "conma's"
+]
+[
+  1,         2,
+  'a',       'b',
+  'i1',      'i2',
+  "inner's", 'c0',
+  'c1',      "conma's"
+]
+tree 1 2 3 4 5
+node 1
+node 2
+node 3
+node 4
+node 5
+exit: 0
