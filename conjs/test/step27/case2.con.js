@@ -9,8 +9,18 @@ $ $up < nofile.txt || echo recovered
 let q;
 $ $up < nofile.txt >$ q || echo recovered
 console.log([...q]);
-// パイプでは、開けなければ、どのコマンドも動かない
+// となりあう外部コマンドは一緒に始めるので、どれかのファイルを開けなければ、どれも動かない
 $ cat < nofile.txt | wc -l || echo recovered
+// パイプのコマンド型関数は、Bash と同じく動く（M1 のレビュー、shima3/conma#102）。結果は最後のコマンドのもの
+function note(args, input, output) {
+  console.log("note runs");
+  for (const x of input) output.push(x);
+}
+$ printf "a\n" > in.txt
+$ $note < in.txt | $note > nodir/x.txt || echo recovered
+$ cat < nofile.txt | $note
+// 出力を開けないとき、開いた入力のファイルは閉じる
+$ $note < in.txt > nodir/x.txt || echo recovered
 try {
   $ cat < nofile.txt
 } catch (e) {
