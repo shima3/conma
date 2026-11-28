@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 2:3: >out.txt: a redirection is a word of its own (<, >, >>, 2>, 2>>, <$, >$, >>$, 2>$): write a space after it
+exit: 2

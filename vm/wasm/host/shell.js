@@ -121,19 +121,33 @@ function linesInto(r, q, done) {
   });
 }
 
+// A file of < > >> 2> 2>> (an object that the command line makes: { conjs_sh_file: path, append })
+function isFile(x) {
+  return x !== null && typeof x === "object" && !Array.isArray(x) && typeof x.conjs_sh_file === "string";
+}
+
+// The message of a file that cannot be opened, as Bash writes it
+function fileError(file, e) {
+  const why = { ENOENT: "No such file or directory", EACCES: "Permission denied", EISDIR: "Is a directory", ENOTDIR: "Not a directory" }[e.code];
+  return `${file}: ${why || e.message}`;
+}
+
 // argv is the words of one command, or an array of them for a pipeline of commands joined by pipes of
 // the OS (stage S3; section 11 of docs/dev/CONJS-SHELL-PLAN.md). errs, if given, is for each command a
-// Queue for the lines of its standard error (2>$), or false for that of the program. It resolves to the
-// status and the signal of the last command.
+// Queue for the lines of its standard error (2>$), or false for that of the program. input, output and each
+// of errs may also be a file (< > >> 2> 2>>), which this process opens and gives to the command as it is; a
+// file that cannot be opened makes the line fail before any command starts. It resolves to the status and
+// the signal of the last command.
 function run(argv, input, output, errs) {
   return new Promise((resolve, reject) => {
     const cmds = Array.isArray(argv) && argv.length > 0 && Array.isArray(argv[0]) ? argv : [argv];
     const errOf = (i) => (Array.isArray(errs) && errs[i] ? errs[i] : false);
+    const isQueue = (q) => q !== false && !isFile(q);
     const closeAll = () => {
-      if (output !== false && !output.closed) output.close();
+      if (isQueue(output) && !output.closed) output.close();
       cmds.forEach((c, i) => {
         const e = errOf(i);
-        if (e !== false && !e.closed) e.close();
+        if (isQueue(e) && !e.closed) e.close();
       });
     };
     if (cmds.some((c) => !Array.isArray(c) || c.length === 0)) {
@@ -141,18 +155,45 @@ function run(argv, input, output, errs) {
       reject(new Error("conma.sh.run: no command"));
       return;
     }
+    // the files, opened in the order of the line before any command starts (the commands get copies)
+    const fds = [];
+    const open = (f, flags) => {
+      try {
+        const fd = fs.openSync(f.conjs_sh_file, flags);
+        fds.push(fd);
+        return fd;
+      } catch (e) {
+        throw new Error(fileError(f.conjs_sh_file, e));
+      }
+    };
+    const closeFds = () => {
+      for (const fd of fds) fs.closeSync(fd);
+      fds.length = 0;
+    };
+    let inFd, outFd, errFds;
+    try {
+      inFd = isFile(input) ? open(input, "r") : null;
+      errFds = cmds.map((c, i) => (isFile(errOf(i)) ? open(errOf(i), errOf(i).append ? "a" : "w") : null));
+      outFd = isFile(output) ? open(output, output.append ? "a" : "w") : null;
+    } catch (e) {
+      closeFds();
+      closeAll();
+      reject(e);
+      return;
+    }
     const procs = [];
     let failed = null;
     for (let i = 0; i < cmds.length; i++) {
       const last = i === cmds.length - 1;
-      const stdin = i > 0 ? procs[i - 1].stdout : input === false ? "inherit" : "pipe";
-      const stdout = !last || output !== false ? "pipe" : "inherit";
-      const stderr = errOf(i) !== false ? "pipe" : "inherit";
+      const stdin = i > 0 ? procs[i - 1].stdout : inFd !== null ? inFd : input === false ? "inherit" : "pipe";
+      const stdout = last && outFd !== null ? outFd : !last || output !== false ? "pipe" : "inherit";
+      const stderr = errFds[i] !== null ? errFds[i] : errOf(i) !== false ? "pipe" : "inherit";
       let p;
       try {
         p = childProcess.spawn(cmds[i][0], cmds[i].slice(1), { stdio: [stdin, stdout, stderr] });
       } catch (e) {
         for (const q of procs) q.kill();
+        closeFds();
         closeAll();
         reject(new Error(startError(cmds[i][0], e)));
         return;
@@ -171,8 +212,9 @@ function run(argv, input, output, errs) {
       });
       procs.push(p);
     }
+    closeFds();
     const first = procs[0];
-    if (input !== false) {
+    if (isQueue(input)) {
       // a command that ends without reading all of its input: EPIPE, not an error of the line
       first.stdin.on("error", () => {});
       feed(first.stdin, input).catch(() => {});
@@ -187,13 +229,13 @@ function run(argv, input, output, errs) {
       if (failed !== null) reject(new Error(startError(failed.cmd, failed.e)));
       else resolve(result);
     };
-    if (output !== false) {
+    if (isQueue(output)) {
       waiting++;
       linesInto(lastProc.stdout, output, finish);
     }
     procs.forEach((p, i) => {
       const e = errOf(i);
-      if (e !== false) {
+      if (isQueue(e)) {
         waiting++;
         linesInto(p.stderr, e, finish);
       }

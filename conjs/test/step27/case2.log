@@ -1,0 +1,13 @@
+recovered
+recovered
+recovered
+recovered
+[]
+recovered
+nofile.txt: No such file or directory
+conjs: nofile.txt: No such file or directory
+conjs: nodir/x.txt: No such file or directory
+conjs: nofile.txt: No such file or directory
+conjs: nofile.txt: No such file or directory
+conjs: nofile.txt: No such file or directory
+exit: 0
