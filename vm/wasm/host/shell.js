@@ -132,6 +132,15 @@ function fileError(file, e) {
   return `${file}: ${why || e.message}`;
 }
 
+// Write the readable stream r to the file descriptor fd, which it then closes; done is called at the end
+function bytesInto(r, fd, done) {
+  const w = fs.createWriteStream("", { fd, autoClose: true });
+  r.on("error", () => {});
+  w.on("error", () => {});
+  w.on("close", done);
+  r.pipe(w);
+}
+
 // argv is the words of one command, or an array of them for a pipeline of commands joined by pipes of
 // the OS (stage S3; section 11 of docs/dev/CONJS-SHELL-PLAN.md). errs, if given, is for each command a
 // Queue for the lines of its standard error (2>$), or false for that of the program. input, output and each
@@ -156,18 +165,25 @@ function run(argv, input, output, errs) {
       return;
     }
     // the files, opened in the order of the line before any command starts (the commands get copies)
+    const win = process.platform === "win32";
     const fds = [];
     const open = (f, flags) => {
       try {
-        const fd = fs.openSync(f.conjs_sh_file, flags);
+        // /dev/null of Git Bash is NUL on Windows, as hostPath of vm-node.js makes it for fs.open
+        const name = win && f.conjs_sh_file === "/dev/null" ? "\\\\.\\NUL" : f.conjs_sh_file;
+        const fd = fs.openSync(name, flags);
         fds.push(fd);
         return fd;
       } catch (e) {
         throw new Error(fileError(f.conjs_sh_file, e));
       }
     };
-    const closeFds = () => {
-      for (const fd of fds) fs.closeSync(fd);
+    // On Windows a file opened to add to (O_APPEND) has no right to write but to append, and a program of
+    // MSYS (Git Bash) given it fails ("Bad file descriptor"; I7's review of shima3/conma#102): the command
+    // writes to a pipe, and this process adds the bytes to the file (kept: these are not closed at the start)
+    const kept = new Set();
+    const closeFds = (all) => {
+      for (const fd of fds) if (all || !kept.has(fd)) fs.closeSync(fd);
       fds.length = 0;
     };
     let inFd, outFd, errFds;
@@ -176,11 +192,22 @@ function run(argv, input, output, errs) {
       errFds = cmds.map((c, i) => (isFile(errOf(i)) ? open(errOf(i), errOf(i).append ? "a" : "w") : null));
       outFd = isFile(output) ? open(output, output.append ? "a" : "w") : null;
     } catch (e) {
-      closeFds();
+      closeFds(true);
       closeAll();
       reject(e);
       return;
     }
+    const relayed = (f, fd) => {
+      if (fd === null || !win || !f.append) return null;
+      kept.add(fd);
+      return fd;
+    };
+    const outSink = relayed(output, outFd);
+    if (outSink !== null) outFd = null;
+    const errSinks = errFds.map((fd, i) => relayed(errOf(i), fd));
+    errSinks.forEach((fd, i) => {
+      if (fd !== null) errFds[i] = null;
+    });
     const procs = [];
     let failed = null;
     // On Windows, external commands are not joined by a pipe of the OS: the end of a pipe that this process
@@ -199,7 +226,7 @@ function run(argv, input, output, errs) {
         p = childProcess.spawn(cmds[i][0], cmds[i].slice(1), { stdio: [stdin, stdout, stderr] });
       } catch (e) {
         for (const q of procs) q.kill();
-        closeFds();
+        closeFds(true);
         closeAll();
         reject(new Error(startError(cmds[i][0], e)));
         return;
@@ -233,7 +260,7 @@ function run(argv, input, output, errs) {
       });
       procs.push(p);
     }
-    closeFds();
+    closeFds(false);
     const first = procs[0];
     if (isQueue(input)) {
       // a command that ends without reading all of its input: EPIPE, not an error of the line
@@ -254,11 +281,19 @@ function run(argv, input, output, errs) {
       waiting++;
       linesInto(lastProc.stdout, output, finish);
     }
+    if (outSink !== null) {
+      waiting++;
+      bytesInto(lastProc.stdout, outSink, finish);
+    }
     procs.forEach((p, i) => {
       const e = errOf(i);
       if (isQueue(e)) {
         waiting++;
         linesInto(p.stderr, e, finish);
+      }
+      if (errSinks[i] !== null) {
+        waiting++;
+        bytesInto(p.stderr, errSinks[i], finish);
       }
       p.on("close", (code, signal) => {
         if (p === lastProc) result = { status: code, signal: signal || undefined };

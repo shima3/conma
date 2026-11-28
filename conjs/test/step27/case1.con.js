@@ -39,3 +39,7 @@ $ sort <$ lines > l.txt
 let back;
 $ cat < l.txt >$ [...back]
 console.log(back);
+// /dev/null（Windows では NUL にする。I7 のレビュー、shima3/conma#102）
+$ sh -c "echo gone; echo gone2 1>&2" > /dev/null 2> /dev/null
+$ cat < /dev/null
+console.log("end");

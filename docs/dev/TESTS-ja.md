@@ -102,7 +102,7 @@ CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の�
 ### m2/file-redirect（shima3/conma#102）
 
 * 種類：機能（ConJS のコマンド行の、ファイルへのリダイレクト `<`、`>`、`>>`、`2>`、`2>>`。docs/dev/CONJS-SHELL-PLAN.md の 21 節）。
-* conjs/include/conjs_shell.se：リダイレクトの語を読み、`{ conjs_sh_file: 名前, append }` を入力、出力、標準エラーにする。コマンド型関数は `fs.open` で読み書きし、`conjs_sh_begin` を行の `try` の中に移した。vm/wasm/host/shell.js：外部コマンドには、ホストがファイルを開いてそのまま渡す。
+* conjs/include/conjs_shell.se：リダイレクトの語を読み、`{ conjs_sh_file: 名前, append }` を入力、出力、標準エラーにする。コマンド型関数は `fs.open` で読み書きし、`conjs_sh_begin` を行の `try` の中に移した。vm/wasm/host/shell.js：外部コマンドには、ホストがファイルを開いてそのまま渡す。Windows では、`>>` と `2>>` はパイプにしてホストがファイルに足し（Git Bash のプログラムは、`O_APPEND` で開いたファイルに書けない）、`/dev/null` は `NUL` にする（I7 のレビュー）。
 * conjs/test/step27（新しい。ファイルを書くので `copy.txt`）。step26 の case3 と case4 のログは、新しいメッセージ。conjs/README.md と README-ja.md、docs/dev/CONJS.md。
 * Windows（I7）：step27 は Git Bash の `printf`、`sort`、`cat`、`wc`、`tr`、`sh` を使う。shima3/conma#101（Windows のパイプの中継）が先に入ったので、alpha を取り込み、`run` の stdin の行で両方を合わせた（外部コマンドどうしは中継、初めのコマンドはファイル）。
 * M2 が流したもの：conjs/test（`== shell-examples` と `step25 (no eval)` を含む）：違いなし。
