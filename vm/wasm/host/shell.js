@@ -121,19 +121,42 @@ function linesInto(r, q, done) {
   });
 }
 
+// A file of < > >> 2> 2>> (an object that the command line makes: { conjs_sh_file: path, append })
+function isFile(x) {
+  return x !== null && typeof x === "object" && !Array.isArray(x) && typeof x.conjs_sh_file === "string";
+}
+
+// The message of a file that cannot be opened, as Bash writes it
+function fileError(file, e) {
+  const why = { ENOENT: "No such file or directory", EACCES: "Permission denied", EISDIR: "Is a directory", ENOTDIR: "Not a directory" }[e.code];
+  return `${file}: ${why || e.message}`;
+}
+
+// Write the readable stream r to the file descriptor fd, which it then closes; done is called at the end
+function bytesInto(r, fd, done) {
+  const w = fs.createWriteStream("", { fd, autoClose: true });
+  r.on("error", () => {});
+  w.on("error", () => {});
+  w.on("close", done);
+  r.pipe(w);
+}
+
 // argv is the words of one command, or an array of them for a pipeline of commands joined by pipes of
 // the OS (stage S3; section 11 of docs/dev/CONJS-SHELL-PLAN.md). errs, if given, is for each command a
-// Queue for the lines of its standard error (2>$), or false for that of the program. It resolves to the
-// status and the signal of the last command.
+// Queue for the lines of its standard error (2>$), or false for that of the program. input, output and each
+// of errs may also be a file (< > >> 2> 2>>), which this process opens and gives to the command as it is; a
+// file that cannot be opened makes the line fail before any command starts. It resolves to the status and
+// the signal of the last command.
 function run(argv, input, output, errs) {
   return new Promise((resolve, reject) => {
     const cmds = Array.isArray(argv) && argv.length > 0 && Array.isArray(argv[0]) ? argv : [argv];
     const errOf = (i) => (Array.isArray(errs) && errs[i] ? errs[i] : false);
+    const isQueue = (q) => q !== false && !isFile(q);
     const closeAll = () => {
-      if (output !== false && !output.closed) output.close();
+      if (isQueue(output) && !output.closed) output.close();
       cmds.forEach((c, i) => {
         const e = errOf(i);
-        if (e !== false && !e.closed) e.close();
+        if (isQueue(e) && !e.closed) e.close();
       });
     };
     if (cmds.some((c) => !Array.isArray(c) || c.length === 0)) {
@@ -141,6 +164,50 @@ function run(argv, input, output, errs) {
       reject(new Error("conma.sh.run: no command"));
       return;
     }
+    // the files, opened in the order of the line before any command starts (the commands get copies)
+    const win = process.platform === "win32";
+    const fds = [];
+    const open = (f, flags) => {
+      try {
+        // /dev/null of Git Bash is NUL on Windows, as hostPath of vm-node.js makes it for fs.open
+        const name = win && f.conjs_sh_file === "/dev/null" ? "\\\\.\\NUL" : f.conjs_sh_file;
+        const fd = fs.openSync(name, flags);
+        fds.push(fd);
+        return fd;
+      } catch (e) {
+        throw new Error(fileError(f.conjs_sh_file, e));
+      }
+    };
+    // On Windows a file opened to add to (O_APPEND) has no right to write but to append, and a program of
+    // MSYS (Git Bash) given it fails ("Bad file descriptor"; I7's review of shima3/conma#102): the command
+    // writes to a pipe, and this process adds the bytes to the file (kept: these are not closed at the start)
+    const kept = new Set();
+    const closeFds = (all) => {
+      for (const fd of fds) if (all || !kept.has(fd)) fs.closeSync(fd);
+      fds.length = 0;
+    };
+    let inFd, outFd, errFds;
+    try {
+      inFd = isFile(input) ? open(input, "r") : null;
+      errFds = cmds.map((c, i) => (isFile(errOf(i)) ? open(errOf(i), errOf(i).append ? "a" : "w") : null));
+      outFd = isFile(output) ? open(output, output.append ? "a" : "w") : null;
+    } catch (e) {
+      closeFds(true);
+      closeAll();
+      reject(e);
+      return;
+    }
+    const relayed = (f, fd) => {
+      if (fd === null || !win || !f.append) return null;
+      kept.add(fd);
+      return fd;
+    };
+    const outSink = relayed(output, outFd);
+    if (outSink !== null) outFd = null;
+    const errSinks = errFds.map((fd, i) => relayed(errOf(i), fd));
+    errSinks.forEach((fd, i) => {
+      if (fd !== null) errFds[i] = null;
+    });
     const procs = [];
     let failed = null;
     // On Windows, external commands are not joined by a pipe of the OS: the end of a pipe that this process
@@ -151,14 +218,15 @@ function run(argv, input, output, errs) {
     const relay = process.platform === "win32";
     for (let i = 0; i < cmds.length; i++) {
       const last = i === cmds.length - 1;
-      const stdin = i > 0 ? (relay ? "pipe" : procs[i - 1].stdout) : input === false ? "inherit" : "pipe";
-      const stdout = !last || output !== false ? "pipe" : "inherit";
-      const stderr = errOf(i) !== false ? "pipe" : "inherit";
+      const stdin = i > 0 ? (relay ? "pipe" : procs[i - 1].stdout) : inFd !== null ? inFd : input === false ? "inherit" : "pipe";
+      const stdout = last && outFd !== null ? outFd : !last || output !== false ? "pipe" : "inherit";
+      const stderr = errFds[i] !== null ? errFds[i] : errOf(i) !== false ? "pipe" : "inherit";
       let p;
       try {
         p = childProcess.spawn(cmds[i][0], cmds[i].slice(1), { stdio: [stdin, stdout, stderr] });
       } catch (e) {
         for (const q of procs) q.kill();
+        closeFds(true);
         closeAll();
         reject(new Error(startError(cmds[i][0], e)));
         return;
@@ -192,8 +260,9 @@ function run(argv, input, output, errs) {
       });
       procs.push(p);
     }
+    closeFds(false);
     const first = procs[0];
-    if (input !== false) {
+    if (isQueue(input)) {
       // a command that ends without reading all of its input: EPIPE, not an error of the line
       first.stdin.on("error", () => {});
       feed(first.stdin, input).catch(() => {});
@@ -208,15 +277,23 @@ function run(argv, input, output, errs) {
       if (failed !== null) reject(new Error(startError(failed.cmd, failed.e)));
       else resolve(result);
     };
-    if (output !== false) {
+    if (isQueue(output)) {
       waiting++;
       linesInto(lastProc.stdout, output, finish);
     }
+    if (outSink !== null) {
+      waiting++;
+      bytesInto(lastProc.stdout, outSink, finish);
+    }
     procs.forEach((p, i) => {
       const e = errOf(i);
-      if (e !== false) {
+      if (isQueue(e)) {
         waiting++;
         linesInto(p.stderr, e, finish);
+      }
+      if (errSinks[i] !== null) {
+        waiting++;
+        bytesInto(p.stderr, errSinks[i], finish);
       }
       p.on("close", (code, signal) => {
         if (p === lastProc) result = { status: code, signal: signal || undefined };
