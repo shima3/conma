@@ -2,7 +2,7 @@
 
 ConMa を、いろいろなプラットフォームで、そのプラットフォームに固有の機能（ブラウザの canvas、OS のファイル、モバイルの通知など）も使って動かせるようにする。また、JavaScript のサブセット ConJS（と SJS）を ConMa に変換して、ConMa が動くどのプラットフォームでも動かせるようにする（2026-11-19。2026-11-20 に、ConMa に変換する言語の目標を ConJS に絞った。6 節の 2）。
 
-**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）を、4.11 節の設計（PR shima3/conma#32 で M4 がレビューした）で、I7 が作った（8.13 節）。ConJS を動かす VM を wasm 版だけにすると、ユーザーが決めた（2026-11-25。4.13 節。細部はレビュー待ち）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
+**状態**：段階 P1 と P2 を作った（2026-11-19。8 節）。6 節の 1〜3 を決めた（P3 はブラウザの canvas と、待つホストの呼び出しの形から。ConJS を作る。4.1 節）。段階 P3 を作った（8.3 節）。段階 P3b（ConJS）を、4.2 節の設計（PR shima3/conma#3 で M2 がレビューした）で作った（8.4 節）。段階 P4（言語キット）を、4.3 節の設計（PR shima3/conma#5 で M2 がレビューした）で作った（8.5 節）。6 節の 4 と 5 も決めた。段階 P5（ConJS をふだん使えるものにする）を、4.4 節の設計（PR shima3/conma#8 で M2 がレビューした）で作った（8.6 節。6 節の 2 の見本の言語は作らないことにした）。段階 P5b（ConJS が受け付ける JavaScript を広げる）を、4.5 節の設計（PR shima3/conma#10 で M2 がレビューした）で作った（8.7 節）。段階 P5c（ConJS で、ブラウザの入力を待つ）を、4.6 節の設計（PR shima3/conma#12 で M2 がレビューした）で作った（8.8 節）。段階 P6a（端末）を、4.7 節の設計（PR shima3/conma#15 で M2 がレビューした）で作った（8.9 節）。段階 P8（ConJS のファイルを 1 行ずつ読む）を、4.8 節の設計（PR shima3/conma#20 で M2 がレビューした）で作った（8.10 節）。段階 P7（使う人がホストの関数を足す文書と口）を、4.9 節の設計（PR shima3/conma#22 で M2 がレビューした）で作った（8.11 節）。段階 P6b（Node.js のプラットフォーム）を、4.10 節の設計（PR shima3/conma#27 で M2 がレビューした）で、M2 が作った（8.12 節）。段階 P6c（Windows で Rust 版の VM と transpiled VM を動かす）を、4.11 節の設計（PR shima3/conma#32 で M4 がレビューした）で、I7 が作った（8.13 節）。ConJS を動かす VM を wasm 版だけにすると、ユーザーが決めた（2026-11-25。4.13 節）。段階 P10（4.13 節の 1、3、8）を、4.14 節の設計（PR shima3/conma#81 で S5 がレビューした）で作った（8.15 節）。M2 のレビュー（気付いたことと、6 節への案）は、[docs/dev/REVIEW-ja.md](REVIEW-ja.md) の 2026-11-19 の節にある（P1 で答えたことは、その「対応」に書いた）。
 
 **場所**：ConJS のページの見本（stars.html と stars.con.js、canvas_demo.con.js と、その ConJS 版の canvas.html）は、2026-11-23 に vm/wasm/web から conjs/web に移した（作るのは conjs/web/build.sh）。この文書が vm/wasm/web と書く ConJS の見本は、その日までの場所。ConMa の見本（canvas_demo.se と canvas.html）と測定（measure.*）は vm/wasm/web に残る。
 
@@ -220,7 +220,7 @@ SJS の作りから、ConJS と SJS が共有する部品を取り出す（言�
 
 * **キットは include/lang/ に置く**（6 節の 4 の案）：`(include "lang/lex.se")` のように読む（include/platform/ と同じ形）。標準ライブラリの探し場所に入っているので、ConSh（consh/bin/consh、consh/js/build.sh）、wasm 版のページ（vm/wasm/web/build.sh）、sjs/sjs、sjs/bench/run.sh、conjs/conjs の include の並びを変えずに済む。別のディレクトリにすると、そのすべてに足すことになり、足し忘れると、その道だけで「include が見つからない」になる。キットの部品は、ふつうのプログラムからも使える（文字列を字句にする、構文木の節を作る）ので、標準ライブラリに置いてもおかしくない。
 * **言語のディレクトリは、ルートに並べたままにする**（6 節の 5 の案）：sjs/ を `langs/` の下に移すと、ConSh、bench、文書の多くのパスと、「移動」の記録（docs/dev/CONTRIBUTING.md の Files that moved）が要る。言語が 3〜4 個のうちは、ルートに並べても見通しは悪くならない。P5 の見本の言語も、ルートに置く。言語が増えて見通しが悪くなったら、そのときにまとめて移す。
-* **名前**：キットの関数は `Kit_` と部品の名前で始める（`Kit_lex_`、`Kit_parse_`、`Kit_code_`、`Kit_err_`、`Kit_sched_`）。`Parse_`（include/parser.se）と `Sched_`（conjs）は使われているため。キットが新しく使う PDict の名前は `"kit_"` で始めるが、**今ある名前（`"sjs_pos"`、`"sjs_handlers"`、`"sjs_gen"` など）は変えない**（M2 の PR shima3/conma#5 のレビューの 2）。consh/include/consh_jsstmt.se が `"sjs_pos"` と `"sjs_handlers"` を直接読み書きし、conjs_rt.se の `Conjs_local_keys` も `"sjs_pos"` を使うため。キットの部品で、そうした名前を使うものは、名前を引数で受け取る（エラーの部品は、位置を置く名前を受け取り、SJS は `"sjs_pos"` を渡す）。
+* **名前**：キットの関数は `Kit_` と部品の名前で始める（`Kit_lex_`、`Kit_parse_`、`Kit_code_`、`Kit_err_`、`Kit_sched_`）。`Parse_`（include/parser.se）と `Sched_`（conjs）は使われているため。キットが新しく使う PDict の名前は `"kit_"` で始めるが、**今ある名前（`"sjs_pos"`、`"sjs_handlers"`、`"sjs_gen"` など）は変えない**（M2 の PR shima3/conma#5 のレビューの 2）。consh/include/consh_jsstmt.se が `"sjs_pos"` と `"sjs_handlers"` を直接読み書きし、conjs_rt.se の `Conjs_save` と `Conjs_restore` も `"sjs_pos"` を使うため（2026-11-25 までは `Conjs_local_keys`）。キットの部品で、そうした名前を使うものは、名前を引数で受け取る（エラーの部品は、位置を置く名前を受け取り、SJS は `"sjs_pos"` を渡す）。
 
 **部品**（左が取り出すもの、右が今あるところ）
 
@@ -795,6 +795,10 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 4. Rust 版の VM のホストの関数の口（4.9 節。vm/examples/host_demo.rs、test/host-api.sh）：ConMa のプログラムを Rust に組み込むための口でもある。案：残し、ConJS の見本（host_demo.con.js）と比べる所だけを見直す。
 5. 端末の見本（stars-term.con.js、merge.con.js、wordcount.con.js、counter_server.con.js）：Node.js の上で動かすことになる。今、wasm 版の VM では、パイプから入れた矢印のキーで自分が動かない（2026-11-25 に M1 が見た。shima3/conma#78 の前と後のどちらの版でも同じ。S5 が Windows でも同じことを見た）。端末のキーの読み方を wasm 版で確かめて直し、macOS と Windows で確かめる。端末で手で遊べるかも確かめる。
     * この計画の外のこと：Rust 版の VM では、macOS でも Windows でも、パイプからの入力が、キーを読む前に終わったと読まれる（stars-term.con.js が `stars: the input has ended` で終わる。S5 のレビューの 3）。ConMa のプログラムがパイプを読むときにも起きるかもしれないので、別に調べる。
+    * 調べたこと（2026-11-25、M1。ブランチ m1/wasm-tty-exit、PR shima3/conma#83）：
+        * パイプから入れた矢印のキーは、wasm 版でも Rust 版でも読めている。自分が動かなかったのは、stars の `flush()`（画面ごとに、それまでに来たキーを捨てる。前の画面で押したキーを次の画面に渡さないため）が、画面が出る前に届いたキーを捨てたから。キーを一度にパイプで入れると、始めのキーも矢印も捨てられ、入力が尽きて終わる。上の Rust 版の `stars: the input has ended` も同じ（Rust 版は入力を早く読むので、題の画面の `flush()` で始めのキーまで捨てる）。画面が出てからキーを入れれば、どちらの VM でも動く。だから、見本も VM も直さない。
+        * 端末（pty）で遊ぶと、矢印で動くが、wasm 版では、Escape で終えた後、次のキーを押すまでプロセスが終わらなかった。vm-node.js は標準入力を `fs.read`（libuv のスレッドプール）で読み、`process.exit` は、そのスレッドの終わりを待つ。端末の `read` は、次のキーまで返らない。Escape は、続く文字を 40 ミリ秒待ってからキーになるので、その間に次の `fs.read` が始まっていた（ほかのキーでは、次の読みが始まる前に終わっていた）。標準入力が端末のときは `tty.ReadStream` で読むように直した（libuv は、端末をスレッドなしで読む）。Windows は、試せないので今の道のまま。
+        * merge.con.js は、パイプからも端末からも wasm 版で動く。wordcount.con.js は、標準入力から読むと wasm 版で `the host function $s1 could not go on after calling back: a call back could not finish: the call back waits` で止まる（ファイルからなら動く。Rust 版では動く）。一番外のループをホストで動かす道（CONJS-HOST-PLAN の段階 H6c）で、`for...of` が VM のジェネレータ（`fs.stdin.readLines()`）の次の行を呼び返しで求め、それが標準入力を待つため。小さな例は `const g = fs.stdin.readLines(); for (const l of g) {}`。4.13 節の 7 と同じく、M4 に頼む。
 6. VM ごとに決めた目標の数（5 節の P5 の「`console.log("hi")` を動かす時間が 0.2 秒以下」など）：wasm 版で測り直す。
     * Windows では、wasm 版の起動は Rust 版より約 0.35 秒（約 26%）長い（S5 が 2026-11-25 に、alpha の 9e8bdc5 の `console.log("hi")` を、交互に 5 回ずつ測った。Rust 版 1355〜1544 ms、wasm 版 1720〜1843 ms）。どちらも 0.2 秒に届かず、時間の多くは bin/lang が動かす MSYS のプログラム（shima3/conma#72 のレビュー）。案：Windows の数は分けて書き、目標を Unix のものとするか、Windows にも目標を置くかを、そのとき決める（S5 のレビューの 2）。
 7. docs/dev/CONJS-HOST-PLAN.md（外の変数に触れない関数を、ホストの JavaScript で動かす）：いつも JavaScript があるので、範囲を広げられる。案：ここでは決めず、別の計画にする。
@@ -807,7 +811,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 
 **この節でしないこと**：コードとテストは変えない。上の 1〜8 を決めたら、段階を足して作る（5 節）。
 
-### 4.14. 段階 P10 の設計（案、2026-11-25。4.13 節の 1、3、8。S5 のレビューは PR shima3/conma#81）
+### 4.14. 段階 P10 の設計（決めた、2026-11-25。4.13 節の 1、3、8。S5 のレビューは PR shima3/conma#81）
 
 **すること**：ConJS を動かす既定の VM を wasm 版にし、ConJS のテスト、CI、手順、文書を、wasm 版だけに合わせる（4.13 節）。ConJS の言語、変換器、ランタイムは変えない。ConMa、SJS、ConSh は、今までどおり 3 つの VM で動かす。
 
@@ -892,7 +896,7 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
 | P7（作った、2026-11-22。8.11 節。4.9 節。忘れないための行として足したが、大きくなる前にするよう、ユーザーが 2026-11-21 に先にした） | 使う人がホストの関数を足すための文書：ブラウザと Node.js（`CONMA_HOST`）で `hostFunctions` と `hostFeatures` を渡し、ConJS から `host.call`、`host.wait`、`host.available` で呼ぶ方法を、1 か所にまとめる。今は conjs/README-ja.md、vm/wasm/conma.js の先頭のコメント、vm/wasm/host/canvas.js、vm/wasm/vm-node.js、docs/PRIMITIVES.md に分かれている。また、Rust 版の VM（と transpiled VM）に、組み込む人がホストの関数と機能の名前を足す口（Rust の API）を作る（3.2 節の「組み込む人が足すもの」。今の vm/src/prim/host.rs は決まった表で、足すには VM のソースを変える）。Python 版の VM は、今のまま（テストと `time.*` だけ） | 文書の例（小さなホストの関数と、それを呼ぶ ConJS のプログラム）が、wasm 版の VM で動く。Rust の API で足した関数を、同じ ConJS のプログラムから呼べ、`host.available` が真になる（Rust 版の VM のテスト） |
 | P8（作った、2026-11-21。8.10 節。4.8 節。M2 が忘れないための行として足し、ユーザーが 2026-11-21 に頼んだ） | ConJS のファイルの入出力を広げ、見本を書く：ファイルを 1 行ずつ読むこと（Python の `for line in open(f)`）と、開いたファイルを持つ API。JavaScript（Node.js）では、ストリームと readline、`for await`、`try`／`finally` で閉じることが要り、非同期で複雑になるが、ConJS では、結果が届くまで呼んだ処理だけが待つので、ふつうのループで書ける。P5c の入力の見本と同じく、「同期処理なら簡単だが、JavaScript では非同期処理が要るので複雑になるプログラム」の見本にする。今の ConJS には、ファイル全体を読み書きする `fs.readFile` と `fs.writeFile` だけがある（P5、4.4 節） | 見本が 3 つの VM で動き、Node.js で同じことを書いた場合と比べて、README に載せる |
 | P9（作った、2026-11-23。8.14 節。4.12 節。ユーザーが 2026-11-23 に頼んだ） | ConJS に `import` と `export` を足す：名前付きの import と export、ファイルごとの名前、1 度だけ深さ優先で動かすこと、ライブバインディング。読み込むファイルは変換器がたどる。SJS は今のまま断る | conjs/test の新しいステップが 3 つの VM で通り、Node.js と比べられる場合が同じ出力。`import` のないプログラムの作るコードが変わらない （`bin/lang-emit-check`）。sjs/test が通る |
-| P10（設計した、2026-11-25。4.14 節） | ConJS を wasm 版の VM だけにする（4.13 節の 1、3、8）：既定の VM を wasm 版にし（conjs/lang.conf の `vm=`）、conjs/test のログ、CI の unix と windows のジョブ、TESTS-ja.md の手順、使い方の文書、conjs/bench を wasm 版だけに合わせる。docs/HOST-ja.md に、async/await のコードをホストの関数に任せる例とそのテスト | conjs/test が wasm 版で 1 つずつのログで通り、CI の unix と windows のジョブで通る。sjs/test が 3 つの VM で通り、作るコードが変わらない。Windows Test で conjs/test が通る |
+| P10（作った、2026-11-25。8.15 節。4.14 節） | ConJS を wasm 版の VM だけにする（4.13 節の 1、3、8）：既定の VM を wasm 版にし（conjs/lang.conf の `vm=`）、conjs/test のログ、CI の unix と windows のジョブ、TESTS-ja.md の手順、使い方の文書、conjs/bench を wasm 版だけに合わせる。docs/HOST-ja.md に、async/await のコードをホストの関数に任せる例とそのテスト | conjs/test が wasm 版で 1 つずつのログで通り、CI の unix と windows のジョブで通る。sjs/test が 3 つの VM で通り、作るコードが変わらない。Windows Test で conjs/test が通る |
 
 ## 6. 決めること
 
@@ -1172,3 +1176,13 @@ ConJS に `import` と `export` を足し、プログラムを複数のファイ
     * 変換するときのエラーは、ファイルと位置を付けず `conjs: SyntaxError: ...` で出す（今の変換器のほかのエラーと同じ。4.12 節は「`ファイル:行:桁: ...`」と書いていた）。どのファイルのことかは、メッセージに名前を入れた（`Cannot find module './x.con.js' imported from case6.con.js` など）。
     * `export var` も受け付けた（4.12 節の「受け付ける形」になかったが、JavaScript では書け、`let` と同じ道で作れるため）。
     * 見本（星ひろいを分けた形）は、まだ作っていない。
+
+### 8.15. 段階 P10（2026-11-25）
+
+4.14 節の設計（PR shima3/conma#81 で S5 がレビューした）で、M1 が作った（ブランチ m1/p10）。
+
+* bin/lang は lang.conf の `vm=`（`CONMA_VM` がないときの VM）を読む。conjs/lang.conf を `vm=wasm` にした（SJS には書かない）。wasm 版の VM がなければ、変換する前に `lang: conjs runs on the wasm VM: build it with vm/wasm/build.sh ...` を出して、終了ステータス 2 で終える（`--emit` は、それでも動く）。bin/lang-test も、ログを選ぶ VM に `vm=` を使う。
+* conjs/test：6 つの `case*.wasm.log` を `case*.log` にした。step21（async/await で書いたホストの関数を `host.wait` で呼ぶ。docs/HOST-ja.md の 3.2 節の例）を足した。test/host-api.sh の Rust 版の行に `CONMA_VM=rust` を付けた。
+* CI：unix のジョブは conjs/test を wasm 版だけで流す。windows のジョブは wasm 版の VM を作って conjs/test を流し、使われていない shasum の手順を除いた。
+* 文書：conjs/README と QUICKSTART の組、docs/dev/CONJS.md、docs/HOST-ja.md（async/await の例。3.3 節と 3.4 節に、ConJS はその VM を目標にしないこと）、TESTS-ja.md、CONTRIBUTING の Tests。conjs/bench は Node.js と wasm 版の VM だけを測る。
+* `console.log("hi")` の起動は、wasm 版の VM で約 0.18 秒（Apple M1。P5 の目標の 0.2 秒以下）。Windows（S5、Git Bash）では、実時間で wasm 版が 1.33〜1.34 秒、Rust 版が 1.10〜1.15 秒で、差は約 0.22 秒（PR shima3/conma#82 の S5 のレビュー。交互に 5 回ずつ）。目標の数は 4.13 節の 6 で決める。

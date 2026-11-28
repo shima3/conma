@@ -24,6 +24,11 @@
 //!   "escape" (v is a message: the function came to something it cannot do; nothing of the answer is
 //!   written back), "yield" (a generator yielded v, a request, and waits to be resumed; "g" is its
 //!   number), or "error" (v is a message for onError).
+//! * Values by reference (stage S0 of docs/dev/CONJS-SHELL-PLAN.md, section 7): {"o":k} is object k of
+//!   the table of the host, which the VM holds as a Value::Host (one HostObj for each k; when the VM drops
+//!   it, the host forgets k: host_obj_free), and {"k":i} is value i that the host keeps (KEPT), which
+//!   stays the same value of the VM across calls. The host keeps a value of a call by the call back
+//!   {"keep":value,"w":[...],"n":[...]}, answered {"r":i,...}, and lets it go with conma_jsfn_release.
 //! * During a call, the host calls a value of the VM back with {"f":value,"a":[...],"w":[...],"n":[...]}
 //!   (vm/wasm/src/lib.rs, conma_jsfn_callback), after sending what it changed; the VM answers {"r":value,
 //!   "w":[...],"n":[...]}, with what the call back changed, {"e":message} or {"x":message} (an escape).
@@ -42,6 +47,43 @@ thread_local! {
     static SESSIONS: RefCell<Vec<Rc<RefCell<Session>>>> = const { RefCell::new(Vec::new()) };
     /// The sessions of the generators waiting to be resumed, by number.
     static GENERATORS: RefCell<HashMap<i64, Rc<RefCell<Session>>>> = RefCell::new(HashMap::new());
+    /// The objects of the host that the VM holds, by their numbers in the host (Value::Host).
+    static HOST_OBJS: RefCell<HashMap<i32, std::rc::Weak<HostObj>>> = RefCell::new(HashMap::new());
+    /// The values of the VM that the host keeps across calls, by number, and the next number.
+    static KEPT: RefCell<(HashMap<i64, Value>, i64)> = RefCell::new((HashMap::new(), 0));
+}
+
+/// The VM dropped its last reference to object k of the host: the host forgets it.
+pub fn host_obj_dropped(k: i32) {
+    // try_with: nothing to do when the table has gone (the VM is ending)
+    let _ = HOST_OBJS.try_with(|t| t.borrow_mut().remove(&k));
+    sys::host_obj_free(k);
+}
+
+/// The value of the VM for object k of the host: the same HostObj while the VM holds it.
+pub fn host_obj(k: i32) -> Value {
+    HOST_OBJS.with(|t| {
+        let mut t = t.borrow_mut();
+        if let Some(h) = t.get(&k).and_then(|w| w.upgrade()) {
+            return Value::Host(h);
+        }
+        let h = Rc::new(HostObj { host: k });
+        t.insert(k, Rc::downgrade(&h));
+        Value::Host(h)
+    })
+}
+
+/// The host let go of value i of the VM that it kept (conma_jsfn_release of vm/wasm/src/lib.rs).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn release(i: i64) {
+    let v = KEPT.with(|k| k.borrow_mut().0.remove(&i));
+    drop(v);
+}
+
+/// The number of values of the VM that the host keeps (for the tests).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn kept_count() -> usize {
+    KEPT.with(|k| k.borrow().0.len())
 }
 
 /// What a node was when the other side last saw it.
@@ -89,6 +131,7 @@ impl Session {
         }
         match v {
             Value::Number(x) => json_number(*x, out),
+            Value::Host(h) => out.push_str(&format!("{{\"o\":{}}}", h.host)),
             Value::Dict(_) => self.node(v, out, made),
             Value::Ref(r) if r.lazy.borrow().is_none() => self.node(v, out, made),
             Value::LList(_) => {
@@ -304,6 +347,8 @@ impl Session {
             Json::Obj(o) => match o.first() {
                 Some((k, Json::Num(i))) if k == "@" => self.nodes.get(*i as usize).cloned().ok_or("a node that is not there")?,
                 Some((k, Json::Num(h))) if k == "h" => self.handles.get(*h as usize).cloned().ok_or("a handle that is not there")?,
+                Some((k, Json::Num(o))) if k == "o" => host_obj(*o as i32),
+                Some((k, Json::Num(i))) if k == "k" => KEPT.with(|t| t.borrow().0.get(&(*i as i64)).cloned()).ok_or("a kept value that is not there")?,
                 Some((k, Json::Str(x))) if k == "x" => num(match x.as_str() {
                     "NaN" => f64::NAN,
                     "Infinity" => f64::INFINITY,
@@ -528,8 +573,29 @@ pub fn callback(request: &str) -> String {
     let Some(booleans) = session.borrow().booleans.clone() else {
         return format!("{{\"e\":{}}}", quote("a session without Booleans"));
     };
-    // what the host changed, then the function and its arguments
     let mut mk = MakeValues { booleans, dicts: 0, refs: 0, ref_changed: false };
+    // the host keeps a value of the call across calls: what it changed, then the value
+    if let Some(x) = json.get("keep") {
+        let kept = (|| {
+            let mut s = session.borrow_mut();
+            s.take(&mut mk, &json)?;
+            s.decode(&mk, x)
+        })();
+        return match kept {
+            Ok(v) => {
+                let i = KEPT.with(|k| {
+                    let mut k = k.borrow_mut();
+                    k.1 += 1;
+                    let i = k.1;
+                    k.0.insert(i, v);
+                    i
+                });
+                session.borrow_mut().message(|_, out, _| out.push_str(&format!("\"r\":{}", i)))
+            }
+            Err(e) => format!("{{\"e\":{}}}", quote(&e)),
+        };
+    }
+    // what the host changed, then the function and its arguments
     let taken = (|| {
         let mut s = session.borrow_mut();
         s.take(&mut mk, &json)?;

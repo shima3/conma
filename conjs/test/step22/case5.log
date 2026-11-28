@@ -1,0 +1,2 @@
+conjs: not in ConJS: await (a call of an async function waits without it)
+exit: 2

@@ -1,2 +1,22 @@
-case1.con.js:3:16: Error: http.listen: this platform has no server (Node.js only)
-exit: 2
+port: number true
+GET /hello?x=1 hi ""
+[ 'method', 'url', 'headers', 'body' ]
+second respond: server.respond: the request has been answered
+GET: 200 hello
+bad header: server.respond: Invalid character in header content ["x-bad"]
+nested header: server.respond: the header x-nested must be a string, a number or an array of them
+bad: 200 answered again
+POST /json ü 13
+POST: 201 made
+big: 413
+/after 1048576
+1 MB: 204
+listen: server.listen: EADDRINUSE: address already in use
+slow: slow done
+queued: 503
+accept after close: undefined
+waiting accept: undefined
+TypeError http.listen: expected a port (a number), got the string "80"
+server.listen: the port must be an integer from 0 to 65535
+done
+exit: 0

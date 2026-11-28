@@ -45,6 +45,9 @@ pub enum Value {
     OSProc(Rc<OSProcObj>),
     /// A WebAssembly module made by __Wasm_compile__.
     Wasm(Rc<WasmObj>),
+    /// An object of the host's JavaScript that the VM holds by reference (the wasm VM only; stage S0 of
+    /// docs/dev/CONJS-SHELL-PLAN.md, section 7; prim/jsfn.rs).
+    Host(Rc<HostObj>),
     /// The values of the variables of a frame (module::frame_chain): only the value of an LVEnv
     /// node, never one that a program sees.
     Frame(Rc<Vec<Value>>),
@@ -155,6 +158,18 @@ pub struct WasmObj {
     pub memory: bool,
     /// The most pages of 64 KiB its memory may have (Assembled::memory_max).
     pub memory_max: u64,
+}
+
+/// An object of the host held by the VM: its number in the table of the host (prim/jsfn.rs). There is
+/// one HostObj for each number, so the same object of the host is the same value (`same`).
+pub struct HostObj {
+    pub host: i32,
+}
+
+impl Drop for HostObj {
+    fn drop(&mut self) {
+        crate::prim::jsfn::host_obj_dropped(self.host);
+    }
 }
 
 impl Drop for WasmObj {
@@ -651,6 +666,7 @@ pub fn identity(v: &Value) -> usize {
         Value::Stream(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::OSProc(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Wasm(r) => Rc::as_ptr(r) as *const u8 as usize,
+        Value::Host(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Frame(r) => Rc::as_ptr(r) as *const u8 as usize,
         Value::Prim(p) => *p as *const _ as *const u8 as usize,
         Value::Raw(s) | Value::StrNode(s) => match s {
@@ -1190,6 +1206,7 @@ pub fn value_type_name(v: &Value) -> String {
         Value::Stream(s) => s.kind().into(),
         Value::OSProc(_) => "OSProc".into(),
         Value::Wasm(_) => "Wasm".into(),
+        Value::Host(_) => "HostObject".into(),
         Value::Frame(_) => "Frame".into(),
         Value::Null => "null".into(),
     }
@@ -1214,6 +1231,7 @@ pub fn type_name(v: &Value) -> Result<&'static str, String> {
         Value::Stream(_) => "Stream",
         Value::OSProc(_) => "OSProc",
         Value::Wasm(_) => "Wasm",
+        Value::Host(_) => "HostObject",
         Value::Raw(_) | Value::Null | Value::Frame(_) => return Err("__type_name__: unknown value".into()),
     })
 }

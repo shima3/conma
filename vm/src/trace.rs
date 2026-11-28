@@ -52,6 +52,7 @@ pub fn value_to_sexp(v: &Value) -> Sexp {
         Value::Stream(s) => l(vec![a("__OSStream__"), a(&format!("\"{}:{}\"", s.mode, s.serial))]),
         Value::OSProc(p) => l(vec![a("__OSProc__"), a(&quoted(&p.serial.to_string()))]),
         Value::Wasm(w) => l(vec![a("__Wasm__"), a(&quoted(&w.serial.to_string()))]),
+        Value::Host(h) => l(vec![a("__HostObject__"), a(&quoted(&h.host.to_string()))]),
         Value::Frame(fr) => tagged("__Frame__", fr.iter().map(value_to_sexp)),
     }
 }

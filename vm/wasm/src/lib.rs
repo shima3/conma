@@ -530,3 +530,15 @@ pub unsafe extern "C" fn conma_jsfn_callback(ptr: *const u8, len: usize) -> i32 
     CALLBACK_RESULT.with(|c| *c.borrow_mut() = r.into_bytes());
     n
 }
+
+/// The host let go of value i of the VM that it kept (prim/jsfn.rs, the header: {"k":i}).
+#[no_mangle]
+pub extern "C" fn conma_jsfn_release(i: f64) {
+    prim::jsfn::release(i as i64);
+}
+
+/// The number of values of the VM that the host keeps (for the tests of stage S0).
+#[no_mangle]
+pub extern "C" fn conma_jsfn_kept() -> i32 {
+    prim::jsfn::kept_count() as i32
+}

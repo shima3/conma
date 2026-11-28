@@ -19,38 +19,34 @@
 ;;       自分自身の join は呼ばないこと（呼ぶ側が確かめる。Kit_sched_is_current）。
 ;;
 ;; 状態 S（PDict の "conjs_sched"）は Dict：
-;;   "in" "out"   動かせる処理の列（FIFO）。2 つの LList の Ref（in は新しい順、out は古い順）。要素は LList (task k value)
-;;   "pending"    待っている呼び出しの数の Ref
-;;   "blocked"    join で待っている処理の数の Ref
+;;   "in" "out"   動かせる処理の列（FIFO）。2 つの LList（in は新しい順、out は古い順）。要素は LList (task k value)
+;;   "pending"    待っている呼び出しの数
+;;   "blocked"    join で待っている処理の数
 ;;   "chan"       待つための VProc が結果を入れるチャネル。この VProc は書かない書き手 "self" を 1 つ閉じずに持つので、
 ;;                読み始めた後でも書き手を足せ、チャネルが終わることもない。"reader" は、その読み手
-;;   "current"    動いている処理の Ref
-;;   "failed"     例外で終わった処理の LList の Ref（新しい順）
+;;   "current"    動いている処理
+;;   "failed"     例外で終わった処理の LList（新しい順）
 ;;   "loop"       列から次の処理を選ぶ所の継続（Kit_sched_run の浅い所。どの処理も、ここから動かすので、CChain は伸びない）
 ;;   "save" "restore"
 ;; 処理は Dict："state"（"ready"、"waiting"、"done"）、"ok" "payload"、"joiners"（join で待っている処理の LList。
-;; 新しい順）、"joined"（join されたか）、"local"（処理だけの状態）、"k"（待っている所の継続）。どれも Ref
+;; 新しい順）、"joined"（join されたか）、"local"（処理だけの状態）、"k"（待っている所の継続）。
+;; 変わる値は、Ref に入れず、Dict に直に置き、__Dict_put__ で書き換える（2026-11-25。それまでは、どれも Ref に入れ、読むたびに
+;; Dict と Ref の 2 段で読み、処理を 1 つ作るたびに Ref を 7 つ作っていた。tasks の 1 回のステップの約 3 割がスケジューラだった）
 
 (define Kit_sched_num ,(text)
   __Number_fromString__ __print_exit_error__ text)
 
-(define Kit_sched_ref ,(S key)
+(define Kit_sched_get ,(S key)
   __Dict_lookup_or__ S key __print_exit_error__)
 
-(define Kit_sched_get ,(S key)
-  __Dict_lookup_or__ S key __print_exit_error__ ,(r)
-  __Ref_get__ r)
-
 (define Kit_sched_set ,(S key v)
-  __Dict_lookup_or__ S key __print_exit_error__ ,(r)
-  __Ref_set__ r v)
+  __Dict_put__ S key v)
 
 (define Kit_sched_add ,(S key d)
-  __Dict_lookup_or__ S key __print_exit_error__ ,(r)
-  __Ref_get__ r ,(n)
+  __Dict_lookup_or__ S key __print_exit_error__ ,(n)
   Kit_sched_num d ,(d)
   __Number_add__ n d ,(n)
-  __Ref_set__ r n)
+  __Dict_put__ S key n)
 
 (define Kit_sched_state ,()
   __PDict_lookup_or__ "conjs_sched" __print_exit_error__)
@@ -62,9 +58,8 @@
   __LList_cons__ x acc ,(acc)
   Kit_sched_reverse rest acc)
 
-(define Kit_sched_new_ref ,(D key v)
-  __Ref_new__ v ,(r)
-  __Dict_put__ D key r)
+(define Kit_sched_init ,(D key v)
+  __Dict_put__ D key v)
 
 ;; 新しい処理。"id" は作った順の番号（同じ処理かを比べる）
 (define Kit_sched_new_task ,(S)
@@ -72,13 +67,13 @@
   Kit_sched_get S "ids" ,(id)
   __Dict_new__ ,(t)
   __Dict_put__ t "id" id ,()
-  Kit_sched_new_ref t "state" "ready" ,()
-  Kit_sched_new_ref t "ok" __NULL__ ,()
-  Kit_sched_new_ref t "payload" __NULL__ ,()
-  Kit_sched_new_ref t "joiners" __NULL__ ,()
-  Kit_sched_new_ref t "joined" __FALSE__ ,()
-  Kit_sched_new_ref t "local" __NULL__ ,()
-  Kit_sched_new_ref t "k" __NULL__ ,()
+  Kit_sched_init t "state" "ready" ,()
+  Kit_sched_init t "ok" __NULL__ ,()
+  Kit_sched_init t "payload" __NULL__ ,()
+  Kit_sched_init t "joiners" __NULL__ ,()
+  Kit_sched_init t "joined" __FALSE__ ,()
+  Kit_sched_init t "local" __NULL__ ,()
+  Kit_sched_init t "k" __NULL__ ,()
   __NULL__ t)
 
 ;; 列の最後に (task k value) を入れる
@@ -108,13 +103,13 @@
   __Cont_get__ ,(return)
   __Dict_new__ ,(S)
   Kit_sched_num "0" ,(zero)
-  Kit_sched_new_ref S "in" __NULL__ ,()
-  Kit_sched_new_ref S "out" __NULL__ ,()
-  Kit_sched_new_ref S "pending" zero ,()
-  Kit_sched_new_ref S "blocked" zero ,()
-  Kit_sched_new_ref S "ids" zero ,()
-  Kit_sched_new_ref S "current" __NULL__ ,()
-  Kit_sched_new_ref S "failed" __NULL__ ,()
+  Kit_sched_init S "in" __NULL__ ,()
+  Kit_sched_init S "out" __NULL__ ,()
+  Kit_sched_init S "pending" zero ,()
+  Kit_sched_init S "blocked" zero ,()
+  Kit_sched_init S "ids" zero ,()
+  Kit_sched_init S "current" __NULL__ ,()
+  Kit_sched_init S "failed" __NULL__ ,()
   __Dict_put__ S "save" save ,()
   __Dict_put__ S "restore" restore ,()
   __Number_fromString__ __print_exit_error__ "1" ,(one)
@@ -146,7 +141,7 @@
   __Number_is_zero__ pending ,(none)
   __unless__ none
     (,()
-      Kit_sched_ref S "reader" ,(reader)
+      Kit_sched_get S "reader" ,(reader)
       __Chan_take__ reader ,(r found)
       __LList_uncons__ __print_exit_error__ r ,(task more)
       __LList_uncons__ __print_exit_error__ more ,(ok more)

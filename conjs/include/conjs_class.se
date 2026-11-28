@@ -132,6 +132,12 @@
 ;; new C(args)
 (define Conjs_new ,(G C args)
   __Cont_get__ ,(return)
+  ;; 組み込みの、ホストで作るクラス（Queue。conjs_rt.se の Conjs_builtins）："hostnew" が作る
+  __type_name__ C ,(ct)
+  __String_equal__ ct "Dict" ,(test__) __if__ test__
+    (,()
+      __Dict_lookup_or__ C "hostnew" (,(k) __NULL__ __NULL__) ,(hostnew)
+      __is_null__ hostnew ,(test__) __unless__ test__ (,() hostnew args ,(o) return o) ,()) ,()
   Conjs_class_of C ,(R)
   __is_null__ R ,(test__) __if__ test__ (,() Sjs_describe C ,(d) __String_concat__ d " is not a constructor" ,(msg) Sjs_type_error msg) ,()
   Conjs_instance G R ,(o)

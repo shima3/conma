@@ -23,7 +23,7 @@
 ;; file は、SInfo のファイル名（エラーの位置に出る）
 (define Sjs_translate_file ,(text file)
   __Cont_get__ ,(return)
-  Sjs_parse text ,(program)
+  Sjs_parse_file text file ,(program)
   ;; ConJS の import と export（4.12 節。段階 P9。conjs/include/conjs_modules.se を conjs/conjsc.se が include する）：最上位に
   ;; あれば、読み込むファイルごとに関数を作る。なければ、今までと 1 文字も同じコードを作る
   Sjs_is_conjs ,(conjs)
@@ -78,6 +78,14 @@
 
 ;; ConJS（docs/dev/PLATFORM-PLAN-ja.md の 4.2 節）：文の並びを main の処理として動かす（conjs/include/conjs_rt.se）
 (define Gen_conjs_program ,(code)
+  ;; async 関数のあるファイルごとに、その JavaScript を、始めにホストに渡す（docs/dev/CONJS-HOST-PLAN.md の 34 節。
+  ;; conjs/include/conjs_async.se が PDict の "conjs_async_js" に置く）
+  Conjs_async_code ,(defs)
+  __String_concat__ defs code ,(code)
+  ;; コマンド行か Queue のあるプログラムは、始めに、ホストの JavaScript があるかを確かめる（docs/dev/CONJS-SHELL-PLAN.md の D15。
+  ;; conjs/include/conjs_shell.se）
+  Conjs_shell_code ,(check)
+  __String_concat__ check code ,(code)
   __String_join_lines__
     ";; ConJS を変換したもの（sjs/include/sjs_gen.se）"
     "(include \"util.se\")"
@@ -1341,6 +1349,7 @@
       __is_null__ alias ,(test__) __unless__ test__ (,() return "" alias) ,()
       Kit_code_cat5 "__Ref_get__ " var " ,(" v ") " ,(c) return c v) ,()
   __String_equal__ name "undefined" ,(test__) __if__ test__ (,() return "" "__NULL__") ,()
+  Gen_note_free g name ,()
   Kit_code_quote name ,(q)
   Kit_code_cat5 "\tSjs_global G " q " ,(" v ") " ,(c)
   __NULL__ c v)
@@ -1358,8 +1367,17 @@
   __if__ isConst (,() Gen_error "Assignment to constant variable.") ,()
   __is_null__ var ,(global)
   __unless__ global (,() Kit_code_cat5 "__Ref_set__ " var " " val " ,() " ,(c) return c) ,()
+  Gen_note_free g name ,()
   Kit_code_quote name ,(q)
   Kit_code_cat5 "\tSjs_set_global G " q " " val " ,() ")
+
+;; 大域の名前 name を、g の "free"（Dict）があれば、そこに入れる（ConJS の async 関数の本体の名前を確かめるため。
+;; conjs/include/conjs_async.se の Conjs_async_free_names。docs/dev/CONJS-HOST-PLAN.md の 34 節）
+(define Gen_note_free ,(g name)
+  __Cont_get__ ,(return)
+  __Dict_lookup_or__ g "free" (,(k) __NULL__ __NULL__) ,(free)
+  __is_null__ free ,(test__) __if__ test__ return ,()
+  __Dict_put__ free name __TRUE__)
 
 ;; 式の値を名前のない変数に入れる手順（val が変数でないときも、一時変数にする）
 (define Gen_unary ,(g scope e)

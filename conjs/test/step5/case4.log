@@ -1,2 +1,6 @@
-no demo host
+sum: 3
+slow sum: 5
+Error: demo.reject: no
+true { a: [ 1, false ] }
+Error: demo.slow_date: returned a Date (only numbers, strings, booleans, plain objects and arrays of them go back)
 exit: 0

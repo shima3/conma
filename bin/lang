@@ -4,16 +4,18 @@
 #   bin/lang --version     ConMa の版を出す（bin/version。2026-11-24）
 # ファイルの後の引数は、変換したプログラムの main に渡す（ConJS の argv。docs/dev/PLATFORM-PLAN-ja.md の 4.8 節、段階 P8）。
 # 言語のディレクトリ（sjs、conjs など）の lang.conf に、言語の名前（name）、変換器（translator。ディレクトリからの相対パス）、
-# include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）を「名前=値」の行で書く（# で始まる行は飛ばす。
+# include の並び（include。リポジトリのルートからの相対パスを空白で区切る）、ファイルの拡張子（ext。bin/lang-test が使う）、
+# 既定の VM（vm。なくてもよい。CONMA_VM がないときに動かす VM。ConJS は wasm。段階 P10、4.14 節）を「名前=値」の行で書く（# で始まる行は飛ばす。
 # シェルとしては読まない）。変換器のモジュールは、ソースか VM（フロントエンドを持つ）が新しくなったときだけ作り直し、
 # bin/cache-dir の場所に「name」c.module.se として置く（作るのに数秒かかる）。一時ファイルに作ってから mv で置き換えるので、
 # 同時に動く bin/lang が作りかけのモジュールを読むことはない。変換は Rust 版の VM（vm/target/release/conma）で行い、それが
 # なければ wasm 版の VM（vm/wasm/build.sh で作る。Node.js の vm-node.js の build と link。2026-11-23 から）で行う。
 # 環境変数 CONMA_TRANSLATE_VM を wasm にすると、Rust 版の VM があっても wasm 版で変換する（確かめるため）。
 # どちらで作っても、モジュールは 1 バイトも同じになる。
-# --emit なら、変換した ConMa のソースを出して終える。そうでなければ、CONMA_VM の VM で動かす：なし（Rust 版）、
+# --emit なら、変換した ConMa のソースを出して終える。そうでなければ、CONMA_VM の VM で動かす：なし（lang.conf の vm、それもなければ Rust 版）、
 # wasm（vm/wasm/vm-wasm.sh。Node.js）、python（bin/vm）。transpiled は Rust 版で動かす（変換器のモジュールのため）。
-# CONMA_VM がなく、Rust 版の VM もなければ、wasm 版で動かす（Rust を入れずに、Node.js だけで動かせるように）。
+# CONMA_VM も lang.conf の vm もなく、Rust 版の VM もなければ、wasm 版で動かす（Rust を入れずに、Node.js だけで動かせるように）。
+# wasm 版で動かすのに、wasm 版の VM がなければ、変換する前に、作り方を出して終える。
 # Rust 版で動かすとき、CONMA_RUNNER があれば、vm/target/release/conma の代わりに、その実行ファイルで動かす（VM を組み込んで
 # ホストの関数を足したプログラム。test/host-api.sh。docs/HOST-ja.md）。変換とモジュール作りは、いつも vm/target/release/conma。
 # 変換したソースの include の行（ランタイム）は、フロントエンドに通すと約 1.4 秒かかるので、先にモジュールにしておく
@@ -46,7 +48,7 @@ if [ $# -lt 2 ]; then echo "usage: lang [--emit] language-directory file [argume
 dir="$(cd "$1" && pwd)" || exit 2
 file="$2"
 shift 2
-name= translator= include=
+name= translator= include= defvm=
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     ''|'#'*) ;;
@@ -54,14 +56,33 @@ while IFS= read -r line || [ -n "$line" ]; do
     translator=*) translator="${line#translator=}" ;;
     include=*) include="${line#include=}" ;;
     ext=*) ;;   # ファイルの拡張子（bin/lang-test が読む）
+    vm=*) defvm="${line#vm=}" ;;
     *) echo "lang: $dir/lang.conf: unknown line: $line" >&2; exit 2 ;;
   esac
 done < "$dir/lang.conf" || exit 2
 if [ -z "$name" ] || [ -z "$translator" ]; then echo "lang: $dir/lang.conf needs name and translator" >&2; exit 2; fi
+vm="${CONMA_VM:-$defvm}"
+[ -z "$vm" ] && [ ! -x "$conma" ] && vm=wasm
+if [ -z "$emit" ] && [ "$vm" = wasm ] && [ ! -f "$wasm" ]; then
+  echo "lang: $name runs on the wasm VM: build it with vm/wasm/build.sh (it needs Node.js and rustup target add wasm32-unknown-unknown)" >&2
+  exit 2
+fi
+# wasm 版で動かすなら、Node.js の bin/lang.cjs が、変換から実行までを 1 つのプロセスでする（I7 の試み、2026-11-25。
+# CONMA_LANG_SH=1 で、この台本のままにする）。スタックの大きさは vm/wasm/vm-wasm.sh と同じに決める。
+if [ -z "$emit" ] && [ "$vm" = wasm ] && [ -z "$CONMA_LANG_SH" ] && [ "${CONMA_WASM_HOST:-node}" = node ] && command -v node > /dev/null 2>&1; then
+  want=$(ulimit -Hs)
+  [ "$want" = unlimited ] && want=1048576
+  ulimit -s "$want" 2>/dev/null
+  have=$(ulimit -s)
+  [ "$have" = unlimited ] && have=1048576
+  if command -v cygpath > /dev/null && [ "$have" -gt 8192 ]; then have=8192; fi
+  exec node --stack-size=$((have * 9 / 10)) "$root/bin/lang.cjs" "$root" "$dir" "$name" "$translator" "$include" "$file" "$@"
+fi
 inc=() dirs=()
 for d in $include; do inc+=(--include "$root/$d"); dirs+=("$root/$d"); done
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/lang.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
+# キャッシュの決まり（モジュールの名前、作り直す条件、ハッシュ）は、wasm 版で動かすときの bin/lang.cjs にも書いてある。変えるときは両方を変える
 module="$("$root/bin/cache-dir")/${name}c.module.se" || exit 1
 if [ ! -s "$module" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/include" "$dir/$translator" \( -name '*.se' -o -type d \) -newer "$module")" ] ||
    stale "$module"; then
@@ -92,11 +113,9 @@ if [ ! -s "$rtmod" ] || [ -n "$(find "${dirs[@]}" "$root/include/ext" "$root/inc
 fi
 "${tr[@]}" build "${inc[@]}" "$tmp/alone.se" > "$tmp/alone.module.se" || exit $?
 "${tr[@]}" link "$rtmod" "$tmp/alone.module.se" > "$tmp/prog.module.se" || exit $?
-vm="$CONMA_VM"
-[ -z "$vm" ] && [ ! -x "$conma" ] && vm=wasm
 case "$vm" in
   wasm) "$root/vm/wasm/vm-wasm.sh" --main "$tmp/prog.module.se" "$@" ;;
   python) "$root/bin/vm" --main "$tmp/prog.module.se" "$@" ;;
   ''|rust|transpiled) "${CONMA_RUNNER:-$conma}" --main "$tmp/prog.module.se" "$@" ;;
-  *) echo "lang: CONMA_VM must be empty, rust, transpiled, wasm or python, not \"$CONMA_VM\"" >&2; exit 2 ;;
+  *) echo "lang: CONMA_VM (or vm of lang.conf) must be empty, rust, transpiled, wasm or python, not \"$vm\"" >&2; exit 2 ;;
 esac

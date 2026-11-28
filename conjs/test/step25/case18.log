@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 2:3: a pattern in brackets needs a name
+exit: 2

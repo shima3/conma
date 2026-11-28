@@ -1,0 +1,19 @@
+object 1 2 3 3
+10
+1 2
+true s
+2
+{ k: 2 }
+s
+true false
+function 11
+{ n: 11, list: [ 1, 2 ] }
+boom
+the property nothing of an object of the host is not a function
+meanwhile
+11
+[host Box] [object Object]
+got 0
+got 1
+got 2
+exit: 0

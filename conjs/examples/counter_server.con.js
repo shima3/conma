@@ -1,4 +1,4 @@
-// 小さな HTTP のサーバ（docs/dev/PLATFORM-PLAN-ja.md の 4.10 節、段階 P6b。Node.js だけ：CONMA_VM=wasm）。要求をループで
+// 小さな HTTP のサーバ（docs/dev/PLATFORM-PLAN-ja.md の 4.10 節、段階 P6b。Node.js だけ）。要求をループで
 // 1 つずつ受け取り、要求ごとに spawn した処理が、上から下に答える。
 //   /count            数を 1 つ増やして答える
 //   /slow             200 ミリ秒待ってから答える（その間も、ほかの要求に答える）

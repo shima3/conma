@@ -14,45 +14,45 @@
 (include "conjs_host.se")
 
 ;; 処理だけの状態にする PDict の名前（sjs_rt.se）。try の受け手のスタック、動いているジェネレータ、投げた所の位置。
-;; sjs_rt.se が処理ごとに持つべき名前を足したら、ここにも足す（M2 の PR shima3/conma#3 のレビューの 2）
-(define Conjs_local_keys ,()
-  __LList_cons__ "sjs_pos" __NULL__ ,(l)
-  __LList_cons__ "sjs_gen" l ,(l)
-  __LList_cons__ "sjs_handlers" l)
+;; sjs_rt.se が処理ごとに持つべき名前を足したら、Conjs_save と Conjs_restore の両方に足す（M2 の PR shima3/conma#3 のレビューの 2）。
+;; 処理が切り替わるたびに動くので、名前の LList を回さず、3 つを並べて書く（2026-11-25。それまでは、名前の LList を再帰で回し、
+;; 値を Ref の箱に入れていて、切り替え 1 回に約 80 ステップかかっていた。tasks の 1 回のステップの約 6%）。
+;; 取り出した状態は LList (sjs_handlers sjs_gen sjs_pos)。新しい処理（local が null）では、どれも null にする
 
 (define Conjs_save ,()
-  Conjs_local_keys ,(keys)
-  Conjs_save_keys keys)
+  __PDict_lookup_or__ "sjs_pos" (,(x) __NULL__ __NULL__) ,(pos)
+  __PDict_lookup_or__ "sjs_gen" (,(x) __NULL__ __NULL__) ,(gen)
+  __PDict_lookup_or__ "sjs_handlers" (,(x) __NULL__ __NULL__) ,(handlers)
+  __LList_cons__ pos __NULL__ ,(l)
+  __LList_cons__ gen l ,(l)
+  __LList_cons__ handlers l)
 
-(define Conjs_save_keys ,(keys)
-  __Cont_get__ ,(return)
-  __is_null__ keys ,(test__) __if__ test__ (,() return __NULL__) ,()
-  __LList_uncons__ __print_exit_error__ keys ,(k rest)
-  __PDict_lookup_or__ k (,(x) __NULL__ __NULL__) ,(v)
-  Conjs_save_keys rest ,(vs)
-  __Ref_new__ v ,(box)
-  __LList_cons__ box vs)
-
-;; 新しい処理（local が null）では、どれも null にする
 (define Conjs_restore ,(local)
-  Conjs_local_keys ,(keys)
-  Conjs_restore_keys keys local)
-
-(define Conjs_restore_keys ,(keys local)
   __Cont_get__ ,(return)
-  __is_null__ keys ,(test__) __if__ test__ return ,()
-  __LList_uncons__ __print_exit_error__ keys ,(k rest)
   __is_null__ local ,(fresh)
-  __if_then_else__ fresh
-    (,() __NULL__ __NULL__ __NULL__)
-    (,() __LList_uncons__ __print_exit_error__ local ,(box more) __Ref_get__ box ,(v) __NULL__ v more) ,(v more)
-  __PDict_put__ k v ,()
-  Conjs_restore_keys rest more)
+  __if__ fresh
+    (,()
+      __PDict_put__ "sjs_handlers" __NULL__ ,()
+      __PDict_put__ "sjs_gen" __NULL__ ,()
+      __PDict_put__ "sjs_pos" __NULL__ ,()
+      return) ,()
+  __LList_uncons__ __print_exit_error__ local ,(handlers l)
+  __LList_uncons__ __print_exit_error__ l ,(gen l)
+  __LList_uncons__ __print_exit_error__ l ,(pos l)
+  __PDict_put__ "sjs_handlers" handlers ,()
+  __PDict_put__ "sjs_gen" gen ,()
+  __PDict_put__ "sjs_pos" pos)
 
 ;; main（文の並びの thunk）を動かし、すべての処理が終わったら、join されなかった例外と行き詰まりを報告する
 (define Conjs_run ,(G body)
   __Cont_get__ ,(return)
   __PDict_put__ "sjs_lang" "conjs" ,()
+  ;; メソッドが Promise を返したホストのオブジェクト（sjs_rt.se の Sjs_host_await）：host.wait と同じく、この処理だけが待つ
+  __PDict_put__ "sjs_host_await" (,(id)
+    __LList_cons__ id __NULL__ ,(list)
+    Kit_sched_wait (,(msg) Sjs_throw "Error" msg) "conma.hostobj.await" list ,(ok payload)
+    __unless__ ok (,() Sjs_throw "Error" payload) ,()
+    __nop__) ,()
   Conjs_builtins G ,()
   Kit_sched_run (,() Conjs_save) (,(local) Conjs_restore local) body ,(blocked failed)
   ;; 端末の入力の道（conjs_term.se）を使ったなら、端末のモードを戻し、その VProc を止める
@@ -99,6 +99,34 @@
   Sjs_def G host "wait" (,(args) Conjs_host_wait G args) ,()
   Sjs_def G host "available" (,(args) Sjs_arg args ,(f rest) Conjs_host_name "host.available" f ,() __Feature_available__ f) ,()
   __Dict_put__ G "host" host ,()
+  ;; Queue（docs/dev/CONJS-SHELL-PLAN.md の 7 節、段階 S1）：ホストの rt.Queue を、参照で持つ。new でだけ作る
+  Sjs_function G "Queue" (,(args) Sjs_type_error "Class constructor Queue cannot be invoked without 'new'") ,(queue)
+  __Dict_put__ queue "hostnew" (,(args)
+    Sjs_arg args ,(parent rest)
+    Sjs_arg rest ,(limit more)
+    __LList_cons__ limit __NULL__ ,(a)
+    __LList_cons__ parent a ,(a)
+    Sjs_host_js "queue" a ,(r)
+    Sjs_host_answer r) ,()
+  __Dict_put__ G "Queue" queue ,()
+  ;; コマンド行の入力（conjs/include/conjs_shell.se の conjs_sh_run）：ホストにそのまま渡せるか（ホストのオブジェクトと配列）。
+  ;; ほかの繰り返せるもの（ジェネレータなど）は、ConJS の処理が Queue に移す
+  Sjs_function G "conjs_sh_direct" (,(args)
+    Sjs_arg args ,(x rest)
+    Sjs_kind x ,(kind)
+    __String_equal__ kind "host" ,(h) __String_equal__ kind "array" ,(a)
+    __or__ h a) ,(direct)
+  __Dict_put__ G "conjs_sh_direct" direct ,()
+  ;; コマンド行が投げずに済ませた誤り（|| で受けたもの、パイプの途中のもの）を、標準エラーに「conjs: 文字」で出す
+  ;; （Bash が command not found などを出すのと同じ。docs/dev/CONJS-SHELL-PLAN.md の 18 節）
+  Sjs_function G "conjs_sh_stderr" (,(args)
+    Sjs_arg args ,(x rest)
+    Sjs_to_string x ,(s)
+    __String_concat__ "conjs: " s ,(m)
+    __String_concat__ m "\n" ,(m)
+    __OS_print_error__ m ,()
+    __NULL__ __NULL__) ,(stderr)
+  __Dict_put__ G "conjs_sh_stderr" stderr ,()
   Conjs_lib_builtins G ,()
   __Dict_remove__ G "Promise")
 
@@ -188,6 +216,8 @@
   __String_equal__ kind "number" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "boolean" ,(test__) __if__ test__ (,() return v) ,()
+  ;; ホストのオブジェクトは、参照のまま渡す（{"o":k}。docs/dev/CONJS-SHELL-PLAN.md の 15 節。M1 のレビュー、shima3/conma#95）
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() return v) ,()
   __String_equal__ kind "array" ,(isArray)
   __String_equal__ kind "object" ,(isObject)
   __or__ isArray isObject ,(test__) __if__ test__

@@ -1,0 +1,1080 @@
+;; ConJS のコマンド行（docs/dev/CONJS-SHELL-PLAN.md の段階 S1b。3 節から 9 節）：.con.js の行で、空白とタブの後が "$ " で
+;; 始まり、文字列、テンプレートリテラル、コメントの中でないものを、字句解析の前に、同じ行の ConJS のコードに置き換える。
+;; 後ろに \ のある行は、次の行に続く（続いた行は空の行にして、後の行の位置を変えない）。置き換えたコードは { } のブロックなので、
+;; 文を始められない所（const x = の後、引数の並び、配列やオブジェクトの中、二項演算子の後）では、構文の誤りになる（3 節）。
+;; * Conjs_shell_rewrite（sjs_parse.se の Sjs_parse_file）：置き換えたテキスト。コマンド行があれば、ファイルの終わりに、
+;;   置き換えたコードが呼ぶ関数（Conjs_shell_prelude。宣言なので巻き上がる）を足す。コマンド行か "new Queue" があれば、
+;;   PDict の "conjs_shell_at" に、初めの位置を置く
+;; * Conjs_shell_code（sjs_gen.se の Gen_conjs_program）：その位置があれば、プログラムの始めに Conjs_shell_check
+;;   （conjs/include/conjs_host.se）を呼ぶ手順（ホストの JavaScript がなければ、始めで止める。D15）
+;; 外部コマンドは、host.wait("conma.sh.run", ...)（vm/wasm/vm-node.js）がホストで動かす。コマンド型関数（$ $name）は、その行で呼ぶ
+
+(define Conjs_shell_zero ,() __Number_fromString__ __print_exit_error__ "0")
+(define Conjs_shell_one ,() __Number_fromString__ __print_exit_error__ "1")
+(define Conjs_shell_three ,() __Number_fromString__ __print_exit_error__ "3")
+
+;; 構文の誤り：「SyntaxError: a command line at 行:桁: msg」
+(define Conjs_shell_error ,(line col msg)
+  __Number_toString__ line ,(ls)
+  __Number_toString__ col ,(cs)
+  __String_concat__ "a command line at " ls ,(m)
+  __String_concat__ m ":" ,(m)
+  __String_concat__ m cs ,(m)
+  __String_concat__ m ": " ,(m)
+  __String_concat__ m msg ,(m)
+  Sjs_throw "SyntaxError" m)
+
+(define Conjs_shell_rewrite ,(text file)
+  __Cont_get__ ,(return)
+  Conjs_shell_zero ,(zero)
+  ;; new Queue だけでも、ホストが要る（D15）
+  __String_find__ __print_exit_error__ text "new Queue" zero ,(qat)
+  __is_null__ qat ,(test__) __unless__ test__ (,() Conjs_shell_line_of text qat ,(ln) Conjs_shell_note file ln) ,()
+  __String_find__ __print_exit_error__ text "$ " zero ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return text) ,()
+  Conjs_shell_lines text zero __NULL__ ,(rev)
+  Kit_lex_reverse rev ,(lines)
+  Conjs_shell_one ,(one)
+  Conjs_shell_go lines __NULL__ __FALSE__ one file __NULL__ __FALSE__ ,(acc used)
+  Kit_lex_reverse acc ,(outLines)
+  Conjs_shell_join outLines "" ,(out)
+  __unless__ used (,() return out) ,()
+  Conjs_shell_prelude ,(pre)
+  __String_concat__ out "\n" ,(out)
+  __String_concat__ out pre)
+
+;; 位置の記録（初めの 1 つ）
+(define Conjs_shell_note ,(file line)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_shell_at" (,(k) __NULL__ __NULL__) ,(old)
+  __is_null__ old ,(test__) __unless__ test__ return ,()
+  __Number_toString__ line ,(ls)
+  __String_concat__ file ":" ,(p)
+  __String_concat__ p ls ,(p)
+  __PDict_put__ "conjs_shell_at" p)
+
+;; 位置 i の行の番号（1 から）
+(define Conjs_shell_line_of ,(text i)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_one ,(one)
+  Conjs_shell_count_nl text zero i one)
+
+(define Conjs_shell_count_nl ,(text from upto n)
+  __Cont_get__ ,(return)
+  __String_find__ __print_exit_error__ text "\n" from ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return n) ,()
+  __Number_if_greater__ at upto (,() return n) ,()
+  __Number_subtract__ at upto ,(d) __Number_is_zero__ d ,(test__) __if__ test__ (,() return n) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ at one ,(next)
+  __Number_add__ n one ,(n)
+  Conjs_shell_count_nl text next upto n)
+
+;; テキストを行に分ける（"\n" で。逆順の LList）
+(define Conjs_shell_lines ,(text from acc)
+  __Cont_get__ ,(return)
+  __String_length__ text ,(len)
+  __String_find__ __print_exit_error__ text "\n" from ,(at)
+  __is_null__ at ,(test__) __if__ test__
+    (,() __String_substring__ __print_exit_error__ text from len ,(last) __LList_cons__ last acc ,(acc) return acc) ,()
+  __String_substring__ __print_exit_error__ text from at ,(line)
+  __LList_cons__ line acc ,(acc)
+  Conjs_shell_one ,(one)
+  __Number_add__ at one ,(next)
+  Conjs_shell_lines text next acc)
+
+(define Conjs_shell_join ,(lines acc)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ lines ,(line rest)
+  __String_concat__ acc line ,(acc)
+  __is_null__ rest ,(test__) __if__ test__ (,() return acc) ,()
+  __String_concat__ acc "\n" ,(acc)
+  Conjs_shell_join rest acc)
+
+;; 行を順に見る。stack は、テンプレートリテラルの入れ子（"t" はテンプレートの文字、数は ${ } の中の { の深さ）、block は
+;; /* */ の中か、n は行の番号。acc は逆順の出力の行、used はコマンド行があったか
+(define Conjs_shell_go ,(lines stack block n file acc used)
+  __Cont_get__ ,(return)
+  __is_null__ lines ,(test__) __if__ test__ (,() return acc used) ,()
+  __LList_uncons__ __print_exit_error__ lines ,(line rest)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_one ,(one)
+  __is_null__ stack ,(top)
+  __not__ block ,(nb)
+  __and__ top nb ,(atStatement)
+  __if__ atStatement
+    (,()
+      Conjs_shell_indent line zero ,(ind)
+      __Number_add__ ind one ,(i1)
+      __Number_add__ i1 one ,(i2)
+      __String_length__ line ,(len)
+      __Number_if_greater_then_else__ i2 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ line ind i2) ,(head)
+      __String_equal__ head "$ " ,(isCmd)
+      __if__ isCmd
+        (,()
+          Conjs_shell_note file n ,()
+          __String_substring__ __print_exit_error__ line zero ind ,(lead)
+          __String_substring__ __print_exit_error__ line i2 len ,(cmd)
+          Conjs_shell_continued cmd rest zero ,(cmd rest extra)
+          __Number_add__ i2 one ,(col)
+          Conjs_shell_line cmd n col ,(code)
+          __String_concat__ lead code ,(out)
+          __LList_cons__ out acc ,(acc)
+          Conjs_shell_blank extra acc ,(acc)
+          __Number_add__ n one ,(n)
+          __Number_add__ n extra ,(n)
+          Conjs_shell_go rest stack block n file acc __TRUE__ ,(a u)
+          return a u) ,()) ,()
+  ;; コマンド行でない行：文字を見て、状態を進める
+  Conjs_shell_scan line zero stack block ,(stack block)
+  __LList_cons__ line acc ,(acc)
+  __Number_add__ n one ,(n)
+  Conjs_shell_go rest stack block n file acc used)
+
+;; 行の始めの空白とタブの数
+(define Conjs_shell_indent ,(line i)
+  __Cont_get__ ,(return)
+  __String_length__ line ,(len)
+  __Number_if_greater_then_else__ len i (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__) ,(end)
+  __if__ end (,() return i) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ line i j ,(c)
+  __String_equal__ c " " ,(sp)
+  __String_equal__ c "\t" ,(tab)
+  __or__ sp tab ,(ws)
+  __unless__ ws (,() return i) ,()
+  Conjs_shell_indent line j)
+
+;; 終わりに \ のある行は、次の行に続ける（\ を除いて、次の行をつなぐ）。返すのは、続けたテキスト、残りの行、続けた行の数
+(define Conjs_shell_continued ,(cmd rest extra)
+  __Cont_get__ ,(return)
+  __String_length__ cmd ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return cmd rest extra) ,()
+  Conjs_shell_one ,(one)
+  __Number_subtract__ len one ,(last)
+  ;; 終わりの \ の数が奇数のときだけ続ける（\\ は \ の 1 文字。シェルと同じ。M1 のレビュー、shima3/conma#96）
+  Conjs_shell_odd_backslashes cmd last __FALSE__ ,(odd)
+  __unless__ odd (,() return cmd rest extra) ,()
+  Conjs_shell_zero ,(zero)
+  __String_substring__ __print_exit_error__ cmd zero last ,(cmd)
+  __is_null__ rest ,(test__) __if__ test__ (,() return cmd rest extra) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(next rest)
+  __String_concat__ cmd next ,(cmd)
+  __Number_add__ extra one ,(extra)
+  Conjs_shell_continued cmd rest extra)
+
+;; 位置 i から前に続く \ の数が奇数か（odd は、ここまでに数えた数が奇数か）
+(define Conjs_shell_odd_backslashes ,(s i odd)
+  __Cont_get__ ,(return)
+  __Number_is_negative__ i ,(test__) __if__ test__ (,() return odd) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ s i j ,(c)
+  __String_equal__ c "\\" ,(bs)
+  __unless__ bs (,() return odd) ,()
+  __not__ odd ,(odd)
+  __Number_subtract__ i one ,(i)
+  Conjs_shell_odd_backslashes s i odd)
+
+(define Conjs_shell_blank ,(k acc)
+  __Cont_get__ ,(return)
+  __Number_is_zero__ k ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_cons__ "" acc ,(acc)
+  Conjs_shell_one ,(one)
+  __Number_subtract__ k one ,(k)
+  Conjs_shell_blank k acc)
+
+;; ── 文字列、テンプレートリテラル、コメントを追う ──
+;; 行の i から、状態（stack block）を進める。ConJS には正規表現のリテラルがないので、/ は // と /* だけを見る
+(define Conjs_shell_scan ,(line i stack block)
+  __Cont_get__ ,(return)
+  Conjs_shell_one ,(one)
+  ;; /* */ の中：*/ を探す
+  __if__ block
+    (,()
+      __String_find__ __print_exit_error__ line "*/" i ,(at)
+      __is_null__ at ,(test__) __if__ test__ (,() return stack __TRUE__) ,()
+      __Number_add__ at one ,(j) __Number_add__ j one ,(j)
+      Conjs_shell_scan line j stack __FALSE__ ,(s b)
+      return s b) ,()
+  __is_null__ stack ,(empty)
+  __if_then_else__ empty (,() __NULL__ "") (,() __LList_uncons__ __print_exit_error__ stack ,(x more) __NULL__ x) ,(top)
+  __type_name__ top ,(tt)
+  ;; 前の行から続く文字列（("q" 引用符)）
+  __String_equal__ tt "LList" ,(inString)
+  __if__ inString
+    (,()
+      __LList_uncons__ __print_exit_error__ stack ,(e more)
+      __LList_uncons__ __print_exit_error__ e ,(x qs)
+      __LList_uncons__ __print_exit_error__ qs ,(q y)
+      Conjs_shell_skip_string line i q ,(k state)
+      __String_equal__ state "cont" ,(test__) __if__ test__ (,() return stack block) ,()
+      Conjs_shell_scan line k more block ,(s b)
+      return s b) ,()
+  __String_equal__ tt "String" ,(isStr)
+  __if_then_else__ isStr (,() __String_equal__ top "t") (,() __NULL__ __FALSE__) ,(inTmpl)
+  __if_then_else__ inTmpl (,() __NULL__ "\\`$") (,() __NULL__ "'\"`/{}") ,(specials)
+  __String_find_any__ __print_exit_error__ line specials i ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return stack block) ,()
+  __Number_add__ at one ,(j)
+  __String_substring__ __print_exit_error__ line at j ,(c)
+  __String_length__ line ,(len)
+  __Number_add__ j one ,(j2)
+  __Number_if_greater_then_else__ j2 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ line j j2) ,(next)
+  __if__ inTmpl
+    (,()
+      __String_equal__ c "\\" ,(test__) __if__ test__ (,() Conjs_shell_scan line j2 stack block ,(s b) return s b) ,()
+      __String_equal__ c "`" ,(test__) __if__ test__
+        (,() __LList_uncons__ __print_exit_error__ stack ,(x more) Conjs_shell_scan line j more block ,(s b) return s b) ,()
+      __String_equal__ next "{" ,(test__) __if__ test__
+        (,() __LList_cons__ one stack ,(stack) Conjs_shell_scan line j2 stack block ,(s b) return s b) ,()
+      Conjs_shell_scan line j stack block ,(s b)
+      return s b) ,()
+  __String_equal__ c "/" ,(slash)
+  __if__ slash
+    (,()
+      __String_equal__ next "/" ,(test__) __if__ test__ (,() return stack block) ,()
+      __String_equal__ next "*" ,(test__) __if__ test__ (,() Conjs_shell_scan line j2 stack __TRUE__ ,(s b) return s b) ,()
+      Conjs_shell_scan line j stack block ,(s b)
+      return s b) ,()
+  __String_equal__ c "'" ,(sq)
+  __String_equal__ c "\"" ,(dq)
+  __or__ sq dq ,(test__) __if__ test__
+    (,()
+      Conjs_shell_skip_string line j c ,(k state)
+      __String_equal__ state "cont" ,(cont)
+      ;; 次の行に続く文字列は、stack に ("q" 引用符) を置く
+      __if__ cont (,() __LList_cons__ c __NULL__ ,(e) __LList_cons__ "q" e ,(e) __LList_cons__ e stack ,(s) return s block) ,()
+      Conjs_shell_scan line k stack block ,(s b)
+      return s b) ,()
+  __String_equal__ c "`" ,(test__) __if__ test__
+    (,() __LList_cons__ "t" stack ,(stack) Conjs_shell_scan line j stack block ,(s b) return s b) ,()
+  ;; { と }：${ } の中なら、深さを数える
+  __if__ empty (,() Conjs_shell_scan line j stack block ,(s b) return s b) ,()
+  __LList_uncons__ __print_exit_error__ stack ,(depth more)
+  __String_equal__ c "{" ,(test__) __if__ test__
+    (,() __Number_add__ depth one ,(d) __LList_cons__ d more ,(stack) Conjs_shell_scan line j stack block ,(s b) return s b) ,()
+  __Number_subtract__ depth one ,(d)
+  __Number_is_zero__ d ,(closed)
+  __if_then_else__ closed (,() __NULL__ more) (,() __LList_cons__ d more) ,(stack)
+  Conjs_shell_scan line j stack block)
+
+;; 引用符 q の文字列の終わりの次と、状態："closed"（閉じた）、"cont"（行の終わりの \ で次の行に続く。ConJS の字句解析と同じ。
+;; M1 のレビュー、shima3/conma#96）、"open"（閉じずに行が終わった）。後の 2 つの位置は、行の長さ
+(define Conjs_shell_skip_string ,(line i q)
+  __Cont_get__ ,(return)
+  __String_concat__ q "\\" ,(specials)
+  __String_length__ line ,(len)
+  __String_find_any__ __print_exit_error__ line specials i ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return len "open") ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ at one ,(j)
+  __String_substring__ __print_exit_error__ line at j ,(c)
+  __String_equal__ c q ,(test__) __if__ test__ (,() return j "closed") ,()
+  __Number_add__ j one ,(j2)
+  __Number_if_greater__ j2 len (,() return len "cont") ,()
+  Conjs_shell_skip_string line j2 q)
+
+;; ── コマンド行を読む（3 節、4 節）──
+;; 語は空白で分ける。'...' はそのまま、"..." の中では \" \\ \$ が 1 文字、${名前} が変数の値、引用符の外では \ の次の 1 文字が
+;; そのまま。語の始めの # から後は注釈。引用符の外の | ; & < > は誤り（<$ >$ >>$ の語のほかは）。
+;; 語は、部分の LList（逆順）：("s" 文字) か ("v" 名前)。words は (部分の LList 引用符を使ったか) の LList（逆順）
+
+;; 1 つの行の ConJS のコード。n は行、col は "$ " の後の桁（1 から）
+(define Conjs_shell_line ,(cmd n col)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_words cmd zero n col __NULL__ __NULL__ __FALSE__ __FALSE__ ,(rev)
+  Kit_lex_reverse rev ,(words)
+  Conjs_shell_trim cmd ,(shown)
+  Conjs_shell_gen words shown n col)
+
+;; i から読む。parts は今の語の部分（逆順）、inWord は語の中か、quoted は今の語に引用符があったか
+(define Conjs_shell_words ,(cmd i n col words parts inWord quoted)
+  __Cont_get__ ,(return)
+  Conjs_shell_one ,(one)
+  __String_length__ cmd ,(len)
+  __Number_if_greater_then_else__ len i (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__) ,(end)
+  __NULL__ (,(words parts inWord quoted)
+    __Cont_get__ ,(ret)
+    __unless__ inWord (,() ret words) ,()
+    Kit_lex_reverse parts ,(ps)
+    __LList_cons__ quoted __NULL__ ,(w) __LList_cons__ ps w ,(w)
+    __LList_cons__ w words) ,(finish)
+  __if__ end (,() finish words parts inWord quoted ,(words) return words) ,()
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ cmd i j ,(c)
+  __Number_add__ col i ,(at)
+  __String_equal__ c " " ,(sp) __String_equal__ c "\t" ,(tab) __or__ sp tab ,(ws)
+  __if__ ws (,() finish words parts inWord quoted ,(words) Conjs_shell_words cmd j n col words __NULL__ __FALSE__ __FALSE__ ,(w) return w) ,()
+  __not__ inWord ,(atStart)
+  __String_equal__ c "#" ,(hash)
+  __and__ atStart hash ,(test__) __if__ test__ (,() return words) ,()
+  __String_equal__ c "'" ,(test__) __if__ test__
+    (,()
+      __String_find__ __print_exit_error__ cmd "'" j ,(close)
+      __is_null__ close ,(test__) __if__ test__ (,() Conjs_shell_error n at "a quote ' that is not closed") ,()
+      __String_substring__ __print_exit_error__ cmd j close ,(s)
+      Conjs_shell_add_text parts s ,(parts)
+      __Number_add__ close one ,(k)
+      Conjs_shell_words cmd k n col words parts __TRUE__ __TRUE__ ,(w)
+      return w) ,()
+  __String_equal__ c "\"" ,(test__) __if__ test__
+    (,()
+      Conjs_shell_dquote cmd j n col parts ,(k parts)
+      Conjs_shell_words cmd k n col words parts __TRUE__ __TRUE__ ,(w)
+      return w) ,()
+  __String_equal__ c "\\" ,(test__) __if__ test__
+    (,()
+      __Number_add__ j one ,(k)
+      __Number_if_greater_then_else__ k len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ cmd j k) ,(e)
+      Conjs_shell_add_text parts e ,(parts)
+      __Number_if_greater_then_else__ k len (,() __NULL__ len) (,() __NULL__ k) ,(k)
+      Conjs_shell_words cmd k n col words parts __TRUE__ quoted ,(w)
+      return w) ,()
+  __String_equal__ c "$" ,(dollar)
+  __if__ dollar
+    (,()
+      __Number_add__ j one ,(j1)
+      __Number_if_greater_then_else__ j1 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ cmd j j1) ,(next)
+      __String_equal__ next "{" ,(test__) __if__ test__
+        (,()
+          Conjs_shell_var cmd j1 n at ,(name k)
+          __LList_cons__ name __NULL__ ,(p) __LList_cons__ "v" p ,(p)
+          __LList_cons__ p parts ,(parts)
+          Conjs_shell_words cmd k n col words parts __TRUE__ quoted ,(w)
+          return w) ,()) ,()
+  ;; |、||、&&（段階 S3）：語を終え、記号の語（部分が ("o" 記号) の 1 つ）を置く。; と 1 つの & は、まだ誤り
+  __String_equal__ c "|" ,(bar) __String_equal__ c "&" ,(amp)
+  __Number_add__ j one ,(j1)
+  __Number_if_greater_then_else__ j1 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ cmd j j1) ,(next)
+  __String_equal__ next c ,(double)
+  __and__ amp double ,(andand)
+  __or__ bar andand ,(isOp)
+  __if__ isOp
+    (,()
+      finish words parts inWord quoted ,(words)
+      __if_then_else__ double (,() __String_concat__ c c) (,() __NULL__ c) ,(op)
+      __if_then_else__ double (,() __NULL__ j1) (,() __NULL__ j) ,(k)
+      __LList_cons__ op __NULL__ ,(o) __LList_cons__ "o" o ,(o)
+      __LList_cons__ o __NULL__ ,(ps)
+      __LList_cons__ __FALSE__ __NULL__ ,(w) __LList_cons__ ps w ,(w)
+      __LList_cons__ w words ,(words)
+      Conjs_shell_words cmd k n col words __NULL__ __FALSE__ __FALSE__ ,(w)
+      return w) ,()
+  __String_equal__ c ";" ,(semi)
+  __or__ semi amp ,(bad)
+  __if__ bad (,() __String_concat__ c " is not in command lines yet" ,(m) Conjs_shell_error n at m) ,()
+  Conjs_shell_add_text parts c ,(parts)
+  Conjs_shell_words cmd j n col words parts __TRUE__ quoted)
+
+;; ${ の後（i は名前の始め）：名前と、} の次の位置。名前は、文字、数字、_、$ で、数字で始まらない（D12）
+(define Conjs_shell_var ,(cmd i n at)
+  __Cont_get__ ,(return)
+  __String_find__ __print_exit_error__ cmd "}" i ,(close)
+  __is_null__ close ,(test__) __if__ test__ (,() Conjs_shell_error n at "a ${ that is not closed") ,()
+  __String_substring__ __print_exit_error__ cmd i close ,(name)
+  Conjs_shell_is_name name ,(ok)
+  __unless__ ok
+    (,() __String_concat__ "${...} holds the name of a variable, not " name ,(m) Conjs_shell_error n at m) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ close one ,(k)
+  return name k)
+
+(define Conjs_shell_is_name ,(s)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_one ,(one)
+  __String_substring__ __print_exit_error__ s zero one ,(c0)
+  __String_find_any__ __print_exit_error__ c0 "0123456789" zero ,(digit)
+  __is_null__ digit ,(test__) __unless__ test__ (,() return __FALSE__) ,()
+  Conjs_shell_name_chars s zero len)
+
+(define Conjs_shell_name_chars ,(s i len)
+  __Cont_get__ ,(return)
+  __Number_if_greater_then_else__ len i (,() __NULL__ __FALSE__) (,() __NULL__ __TRUE__) ,(end)
+  __if__ end (,() return __TRUE__) ,()
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(j)
+  __String_substring__ __print_exit_error__ s i j ,(c)
+  Conjs_shell_zero ,(zero)
+  __String_find_any__ __print_exit_error__ "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$" c zero ,(x)
+  ;; __String_find_any__ は、c の文字のどれかを探す：c が 1 文字なので、その文字があるか
+  __is_null__ x ,(test__) __if__ test__ (,() return __FALSE__) ,()
+  Conjs_shell_name_chars s j len)
+
+;; "..." の中（i は " の次）：閉じる " の次の位置と、部分
+(define Conjs_shell_dquote ,(cmd i n col parts)
+  __Cont_get__ ,(return)
+  Conjs_shell_one ,(one)
+  __String_length__ cmd ,(len)
+  __String_find_any__ __print_exit_error__ cmd "\"\\$" i ,(at)
+  __Number_add__ col i ,(pos)
+  __is_null__ at ,(test__) __if__ test__ (,() Conjs_shell_error n pos "a quote \" that is not closed") ,()
+  __String_substring__ __print_exit_error__ cmd i at ,(plain)
+  Conjs_shell_add_text parts plain ,(parts)
+  __Number_add__ at one ,(j)
+  __String_substring__ __print_exit_error__ cmd at j ,(c)
+  __String_equal__ c "\"" ,(test__) __if__ test__ (,() return j parts) ,()
+  __Number_add__ j one ,(j1)
+  __Number_if_greater_then_else__ j1 len (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ cmd j j1) ,(next)
+  __String_equal__ c "\\" ,(test__) __if__ test__
+    (,()
+      __String_equal__ next "" ,(none)
+      __if__ none (,() Conjs_shell_add_text parts c ,(parts) Conjs_shell_dquote cmd j n col parts ,(k p) return k p) ,()
+      __String_equal__ next "\"" ,(a) __String_equal__ next "\\" ,(b) __String_equal__ next "$" ,(d)
+      __or__ a b ,(e) __or__ e d ,(esc)
+      __if_then_else__ esc (,() __NULL__ next) (,() __String_concat__ c next) ,(s)
+      Conjs_shell_add_text parts s ,(parts)
+      Conjs_shell_dquote cmd j1 n col parts ,(k p)
+      return k p) ,()
+  ;; $
+  __String_equal__ next "{" ,(test__) __if__ test__
+    (,()
+      Conjs_shell_var cmd j1 n pos ,(name k)
+      __LList_cons__ name __NULL__ ,(p) __LList_cons__ "v" p ,(p)
+      __LList_cons__ p parts ,(parts)
+      Conjs_shell_dquote cmd k n col parts ,(k2 p2)
+      return k2 p2) ,()
+  Conjs_shell_add_text parts c ,(parts)
+  Conjs_shell_dquote cmd j n col parts)
+
+;; 部分の LList（逆順）に文字 s を足す（前も文字なら、つなぐ）
+(define Conjs_shell_add_text ,(parts s)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(none)
+  __unless__ none
+    (,()
+      __LList_uncons__ __print_exit_error__ parts ,(p more)
+      __LList_uncons__ __print_exit_error__ p ,(kind rest)
+      __String_equal__ kind "s" ,(test__) __if__ test__
+        (,()
+          __LList_uncons__ __print_exit_error__ rest ,(old x)
+          __String_concat__ old s ,(t)
+          __LList_cons__ t __NULL__ ,(q) __LList_cons__ "s" q ,(q)
+          __LList_cons__ q more ,(parts)
+          return parts) ,()) ,()
+  __LList_cons__ s __NULL__ ,(q) __LList_cons__ "s" q ,(q)
+  __LList_cons__ q parts)
+
+;; 前後の空白を除く（CommandError の command に出すテキスト）
+(define Conjs_shell_trim ,(s)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_indent s zero ,(i)
+  __String_length__ s ,(len)
+  __String_substring__ __print_exit_error__ s i len ,(s)
+  Conjs_shell_trim_end s)
+
+(define Conjs_shell_trim_end ,(s)
+  __Cont_get__ ,(return)
+  __String_length__ s ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ (,() return s) ,()
+  Conjs_shell_one ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ __print_exit_error__ s last len ,(c)
+  __String_equal__ c " " ,(sp) __String_equal__ c "\t" ,(tab) __or__ sp tab ,(ws)
+  __unless__ ws (,() return s) ,()
+  Conjs_shell_zero ,(zero)
+  __String_substring__ __print_exit_error__ s zero last ,(s)
+  Conjs_shell_trim_end s)
+
+;; ── ConJS のコードを作る（6 節、8 節、9 節）──
+;; 外部コマンド：{ let conjs_command_line; 出力の用意 conjs_command_line = conjs_sh_run([語...], 入力, 出力, "テキスト");
+;;   if (conjs_command_line !== undefined) throw conjs_command_line; }
+;; コマンド型関数：{ let conjs_command_line; 出力の用意 conjs_command_line = conjs_sh_begin(入力, 出力);
+;;   try { 名前([語...], conjs_command_line.input, conjs_command_line.output); } finally { conjs_sh_end(conjs_command_line); } }
+;; conjs_command_line と、conjs_sh_ で始まる名前は、プログラムで使わない
+;; 入力と出力は、変数の名前か false。出力の用意は、>$ なら 名前 = new Queue();、>>$ なら 名前 = new Queue(名前);
+;; 1 行のコード：{ let conjs_command_line; パイプ && や || のつながり if (conjs_command_line !== undefined) throw conjs_command_line; }
+;; conjs_command_line は、パイプの結果（undefined か、投げる Error）。&& の次は undefined のとき、|| の次は Error のときだけ
+;; 動かし、最後に動いたものの Error を投げる（段階 S3。シェルの set -e と同じく、途中の失敗は投げない）。|| が受けた
+;; Error は、標準エラーに出す（conjs_sh_report。18 節）
+(define Conjs_shell_gen ,(words shown n col)
+  __Cont_get__ ,(return)
+  Kit_code_quote shown ,(q)
+  Conjs_shell_split words "&& ||" __NULL__ "" __NULL__ ,(items)
+  Conjs_shell_gen_list items q n col "{ let conjs_command_line; " ,(code)
+  __String_concat__ code "if (conjs_command_line !== undefined) throw conjs_command_line; }")
+
+(define Conjs_shell_gen_list ,(items q n col code)
+  __Cont_get__ ,(return)
+  __is_null__ items ,(test__) __if__ test__ (,() return code) ,()
+  __LList_uncons__ __print_exit_error__ items ,(item rest)
+  __LList_uncons__ __print_exit_error__ item ,(op more)
+  __LList_uncons__ __print_exit_error__ more ,(seg x)
+  Conjs_shell_gen_pipe seg q n col ,(pc)
+  __String_equal__ op "" ,(first)
+  __String_equal__ op "&&" ,(andThen)
+  __if_then_else__ first
+    (,() __String_concat__ code pc)
+    (,()
+      ;; || が受けた誤りは、標準エラーに出す（conjs_sh_report。CommandError は、コマンドが自分で出すので出さない）
+      __if_then_else__ andThen (,() __NULL__ "===") (,() __NULL__ "!==") ,(cmp)
+      __if_then_else__ andThen (,() __NULL__ "") (,() __NULL__ "conjs_sh_report(conjs_command_line); ") ,(report)
+      __String_concat__ report pc ,(pc)
+      Kit_code_cat5 code "if (conjs_command_line " cmp " undefined) { " pc ,(c)
+      __String_concat__ c "} ") ,(code)
+  Conjs_shell_gen_list rest q n col code)
+
+;; 1 つのパイプ（| で分けた語）：conjs_command_line に結果を入れるコード
+(define Conjs_shell_gen_pipe ,(seg q n col)
+  __Cont_get__ ,(return)
+  Conjs_shell_split seg "|" __NULL__ "" __NULL__ ,(stages)
+  __LList_length__ stages ,(count)
+  Conjs_shell_one ,(one)
+  __Number_subtract__ count one ,(lastIndex)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_gen_stages stages zero lastIndex n col "" "false" "false" "" __NULL__ "" ,(scode input output setup single finish)
+  ;; <$ の変数は、出力の用意（>$ v の v = new Queue(); など）より先に読む：<$ n >$ n や <$ n >$ [...n] は、もとの n を
+  ;; 入力にして、出力を n に入れる（Bash の x=$(sort <<< "$x") と同じ。M1 のレビュー、shima3/conma#99）
+  __String_equal__ input "false" ,(noIn)
+  __if_then_else__ noIn
+    (,() __NULL__ setup input)
+    (,()
+      Kit_code_cat4 "const conjs_sh_in = " input "; " setup ,(setup)
+      __NULL__ setup "conjs_sh_in") ,(setup input)
+  __LList_uncons__ __print_exit_error__ single ,(fname more)
+  __LList_uncons__ __print_exit_error__ more ,(argv more)
+  __LList_uncons__ __print_exit_error__ more ,(err x)
+  __Number_is_zero__ lastIndex ,(one1)
+  __unless__ one1
+    (,()
+      Kit_code_cat5 setup "conjs_command_line = conjs_sh_pipe([" scode "], " input ,(c)
+      Kit_code_cat5 c ", " output ", " q ,(c)
+      Kit_code_cat3 c "); " finish ,(c)
+      return c) ,()
+  __is_null__ fname ,(external)
+  __if__ external
+    (,()
+      Kit_code_cat5 setup "conjs_command_line = conjs_sh_run(" argv ", " input ,(c)
+      Kit_code_cat5 c ", " output ", " q ,(c)
+      Kit_code_cat3 c ", " err ,(c)
+      Kit_code_cat3 c "); " finish ,(c)
+      return c) ,()
+  ;; コマンド型関数 1 つ：その行で呼ぶ（関数でない値の TypeError も、その行の位置になる）
+  ;; その例外は、パイプのときと同じく、この行の結果にする（Bash の関数の失敗と同じく、|| が受ける。M1 のレビュー、
+  ;; shima3/conma#97）
+  ;; conjs_sh_begin も try の中：ファイルを開けなければ、その行の失敗（|| が受ける）。そのとき conjs_sh_end は、出力のキューを閉じる
+  Kit_code_cat5 setup "{ let conjs_sh_c; try { conjs_sh_c = conjs_sh_begin(" input ", " output ,(c)
+  Kit_code_cat5 c "); " fname "(" argv ,(c)
+  Kit_code_cat3 c ", conjs_sh_c.input, conjs_sh_c.output); conjs_command_line = undefined; } catch (conjs_sh_e) { conjs_command_line = conjs_sh_e; } finally { conjs_sh_end(conjs_sh_c, " output ,(c)
+  Kit_code_cat3 c "); } } " finish)
+
+;; パイプのコマンドを順に：返すのは、段のコード（", " で区切る）、初めの段の入力、最後の段の出力、すべての出力の用意、
+;; 1 段だけのときに使う (関数の名前か null  引数の配列のコード  2>$ の変数か false)
+(define Conjs_shell_gen_stages ,(stages i lastIndex n col scode input output setup single finish)
+  __Cont_get__ ,(return)
+  __is_null__ stages ,(test__) __if__ test__ (,() return scode input output setup single finish) ,()
+  __LList_uncons__ __print_exit_error__ stages ,(item rest)
+  __LList_uncons__ __print_exit_error__ item ,(op more)
+  __LList_uncons__ __print_exit_error__ more ,(words x)
+  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
+  __LList_uncons__ __print_exit_error__ words ,(firstWord others)
+  Conjs_shell_check_dollar firstWord n col ,()
+  Conjs_shell_fn_name firstWord ,(fname)
+  __is_null__ fname ,(external)
+  __if_then_else__ external (,() __NULL__ words) (,() __NULL__ others) ,(args)
+  Conjs_shell_args args n col "" "false" "false" "false" "" finish ,(list in out err set finish)
+  __String_equal__ list "" ,(noArgs)
+  __and__ external noArgs ,(test__) __if__ test__ (,() Conjs_shell_error n col "no command") ,()
+  Conjs_shell_zero ,(zero)
+  __Number_subtract__ i zero ,(d0) __Number_is_zero__ d0 ,(isFirst)
+  __Number_subtract__ i lastIndex ,(dl) __Number_is_zero__ dl ,(isLast)
+  __String_equal__ in "false" ,(noIn)
+  __String_equal__ out "false" ,(noOut)
+  __String_equal__ err "false" ,(noErr)
+  __not__ noIn ,(hasIn) __not__ isFirst ,(notFirst) __and__ hasIn notFirst ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "<$ and < are only for the first command of a pipeline") ,()
+  __not__ noOut ,(hasOut) __not__ isLast ,(notLast) __and__ hasOut notLast ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col ">$, >>$, > and >> are only for the last command of a pipeline") ,()
+  __not__ noErr ,(hasErr) __not__ external ,(isFn) __and__ hasErr isFn ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "2>$, 2> and 2>> are only for external commands") ,()
+  __String_concat__ "[" list ,(arr) __String_concat__ arr "]" ,(arr)
+  __if_then_else__ external
+    (,() Kit_code_cat4 "{ args: " arr ", err: " err ,(s) __String_concat__ s " }")
+    (,() Kit_code_cat4 "{ f: " fname ", args: " arr ,(s) __String_concat__ s " }") ,(stageCode)
+  __String_equal__ scode "" ,(none)
+  __if_then_else__ none (,() __NULL__ stageCode) (,() Kit_code_cat3 scode ", " stageCode) ,(scode)
+  __if_then_else__ isFirst (,() __NULL__ in) (,() __NULL__ input) ,(input)
+  __if_then_else__ isLast (,() __NULL__ out) (,() __NULL__ output) ,(output)
+  __String_concat__ setup set ,(setup)
+  __LList_cons__ err __NULL__ ,(s1) __LList_cons__ arr s1 ,(s1) __LList_cons__ fname s1 ,(single)
+  Conjs_shell_one ,(one)
+  __Number_add__ i one ,(i)
+  Conjs_shell_gen_stages rest i lastIndex n col scode input output setup single finish)
+
+;; 語の記号（|、||、&&）。記号でなければ null
+(define Conjs_shell_op ,(w)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __is_null__ parts ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  __LList_uncons__ __print_exit_error__ p ,(kind r)
+  __String_equal__ kind "o" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ r ,(op x)
+  __NULL__ op)
+
+;; 語を、ops（空白で区切った記号）で分ける。返すのは (前の記号 語の LList) の LList（初めの記号は ""）。seg は今の語（逆順）
+(define Conjs_shell_split ,(words ops seg op acc)
+  __Cont_get__ ,(return)
+  __NULL__ (,() Kit_lex_reverse seg ,(s) __LList_cons__ s __NULL__ ,(item) __LList_cons__ op item ,(item) __LList_cons__ item acc) ,(push)
+  __is_null__ words ,(test__) __if__ test__ (,() push ,(acc) Kit_lex_reverse acc ,(items) return items) ,()
+  __LList_uncons__ __print_exit_error__ words ,(w rest)
+  Conjs_shell_op w ,(o)
+  __is_null__ o ,(test__) __if__ test__ (,() __LList_cons__ w seg ,(seg) Conjs_shell_split rest ops seg op acc ,(r) return r) ,()
+  Kit_lex_in_words o ops ,(isSplit)
+  __if__ isSplit (,() push ,(acc) Conjs_shell_split rest ops __NULL__ o acc ,(r) return r) ,()
+  __LList_cons__ w seg ,(seg)
+  Conjs_shell_split rest ops seg op acc)
+
+;; 引用符なしの初めの語が $ で始まるのに、$ の後が変数の名前でなければ（$fs.readLines、$ だけ）、その行の SyntaxError
+;; （黙って外部コマンドにしない。ユーザーの決めたこと、2026-11-27）
+(define Conjs_shell_check_dollar ,(w n col)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __LList_uncons__ __print_exit_error__ more ,(quoted x)
+  __if__ quoted return ,()
+  ;; 初めの部分が、$ で始まる文字か（$fn${s} のように、後に ${...} が続く語も。M1 のレビュー、shima3/conma#98）
+  __is_null__ parts ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  __LList_uncons__ __print_exit_error__ p ,(kind pr)
+  __String_equal__ kind "s" ,(test__) __unless__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ pr ,(s y)
+  Conjs_shell_zero ,(zero) Conjs_shell_one ,(one)
+  __String_length__ s ,(len)
+  __Number_is_zero__ len ,(test__) __if__ test__ return ,()
+  __String_substring__ __print_exit_error__ s zero one ,(c)
+  __String_equal__ c "$" ,(test__) __unless__ test__ return ,()
+  __String_substring__ __print_exit_error__ s one len ,(name)
+  Conjs_shell_is_name name ,(ok)
+  __is_null__ rest ,(single)
+  __and__ ok single ,(test__) __if__ test__ return ,()
+  __if_then_else__ single (,() __NULL__ s) (,() __String_concat__ s "${...}") ,(shown)
+  __String_concat__ shown ": a command function is $ and the name of a variable" ,(m)
+  Conjs_shell_error n col m)
+
+;; 初めの語が $名前（引用符なし）なら、その名前（コマンド型関数。D3）。そうでなければ null
+(define Conjs_shell_fn_name ,(w)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __LList_uncons__ __print_exit_error__ more ,(quoted x)
+  __if__ quoted (,() return __NULL__) ,()
+  Conjs_shell_plain parts ,(s)
+  __is_null__ s ,(test__) __if__ test__ (,() return __NULL__) ,()
+  Conjs_shell_zero ,(zero) Conjs_shell_one ,(one)
+  __String_length__ s ,(len)
+  __Number_if_greater__ one len (,() return __NULL__) ,()
+  __String_substring__ __print_exit_error__ s zero one ,(c)
+  __String_equal__ c "$" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __String_substring__ __print_exit_error__ s one len ,(name)
+  Conjs_shell_is_name name ,(ok)
+  __unless__ ok (,() return __NULL__) ,()
+  __NULL__ name)
+
+;; 文字だけの語（部分が "s" の 1 つ）の文字。そうでなければ null
+(define Conjs_shell_plain ,(parts)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() return "") ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p more)
+  __is_null__ more ,(one)
+  __unless__ one (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ p ,(kind rest)
+  __String_equal__ kind "s" ,(test__) __unless__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ rest ,(s x)
+  __NULL__ s)
+
+;; 引数の語と、リダイレクト。返すのは、引数のコード（", " で区切る）、入力、出力、出力の用意
+(define Conjs_shell_args ,(words n col list input output err setup finish)
+  __Cont_get__ ,(return)
+  __is_null__ words ,(test__) __if__ test__ (,() return list input output err setup finish) ,()
+  __LList_uncons__ __print_exit_error__ words ,(w rest)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __LList_uncons__ __print_exit_error__ more ,(quoted x)
+  Conjs_shell_plain parts ,(plain)
+  __is_null__ plain ,(notPlain)
+  __if_then_else__ notPlain (,() __NULL__ "") (,() __NULL__ plain) ,(plain)
+  __String_equal__ plain "<$" ,(isIn) __String_equal__ plain ">$" ,(isOut) __String_equal__ plain ">>$" ,(isAppend)
+  __String_equal__ plain "2>$" ,(isErr)
+  __or__ isIn isOut ,(isRedir) __or__ isRedir isAppend ,(isRedir) __or__ isRedir isErr ,(isRedir)
+  __not__ quoted ,(unq)
+  __and__ isRedir unq ,(isRedir)
+  ;; ファイルへのリダイレクト（2026-11-28 から。Bash と同じ < > >> 2> 2>>）：次の語がファイルの名前。入力、出力、標準エラーは
+  ;; { conjs_sh_file: 名前, append: 真偽 } になり、外部コマンドならホストが開いてコマンドに渡し（vm/wasm/host/shell.js）、
+  ;; コマンド型関数なら fs.open で読み書きする（conjs_sh_begin）
+  __String_equal__ plain "<" ,(isFIn) __String_equal__ plain ">" ,(isFOut) __String_equal__ plain ">>" ,(isFApp)
+  __String_equal__ plain "2>" ,(isFErr) __String_equal__ plain "2>>" ,(isFErrApp)
+  __or__ isFIn isFOut ,(isF) __or__ isF isFApp ,(isF) __or__ isF isFErr ,(isF) __or__ isF isFErrApp ,(isF)
+  __and__ isF unq ,(isF)
+  __if__ isF
+    (,()
+      __is_null__ rest ,(test__) __if__ test__ (,() Kit_code_cat3 plain " needs the name of a file" "" ,(m) Conjs_shell_error n col m) ,()
+      __LList_uncons__ __print_exit_error__ rest ,(fw rest)
+      __LList_uncons__ __print_exit_error__ fw ,(fparts fmore)
+      __LList_uncons__ __print_exit_error__ fmore ,(fquoted x)
+      Conjs_shell_plain fparts ,(fplain)
+      ;; ${f} などの語は、文字だけの語でない（plain が null）：名前があるとする
+      __is_null__ fplain ,(notPlain)
+      __if_then_else__ notPlain (,() __NULL__ "x") (,() __NULL__ fplain) ,(fplain)
+      __not__ fquoted ,(funq)
+      Conjs_shell_zero ,(zero)
+      __String_find_any__ __print_exit_error__ fplain "<>" zero ,(lt) __is_null__ lt ,(test__) __not__ test__ ,(isOp)
+      __String_equal__ fplain "" ,(emptyName) __and__ emptyName funq ,(emptyName)
+      __and__ isOp funq ,(isOp) __or__ isOp emptyName ,(test__)
+      __if__ test__ (,() Kit_code_cat3 plain " needs the name of a file" "" ,(m) Conjs_shell_error n col m) ,()
+      Conjs_shell_word_code fparts ,(fcode)
+      __or__ isFApp isFErrApp ,(app)
+      __if_then_else__ app (,() __NULL__ "true") (,() __NULL__ "false") ,(appCode)
+      Kit_code_cat5 "{ conjs_sh_file: " fcode ", append: " appCode " }" ,(spec)
+      __if__ isFIn
+        (,()
+          __String_equal__ input "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one <$ or <") ,()
+          Conjs_shell_args rest n col list spec output err setup finish ,(a b c d e f) return a b c d e f) ,()
+      __or__ isFErr isFErrApp ,(toErr)
+      __if__ toErr
+        (,()
+          __String_equal__ err "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one 2>$, 2> or 2>>") ,()
+          Conjs_shell_args rest n col list input output spec setup finish ,(a b c d e f) return a b c d e f) ,()
+      __String_equal__ output "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one >$, >>$, > or >>") ,()
+      Conjs_shell_args rest n col list input spec err setup finish ,(a b c d e f) return a b c d e f) ,()
+  __if__ isRedir
+    (,()
+      __is_null__ rest ,(test__) __if__ test__ (,() Kit_code_cat3 plain " needs the name of a variable" "" ,(m) Conjs_shell_error n col m) ,()
+      __LList_uncons__ __print_exit_error__ rest ,(nw rest2)
+      __LList_uncons__ __print_exit_error__ nw ,(nparts nmore)
+      __LList_uncons__ __print_exit_error__ nmore ,(nquoted x)
+      Conjs_shell_plain nparts ,(name)
+      __is_null__ name ,(test__) __if_then_else__ test__ (,() __NULL__ "") (,() __NULL__ name) ,(name)
+      ;; >$ [a, b, ...r] と 2>$ [...]：コマンドが終わったら、行の配列を分割代入する（20 節）。行の間は、形の初めの名前に
+      ;; キューを入れ、後で [a, b, ...r] = [...a]; とする（右辺を先に読むので、一時の名前は要らない）
+      Conjs_shell_zero ,(zero) Conjs_shell_one ,(one)
+      __String_length__ name ,(nlen) __Number_is_zero__ nlen ,(empty)
+      __if_then_else__ empty (,() __NULL__ "") (,() __String_substring__ __print_exit_error__ name zero one) ,(c0)
+      __String_equal__ c0 "[" ,(isPat) __not__ nquoted ,(nunq) __and__ isPat nunq ,(isPat)
+      ;; <$ [a, b, ...r]：入力は、配列 [a, b, ...r] の要素（空の所は書けない。2026-11-28 から）
+      __or__ isOut isErr ,(canPat) __or__ canPat isIn ,(canPat) __and__ isPat canPat ,(isPat)
+      __if_then_else__ isPat
+        (,()
+          Conjs_shell_pattern_words rest "" n col ,(text rest)
+          __not__ isIn ,(holes)
+          Conjs_shell_pattern text holes n col ,(code first)
+          __if_then_else__ isIn
+            (,() __NULL__ code rest finish)
+            (,()
+              Kit_code_cat5 finish code " = [..." first "]; " ,(finish)
+              __NULL__ first rest finish))
+        (,()
+          Conjs_shell_is_name name ,(ok)
+          __unless__ ok (,() Kit_code_cat3 plain " needs the name of a variable, not " name ,(m) Conjs_shell_error n col m) ,()
+          __NULL__ name rest2 finish) ,(name rest finish)
+      __if__ isIn
+        (,()
+          __String_equal__ input "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one <$ or <") ,()
+          Conjs_shell_args rest n col list name output err setup finish ,(a b c d e f) return a b c d e f) ,()
+      ;; 2>$：標準エラーの行を、新しいキューに（段階 S3）
+      __if__ isErr
+        (,()
+          __String_equal__ err "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one 2>$, 2> or 2>>") ,()
+          Kit_code_cat3 setup name " = new Queue(); " ,(setup)
+          Conjs_shell_args rest n col list input output name setup finish ,(a b c d e f) return a b c d e f) ,()
+      __String_equal__ output "false" ,(free) __unless__ free (,() Conjs_shell_error n col "more than one >$, >>$, > or >>") ,()
+      __if_then_else__ isOut
+        (,() Kit_code_cat3 setup name " = new Queue(); ")
+        (,() Kit_code_cat5 setup name " = new Queue(" name "); ") ,(setup)
+      Conjs_shell_args rest n col list input name err setup finish ,(a b c d e f)
+      return a b c d e f) ,()
+  ;; 引用符の外の < と > は、リダイレクトの語（それだけで 1 つの語）のほかは誤り（2>&1 は、& の誤りになる）
+  __unless__ quoted
+    (,()
+      Conjs_shell_zero ,(zero)
+      __String_find_any__ __print_exit_error__ plain "<>" zero ,(lt)
+      __is_null__ lt ,(test__) __unless__ test__
+        (,()
+          __String_concat__ plain ": a redirection is a word of its own (<, >, >>, 2>, 2>>, <$, >$, >>$, 2>$): write a space after it" ,(m) Conjs_shell_error n col m) ,()) ,()
+  Conjs_shell_word_code parts ,(code)
+  __String_equal__ list "" ,(firstArg)
+  __if_then_else__ firstArg (,() __NULL__ code) (,() Kit_code_cat3 list ", " code) ,(list)
+  Conjs_shell_args rest n col list input output err setup finish)
+
+;; <$、>$、2>$ の後の [ から ] まで（空白で分かれた語をつなぐ）：返すのは、その文字と、残りの語
+(define Conjs_shell_pattern_words ,(words text n col)
+  __Cont_get__ ,(return)
+  __is_null__ words ,(test__) __if__ test__ (,() Conjs_shell_error n col "[ without ]") ,()
+  __LList_uncons__ __print_exit_error__ words ,(w rest)
+  __LList_uncons__ __print_exit_error__ w ,(parts more)
+  __LList_uncons__ __print_exit_error__ more ,(quoted x)
+  Conjs_shell_plain parts ,(plain)
+  __is_null__ plain ,(bad) __or__ bad quoted ,(bad)
+  __if__ bad (,() Conjs_shell_error n col "a pattern in brackets has names, commas and ... only") ,()
+  __String_equal__ text "" ,(first)
+  __if_then_else__ first (,() __NULL__ plain) (,() Kit_code_cat3 text " " plain) ,(text)
+  __String_length__ plain ,(len)
+  Conjs_shell_one ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ __print_exit_error__ plain last len ,(c)
+  __String_equal__ c "]" ,(done)
+  __if__ done (,() return text rest) ,()
+  Conjs_shell_pattern_words rest text n col)
+
+;; [a, , b, ...r] を確かめる：要素は、名前か ...名前。holes が真（>$ と 2>$ の分割代入）なら、空の所も書け、... は最後だけ。
+;; 偽（<$ の配列）なら、空の所は書けず、... はどこにでも。返すのは、ConJS のコードと、初めの名前
+(define Conjs_shell_pattern ,(text holes n col)
+  __Cont_get__ ,(return)
+  __String_length__ text ,(len)
+  Conjs_shell_one ,(one)
+  __Number_subtract__ len one ,(last)
+  __String_substring__ __print_exit_error__ text one last ,(inner)
+  ;; [] は、空の所でなく、名前がない（M1 のレビュー、shima3/conma#100）
+  Conjs_shell_trim inner ,(t) __String_equal__ t "" ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
+  Conjs_shell_pattern_items inner holes n col __NULL__ __NULL__ ,(code first)
+  __is_null__ first ,(test__) __if__ test__ (,() Conjs_shell_error n col "a pattern in brackets needs a name") ,()
+  Kit_code_cat3 "[" code "]" ,(code)
+  __NULL__ code first)
+
+(define Conjs_shell_pattern_items ,(inner holes n col code first)
+  ;; code は、まだ要素がなければ null（初めの要素が穴の空文字でも、区切りを落とさない）
+  __Cont_get__ ,(return)
+  Conjs_shell_zero ,(zero)
+  Conjs_shell_one ,(one)
+  __String_length__ inner ,(len)
+  __String_find_any__ __print_exit_error__ inner "," zero ,(comma)
+  __is_null__ comma ,(isLast)
+  __if_then_else__ isLast (,() __NULL__ len) (,() __NULL__ comma) ,(end)
+  __String_substring__ __print_exit_error__ inner zero end ,(item)
+  Conjs_shell_trim item ,(item)
+  __String_length__ item ,(ilen)
+  __Number_is_zero__ ilen ,(hole)
+  __String_find__ __print_exit_error__ item "..." zero ,(dots)
+  __is_null__ dots ,(test__) __not__ test__ ,(hasDots)
+  __if_then_else__ hasDots
+    (,()
+      Conjs_shell_zero ,(z) __Number_subtract__ dots z ,(d) __Number_is_zero__ d ,(atStart)
+      __unless__ atStart (,() Conjs_shell_error n col "a pattern in brackets has names, commas and ... only") ,()
+      ;; 分割代入（>$ と 2>$）では、... は最後だけ。<$ の配列では、どこにでも書ける
+      __not__ isLast ,(notLast) __and__ holes notLast ,(test__)
+      __if__ test__ (,() Conjs_shell_error n col "... is only for the last name of a pattern of >$ and 2>$") ,()
+      Conjs_shell_three ,(three)
+      __String_substring__ __print_exit_error__ item three ilen)
+    (,() __NULL__ item) ,(name)
+  __not__ holes ,(noHoles) __and__ hole noHoles ,(test__)
+  __if__ test__ (,() Conjs_shell_error n col "an empty place in brackets is only for >$ and 2>$") ,()
+  __unless__ hole
+    (,()
+      Conjs_shell_is_name name ,(ok)
+      __unless__ ok (,() Kit_code_cat3 "a pattern in brackets has names, commas and ... only, not " item "" ,(m) Conjs_shell_error n col m) ,()) ,()
+  __is_null__ first ,(noFirst) __not__ hole ,(isName) __and__ noFirst isName ,(take)
+  __if_then_else__ take (,() __NULL__ name) (,() __NULL__ first) ,(first)
+  __is_null__ code ,(none)
+  __if_then_else__ none (,() __NULL__ item) (,() Kit_code_cat3 code ", " item) ,(code)
+  __if__ isLast (,() return code first) ,()
+  __Number_add__ comma one ,(next)
+  __String_substring__ __print_exit_error__ inner next len ,(inner)
+  Conjs_shell_pattern_items inner holes n col code first)
+
+;; 語のコード："文字"、String(名前)、または [..].join("")（4 節：値は String(x) と同じく文字列にする。D2）
+(define Conjs_shell_word_code ,(parts)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() return "\"\"") ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p more)
+  __is_null__ more ,(single)
+  __if__ single (,() Conjs_shell_part_code p ,(c) return c) ,()
+  Conjs_shell_parts_code parts "" ,(inner)
+  Kit_code_cat3 "[" inner "].join(\"\")")
+
+(define Conjs_shell_parts_code ,(parts acc)
+  __Cont_get__ ,(return)
+  __is_null__ parts ,(test__) __if__ test__ (,() return acc) ,()
+  __LList_uncons__ __print_exit_error__ parts ,(p rest)
+  Conjs_shell_part_code p ,(c)
+  __String_equal__ acc "" ,(first)
+  __if_then_else__ first (,() __NULL__ c) (,() Kit_code_cat3 acc ", " c) ,(acc)
+  Conjs_shell_parts_code rest acc)
+
+(define Conjs_shell_part_code ,(p)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ p ,(kind rest)
+  __LList_uncons__ __print_exit_error__ rest ,(s x)
+  __String_equal__ kind "s" ,(test__) __if__ test__ (,() Kit_code_quote s ,(q) return q) ,()
+  Kit_code_cat3 "String(" s ")")
+
+;; ── ファイルの終わりに足す関数（ConJS）──
+(define Conjs_shell_prelude ,()
+  __String_join_lines__
+    "// the command lines of this file (conjs/include/conjs_shell.se)"
+    "// The input of a command: false (the standard input), an array or an object of the host as it is, else"
+    "// (a generator of the VM) a Queue that a task fills, waiting while 64 are in it and stopping when the"
+    "// queue is closed (M1's review of shima3/conma#96)"
+    "function conjs_sh_input(input) {"
+    "  if (input === false || conjs_sh_direct(input) || conjs_sh_isfile(input)) return input;"
+    "  const src = input;"
+    "  const q = new Queue();"
+    "  spawn(() => {"
+    "    try {"
+    "      for (const x of src) {"
+    "        if (q.closed) break;"
+    "        q.push(x);"
+    "        q.room();"
+    "      }"
+    "    } finally {"
+    "      q.close();"
+    "    }"
+    "  });"
+    "  return q;"
+    "}"
+    "// An error that the line does not throw (one that || takes, or one before the last command of a pipeline) goes"
+    "// to the standard error, as Bash writes \"command not found\" and a function writes its own; a CommandError"
+    "// does not, since its command has written to the standard error itself (section 18)"
+    "// A file of < > >> 2> 2>> (an object that the line makes), and closing a Queue that is not one"
+    "function conjs_sh_isfile(x) {"
+    "  return typeof x === \"object\" && x !== null && !conjs_sh_direct(x) && x.conjs_sh_file !== undefined;"
+    "}"
+    "function conjs_sh_close(q) {"
+    "  if (q !== false && q !== undefined && !conjs_sh_isfile(q)) q.close();"
+    "}"
+    "function conjs_sh_report(e) {"
+    "  if (e instanceof Error && e.name === \"CommandError\") return;"
+    "  conjs_sh_stderr(e instanceof Error ? (e.name === \"Error\" ? e.message : `${e.name}: ${e.message}`) : String(e));"
+    "}"
+    "function conjs_sh_error(r, cmd) {"
+    "  if (r.status === 0) return undefined;"
+    "  const e = new Error(r.signal ? `Command killed by ${r.signal}: ${cmd}` : `Command failed with exit status ${r.status}: ${cmd}`);"
+    "  e.name = \"CommandError\";"
+    "  e.status = r.status;"
+    "  e.signal = r.signal;"
+    "  e.command = cmd;"
+    "  return e;"
+    "}"
+    "function conjs_sh_run(argv, input, output, cmd, err) {"
+    "  const inq = conjs_sh_input(input);"
+    "  let r;"
+    "  try {"
+    "    r = host.wait(\"conma.sh.run\", argv, inq, output, [err]);"
+    "  } catch (e) {"
+    "    conjs_sh_close(output);"
+    "    conjs_sh_close(err);"
+    "    return e;"
+    "  } finally {"
+    "    if (inq !== input) inq.close();"
+    "  }"
+    "  return conjs_sh_error(r, cmd);"
+    "}"
+    "// A pipeline (stage S3): the external commands next to each other run as one pipeline of the OS; a"
+    "// command function and what is next to it are joined by a Queue with a limit of 64. Each group runs in a"
+    "// task; when a group ends, the queue it read from is abandoned, so that the one before it stops (a push"
+    "// throw, or the command gets SIGPIPE). The result is that of the last group, as in Bash without pipefail; an"
+    "// Error of a group before it (a command that cannot start, an exception of a function) is reported, not thrown."
+    "function conjs_sh_pipe(stages, input, output, cmd) {"
+    "  const groups = [];"
+    "  for (const s of stages) {"
+    "    const last = groups.length > 0 ? groups[groups.length - 1] : undefined;"
+    "    if (s.f === undefined && last !== undefined && last.f === undefined) {"
+    "      last.argvs.push(s.args);"
+    "      last.errs.push(s.err);"
+    "    } else if (s.f === undefined) {"
+    "      groups.push({ f: undefined, argvs: [s.args], errs: [s.err] });"
+    "    } else {"
+    "      groups.push(s);"
+    "    }"
+    "  }"
+    "  const first = conjs_sh_input(input);"
+    "  let inq = first;"
+    "  const tasks = [];"
+    "  for (let i = 0; i < groups.length; i++) {"
+    "    const g = groups[i];"
+    "    const out = i === groups.length - 1 ? output : new Queue(undefined, 64);"
+    "    const inp = inq;"
+    "    const between = i > 0;"
+    "    tasks.push(spawn(() => {"
+    "      try {"
+    "        if (g.f === undefined) return { r: host.wait(\"conma.sh.run\", g.argvs, inp, out, g.errs) };"
+    "        const c = conjs_sh_begin(inp, out);"
+    "        try {"
+    "          g.f(g.args, c.input, c.output);"
+    "        } finally {"
+    "          conjs_sh_end(c);"
+    "        }"
+    "        return { r: undefined };"
+    "      } catch (e) {"
+    "        conjs_sh_close(out);"
+    "        for (const q of g.errs || []) conjs_sh_close(q);"
+    "        // the reader after it has gone: as a command that gets SIGPIPE, not an error of the line"
+    "        if (e instanceof Error && e.message === \"Queue: the reader has gone\") return { r: undefined };"
+    "        return { e: e };"
+    "      } finally {"
+    "        if (between) inp.abandon();"
+    "      }"
+    "    }));"
+    "    inq = out;"
+    "  }"
+    "  const results = [];"
+    "  for (const t of tasks) results.push(join(t));"
+    "  if (first !== input) first.close();"
+    "  // as Bash without pipefail: the result is that of the last group; an error before it is reported, not thrown"
+    "  for (let i = 0; i < results.length - 1; i++) if (results[i].e !== undefined) conjs_sh_report(results[i].e);"
+    "  const last = results[results.length - 1];"
+    "  if (last.e !== undefined) return last.e;"
+    "  return last.r === undefined ? undefined : conjs_sh_error(last.r, cmd);"
+    "}"
+    "// A command function: its input (the lines of the standard input or of a file, or the iterable of <$) and its"
+    "// output (a Queue whose elements a task prints or writes to a file, one a line, or the Queue of >$)"
+    "function conjs_sh_begin(input, output) {"
+    "  // the files in the order of the line, as Bash opens them, before any task starts; the input file is closed"
+    "  // when the output cannot be opened (M1's review of shima3/conma#102)"
+    "  const inFile = conjs_sh_isfile(input) ? conjs_sh_open(input.conjs_sh_file, \"r\") : undefined;"
+    "  let f;"
+    "  if (conjs_sh_isfile(output)) {"
+    "    try {"
+    "      f = conjs_sh_open(output.conjs_sh_file, output.append ? \"a\" : \"w\");"
+    "    } catch (e) {"
+    "      if (inFile !== undefined) inFile.close();"
+    "      throw e;"
+    "    }"
+    "  }"
+    "  const inp = inFile !== undefined ? inFile.readLines() : input === false ? fs.stdin.readLines() : input;"
+    "  if (output !== false && f === undefined) return { input: inp, output: output, task: undefined };"
+    "  let task;"
+    "  const out = new Queue();"
+    "  if (output === false) {"
+    "    task = spawn(() => { for (const x of out) console.log(String(x)); });"
+    "  } else {"
+    "    task = spawn(() => {"
+    "      try {"
+    "        for (const x of out) f.write(`${String(x)}\\n`);"
+    "      } finally {"
+    "        f.close();"
+    "      }"
+    "    });"
+    "  }"
+    "  return { input: inp, output: out, task: task };"
+    "}"
+    "// fs.open, with the message of Bash for a file that cannot be opened"
+    "function conjs_sh_open(path, mode) {"
+    "  try {"
+    "    return fs.open(path, mode);"
+    "  } catch (e) {"
+    "    const m = e instanceof Error ? e.message : String(e);"
+    "    for (const why of [\"No such file or directory\", \"Permission denied\", \"Is a directory\", \"Not a directory\"]) {"
+    "      if (m.indexOf(why) >= 0) throw new Error(`${path}: ${why}`);"
+    "    }"
+    "    throw new Error(`${path}: ${m}`);"
+    "  }"
+    "}"
+    "// c is undefined when conjs_sh_begin threw: then close the Queue of >$, so that its readers end"
+    "function conjs_sh_end(c, output) {"
+    "  if (c === undefined) {"
+    "    conjs_sh_close(output);"
+    "    return;"
+    "  }"
+    "  c.output.close();"
+    "  if (c.task !== undefined) join(c.task);"
+    "}")
+
+;; Gen_conjs_program：コマンド行か new Queue があれば、プログラムの始めに、ホストの JavaScript があるかを確かめる（D15）
+(define Conjs_shell_code ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "conjs_shell_at" (,(k) __NULL__ __NULL__) ,(at)
+  __is_null__ at ,(test__) __if__ test__ (,() return "") ,()
+  Kit_code_quote at ,(q)
+  Kit_code_cat3 "\tConjs_shell_check " q " ,() ")

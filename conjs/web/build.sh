@@ -1,5 +1,5 @@
 #!/bin/bash
-# ConJS のブラウザの見本のページ（canvas.html と stars.html）に要るファイルを、ここに置く：wasm 版の VM（vm/wasm/build.sh で
+# ConJS のブラウザの見本のページ（canvas.html、stars.html、bench.html）に要るファイルを、ここに置く：wasm 版の VM（vm/wasm/build.sh で
 # ビルドする）とホストの conma.js、canvas と入力のホストの関数（vm/wasm/host の canvas.js と input.js）、見本の ConJS の
 # プログラム（canvas_demo.con.js。docs/dev/PLATFORM-PLAN-ja.md の 4.2 節、段階 P3b。stars.con.js。4.6 節、段階 P5c。端末用は conjs/examples/stars-term.con.js）を
 # 変換したモジュール（canvas_demo_conjs.module.se、stars_conjs.module.se。変換に Rust 版の VM を使う）。
@@ -22,4 +22,14 @@ for name in canvas_demo stars; do
   "$root/bin/includer" --include "$root/conjs/include" --include "$root/sjs/include" --include "$root/include/ext" \
     --include "$root/include" "$tmp/${name}_conjs.se" \
     | sed -e "s|\"$root/|\"conma/|g" -e "s|\"$tmp/|\"|g" | CONMA_EXT=1 "$root/bin/resolver" > "$web/${name}_conjs.module.se"
+done
+# bench.html（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：conjs/bench のプログラムのうち、ファイル、入力、引数の要らない
+# ものを、N_ARG を Number(argv[0]) にして変換し、bench_NAME_conjs.module.se にする。ページが、大きさを引数で渡して、ホストの
+# 関数ありとなしで動かす（N_ARG は、どのプログラムでも一番外に 1 か所だけなので、ホストで動く所は変わらない）
+for name in strings dict hof json exceptions tasks nbody_class; do
+  sed 's/N_ARG/Number(argv[0])/' "$root/conjs/bench/$name.con.js" > "$tmp/bench_$name.con.js"
+  "$root/conjs/conjs" --emit "$tmp/bench_$name.con.js" > "$tmp/bench_${name}_conjs.se"
+  "$root/bin/includer" --include "$root/conjs/include" --include "$root/sjs/include" --include "$root/include/ext" \
+    --include "$root/include" "$tmp/bench_${name}_conjs.se" \
+    | sed -e "s|\"$root/|\"conma/|g" -e "s|\"$tmp/|\"|g" | CONMA_EXT=1 "$root/bin/resolver" > "$web/bench_${name}_conjs.module.se"
 done

@@ -19,8 +19,10 @@ const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
 const os = require("os");
+const tty = require("tty");
 const ConMaVM = require("./conma.js");
 const { serverHost } = require("./host/server.js");
+const { shellHost } = require("./host/shell.js");
 
 const argv = process.argv.slice(2);
 const wasmFile = path.join(__dirname, "target/wasm32-unknown-unknown/release/conma_wasm.wasm");
@@ -36,6 +38,33 @@ function retry(f) {
       Atomics.wait(sleeper, 0, 0, 5);
     }
   }
+}
+
+// The names that the async functions of a ConJS file get from the host (section 34 of
+// docs/dev/CONJS-HOST-PLAN.md; rt.asyncScope of conma.js): require from that file (file is its absolute
+// path), and a console whose log, info and debug write to the standard output, and error, warn and trace
+// to the standard error, with writeAll as the VM writes, so that their lines keep their order with
+// what the program prints (the console of Node.js writes to a pipe asynchronously on macOS and Windows).
+// The arguments are formatted as console.log formats them (util.format): the body is JavaScript.
+let asyncConsole = null;
+function asyncScope(file) {
+  if (!asyncConsole) {
+    const util = require("util");
+    const writer = (fd) => (...a) => writeAll(fd, Buffer.from(util.format(...a) + "\n"));
+    asyncConsole = Object.assign(Object.create(console), {
+      log: writer(1),
+      info: writer(1),
+      debug: writer(1),
+      error: writer(2),
+      warn: writer(2),
+      trace: (...a) => {
+        const e = new Error(util.format(...a));
+        e.name = "Trace";
+        writeAll(2, Buffer.from(e.stack + "\n"));
+      },
+    });
+  }
+  return { require: require("module").createRequire(file), console: asyncConsole };
 }
 
 function writeAll(fd, bytes) {
@@ -217,11 +246,43 @@ function notify() {
 
 // Standard input read without blocking the loop, while a VProc waits for it.
 let reading = false;
+// A terminal is read through a tty.ReadStream, not fs.read (2026-11-25): fs.read waits in a thread of
+// libuv's pool, and process.exit joins those threads, so a program that ended while the read waited
+// for a key did not end until the next key (stars-term.con.js after Escape, PLATFORM-PLAN 4.13 5).
+// libuv reads a terminal without a thread. Not on Windows, where it has not been tried.
+let ttyIn = null;
+function readTtyAsync(vm) {
+  if (!ttyIn) {
+    ttyIn = new tty.ReadStream(0);
+    ttyIn.pause();
+    const done = (bytes) => {
+      if (!reading) {
+        if (bytes) ttyIn.unshift(bytes); // keep it for the next read
+        return;
+      }
+      reading = false;
+      ttyIn.pause();
+      if (bytes && bytes.length > 0) {
+        vm.input(new Uint8Array(bytes));
+      } else {
+        vm.inputEnd();
+        inputEnded = true;
+      }
+      notify();
+    };
+    ttyIn.on("data", (bytes) => done(bytes));
+    ttyIn.on("end", () => done(null));
+    ttyIn.on("error", () => done(null));
+  }
+  reading = true;
+  ttyIn.resume();
+}
 // The VM traps SIGINT (__OS_trap_interrupt__): the run loop lets events come now and then even
 // when nothing outside the VM runs, so that the handler gets Ctrl-C during a long computation
 let sigintTrapped = false;
 function readInputAsync(vm) {
   if (reading || inputEnded) return;
+  if (!windows && tty.isatty(0)) return readTtyAsync(vm);
   reading = true;
   fs.read(0, inbuf, 0, inbuf.length, null, (e, n) => {
     reading = false;
@@ -561,13 +622,15 @@ async function main() {
   // The network server of Node.js (host/server.js, feature "server"; stage P6b), then those of CONMA_HOST
   const server = serverHost();
   vm = ConMaVM.create(wasm, writeAll, {
-    hostFunctions: Object.assign({}, server.hostFunctions, host.hostFunctions || {}),
+    // The external commands of the command lines of ConJS (host/shell.js; docs/dev/CONJS-SHELL-PLAN.md, section 9)
+    hostFunctions: Object.assign({}, server.hostFunctions, shellHost().hostFunctions, host.hostFunctions || {}),
     hostFeatures: server.hostFeatures.concat(Array.isArray(host.hostFeatures) ? host.hostFeatures : []),
     inputNeeded: readInput,
     jsDone: notify,
     hostFs,
     hostProc: makeHostProc(() => vm),
     buildModule: (source, cwd, core) => buildModule(wasm, source, cwd, core),
+    asyncScope,
     // As the native VM: SIGINT ends this process until the VM traps it.
     trapInterrupt: (v) => {
       if (process.listenerCount("SIGINT") > 0) return;

@@ -1,2 +1,10 @@
-case2.con.js:83:18: Error: http.listen: this platform has no server (Node.js only)
-exit: 2
+/count -> 200 1
+/count -> 200 2
+/slow -> 200 slow
+/file?name=counter_demo.txt -> 200 3 lines
+/file?name=../counter_demo.txt -> 400 bad name
+/file?name=missing.txt -> 404 no such file
+/nothing -> 404 not found
+/stop -> 200 bye
+stopped
+exit: 0

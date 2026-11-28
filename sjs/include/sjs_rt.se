@@ -125,6 +125,10 @@
   __PDict_lookup_or__ "sjs_pos" (,(k) __NULL__ __NULL__) ,(pos)
   Sjs_is_conjs ,(conjs)
   __if_then_else__ conjs (,() __NULL__ "conjs: ") (,() __NULL__ "sjs: ") ,(prefix)
+  ;; ConJS の async 関数の本体を変換している間（conjs/include/conjs_async.se。docs/dev/CONJS-HOST-PLAN.md の 34 節）は、
+  ;; 変換器がまだ読めないものだと分かるメッセージにする
+  __PDict_lookup_or__ "sjs_js_body" (,(k) __NULL__ __FALSE__) ,(jsBody)
+  __if_then_else__ jsBody (,() Conjs_async_message text) (,() __NULL__ text) ,(text)
   Kit_err_report pos prefix text)
 
 ;; ── 例外 ──
@@ -216,6 +220,8 @@
   __String_equal__ type "Closure" ,(test__) __if__ test__ (,() return "boolean") ,()
   __String_equal__ type "null" ,(test__) __if__ test__ (,() return "undefined") ,()
   __String_equal__ type "Ref" ,(test__) __if__ test__ (,() return "null") ,()
+  ;; ホストのオブジェクト（wasm 版の VM。段階 S0b、下の「ホストのオブジェクト」）
+  __String_equal__ type "HostObject" ,(test__) __if__ test__ (,() return "host") ,()
   __String_concat__ "an unknown value: " type ,(msg)
   Sjs_type_error msg)
 
@@ -230,6 +236,7 @@
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "object") ,()
   ;; ConJS の処理（conjs/include/conjs_rt.se）
   __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "object") ,()
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() return "object") ,()
   __NULL__ kind)
 
 (define Sjs_is_number ,(v)
@@ -292,6 +299,7 @@
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "an async generator") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "a promise") ,()
   __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "a task") ,()
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() return "an object of the host") ,()
   Sjs_to_string v ,(s)
   __String_concat__ "the " kind ,(a)
   __String_concat__ a " " ,(a)
@@ -611,6 +619,9 @@
       __Number_toString__ b ,(sb)
       __String_equal__ sa sb ,(t)
       return t) ,()
+  ;; ホストのオブジェクトは、ホストで === で比べる
+  __String_equal__ ka "host" ,(test__) __if__ test__
+    (,() __LList_cons__ b __NULL__ ,(l) __LList_cons__ a l ,(l) Sjs_host_js "same" l ,(t) return t) ,()
   ;; 関数（とオブジェクト）は、同じものか（番号で比べる）
   __Dict_lookup_or__ a "id" __print_exit_error__ ,(ia)
   __Dict_lookup_or__ b "id" __print_exit_error__ ,(ib)
@@ -670,6 +681,7 @@
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() return "[object AsyncGenerator]") ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() return "[object Promise]") ,()
   __String_equal__ kind "task" ,(test__) __if__ test__ (,() return "[object Task]") ,()
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() __LList_cons__ v __NULL__ ,(a) Sjs_host_js "str" a ,(s) return s) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,()
       __Dict_lookup_or__ v "error" (,(k) return "[object Object]") ,(isError)
@@ -1549,6 +1561,7 @@
       return m) ,()
   __String_equal__ kind "object" ,(test__) __if__ test__
     (,() Sjs_obj_member G o ks ,(v) return v) ,()
+  __String_equal__ kind "host" ,(test__) __if__ test__ (,() Sjs_host_get G o ks ,(v) return v) ,()
   __String_equal__ kind "generator" ,(test__) __if__ test__ (,() Sjs_gen_method G o ks ,(m) return m) ,()
   __String_equal__ kind "asyncgen" ,(test__) __if__ test__ (,() Sjs_ag_method G o ks ,(m) return m) ,()
   __String_equal__ kind "promise" ,(test__) __if__ test__ (,() Sjs_promise_method G o ks ,(m) return m) ,()
@@ -1598,11 +1611,22 @@
       Sjs_key_string key ,(ks)
       Sjs_members_set G o ks v ,()
       return) ,()
+  __String_equal__ kind "host" ,(test__) __if__ test__
+    (,()
+      Sjs_key_string key ,(ks)
+      __LList_cons__ v __NULL__ ,(a) __LList_cons__ ks a ,(a) __LList_cons__ o a ,(a)
+      Sjs_host_js "set" a ,(r)
+      return) ,()
   ;; 文字列、数、真偽値のメンバーへの代入は、JavaScript（strict でない）と同じく何もしない
   __nop__)
 
 ;; o.key(args)
 (define Sjs_call_member ,(G o key args)
+  __Cont_get__ ,(return)
+  ;; ホストのオブジェクトのメソッドは、関数の値を作らずに、ホストで呼ぶ
+  __type_name__ o ,(type)
+  __String_equal__ type "HostObject" ,(test__) __if__ test__
+    (,() Sjs_key_string key ,(ks) Sjs_host_call G o ks args ,(r) return r) ,()
   Sjs_get_member G o key ,(f)
   Sjs_kind f ,(kind)
   __String_equal__ kind "function" ,(ok)
@@ -1625,7 +1649,9 @@
   Sjs_kind v ,(kind)
   __String_equal__ kind "array" ,(test__) __if__ test__ (,() Sjs_array_list v ,(l) return l) ,()
   __String_equal__ kind "string" ,(test__) __if__ test__ (,() Sjs_chars v ,(l) return l) ,()
-  __String_equal__ kind "generator" ,(test__) __if__ test__
+  __String_equal__ kind "generator" ,(isGen)
+  __String_equal__ kind "host" ,(isHost)
+  __or__ isGen isHost ,(test__) __if__ test__
     (,() Sjs_iter_open v ,(it) Sjs_iter_drain it __NULL__ ,(rev) Sjs_reverse_list rev ,(l) return l) ,()
   Sjs_describe v ,(d)
   __String_concat__ d " is not iterable" ,(msg)
@@ -2999,6 +3025,19 @@
       __Ref_new__ __NULL__ ,(ret)
       __Dict_put__ it "ret" ret ,()
       return it) ,()
+  ;; ホストのオブジェクト：ホストの反復子（[Symbol.iterator]()）を、参照で持つ
+  __String_equal__ kind "host" ,(test__) __if__ test__
+    (,()
+      __LList_cons__ v __NULL__ ,(a)
+      Sjs_host_js "iter" a ,(r)
+      __LList_uncons__ __print_exit_error__ r ,(tag rest)
+      __String_equal__ tag "n" ,(test__) __if__ test__
+        (,() Sjs_describe v ,(d) __String_concat__ d " is not iterable" ,(m) Sjs_type_error m) ,()
+      __LList_uncons__ __print_exit_error__ rest ,(hit more)
+      __Dict_put__ it "host" hit ,()
+      __Ref_new__ __NULL__ ,(buf)
+      __Dict_put__ it "buf" buf ,()
+      return it) ,()
   Sjs_iter_values v ,(list)
   __Ref_new__ list ,(ref)
   __Dict_put__ it "list" ref ,()
@@ -3009,6 +3048,17 @@
   __Cont_get__ ,(return)
   __Dict_lookup_or__ it "list" (,(k) __NULL__ __NULL__) ,(ref)
   __is_null__ ref ,(test__) __unless__ test__ (,() __Ref_get__ ref ,(l) __is_null__ l ,(e) __not__ e ,(m) return m) ,()
+  ;; ホストの反復子：next をホストで呼ぶ（Promise を返せば、この処理だけが待つ）
+  __Dict_lookup_or__ it "host" (,(k) __NULL__ __NULL__) ,(hit)
+  __is_null__ hit ,(test__) __unless__ test__
+    (,()
+      __LList_cons__ hit __NULL__ ,(a)
+      Sjs_host_js "next" a ,(r)
+      Sjs_host_step r ,(done v)
+      __if__ done (,() __Dict_put__ it "done" __TRUE__ ,() return __FALSE__) ,()
+      __Dict_lookup_or__ it "buf" __print_exit_error__ ,(buf)
+      __Ref_set__ buf v ,()
+      return __TRUE__) ,()
   __Dict_lookup_or__ it "gen" __print_exit_error__ ,(gen)
   Sjs_gen_resume gen "next" __NULL__ ,(r)
   Sjs_obj_get r "done" ,(done)
@@ -3720,6 +3770,15 @@
 ;; 繰り返しの手順を閉じる：終わっていないジェネレータなら return() を呼ぶ（finally を動かす）。配列と文字列は何もしない
 (define Sjs_iter_close ,(it)
   __Cont_get__ ,(return)
+  ;; ホストの反復子は、終わる前に抜けたら return() を呼ぶ
+  __Dict_lookup_or__ it "host" (,(k) __NULL__ __NULL__) ,(hit)
+  __is_null__ hit ,(test__) __unless__ test__
+    (,()
+      __Dict_lookup_or__ it "done" (,(k) __NULL__ __FALSE__) ,(finished)
+      __if__ finished return ,()
+      __LList_cons__ hit __NULL__ ,(a)
+      Sjs_host_js "close" a ,(r)
+      return) ,()
   __Dict_lookup_or__ it "gen" (,(k) return) ,(gen)
   __Dict_lookup_or__ it "done" (,(k) __NULL__ __FALSE__) ,(finished)
   __if__ finished return ,()
@@ -3728,6 +3787,122 @@
   __String_equal__ state "done" ,(test__) __if__ test__ return ,()
   Sjs_gen_resume gen "return" __NULL__ ,(r)
   __nop__)
+
+;; ── ホストのオブジェクト（段階 S0b。docs/dev/CONJS-SHELL-PLAN.md の 7 節と 15 節）──
+;; wasm 版の VM で、ホストの JavaScript のオブジェクトを参照で持つ値（__type_name__ が "HostObject"。種類は "host"、typeof は
+;; "object"）。メンバーを読む、書く、メソッドを呼ぶ、for...of で回す、=== で比べるのは、補助の JavaScript（Sjs_host_text）を
+;; __JS_fn_call__ で呼んで、ホストでする（待たない呼び出しなので、間にほかの処理は入らない）。ホストに渡す値は、数、文字列、
+;; 真偽、undefined はそのまま、ほかは rt.keep で VM の値のまま（写さない。ホストから戻れば同じ値）。補助が返すのは [印 値]：
+;; "p"（数、文字列、真偽、undefined）、"r"（参照：ホストのオブジェクトか、ホストが持っていた VM の値）、"c"（ふつうの
+;; オブジェクトと配列：写して SJS の値にする）、"f"（関数のメンバー）、"n"（関数でない、回せない）、"d"（回し終えた）、
+;; "e"（ホストが投げた例外のメッセージ）、"w"（Promise を返した：その番号。ConJS が PDict の "sjs_host_await" で待ち、
+;; "result" で、ほかの印の答えを受け取る）。
+
+(define Sjs_host_text ,()
+  __NULL__ "const B = Symbol.for('conma.byRef'); let last = 0; const pend = new Map(); const done = new Map(); const msg = (e) => (e instanceof Error ? e.message : String(e)); const isRef = (v) => v instanceof rt.VmKept || (v !== null && typeof v === 'object' && v[B] === true); const out = (v) => (isRef(v) ? ['r', v] : v !== null && typeof v === 'object' ? ['c', v] : ['p', v]); const step = (x) => (x.done ? ['d'] : out(x.value)); const thenable = (r) => r !== null && typeof r === 'object' && typeof r.then === 'function'; const wait = (r, tag) => { const id = ++last; pend.set(id, [r, tag]); return ['w', id]; }; const keep = (v) => rt.keep(v); rt.defineHost('conma.hostobj.await', (id) => { const [p, tag] = pend.get(id); pend.delete(id); return Promise.resolve(p).then((v) => { done.set(id, tag(v)); }, (e) => { done.set(id, ['e', msg(e)]); }); }); return { get(o, k) { const v = o[k]; return typeof v === 'function' ? ['f'] : out(v); }, set(o, k, v) { o[k] = keep(v); return true; }, call(o, k, args) { const f = o[k]; if (typeof f !== 'function') return ['n']; let r; try { r = f.apply(o, (args || []).map(keep)); } catch (e) { return ['e', msg(e)]; } return thenable(r) ? wait(r, out) : out(r); }, iter(o) { const f = o[Symbol.iterator]; if (typeof f !== 'function') return ['n']; const it = f.call(o); it[B] = true; return ['r', it]; }, next(it) { let r; try { r = it.next(); } catch (e) { return ['e', msg(e)]; } return thenable(r) ? wait(r, step) : step(r); }, close(it) { if (typeof it.return === 'function') it.return(); return true; }, result(id) { const d = done.get(id); done.delete(id); return d; }, same(a, b) { return a === b; }, str(o) { return String(o); }, name(o) { return (o.constructor && o.constructor.name) || 'Object'; }, queue(p, n) { try { return out(new rt.Queue(p, n)); } catch (e) { return ['e', msg(e)]; } }, };")
+
+;; 補助のモジュール（一度だけ作り、PDict の "sjs_host_obj" に置く）
+(define Sjs_host_module ,()
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_host_obj" (,(k) __NULL__ __NULL__) ,(M)
+  __is_null__ M ,(test__) __unless__ test__ (,() return M) ,()
+  Sjs_host_text ,(text)
+  __JS_fn_compile__ (,(e) Sjs_type_error e) text ,(M)
+  __PDict_put__ "sjs_host_obj" M ,()
+  __NULL__ M)
+
+;; 補助の関数 name を、引数の LList args で呼ぶ
+(define Sjs_host_js ,(name args)
+  __Cont_get__ ,(return)
+  Sjs_host_module ,(M)
+  __JS_fn_call__ (,(e) Sjs_type_error e) M name args ,(status v)
+  __String_equal__ status "ok" ,(test__) __if__ test__ (,() return v) ,()
+  Sjs_throw "Error" v)
+
+;; 補助の答え r（[印 値]）を SJS の値にする
+(define Sjs_host_answer ,(r)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ r ,(tag rest)
+  __is_null__ rest ,(none)
+  __if_then_else__ none (,() __NULL__ __NULL__) (,() __LList_uncons__ __print_exit_error__ rest ,(x more) __NULL__ x) ,(v)
+  __String_equal__ tag "p" ,(test__) __if__ test__ (,() return v) ,()
+  __String_equal__ tag "r" ,(test__) __if__ test__ (,() return v) ,()
+  __String_equal__ tag "c" ,(test__) __if__ test__ (,() Sjs_host_copy v ,(x) return x) ,()
+  __String_equal__ tag "e" ,(test__) __if__ test__ (,() Sjs_throw "Error" v) ,()
+  __String_equal__ tag "w" ,(test__) __if__ test__ (,() Sjs_host_await v ,(r) Sjs_host_answer r ,(x) return x) ,()
+  __NULL__ __NULL__)
+
+;; Promise の番号 id を待って、その答えを受け取る（ConJS だけ：conjs_rt.se が "sjs_host_await" を置く）
+(define Sjs_host_await ,(id)
+  __PDict_lookup_or__ "sjs_host_await" (,(k) Sjs_type_error "a method of the host returned a Promise, which only ConJS can wait for") ,(await)
+  await id ,()
+  __LList_cons__ id __NULL__ ,(a)
+  Sjs_host_js "result" a)
+
+;; 反復子の next の答え：(終わったか 値)
+(define Sjs_host_step ,(r)
+  __Cont_get__ ,(return)
+  __LList_uncons__ __print_exit_error__ r ,(tag rest)
+  __String_equal__ tag "d" ,(test__) __if__ test__ (,() return __TRUE__ __NULL__) ,()
+  __String_equal__ tag "w" ,(test__) __if__ test__
+    (,() __LList_uncons__ __print_exit_error__ rest ,(id more) Sjs_host_await id ,(r) Sjs_host_step r ,(d v) return d v) ,()
+  Sjs_host_answer r ,(v)
+  __NULL__ __FALSE__ v)
+
+;; ホストが写して返したもの（Dict と LList）を SJS の値にする
+(define Sjs_host_copy ,(v)
+  __Cont_get__ ,(return)
+  __PDict_lookup_or__ "sjs_G" __print_exit_error__ ,(G)
+  __type_name__ v ,(type)
+  __String_equal__ type "LList" ,(test__) __if__ test__
+    (,() Sjs_host_copy_list v ,(items) Sjs_array G items ,(a) return a) ,()
+  __String_equal__ type "Dict" ,(test__) __unless__ test__ (,() return v) ,()
+  __Dict_keys__ v ,(keys)
+  __Ref_new__ __NULL__ ,(acc)
+  Sjs_collect acc ,(sink)
+  keys sink ,(x)
+  __Ref_get__ acc ,(ks)
+  Sjs_reverse_list ks ,(ks)
+  Sjs_object_new G ,(o)
+  Sjs_host_copy_props v ks o ,()
+  __NULL__ o)
+
+(define Sjs_host_copy_props ,(d keys o)
+  __Cont_get__ ,(return)
+  __is_null__ keys ,(test__) __if__ test__ return ,()
+  __LList_uncons__ __print_exit_error__ keys ,(k rest)
+  __Dict_lookup_or__ d k __print_exit_error__ ,(h)
+  Sjs_host_copy h ,(x)
+  Sjs_obj_set o k x ,()
+  Sjs_host_copy_props d rest o)
+
+(define Sjs_host_copy_list ,(l)
+  __Cont_get__ ,(return)
+  __is_null__ l ,(test__) __if__ test__ (,() return __NULL__) ,()
+  __LList_uncons__ __print_exit_error__ l ,(x rest)
+  Sjs_host_copy x ,(v)
+  Sjs_host_copy_list rest ,(vs)
+  __LList_cons__ v vs)
+
+;; o.ks（関数のメンバーは、ホストで呼ぶ関数にする）
+(define Sjs_host_get ,(G o ks)
+  __Cont_get__ ,(return)
+  __LList_cons__ ks __NULL__ ,(a) __LList_cons__ o a ,(a)
+  Sjs_host_js "get" a ,(r)
+  __LList_uncons__ __print_exit_error__ r ,(tag rest)
+  __String_equal__ tag "f" ,(test__) __if__ test__
+    (,() Sjs_function G ks (,(args) Sjs_host_call G o ks args) ,(fn) return fn) ,()
+  Sjs_host_answer r)
+
+;; o.ks(args)
+(define Sjs_host_call ,(G o ks args)
+  __Cont_get__ ,(return)
+  __LList_cons__ args __NULL__ ,(a) __LList_cons__ ks a ,(a) __LList_cons__ o a ,(a)
+  Sjs_host_js "call" a ,(r)
+  __LList_uncons__ __print_exit_error__ r ,(tag rest)
+  __String_equal__ tag "n" ,(test__) __if__ test__
+    (,() Cat3s "the property " ks " of an object of the host is not a function" ,(m) Sjs_type_error m) ,()
+  Sjs_host_answer r)
 
 ;; ── 数の関数の wasm 版（docs/consh/dev/SJS-WASM-PLAN-ja.md の 5.2、5.5。段階 2、3）──
 ;; 変換器（sjs_gen.se、sjs_wasm.se）が、数の関数をまとめた WAT のモジュールを作り、数の関数を Sjs_wasm_fn で包む。

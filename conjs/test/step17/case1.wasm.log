@@ -1,4 +1,0 @@
-start
-a task that ends
-vm-node: every VProc waits for host calls that never finish: 1
-exit: 2

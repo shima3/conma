@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 3:3: <$ and < are only for the first command of a pipeline
+exit: 2

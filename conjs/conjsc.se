@@ -10,6 +10,8 @@
 (include "sjs_wasm.se")
 (include "sjs_host.se")
 (include "conjs_modules.se")
+(include "conjs_async.se")
+(include "conjs_shell.se")
 
 (define main ,(args)
   __Seq_get__ (,() __print_exit_error__ "usage: conjsc.se <file.con.js>\n") args ,(path rest)

@@ -1,0 +1,15 @@
+host: fast
+fast
+host: slow
+slow
+[ 1, 'two', true, { a: [ 1, 2 ] }, undefined, undefined, -0 ]
+[ [ 2, 4, 6 ], 3, 'case1.con.js' ]
+hello, ConJS (42) greet.con.js case1.con.js
+[ [ 10 ], 1, 'case1.con.js' ]
+[ [ 20, 22 ], 2, 'case1.con.js' ]
+caught: rejected on the host
+caught: Cannot read properties of null (reading 'x')
+34:10
+3
+case1.con.js:27:1: Error: rejected on the host
+exit: 2

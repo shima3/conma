@@ -33,17 +33,17 @@ CONMA_VM=wasm consh/test/run_all.sh -j 3
 CONMA_VM=transpiled consh/test/run_all.sh -j 6
 consh/js/test/run_all.sh
 sjs/test/run_all.sh
-conjs/test/run_all.sh                                  # ConJS（Rust 版の VM）
-CONMA_VM=wasm conjs/test/run_all.sh
-CONMA_VM=python conjs/test/run_all.sh
+conjs/test/run_all.sh                                  # ConJS（wasm 版の VM だけ。段階 P10、2026-11-25 から）
+CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の道（ふだんは bin/lang.cjs を通る。CI は流さない）
 ```
 
+* ConJS のブラウザのページは、CI にブラウザがないので、手で確かめる（docs/dev/CONJS-HOST-PLAN.md の 32 節、段階 H7）：`conjs/web/build.sh` の後、`python3 -m http.server -d conjs/web -b 127.0.0.1 8768` で出し、bench.html の「すべて測る」で、出力の列がすべて「同じ」になること、stars.html?hostreport で遊ぶと、ブラウザのコンソールに `conjs: host: ` の行が出ること。conjs/test/run_all.sh は、step20 を、Node.js で new Function を止めて（`--disallow-code-generation-from-strings`）もう一度流す（== step20 (no eval)。eval を止めたページの代わり）。
 * 標準ライブラリの参照版で test/ を流すときは、`CONMA_REFERENCE=1` を付ける（reference/README-ja.md）。下の既知の違いがある。
 * consh/test は、`CONSH_IMPL` がなければ ConMa 版の最適化版を試す（consh/test/common.sh）。`CONMA_VM` がなければ、ConSh は Rust 版の VM を使う（作っていなければエラー。Python 版の VM で流すときは `CONMA_VM=python`）。
 
 ### CI（GitHub Actions）
 
-PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、Rust 版と wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、下の「Windows（I7）で流す」のとおりに用意して、vm の `cargo test --release --lib` と、Rust 版の VM の test/、consh/test、conjs/test、sjs/test を流す（既知の違いは、下の表の I7 の行。段階 P6c から。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）。
+PR ごとと alpha への push ごとに、GitHub Actions が、速い suite を Linux と macOS で流す（.github/workflows/ci.yml、2026-11-22 から。docs/dev/CONTRIBUTING.md の Tests）。流すのは、Rust 版と wasm 版の VM の test/、Rust 版と wasm 版の VM の consh/test、consh/js/test、sjs/test、wasm 版の VM の conjs/test、vm の `cargo test --release`、test/host-api.sh。それぞれを .github/ci-suite.sh で流し、下の既知の違いのほかに違いがあれば失敗にする（既知の違いが出なくても失敗にはしない）。既知の違いの表を変えたら、ci.yml の、その suite の行も変える。Python 版と transpiled VM、ConSh の参照版と Rust 版、`CONMA_REFERENCE=1` は流さないので、CI が通っても Full Test の代わりにはならず、記録（docs/dev/TESTS-RECORD-ja.md）にも書かない。Windows では、下の「Windows（I7）で流す」のとおりに用意して、vm の `cargo test --release --lib` と、Rust 版の VM の test/、consh/test、sjs/test、wasm 版の VM の conjs/test を流す（段階 P10 から、conjs/test は wasm 版。既知の違いは、下の表の I7 の行。段階 P6c から。docs/dev/PLATFORM-PLAN-ja.md の 4.11 節）。
 
 ### Windows（I7）で流す
 
@@ -61,12 +61,12 @@ export PATH="$LOCALAPPDATA/Programs/Python/Python315:$HOME/.cargo/bin:$PATH" MSY
 (cd vm && cargo build --release && cargo test --release --lib)
 CONMA_VM=rust test/run_all.sh -j 8
 CONMA_VM=rust consh/test/run_all.sh -j 6
-conjs/test/run_all.sh
 sjs/test/run_all.sh
-vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から。CI の windows ジョブは流さない）
-CONMA_VM=wasm test/run_all.sh -j 4
-CONMA_VM=wasm consh/test/run_all.sh -j 4
-CONMA_VM=wasm conjs/test/run_all.sh
+vm/wasm/build.sh                                       # wasm 版の VM（2026-11-23 から）
+CONMA_VM=wasm test/run_all.sh -j 4                     # CI の windows ジョブは流さない
+CONMA_VM=wasm consh/test/run_all.sh -j 4               # CI の windows ジョブは流さない
+conjs/test/run_all.sh                                  # ConJS（wasm 版の VM。段階 P10 から。CI の windows ジョブも流す）
+CONMA_LANG_SH=1 conjs/test/run_all.sh                  # bin/lang の bash の道（CI の windows ジョブは流さない）
 ```
 
 ## 既知の違い

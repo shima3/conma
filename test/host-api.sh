@@ -4,7 +4,8 @@
 # example が作られないので、ここで作る）、conjs/examples/host_demo.con.js を動かす。同じ関数を JavaScript で書いた
 # conjs/examples/host_demo.host.js を CONMA_HOST にして、wasm 版の VM（Node.js）でも動かし、同じログになることを確かめる
 # （wasm 版の VM がないか、node がなければ飛ばす）。ほかに、Rust の API だけのこと（test/host-api/rust.con.js）と、関数を
-# 足さない VM では host.available("demo") が偽になること。diff の出力がなければ成功
+# 足さない VM では host.available("demo") が偽になること。diff の出力がなければ成功。ConJS の既定の VM は wasm 版なので
+# （段階 P10）、Rust 版で動かす所は CONMA_VM=rust を付ける（CONMA_RUNNER は Rust 版でだけ効く）
 root="$(cd "$(dirname "$0")/.."; pwd)"
 dir="$root/test/host-api"
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -20,9 +21,9 @@ run() {
   diff "$dir/$log" "$tmp/out"
 }
 echo "== rust"
-run demo.log CONMA_RUNNER="$demo" "$root/bin/lang" conjs "$root/conjs/examples/host_demo.con.js"
-run rust.log CONMA_RUNNER="$demo" "$root/bin/lang" conjs "$dir/rust.con.js"
-run nodemo.log "$root/bin/lang" conjs "$root/conjs/examples/host_demo.con.js"
+run demo.log CONMA_VM=rust CONMA_RUNNER="$demo" "$root/bin/lang" conjs "$root/conjs/examples/host_demo.con.js"
+run rust.log CONMA_VM=rust CONMA_RUNNER="$demo" "$root/bin/lang" conjs "$dir/rust.con.js"
+run nodemo.log CONMA_VM=rust "$root/bin/lang" conjs "$root/conjs/examples/host_demo.con.js"
 if command -v node > /dev/null && [ -f "$root/vm/wasm/target/wasm32-unknown-unknown/release/conma_wasm.wasm" ]; then
   echo "== wasm"
   run demo.log CONMA_VM=wasm CONMA_HOST="$root/conjs/examples/host_demo.host.js" "$root/bin/lang" conjs "$root/conjs/examples/host_demo.con.js"

@@ -1,0 +1,13 @@
+type: "HostObject"
+inc: 2
+inc: 3
+get (the same object across calls): 3
+instanceof Box: true
+same b b: true
+same b c: false
+objects held: 2
+throwaway: "dropped"
+objects held after one was dropped: 2
+holder.box: "HostObject"
+holder.box.n: 9
+exit: 0

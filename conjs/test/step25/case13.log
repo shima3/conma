@@ -1,0 +1,2 @@
+conjs: SyntaxError: a command line at 3:3: $fn${...}: a command function is $ and the name of a variable
+exit: 2

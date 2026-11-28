@@ -81,7 +81,7 @@ You now have a folder `conma` and are in it. Type every command below in this fo
 
 ## 3. Build
 
-A ConJS program is translated into the language ConMa and run on a VM (virtual machine) of ConMa. Build two VMs:
+A ConJS program is translated into the language ConMa and run on a VM (virtual machine) of ConMa. Build the VMs:
 
 ```
 (cd vm && cargo build --release)
@@ -89,8 +89,8 @@ vm/wasm/build.sh
 conjs/conjs --prepare
 ```
 
-* The first is the VM that runs directly on your computer (the Rust VM). It also translates ConJS.
-* The second is the VM in WebAssembly (the wasm VM). It runs on Node.js, and the web server below runs on it.
+* The first is the VM that runs directly on your computer (the Rust VM). It translates ConJS faster; without it, ConJS still works.
+* The second is the VM in WebAssembly (the wasm VM). It runs on Node.js, and ConJS programs run on it.
 * The third makes the translator of ConJS and its runtime (the parts that ConJS programs use) in advance.
 
 The first build takes from tens of seconds to a few minutes, by the computer. `Finished` (the first two) and `conjs: ready` (the third) mean it worked. The third may print nothing for about 30 seconds (longer on some computers). Wait, and do not press Ctrl-C, even if it seems to have stopped.
@@ -119,10 +119,10 @@ It starts at once, as `conjs/conjs --prepare` in step 3 has made the translator 
 
 ## 5. Run the web server
 
-Run the small web server written in ConJS (`conjs/examples/counter_server.con.js`) on Node.js. A web server runs only on Node.js, so add `CONMA_VM=wasm` to use the wasm VM.
+Run the small web server written in ConJS (`conjs/examples/counter_server.con.js`) on Node.js.
 
 ```
-CONMA_VM=wasm conjs/conjs conjs/examples/counter_server.con.js
+conjs/conjs conjs/examples/counter_server.con.js
 ```
 
 Output:
@@ -181,13 +181,13 @@ Read the two side by side: ConJS needs no `async` and no `await`.
 | Message | What to do |
 |---|---|
 | `cargo: command not found` | Open the terminal again. If it still says so, install Rust again (step 1) |
-| `vm-wasm.sh: ... is not built` | Run `vm/wasm/build.sh` (step 3) |
+| `lang: conjs runs on the wasm VM: build it ...` or `vm-wasm.sh: ... is not built` | Run `vm/wasm/build.sh` (step 3) |
 | `vm/wasm/build.sh` stops with an error that `wasm32-unknown-unknown` is not installed | Type `rustup target add wasm32-unknown-unknown` (the end of step 1) |
 | Nothing is printed, or you are asked which app should open the file (PowerShell on Windows) | You typed it in PowerShell. Open Git Bash and type it there (step 0) |
 | `'conjs' is not recognized as an internal or external command, operable program or batch file.` (the Command Prompt on Windows) | You typed it in the Command Prompt. Open Git Bash and type it there (step 0) |
 | `$'\r': command not found` (Windows) | The line ends were changed in the clone. Delete the folder `conma` and clone again with `-c core.autocrlf=false` (step 2) |
 | `EADDRINUSE` | Port 8000 is taken. Add another number, as in step 5 |
-| `http.listen: this platform has no server` | `CONMA_VM=wasm` is missing |
+| `http.listen: this platform has no server` | `CONMA_VM=rust` or another `CONMA_VM` chooses a VM without the server: run it without `CONMA_VM` |
 
 ## What to read next
 
